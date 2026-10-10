@@ -1,0 +1,24 @@
+kudurru
+Copyright 2026 Robert Herbaugh and the kudurru contributors
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this software except in compliance with the License. You may obtain a copy of
+the License at http://www.apache.org/licenses/LICENSE-2.0.
+
+This product will include software developed by third parties under permissive
+licences. Attributions are added to this file as the dependencies land:
+
+- blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
+  pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
+- dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: upstream
+  client library.
+- CoreDNS (https://github.com/coredns/coredns), Apache-2.0: zone tree,
+  secondary-transfer flow, test helpers.
+- external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
+  Endpoint record shape and the webhook provider contract.
+
+dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
+They are distributed unmodified as separate programs in their own container
+images under images/, each carrying the GPL licence text and a source offer.
+No code from GPL or EUPL projects (Gravity, Technitium, AdGuard Home,
+urlfilter, Pi-hole) is included in kudurru.

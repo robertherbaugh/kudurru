@@ -1,0 +1,217 @@
+// Package conformance is the test suite every Store driver must pass. Run it
+// from the driver's own test package with a factory that returns a fresh,
+// empty store.
+package conformance
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/store"
+)
+
+// Run executes the suite.
+func Run(t *testing.T, factory func(t *testing.T) store.Store) {
+	t.Helper()
+	t.Run("ApplyCreatesWithManagedBy", func(t *testing.T) { testApplyCreate(t, factory(t)) })
+	t.Run("ApplyRejectsOtherManager", func(t *testing.T) { testManagedBy(t, factory(t)) })
+	t.Run("ApplyOptimisticConcurrency", func(t *testing.T) { testOptimistic(t, factory(t)) })
+	t.Run("DeleteAndNotFound", func(t *testing.T) { testDelete(t, factory(t)) })
+	t.Run("ListFiltersByKindNamespaceLabels", func(t *testing.T) { testList(t, factory(t)) })
+	t.Run("WatchDeliversInitialAndLive", func(t *testing.T) { testWatch(t, factory(t)) })
+	t.Run("UpdateStatusKeepsSpecAndManager", func(t *testing.T) { testStatus(t, factory(t)) })
+}
+
+func zone(name, zoneName string) *v1alpha1.DNSZone {
+	return &v1alpha1.DNSZone{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       v1alpha1.DNSZoneSpec{ZoneName: zoneName, Type: v1alpha1.ZoneTypePrimary},
+	}
+}
+
+func testApplyCreate(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	out, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.ManagedBy(out) != store.ManagerAPI {
+		t.Fatalf("managedBy not recorded: %q", store.ManagedBy(out))
+	}
+	if out.GetResourceVersion() == "" || out.GetUID() == "" || out.GetGeneration() != 1 {
+		t.Fatalf("identity not stamped: rv=%q uid=%q gen=%d", out.GetResourceVersion(), out.GetUID(), out.GetGeneration())
+	}
+	var got v1alpha1.DNSZone
+	if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.ZoneName != "home.example." {
+		t.Fatalf("round trip lost spec: %+v", got.Spec)
+	}
+}
+
+func testManagedBy(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerFile("objects.d/zones.yaml")}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI})
+	var mb *store.ErrManagedBy
+	if !errors.As(err, &mb) || mb.Owner != "file:objects.d/zones.yaml" {
+		t.Fatalf("expected ErrManagedBy from the file owner, got %v", err)
+	}
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI, Force: true}); err != nil {
+		t.Fatalf("Force must override managedBy: %v", err)
+	}
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatalf("after Force the new manager owns the object: %v", err)
+	}
+	if _, err := s.Apply(ctx, zone("x", "x."), store.ApplyOptions{}); err == nil {
+		t.Fatal("empty Manager must be rejected")
+	}
+}
+
+func testOptimistic(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	first, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.GetResourceVersion() == first.GetResourceVersion() {
+		t.Fatal("resourceVersion must change on every write")
+	}
+	if second.GetGeneration() != 2 {
+		t.Fatalf("generation should be 2, got %d", second.GetGeneration())
+	}
+	_, err = s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale resourceVersion must be ErrConflict, got %v", err)
+	}
+}
+
+func testDelete(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	key := store.Key{Kind: "DNSZone", Name: "home"}
+	if err := s.Delete(ctx, key, store.DeleteOptions{}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("delete of a missing object must be ErrNotFound, got %v", err)
+	}
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerIntegration("unifi")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerAPI}); !store.IsManagedBy(err) {
+		t.Fatalf("delete by another manager must be ErrManagedBy, got %v", err)
+	}
+	if err := s.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerIntegration("unifi")}); err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.DNSZone
+	if err := s.Get(ctx, key, &got); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func testList(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	mk := func(ns, name, label string) *v1alpha1.DNSRecordSet {
+		return &v1alpha1.DNSRecordSet{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"team": label}},
+			Spec:       v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "home"}, Endpoints: []v1alpha1.Endpoint{{DNSName: name + ".home.example", RecordType: "A", Targets: []string{"10.0.0.1"}}}},
+		}
+	}
+	for _, o := range []*v1alpha1.DNSRecordSet{mk("apps", "nas", "infra"), mk("apps", "web", "web"), mk("dns", "ns1", "infra")} {
+		if _, err := s.Apply(ctx, o, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.List(ctx, "DNSRecordSet", store.ListOptions{})
+	if err != nil || len(all.Items) != 3 {
+		t.Fatalf("expected 3 record sets, got %d (%v)", len(all.Items), err)
+	}
+	ns, _ := s.List(ctx, "DNSRecordSet", store.ListOptions{Namespace: "apps"})
+	if len(ns.Items) != 2 {
+		t.Fatalf("namespace filter: got %d", len(ns.Items))
+	}
+	lbl, _ := s.List(ctx, "DNSRecordSet", store.ListOptions{LabelSelector: map[string]string{"team": "infra"}})
+	if len(lbl.Items) != 2 {
+		t.Fatalf("label filter: got %d", len(lbl.Items))
+	}
+	page, _ := s.List(ctx, "DNSRecordSet", store.ListOptions{Limit: 2})
+	if len(page.Items) != 2 || page.Continue == "" {
+		t.Fatalf("pagination: got %d items, continue=%q", len(page.Items), page.Continue)
+	}
+	rest, _ := s.List(ctx, "DNSRecordSet", store.ListOptions{Limit: 2, Continue: page.Continue})
+	if len(rest.Items) != 1 || rest.Continue != "" {
+		t.Fatalf("second page: got %d items, continue=%q", len(rest.Items), rest.Continue)
+	}
+}
+
+func testWatch(t *testing.T, s store.Store) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := s.Apply(ctx, zone("a", "a."), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	w, err := s.Watch(ctx, "DNSZone", store.WatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Stop()
+	ev := <-w.ResultChan()
+	if ev.Type != store.Added || ev.Object.GetName() != "a" {
+		t.Fatalf("expected initial Added for a, got %+v", ev)
+	}
+	for ev = range w.ResultChan() {
+		if ev.Type == store.Bookmark {
+			break
+		}
+	}
+	if _, err := s.Apply(ctx, zone("b", "b."), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	ev = <-w.ResultChan()
+	if ev.Type != store.Added || ev.Object.GetName() != "b" {
+		t.Fatalf("expected live Added for b, got %+v", ev)
+	}
+	if err := s.Delete(ctx, store.Key{Kind: "DNSZone", Name: "b"}, store.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ev = <-w.ResultChan()
+	if ev.Type != store.Deleted || ev.Object.GetName() != "b" {
+		t.Fatalf("expected Deleted for b, got %+v", ev)
+	}
+}
+
+func testStatus(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	out, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerFile("z.yaml")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := out.(*v1alpha1.DNSZone)
+	z.Status.Serial = 42
+	z.Status.Conditions = []metav1.Condition{{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonServing, LastTransitionTime: metav1.Now()}}
+	if err := s.UpdateStatus(ctx, z); err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.DNSZone
+	if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Serial != 42 || got.Spec.ZoneName != "home.example." || store.ManagedBy(&got) != "file:z.yaml" {
+		t.Fatalf("status update changed the wrong things: %+v", got)
+	}
+	if got.GetGeneration() != 1 {
+		t.Fatalf("status writes must not bump generation: %d", got.GetGeneration())
+	}
+}

@@ -1,0 +1,23 @@
+# Two ConfigMaps (decision D25): node keys roll pods via the checksum
+# annotation; settings hot-reload without a restart.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kudurru.fullname" . }}-node
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+data:
+  kudurru.yaml: |
+    {{- include "kudurru.nodeConfig" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kudurru.fullname" . }}-settings
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+data:
+  settings.yaml: |
+    {{- toYaml .Values.config.settings | nindent 4 }}

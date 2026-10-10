@@ -1,0 +1,83 @@
+# node-a: 10.0.0.11, priority index 0. Copy to node-b/node-c and change
+# NODE_NAME, the proxyProtocolFrom list stays identical, --priority-index 1/2
+# and --peers accordingly.
+services:
+  kudurru:
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0-dev
+    network_mode: host                       # :5353 for dnsdist, :8080 API, :8082 internal; keepalived owns the VIP
+    restart: unless-stopped
+    environment:
+      KUDURRU_NODE__NAME: node-a
+      KUDURRU_LISTENERS__PROXYPROTOCOLFROM: "127.0.0.1/32,10.0.0.11/32,10.0.0.12/32,10.0.0.13/32"   # exact peers, never the LAN /24
+      KUDURRU_LISTENERS__PROXYPROTOCOLSECRETFILE: /run/secrets/proxy_secret
+      KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      # v0.2: KUDURRU_CLUSTER__ROLE=follower  KUDURRU_CLUSTER__PRIMARY=https://10.0.0.11:8082   (nodes b, c)
+      # v1.0: KUDURRU_CLUSTER__BOOTSTRAPEXPECT=3  KUDURRU_CLUSTER__PEERS=10.0.0.11:7000,10.0.0.12:7000,10.0.0.13:7000
+    volumes:
+      - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro
+      - ./objects.d:/etc/kudurru/objects.d:ro
+      - kudurru-data:/var/lib/kudurru
+      - kudurru-run:/run/kudurru
+    secrets: [admin_password, encryption_key, proxy_secret]
+    healthcheck:
+      test: ["CMD", "kudurru", "health", "--ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+
+  dnsdist:
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-dev
+    network_mode: host                       # binds 0.0.0.0:53 so the VIP is served as it appears
+    restart: unless-stopped
+    command:
+      - kudurru
+      - edge
+      - run
+      - --backends=10.0.0.11:5353,10.0.0.12:5353,10.0.0.13:5353   # EVERY node lists ALL kudurru nodes
+      - --pool-resolver=chashed
+      - --pool-authoritative=leastOutstanding
+      - --tls-dir=/certs
+      - --api=127.0.0.1:8083
+      - --console=127.0.0.1:5199
+      - --api-key-out=/run/kudurru/dnsdist-api.key
+      - --proxy-protocol-secret-file=/run/secrets/proxy_secret
+    secrets: [proxy_secret]
+    volumes:
+      - certs:/certs:ro
+      - kudurru-run:/run/kudurru
+    depends_on: [kudurru]
+
+  keepalived:
+    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.1.0-dev
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+    restart: unless-stopped
+    stop_grace_period: 20s                   # keepalived must release the VIP before the container goes
+    command:
+      - kudurru
+      - vip
+      - run
+      - --vip=dns=10.0.0.53/24@eth0#53        # name=addr/len@iface#vrid; the VRID is host-only and never changes on re-render
+      - --peers=10.0.0.12,10.0.0.13
+      - --priority-index=0
+      - --hmac-key-file=/run/secrets/vrrp_hmac
+      - --track-dnsdist-api=http://127.0.0.1:8083
+      - --dnsdist-api-key-file=/run/kudurru/dnsdist-api.key
+      - --require-backends=1
+    volumes:
+      - kudurru-run:/run/kudurru
+    secrets: [vrrp_hmac]
+    depends_on: [dnsdist]
+
+volumes:
+  kudurru-data: {}
+  kudurru-run: {}
+  certs: {}
+
+secrets:
+  admin_password: { file: ./secrets/admin_password }
+  encryption_key: { file: ./secrets/encryption_key }
+  proxy_secret:   { file: ./secrets/proxy_secret }
+  vrrp_hmac:      { file: ./secrets/vrrp_hmac }

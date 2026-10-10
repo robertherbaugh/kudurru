@@ -1,0 +1,1513 @@
+# kudurru architecture
+
+| | |
+|---|---|
+| Status | **Accepted baseline for v0.1** (2026-10-10); amend through the decision log in §16 |
+| Revision | completeness/factual critic pass 2026-10-10: keepalived build source, leader-election lifecycle, PROXYv2 trust, internal-listener TLS, secrets-at-rest, session payload, licence of embedded list data, missing packages/interfaces; new decisions D44-D48, new open questions Q17-Q21 |
+| Date | 2026-10-10 |
+| Evidence | Research notes in [`docs/research/`](research/), cited inline as `[gravity §18.1]`, `[k8s §13]` etc. Key: gravity, technitium, pihole, blocking (blocking-engines.md), dnsdist (dnsdist-keepalived.md), k8s (k8s-native-dns.md), auth (auth-oidc-rbac.md), integrations, go-dns-stack, observability (observability-querylog.md). Facts the notes mark UNVERIFIED are week-1 spikes, never assumptions |
+| Provenance | Synthesised from three competing proposals (Kubernetes-first, single-binary-first, MVP-and-risk-first) scored by three judges (SRE, tech lead, product owner). The decision log in §16 names those proposals when it records a rejected alternative |
+| Licence | Apache-2.0 |
+| Module | `github.com/robertherbaugh/kudurru` — confirmed by the repo's `origin` remote (`https://github.com/robertherbaugh/kudurru`); still a project decision to ratify (§15 Q1) |
+| Images / charts | `ghcr.io/robertherbaugh/kudurru`, `ghcr.io/robertherbaugh/kudurru-dnsdist`, `ghcr.io/robertherbaugh/kudurru-keepalived`, `oci://ghcr.io/robertherbaugh/charts/{kudurru,kudurru-crds}` (assumption, follows the module path) |
+| CRD group | `kudurru.io` (**assumption**: domain ownership unverified, §15 Q1) |
+
+**Thesis.** kudurru is one Apache-2.0 Go binary that is a complete DNS server (authoritative with real serials, transfers and, later, DNSSEC; forwarding resolver with a node-local cache; blocky/AdGuard-grade blocking with client groups; Pi-hole-grade dashboard) and that is a first-class Kubernetes citizen **and** a `docker run` appliance without being two products. The object model is the product; persistence sits behind one `Store` interface with two drivers at v0.1 (Kubernetes CRDs via the apiserver; embedded SQLite) and **zero consensus code**, with `follower` (v0.2) and `raft` (v1.0) drivers arriving behind the same interface. dnsdist (edge/load balancing) and keepalived (VIP) are GPL siblings driven by a kudurru supervisor process inside their own images, never linked. Every deferral names the seam that keeps it additive.
+
+The boundary-stone metaphor is the data model: a `DNSZone` is a recorded grant of authority (the stone kept in the temple = the store that is authoritative for configuration); clay copies are distributed by standard DNS (AXFR/IXFR, NOTIFY, TSIG, catalog zones) and by replication of the store itself.
+
+---
+
+---
+
+## 1. Vision & principles
+
+kudurru should feel to a platform engineer the way cert-manager or external-dns feel (install a chart, apply a few CRs, watch `kubectl get zones` turn `Ready`) and to a home-lab user the way Pi-hole feels (one container, one dashboard that explains every answer), with Technitium's zone depth and blocky/AdGuard's blocking underneath. Principles — each one is a rule used in a later section:
+
+1. **Correct before complete.** v0.1 ships fewer zone types and no DNSSEC signing rather than wrong serials, wrong CNAME handling, or NXDOMAIN from an unsynced source [gravity §18.1, k8s §2.2].
+2. **One object model, one `Store` interface, zero consensus code in v0.1.** In Kubernetes the apiserver is the replicated store (CRDs are the truth, Deployment, no PVC for config) [k8s §13 model 1, §16.2]; in Docker it is embedded SQLite. `follower` (v0.2) and `raft` (v1.0) drivers arrive behind the same interface [go-dns-stack §6.3].
+3. **Exactly one writer per object.** `metadata.managedBy` (`api | file:<path> | integration:<name> | bootstrap | system`; in Kubernetes the apiserver's field manager) makes "two sources of truth" structurally impossible [k8s §16.1, gravity §18.2].
+4. **Serve from memory; degrade, never stop.** The query path reads lock-free snapshots, never the store; replicas keep answering from the last good snapshot (persisted to local disk) when the store is unreachable; before the first sync they answer SERVFAIL, never NXDOMAIN [k8s §8, gravity §4.4].
+5. **Replicate configuration; never caches, logs or heartbeats.** Query logs are per-node SQLite with scatter-gather views; metrics go to Prometheus; node status is scatter-gathered, not written anywhere [gravity §18.1/§18.8, observability §5].
+6. **Fixed pipeline, named stages.** Stage order is code, not config; integrations attach to named stages and never run on the query path [technitium §3, integrations §1.2].
+7. **Records are external-dns `Endpoint`s (a superset).** `DNSEndpoint` ingestion, the external-dns webhook, the Cloudflare sink and the CRD spec share one shape [k8s §3.2, integrations §1.6].
+8. **Leader-only side effects.** Status writes, serial stamping, blocklist fetch, NOTIFY, DNSSEC signing, ACME and integrations run on exactly one node (Lease / self / raft leader); serving runs on every node [k8s §8].
+9. **GPL stays outside the binary.** dnsdist and keepalived are separate processes driven by rendered files, the dnsdist HTTP API, the console binary, signals, `track_file` and the notify FIFO; Technitium, AdGuard Home, Gravity and Pi-hole are idea sources only; blocky, dnsproxy and CoreDNS are the only upstreams whose code is copied or imported [blocking §1.1, dnsdist §4].
+10. **Secure by default, lessons from the 2026 CVEs of the comparables:** no code-bearing or privileged setting reachable through the API (`hostOnly` keys), hashed tokens with constant-time compare, Argon2id with server-fixed parameters, sealed HttpOnly cookies, bounded metric labels, probes on an unauthenticated ops port, Restricted PSS out of the box [pihole §17.7, technitium §21.10, auth §10].
+11. **Multi-node from day one in the UI.** Node selector + "all nodes" on every stat, "which node answered" on every log row, even with one node [pihole §17.2].
+12. **Every deferral has a seam.** §13.1 lists, per deferred feature, the interface or schema field that already exists in v0.1.
+
+---
+
+## 2. Language, stack, key libraries
+
+Go, because every reusable component (CoreDNS, blocky, dnsproxy, external-dns, controller-runtime) is Go and shares `miekg/dns` v1 types; Rust's hickory-dns has an experimental recursor and no IXFR [go-dns-stack §1]. Versions are the ones verified in the research on 2026-10-10.
+
+| Concern | Choice | Version | Licence | Notes |
+|---|---|---|---|---|
+| Toolchain | Go | **1.27** (`go 1.27` in go.mod, toolchain pinned to latest 1.27.x; CI on 1.27 + tip) | BSD-3 | 1.26/1.27 are the supported majors; miekg v2 needs 1.27 anyway [go-dns-stack §13] |
+| DNS wire | `github.com/miekg/dns` | v1.1.73 | BSD-3 | fixes-only line; confined to `dnsserver`, `zone/xfr`, `upstream`, `dnssec` behind `zone.RRset` so a `codeberg.org/miekg/dns` v2 migration is contained [go-dns-stack §2.4] |
+| Upstream clients | `github.com/AdguardTeam/dnsproxy/upstream` | v0.86.0 | Apache-2.0 | UDP/TCP/DoT/DoH(1.1/2/3)/DoQ/DNSCrypt/sdns + bootstrap; strategies are ours [blocking §6.5] |
+| QUIC/HTTP3 | `github.com/quic-go/quic-go` | v0.63.0 | MIT | DoQ/DoH3 servers patterned on CoreDNS `server_quic.go`/`server_https3.go` (v0.2) |
+| Matchers, list pipeline, cache ideas | copied from `github.com/0xERR0R/blocky` | v0.35.0 | Apache-2.0 | `cache/stringcache`, `lists/`, caching ideas; NOTICE attribution [blocking §7] |
+| Adblock-DNS grammar | clean-room parser from the AdGuard KB | n/a | — | `urlfilter`/AdGuard Home are GPL-3.0 and are never imported [blocking §1.1] |
+| Embedded store, local snapshot, query log, audit | `modernc.org/sqlite` | v1.54.0 (SQLite 3.53.3, cgo-free) | BSD-3 | **one engine** for `state.db`, `local.db`, `querylog.db`; distroless-static friendly [go-dns-stack §6.2] |
+| Replication (v1.0) | `github.com/hashicorp/raft` + `raft-boltdb/v2` | v1.8.0 / v2.3.1 | MPL-2.0 | unmodified dependencies; SQLite FSM; single-voter bootstrap (rqlite model); deferred to v1.0 (§4.4) |
+| Kubernetes | `k8s.io/client-go`, `sigs.k8s.io/controller-runtime`, `k8s.io/apiextensions-apiserver` (schema + CEL validator packages), controller-gen | v0.37.1 / v0.25.x | Apache-2.0 | Lease election, `NeedLeaderElection()` runnable split [k8s §7.4]; the apiextensions validator runs locally in Docker mode [k8s §13] |
+| CEL | `github.com/google/cel-go` (module path is moving to `github.com/cel-expr/cel-go` since 2026-06 [auth §1]; pin whichever path `k8s.io/apiextensions-apiserver` v0.37 imports so the binary carries one CEL copy) | v0.31.x | Apache-2.0 | CRD `x-kubernetes-validations` in Docker mode; OIDC claim expressions (v0.2) |
+| Config | `github.com/knadh/koanf/v2` | v2.3.x | MIT | file + env (`KUDURRU_<SECTION>__<KEY>`) + flags; no key lowercasing [go-dns-stack §8] |
+| CLI | `github.com/spf13/cobra` | v1.10.2 | Apache-2.0 | kubectl-style `get/apply/delete -f` |
+| HTTP API / OpenAPI | `github.com/danielgtaylor/huma/v2` on Go 1.22+ `net/http` mux | v2.38.0 | MIT | code-first OpenAPI 3.1; TS client via `openapi-typescript`; Go client reused by the CLI |
+| OIDC | `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2` | v3.21.0 / v0.37.0 | Apache-2.0 / BSD-3 | discovery, JWKS, PKCE, device flow [auth §3] |
+| Passwords | `golang.org/x/crypto/argon2` | current | BSD-3 | Argon2id m=19 MiB, t=2, p=1, PHC strings [auth §7] |
+| Sessions | sealed cookies (AES-256-GCM) behind a `SessionStore` interface; `db` implementation on SQLite (v0.2) | — | — | §8.2 |
+| Metrics / tracing / logs | `prometheus/client_golang`, OTel Go SDK, `log/slog` | v1.24.1 / v1.45.0 / stdlib | Apache-2.0 | bounded-label policy [observability §3.2]; no logrus/zap |
+| dnstap (v0.2) | `github.com/dnstap/golang-dnstap` | v0.4.0 | Apache-2.0 | `SocketWriter`, listen mode |
+| TLS/ACME (v1.0) | `github.com/caddyserver/certmagic` | v0.25.4 | Apache-2.0 | DNS-01 against kudurru itself, leader-only |
+| Cloudflare (v0.2) | `github.com/cloudflare/cloudflare-go/v7` | **exact pin** 7.12.0 | Apache-2.0 | thin wrapper; minors break [integrations §2.2] |
+| UniFi (v0.2) | `github.com/unpoller/unifi/v6` | 6.3.1 | MIT | official Integration API + legacy read paths [integrations §3.4] |
+| Files | `github.com/fsnotify/fsnotify` | v1.9.0 | BSD-3 | config, object dir, cert reload |
+| Release | goreleaser `kos:` + ko + cosign keyless | 2.18 / 0.19.1 / 3.1.3 | — | `gcr.io/distroless/static:nonroot` pinned by digest; `CGO_ENABLED=0` is a release requirement [go-dns-stack §12] |
+| Frontend | React 19.2 + TypeScript + Vite 8 + Tailwind + shadcn/ui + TanStack Query/Table v9 (+ Virtual) + ECharts 6.1 + uPlot 1.6.32 | — | MIT/Apache | pure SPA via `go:embed`; information architecture from Pi-hole, stack from [go-dns-stack §9] |
+| Edge (separate containers) | `powerdns/dnsdist-21` (2.1.2), keepalived **2.4.3 compiled from the upstream release tarball** in an Alpine builder stage (Alpine's `apk` package is still 2.3.4 [dnsdist §2.1] and lacks `auth_hmac`, which the rendered config needs) | pinned by digest | GPL-2.0 / GPL-2.0+ | driven by `kudurru edge run` / `kudurru vip run` supervisors (§3.6); building from source means the image README must carry the GPL text **and** a written source offer (tarball + build script kept in `images/keepalived/`) |
+
+Explicitly **not** used: embedded etcd (1 GB floor, bespoke join, fsync-sensitive [go-dns-stack §6.2, gravity §16]), dragonboat, marmot, Litestream-as-replication, DuckDB/mattn (cgo), `urlfilter`/AdGuard Home packages (GPL), go-plugin as the primary extension API, Casbin/OpenFGA as the primary authorizer, viper, logrus/zap, a bespoke dnsdist console client (we exec the `dnsdist` binary).
+
+---
+
+## 3. Component architecture
+
+### 3.1 One binary, roles, runnables
+
+`kudurru` runs a set of **roles** selected by config (`roles: [dns, api, controller, querylog, ops]`, Gravity-style [gravity §17.1]) scheduled by a controller-runtime-shaped manager where each runnable declares whether it is **always-on** (every replica) or **leader-only** [k8s §8]. Every role implements `Ready() (bool, []string)` and feeds `/healthz/ready`.
+
+| Runnable | Leader-only? | What it does |
+|---|---|---|
+| `dnsserver` (UDP/TCP/DoT/DoH; DoQ/DoH3 v0.2; PROXYv2) | no | serves queries through the pipeline |
+| `zonecache` (store watch → in-memory trees/indexes; local snapshot persistence) | no | materialises zones/records/policies/lists from the store; writes `local.db` snapshot; readiness = all watches synced once **or** serving from a fresh-enough snapshot (§4.4) |
+| `api` (HTTP API + embedded UI + SSE) | no | any replica serves any user (sealed sessions, §8.2) |
+| `querylog` (rings → SQLite → rollups → sinks) | no | per node |
+| `ops` (`:8081/healthz/*`) + `metrics` (`:9153/metrics`) | no | unauthenticated ops listeners, never on the DNS or API port |
+| `internal` (`:8082`, node-to-node: list snapshots, status, events) | no | **always TLS**: node certificate and the bearer token are HKDF-derived from the cluster encryption key (`KUDURRU_ENCRYPTION_KEY` / `kudurru.io/session-key` Secret) unless `tokenFile`/`tls` are set explicitly, so every node sharing the key trusts every other and the chart needs no extra Secret; used by replicas, edge supervisors and scatter-gather; v0.2 `/internal/snapshot` carries internal kinds and therefore never runs without TLS |
+| `controller` (one reconciler per kind; status, serial stamping, duplicate detection, Events) | **yes** | writes `status.conditions`, zone serials |
+| `listfetcher` (blocklist download + digest publication) | **yes** | conditional GET, disk cache, digest in status; replicas pull by digest (§7.3) |
+| `notifier` (NOTIFY fan-out; XFR scheduling for secondaries v0.2) | **yes** | coalesced NOTIFY per zone |
+| `signer` (DNSSEC, v1.0) | **yes** | signs on the leader; signed RRsets replicate by IXFR (§4.6) |
+| `integrations` (Cloudflare, UniFi, webhook; v0.2) | **yes, per instance** (`Lease integration-<ns>-<name>`) | level-triggered reconcile loops off the query path |
+| `acme` (v1.0) | **yes** | DNS-01 against kudurru's own zones |
+| `edge run` / `vip run` | n/a | supervisors inside the dnsdist / keepalived images (§3.6) |
+
+`store.Elector` is backed by a Kubernetes `Lease` (kube driver), "always leader" (sqlite driver), "never leader" (follower driver, v0.2) and raft leadership (v1.0).
+
+### 3.2 Diagram
+
+```
+                      clients (Do53 / DoT / DoH / DoQ / DoH3)
+                                   │
+            ┌──────────────────────▼───────────────────────┐   optional edge tier (GPL, separate container)
+            │ dnsdist 2.1  :53/:853/:443  packet cache      │   PID 1 = `kudurru edge run` (render → check → exec)
+            │ pools: resolver(chashed) authoritative(leastOutstanding)  DynBlocks (eBPF opt-in) │
+            └──────────────────────┬───────────────────────┘
+                     PROXYv2 (client IP preserved)  → :5353 (or :53 when no edge)
+┌───────────────────────────────────▼─────────────────────────────────────────────────┐
+│ kudurru node (every replica)                                                         │
+│  dnsserver ─▶ PIPELINE  ingress ▸ identify ▸ control ▸ local ▸ authoritative ▸ blocking │
+│                      ▸ rewrite ▸ cache ▸ dnssec-validate ▸ upstream ▸ postprocess ▸ log │
+│       ▲ reads lock-free snapshots (atomic.Pointer) of:                                   │
+│       │   zone trees │ policy/clientgroup index │ compiled blocklists │ upstream groups   │
+│  zonecache ◀── Store.Watch(kind…) ──────────────┐  ──▶ local.db (last-good snapshot)      │
+│  api (huma, UI, SSE)  querylog (ring→SQLite→rollups→sinks)  ops/metrics  internal :8082 │
+│  controller / listfetcher / notifier / signer / integrations / acme  [leader-only] ─┼─┐ │
+└──────────────────────────────────────────────────────────────────────────────────────┼─┼─┘
+   STORE (config plane)   kube driver: CRDs via apiserver (replicated by k8s etcd)  ◀──┘ │
+                          sqlite driver: /var/lib/kudurru/state.db (docker)        ◀────┘
+                          follower (v0.2): sqlite mirror pulled from a primary; raft (v1.0): sqlite FSM
+   RUNTIME (per node)     querylog.db, local.db (snapshot, audit, cache dump), lists/, keys/
+   VIP (bare metal)       keepalived (VRRPv3) with PID 1 = `kudurru vip run`; in k8s: kube-vip / MetalLB / cloud LB
+```
+
+### 3.3 Dataplane packages
+
+- `internal/dnsserver`: listeners on `dns.Server` (UDP/TCP with `ReusePort`, N sockets = GOMAXPROCS like CoreDNS `multisocket`), `tcp-tls` for DoT, `net/http` for DoH h1.1/h2, PROXYv2 parser restricted to `listeners.proxyProtocolFrom` (hard requirement because dnsdist fronts us [dnsdist §1.13]) **and** to headers carrying TLV `0xE0` equal to the shared `listeners.proxyProtocolSecretFile` value (32 random bytes; dnsdist adds it with `SetAdditionalProxyProtocolValueAction`, the supervisor renders it). Source-CIDR trust alone is spoofable by any host in the trusted range (any pod in the pod CIDR, any LAN host on a /24), which would let an attacker forge the client address that `queryACL`/`transferACL`/client-group policies and the query log rely on; headers without a matching TLV are dropped and counted in `kudurru_dns_dropped_total{reason="proxy_unauthenticated"}`. Loopback (`127.0.0.1/32`, `::1/128`) is exempt when the secret is unset. DoQ/DoH3 (v0.2) copy CoreDNS/dnsproxy server code (ALPN `doq`/`h3`, 256 streams, 1024 workers, RFC 9250 error codes; never reuse a fixed DNS ID when bridging DoQ→UDP [go-dns-stack §4.1, §17.9]).
+- `internal/pipeline`: the fixed stage chain (§7.1). Stages are packages under `internal/stages/`: `ingress`, `identify`, `control`, `local`, `authoritative`, `blocking`, `rewrite`, `cache`, `dnssec`, `upstream`, `postprocess`, `log`.
+
+```go
+// internal/pipeline/stage.go
+type Stage interface {
+    Name() string                                   // fixed, documented stage id
+    Serve(ctx *Request, next Next) (*Response, error)
+}
+type Next func(*Request) (*Response, error)
+type Request struct {
+    Ctx      context.Context
+    Msg      *dns.Msg          // miekg only here and in dnsserver/xfr/upstream/dnssec
+    Client   Client            // ip, port, proto, proxied-from, clientID (SNI/DoH path), MACs, group ids
+    Zone     *zone.View        // set by authoritative when a zone matched
+    Trace    TraceInfo
+    Deadline time.Time
+}
+type Response struct {
+    Msg       *dns.Msg
+    Status    Status            // taxonomy in §11.2 (forwarded, cached, authoritative, blocked_list, …)
+    Upstream  string            // dictionary name, never a raw IP
+    List, Rule string           // matched list and rule text (the UI "why" row)
+    Cacheable bool              // local/conditional answers are never cached (blocky rule)
+}
+```
+Optional capability interfaces discovered by type assertion (CoreDNS style): `Ready() bool`, `Transfer(zone string, serial uint32) (<-chan []dns.RR, error)`, `Reload(snapshot any)`.
+
+- `internal/zone`: the record model (§4.1), per-zone in-memory tree (CoreDNS `plugin/file/tree` red-black tree, Apache-2.0), wildcard lookup, CNAME chasing (loop cap 20), SOA/serial management, journal for IXFR, AXFR/IXFR out via `dns.Transfer`, coalesced NOTIFY out; secondary-in (v0.2) copies the CoreDNS `file/secondary.go` flow [go-dns-stack §5].
+- `internal/blocking`: compiled matcher chain (§7.3), clean-room adblock parser, snapshot compile.
+- `internal/cache`: sharded TTL message cache with min/max/negative TTL, prefetch (threshold/window), serve-stale (RFC 8767: stale TTL 3 d, stale answer TTL 30 s, max wait 1.8 s — Technitium numbers), in-flight coalescing, OPT stripped, DO-aware keys; persisted to `local.db` on shutdown [technitium §20.8, blocking §6.5].
+- `internal/upstream`: dnsproxy upstream groups with strategies `parallel_best` (default), `strict`, `random`, `rtt_weighted`; conditional forwarding by longest suffix; bootstrap list; dnsmasq `[/domain/]` import syntax.
+
+### 3.4 Control-plane packages
+
+- `api/v1alpha1`: Go types for every kind with kubebuilder markers. **The same structs are what the sqlite driver persists (JSON)** and what the API/CLI/UI exchange. CRD OpenAPI + CEL validation is executed locally in Docker mode with the apiextensions validator so both modes reject the same inputs [k8s §13].
+- `internal/store`: the `Store` interface (§4.3), drivers `kube`, `sqlite`, `follower` (v0.2), `raft` (v1.0), the shared validator, the schema version/migration contract, and the **conformance suite** every driver must pass.
+- `internal/controller`: one reconciler per kind (never a mega-controller), idempotent, level-triggered, writing `metav1.Condition`s + `observedGeneration`; finalizers for external cleanup; `Events` on every operational transition (`SerialBumped`, `NotifyFailed`, `ListFetchFailed`, `PublishConflict`, `Duplicated`).
+- `internal/config`: koanf loader, JSON Schema, and the **settings metadata table** (`schema.go`: key, type, default, help, `restartRequired`, `envLocked`, `writeOnly`, `hostOnly`) that drives file, env, `kudurru config`, `PATCH /node/config`, the "All settings" page and the docs page; a test asserts docs cannot drift.
+- `internal/auth`, `internal/rbac`: §8. `internal/rbac/permissions.yaml` is the single source for roles, aggregated ClusterRoles, docs and the route-permission lint.
+- `internal/api`: huma routes under `/api/v1`, uniform envelope (`took_ms`, `{error:{key,message,hint}}`), 201+Location, 204 on delete, `:batchDelete`, keyset pagination, SSE; Scalar docs at `/api/docs` at the running version.
+- `internal/integration`: registry, manifest, lifecycle, leader-scoped runner, plan engine, ledger (§9).
+- `internal/edge/{dnsdist,keepalived}`: renderers + supervisors (§3.6).
+- `internal/cluster`: node identity, membership source abstraction (static | endpointslice | follower | raft), scatter-gather client, internal listener, promote/fencing (v0.2).
+- `internal/querylog`, `internal/audit`, `internal/metrics`, `internal/health`: §11.
+
+### 3.5 UI and CLI
+
+- UI: SPA at `/`, talks only to `/api/v1`; node selector and "all nodes" scope first-class from v0.1 even with one node. Pages in §10.
+- CLI `kudurru` (seven letters): `serve`, `login`, `get|apply|delete|describe -f`, `zones`, `records`, `lists`, `blocking enable|disable 5m`, `query` (dig-like), `health [--vrrp]`, `lameduck`, `backup|restore|export`, `import bind|pihole|adguard|blocky|technitium`, `edge render|run`, `vip render|run`, `cluster status|promote|join-token` (v0.2+), `integrations list|check|sync|preview|webhook conformance` (v0.2), `admin reset-password|create-token` (unix socket, uid-gated), `config get|set|schema`, `doctor`, `api <path>`, `version`, `completion`. All commands use the generated OpenAPI client except `serve`, `admin`, `doctor` and the supervisors. `--context` picks a kubeconfig (CRD verbs go straight to the apiserver) or a kudurru API endpoint.
+
+### 3.6 dnsdist and keepalived: supervisors, not sidecars, not shell loops
+
+Both tools are GPL-2.0 and must remain separate programs [dnsdist §4]. The dnsdist REST API cannot manage backends, YAML has no reload, and membership changes go through the console (whose behaviour when dnsdist was started from YAML is UNVERIFIED) [dnsdist §1.11, §1.12, §1.16, §7]. The lowest-risk orchestration is a **kudurru supervisor process that is PID 1 in the same image as the tool** (mere aggregation: two separate executables, GPL text and source offer shipped in the image README).
+
+**`ghcr.io/robertherbaugh/kudurru-dnsdist:<dnsdist>-k<kudurru>`** = `FROM powerdns/dnsdist-21@sha256:<digest>` + `/usr/local/bin/kudurru`. Entrypoint `kudurru edge run`:
+
+1. Build a `Topology{Binds, TLS, Pools, Backends[], Cache, Console, Webserver, Rules, DynBlocks}` from flags/config and the membership source: `--backends 10.0.0.11:5353,…` (static, compose), `--backends-from endpointslice:<ns>/<headless-svc>` (Kubernetes), `--backends-from cluster` (follower/raft, v0.2+). Backend `id` = `uuid5(kudurru-node-name)` so the `chashed` ring is stable; `use_proxy_protocol: true`; health check `health.kudurru.internal.` TXT with `must_resolve: true` and a 2.1 `validation_function` checking the node id (`interval 1, max_failures 2, rise 2`).
+2. Render `dnsdist.yml` (every `backends[]`, `binds[]`, `pools[]` `resolver` (`chashed`, packet cache) and `authoritative` (`leastOutstanding`, **uncached by default**; `edge.authoritativeCache` enables a short `max_ttl` with flush-on-serial-change), `query_rules` refusing XFR/NOTIFY/UPDATE from unknown sources, `dynamic_rules`, `webserver`/`console` loopback-only with credentials generated per start; the API key is also written to `/run/kudurru/dnsdist-api.key` (0640, group `keepalived_script`) on the shared `kudurru-run` volume so `kudurru health --vrrp` in the keepalived container and the local kudurru's `/edge` page can read it) plus `dnsdist.lua` with **functions only** (never `enableLuaConfiguration()`) [dnsdist §6.5].
+3. `dnsdist --check-config -C candidate.yml`; atomic rename; exec `dnsdist --supervised --disable-syslog -C /etc/dnsdist/dnsdist.yml` as a child; forward SIGTERM; expose `:8084/healthz/ready` = `GET /api/v1/servers/localhost` (X-API-Key) reports ≥ 1 backend `up` — so Kubernetes probes the supervisor, not the API key.
+4. On membership change — **v0.1 baseline:** regenerate YAML and restart the child (readiness 503 → drain → sub-second restart; invisible behind a VIP/LB with ≥ 2 edge replicas; the packet cache is lost on every restart) [dnsdist §1.16 option 3]. Membership events are debounced 5 s and only endpoints with `conditions.ready` (or `serving` during a rollout) are rendered, so a kudurru Deployment rollout restarts each edge replica once per surge batch rather than once per pod; a lone edge replica (compose `edge` profile, single-node k8s) accepts the ~0.5 s blip, which keepalived's `fall 3` does not count as a VIP failure. **v0.2, gated on the week-1 spike:** `dnsdist -C dnsdist.yml -e 'newServer({...})'` / `getServer("<uuid>"):setDown()` → 5 s purge delay → `rmServer("<uuid>")`, then regenerate YAML so a restart converges [dnsdist §1.16 option 1]. If the spike fails, the supervisor renders Lua (`dnsdist.conf`) instead — both renderers share `Topology`.
+5. Cert change (fsnotify) → v0.1 restart; v0.2 `reloadAllCertificates()` over the console. Zone serial change (polled from `GET http://<backend>:8082/internal/zones` every 5 s; SSE in v0.2) → `DELETE /api/v1/cache?pool=authoritative&suffix=<zone>` when the authoritative pool is cached. UI "block this client at the edge for 10 min" → Lua `registerWebHandler('/kudurru/dynblock')` → `addDynamicBlock` (v0.2).
+
+**`ghcr.io/robertherbaugh/kudurru-keepalived:<keepalived>-k<kudurru>`** = Alpine multi-stage build compiling keepalived 2.4.3 from the release tarball (upstream `Dockerfile.in` pattern: `--enable-json`, VRRP only, no LVS/BFD, user `keepalived_script`) + `/usr/local/bin/kudurru`. Alpine's package is 2.3.4 [dnsdist §2.1], which has no `auth_hmac`; if an operator forces a 2.3.x binary (`vip.keepalived.legacy: true`) the renderer drops `auth_hmac`, keeps `check_unicast_src` + `unicast_fault_no_peer`, and `doctor` warns that adverts are unauthenticated. Entrypoint `kudurru vip run`, full contract:
+
+- Render `keepalived.conf`: `global_defs { router_id <node>; enable_script_security; script_user keepalived_script; vrrp_version 3; vrrp_garp_master_refresh 30; vrrp_notify_fifo /run/kudurru/vrrp.fifo; vrrp_notify_fifo_script "/usr/local/bin/kudurru vip fifo" }`; per VIP a `vrrp_instance` with `state BACKUP`, `nopreempt`, deterministic `priority 200 - 10*idx` (never 255), `advert_int 1`, `unicast_src_ip`, `unicast_peer {…}`, `unicast_fault_no_peer`, `check_unicast_src`, `auth_hmac { key 1 file:/run/secrets/vrrp_hmac_<vrid>; active_key 1; anti_replay monotonic }`, `virtual_ipaddress { <addr>/<len> dev <iface> }`, `track_script { chk_<vip> }`, `track_file { tf_<vip> }`.
+- `vrrp_script chk_<vip>` = `kudurru health --vrrp --dns <vip>:53 --qname health.kudurru.internal. --dnsdist-api http://127.0.0.1:8083 --dnsdist-api-key-file /run/kudurru/dnsdist-api.key --require-backends 1` (probes the VIP address on :53 **udp and tcp** while MASTER and loopback while BACKUP — a loopback-only check would pass with a misbound dnsdist [dnsdist §2.7] — and requires ≥ 1 healthy backend via the dnsdist API; `interval 1 timeout 1 fall 3 rise 2 weight 0` → FAULT on failure; runs as `keepalived_script` under `enable_script_security`, so the binary path is root-owned and the key file is group-readable).
+- `track_file tf_<vip>` = `/run/kudurru/weight-<vip>`, `weight -1`: the local kudurru writes `0` (healthy serving member), `60` (prefer-not: lowers the effective priority so this node loses the *next* election), `300` (→ FAULT: must not hold the VIP) [dnsdist §2.6]. **Because every instance runs `nopreempt`, a priority reduction alone never moves a VIP away from the current MASTER** (a higher-priority BACKUP does not preempt by design); only FAULT does. Therefore `kudurru lameduck` and maintenance mode write `300`, not `60`, and the VIP moves within `fall`/down-timer time; `60` is reserved for "not the leader / not a voter" hints that should only matter when the VIP is next re-elected. The 2-VM e2e asserts both behaviours (spike (h), §14).
+- `keepalived -t -f candidate.conf` before swap; atomic rename, previous file kept; `SIGHUP` the child on re-render; `stop_grace_period: 20s`; the VRID is a `hostOnly` config value and never auto-allocated or changed on re-render.
+- FIFO consumer emits `kudurru_vip_master{vip}`, audit `cluster.vip.changed`, event `vip.master_changed`; never blocks.
+- Optional second VIP with reversed priorities = active/active across two resolver addresses. With `nopreempt`, after a failover and recovery both VIPs stay on the surviving node until `kudurru vip rebalance` (writes `300` for the VIP that should move, then `0`) or the operator sets `vip.preemptDelay: 60` on the second VIP instead of `nopreempt`.
+- **Every node's dnsdist lists all kudurru nodes as backends**, so VIP ownership follows dnsdist health, not kudurru health: a node whose kudurru is unhealthy but whose dnsdist is fine still serves [dnsdist §3.2].
+
+Both supervisors ship in **v0.1** (compose `edge` and `ha-static` profiles; Kubernetes edge Deployment behind `edge.enabled`). keepalived is never the default VIP in Kubernetes [k8s §16.14, dnsdist §6.12]. Alternative for operators who must run unmodified upstream images: `edge.image.mode: upstream` runs the agent as a sidecar sharing an `emptyDir` and converges by restart only (documented, non-default).
+
+The VIP abstraction the risk table (§14 #4) refers to:
+
+```go
+// internal/edge/vip/provider.go — implemented by keepalived (track_file + FIFO), kube-vip and MetalLB (Service status + annotations), none
+type Provider interface {
+    Name() string                                   // keepalived | kube-vip | metallb | none
+    VIPs() []VIP                                    // {Name, Address, VRID?, Owner string, Weight int}
+    Owner(vip string) (node string, ok bool)        // current MASTER / announcing node, from FIFO or Service status
+    SetWeight(ctx context.Context, vip string, w Weight) error   // Weight = Serving(0) | PreferNot(60) | Fault(300); no-op for Service-based providers
+    Events() <-chan VIPEvent                        // {VIP, Node, State MASTER|BACKUP|FAULT|STOP, Priority, At}
+}
+```
+
+---
+
+## 4. Data model, storage, replication, HA
+
+### 4.1 Objects
+
+All objects are `api/v1alpha1` Go structs with `metadata{name,namespace?,labels,annotations,uid,generation,resourceVersion,creationTimestamp,managedBy}`, `spec`, `status{observedGeneration,conditions[]}`. Names are stable keys. Record data is the external-dns `Endpoint` shape plus a `kudurru` extension block.
+
+```go
+// api/v1alpha1/dnszone_types.go (cluster-scoped)
+type DNSZoneSpec struct {
+    ZoneName     string         `json:"zoneName"`                 // immutable (CEL self==oldSelf), FQDN with trailing dot
+    Type         ZoneType       `json:"type"`                     // primary | forward | secondary(v0.2) | stub(v0.2) | external(v0.2) | catalog(v1.0) | secondaryCatalog(v1.0)
+    SOA          *SOASpec       `json:"soa,omitempty"`            // mname, rname, refresh, retry, expire, minimum; serial lives in status
+    Nameservers  []string       `json:"nameservers,omitempty"`
+    DefaultTTL   uint32         `json:"defaultTTL,omitempty"`     // 300
+    Policy       ZonePolicy     `json:"policy"`                   // Technitium's six-way vocabulary [technitium §4.2]
+    Forward      *ForwardSpec   `json:"forward,omitempty"`        // upstreamGroup, dnssecValidation
+    Secondary    *SecondarySpec `json:"secondary,omitempty"`      // primaries[], tsigKeyRef, transferProtocol tcp|tls (v0.2)
+    Stub         *StubSpec      `json:"stub,omitempty"`           // nameservers[] (v0.2)
+    External     *ExternalSpec  `json:"external,omitempty"`       // ingress/gateway/loadbalancer sources (v0.2)
+    DNSSEC       *DNSSECSpec    `json:"dnssec,omitempty"`         // enabled, algorithm, denial nsec|nsec3, keySecretRef, kskRollover, zskRolloverDays (v1.0; schema reserved)
+    RecordSetSelector *RecordSetSelector `json:"recordSetSelector,omitempty"` // namespaces[]/labelSelector allowed to add DNSRecordSets
+    Publish      []PublishRule  `json:"publish,omitempty"`        // split-horizon: integrationRef + selector + types + policy + defaults (v0.2)
+}
+type ZonePolicy struct {
+    QueryAccess  AccessMode `json:"queryAccess"`     // deny|allow|allowOnlyPrivate|allowOnlyZoneNameServers|useNetworkACL|zoneNameServersAndACL
+    QueryACL     []string   `json:"queryACL,omitempty"`      // "10.0.0.0/8", "!10.0.0.2": ordered, first match wins, default deny
+    ZoneTransfer AccessMode `json:"zoneTransfer"`
+    TransferACL  []string   `json:"transferACL,omitempty"`
+    TransferTSIGKeyRefs []string `json:"transferTSIGKeyRefs,omitempty"`
+    Notify       NotifyMode `json:"notify"`          // none|zoneNameServers|specified|both
+    NotifyTargets []string  `json:"notifyTargets,omitempty"`
+    Update       AccessMode `json:"update"`          // RFC 2136 (v0.2)
+    UpdatePolicies []UpdatePolicy `json:"updatePolicies,omitempty"` // {tsigKeyRef, name, types[]}
+}
+type DNSZoneStatus struct {
+    ObservedGeneration  int64              `json:"observedGeneration"`
+    Serial              uint32             `json:"serial"`             // stamped by the leader = max(prev+1, unix_now); replicas serve this value
+    ContentHash         string             `json:"contentHash"`        // sha256 of canonical RRsets; drives the serial-divergence panel
+    RecordCount         int                `json:"recordCount"`
+    NameserverAddresses []string           `json:"nameserverAddresses,omitempty"` // auto-detected LB IPs (k8s_gateway idea)
+    DNSSEC              *DNSSECStatus      `json:"dnssec,omitempty"`   // ds[], keys[]{id,type,state}, nextResign (v1.0)
+    Published           []PublicationStatus `json:"published,omitempty"` // per integration: managed, drift, conflicts, lastSync (v0.2)
+    Conditions          []metav1.Condition `json:"conditions"`        // Ready, Transferred, Signed, Published, Degraded
+}
+
+// api/v1alpha1/dnsrecordset_types.go (namespaced; the "clay copies" app teams own)
+type DNSRecordSetSpec struct {
+    ZoneRef   ObjectRef  `json:"zoneRef"`                 // immutable
+    Endpoints []Endpoint `json:"endpoints"`               // ≤ 1000 per object (CRD size ceiling), many objects per zone
+}
+type Endpoint struct {                                    // superset of sigs.k8s.io/external-dns/endpoint.Endpoint; ToExternalDNS() drops Kudurru
+    DNSName          string             `json:"dnsName"`
+    RecordType       string             `json:"recordType"`   // A AAAA CNAME DNAME MX NAPTR NS PTR SRV TLSA TXT CAA HTTPS SVCB SSHFP + TYPEnnn (RFC 3597)
+    Targets          []string           `json:"targets"`      // presentation-format rdata
+    RecordTTL        int64              `json:"recordTTL,omitempty"`
+    SetIdentifier    string             `json:"setIdentifier,omitempty"`
+    Labels           map[string]string  `json:"labels,omitempty"`        // e.g. kudurru.io/publish: cloudflare
+    ProviderSpecific []ProviderSpecific `json:"providerSpecific,omitempty"` // cloudflare/proxied, cloudflare/targets …
+    Kudurru          *EndpointExt       `json:"kudurru,omitempty"`       // comment, disabled, expiresAt, view (public | <ClientGroup>) (view v0.2)
+}
+```
+
+Other kinds (abbreviated; full schemas are generated into `charts/kudurru-crds`):
+
+| Kind (scope) | Spec essentials | Status | CRD |
+|---|---|---|---|
+| `BlockList` (ns) | `sources[]{url\|inline\|configMapRef, format auto\|hosts\|domains\|adblock\|regex}`, `mode block\|allow`, `refreshInterval`, `response nxdomain\|zeroIP\|refused\|customIP{v4,v6}` | `Loaded{entries,ruleCount,invalid,etag,lastFetched}`, `sources[].digest`, `Ready` | v0.1 |
+| `ClientGroup` (ns) | `clients[]{ip\|cidr\|mac(v0.2)\|clientID(v0.2)\|hostname\|nameGlob, name, comment}`, `sources{integrationRef}` (v0.2) | `Ready`, `members` | v0.1 |
+| `Policy` (ns) | `clientGroupRefs[]`, `blockListRefs[]`, `allowListRefs[]`, `allowOnly`, `schedule{weekdays,start,end,tz}`, `upstreamGroup`, `blockMode`, `blockTTL`, `queryLog`, `priority`, `rewrites[]` (v0.2), `safeSearch` (v0.2) | `Ready` | v0.1 |
+| `Kudurru` (cluster singleton `default`) | cluster-wide settings: upstream groups, cache, blocking defaults, querylog defaults, auth providers, edge/vip defaults, feature flags | `Ready`, `Listening`, `UpstreamsHealthy`, `blocking{disabledUntil}` | YAML/ConfigMap v0.1 (spec); the writable runtime status field lives in the `kudurru-runtime` ConfigMap in v0.1 k8s (see §7.1 step 7); CRD v0.2 |
+| `Integration` (ns) | `type`, `credentials{…secretRef\|file}`, one-of `cloudflare{}`/`unifi{}`/`webhook{}`, `resync`, `suspend`, `deletionPolicy` | `Ready`, `Authenticated`, `Synced`, `Degraded`, counters | YAML v0.1 (framework), CRD v0.2 |
+| `IdentityProvider` (cluster) | issuer, clientID, clientSecretRef, cliClientID, scopes, audiences, claimValidationRules, claimMappings, provisioning, allowedDomains | `Discovered` | YAML v0.1; CRD v0.2 |
+| `RoleBinding` (ns) | `role`, `scope{kind cluster\|zone\|zonegroup\|clientgroup, name}`, `subjects[]` | — | YAML v0.1; CRD v0.2 |
+| `ServiceAccount` (ns) | description, token{secretName, expiresAfter} | tokenID, lastUsed | YAML v0.1; CRD v0.2 |
+| internal kinds (never CRDs; Secrets in k8s, tables in SQLite) | `LocalUser` (Argon2id hash, TOTP secret), `APIToken` (sha256), `TSIGKey`, `DNSSECKey`, `IntegrationLedger`; **all secret material in these kinds (TSIG secrets, DNSSEC private keys, TOTP seeds, encrypted refresh tokens in v0.2) is AES-256-GCM-encrypted with the cluster encryption key before it reaches `state.db`/`local.db`**; in k8s they are `Secret`s and etcd encryption-at-rest is the cluster's concern | — | — |
+
+Validation is CRD OpenAPI + CEL first (bounded lists, immutability, `has(self.cloudflare) == (self.type == 'cloudflare')`); the admission webhook is optional (`webhook.enabled=false`) so a basic install needs no cert-manager [k8s §7.3]. Cross-object checks (record under its zone, duplicates across namespaces) are reconciler conditions (`OutsideZone`, `Duplicated`), PowerDNS-Operator style.
+
+Example (both modes; `kudurru apply -f` accepts this verbatim):
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: { name: home-example-com }
+spec:
+  zoneName: home.example.com.
+  type: primary
+  soa: { mname: ns1.home.example.com., rname: hostmaster.example.com., refresh: 3600, retry: 900, expire: 1209600, minimum: 300 }
+  nameservers: [ns1.home.example.com., ns2.home.example.com.]
+  policy: { queryAccess: allow, zoneTransfer: useNetworkACL, transferACL: ["10.0.0.0/8"], notify: zoneNameServers, update: deny }
+  recordSetSelector: { namespaces: [dns, apps] }
+  publish:                                           # v0.2 split-horizon
+  - integrationRef: { name: cf-public, namespace: dns }
+    selector: { matchLabels: { kudurru.io/publish: cloudflare } }
+    types: [A, AAAA, CNAME, TXT, MX, SRV, CAA]
+    policy: sync
+status:
+  serial: 1791234567
+  recordCount: 42
+  nameserverAddresses: [10.0.0.53]
+  conditions:
+  - { type: Ready, status: "True", reason: Serving, observedGeneration: 3 }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: DNSRecordSet
+metadata: { name: nas, namespace: apps, labels: { kudurru.io/publish: cloudflare } }
+spec:
+  zoneRef: { name: home-example-com }
+  endpoints:
+  - { dnsName: nas.home.example.com, recordType: A, targets: ["10.0.0.20"], recordTTL: 300, kudurru: { comment: "Synology" } }
+  - { dnsName: nas.home.example.com, recordType: HTTPS, targets: ["1 . alpn=h2,h3"] }
+  - dnsName: nas.home.example.com                     # v0.2: published to Cloudflare, never served internally
+    recordType: CNAME
+    targets: [tunnel-7f3a.cfargotunnel.com]
+    providerSpecific: [{ name: cloudflare/proxied, value: "true" }]
+    kudurru: { view: public }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata: { name: default-ads, namespace: dns }
+spec: { mode: block, sources: [{ url: https://big.oisd.nl/, format: auto }], refreshInterval: 24h }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: ClientGroup
+metadata: { name: kids, namespace: dns }
+spec: { clients: [{ cidr: 10.0.20.0/24, name: "Kids VLAN" }, { hostname: "ps5*" }] }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: Policy
+metadata: { name: kids, namespace: dns }
+spec: { clientGroupRefs: [kids], blockListRefs: [default-ads, adult], blockMode: zeroIP, blockTTL: 10m, schedule: { weekdays: [mon,tue,wed,thu,fri], start: "08:00", end: "20:00", tz: Europe/Berlin }, priority: 10 }
+```
+
+### 4.2 Record semantics the comparables got wrong
+
+- Zones have **types and SOA/serial management** from v0.1 (Gravity hard-codes serial 1337 [gravity §18.6]). Serial rule everywhere: `status.serial = max(prev+1, unix_now)`, stamped by the leader whenever the zone's `contentHash` changes (kube driver: leader stamps on informer events; sqlite driver: in the same transaction). Replicas serve `status.serial`; the window where a replica has newer content than the stamped serial is bounded by lease renewal (≤ 15 s) and only matters to external secondaries, which the leader NOTIFYs after stamping [k8s §8].
+- Typed RRsets in presentation format; all common types incl. SVCB/HTTPS (browsers bypass overrides without it [gravity #1335]), CAA, TLSA, SSHFP, NAPTR; unknown types as RFC 3597.
+- CNAME exclusivity and duplicate detection across namespaces (`Duplicated` on the later object); `mergeStrategy: union` opt-in.
+- Records never carry secrets. `Labels`, `ProviderSpecific` and `kudurru{comment,disabled,expiresAt,view}` are the only extension points; split-horizon overrides live in `providerSpecific` (`cloudflare/targets`, `cloudflare/proxied`) and in `kudurru.view` [integrations §2.5].
+- Per-record `disabled` and `expiresAt` (Technitium's expiry TTL) are honoured by `zonecache`, not by the store.
+
+### 4.3 The Store interface (the seam everything depends on)
+
+```go
+// internal/store/store.go
+type Key struct{ Kind Kind; Namespace, Name string }
+type Store interface {
+    Get(ctx context.Context, key Key, into Object) error
+    List(ctx context.Context, kind Kind, opts ListOptions) (ObjectList, error)   // keyset pagination, label selectors
+    Apply(ctx context.Context, obj Object, opts ApplyOptions) (Object, error)    // whole-object apply; see contract below
+    Delete(ctx context.Context, key Key, opts DeleteOptions) error              // honours finalizers
+    UpdateStatus(ctx context.Context, obj Object) error                          // leader-only callers
+    Watch(ctx context.Context, kind Kind, opts WatchOptions) (Watcher, error)    // list+watch, resync, compaction-safe; Added|Modified|Deleted|Bookmark
+    Elector(name string) Elector                                                 // leader election primitive (named: controller, integration-<ns>-<name>)
+    Snapshot(ctx context.Context, w io.Writer, opts SnapshotOptions) error       // `kind: List` YAML of all kinds (+ internal kinds unless --safe)
+    Restore(ctx context.Context, r io.Reader) error                              // = apply
+    Info() Info                                                                  // driver, SchemaVersion, ClusterID, Epoch, Leader
+}
+type ApplyOptions struct {
+    Manager                 string   // "api" | "file:<path>" | "integration:<name>" | "bootstrap" | "system"  → metadata.managedBy
+    ExpectedResourceVersion string   // optimistic concurrency; mismatch → ErrConflict (409 conflict)
+    Force                   bool     // override managedBy (admin only, audited)
+}
+type Elector interface { Run(ctx context.Context, onStarted, onStopped func()) error; IsLeader() bool; Leader() string }
+```
+
+**Apply contract (bounds the "SSA emulation" to something a small team can keep correct):**
+
+1. Whole-object apply; no partial KV puts. The API layer computes merges for `PATCH` and `records` convenience routes and then calls `Apply`.
+2. `metadata.managedBy` must equal `opts.Manager` or be empty (first write); otherwise `ErrManagedBy{Owner}` → HTTP `409 managed_by` with the owner in `hint` (UI shows "managed by file objects/zones.yaml" / "managed by Kubernetes"). In Kubernetes the kube driver uses server-side apply with `FieldOwner(manager)` and `ForceOwnership` only when `Force`; `managedBy` is mirrored in the annotation `kudurru.io/managed-by`. Field-manager tracking below the whole object is **not** emulated in the sqlite driver — by design.
+3. The caller (API/controller) stamps `uid`, `creationTimestamp`, timestamps and serial candidates; drivers store them verbatim (the apiserver necessarily overrides `uid`/`resourceVersion`/`creationTimestamp` in k8s). This keeps the future raft FSM deterministic without touching callers.
+4. Validation (OpenAPI + CEL, bounded lists, immutability) runs in the driver-independent `store.Validator` **before** any driver; both modes reject the same inputs.
+5. Audit: the audit row for a mutation is written in the same SQLite transaction as the mutation in the sqlite driver (table `audit` in `state.db`); in the kube driver the apiserver audit log covers the write and kudurru's audit (in `local.db`) adds actor/why.
+
+| Driver | Backing | Used in | Watch | Elector | Status |
+|---|---|---|---|---|---|
+| `kube` | controller-runtime client + informer cache over CRDs/Secrets; **`local.db` last-good snapshot** on disk | Kubernetes (any replica count) | informers | `coordination.k8s.io/Lease` 15 s/10 s/2 s | **v0.1** |
+| `sqlite` | `state.db` (modernc): objects as JSON rows + `generation`/`resourceVersion` columns + change-feed table; `audit` table | `docker run`; k8s "standalone" profile | in-process bus + resync | always leader | **v0.1** |
+| `follower` | `sqlite` mirror + periodic pull of the primary's `Snapshot` (ETag/`ifModifiedSince`) + push NOTIFY from the primary; writes forwarded to the primary; fenced promote | compose HA before raft | as sqlite | never leader (primary is) | **v0.2** |
+| `raft` | hashicorp/raft log (raft-boltdb), SQLite FSM, single-voter bootstrap, learner join via API token, snapshot before membership change | compose/bare-metal HA, multi-primary | FSM apply hook | raft leadership | **v1.0** |
+
+**Schema versioning (every driver, from v0.1):** `store.SchemaVersion` is compiled into the binary; `state.db`/`local.db` carry `meta.schema_version`. On open: a newer on-disk version than the binary → refuse to start loudly (`doctor` explains); older → migrate inside one transaction. Follower (v0.2): the primary serves snapshots with `X-Kudurru-Schema-Version`; a follower at a lower version halts replication with a diagnosis message instead of guessing. Raft (v1.0): every `Command` carries `MinVersion`; cluster version = min(node versions); the leader applies `Migrate` only when every member is at or above the target.
+
+Rules that keep the drivers interchangeable: serving never reads the store on the query path; runtime data (query log, cache, sessions) never goes through `Store`; backup format = `Snapshot` output = the YAML `kudurru apply -f` accepts = `kubectl get kudurru.io -A -o yaml` (`kind: List`); the **conformance suite** (`internal/store/conformance`) runs against `sqlite` and `kube` (envtest) in CI and later against `follower` and `raft`.
+
+### 4.4 Exact HA decision per deployment shape
+
+| Shape | Config truth | Replicas | Leader | HA of DNS answers | HA of config writes | Version |
+|---|---|---|---|---|---|---|
+| **Single Docker** | `state.db` on a volume | 1 | self | none; optional dnsdist for transports/cache | n/a | v0.1 |
+| **Kubernetes multi-replica** | CRDs (apiserver/etcd) | Deployment ≥ 2, PDB, topology spread | Lease | every pod serves from informer snapshots; keeps serving from memory when the apiserver is away; a restarted/rescheduled pod serves from `local.db` while waiting for the apiserver (below) | apiserver HA; UI/API writes go through the apiserver | v0.1 |
+| **Kubernetes standalone** | `state.db` on a PVC | StatefulSet 1 | self | none | n/a ("Pi-hole on k3s", no CRDs) | v0.1 |
+| **Compose HA, static twins** (`ha-static`) | identical file-managed `kudurru.yaml` + `objects.d/` on every node (replicated by the operator's own tooling: git, ansible) | N nodes; every node's dnsdist lists all nodes; keepalived VIP | self on each node | all nodes answer | file-managed only; `cluster.role: static` puts the API/UI in **read-only mode for all `kudurru.io` objects** (not just file-managed ones), so twins cannot diverge through node-local `managedBy: api` writes; runtime actions (blocking toggle, cache flush) are node-local and badged as such | v0.1 |
+| **Compose HA, follower mode** | primary's `state.db` | 1 primary + N followers; dnsdist + keepalived as above | primary | all nodes answer; followers serve a ≤ `pull` seconds old config and current AXFR/IXFR copies | primary only; writes on a follower are forwarded; **fenced** `kudurru cluster promote` | v0.2 |
+| **Compose HA, raft** | replicated `state.db` | 3 or 5 voters (+ nonvoters) | raft | all nodes | any node (forwarded to leader) | v1.0 |
+
+**Cold start without the apiserver .** `zonecache` writes the complete materialised object set (all `kudurru.io` kinds as JSON + the `resourceVersion` high-water mark) to `local.db` after every successful sync and then at most every 30 s when changed. On start, if informers have not synced within `store.kube.startupTimeout` (15 s), the pod loads `local.db`, sets `Degraded{reason: ServingFromSnapshot}`, exposes `kudurru_store_snapshot_serving 1` and `kudurru_store_snapshot_age_seconds`, and reports **ready** (so it takes traffic: cached and forwarded answers and primary zones from the snapshot). When informers sync, the snapshot is swapped out. If the snapshot is older than `store.kube.snapshot.maxAge` (24 h), primary zones answer SERVFAIL (never NXDOMAIN) while forwarding continues. `local.db` lives on `emptyDir` by default (survives container restarts and node reboots while the pod stays assigned) and on a PVC with `persistence.local.enabled` for clusters that need DNS before their control plane. With `priorityClassName: system-cluster-critical` and `dnsPolicy: Default` this closes the "DNS needed to bring the cluster up" trap.
+
+**Fenced promotion (follower mode, v0.2).** `state.db.meta` carries `cluster_epoch` and `primary_id`. `kudurru cluster promote` on a follower increments the epoch and records itself as primary; every node advertises `{epoch, primary_id}` on `/internal/status`; a former primary that reconnects and sees a higher epoch demotes itself to follower of the new primary, refuses writes (`503 fenced`), and raises `kudurru_cluster_fenced 1` + an alert. The UI only offers "Promote" when the old primary has been unreachable for ≥ 2 pull intervals and requires typing the node name; the residual split-brain window exists only while partitioned **and** promoted — documented, and the reason raft replaces this in v1.0.
+
+Why not embedded etcd or raft in v0.1: the k8s path already has a replicated store; the single-Docker path needs none; writing membership/join/snapshot/mixed-version logic is where Gravity accumulated its worst bugs (#837, #894, #1093, #1389, #927, #1949) [gravity §16]; we never have two editable sources of truth [k8s §16.1]. The raft driver adopts the single-binary-first proposal's safety rules up front: a node with existing raft state ignores bootstrap settings; a failed join retries forever with backoff and **never** bootstraps a new cluster; `doctor` warns on 2-node quorum; hostnames are raft addresses; `preStop` runs `kudurru cluster leave`.
+
+### 4.5 Runtime data placement
+
+| Data | Docker | Kubernetes | Replicated? |
+|---|---|---|---|
+| Query log, rollups | `/var/lib/kudurru/querylog.db` | `emptyDir` (default) or `persistence.querylog` PVC per pod; never RWX/NFS (WAL) | no (scatter-gather) |
+| Audit | `audit` table in `state.db` (atomic with mutations) | `local.db` per pod + stdout JSON + `Events` | no (apiserver audit covers CRD writes) |
+| Last-good config snapshot | n/a (`state.db` is local) | `local.db` | no |
+| Response cache, compiled lists | RAM; list disk cache under `lists/` | RAM; `emptyDir` | no |
+| Sessions | sealed cookie (v0.1); `db` store in `state.db` (v0.2) | sealed cookie | n/a |
+| Node status / heartbeats | **nowhere** — scatter-gather of `/internal/status` | **nowhere** — EndpointSlice + scatter-gather | no |
+| API token hashes, local users, TSIG, DNSSEC keys, ledgers | tables in `state.db` | `Secret`s labelled `kudurru.io/kind=<internal>` via the kube driver | yes (by the store) |
+| Cookie/encryption key | `KUDURRU_ENCRYPTION_KEY[_FILE]`; rotation via `KUDURRU_ENCRYPTION_KEY_PREVIOUS[_FILE]` (decrypt with either, re-encrypt stored secrets on start, sessions sealed under the old key stay valid until `lifetime`) | chart-generated `Secret` (`helm.sh/resource-policy: keep`); same `_PREVIOUS` rotation | shared |
+| Internal listener token + node TLS cert/CA | HKDF from the encryption key (override: `listeners.internal.tokenFile`/`tls`) | same derivation; no extra Secret | derived, not stored |
+
+### 4.6 Leader-only work and what happens on failover
+
+Leader loops are idempotent and level-triggered; timers they need to resume (`nextResign`, secondary refresh, list refresh, resync) are stored in object `status`, so any new leader resumes without redoing work. Specific rules:
+
+- **Blocklists:** leader fetches, publishes `status.sources[].digest`; replicas pull bodies from the leader's `:8082/internal/lists/<digest>` (sha256-verified) and compile locally; after 10 min without a reachable leader a replica falls back to its disk cache, then to fetching itself (§7.3).
+- **Secondary zones (v0.2):** every replica transfers independently from the configured external primaries and persists the zone in `local.db` (no leader in the transfer path, so leader flaps cannot re-transfer); NOTIFY-in arrives at whichever pod the LB picks and is fanned out over `:8082/internal/events`; the leader only reports `Transferred`.
+- **Signed zones (v1.0):** the leader signs; signed RRsets and the journal are zone data (never CRDs) held in the leader's `local.db` and served to replicas by **IXFR over the headless Service with a chart-generated TSIG key**; replicas persist them. A **new leader does not re-sign on takeover**: it loads the current signed state by IXFR from any replica (or its own copy), reads keys from the Secret and continues the schedule in `status.dnssec.nextResign`; it signs only RRsets whose content changed or whose RRSIGs are within the resign window. ECDSA non-determinism is therefore irrelevant (one signer at a time, sequential) [go-dns-stack §3.2, §17.4].
+- **Integrations (v0.2):** one `Lease` per instance so instances spread across replicas and fail over independently.
+- **NOTIFY/AXFR towards external secondaries from Kubernetes:** NOTIFY leaves from the leader pod and is SNAT'ed to a node/egress IP on most CNIs and clouds, and the secondary's `allow-notify`/`primaries` list must contain that address, not the Service VIP; `kudurru doctor` reports the observed egress address (via a self-NOTIFY round trip to the `health.kudurru.internal.` listener) and the chart documents an egress gateway / `hostNetwork` DaemonSet as the fix when a stable source is required. AXFR/IXFR *to* kudurru (secondaries, v0.2) and *from* kudurru (TCP via the LoadBalancer) are unaffected.
+
+---
+
+## 5. Kubernetes model
+
+"Kubernetes-native" means three separable things [k8s §1]; kudurru does all three, staged:
+
+1. **Good-citizen dataplane (v0.1):** non-root on :53 under the Restricted PSS, `/healthz/*` split, lameduck, Deployment + PDB + topology spread, Helm OCI + kustomize, `dnsPolicy: Default`.
+2. **Kubernetes API as configuration surface (v0.1 for DNS/blocking kinds, v0.2 for IAM/Integration/Kudurru):** CRDs reconciled by a Lease-elected controller inside the same binary; `status.conditions` per api-conventions; `Events`; never `phase`.
+3. **Kubernetes as a DNS data source (v0.2):** `DNSZone.type: external` synthesises records from Ingress / Gateway API routes / LoadBalancer Services via stripped, indexed informers (k8s_gateway / CoreDNS technique), honouring `external-dns.kubernetes.io/{hostname,target,ttl}` (+ legacy `alpha` prefix). Replacing CoreDNS for `cluster.local` is **not** in scope before 1.x (§15).
+
+### 5.1 Objects shipped
+
+- CRD chart `kudurru-crds` (Helm never upgrades `crds/`; separate chart + `helm.sh/resource-policy: keep`; docs show `kubectl apply --server-side -f crds.yaml`) [k8s §9.5].
+- v0.1 CRDs: `DNSZone` (cluster), `DNSRecordSet`, `BlockList`, `ClientGroup`, `Policy` (namespaced); compatibility watch of `externaldns.k8s.io/v1alpha1 DNSEndpoint` (zone inferred by suffix, read-only, never owned).
+- v0.2 CRDs: `Kudurru`, `Integration`, `IdentityProvider`, `RoleBinding`, `ServiceAccount`. Typed Secrets: `kudurru.io/tsig`, `kudurru.io/dnssec-key`, `kudurru.io/session-key`.
+- Aggregated ClusterRoles `kudurru-viewer|editor|admin|auditor` labelled `rbac.authorization.k8s.io/aggregate-to-view|edit|admin` (PowerDNS-Operator pattern), generated from `internal/rbac/permissions.yaml` [k8s §10].
+- Print columns and short names: `kubectl get zones` → `ZONE TYPE SERIAL RECORDS READY AGE`; `rrsets` → `ZONE NAMES READY PUBLISHED AGE`; `blocklists` → `MODE ENTRIES LAST-FETCH READY`; shortNames `zone, rrset, blocklist, cg, pol, integ, idp`.
+- Events on CRs: `SerialBumped`, `NotifyFailed`, `ListFetchFailed`, `Duplicated`, `OutsideZone`, `PublishConflict`, `Transferred`, `Signed`.
+- API versions `v1alpha1` → `v1beta1` (v1.0 release) → `v1`; storage-version progression with no-op conversion until a breaking change forces a webhook.
+
+### 5.2 Workload, Helm values outline, probes, ports
+
+Chart `charts/kudurru` (values modelled on the CoreDNS chart):
+
+```yaml
+mode: kubernetes                    # kubernetes = kube driver + Deployment | standalone = sqlite driver + StatefulSet(1) + PVC, no CRDs
+replicaCount: 2
+image: { repository: ghcr.io/robertherbaugh/kudurru, tag: "", digest: "", pullPolicy: IfNotPresent }
+service:
+  dns:  { type: LoadBalancer, port: 53, splitProtocols: false, loadBalancerIP: "", loadBalancerClass: "",
+          externalTrafficPolicy: Local, ipFamilyPolicy: PreferDualStack, trafficDistribution: "", annotations: {} }
+        # one mixed-protocol Service by default (GA since 1.26); splitProtocols=true emits dns-udp + dns-tcp with metallb.io/allow-shared-ip
+  dot:  { enabled: false, port: 853 }
+  doh:  { enabled: false, port: 443 }
+  api:  { type: ClusterIP, port: 8080 }           # expose via Ingress/HTTPRoute; OIDC redirect URL derived from ingress.host
+  headless: { name: kudurru-dns, publishNotReadyAddresses: true }   # edge backends, IXFR between replicas, NOTIFY source
+ingress: { enabled: false, className: "", host: "", tls: [] }
+listen: { port: 53 }                # 1053 escape hatch for clusters that forbid NET_BIND_SERVICE
+edge:                               # dnsdist tier (v0.1 behind a flag; default off)
+  enabled: false
+  mode: deployment                  # deployment | sidecar (single-node k8s: shares the pod netns, kudurru on 5353) | daemonset (with vip.provider=keepalived)
+  replicas: 2
+  image: { repository: ghcr.io/robertherbaugh/kudurru-dnsdist, digest: "" }
+  authoritativeCache: false
+  dynblocks: { enabled: false }
+  ebpf: { enabled: false }          # opt-in "performance" profile; needs retained caps
+  proxyProtocolSecret: ""           # generated once if empty; mounted in edge AND kudurru pods; PROXYv2 TLV 0xE0 (§3.3) — pod-CIDR trust alone is spoofable
+vip:
+  provider: none                    # none | kube-vip | metallb | keepalived
+  address: ""                       # emits kube-vip.io/loadbalancerIPs or metallb.io/loadBalancerIPs (+ allow-shared-ip when split)
+  keepalived: { nodeSelector: { kudurru.io/vip: "true" }, interface: "", vrid: 53, hmacSecret: "" }  # opt-in DaemonSet + hostNetwork edge
+hostNetwork: { enabled: false }     # switches to DaemonSet, NET_BIND_SERVICE, dnsPolicy ClusterFirstWithHostNet
+securityContext: { runAsNonRoot: true, runAsUser: 65532, readOnlyRootFilesystem: true, allowPrivilegeEscalation: false,
+                   seccompProfile: { type: RuntimeDefault }, capabilities: { drop: [ALL], add: [NET_BIND_SERVICE] } }
+resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+podDisruptionBudget: { enabled: true, minAvailable: 1 }
+topologySpreadConstraints: [ { topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway } ]
+priorityClassName: ""               # system-cluster-critical when kudurru is the cluster resolver
+dnsPolicy: Default                  # never ClusterFirst for the DNS server itself
+persistence:
+  querylog: { enabled: false, storageClass: "", size: 10Gi, accessModes: [ReadWriteOnce] }
+  local:    { enabled: false, size: 1Gi }         # local.db on a PVC for "DNS before control plane" clusters
+  standalone: { size: 5Gi }                       # mode=standalone only
+config:                             # rendered into TWO ConfigMaps: kudurru-node (hostOnly/restartRequired keys → checksum annotation rolls pods)
+  node: {}                          #                             kudurru-settings (hot-reloaded on change, no restart)
+  settings: {}                      # the Kudurru singleton (v0.1 ConfigMap; v0.2 CRD)
+objects: []                         # optional inline kudurru.io objects applied by a post-install Job (seed only; then kubectl owns)
+auth:
+  encryptionKeySecret: ""           # generated once if empty
+  bootstrapAdminSecret: ""          # generated once if empty; printed by `helm status` notes
+  oidc: { issuer: "", clientID: "", clientSecretRef: {}, groupsClaim: groups, groupsPrefix: "corp:" }
+  kubernetes: { mode: sar }         # sar (default) | impersonate (v0.2, needs the impersonate ClusterRole and auth.kubernetes.usernamePrefix/groupsPrefix)
+rbac: { create: true, aggregateToDefaultRoles: true }
+webhook: { enabled: false }         # validating webhook optional; CEL does the rest
+serviceMonitor: { enabled: false }  prometheusRule: { enabled: false }  grafanaDashboard: { enabled: false }
+networkPolicy: { enabled: false }
+externalDNS: { webhook: { enabled: false, listen: ":8888" } }   # kudurru as an external-dns webhook provider (in-process) or sidecar values
+```
+
+Pod template facts: image `ghcr.io/robertherbaugh/kudurru:<ver>@sha256` (distroless static, uid 65532, file capability `cap_net_bind_service=+p` raised only when a port < 1024 is configured, blocky-style) [k8s §9.2]; `checksum/config` annotation covers **only** the `kudurru-node` ConfigMap (CRD and settings changes never restart pods) [k8s §16.6]; `terminationGracePeriodSeconds: 30` with `preStop: kudurru lameduck 5s`; args `serve --store=kube --node-name=$(POD_NAME) --proxy-protocol-from=<edge pod CIDR>`.
+
+Probes on the ops listener `:8081` (no auth) [observability §4.1]:
+
+| Probe | Endpoint | Semantics |
+|---|---|---|
+| startup | `GET /healthz/startup` | config parsed, store opened (informers synced **or** `local.db` loaded), listeners bound; `failureThreshold` sized for list compile (60 × 5 s) |
+| readiness | `GET /healthz/ready` | all zone watches synced (or serving from a snapshot younger than `maxAge`), blocklists loaded or `blocking.allowDegraded`, loopback self-query `health.kudurru.internal. A` ≤ 2 s; **upstream reachability is never a readiness condition**; 503 during lameduck |
+| liveness | `GET /healthz/live` | self-check loop completed within 30 s; never load-based |
+| human | `GET /healthz` | JSON roll-up `{status, components, version, node, leader, snapshotAge}`; `kudurru health` and Docker `HEALTHCHECK` |
+
+Ports: 53/udp+tcp DNS (5353 PROXYv2-only when the edge is enabled), 853 DoT, 443 DoH (8443 if not root-capable), 8080 API/UI, 8081 ops, 9153 metrics, 8082 internal (node-to-node), 8084 edge supervisor readiness, 8888 external-dns webhook (optional), 7000/7001 raft + peer API (v1.0).
+
+### 5.3 Leader election, leases, RBAC for the kudurru ServiceAccount
+
+Lease `kudurru-controller` in the release namespace, 15 s/10 s/2 s, identity = pod name; runnables implement `NeedLeaderElection()` per §3.1; per-integration Leases `integration-<ns>-<name>` (v0.2); `kudurru_leader{role}` gauge; **no per-node Lease and no NodeStatus objects** — the Nodes page scatter-gathers `/internal/status` over the headless EndpointSlice [observability §5].
+
+**Election lifecycle is decoupled from process lifetime (D44).** The election is driven by `internal/cluster` with client-go's `leaderelection.LeaderElector` directly, *not* by the controller-runtime Manager's process-level election: `OnStartedLeading` starts the leader-only runnable group under a child context, `OnStoppedLeading` cancels only that group and re-enters `Run` after `RetryPeriod`; the process **never exits on leadership loss**. Stock controller-runtime stops the whole Manager when the lease is lost and kubebuilder scaffolds exit the binary (`LeaderElectionReleaseOnCancel` "requires the binary to immediately end when the Manager is stopped" [k8s §7.4]) — that would kill the DNS dataplane on every pod during exactly the apiserver outage §4.4 is designed to survive (lease renewal fails after `RenewDeadline` 10 s). `ReleaseOnCancel` semantics are applied only on SIGTERM (`kudurru lameduck`). A leader that loses the lease while a leader-only loop is mid-operation relies on the idempotent, level-triggered rules of §4.6; the dataplane's informers keep serving the last snapshot throughout.
+
+Least-privilege ClusterRole for the kudurru SA:
+
+```
+get,list,watch            kudurru.io/*; externaldns.k8s.io/dnsendpoints; "" services,namespaces; discovery.k8s.io/endpointslices;
+                          networking.k8s.io/ingresses; gateway.networking.k8s.io/httproutes,tlsroutes,grpcroutes (v0.2, only when external zones are enabled)
+update,patch              kudurru.io/*/status
+create,patch              "" events
+get,create,update         coordination.k8s.io/leases
+get,list,watch,create,update   "" secrets   (Role in the release namespace only: internal kinds, TSIG, DNSSEC keys, session key)
+create                    authentication.k8s.io/tokenreviews; authorization.k8s.io/subjectaccessreviews   (system:auth-delegator; v0.1)
+impersonate               "" users,groups,serviceaccounts; authentication.k8s.io/userextras/*   (ONLY when auth.kubernetes.mode=impersonate, v0.2)
+```
+
+### 5.4 Edge and VIP in Kubernetes
+
+- Default: no dnsdist; the LoadBalancer Service points at kudurru pods; `externalTrafficPolicy: Local` preserves client IPs (per-client stats and client groups are the product) [k8s §16.12].
+- `edge.enabled=true` (v0.1): Deployment `kudurru-edge` from the supervisor image with anti-affinity and a PDB; backends from the headless EndpointSlice (`--backends-from endpointslice:<ns>/kudurru-dns`), stable UUID per pod name, `chashed` for the resolver pool, `leastOutstanding` for authoritative, `use_proxy_protocol: true`; readiness probe `GET :8084/healthz/ready` on the supervisor; the Service then targets the edge pods and kudurru listens on 5353 with `proxyProtocolFrom` = the edge pods' CIDR **plus** the `edge.proxyProtocolSecret` TLV check (§3.3) — the pod CIDR is shared with every other workload, so CIDR trust alone would let any pod forge client addresses; the chart's `networkPolicy` template additionally restricts `:5353` ingress to pods labelled `app.kubernetes.io/component=edge`. `edge.mode: sidecar` for single-node k8s shares the pod netns (loopback, no TLV needed) [dnsdist §1.15].
+- VIP: `vip.provider` `kube-vip`/`metallb` only add annotations (both Apache-2.0 and Service-aware) [dnsdist §2.5]. `keepalived` deploys a DaemonSet (`hostNetwork`, `NET_ADMIN/NET_RAW/NET_BROADCAST`, nodeSelector `kudurru.io/vip=true`) running `kudurru vip run` with `unicast_peer` rendered from the selected Nodes **and** switches the edge to a hostNetwork DaemonSet on the same nodes so the VIP owner actually listens on :53 [dnsdist §3.3]; re-render + SIGHUP on Node-list change (shared PID namespace not required: the supervisor is PID 1).
+
+### 5.5 Kubernetes identities and authorization (v0.1: SAR; v0.2: impersonation opt-in)
+
+- Bearer tokens that are projected ServiceAccount tokens (`audience: kudurru`) are verified via the cluster's OIDC discovery/JWKS (issuer read from `/.well-known/openid-configuration` with the pod's own token), falling back to `TokenReview` with an audience check, cached ≤ 2 min by token hash; principal `system:serviceaccount:<ns>:<name>` with its groups [auth §4.6].
+- `SubjectAccessReview` on `kudurru.io` resources — real CRDs **and virtual resources** (`querylogs`, `stats`, `caches`, `blocking`, `audits`, `clusters`, `settings`) — makes k8s RBAC the policy for Kubernetes identities without any extra CRD; RBAC rules are strings. The kudurru SA needs only `system:auth-delegator`.
+- OIDC humans use kudurru `RoleBinding`s (§8.5). **Precedence rule:** a request is allowed if **either** path allows it; the audit record names the path that granted (`authz: sar|binding`).
+- `auth.kubernetes.mode: impersonate` (v0.2, opt-in): UI/API writes are sent with `Impersonate-User/Group` headers so apiserver RBAC and audit see the real user. Not the default because the `impersonate` grant makes an internet-facing DNS/HTTP server cluster-admin-equivalent if compromised, and the research never vetted it [k8s §10].
+
+### 5.6 external-dns compatibility
+
+kudurru natively serves the external-dns webhook provider contract (`GET /`, `GET/POST /records`, `POST /adjustendpoints`, `application/external.dns.webhook+json;version=1`, 204 on apply, 5xx-only retries, 32 MiB cap) on `:8888` in-process **on every replica** (reads come from the zone snapshot; applied `Changes` go through `Store.Apply`, which any replica can perform in kube mode because the apiserver is the store — a leader-only listener behind a Service would 503 on non-leader pods) or as a `kudurru externaldns-webhook` sidecar in the external-dns pod; applied `Changes` become `DNSRecordSet`s with `managedBy: integration:external-dns` in a configured namespace; external-dns TXT ownership records are stored as ordinary TXT. `DNSEndpoint` CRs are additionally read directly [k8s §3.4, §3.5].
+
+### 5.7 Packaging
+
+`charts/kudurru` + `charts/kudurru-crds` (OCI), `config/` kubebuilder kustomize tree with overlays `metallb`, `kube-vip`, `cloud-lb-mixed`, `hostnetwork-daemonset`, `standalone`, `with-edge`; release artifacts `crds.yaml` + `install.yaml`; `ServiceMonitor`/`PodMonitor`, Grafana dashboard ConfigMap and `PrometheusRule` (§11.6) behind values. Minimum Kubernetes **1.30**. OLM bundle only after `v1` CRDs.
+
+---
+
+## 6. Single-instance Docker model
+
+### 6.1 Image
+
+`ghcr.io/robertherbaugh/kudurru:<ver>` built by goreleaser `kos:` + ko from `gcr.io/distroless/static:nonroot` (digest pinned), `linux/amd64, linux/arm64` (+ `riscv64` best effort; `armv7` open question), cosign keyless signature + SBOM + SLSA provenance. `EXPOSE 53/udp 53/tcp 853 443 8080 8081 9153`. `HEALTHCHECK CMD ["kudurru","health","--ready"]`. uid 65532 with `cap_net_bind_service=+p`. Startup contract copied from the dnsdist image: env → rendered config fragment, `KUDURRU_DEBUG_CONFIG=yes` prints the effective config with secrets masked. A `-debug` variant adds a shell and `dig`.
+
+### 6.2 Config file (`/etc/kudurru/kudurru.yaml`) — metadata-driven, two scopes
+
+One metadata table (`internal/config/schema.go`) describes every key: type, default, allowed values, help, flags `restartRequired`, `envLocked`, `writeOnly`, `hostOnly`. It drives the YAML loader (JSON Schema published for `# yaml-language-server`), `KUDURRU_<SECTION>__<KEY>` env overrides and `*_FILE` variants (env-set values become read-only in the UI, Pi-hole's single-source rule), `kudurru config get|set|schema`, `PATCH /api/v1/node/config`, the generated "All settings" page and the docs page; the generator is tested so docs cannot drift [pihole §16.8]. **Code-bearing or privileged keys are `hostOnly` from v0.1** (listener addresses, TLS paths, data dir, `proxyProtocolFrom`, edge/vip paths and VRIDs, cluster peers) and can never be set through the API — the Pi-hole 2026 RCE class made structural [pihole §17.7].
+
+Two scopes in one file: **node** settings (`node`, `listeners`, `data`, `log`, `edge`, `vip`, `cluster`) are host-local; **cluster** settings (`upstreams`, `cache`, `blocking`, `querylog`, `auth`, `rbac`) are the `Kudurru` singleton and are replicated in multi-node shapes. Objects (zones, lists, groups, policies, bindings, integrations) may be embedded under `objects:` or dropped into `objects.d/*.yaml` (file-managed, `managedBy: file:<path>`, re-applied on fsnotify change; deleting a document deletes the object), or live in the store and be edited through UI/API/CLI (`managedBy: api`). `kudurru apply -f` accepts CRD YAML verbatim.
+
+```yaml
+# /etc/kudurru/kudurru.yaml  (v0.1)
+node: { name: "${HOSTNAME}", dataDir: /var/lib/kudurru }                 # hostOnly
+listeners:                                                               # hostOnly
+  dns:  [{ address: "0.0.0.0:53", protocols: [udp, tcp] }]
+  dot:  [{ address: "0.0.0.0:853", tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  doh:  [{ address: "0.0.0.0:443", path: /dns-query, tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  proxyProtocolFrom: []             # ["127.0.0.1/32","::1/128"] when dnsdist shares the netns; exact /32s, never a LAN /24 (§3.3)
+  proxyProtocolSecretFile: ""       # PROXYv2 TLV 0xE0 shared with the dnsdist supervisor; required when proxyProtocolFrom is non-loopback
+  api:  { address: "0.0.0.0:8080", tls: { auto: selfsigned }, pathPrefix: "" }
+  ops:  { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+  internal: { address: "0.0.0.0:8082", tokenFile: "", tls: { auto: derived } }   # token + node cert derived from the encryption key unless set; always TLS
+  socket: /run/kudurru/kudurru.sock
+upstreams:
+  groups:
+    default: { servers: ["tls://1.1.1.1", "tls://9.9.9.9"], strategy: parallel_best, timeout: 2s }
+    internal-ad: { servers: ["10.0.0.5:53"], strategy: strict }
+  bootstrap: ["1.1.1.1:53"]
+  conditional: { "corp.example.": internal-ad, "10.in-addr.arpa.": internal-ad }
+cache: { maxEntries: 200000, minTTL: 5s, maxTTL: 24h, negativeTTL: 5m, prefetch: { threshold: 5, window: 2h },
+         serveStale: { ttl: 72h, answerTTL: 30s, maxWait: 1800ms } }
+blocking:
+  enabled: true
+  defaultResponse: zeroIP           # zeroIP | nxdomain | customIP | refused (discouraged)
+  blockTTL: 10m
+  initStrategy: fast                # fast | blocking | failOnError (disk-seeded)
+  refreshInterval: 24h
+  allowDegraded: true
+querylog: { enabled: true, privacy: full, retention: { raw: 720h, maxDBBytes: 10GiB }, exclude: { domains: [], clients: [], sudn: true } }
+auth:
+  localLogin: enabled               # enabled | admins-only | disabled
+  bootstrap: { adminPasswordFile: /run/secrets/admin_password }
+  session: { idleTimeout: 30m, lifetime: 12h, secure: auto }   # auto = Secure when TLS terminates here or a trusted proxy sends X-Forwarded-Proto: https; plain-HTTP labs still get SameSite=Lax + CSRF header
+  identityProviders:
+  - id: corp-sso
+    issuer: https://auth.example.com/application/o/kudurru/
+    clientID: kudurru
+    clientSecretFile: /run/secrets/oidc_client_secret
+    cliClientID: kudurru-cli
+    scopes: [openid, profile, email, groups]
+    claimMappings: { username: { claim: preferred_username }, groups: { claim: groups, prefix: "corp:" } }
+    provisioning: { autoProvision: mapped-only, syncGroups: true }
+rbac:
+  bindings:
+  - { role: admin, scope: { kind: cluster }, subjects: [{ kind: Group, name: "corp:/dns-admins" }] }
+edge: { enabled: false }            # hostOnly; see compose profiles
+vip:  { enabled: false }            # hostOnly
+objects:                            # optional inline CRD-shaped objects (managedBy: file:kudurru.yaml)
+- apiVersion: kudurru.io/v1alpha1
+  kind: BlockList
+  metadata: { name: default-ads }
+  spec: { mode: block, sources: [{ url: https://big.oisd.nl/ }], refreshInterval: 24h }
+- apiVersion: kudurru.io/v1alpha1
+  kind: Policy
+  metadata: { name: default }
+  spec: { clientGroupRefs: [default], blockListRefs: [default-ads] }
+```
+
+### 6.3 Persistence under `/var/lib/kudurru`
+
+```
+state.db        # sqlite store driver: all api/v1alpha1 objects + internal kinds (JSON rows), change feed, zone journals, audit table; meta.schema_version
+querylog.db     # per-node fact table + rollups (WAL, synchronous=NORMAL, incremental_vacuum)
+local.db        # (kube driver only) last-good snapshot + audit; (all drivers) response-cache dump on shutdown
+lists/          # sha256(url) disk cache of blocklist bodies
+keys/           # cookie/encryption key if not provided via env; TSIG/DNSSEC material (encrypted, v0.2+)
+edge/           # rendered dnsdist.yml / keepalived.conf (compose profiles mount read-only; supervisors render their own)
+backups/        # `kudurru backup` output when --out is omitted
+```
+
+Backup: `kudurru backup --out kudurru-backup.tar.zst` = `Store.Snapshot` (`kind: List` YAML) + optional query log; `--safe` strips secrets, sessions, tokens; `kudurru restore` applies it; `kudurru export --safe -o cluster.yaml` emits applyable YAML; the same YAML seeds followers (v0.2) and first boot (`KUDURRU_IMPORT=/path.yaml`). `kudurru import bind|pihole|adguard|blocky|technitium` converts foreign formats into the same YAML.
+
+### 6.4 Compose: single instance (+ `edge` profile)
+
+```yaml
+# deploy/compose/single/docker-compose.yml
+services:
+  kudurru:
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    restart: unless-stopped
+    ports: ["53:53/udp", "53:53/tcp", "8080:8080"]            # dropped when profile edge owns :53
+    environment:
+      KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      TZ: Europe/Berlin
+    volumes: ["./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro", "./objects.d:/etc/kudurru/objects.d:ro", "kudurru-data:/var/lib/kudurru"]
+    secrets: [admin_password, encryption_key]
+    healthcheck: { test: ["CMD", "kudurru", "health", "--ready"], interval: 10s, timeout: 3s, retries: 5, start_period: 60s }
+  dnsdist:                                                    # profile: edge (optional)
+    profiles: [edge]
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0@sha256:<digest>
+    command: ["kudurru", "edge", "run", "--backends", "127.0.0.1:5353", "--tls-dir", "/certs"]
+    ports: ["53:53/udp", "53:53/tcp", "853:853/tcp", "853:853/udp", "443:443/tcp", "443:443/udp"]
+    volumes: ["certs:/certs:ro"]
+    depends_on: [kudurru]
+  # with profile edge: kudurru uses network_mode: "service:dnsdist", listeners.dns address 127.0.0.1:5353, proxyProtocolFrom ["127.0.0.1/32"]
+volumes: { kudurru-data: {}, certs: {} }
+secrets:
+  admin_password: { file: ./secrets/admin_password }
+  encryption_key: { file: ./secrets/encryption_key }
+```
+
+First boot prints the generated admin password once (if no secret), creates the root zone `.` as a forwarder to `upstreams.groups.default`, `ClientGroup/default` + `Policy/default`, and loads the build-time-embedded starter blocklist from the embedded FS so blocking works offline (Gravity's loopback-list idea without the loopback server) [gravity §17.11]. The embedded list is **built at release time from permissively licensed sources only** (candidate: StevenBlack/hosts, MIT — list licences are not covered by the research and must be confirmed in the release checklist) and carries its own NOTICE entry; copyleft-licensed lists (e.g. hagezi's GPL-3.0 lists, AdGuard's filters) may be referenced by URL at runtime like any other data but are never redistributed inside the image, and `licenses.yml` checks the embedded list's provenance file.
+
+### 6.5 Compose HA with dnsdist + keepalived
+
+One directory per node (`deploy/compose/ha/node-{a,b,c}/`), identical except `NODE_NAME`, `NODE_IP`, priority index. **v0.1 `ha-static`:** every node runs the same file-managed configuration (`kudurru.yaml` + `objects.d/` distributed by git/ansible/rsync — `cluster.role: static` makes the API/UI read-only for every `kudurru.io` object, shows "managed by file", and a diagnosis message explains that writes must go through the distributed files); **v0.2:** the same compose with `KUDURRU_CLUSTER_ROLE=follower` on nodes b/c and `KUDURRU_CLUSTER_PRIMARY=https://10.0.0.11:8082` makes the UI writable on the primary and replicated; **v1.0:** `KUDURRU_CLUSTER_PEERS` + `bootstrapExpect` turns the same three nodes into raft voters. The dnsdist and keepalived services do not change across the three versions.
+
+```yaml
+# deploy/compose/ha/node-a/docker-compose.yml   (node-a: 10.0.0.11, prio 200; node-b: 10.0.0.12, prio 190; node-c: 10.0.0.13, prio 180)
+services:
+  kudurru:
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    network_mode: host                                   # binds :5353 for dnsdist, :8080 API, :8082 internal; the VIP is held by keepalived
+    restart: unless-stopped
+    environment:
+      KUDURRU_NODE__NAME: node-a
+      KUDURRU_LISTENERS__DNS: "0.0.0.0:5353"
+      KUDURRU_LISTENERS__PROXYPROTOCOLFROM: "127.0.0.1/32,10.0.0.11/32,10.0.0.12/32,10.0.0.13/32"   # exact peers, never the LAN /24
+      KUDURRU_LISTENERS__PROXYPROTOCOLSECRETFILE: /run/secrets/proxy_secret
+      KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      KUDURRU_LISTENERS__INTERNAL__TOKENFILE: /run/secrets/internal_token         # optional: defaults to a value derived from the encryption key
+      # v0.2: KUDURRU_CLUSTER__ROLE=follower  KUDURRU_CLUSTER__PRIMARY=https://10.0.0.11:8082   (nodes b, c)
+      # v1.0: KUDURRU_CLUSTER__BOOTSTRAPEXPECT=3  KUDURRU_CLUSTER__PEERS=10.0.0.11:7000,10.0.0.12:7000,10.0.0.13:7000
+    volumes: ["./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro", "./objects.d:/etc/kudurru/objects.d:ro", "kudurru-data:/var/lib/kudurru", "kudurru-run:/run/kudurru"]
+    secrets: [admin_password, encryption_key, internal_token, proxy_secret]
+    healthcheck: { test: ["CMD", "kudurru", "health", "--ready"], interval: 10s, timeout: 3s, retries: 5, start_period: 60s }
+  dnsdist:
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0@sha256:<digest>
+    network_mode: host                                   # recommended so dnsdist binds the VIP as it appears (0.0.0.0:53)
+    restart: unless-stopped
+    command: ["kudurru", "edge", "run",
+              "--backends", "10.0.0.11:5353,10.0.0.12:5353,10.0.0.13:5353",   # EVERY node lists ALL kudurru nodes
+              "--pool-resolver", "chashed", "--pool-authoritative", "leastOutstanding",
+              "--tls-dir", "/certs", "--api", "127.0.0.1:8083", "--console", "127.0.0.1:5199",
+              "--api-key-out", "/run/kudurru/dnsdist-api.key", "--proxy-protocol-secret-file", "/run/secrets/proxy_secret"]
+    secrets: [proxy_secret]
+    volumes: ["certs:/certs:ro", "kudurru-run:/run/kudurru"]
+    depends_on: [kudurru]
+  keepalived:
+    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.1.0@sha256:<digest>
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+    restart: unless-stopped
+    stop_grace_period: 20s                               # keepalived must release the VIP before the container goes
+    command: ["kudurru", "vip", "run",
+              "--vip", "dns=10.0.0.53/24@eth0#53",        # name=addr/len@iface#vrid  (VRID is hostOnly, never changes on re-render)
+              "--vip", "dns2=10.0.0.54/24@eth0#54",       # optional second VIP, reversed priorities → active/active
+              "--peers", "10.0.0.12,10.0.0.13", "--priority-index", "0",
+              "--hmac-key-file", "/run/secrets/vrrp_hmac",
+              "--track-dnsdist-api", "http://127.0.0.1:8083", "--dnsdist-api-key-file", "/run/kudurru/dnsdist-api.key", "--require-backends", "1"]
+    volumes: ["kudurru-run:/run/kudurru"]
+    secrets: [vrrp_hmac]
+    depends_on: [dnsdist]
+volumes: { kudurru-data: {}, kudurru-run: {}, certs: {} }
+secrets:
+  admin_password: { file: ./secrets/admin_password }
+  encryption_key: { file: ./secrets/encryption_key }
+  internal_token: { file: ./secrets/internal_token }
+  proxy_secret:   { file: ./secrets/proxy_secret }
+  vrrp_hmac:      { file: ./secrets/vrrp_hmac }
+```
+
+Behaviour: keepalived decides VIP ownership only (VRRPv3 unicast, `state BACKUP`, `nopreempt`, `auth_hmac`); `track_script` probes the local dnsdist on :53 udp+tcp and requires ≥ 1 healthy backend; `track_file /run/kudurru/weight-dns` is written by the local kudurru (`0`/`60`/`300`); the FIFO consumer emits `kudurru_vip_master{vip="dns"}`. Because every dnsdist lists all nodes, a node whose kudurru is unhealthy but whose dnsdist is healthy still serves, and query logs stay correct on every node through PROXYv2 [dnsdist §3.2]. External secondaries doing AXFR from `ha-static` twins should transfer from one named node (serials are `max(prev+1, unix_now)` on each twin and therefore close but not identical); follower mode (v0.2) removes that caveat.
+
+---
+
+## 7. Query path and the blocking engine
+
+### 7.1 Step by step (one `A` query from a LAN client, dnsdist in front)
+
+1. **dnsdist** (optional) accepts on :53/:853/:443, ACL, DynBlocks/eBPF drop abuse, packet cache (resolver pool only), picks a backend (`chashed` on qname for cache locality), prepends **PROXYv2** with the real client address, forwards to `kudurru:5353`.
+2. **ingress**: parse PROXYv2 only from `proxyProtocolFrom` (else drop), parse the message (FORMERR on garbage), EDNS version check, global ACL, per-prefix QPM limiter (`/32: 600 udp`, `/24: 6000`, IPv6 `/128,/64,/56`; over-limit UDP → TC=1 for a percentage, then drop) [technitium §20.9]; NSID/CHAOS `id.server`/`version.bind`/`hostname.bind` and `health.kudurru.internal.` (TXT `<node-id> <serial-epoch>`, never logged) answered directly.
+3. **identify**: client → `ClientGroup`s: exact IP → longest-prefix CIDR → (v0.2) MAC via inventory → hostname/rDNS → DoT/DoH client ID (`<id>.dot.<domain>` SNI, `/dns-query/<id>`) → `default`. Equal-length CIDR ties raise a diagnosis message. The union of matching groups selects `Policy` objects (highest `priority` wins per setting) [pihole §16.5, blocking §2.8].
+4. **control**: `Policy`/global rules (`allowedNetworks`, drop malformed, refuse ANY, block qtypes) → `Allow | DropSilently | Refuse`.
+5. **local**: custom host records / synthesised inventory names (UniFi, v0.2), SUDN (`.local`, `.onion`, RFC 6303 reverse without a zone → NXDOMAIN). `Status: local_record`; never cached.
+6. **authoritative**: longest-suffix zone match over the in-memory trees (root `.` is a forwarder by default). Enforce `queryAccess`/`queryACL`; answer with CNAME chase (loop cap 20; into other local zones, else into the rest of the pipeline when RD), wildcards by label replacement, NODATA vs NXDOMAIN on name existence (**never NXDOMAIN while unsynced: SERVFAIL** [k8s §2.2]); AXFR/IXFR here (`transferACL`, TSIG, `dns.Transfer.Out`); NOTIFY/UPDATE opcodes routed to handlers (NOTIMP in v0.1). Authoritative answers are **not** subject to blocking (Technitium rule: your own zone cannot be blocked by a list) [technitium §3].
+7. **blocking** (recursive path only): allow-wins-across-groups → allow-only mode → in-list `@@` exception → deny (`$important` beats `@@`) → after `next` returns, response-side CNAME/A/AAAA/HTTPS-hint inspection against deny sets [blocking §2.7, §6.1]. A hit synthesises the policy's response (`zeroIP` default, `nxdomain` with SOA, `customIP`, `refused` discouraged), `blockTTL` (10 m default), EDE 15/17, `Status: blocked_*`, `List`/`Rule` for the UI. Temporary disable (`POST /dns/blocking {blocking:false, timer:300}`) is cluster-wide via `Kudurru.status.blocking.disabledUntil`; in v0.1 Kubernetes, where `Kudurru` is still a ConfigMap without a status subresource, the kube driver keeps this one runtime field in the `kudurru-runtime` ConfigMap (annotation `kudurru.io/blocking-disabled-until`, server-side applied by whichever replica served the request, watched by all), and in Docker in `state.db`; `ha-static` twins toggle node-locally (badged).
+8. **rewrite** (v0.2): `$dnsrewrite`/UI rewrites, client-group views (`kudurru.view`), DNS64.
+9. **cache**: key `(qname,qtype,qclass,DO,ECS-scope)`, positive/negative split, TTL countdown, prefetch when hot and near expiry, serve-stale when all upstreams fail, in-flight coalescing. `Status: cached|cached_stale`.
+10. **dnssec-validate** (v0.2): validate upstream answers (blocky's `resolver/dnssec` as reference), AD/CD, SERVFAIL + EDE on bogus, NTA list; only validated data enters the cache.
+11. **upstream**: conditional map → group; strategy; dnsproxy exchange with per-group timeout; ECS add/forward/strip; `Status: forwarded`, `Upstream: <group/server name>`; errors → `servfail_upstream|timeout_upstream`.
+12. **postprocess** (v0.2): rebinding protection, AAAA filtering, NXDOMAIN override, TRACEPARENT strip.
+13. **log**: build the `QueryEvent` (§11.2), non-blocking enqueue to the per-worker ring, atomic counters/histograms, dnstap `CLIENT_RESPONSE` (v0.2), OTel attributes (v0.2). `dnsserver` writes the reply; dnsdist caches it (resolver pool) and answers the client.
+
+Hard rules: the query path never touches `Store`, never blocks on logging, never waits on a leader, and keeps answering from the last snapshot when the store is unreachable [gravity §4.4].
+
+### 7.2 Policy model
+
+```
+Source     {url|inline|configMapRef, format auto|hosts|domains|adblock|regex, refresh, etag, digest, ruleCount, invalid, enabled}
+BlockList  {name, mode block|allow, sources[], response override}            # blocky "group list"
+ClientGroup{name, clients[ip|cidr|mac|clientID|hostname|nameGlob]{name,comment}, sources{integrationRef}}
+Policy     {name, clientGroupRefs[], blockListRefs[], allowListRefs[], allowOnly, schedule, upstreamGroup, blockMode, blockTTL, queryLog, priority, rewrites[], safeSearch}
+```
+Defaults: `ClientGroup/default` (matches everything), `Policy/default`. Pi-hole users map 1:1: Groups → `ClientGroup` + `Policy`, Lists → `BlockList`, Domains (exact/regex allow/deny) → an inline `BlockList` source, Clients → `ClientGroup.clients`. Blocked-services and safe-search data must come from a kudurru-owned permissively licensed data repo (AdGuard's tables are GPL) [blocking §6.6] — v0.2 open question (§15).
+
+### 7.3 Blocking engine design (performance is a named risk, §14)
+
+Per `BlockList`, compile sources into a **chain of three matchers, cheapest first**, copied from blocky (Apache-2.0) [blocking §2.5]:
+
+1. **Exact set**: lower-cased entries bucketed by length, each bucket one sorted concatenated string, binary search, zero allocation.
+2. **Suffix set** for `||domain^`, `*.domain` and hosts-style entries with subdomain semantics: TLD-bucketed sorted sets plus a maphash bit filter, walking parent labels broadest-first and returning the matched rule. This fixes blocky's reduction of `||domain^` to exact match [blocking §8.2].
+3. **Regex scan** with a warning above 500 regexes and a hard cap per list.
+4. (v0.2) **Modifier slow path**: rules with `$important`, `$badfilter`, `$dnstype`, `$dnsrewrite`, `$client`, `$ctag`, `$denyallow`, mid-pattern wildcards: 5-byte shortcut index → candidate verify (urlfilter's idea re-implemented, never imported). Unknown modifier → rule ignored and counted in `status.invalid`, so browser lists are safe. v0.1 parses the whole grammar, compiles pure `||x^`/`@@||x^`/hosts/domains/regex into matchers 1-3 and counts the rest as "unsupported in this version".
+
+Compiled sets live in an `atomic.Pointer[Snapshot]` swapped copy-on-write per refresh; refresh is skipped when the CRC-32 of normalised rule lines is unchanged (AdGuard Home) [blocking §3.3]. The list pipeline is blocky's: ETag/Last-Modified conditional GET, `sha256(url)` disk cache with stale-on-unreachable, tee-to-temp + atomic rename, retry/cooldown, `maxErrorsPerSource`, keep-old-group-on-failure, bounded concurrency, init strategies with disk seeding, HTML/binary detection, `! Title:` extraction, `maxHTTPSize` [blocking §2.6, §6.3].
+
+**Fetch once, serve everywhere (v0.1):** the leader's `listfetcher` downloads, writes `lists/<sha256(url)>`, and publishes `BlockList.status.sources[].digest`; replicas pull `GET :8082/internal/lists/<digest>` from the leader (found via the Lease holder → EndpointSlice), verify the hash and compile locally; fall back to the disk cache, then to independent fetching, after 10 min without a reachable leader [k8s §16.11]. Compilation is node-local (CPU is cheap; a binary snapshot format would be another thing to version).
+
+Match reporting: `Contains(name) → map[list]rule` so the query log explains "blocked by `oisd`: `||ads.example^`", while Prometheus labels carry only list names.
+
+Performance gate in CI (`make bench`): 1 M-entry suffix set, p99 lookup < 2 µs single-threaded, < 150 MB RSS for 3 M entries, compile < 5 s; a +20 % regression fails the build. No published numbers exist for blocky/AGH [blocking §5.1], so kudurru publishes its own; a conformance corpus (OISD, Hagezi, StevenBlack samples) with expected block/allow decisions is cross-checked black-box against an AdGuard Home container (no code copied).
+
+---
+
+## 8. Auth: OIDC flows, RBAC, tokens, bootstrap
+
+### 8.1 Principals and identities
+
+`Principal = User | ServiceAccount | KubernetesServiceAccount | LocalRoot (unix socket) | Node (internal token / mTLS peer)`. Identity key for OIDC users is `(provider, iss, sub)` — never email; `email` is trusted only when `email_verified` [auth §2.7, §10.4]. A `User` has zero or more identities (local password, OIDC) and local or IdP-managed group memberships.
+
+### 8.2 Web login (BFF, authorization code + PKCE) and sessions
+
+```
+GET  /api/v1/auth/oidc/{idp}/start?next=/zones   → pre-auth cookie {state, nonce, verifier, next} (sealed, 10 min) → 302 IdP (S256, nonce)
+GET  /api/v1/auth/oidc/{idp}/callback?code&state → exchange (confidential client) → verify id_token (go-oidc, JWKS cache) → nonce
+                                                 → claimValidationRules → claimMappings → provisioning policy → bindings
+                                                 → Set-Cookie kudurru_session (sealed, HttpOnly, Secure, SameSite=Lax) → 302 next (same-origin only)
+GET  /api/v1/auth/me                              → principal, effective bindings, permission matrix, csrf token
+POST /api/v1/auth/logout                          → clear cookie; RP-initiated logout via end_session_endpoint when present (v0.2)
+```
+
+Session = **sealed cookie** (AES-256-GCM, cluster-shared `KUDURRU_ENCRYPTION_KEY` / `kudurru.io/session-key` Secret) with payload `{sid, principal, roles_snapshot, idp, iat, exp, idle_exp, csrf}` (`roles_snapshot` = the *resolved* bindings, never the raw IdP group list, so a user with hundreds of groups cannot hit the 4 KiB guard and be unable to log in) re-sealed on each request to slide the idle timeout (30 m) under an absolute lifetime (12 h); 4 KiB guard with a hard error; no refresh token in the cookie. This is why any replica can serve any session in a Kubernetes Deployment with no shared DB. Revocation: `User.status.sessionsValidAfter` (set on password change, admin "kill sessions", disable) is checked per request from the store snapshot. Behind a `SessionStore` interface: `sealed` (v0.1 both modes) and `db` (v0.2 Docker; k8s only with an external store, v1.0) which adds session listing/killing and hourly IdP group re-evaluation via an encrypted refresh token — the auth research's preferred model [auth §4.1], accepted as the v0.1 trade-off because the kube driver has no relational store.
+
+CSRF: Go 1.25 `http.CrossOriginProtection` on mutating routes + `X-Kudurru-CSRF` header required for cookie-authenticated writes + `SameSite=Lax`; bearer requests exempt [auth §4.1]. Security headers: CSP `default-src 'self'`, `X-Frame-Options: DENY`, `nosniff`, HSTS when TLS terminates in kudurru. Multiple providers in `auth.identityProviders[]` / `IdentityProvider` objects; login page lists them; `?local=1` is break-glass.
+
+```go
+// internal/auth/session.go
+type SessionStore interface {
+    Issue(ctx context.Context, s Session) (cookieValue string, err error)      // sealed: encrypt; db: insert row, return random id
+    Load(ctx context.Context, cookieValue string) (Session, error)              // verifies seal/row, idle+absolute expiry, sessionsValidAfter
+    Touch(ctx context.Context, s *Session) (cookieValue string, changed bool, err error)   // slides idle_exp; sealed re-seals at most once per minute
+    Revoke(ctx context.Context, sid string) error                               // db only; sealed returns ErrUnsupported (use sessionsValidAfter)
+    List(ctx context.Context, principal string) ([]SessionInfo, error)         // db only
+}
+```
+
+### 8.3 CLI login
+
+- v0.1: `kudurru login --server https://dns.example --token kdr_…` or `--username/--password` (local admin); credentials in the OS keyring (`zalando/go-keyring`) with a 0600 file fallback; `--context` picks a kubeconfig for CRD verbs.
+- v0.2: `kudurru login` opens the browser for loopback + PKCE (ports 8000/18000, public client `kudurru-cli`), `--device` for RFC 8628 (prints user code and client name per RFC 10027); the CLI sends the IdP **ID token** as bearer; the server routes by `iss`, verifies against JWKS, **requires `aud` to contain `cliClientID` (or `clientID`) and, when `aud` has several values, `azp` to equal one of them**, rejects access tokens and tokens minted for other relying parties (otherwise any ID token the IdP issued for an unrelated app could be replayed against kudurru), caches the verdict by `sha256(token)` until `exp`, re-runs claim mapping per call [auth §4.2].
+
+### 8.4 Claims → identity → bindings
+
+Three Kubernetes-shaped layers [auth §4.3]: `claimValidationRules` (`{claim, requiredValue}`; v0.2 CEL `expression`), `claimMappings` (`username{claim,prefix}` with fallback `preferred_username → upn → email → sub`, `groups{claim,prefix}` tolerant of string-or-array and also reading `roles`, `displayName`, `email`), then authorization via bindings on the prefixed remote group (`corp:/dns-admins`) or a `groupMap`. `provisioning: { autoProvision: always|mapped-only|never, syncGroups: bool, defaultRole: "" }` — **strict by default:** a login yielding zero bindings is refused with a clear message (Grafana `role_attribute_strict`); never silently admin (Gravity's mistake) [auth §10.1].
+
+### 8.5 RBAC model and permission matrix
+
+Hand-rolled `(subject, role, scope)` bindings behind an `Authorizer` interface (Casbin/SAR pluggable) [auth §5]:
+
+```go
+// internal/rbac/authorizer.go
+type Attributes struct{ Resource, Verb string; Scope Scope /* {Kind cluster|zone|zonegroup|clientgroup, Name} */; Namespace, Name string }
+type Decision struct{ Allowed bool; Path string /* binding | sar | local | none */; Missing *Attributes; Reason string }
+type Authorizer interface {
+    Authorize(ctx context.Context, p Principal, a Attributes) (Decision, error)   // pure for the binding authorizer; SAR authorizer caches ≤ 2 min by (token hash, attributes)
+}
+type Chain []Authorizer   // first Allowed wins (§5.5 precedence); Decision.Path is what the audit row records
+```
+
+Every route declares `{resource, verb, scopeFromPath}`; a lint fails the build if a route has no declaration. `internal/rbac/permissions.yaml` is the **single source** that generates the built-in roles, the aggregated ClusterRoles in the chart, the docs table below and the lint fixtures.
+
+Resources × verbs (`read|write|delete` + extras): `zones{transfer,sign,share}`, `records`, `blocklists{refresh}`, `policies`, `clientgroups`, `clients`, `querylog{export,purge}`, `stats`, `cache{flush}`, `blocking{toggle}`, `settings`, `node{config}`, `users`, `groups`, `serviceaccounts`, `tokens`, `identityproviders`, `rolebindings`, `integrations{sync,check,secrets,act}`, `cluster{join,promote,drain}`, `edge`, `audit{export}`.
+
+| Permission | viewer | auditor | operator | zone-admin (scoped) | admin |
+|---|---|---|---|---|---|
+| zones/records/stats/cache read | ✓ | ✓ | ✓ | ✓ scoped | ✓ |
+| records write/delete | | | ✓ (scoped or global) | ✓ scoped | ✓ |
+| zones write (options) / delete / transfer / sign / share | | | | ✓ scoped (create needs cluster `zones.write`) | ✓ |
+| blocklists/policies/clientgroups/clients read | ✓ | ✓ | ✓ | | ✓ |
+| blocklists/policies/clientgroups/clients write, cache flush, blocking toggle | | | ✓ | | ✓ |
+| querylog read (with client IPs) | | ✓ | ✓ (`settings.operatorSeesQueryLog`, default true) | | ✓ |
+| querylog export / purge | | export | | | ✓ |
+| settings read (redacted) | ✓ | ✓ | ✓ | | ✓ |
+| settings write, node.config, integrations.*, cluster.*, edge.* | | | | | ✓ |
+| users/groups/serviceaccounts/rolebindings/identityproviders | | | | | ✓ |
+| own tokens write | ✓ | ✓ | ✓ | ✓ | ✓ |
+| audit read | | ✓ | | | ✓ |
+
+Scopes: `cluster`, `zone:<name>`, `zonegroup:<label>` (v0.2), `clientgroup:<name>` (v1.0, so a group owner sees only their clients' queries). The creator of a zone receives `zone-admin` on it (Technitium's initial grant) [auth §9.1]. Evaluation is a pure function with table tests; zone listing filters by scope. `403` responses carry `missing:{resource,verb,scope}` so the UI can explain. Kubernetes mapping: `viewer ≡ kudurru-viewer`, `operator ≡ kudurru-editor`, `admin ≡ kudurru-admin`, `auditor ≡ kudurru-auditor`; `zone-admin` ≡ a namespaced RoleBinding plus `resourceNames` on `dnszones`.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: RoleBinding
+metadata: { name: platform-zone-admins, namespace: dns }
+spec:
+  role: zone-admin
+  scope: { kind: zone, name: home-example-com }
+  subjects:
+  - { kind: Group, name: "corp:/dns-admins" }
+  - { kind: ServiceAccount, name: external-dns, namespace: kube-system }   # k8s SA via projected token
+```
+
+### 8.6 API tokens and service accounts
+
+Grafana-style service accounts owning N tokens; wire format `kdr_<12-char id>_<43-char secret>`; store `sha256(secret)` only; constant-time compare on the full hash, never prefix lookups (Technitium v15.6 oracle); unknown id and wrong secret return the same 401; optional expiry (`auth.tokens.maxLifetime`), `lastUsedAt/IP`, revocation, audit [auth §4.5]. Personal tokens inherit the owner's bindings ∩ optional scopes and die with the user. Integration credentials (Cloudflare token, UniFi key, dnsdist API key) are outbound secrets, not principals: `secretRef`/file/env only; fingerprints in status.
+
+### 8.7 Local accounts, bootstrap, recovery
+
+- First start with no users: `admin` from `KUDURRU_ADMIN_PASSWORD[_FILE]` else generated and printed once; `mustChangePassword=true`; `hasDefaultCredentials` in `GET /auth/status` so the UI nags [auth §4.4].
+- `KUDURRU_BOOTSTRAP_TOKEN[_FILE]` creates a `bootstrap` service-account token (Helm post-install jobs, Terraform) — hash only at rest.
+- Argon2id (m=19 MiB, t=2, p=1, PHC string), 1 KiB password cap, global hashing semaphore; per-IP (5 failures → 5 min) and per-user (10 → 15 min) limiters with `429 Retry-After`, dummy hash for unknown users, sanitised usernames in logs [auth §7].
+- `localLogin: enabled|admins-only|disabled`; `/login?local=1` break-glass; `kudurru admin reset-password|create-token` over `/run/kudurru/kudurru.sock` (SO_PEERCRED uid 0, **or the uid the server itself runs as** — 65532 in the distroless image, which is what `docker exec`/`kubectl exec` get without `--user` — or a configured gid) for `docker exec`/`kubectl exec`.
+- TOTP (v0.2) with one attempt per second and last-counter replay protection.
+
+### 8.8 Middleware order
+
+`Recover → RequestID → RealIP(trustedProxies) → SecurityHeaders → AccessLog → CrossOriginProtection → RateLimit(auth routes) → Authenticate(bearer kdr_ | bearer JWT by iss | k8s SA token | cookie+CSRF | unix peer | internal token) → LoadPrincipal(disabled? mustChange? sessionsValidAfter?) → Authorize(resource, verb, scope; SAR for k8s identities) → Handler → Audit(outcome, before/after, authz path)`.
+
+---
+
+## 9. Integration model
+
+### 9.1 Tiers
+
+| Tier | Who | Where | Contract | Version |
+|---|---|---|---|---|
+| **A. In-tree Go integrations** (`externaldns`, `webhook`; v0.2 `cloudflare`, `unifi`; later `libdns`, `tailscale`, `proxmox`, `mqtt`) | kudurru repo | in-process, **leader-scoped per instance** (`Lease integration-<ns>-<name>`), never on the query path | Go interfaces below, registered at `init()` (Caddy lifecycle: `New → strict unmarshal → Provision → Validate → Start → Stop`) | framework v0.1 |
+| **B. Out-of-process HTTP integrations** | third parties | sidecar / Deployment / anywhere | the external-dns webhook routes verbatim + kudurru extensions (`/clients`, `/networks`, `/events`, `/actions`) negotiated by `application/kudurru.integration+json;version=1`; 5xx-only retries, 4xx permanent, 32 MiB cap, bearer or mTLS | server side v0.1 (kudurru as an external-dns target); client side + `kudurru integrations webhook conformance` v0.2 |
+| **C. go-plugin subprocesses for query-path hooks** | third parties | subprocess, gRPC, AutoMTLS | `.proto` of the pipeline stage hooks | not before 1.x, only on demand [integrations §5.1] |
+
+Tier B wire shape (v0.2 client side; the server side of the four external-dns routes is v0.1, §5.6): `GET /` returns `{filters:[...], capabilities:[records|clients|hooks|actions], manifest:{...}}` when the kudurru media type is accepted; `GET /clients → [Client]`, `GET /networks → [Network]` (the `ClientSource` shapes of §9.2); `POST /events ← Event` with `X-Kudurru-Signature: sha256=<HMAC of body with the integration's secret>` and `X-Kudurru-Delivery` id (2xx acknowledges, 5xx retries with backoff + dead-letter after 24 h, 4xx drops and raises `Degraded`); `GET /actions → [ActionSpec{name, params JSON Schema, rbac verb}]`, `POST /actions/{name} ← params` [integrations §5.5].
+
+No runtime-loaded in-process code, ever (Technitium's privilege-escalation path) [integrations §7.1, technitium §21.4].
+
+### 9.2 Interfaces (`internal/integration`)
+
+```go
+type Manifest struct {
+    Type, DisplayName, Version string
+    Capabilities []Capability      // RecordSink | ClientSource | Hook | Actions
+    IOClass      string            // cloud_polling | local_polling | local_push
+    ConfigSchema json.RawMessage   // JSON Schema; also becomes the Integration CRD one-of block and the UI form
+    SecretKeys   []SecretKey       // which spec fields are secret refs + how to verify them
+    Docs         string
+}
+type Integration interface {
+    Manifest() Manifest
+    Provision(ctx context.Context, host Host, spec json.RawMessage, secrets SecretResolver) error // strict unmarshal
+    Validate(ctx context.Context) error              // offline
+    Check(ctx context.Context) (Status, error)       // network: auth + reachability (token verify, /v1/info)
+    Start(ctx context.Context) error                 // runs until cancelled; leader-scoped
+    Stop(ctx context.Context) error
+}
+type RecordSink interface {                          // outbound; Endpoint/Changes are external-dns wire shapes
+    DomainFilter() DomainFilter
+    Records(ctx context.Context, zone string) ([]Endpoint, error)
+    AdjustEndpoints(ctx context.Context, eps []Endpoint) ([]Endpoint, error)
+    ApplyChanges(ctx context.Context, zone string, ch Changes) (ApplyResult, error)   // returns provider IDs for the ledger
+}
+type ClientSource interface {                        // inbound inventory
+    ListClients(ctx context.Context) ([]Client, error)     // {ID, MACs, IPs, Name, Hostname, Network{Name,VLAN,CIDR,Domain}, FixedIP, Tags, LastSeen, Attributes}
+    ListNetworks(ctx context.Context) ([]Network, error)
+}
+type Hook interface { Topics() []string; Handle(ctx context.Context, ev Event) error }   // at-least-once; host retries + dead-letter
+type ActionProvider interface { Actions() []ActionSpec; Invoke(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) }
+type Host interface {                                // what the host lends an integration
+    Zones() ZoneReader; Inventory() InventoryWriter; Ledger(name string) Ledger; Events() EventBus
+    Logger() *slog.Logger; Metrics() prometheus.Registerer; Status() StatusWriter; Clock() clock.Clock
+    Resolve(ctx context.Context, q dns.Question) (*dns.Msg, error)   // re-enter the pipeline (Technitium DirectQuery)
+}
+func Register(m Manifest, ctor func() Integration)   // panics on duplicate type
+```
+
+Host-owned, not per-integration: polling cadence, jitter, backoff, soft/hard error classification (429/5xx/EOF → requeue honouring `Retry-After`), rate budgets, dry-run preview, status conditions `Ready/Authenticated/Synced/Degraded`, secret-rotation re-provisioning (file watch / Secret informer), the **plan engine** (per-`(dnsName,setIdentifier)` table grouped by type, CNAME exclusivity, owner mismatch → skip + `Conflict`, policies `sync|upsert-only|create-only`; ~400 lines re-implemented with a conformance test against external-dns `plan_test.go` cases) and the **ledger** (`(integration, zone, name, type) → {providerIDs[], contentHash, generation, lastApplied}` as an internal kind) [integrations §5.2, §5.4].
+
+Lifecycle events (the hook Technitium lacks): `zone.changed{zone, serial, delta}`, `record.changed`, `client.seen|left`, `query.blocked` (sampled), `blocking.toggled`, `integration.error`, `cluster.leader_changed`, `vip.master_changed`. Debounced 2-5 s; every sink also has a periodic full resync (default 10 m) and a manual "sync now" [integrations §7.9].
+
+### 9.3 Declaring integrations: one schema, two carriers
+
+```yaml
+# Docker: kudurru.yaml → objects[] or objects.d/           # Kubernetes: kind Integration (v0.2)
+apiVersion: kudurru.io/v1alpha1
+kind: Integration
+metadata: { name: cf-public, namespace: dns }
+spec:
+  type: cloudflare
+  credentials: { apiToken: { secretRef: { name: cloudflare-token, key: token } } }   # Docker: { file: /run/secrets/cf_token }; never inline
+  cloudflare:
+    zones:
+    - zone: example.com
+      zoneID: 023e105f4ecef8ad9ca31a8372d0c353          # optional; resolved via Zone:Read
+      select: { labels: { kudurru.io/publish: cloudflare }, types: [A, AAAA, CNAME, TXT, MX, SRV, CAA], exclude: ["*.internal.example.com"] }
+      defaults: { proxied: false, ttl: 1, comment: "kudurru:owner=home" }
+      policy: sync                                      # sync | upsert-only | create-only
+      adoptFrom: { externalDNSOwner: k8s-home }         # read heritage=external-dns TXT records and adopt
+      adoptUnowned: false
+    deletionPolicy: Retain
+  resync: 10m
+  suspend: false
+status:
+  conditions:
+  - { type: Authenticated, status: "True", reason: TokenVerified }
+  - { type: Synced, status: "False", reason: RateLimited, message: "429 retry-after 37s" }
+  - { type: Ready, status: "True", reason: Running }
+  lastSyncTime: "2026-10-10T21:03:11Z"
+  records: { managed: 42, drift: 1, conflicts: 0 }
+  provider: { rateLimitRemaining: 1150, sdk: cloudflare-go v7.12.0 }
+```
+CEL: `has(self.cloudflare) == (self.type == 'cloudflare')`. Spec never contains secret values; status shows fingerprints only. RBAC verbs: `integrations.read|write|secrets|act`.
+
+### 9.4 Worked example 1 — Cloudflare split-horizon (v0.2)
+
+Problem: `example.com` is authoritative inside (RFC 1918 answers) and public at Cloudflare; a subset (public hosts, ACME TXT, MX/SPF) must exist publicly, some proxied, without a second hand-maintained zone [integrations §2.5].
+
+1. **One zone, one truth.** Records opt in with label `kudurru.io/publish: cloudflare` and/or `DNSZone.spec.publish[]` rules (selector + name glob + types).
+2. **Per-sink overrides and views.** `providerSpecific: [{cloudflare/targets: "203.0.113.10"}, {cloudflare/proxied: "true"}]` publishes a different value than is served internally; an endpoint with `kudurru.view: public` is *only* published, never served (e.g. the tunnel CNAME in §4.1). Sink-level `translate: {"203.0.113.0/24": "10.0.0.0/24"}` offers Technitium-style 1:1 NAT for bulk cases. Proxied records force `ttl: 1`; only A/AAAA/CNAME are proxiable; proxied public answers are never mirrored inward.
+3. **Ownership.** Internal ledger + Cloudflare `comment: kudurru:owner=<clusterID>` (works on Free) + tag `kudurru-owner:<id>` when the plan allows; external-dns `heritage=` TXT records are read for `adoptFrom` migrations, never written. Unowned records are never modified unless `adoptUnowned: true`; foreign-owned → `Conflict` + skip.
+4. **Reconcile (leader, level-triggered).** `desired = select(zone) ▷ overrides/views ▷ AdjustEndpoints`; `current = GET /zones/{id}/dns_records?per_page=5000[&comment.startswith=kudurru:]` cached per resync; plan; apply via `POST /zones/{id}/dns_records/batch` in 200-op chunks (deletes → patches → puts → posts), 1 s between chunks, per-record fallback on chunk failure; a shared token bucket budgeted at 1,000 of the **1,200 requests / 5 min per user** limit (cumulative across dashboard, keys and tokens of that user; exceeding it blocks *all* calls for 5 min [integrations §2.1]) across every Cloudflare sink whose token belongs to the same user; 429/5xx → requeue with `Retry-After`; status `Synced`, `records{managed,drift,conflicts}`, `rateLimitRemaining`.
+5. **Token.** `GET /user/tokens/verify` + `GET /zones?name=` at `Check()`; documented scope `Zone:Read + DNS:Edit` restricted to the zone; `cloudflare-go/v7` pinned exactly and wrapped thinly.
+6. **Status.** `DNSZone.status.published[]` and `DNSRecordSet.status.publications[]{integration, state Accepted|Programmed|Failed}` (external-dns `DNSRecord` idiom) so `kubectl get rrset` shows whether Cloudflare is in sync; `kudurru integrations preview cf-public` prints the dry-run plan.
+
+### 9.5 Worked example 2 — UniFi Network (v0.2)
+
+Inbound `ClientSource` (polling, official Integration API `X-API-Key` at `/proxy/network/integration/v1`: sites, clients, networks, DNS policies with `offset/limit` paging) via `unpoller/unifi/v6` (**read-only** library [integrations §3.4]); legacy `/rest/user`, `/stat/sta`, `/v2/api/site/<site>/active-leases` **only** for alias/hostname/fixed-IP/VLAN/leases, behind version detection (`GET /v1/info`) and per-endpoint 404 tolerance [integrations §3]. The optional push paths below need writes that unpoller does not provide: a thin in-house client (≈ 200 lines, `X-API-Key`) over the official `PUT /v1/sites/{site}/networks/{id}` and `POST|PUT /v1/sites/{site}/dns/policies` endpoints, and the legacy `cmd/stamgr` for block/unblock behind the same legacy flag; `filipowm/go-unifi` (MPL-2.0) is acceptable as an unmodified dependency if the in-house client grows.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: Integration
+metadata: { name: unifi-home, namespace: dns }
+spec:
+  type: unifi
+  credentials: { apiKey: { secretRef: { name: unifi-key, key: apiKey } } }      # Docker: { file: /run/secrets/unifi_key }
+  unifi:
+    endpoint: https://192.168.1.1
+    tlsFingerprint: "sha256:…"                        # instead of insecureSkipVerify
+    site: default
+    poll: 60s
+    inventory: { zoneRef: { name: lan-example-com }, reverseZones: auto, nameTemplate: "{{ .Alias | default .Hostname | slug }}", ttl: 120, includeNetworks: [LAN, IoT, Kids] }
+    groups: { byNetwork: { IoT: iot, Kids: kids, Guest: guest }, byNote: "kudurru:group=" }
+    push: { dhcpDNSServers: false, mirrorRecords: { enabled: false, types: [A, CNAME] } }
+```
+
+What kudurru does with it: networks → `Network` inventory → auto-created reverse zones and `ClientGroup` membership by VLAN; clients → synthesised A/AAAA + PTR `DNSRecordSet`s (`managedBy: integration:unifi-home`, read-only "synthesised" badge, deterministic slug dedupe `-2`, stable per MAC, TTL 120, expire after 3 missed polls); `identify` (§7.1 step 3) matches by MAC through the same inventory; `client.seen/left` events for Hooks. Optional push (`integrations.act`): write the VIP into DHCP DNS servers, mirror selected records into UniFi DNS policies so the gateway answers if kudurru is down, `block-client`/`unblock-client` dashboard buttons via `stamgr`.
+
+### 9.6 external-dns (v0.1, inbound)
+
+`kudurru serve --externaldns-webhook :8888` (or the `externalDNS.webhook` chart values) serves the four routes over the zone store; `external-dns --provider=webhook --webhook-provider-url=http://localhost:8888` makes Ingress/Service/Gateway hostnames flow into kudurru zones with zero kudurru-side Kubernetes code. In v0.1 because it is a thin HTTP façade over the record model and proves the `Endpoint` superset early.
+
+---
+
+## 10. Dashboard / UI plan and API surface
+
+"Pi-hole-grade" means the twelve principles extracted in [pihole §2], re-derived (EUPL code/markup never copied), plus multi-node from day one:
+
+1. Four stat tiles — **Total queries · Blocked · % blocked · Domains on lists** (+ active/total clients in the footer) — each a link into the pre-filtered query log; one `GET /stats/summary` feeds tiles and the sidebar (QPS, status dot, blocking countdown, per-node health dots).
+2. 24 h stacked bars (`total/blocked/cached/forwarded/authoritative/other` from `rollup_1m` at `step=auto`), per-client stacked chart with "other clients"; click a bucket → log ±5 min. uPlot for the live series, ECharts for pies/top lists.
+3. Everything drills down: top domains/clients/upstreams/lists rows → `queries?domain=…&status_class=blocked`, etc.
+4. One colour code via semantic CSS classes `q-permitted / q-cached / q-blocked / q-error`; charts read colours from CSS; themes auto/light/dark/high-contrast(+dark)/one fun theme.
+5. Query log: keyset pagination (`cursor` on `id`, stable under live inserts), `records_total/filtered`, `earliest_ts_memory|disk`, `/queries/suggestions`, wildcard search, `source=auto|memory|disk`, **live tail over SSE**, per-row **Allow/Deny** (`POST /queries/{id}/actions`) with toast, expandable "why" row (status, matched list + rule, CNAME chain, upstream, cache/stale, DNSSEC, EDE, reply type/time, **node**, trace link).
+6. Lists / Groups / Policies / Clients pages with `Default` group auto-assignment, `comment` and `enabled` on everything, multi-add arrays returning `processed{success,errors}`, `:batchDelete`, list health (OK/unchanged/unavailable-cached/invalid, counts, last update), "managed by file/Kubernetes/integration" badges with the owner.
+7. Disable blocking with countdown (10 s / 30 s / 5 m / custom / indefinite) — cluster-wide.
+8. Diagnosis messages badge (regex errors, CIDR tie, list unreachable, cert expiry, disk/WAL size, serial divergence between nodes, dnsdist backend down, serving-from-snapshot, fenced/follower read-only, 2-node quorum warning).
+9. Node selector + "all nodes" on every page; Nodes page (version, roles, ready, qps, leader, VIP master, snapshot age) from scatter-gather.
+10. Settings: Basic/Expert toggle; "All settings" page generated from the config metadata with `data-configkey` binding; `hostOnly`/env-locked keys shown read-only with the reason.
+11. Zones: list (type, serial, records, Ready, managed-by), typed per-RR record editor (A/AAAA/CNAME/MX/SRV/TXT/CAA/HTTPS/SVCB/NS/PTR/TLSA/SSHFP/NAPTR/raw), BIND import/export, transfer/notify status, "publish to" column and DNSSEC panel (v0.2/v1.0).
+12. Long-term views (the most-requested missing Pi-hole v6 feature [pihole §17.3]): date-range history and top lists from rollups with `approximate: true` badges when top-N merging is lossy — **in v0.1**.
+13. Cluster page (nodes, leader, edge/dnsdist backends from `/edge`, VIP owners, join wizard emitting compose/Helm snippets in v0.2), Integrations page (manifest-driven form, conditions, preview plan, inventory view), IAM, Audit, Tools (dig, import, backup/export, doctor).
+
+Stack: React 19.2 + TypeScript + Vite 8 + Tailwind + shadcn/ui + TanStack Query/Table v9 (+ Virtual) + ECharts 6.1 + uPlot; generated TypeScript client from the huma OpenAPI; SSE via `EventSource`; strict CSP; no CDN; `go:embed`ded; path-prefix aware. Breaking API changes are versioned (`/api/v1`) and deprecated routes survive one major [pihole §17.6].
+
+API surface (`/api/v1`; every body carries `took_ms`; errors `{error:{key,message,hint}}`; 201+Location; 204 on delete; `If-Match` on `resourceVersion`; `scope=node|cluster&node=<name>` on stats/log calls):
+
+```
+auth:      GET /auth/status · POST /auth/login · GET /auth/oidc/{idp}/start|callback · POST /auth/logout · GET /auth/me
+           POST|GET|DELETE /auth/tokens[/{id}] · GET|DELETE /auth/sessions[/{id}] (v0.2, db store) · POST /auth/backchannel-logout (v1.0)
+objects:   GET|PUT|PATCH|DELETE /objects/{kind}[/{ns}]/{name} · GET /objects/{kind} · POST /apply (multi-doc YAML, whole-object apply)   # what `kudurru get|apply` uses
+zones:     GET|POST /zones · GET|PUT|PATCH|DELETE /zones/{zone} · GET|POST /zones/{zone}/records · PUT|DELETE /zones/{zone}/records/{name}/{type}
+           POST /zones/{zone}/import (bind) · GET /zones/{zone}/export · POST /zones/{zone}/notify · POST /zones/{zone}/sign (v1.0) · GET /zones/{zone}/bindings
+lists:     CRUD /blocklists · POST /blocklists/{name}/refresh · GET /blocklists/{name}/search?domain=
+policy:    CRUD /clientgroups · CRUD /policies · GET /clients (inventory) · GET /clients/_suggestions
+           POST /domains/{allow|deny}/{exact|regex} (arrays; processed{success,errors}) · POST /{kind}:batchDelete
+blocking:  GET|POST /dns/blocking {blocking,timer,groups?} · POST /cache/flush · POST /dns/query (built-in dig)
+stats:     GET /stats/summary · /stats/timeseries · /stats/top?dim= · /stats/clients/timeseries · /stats/upstreams · /stats/recent_blocked · GET /padd
+log:       GET /queries · /queries/suggestions · /queries/export · SSE /queries/stream · POST /queries/{id}/actions · DELETE /querylog · GET /querylog/status
+nodes:     GET /nodes · GET /nodes/{name}/health · GET /cluster · POST /cluster/promote (v0.2) · POST /cluster/join-token (v1.0) · GET /edge (dnsdist backends, VIP owners)
+settings:  GET|PATCH /settings (cluster) · GET|PATCH /node/config (hostOnly keys rejected) · GET /settings/_schema
+iam:       CRUD /iam/users|groups|serviceaccounts|rolebindings|identityproviders   (v0.1 via YAML; API v0.2)
+integr.:   CRUD /integrations · POST /integrations/{name}/sync|check|preview · POST /integrations/{name}/actions/{a}   (v0.2)
+audit:     GET /audit · GET /audit/export
+misc:      GET /endpoints · GET /openapi.json · GET /docs · GET /info/messages (diagnosis) · GET /version
+external:  /externaldns/* (external-dns webhook contract, :8888)
+internal:  :8082 /internal/status · /internal/zones (serial map) · /internal/lists/{digest} · /internal/events (SSE) · /internal/snapshot (follower pull, v0.2)   # node/internal-token auth only
+compat:    optional Pi-hole v6 façade under /api/pihole/* (v1.0 module)
+```
+
+---
+
+## 11. Observability
+
+### 11.1 Metrics (Prometheus, `:9153/metrics`, OpenMetrics with exemplars when tracing is on)
+
+Naming: single prefix `kudurru_`, base units, `_total`, `_info`; `node` comes from the scrape, never from kudurru. **Bounded labels only**: `proto`, `family`, `qtype` (fixed list + `other`), `rcode`, `status` (≤ 32), `status_class`, `zone` (configured zones, else `_other`), `upstream`/`list`/`group` (configured names, ≤ 64 else `_other`), `sink`, `role`, `vip`, `integration`. `client` and `domain` are **never** labels (`metrics.clientLabels: topN` opt-in only). Budget < 10 k series per node [observability §3.2].
+
+```
+kudurru_build_info{version,revision,goversion}   kudurru_up_since_seconds   kudurru_config_reloads_total{result}
+kudurru_role_active{role}   kudurru_leader{role}   kudurru_blocking_enabled{group}
+kudurru_dns_requests_total{proto,family,qtype,zone}   kudurru_dns_responses_total{proto,rcode,status,zone}
+kudurru_dns_request_duration_seconds{proto,status_class}   (buckets .0005 … 1 + native)   kudurru_dns_request_size_bytes{proto}   kudurru_dns_response_size_bytes{proto}
+kudurru_dns_inflight_requests{proto}   kudurru_dns_dropped_total{reason}   kudurru_dns_do_requests_total   kudurru_dns_edns_total{feature}
+kudurru_dns_tcp_connections{proto}   kudurru_dns_tls_handshakes_total{proto,result}   kudurru_dns_doh_http_responses_total{status}
+kudurru_block_decisions_total{action,source,group}   kudurru_block_list_hits_total{list}
+kudurru_blocklist_entries{list}   kudurru_blocklist_last_update_timestamp_seconds{list}   kudurru_blocklist_update_failures_total{list}   kudurru_blocklist_stale{list}
+kudurru_cache_entries{kind}   kudurru_cache_requests_total   kudurru_cache_hits_total{kind,stale}   kudurru_cache_evictions_total{reason}   kudurru_cache_prefetches_total
+kudurru_upstream_requests_total{upstream,proto}   kudurru_upstream_responses_total{upstream,rcode}   kudurru_upstream_request_duration_seconds{upstream}
+kudurru_upstream_errors_total{upstream,error}   kudurru_upstream_healthy{upstream}   kudurru_upstream_inflight{upstream}
+kudurru_zone_records{zone,kind}   kudurru_zone_serial{zone}   kudurru_zone_transfers_total{zone,direction,result}   kudurru_dnssec_key_expiry_timestamp_seconds{zone,key}
+kudurru_querylog_events_total   kudurru_querylog_dropped_total{stage,sink}   kudurru_querylog_batch_rows   kudurru_querylog_write_duration_seconds
+kudurru_querylog_db_bytes   kudurru_querylog_wal_bytes   kudurru_querylog_rows   kudurru_querylog_oldest_timestamp_seconds
+kudurru_sink_sent_total{sink}   kudurru_sink_errors_total{sink}   kudurru_sink_queue_length{sink}   kudurru_sink_last_success_timestamp_seconds{sink}
+kudurru_store_operations_total{op,result}   kudurru_store_operation_duration_seconds{op}   kudurru_store_watch_resyncs_total{kind}
+kudurru_store_snapshot_serving   kudurru_store_snapshot_age_seconds   kudurru_store_schema_version
+kudurru_cluster_members   kudurru_cluster_leader_changes_total   kudurru_cluster_fenced   kudurru_cluster_epoch   kudurru_raft_{term,commit_index,last_contact_seconds} (v1.0)
+kudurru_api_requests_total{method,route,code}   kudurru_api_request_duration_seconds{route}   kudurru_auth_events_total{kind,method}   kudurru_audit_events_total{result}
+kudurru_health_check_duration_seconds   kudurru_health_check_failures_total
+kudurru_vip_master{vip}   kudurru_vip_weight{vip}   kudurru_edge_backend_up{backend} (supervisor, from the dnsdist API)
+kudurru_integration_sync_duration_seconds{integration}   kudurru_integration_changes_total{integration,op}   kudurru_integration_errors_total{integration,class}   kudurru_integration_rate_limit_remaining{integration}
+```
+dnsdist's own `dnsdist_*` metrics (`webserver` `/metrics`, `prometheus_add_instance`) are scraped alongside.
+
+### 11.2 Query log pipeline and SQLite schema (per node)
+
+```
+listener workers ─(per-worker SPSC ring 4096, non-blocking; overflow = drop + metric)─▶ collector
+  collector: assign id, apply privacy transform ONCE, dictionary ids via LRU, update minute accumulators, append to hot ring (65 536)
+  ├─▶ batch writer: 1 000 rows or 1 s → one BEGIN IMMEDIATE…COMMIT (prepared statements); 30 s completion grace for in-progress queries
+  ├─▶ rollup flush at minute boundary → rollup_1m/_client_1m/_qtype_1m/_upstream_1m; hourly/daily jobs derive _1h/_1d and domain/list/zone hourly tables
+  └─▶ sinks (bounded queues, drop counters, power-of-ten warnings): dnstap (v0.2), clickhouse, loki, webhook, otlp_logs (v0.2+)
+```
+
+```sql
+-- /var/lib/kudurru/querylog.db   [observability §2.3]
+PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA auto_vacuum=INCREMENTAL;
+PRAGMA wal_autocheckpoint=2000; PRAGMA mmap_size=268435456; PRAGMA busy_timeout=1000; PRAGMA temp_store=MEMORY;
+
+CREATE TABLE meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID;      -- schema_version, node_id, first_ts, privacy_mode_at_write
+
+CREATE TABLE dict_domain   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, etld1 TEXT, first_seen INTEGER, last_seen INTEGER);
+CREATE TABLE dict_client   (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT, grp TEXT, first_seen INTEGER, last_seen INTEGER, UNIQUE(ip,name));
+CREATE TABLE dict_upstream (id INTEGER PRIMARY KEY, addr TEXT NOT NULL UNIQUE);     -- "tls://1.1.1.1:853", "cache", "zone:example.com"
+CREATE TABLE dict_zone     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+CREATE TABLE dict_list     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);     -- blocklist / rule source
+CREATE TABLE dict_node     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+
+CREATE TABLE query (
+  id          INTEGER PRIMARY KEY,          -- rowid, monotonic per node (time-ordered); keyset cursor
+  ts          INTEGER NOT NULL,             -- unix µs
+  latency_us  INTEGER,                      -- NULL if unanswered
+  node        INTEGER NOT NULL REFERENCES dict_node,
+  proto       INTEGER NOT NULL,             -- 0 udp 1 tcp 2 dot 3 doh 4 doq 5 dnscrypt
+  client      INTEGER NOT NULL REFERENCES dict_client,
+  domain      INTEGER NOT NULL REFERENCES dict_domain,
+  qtype       INTEGER NOT NULL, qclass INTEGER NOT NULL DEFAULT 1,
+  status      INTEGER NOT NULL,             -- taxonomy below; >= 16 = not answered normally
+  rcode       INTEGER NOT NULL,
+  reply_type  INTEGER NOT NULL,             -- ip, cname, nodata, nxdomain, … blob
+  upstream    INTEGER REFERENCES dict_upstream,
+  zone        INTEGER REFERENCES dict_zone,
+  list        INTEGER REFERENCES dict_list,
+  rule        TEXT,                         -- matched rule text (bounded 256 B), NULL unless blocked
+  cname       INTEGER REFERENCES dict_domain,
+  dnssec      INTEGER NOT NULL DEFAULT 0,   -- unknown, secure, insecure, bogus, indeterminate
+  ede         INTEGER,
+  flags       INTEGER NOT NULL DEFAULT 0,   -- RD, DO, TC, AD, CD, cached, stale, prefetch, ecs, traceparent
+  ecs         TEXT,
+  trace_id    BLOB,                         -- 16 bytes, NULL unless traced
+  answer      TEXT                          -- short summary (first ~3 RRs), NULL in restricted privacy modes
+);
+-- Deliberately four indexes only (each costs ~10-15 B/row and write amplification):
+CREATE INDEX query_ts        ON query(ts);
+CREATE INDEX query_client_ts ON query(client, ts);
+CREATE INDEX query_domain_ts ON query(domain, ts);
+CREATE INDEX query_status_ts ON query(status, ts) WHERE status >= 16;   -- partial: blocked/error rows (recent-blocked list)
+
+CREATE TABLE rollup_1m (
+  ts INTEGER NOT NULL, node INTEGER NOT NULL,
+  total INTEGER NOT NULL, blocked INTEGER NOT NULL, cached INTEGER NOT NULL, forwarded INTEGER NOT NULL, authoritative INTEGER NOT NULL, dropped INTEGER NOT NULL,
+  rc_noerror INTEGER, rc_nxdomain INTEGER, rc_servfail INTEGER, rc_refused INTEGER, rc_other INTEGER,
+  udp INTEGER, tcp INTEGER, dot INTEGER, doh INTEGER, doq INTEGER,
+  lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  -- bucket upper bounds (ms): 0.5,1,2,5,10,25,50,100,250,500,1000,+Inf  (identical to the Prometheus histogram so both agree)
+  PRIMARY KEY (ts, node)) WITHOUT ROWID;
+CREATE TABLE rollup_client_1m   (ts INTEGER, node INTEGER, client INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,client)) WITHOUT ROWID;
+CREATE TABLE rollup_qtype_1m    (ts INTEGER, node INTEGER, qtype INTEGER, total INTEGER, PRIMARY KEY (ts,node,qtype)) WITHOUT ROWID;
+CREATE TABLE rollup_upstream_1m (ts INTEGER, node INTEGER, upstream INTEGER, total INTEGER, errors INTEGER, timeouts INTEGER, lat_sum_us INTEGER, lat_cnt INTEGER,
+                                 lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+                                 lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+                                 PRIMARY KEY (ts,node,upstream)) WITHOUT ROWID;
+CREATE TABLE rollup_domain_1h   (ts INTEGER, node INTEGER, domain INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,domain)) WITHOUT ROWID;
+CREATE TABLE rollup_list_1h     (ts INTEGER, node INTEGER, list INTEGER, hits INTEGER, PRIMARY KEY (ts,node,list)) WITHOUT ROWID;
+CREATE TABLE rollup_zone_1h     (ts INTEGER, node INTEGER, zone INTEGER, total INTEGER, PRIMARY KEY (ts,node,zone)) WITHOUT ROWID;
+-- rollup_1h, rollup_client_1h, rollup_qtype_1h, rollup_upstream_1h, rollup_1d, rollup_client_1d, rollup_domain_1d have identical shapes.
+CREATE INDEX rollup_domain_1h_ts ON rollup_domain_1h(ts);
+```
+
+Status taxonomy (`status` column; API returns symbolic names; UI colours by class): 0 unknown, 1 forwarded, 2 cached, 3 cached_stale, 4 authoritative, 5 local_record, 6 prefetch_refresh, 7 special_domain, 8 retried, 9 in_progress, 16 blocked_list, 17 blocked_regex, 18 blocked_exact, 19 blocked_cname, 20 blocked_upstream, 21 blocked_rpz (reserved: RPZ zones are not on the roadmap, see §13.3/§15 Q20), 22 blocked_safesearch, 23 blocked_rate_limit, 24 refused_acl, 25 dropped, 26 servfail_upstream, 27 timeout_upstream, 28 dnssec_bogus.
+
+Retention: daily at a random 03:10-03:50 minute **and** whenever `maxDBBytes` is exceeded, deleting in 10 000-row batches with `incremental_vacuum`; dictionaries pruned by `last_seen`; rollups `_1m` 35 d, `_1h` 400 d, `_1d` forever; `wal_checkpoint(TRUNCATE)` every 5 min only when no reader is active; weekly `ANALYZE`; `PRAGMA optimize` on close. Sizing: ~100 B/row → ~0.9 GB/day at 100 qps; defaults raw 30 d capped at 10 GiB; at 1 000 qps keep 2 days raw and point users at the ClickHouse sink [observability §2.4, §2.5].
+
+Privacy at ingest, irreversible: `full | anonymize_client (/24,/48 or daily-HMAC pseudonym) | hide_domains | hide_domains_clients | nothing`; `exclude.{clients,domains,sudn}`; per-policy `queryLog: false`. Raw dnstap export is a separate, audited switch [observability §2.6].
+
+Multi-node: per-node truth; `scope=cluster` = scatter-gather with 2 s per-node timeout, `partial: true` and `nodes[]` on failure; exact sums for additive rollups (UTC-aligned buckets); top-N merged from `n*4` per node and flagged `approximate` with `cutoff_rank`; uniques by union (≤ 10 k) or HLL; cluster cursors encode per-node cursors; live tail multiplexes per-node SSE streams; exact long-range cluster search uses the optional ClickHouse sink (`source=central`). Never Gravity's in-etcd tsdb [observability §5].
+
+```go
+// internal/querylog/sink.go — every external sink; the SQLite writer is the one built-in consumer that may apply back-pressure to nothing (it drops + counts)
+type Sink interface {
+    Name() string
+    Open(ctx context.Context, cfg json.RawMessage, m prometheus.Registerer) error
+    Write(batch []*QueryEvent) error      // called from a dedicated goroutine with a bounded queue (default 10 000 events); never from the query path
+    Flush(ctx context.Context) error
+    Close() error
+}
+// host owns: queue sizing, drop counters (`kudurru_querylog_dropped_total{stage="sink",sink}`), power-of-ten warnings, retry/backoff, privacy transform applied before enqueue, and whether wire buffers are retained (only while a raw sink such as dnstap is registered)
+```
+
+### 11.3 dnstap (v0.2)
+
+Native emission of `CLIENT_QUERY/RESPONSE`, `FORWARDER_QUERY/RESPONSE` (`AUTH_*` for local zones) via `golang-dnstap` `SocketWriter`, queue 10 000, `identity=node`, `version=kudurru/<ver>`, `extra="status=… list=… trace=…"`; `dnstap listen` mode ingests frames from dnsdist/Unbound sidecars into the same log; per-type switches and a sample rate; `raw: true` is an audited admin switch independent of the privacy mode. DNS-collector is the documented path to ClickHouse/Loki/Kafka.
+
+### 11.4 Audit (v0.1)
+
+One immutable `AuditEvent` per mutating API/CLI/reconcile/integration/VIP/auth action: `{id ULID, ts, node, actor{kind,id,name,groups,auth}, action "<resource>.<verb>", resource{kind,id,sub}, result success|denied|error, reason, authz sar|binding|local, diff{before,after} (secrets redacted, 4 KiB cap), request{id,ip,ua,method,path,trace_id}, prev_hash, hash}`; stored in the node's SQLite (`state.db` `audit` table in the same transaction as the mutation for the sqlite driver; `local.db` for the kube driver), hash-chained, 400 d retention; **also** emitted as a JSON line on stdout (`"log":"audit"`) so Kubernetes log pipelines capture it; optional Kubernetes `Event` on the owning CR; `GET /audit` with RBAC `audit.read` [observability §4.2]. Denied attempts are audited from the authz layer. In Kubernetes the per-pod `local.db` rows live on `emptyDir` and disappear with the pod unless `persistence.local` is enabled; the durable paths there are the stdout JSON line (log pipeline) and `Events`, the apiserver audit log covers CRD writes, and `GET /audit?scope=cluster` scatter-gathers per-pod rows (`partial: true` when a pod is unreachable) rather than pretending the table is replicated.
+
+### 11.5 Health, logging, tracing
+
+Probes as in §5.2; CHAOS `id.server`/`version.bind`/`hostname.bind` + NSID; `health.kudurru.internal.` TXT for dnsdist and keepalived; `kudurru lameduck 5s` pre-stop. Logs: `log/slog` JSON with per-role levels (`KUDURRU_LOG__LEVEL=info,dns=debug,raft=warn`), request-scoped attributes, trace/span ids; the query log is not the app log. Tracing (v0.2): OTel SDK, OTLP exporter, `parentbased_traceidratio` 0.001 + tail-keep on error/slow (> 250 ms); accept EDNS `TRACEPARENT` (option 65500, configurable) **only from configured proxies** (dnsdist), strip before forwarding to public upstreams, re-add only to upstreams flagged `tracePropagation: true`; spans `kudurru.dns.query` → `acl / blocking.match / cache.lookup / zone.lookup / dnssec.validate / upstream.exchange` with OTel DNS semconv attributes; `trace_id` stored in the query row, as a histogram exemplar, and linked from the UI [observability §4.3].
+
+### 11.6 Shipped dashboards and alert rules (v0.1)
+
+`deploy/grafana/kudurru-overview.json` (rows: tiles, traffic, latency heatmap, blocking, cache, upstreams, zones + **serial-divergence panel** (`max by (zone)(kudurru_zone_serial) - min by (zone)(kudurru_zone_serial)`), pipeline, cluster/API, a dnsdist row from `dnsdist_*`, VIP row) and `deploy/prometheus/rules.yaml` as a `PrometheusRule`:
+
+| Alert | Expression (sketch) | For |
+|---|---|---|
+| `KudurruNoLeader` | `max(kudurru_leader{role="controller"}) == 0` | 2 m |
+| `KudurruServfailRatio` | `sum(rate(kudurru_dns_responses_total{rcode="SERVFAIL"}[5m])) / sum(rate(kudurru_dns_responses_total[5m])) > 0.05` | 5 m |
+| `KudurruUpstreamUnhealthy` | `kudurru_upstream_healthy == 0` | 2 m |
+| `KudurruQuerylogDrops` | `increase(kudurru_querylog_dropped_total[10m]) > 0` | 0 m |
+| `KudurruQuerylogNearCap` | `kudurru_querylog_db_bytes / <max_db_bytes> > 0.9` | 30 m |
+| `KudurruSerialDivergence` | `max by (zone)(kudurru_zone_serial) != min by (zone)(kudurru_zone_serial)` | 10 m |
+| `KudurruServingFromSnapshot` | `kudurru_store_snapshot_serving == 1` | 15 m |
+| `KudurruSnapshotStale` | `kudurru_store_snapshot_age_seconds > 43200` | 0 m |
+| `KudurruDNSSECKeyExpiring` | `kudurru_dnssec_key_expiry_timestamp_seconds - time() < 7*86400` | 0 m |
+| `KudurruLatencyP95High` | `histogram_quantile(0.95, …kudurru_dns_request_duration_seconds…) > 0.25` | 10 m |
+| `KudurruEdgeBackendDown` | `kudurru_edge_backend_up == 0` or `dnsdist_server_*{state="down"}` | 2 m |
+| `KudurruVIPNoMaster` | `max by (vip)(kudurru_vip_master) == 0` | 1 m |
+| `KudurruClusterFenced` | `kudurru_cluster_fenced == 1` | 0 m |
+| `KudurruBlocklistStale` | `time() - kudurru_blocklist_last_update_timestamp_seconds > 3*<refreshInterval>` | 0 m |
+
+---
+
+## 12. Repository layout, build, CI, release artifacts
+
+Go module `github.com/robertherbaugh/kudurru` (confirmed by the git remote; ratify in §15 Q1). Single module, single binary, no cgo, kubebuilder-style `api/` so CRD types, store types, REST types and docs come from one set of structs.
+
+```
+kudurru/
+├── go.mod                            module github.com/robertherbaugh/kudurru  (go 1.27)
+├── cmd/kudurru/                      cobra root: serve · login · get/apply/delete/describe · zones · records · lists · blocking · query · health · lameduck
+│                                     · backup/restore/export · import · edge {render,run} · vip {render,run,fifo} · cluster {status,promote,join-token}
+│                                     · integrations {list,check,sync,preview,webhook conformance} · admin {reset-password,create-token} · config {get,set,schema}
+│                                     · doctor · api · version · completion
+├── api/v1alpha1/                     Go types + kubebuilder markers for every kind (CRDs AND the sqlite driver's schema); deepcopy, register, CEL rules
+├── internal/
+│   ├── config/                       koanf loader, JSON Schema, env/_FILE, settings metadata table (schema.go: hostOnly/envLocked/restartRequired/writeOnly), docs generator
+│   ├── dnsserver/                    listeners (udp/tcp/dot/doh[/doq/doh3]), proxyproto, EDNS/TC handling, chaos/health names, TLS reload
+│   ├── pipeline/                     Stage contract, fixed chain, Request/Response, Status taxonomy
+│   ├── stages/{ingress,identify,control,local,authoritative,blocking,rewrite,cache,dnssec,upstream,postprocess,log}/
+│   ├── zone/                         RRset model (Endpoint superset), tree, lookup, serial/contentHash, journal, xfr (out; in v0.2), notify, bind import/export, catalog (v1.0)
+│   ├── dnssec/                       (v0.2 validator; v1.0 signer, NSEC/NSEC3 chains, RFC 7583 key state machine, CDS/CDNSKEY)
+│   ├── blocking/                     matchers (from blocky, NOTICE), adblock parser (clean-room), list fetcher, compile/snapshot, conformance corpus
+│   ├── policy/                       client identification, ClientGroup/Policy index, schedules
+│   ├── cache/                        sharded TTL message cache, prefetch, serve-stale, coalescing, persistence
+│   ├── upstream/                     dnsproxy upstream groups, strategies, conditional map, bootstrap, ECS
+│   ├── store/                        Store interface; validator (apiextensions + CEL); schema versions/migrations; conformance/
+│   │   └── {sqlite,kube,follower,raft}/      drivers (follower v0.2, raft v1.0); kube/ includes local.db snapshot persistence
+│   ├── controller/                   one reconciler per kind; status; Events; duplicate detection; serial stamping
+│   ├── auth/                         authenticators (bearer kdr_, JWT by iss, k8s SA tokens, cookie, unix peer, internal token), sessions (SessionStore: sealed/db), argon2, oidc
+│   ├── rbac/                         permissions.yaml (single source), roles, bindings, Authorizer (local, SAR), route-permission lint, generators (ClusterRoles, docs)
+│   ├── api/                          huma routes, envelope, SSE, UI embed, openapi, external-dns webhook server; pihole/ compatibility façade module (v1.0)
+│   ├── querylog/                     ring, collector, sqlite writer, rollups, retention, sinks/{dnstap,clickhouse,loki,webhook,otlp}
+│   ├── audit/                        hash-chained audit store + stdout emitter + Events
+│   ├── metrics/  health/             registry, ops listener, probes, self-query loop, lameduck
+│   ├── integration/                  registry, manifest, lifecycle, runner (leader-scoped, per-instance Lease), plan engine, ledger, secrets
+│   │   └── {externaldns,webhook,cloudflare,unifi,libdns}/   externaldns+webhook v0.1; cloudflare+unifi v0.2
+│   ├── edge/                         topology.go; dnsdist/{render_yaml,render_lua,supervisor,api_client}; keepalived/{render,supervisor,fifo,trackfile}; vip provider interface
+│   ├── cluster/                      node identity, membership sources (static|endpointslice|follower|raft), internal listener (:8082), scatter-gather, promote/fencing
+│   ├── sources/k8s/                  (v0.2) stripped, indexed informers for Ingress / Gateway API / LoadBalancer Services feeding `DNSZone.type: external`
+│   ├── acme/                         (v1.0) certmagic wrapper, DNS-01 solver against kudurru's own zones, leader-only runnable
+│   ├── importers/                    bind, pihole (teleporter), adguard, blocky, technitium, corefile
+│   └── testutil/                     CoreDNS-style test.Case helpers, fake upstreams, testcontainers helpers, envtest harness
+├── web/                              React SPA (pnpm, Vite 8); src/api = generated client; dist embedded via web/embed.go (//go:embed all:dist)
+├── charts/kudurru/  charts/kudurru-crds/
+├── config/                           kubebuilder kustomize tree: crd/bases, rbac (generated from permissions.yaml), manager, samples/, overlays/{metallb,kube-vip,cloud-lb-mixed,hostnetwork-daemonset,standalone,with-edge}
+├── deploy/compose/{single,single-edge,ha/node-a,ha/node-b,ha/node-c}/   deploy/grafana/  deploy/prometheus/  deploy/install.yaml (generated)
+├── images/{dnsdist,keepalived}/Dockerfile   upstream GPL binaries (digest-pinned) + kudurru supervisor; GPL text + source offer in README
+├── docs/                             Hugo/Docsy: per-role pages, config reference (generated), CRD reference (generated), migration guides, integration READMEs, runbooks
+├── hack/                             dev compose (dex, BIND9/Knot for XFR interop, kind + MetalLB), bench fixtures, lint rules, 2-VM keepalived e2e
+├── test/{e2e,interop,bench,conformance}/
+├── .goreleaser.yaml  Makefile  .golangci.yml  go.mod  LICENSE (Apache-2.0)  NOTICE (blocky, dnsproxy, CoreDNS, external-dns attributions)  CONTRIBUTING.md
+└── .github/workflows/                ci.yml (lint, unit, race, fuzz, conformance, e2e kind), edge.yml (edge-check + nightly 2-VM VRRP), release.yml, codeql.yml, licenses.yml, cve-bump.yml
+```
+
+Build & CI (GitHub Actions):
+- `make generate`: controller-gen (CRDs, deepcopy, RBAC), huma OpenAPI dump, `openapi-typescript` client, Go client, config JSON Schema, config docs, CRD docs, RBAC docs/ClusterRoles from `permissions.yaml`.
+- `make lint`: golangci-lint, `go vet`, route-permission lint, config-metadata/docs drift test, `go-licenses` denying GPL/EUPL modules, CRD/CEL cost check.
+- `make test`: unit (`-race`), **store driver conformance suite against `sqlite` and `kube` (envtest)**, pipeline golden tests (CoreDNS `test.Case` style), fuzz on wire parsers / PROXYv2 / adblock parser / zone file parser, RBAC table tests, plan-engine conformance against external-dns cases.
+- `make bench`: blocking matcher and cache benchmarks with the +20 % regression gate (results published to GitHub Pages).
+- `make edge-check`: render `dnsdist.yml`/`dnsdist.lua`/`keepalived.conf` fixtures for every topology and validate them inside the pinned images with `dnsdist --check-config` / `keepalived -t`; plus the console `-e newServer` smoke test (the week-1 spike, kept as a permanent canary).
+- `make e2e`: testcontainers (dex OIDC, BIND9 secondary doing AXFR/NOTIFY from kudurru, Knot catalog consumer in v1.0, AdGuard Home black-box blocking corpus), kind + Helm install (mixed-protocol Service with MetalLB, Restricted PSS admission, apiserver-outage test: kill the control plane, restart a pod, assert answers from `local.db`), nightly 2-VM keepalived failover with timing recorded.
+- Release: goreleaser (binaries linux/darwin amd64/arm64 + riscv64, deb/rpm/apk with a systemd unit, Homebrew tap), `kos:` images (distroless static nonroot, multi-arch, `-debug` variant), cosign keyless signatures + SBOM + SLSA provenance, Helm charts to `oci://ghcr.io/robertherbaugh/charts/{kudurru,kudurru-crds}`, `crds.yaml` + `install.yaml`, compose bundles, npm `@kudurru/api` TS client, docs site.
+- Supply chain: dependabot (exact pin for `cloudflare-go`), `govulncheck`, CodeQL, a dnsdist/keepalived CVE tracking job that opens a PR bumping the pinned upstream digest and rebuilding the supervisor images.
+
+---
+
+## 13. Roadmap
+
+### 13.1 v0.1 — "stone" (a credible daily driver; ~16 weeks, one release cycle)
+
+Milestones (exit criteria in parentheses):
+
+| Week | Milestone | Exit criteria |
+|---|---|---|
+| 1-2 | **Spikes** (§14) | dnsdist console-under-YAML verdict; PROXYv2 + chashed smoke; kube driver passes conformance on envtest; blocky matcher port with bench baseline; go-oidc BFF against dex with sealed sessions; mixed-protocol Service on kind + MetalLB (+ one cloud if available); apiextensions/CEL binary-size measurement |
+| 3-6 | **M1 resolver + store** | Do53/DoT/DoH + PROXYv2; pipeline with golden tests; cache; upstream groups; `Store` + `sqlite` + `kube` drivers with conformance; `zonecache` + `local.db` snapshot; CRDs `DNSZone/DNSRecordSet/BlockList/ClientGroup/Policy`; Lease controller stamping serials/conditions/Events |
+| 7-9 | **M2 authoritative + blocking** | primary/forward zones, full RR set, wildcards, CNAME chase, AXFR out + TSIG + NOTIFY out, BIND import/export; blocking engine (exact/suffix/regex, allow-wins/allow-only, response-side checks), leader-fetched lists with digest pull, embedded starter list, bench gate; QPM rate limiting; `health.kudurru.internal.` |
+| 10-12 | **M3 API, auth, dashboard** | huma API + generated clients; OIDC BFF + local admin + `kdr_` tokens + RBAC matrix + k8s SA tokens/SAR + audit; config metadata table with `hostOnly`; dashboard (tiles, 24 h chart, per-client chart, top lists, query log with SSE + allow/deny + explain + long-term views, lists/groups/policies/clients, zones editor, settings basic, nodes, diagnosis badge) |
+| 13-14 | **M4 deploy + edge** | distroless image; compose `single`, `single-edge`, `ha-static` (3 nodes + dnsdist + keepalived); supervisor images with `edge run` (restart convergence) and `vip run` (full contract); Helm `kudurru` + `kudurru-crds` (Deployment, mixed-protocol Service + split fallback, Restricted PSS, probes, PDB, `edge.enabled`, `vip.provider`, standalone mode); kustomize overlays; Grafana board + PrometheusRule; `kudurru doctor` |
+| 15-16 | **M5 hardening** | e2e (BIND secondary, dex, kind, apiserver-outage, 2-VM VRRP), fuzz corpus, security review of auth + rendering, docs site, `v0.1.0` tag |
+
+Explicitly **not** in v0.1 and why it is safe:
+
+| Deferred | Seam present in v0.1 |
+|---|---|
+| Secondary/stub zones, AXFR/IXFR **in**, NOTIFY in, RFC 2136 | `ZoneType` enum + `SecondarySpec`/`StubSpec` exist (rejected by CEL "not supported in this version"); `zone.Journal` records deltas per serial; `Transfer()` capability; NOTIFY/UPDATE opcodes routed to a handler returning NOTIMP |
+| DNSSEC validation and signing | `dnssec` stage slot (pass-through); `DNSSECSpec` reserved; zone tree separates *user* RRsets from *derived* RRsets (empty layer); IXFR-from-leader path exists for signed data; `status.dnssec.nextResign` reserved |
+| DoQ/DoH3 | listener registry keyed by protocol; TLS config/cert reload shared; dnsdist provides DoQ/DoH3 meanwhile |
+| Adblock modifiers (`$dnstype`, `$dnsrewrite`, `$client`, `$important`, `$badfilter`, `$denyallow`) | the parser already tokenises modifiers into a counted "slow path" bucket; the `rewrite` stage exists (empty) |
+| MAC / DoT-SNI / DoH-path client identification | `Client` struct carries `MACs`, `ClientID`; `identify` has ordered matcher slots; inventory API exists for UniFi to fill |
+| Cloudflare sink, UniFi source | integration framework, `Endpoint` superset, `Labels`/`ProviderSpecific`/`kudurru.view`, ledger kind, `DNSZone.spec.publish[]` reserved, `Integration` schema designed; `external-dns`/`webhook` integrations exercise the framework |
+| Console diff-apply for dnsdist, dynblock push, cert reload without restart | `edge.Supervisor` already renders/validates/execs; `Topology` is shared by the YAML and Lua renderers; restart convergence stays the fallback |
+| Follower mode / raft | `Store` driver slots; `cluster` package membership-source abstraction; `/internal/snapshot` route reserved; `meta.cluster_epoch`/`primary_id` columns exist; `ha-static` compose is byte-compatible with the follower compose |
+| IAM/Integration/Kudurru CRDs | the YAML config shape **is** the CRD spec; the kube driver maps kinds to CRDs generically, so adding a kind is registering its CRD |
+| CEL claim mapping, CLI OIDC login, TOTP, impersonation mode | `ClaimMapper`, `Authenticator` chain, `IdentityProvider` fields reserved; bearer JWT routed by `iss` from day one; `auth.kubernetes.mode` enum exists with only `sar` accepted |
+| IAM write API/UI (local users beyond `admin`, service accounts, role bindings, identity providers via API) | v0.1 manages these as file/ConfigMap objects (`rbac.bindings`, `auth.identityProviders`, `users:`) plus `POST /auth/tokens` (own tokens) and `kudurru admin create-token`; the IAM page is read-only with "managed by file" badges; the generic `/objects/{kind}` route, `managedBy` and the internal `LocalUser`/`ServiceAccount` kinds already carry what v0.2 exposes |
+| Session listing/killing, hourly IdP re-evaluation | `SessionStore` interface with `sealed`; `db` implementation lands with the SQLite session table |
+| dnstap, OTel, ClickHouse/Loki sinks | `querylog.Sink` interface with bounded queues; `QueryEvent` keeps wire buffers only while a raw sink is registered |
+| `external` zone type (Ingress/Gateway/LB) | `ExternalSpec` reserved; informer plumbing exists for EndpointSlices |
+| Catalog zones, ACME, Pi-hole façade, per-clientgroup query-log scope | v1.0; `scope{kind: clientgroup}` already parses and is rejected by validation |
+
+### 13.2 v0.2 — "clay copies" (~12 weeks)
+
+Secondary + stub zones (AXFR/IXFR in, TSIG, NOTIFY in, XFR over TLS; every replica transfers independently), RFC 2136 UPDATE with `key × owner × type` policies, DoQ/DoH3, DNSSEC **validation** (+ NTA, EDE), adblock modifier slow path, rewrites/DNS64/AAAA filter/rebinding protection, MAC/ClientID identification, `external` zone type, Cloudflare `RecordSink` (split-horizon with views), UniFi `ClientSource` (+ optional push/actions), Tier-B webhook client + conformance CLI, dnsdist console diff-apply + cert reload + dynblock push (if the spike passed), compose HA **follower mode** with fenced promote and a cluster join wizard, `Kudurru`/`Integration`/`IdentityProvider`/`RoleBinding`/`ServiceAccount` CRDs, `auth.kubernetes.mode: impersonate` opt-in, CEL claim rules, CLI OIDC login (loopback PKCE + device flow), TOTP, `db` session store for Docker, RP-initiated logout, dnstap emit/listen, OTel tracing incl. dnsdist TRACEPARENT, ClickHouse/Loki sinks, "All settings" page, importers for blocky/CoreDNS Corefile/Technitium, blocked-services catalogue from a kudurru-owned data repo (if §15 Q5 says yes), `v1alpha1` → `v1beta1` plan.
+
+### 13.3 v1.0 — "temple" (~16-20 weeks)
+
+DNSSEC **signing** on the leader (ECDSAP256SHA256 CSK default, Ed25519 opt-in, NSEC or NSEC3 with RFC 9276 params, CoreDNS `sign` timers/jitter, RFC 7583 key state machine, KSK activation gated on observed parent DS with manual override, ZSK `rolloverDays`, CDS/CDNSKEY, BIND-format key import, keys encrypted in the store, `ldns-verify-zone`/`delv` in CI, leader takeover without re-sign); **catalog zones** (RFC 9432) produced and consumed; **raft** `Store` driver (hashicorp/raft, SQLite FSM, single-voter bootstrap, learner join via single-permission token, snapshot before membership change, never fork on join failure, `MinVersion` migrations) replacing follower mode; native ACME DNS-01 via certmagic (leader); ClickHouse-backed exact cluster top-N; `clientgroup:` RBAC scope; back-channel logout; Pi-hole v6-compatible façade module; `/api/v1` freeze + deprecation policy; CRD `v1beta1`; third-party security review; published dnsperf numbers per profile; OLM bundle after `v1` CRDs.
+
+Out of scope for 1.0 unless the user asks (§15): DHCP server, replacing CoreDNS for `cluster.local`, online DNSSEC signing (black lies) as default, go-plugin Tier C, embedded etcd, a QNAME-minimising iterative resolver (forwarder only), RPZ (response policy zones as a blocklist transport; the `blocked_rpz` status value is reserved).
+
+---
+
+## 14. Risks & mitigations
+
+Ordered by impact × probability; each row names the spike or gate that retires the risk and the seam that keeps a wrong guess from forcing a rewrite.
+
+| # | Risk | Why it is real | Mitigation / spike | Seam |
+|---|---|---|---|---|
+| 1 | **Replication/HA**: owning consensus (membership, join, snapshots, mixed versions) is where Gravity accumulated its worst bugs | [gravity §16/§18.3] | v0.1 writes **no** consensus code; conformance suite per driver; follower mode (v0.2) has trivially understood semantics plus fencing; raft only in v1.0 after an rqlite-style single-voter prototype behind `Store` with a 100 k-record load benchmark | `Store`, whole-object `Apply`, serving reads only snapshots, backup = `Snapshot` YAML |
+| 2 | **Cold start / apiserver outage** on small clusters | [k8s §8, SRE lens] | `local.db` snapshot with age-gated readiness; **leader election decoupled from process lifetime** (§5.3, D44 — stock controller-runtime would exit every pod when the lease cannot be renewed); e2e kills the control plane for 5 min, asserts answers continue on every pod and that no pod restarted, then restarts a pod and asserts answers from `local.db`; `persistence.local` PVC opt-in; `system-cluster-critical` | `zonecache` snapshot writer, `cluster.Elector` |
+| 3 | **dnsdist orchestration**: no YAML reload; console directives under YAML UNVERIFIED; console wire protocol undocumented | [dnsdist §1.11, §7] | week-1 spike; restart convergence is the v0.1 baseline and the permanent fallback; supervisor execs the `dnsdist` binary (no console client to write); Lua renderer behind the same `Topology`; `make edge-check`; digest pinning + CVE bump job | `edge.Renderer{YAML,Lua}`, `edge.Supervisor` |
+| 4 | **keepalived in containers**: host networking + caps, VIP left behind, VRRP misconfig | [dnsdist §2.4/§6] | generator enforces `state BACKUP`, distinct priorities, `nopreempt`, `auth_hmac`, persisted VRID; keepalived 2.4.3 compiled from source (Alpine ships 2.3.4 without `auth_hmac`); drain = FAULT (`300`), since `nopreempt` ignores priority drops (§3.6); `keepalived -t` before swap; `stop_grace_period`; nightly 2-VM e2e recording failover timing for node loss, FAULT drain and `60` no-op; never default in k8s | `vip` provider interface (`Owner()`, `SetWeight()`, events) shared by kube-vip/MetalLB/keepalived |
+| 5 | **Sealed-cookie sessions** diverge from the server-side recommendation | [auth §4.1] | small payload, 4 KiB guard, `sessionsValidAfter`, idle + absolute lifetimes, auditor review of the sealing format; `db` store in v0.2 | `SessionStore` |
+| 6 | **DNSSEC signing** correctness (NSEC3 chains, ENTs, wildcards, rollover timing) | [go-dns-stack §3] | leader-only signing, continuity on takeover, precomputed chains, `ldns-verify-zone`/`dnssec-verify`/`delv` + BIND validating resolver in e2e; staged to v1.0 after transfers are proven in v0.2 | derived-RRset layer, serial/journal, `DNSSECSpec` |
+| 7 | **Blocking performance/memory** with 1-3 M entries and regex-heavy lists; clean-room parser drift | [blocking §5.1] | blocky's structures; CI bench gate; regex cap; CRC-skip rebuilds; conformance corpus cross-checked against AdGuard Home black-box | `blocking.Snapshot`, slow-path bucket |
+| 8 | **OIDC/RBAC footguns** (auto-admin, token oracles, CSRF on plain-HTTP labs, IdP quirks) | [auth §10] | strict provisioning; constant-time full-hash compares; CSRF header always required for cookie writes; tolerant claim parsing; dex + Keycloak + Authentik in e2e; security review before v0.1; SAR default (no `impersonate` grant) | `Authenticator` chain, `Authorizer`, `ClaimMapper` |
+| 9 | **Two-driver semantics drift** (sqlite vs kube) | tech-lead lens | bounded `Apply` contract (§4.3): whole-object, `managedBy`, optimistic concurrency, no sub-object field-manager emulation; conformance suite is the contract | `store/conformance` |
+| 10 | **apiextensions/CEL dependency weight** in the Docker binary | tech-lead lens | measured in the week-1 spike (binary size, build time); fallback is a JSON-Schema validator + a tiny CEL subset if > 25 MB delta | `store.Validator` |
+| 11 | **miekg/dns v1 end-of-life** | [go-dns-stack §2] | `dns.Msg`/`dns.RR` confined to four packages; migrate when CoreDNS does | record model isolation |
+| 12 | **Kubernetes LB realities** (mixed-protocol unsupported on some clouds; `Local` policy imbalance; hostNetwork sysctl limits) | [k8s §9.1] | chart `splitProtocols` + shared-IP annotations, cloud matrix docs, e2e on kind + MetalLB, `trafficDistribution` value | Helm values only |
+| 13 | **CRD scale** (thousands of records per zone, 1.5 MiB cap, ~10 updates/s) | [go-dns-stack §6.2, §17.3] | `DNSRecordSet` ≤ 1000 endpoints; status summarises; large/imported/secondary/signed zones are node-local zone data, never CRDs; documented ceilings (~50 k records/zone, ~10 updates/s) with a `doctor` check; escape hatch raft driver (v1.0) | zone data vs zone config split |
+| 14 | **Static-twins HA serial skew** confuses external secondaries | §6.5 | documented; dnsdist `order` pins XFR to one node; follower mode removes it | serial rule |
+| 15 | **Per-node query logs in k8s** (emptyDir loss) | [observability §2.5] | documented; `persistence.querylog` PVC opt-in; ClickHouse sink; never NFS | `querylog.Sink` |
+| 16 | **Licence contamination** (code *and* embedded data) | [blocking §1.1, pihole §0] | `go-licenses` deny list; NOTICE; CONTRIBUTING forbids porting from GPL/EUPL repos; supervisor images carry GPL text + source offer (written offer for the from-source keepalived build); the embedded starter blocklist and any future blocked-services/safe-search catalogue are built only from permissively licensed sources with a provenance file checked in CI (§6.4) | — |
+| 17 | **Scope creep / bus factor** (Gravity's trajectory; v0.1 is already 16 weeks) | [gravity §15] | milestones with exit criteria; seams table; CONTRIBUTING architecture map; generated clients/docs; features gated on conformance tests | — |
+| 18 | **cgo-free constraint** | [go-dns-stack §12] | modernc SQLite only; pure-Go ClickHouse client; `CGO_ENABLED=0` enforced in release | — |
+
+Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.2 started from YAML + `dnsdist -C cfg -e 'newServer({...})'` and `reloadAllCertificates()`; (b) PROXYv2 + `chashed` + health `validation_function` smoke; (c) kube driver + envtest conformance of `Store`, including `local.db` snapshot restore with the apiserver stopped; (d) blocky matcher port + bench baseline; (e) go-oidc BFF against dex with sealed sessions + `sessionsValidAfter`; (f) mixed-protocol Service on kind + MetalLB and one cloud; (g) apiextensions + cel-go binary-size and build-time measurement; (h) keepalived 2.4.3 `auth_hmac file:` + `track_file` + FIFO on two VMs.
+
+---
+
+## 15. Open questions for the user
+
+1. **Project home**: module `github.com/robertherbaugh/kudurru` (matches the remote), images under `ghcr.io/robertherbaugh/`, CRD group `kudurru.io` — is the `kudurru.io` domain owned/desired, or should the group be `kudurru.dev`/`<org>.io`? (An org move later is a `go.mod` + image path change only.)
+2. **Compose HA ladder**: v0.1 static twins (file-managed, read-only UI), v0.2 follower mode (single writer, fenced manual promote), v1.0 raft — acceptable, or should raft be pulled forward at the cost of Cloudflare/UniFi?
+3. **Sessions**: accept sealed cookies in v0.1 (no mid-session IdP group refresh, no session listing), with the SQLite `db` store in v0.2 for Docker and an optional external store (Valkey) for Kubernetes in v1.0?
+4. **Kubernetes as data source**: `external` zones (Ingress/Gateway/LB hostnames, v0.2) only, or also replace CoreDNS for `cluster.local` (not before 1.x proposed)?
+5. **Blocked-services / safe-search data**: maintain a kudurru-owned permissively licensed catalogue (AdGuard's tables are GPL), or drop those features?
+6. **DHCP**: out of scope for 1.0 (UniFi/router owns it; inventory via UniFi). Confirm.
+7. **Default block response**: `zeroIP`, TTL 10 m, EDE 15 — or `nxdomain`?
+8. **Query-log defaults**: privacy `full`, raw 30 d / 10 GiB, answer summary stored only in `full` — acceptable for the project's privacy posture?
+9. **Cloudflare ownership marker**: comment only (Free) or comment + tag; also honour/produce external-dns TXT heritage records for coexistence with a parallel external-dns?
+10. **UniFi legacy API**: allow undocumented endpoints behind a flag for alias/fixed-IP/VLAN data, or official API only?
+11. **Edge default in Helm**: dnsdist off by default (proposed) — flip to on once console diff-apply is proven?
+12. **Pi-hole API façade**: v1.0 optional module (proposed) or pull into v0.2 for Home Assistant/Homarr/PADD users?
+13. **Transports**: implement DoQ/DoH3 natively in v0.2 (proposed) or rely on dnsdist for QUIC and keep the core smaller?
+14. **Minimum hardware/arch**: Raspberry Pi 4 class (arm64, 1 GB) supported; is `armv7` a release target?
+15. **Authorization in Kubernetes**: SAR default with impersonation opt-in (proposed). Confirm.
+16. **Frontend**: React + shadcn/ui (proposed) vs Lit/PatternFly (Gravity style)?
+17. **keepalived build**: compile 2.4.3 from the upstream tarball (gets `auth_hmac`; kudurru carries the GPL source offer) — or ship the Alpine 2.3.4 package (no `auth_hmac`; `check_unicast_src` + `unicast_fault_no_peer` only) and keep the image trivially reproducible?
+18. **VIP drain policy**: `kudurru lameduck` FAULTs the VIP (it moves on every rolling restart of the MASTER and, with `nopreempt`, does not come back) — acceptable, or should lameduck keep the VIP and only drain dnsdist backends, moving the VIP only on real failure?
+19. **PROXYv2 authentication**: shared-secret TLV (proposed, v0.1) vs relying on NetworkPolicy/host firewalls only; and whether the compose `single-edge` loopback profile should also require it.
+20. **RPZ**: add response policy zones (BIND/Knot-compatible blocklist transport, also lets kudurru *publish* its blocklists to other resolvers) in v0.2/v1.0, or leave the `blocked_rpz` status reserved?
+21. **Encryption-key rotation UX**: `KUDURRU_ENCRYPTION_KEY_PREVIOUS` dual-key window (proposed) vs an explicit `kudurru admin rotate-key` command that rewrites `state.db`/Secrets in place?
+
+---
+
+## 16. Decision log
+
+| # | Topic | Decision | Why | Alternatives rejected |
+|---|---|---|---|---|
+| D1 | Base proposal | Start from the MVP-and-risk-first proposal; graft from the Kubernetes-first and single-binary-first proposals | Highest judge tally (24/30 vs 22 and 18); fewest ways to break on both targets; best seam discipline | Kubernetes-first as base (largest v0.1, impersonation default, leader-held zones re-signed on flap); single-binary-first as base (owns consensus from day one, StatefulSet+PVC in k8s, OIDC/dnsdist deferred) |
+| D2 | Source of truth in Kubernetes | CRDs via the apiserver are the only store; Deployment, no PVC for config | [k8s §13 model 1, §16.1/§16.2]; zero consensus code; GitOps/RBAC/audit for free | Internal raft store with CRD bridge (two sources of truth, status lag; k8s §16.1); embedded etcd (Gravity's own advice). Note the research disagrees with itself: go-dns-stack §17.3 advises against CRDs as the *primary* datastore (1.5 MiB object cap, apiserver pressure, no home for runtime data); accepted here only for **configuration** objects with the documented ceilings and the zone-data/zone-config split of risk #13 — transferred, imported and signed zone data is never a CRD |
+| D3 | Source of truth in Docker | Embedded SQLite (`state.db`) behind the same `Store` interface | One engine for state/log/audit; cgo-free; no fsync-heavy raft log on SD cards in v0.1 | bbolt object store (second engine); raft single-voter from day one (consensus surround is Gravity's bug cluster) |
+| D4 | Consensus timing | None in v0.1; `follower` driver v0.2; `raft` driver v1.0 | Validate the product before owning membership/join/snapshots [gravity §16] | raft in v0.1 (single-binary-first proposal); raft "post-1.0 unless demand" (Kubernetes-first proposal) — bare-metal multi-writer is a real user need |
+| D5 | Compose HA before raft | v0.1 `ha-static` (identical file-managed config, dnsdist on each node lists all, keepalived VIP); v0.2 follower with fenced promote | Delivers a working keepalived + dnsdist HA profile in v0.1 with zero replication code; follower adds a writable UI without consensus | Remote driver + unfenced `promote` (split-brain by design); no HA until raft |
+| D6 | Promotion fencing | `cluster_epoch` + `primary_id` in `state.db`, advertised on `/internal/status`; stale primary demotes itself and returns `503 fenced` | Closes the SRE-identified split-brain in manual promote | No fencing (the Kubernetes-first proposal) |
+| D7 | Cold start without apiserver | `zonecache` persists the materialised object set to `local.db`; serve from it with `Degraded`, age-gated readiness, `maxAge` 24 h | Fixes the "DNS needed to bring the cluster up" trap named by the SRE lens | SERVFAIL until informers sync (CRD-only proposals); StatefulSet+PVC with raft (single-binary-first proposal) |
+| D8 | Node heartbeats | None stored; Nodes page = EndpointSlice + scatter-gather `/internal/status` | Avoids the Gravity tsdb anti-pattern in miniature [observability §5] | `NodeStatus` in Secrets (MVP-first proposal); per-node Lease (extra writes for little value) |
+| D9 | `Apply` semantics | Whole-object apply + `managedBy` single writer + optimistic `resourceVersion`; SSA with field owner in k8s; no sub-object field-manager emulation in SQLite | Bounds the emulation scope a small team can keep correct; makes two sources of truth impossible | Full SSA emulation in ~2-3k LOC (k8s-first, unsubstantiated) |
+| D10 | Determinism | Proposer computes uid/timestamps/serial candidates; drivers store verbatim | The v1.0 raft FSM is deterministic without touching callers | Drivers generating values in the apply path |
+| D11 | Schema migrations | `SchemaVersion` in every driver from v0.1; newer-on-disk refuses to start; follower halts on version skew; raft `MinVersion` + cluster-min gating | Both CRD proposals had no migration story for the embedded store | Rely on apiserver storage versions only (does not exist in Docker) |
+| D12 | Serial rule | `status.serial = max(prev+1, unix_now)`, leader-stamped on `contentHash` change, everywhere | One rule for all drivers; monotonic; near-equal on static twins | Per-commit counter in SQLite only (diverges across twins); hard-coded (Gravity) |
+| D13 | Secondary zones | Every replica transfers independently; persisted in `local.db`; no leader in the transfer path | No re-transfer on leader flap (SRE critique of the Kubernetes-first proposal) | Leader as IXFR primary for secondaries |
+| D14 | DNSSEC signing (v1.0) | Leader signs; signed RRsets are zone data replicated by IXFR to replicas; new leader continues from the last signed state, never re-signs on takeover | Sequential signers make ECDSA non-determinism irrelevant; no NOTIFY storm on rolling upgrades | Re-sign on every leader change (Kubernetes-first proposal); per-replica signing (go-dns-stack §17.4) |
+| D15 | Blocklist distribution | Leader fetches, publishes digest; replicas pull by digest from the leader, compile locally; fallback after 10 min | Avoids N× egress and divergent list versions [k8s §16.11]; v0.1 not v0.2 | Every replica fetches in v0.1 (MVP-first proposal) |
+| D16 | dnsdist/keepalived orchestration | kudurru supervisor is PID 1 inside kudurru-published images FROM the upstream digest; render → validate → exec → signal/console | Cleanest day-2 shape; versioned binary, not a shell loop; GPL boundary = mere aggregation [dnsdist §4] | initContainer-copied binary + separate agent container (ambiguous exec path); shell snippet entrypoint from docs (the single-binary-first proposal) |
+| D17 | dnsdist membership changes | v0.1 regenerate YAML + restart child; v0.2 console diff-apply gated on the week-1 spike; Lua renderer fallback | Console-under-YAML is UNVERIFIED [dnsdist §1.11]; restart is sub-second behind ≥ 2 edge replicas | Rely on console from day one; Lua `maintenance()` DNS-driven loop (unstable UUIDs) |
+| D18 | Edge/VIP in v0.1 | `edge run` and `vip run` supervisors ship in v0.1 | dnsdist and keepalived are hard requirements; both are thin wrappers with the longest real-hardware feedback loop | Static render only in v0.1 (MVP-first proposal); no edge until v0.2 (single-binary-first proposal) |
+| D19 | VIP in Kubernetes | `vip.provider: none\|kube-vip\|metallb\|keepalived`, keepalived opt-in only with hostNetwork edge DaemonSet | kube-vip/MetalLB are Service-aware and Apache-2.0 [dnsdist §2.5, k8s §16.14] | keepalived default in k8s |
+| D20 | Every dnsdist lists all nodes | Yes, in every multi-node profile | VIP follows dnsdist health, not kudurru health [dnsdist §3.2] | Local-backend-only dnsdist |
+| D21 | Kubernetes authz | SAR on CRDs + virtual resources with projected SA tokens in v0.1; impersonation opt-in v0.2 | `impersonate` grant = cluster-admin-equivalent blast radius for an internet-facing server; research vetted SAR, not impersonation [k8s §10] | Impersonation by default (Kubernetes-first proposal) |
+| D22 | Dual authz precedence | Allowed if either k8s RBAC (SAR) or kudurru bindings allow; audit names the path | OIDC humans on home clusters rarely share the apiserver's issuer | Single policy system per mode (Kubernetes-first proposal) — leaves OIDC humans without bindings in k8s |
+| D23 | Sessions | Sealed cookie in v0.1 (both modes) with `sessionsValidAfter`; `SessionStore.db` v0.2 Docker; external store option v1.0 | Deployment has no shared DB; revocation lever exists | Server-side sessions via raft (single-binary; every session touch a consensus write); refresh token in the cookie (size) |
+| D24 | Config metadata / hostOnly | Metadata table with `hostOnly`/`envLocked`/`restartRequired`/`writeOnly` in v0.1 | Fence against the Pi-hole 2026 RCE class; drives UI/docs from one table [pihole §16.8, §17.7] | Defer to v0.2 (MVP-first proposal) |
+| D25 | Settings in k8s | Two ConfigMaps: `kudurru-node` (checksum rolls pods) and `kudurru-settings` (hot reload); `Kudurru` CRD in v0.2 | Config changes must not restart pods [k8s §16.6] | One ConfigMap with a checksum annotation |
+| D26 | Object kinds | `DNSZone`, `DNSRecordSet` (Endpoint superset), `BlockList`, `ClientGroup`, `Policy`, `Kudurru`, `Integration`, `IdentityProvider`, `RoleBinding`, `ServiceAccount`; `User`/`APIToken`/`TSIGKey`/`DNSSECKey` internal | Mirrors [k8s §12]; keeps hashes out of `kubectl get`; fewest concepts for Pi-hole users | `RRset`/`BlockSource`/`ListGroup`/`Client`/`UpstreamGroup` kinds (single-binary; 15 kinds); `User`/`APIToken` CRDs (Kubernetes-first proposal) |
+| D27 | Upstream groups | `Kudurru.spec.upstreams.groups` map referenced by name | One fewer kind; groups rarely change | `UpstreamGroup` object |
+| D28 | Record extensions | `Endpoint.kudurru{comment,disabled,expiresAt,view}`; `ToExternalDNS()` drops it | Pi-hole/Technitium users expect comments/disable; external-dns compatibility preserved | Everything in `providerSpecific` (clunky); Endpoint isomorphism strictly (loses UX) |
+| D29 | Split-horizon | Labels + per-sink `providerSpecific` + `kudurru.view: public` endpoints + sink `translate` | One zone, one truth [integrations §2.5] | Second hand-maintained public zone |
+| D30 | Audit placement | Same SQLite transaction as the mutation in the sqlite driver; `local.db` + stdout + Events in k8s | Atomic audit where kudurru owns the store | Separate `audit.db` only (not atomic) |
+| D31 | Permissions source | `internal/rbac/permissions.yaml` generates roles, ClusterRoles, docs, lint fixtures | Prevents drift between two authz systems | Hand-maintained ClusterRoles |
+| D32 | Backup format | `kind: List` YAML byte-identical to `kubectl get kudurru.io -A -o yaml`; restore = apply | One format across modes | Tarball of tables (Pi-hole teleporter style) as the primary format |
+| D33 | Engine for zone data / snapshots | SQLite (`local.db`), not bbolt | One engine, fewer dependencies | bbolt `zones.db` (Kubernetes-first proposal) |
+| D34 | Store validation | CRD OpenAPI + CEL executed locally in Docker via apiextensions packages; binary-size measured in the spike | Same rejects in both modes [k8s §13] | Two validators (JSON Schema in-process, CEL in CRDs; single-binary) |
+| D35 | Transports | DoT/DoH in v0.1; DoQ/DoH3 natively in v0.2; dnsdist covers QUIC meanwhile | "Extreme featureset" without blocking v0.1 on QUIC | Do53-only v0.1 (single-binary-first proposal); all five in v0.1 (Kubernetes-first proposal) |
+| D36 | Block response default | `zeroIP`, TTL 10 m, EDE 15 | Responsive to one-click allow; AdGuard default [blocking §6.4] | `refused` (stub resolvers fail over); 6 h TTL (blocky) |
+| D37 | Long-term analytics | In v0.1 from rollups | Most-requested missing Pi-hole v6 feature [pihole §17.3] | v0.2 (Kubernetes-first proposal) |
+| D38 | Pi-hole API façade | Optional module in v1.0 | Protect v0.2 scope; open question to pull forward | v0.2 (MVP-first proposal) |
+| D39 | cluster.local | Forward to CoreDNS; `external` zone type v0.2; `kubernetes` type not before 1.x | CoreDNS-grade conformance burden [k8s §17] | Replace CoreDNS in v0.2 (Kubernetes-first proposal) |
+| D40 | Module path | `github.com/robertherbaugh/kudurru` | Confirmed by the git remote; flagged for ratification | `github.com/kudurru/kudurru`, `github.com/kudurru-dns/kudurru` (org names, unverified) |
+| D41 | Minimum Kubernetes | 1.30 | CRD CEL validation rules GA (1.29 per the upstream changelog — not covered by the research, verify), ValidatingAdmissionPolicy GA (1.30 [k8s §0]; reserved for optional cross-object policies the chart may ship later), mixed-protocol LB GA since 1.26 [k8s §0] | 1.26 |
+| D42 | DHCP | Out of scope for 1.0 | Gravity's and Technitium's largest bug clusters; UniFi/router owns it | DHCP role in v1 |
+| D43 | Extension API | Tier A in-tree Go + Tier B external-dns-compatible HTTP; Tier C go-plugin deferred | Simple integration model that third parties already know [integrations §5.1]; no runtime in-process code | Technitium-style in-process app loading |
+| D44 | Leader election lifecycle | client-go `LeaderElector` loop owned by `internal/cluster`; losing the lease stops only leader-only runnables; the process never exits on leadership loss | Stock controller-runtime/kubebuilder behaviour (stop Manager, exit) would take the dataplane down on every pod during an apiserver outage — the opposite of principle 4 [k8s §7.4] | controller-runtime Manager election as-is; per-runnable Leases |
+| D45 | PROXYv2 trust | Source allow-list of exact peers **and** a shared-secret TLV (`0xE0`) injected by the dnsdist supervisor; NetworkPolicy template in the chart | Pod-CIDR / LAN-CIDR trust is forgeable by any neighbour and the forged address feeds ACLs, client groups and the query log | CIDR-only trust (dnsdist/PowerDNS default); mTLS between dnsdist and kudurru (dnsdist→backend DoT exists, but client-certificate support for backends is unverified and it adds a certificate lifecycle to every edge pair; revisit if the TLV approach proves insufficient) |
+| D46 | keepalived binary | 2.4.3 compiled from the upstream tarball in the kudurru image; 2.3.x distro package supported as a degraded, warned mode | `auth_hmac` (2.4.0+) is the only authenticated VRRP option; Alpine still packages 2.3.4 [dnsdist §2.1] | Alpine `apk` only (no `auth_hmac`); third-party images (unpinned, env-templated) |
+| D47 | Internal listener security | Always TLS; token and node certificate derived from the encryption key via HKDF unless overridden | `/internal/snapshot` (v0.2) and `/internal/lists` carry internal kinds and list bodies; a plaintext token listener on the pod/LAN network is a credential and data leak; deriving from the existing shared key avoids a second secret to distribute | Plain HTTP + token (draft v1); separate chart-generated token Secret + cert-manager certs (more moving parts for small installs; still allowed via `tokenFile`/`tls`) |
+| D48 | Session payload | Sealed cookie carries resolved role bindings (`roles_snapshot`), not raw IdP groups | Bounded size under the 4 KiB guard regardless of IdP group count; bindings are what authorization needs | Raw `groups` claim in the cookie (draft v1) |
+
+---
+
+## 17. Glossary
+
+| Term | Meaning in this document |
+|---|---|
+| **Stone / clay copy** | The boundary-stone metaphor: the store that is authoritative for configuration (apiserver CRDs or `state.db`) vs. copies distributed by AXFR/IXFR/NOTIFY/catalog zones or by store replication (follower/raft). `DNSRecordSet` objects owned by app teams are also "clay copies" of authority delegated from a `DNSZone`. |
+| **Store / driver** | `internal/store.Store`, the single persistence interface; drivers `kube` (CRDs), `sqlite` (`state.db`), `follower` (v0.2), `raft` (v1.0). |
+| **`managedBy`** | `metadata.managedBy`: the single writer of an object (`api`, `file:<path>`, `integration:<name>`, `bootstrap`, `system`); in Kubernetes the apiserver field manager plus the `kudurru.io/managed-by` annotation. |
+| **zonecache** | The always-on runnable that materialises store objects into in-memory zone trees, policy indexes and compiled lists, and persists the last-good set to `local.db`. |
+| **`local.db`** | Per-node SQLite file in Kubernetes mode: last-good config snapshot, audit, response-cache dump, (v0.2+) transferred/signed zone data. |
+| **`state.db`** | The sqlite driver's object store in Docker mode (objects, internal kinds, change feed, journals, audit, `meta.schema_version`, `cluster_epoch`). |
+| **Leader-only runnable** | A manager runnable with `NeedLeaderElection()=true`: controller, listfetcher, notifier, signer, integrations, acme. Elected by `Lease` (k8s), self (sqlite), primary (follower), raft (v1.0). |
+| **Static twins (`ha-static`)** | v0.1 compose HA profile: N nodes with identical file-managed configuration, each with its own dnsdist listing all nodes, and keepalived for the VIP. |
+| **Follower mode** | v0.2 compose HA: one writable primary, N read-only followers pulling snapshots; `kudurru cluster promote` with epoch fencing. |
+| **Fencing / epoch** | `cluster_epoch` incremented on promote; a primary that sees a higher epoch demotes itself and refuses writes. |
+| **Pipeline / stage** | The fixed 13-stage query path (`ingress … log`); stages are packages implementing `pipeline.Stage`. |
+| **Status taxonomy** | The ≤ 32-value `Response.Status` enum (`forwarded`, `cached`, `blocked_list`, …) shared by the query log, metrics and UI colours. |
+| **Endpoint** | The record shape: external-dns `Endpoint` fields plus a `kudurru{comment,disabled,expiresAt,view}` block. |
+| **View** | `Endpoint.kudurru.view`: `public` (published to sinks, never served) or a `ClientGroup` name (served only to that group). v0.2. |
+| **Publish rule / sink** | `DNSZone.spec.publish[]` selecting records for an outbound `RecordSink` integration (Cloudflare); per-sink overrides via `providerSpecific`. |
+| **Ledger** | Internal kind recording what an integration wrote to a provider (`providerIDs`, `contentHash`, `generation`). |
+| **Supervisor** | `kudurru edge run` / `kudurru vip run`: PID 1 in the dnsdist/keepalived images; renders, validates, execs and signals the GPL binary. |
+| **Topology** | The Go struct shared by the dnsdist YAML and Lua renderers (binds, pools, backends, TLS, cache, console, webserver, rules). |
+| **track_file / FIFO** | keepalived channels: kudurru writes a weight (0/60/300) to a file; keepalived writes state transitions to a FIFO that kudurru consumes. |
+| **PROXYv2** | PROXY protocol v2 header prepended by dnsdist so kudurru sees the real client address; accepted only from `proxyProtocolFrom`. |
+| **`health.kudurru.internal.`** | Locally answered health name (TXT `<node-id> <serial-epoch>`) used by dnsdist health checks, keepalived `track_script` and the liveness self-query. |
+| **Sealed cookie** | AES-256-GCM-encrypted session cookie carrying the principal and a groups snapshot; any replica can serve it without shared state. |
+| **`sessionsValidAfter`** | Per-user timestamp; sessions issued before it are rejected (password change, admin kill, disable). |
+| **SAR / TokenReview** | Kubernetes `SubjectAccessReview` / `TokenReview`; used to authorise and authenticate Kubernetes identities against `kudurru.io` real and virtual resources. |
+| **Virtual resource** | A `kudurru.io` resource name used only in RBAC rules (`querylogs`, `stats`, `caches`, `blocking`, `audits`, `clusters`, `settings`) with no CRD behind it. |
+| **`kdr_` token** | kudurru API token: `kdr_<12-char id>_<43-char secret>`; only `sha256(secret)` is stored. |
+| **hostOnly** | Config-metadata flag: the key can be set only via file/env on the host, never through the API or UI. |
+| **Conformance suite** | `internal/store/conformance`: the test suite every `Store` driver must pass (and the external-dns plan-engine cases, the blocking corpus). |
+| **Rollup** | Pre-aggregated query-log tables (`rollup_1m/_1h/_1d` and per-client/qtype/upstream/domain/list/zone variants) that power dashboards without scanning facts. |
+| **Scatter-gather** | Cluster-scope API calls fan out to every node's `/internal/*` with a 2 s timeout and merge results (`partial: true` on failure). |
+| **Seam** | An interface or schema field that exists in v0.1 so a deferred feature can be added without a rewrite (§13.1). |

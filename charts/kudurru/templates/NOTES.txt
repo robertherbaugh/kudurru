@@ -1,0 +1,13 @@
+kudurru {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+
+Pre-alpha: this chart deploys the scaffold (forwarding resolver, probes,
+metrics). Zones, blocking, the CRD store and the UI arrive milestone by
+milestone; see docs/architecture.md §13 in the repository.
+
+DNS service:    {{ include "kudurru.fullname" . }}-dns ({{ .Values.service.dns.type }}, port {{ .Values.service.dns.port }})
+API/metrics:    {{ include "kudurru.fullname" . }}-api (ClusterIP, 8080/9153)
+
+Try it:
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "kudurru.fullname" . }}-dns
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kudurru.fullname" . }}-api 9153:9153
+  curl -s localhost:9153/metrics | grep kudurru_build_info

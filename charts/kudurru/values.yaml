@@ -1,0 +1,163 @@
+# Values follow docs/architecture.md §5.2. Keys marked (M-n) are wired when
+# that milestone lands; until then they render nothing.
+
+mode: kubernetes            # kubernetes = CRD store + Deployment | standalone = sqlite store + StatefulSet(1) + PVC (M1)
+replicaCount: 2
+
+image:
+  repository: ghcr.io/robertherbaugh/kudurru
+  tag: ""                   # defaults to .Chart.AppVersion
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+  aggregateToDefaultRoles: true   # kudurru-viewer/editor/admin aggregate into view/edit/admin
+
+listen:
+  port: 53                  # 1053 escape hatch for clusters that forbid NET_BIND_SERVICE
+
+service:
+  dns:
+    type: LoadBalancer
+    port: 53
+    splitProtocols: false   # true emits dns-udp + dns-tcp Services sharing an IP (MetalLB allow-shared-ip)
+    loadBalancerIP: ""
+    loadBalancerClass: ""
+    externalTrafficPolicy: Local
+    ipFamilyPolicy: PreferDualStack
+    trafficDistribution: ""
+    annotations: {}
+  api:
+    type: ClusterIP
+    port: 8080
+  headless:
+    publishNotReadyAddresses: true
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls: []
+
+edge:                       # dnsdist tier (M4)
+  enabled: false
+  mode: deployment          # deployment | sidecar | daemonset
+  replicas: 2
+  image:
+    repository: ghcr.io/robertherbaugh/kudurru-dnsdist
+    tag: ""
+    digest: ""
+  authoritativeCache: false
+  proxyProtocolSecret: ""   # generated once if empty; PROXYv2 TLV 0xE0 shared by edge and kudurru pods
+
+vip:                        # (M4)
+  provider: none            # none | kube-vip | metallb | keepalived
+  address: ""
+  keepalived:
+    nodeSelector:
+      kudurru.io/vip: "true"
+    interface: ""
+    vrid: 53
+    hmacSecret: ""
+
+hostNetwork:
+  enabled: false
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop: [ALL]
+    add: [NET_BIND_SERVICE]
+
+podSecurityContext:
+  fsGroup: 65532
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+topologySpreadConstraints:
+  - topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    maxSkew: 1
+
+priorityClassName: ""       # system-cluster-critical when kudurru is the cluster resolver
+dnsPolicy: Default          # never ClusterFirst for the DNS server itself
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+terminationGracePeriodSeconds: 30
+
+persistence:
+  querylog:
+    enabled: false
+    storageClass: ""
+    size: 10Gi
+  local:
+    enabled: false
+    storageClass: ""
+    size: 1Gi
+
+config:
+  # Node-scoped keys (hostOnly / restartRequired). Rendered into the
+  # kudurru-node ConfigMap; its checksum rolls the pods.
+  node:
+    log:
+      level: info
+      format: json
+  # Cluster-scoped settings (the Kudurru singleton). Rendered into the
+  # kudurru-settings ConfigMap and hot-reloaded; never restarts pods.
+  settings:
+    upstreams:
+      groups:
+        default:
+          servers: ["1.1.1.1:53", "9.9.9.9:53"]
+          strategy: parallel_best
+          timeout: 2s
+
+auth:                       # (M3)
+  encryptionKeySecret: ""
+  bootstrapAdminSecret: ""
+  oidc:
+    issuer: ""
+    clientID: ""
+    clientSecretRef: {}
+    groupsClaim: groups
+    groupsPrefix: "corp:"
+  kubernetes:
+    mode: sar               # sar | impersonate (v0.2 opt-in)
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+prometheusRule:
+  enabled: false
+networkPolicy:
+  enabled: false

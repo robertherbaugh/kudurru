@@ -1,0 +1,25 @@
+# /etc/kudurru/kudurru.yaml (v0.1 shape, docs/architecture.md §6.2).
+# Node-scoped keys are host-only; cluster-scoped keys are the Kudurru singleton.
+node:
+  dataDir: /var/lib/kudurru
+listeners:
+  dns:
+    - address: "0.0.0.0:53"
+      protocols: [udp, tcp]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+  proxyProtocolFrom: []          # ["127.0.0.1/32"] when the edge profile shares the netns
+upstreams:
+  groups:
+    default:
+      servers: ["1.1.1.1:53", "9.9.9.9:53"]   # tls:// and https:// upstreams arrive with dnsproxy (M1)
+      strategy: parallel_best
+      timeout: 2s
+  bootstrap: ["1.1.1.1:53"]
+  conditional: {}
+log:
+  level: info
+  format: json
+# Objects (zones, lists, groups, policies) go into objects.d/*.yaml as CRD
+# documents; they are file-managed and read-only in the UI (M1).

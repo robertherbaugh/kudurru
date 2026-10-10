@@ -1,0 +1,22 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - gosec
+    - revive
+  exclusions:
+    generated: lax
+    paths:
+      - zz_generated.*
+formatters:
+  enable:
+    - gofmt
+    - goimports

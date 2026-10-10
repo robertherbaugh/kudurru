@@ -1,0 +1,137 @@
+{{- if .Values.rbac.create }}
+# Least-privilege ClusterRole for the kudurru ServiceAccount (docs/architecture.md §5.3).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["externaldns.k8s.io"]
+    resources: ["dnsendpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kudurru.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kudurru.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Namespace-scoped: leases for leader election, secrets for internal kinds.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kudurru.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kudurru.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.rbac.aggregateToDefaultRoles }}
+---
+# User-facing roles generated from internal/rbac/permissions.yaml (decision D31).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kudurru-viewer
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "stats", "caches", "blocking"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kudurru-editor
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnszones", "stats", "querylogs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnsrecordsets", "blocklists", "clientgroups", "policies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["kudurru.io"]
+    resources: ["caches", "blocking"]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kudurru-admin
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+  - apiGroups: ["kudurru.io"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kudurru-auditor
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["kudurru.io"]
+    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "stats", "querylogs", "audits", "settings"]
+    verbs: ["get", "list", "watch"]
+{{- end }}
+{{- end }}

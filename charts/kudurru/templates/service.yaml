@@ -1,0 +1,120 @@
+{{- $svc := .Values.service.dns -}}
+{{- if $svc.splitProtocols }}
+{{- range $proto := list "udp" "tcp" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-dns-{{ $proto }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+  annotations:
+    metallb.io/allow-shared-ip: {{ include "kudurru.fullname" $ | quote }}
+    {{- with $svc.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ $svc.type }}
+  {{- if $svc.loadBalancerIP }}
+  loadBalancerIP: {{ $svc.loadBalancerIP }}
+  {{- end }}
+  {{- if $svc.loadBalancerClass }}
+  loadBalancerClass: {{ $svc.loadBalancerClass }}
+  {{- end }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+  ipFamilyPolicy: {{ $svc.ipFamilyPolicy }}
+  selector:
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: dns-{{ $proto }}
+      port: {{ $svc.port }}
+      targetPort: dns-{{ $proto }}
+      protocol: {{ upper $proto }}
+{{- end }}
+{{- else }}
+---
+# One mixed-protocol LoadBalancer Service (GA since Kubernetes 1.26).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" . }}-dns
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+  {{- with $svc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.type }}
+  {{- if $svc.loadBalancerIP }}
+  loadBalancerIP: {{ $svc.loadBalancerIP }}
+  {{- end }}
+  {{- if $svc.loadBalancerClass }}
+  loadBalancerClass: {{ $svc.loadBalancerClass }}
+  {{- end }}
+  {{- if eq $svc.type "LoadBalancer" }}
+  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
+  {{- end }}
+  ipFamilyPolicy: {{ $svc.ipFamilyPolicy }}
+  {{- if $svc.trafficDistribution }}
+  trafficDistribution: {{ $svc.trafficDistribution }}
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: dns-udp
+      port: {{ $svc.port }}
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: {{ $svc.port }}
+      targetPort: dns-tcp
+      protocol: TCP
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.api.type }}
+  selector:
+    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.service.api.port }}
+      targetPort: api
+      protocol: TCP
+    - name: metrics
+      port: 9153
+      targetPort: metrics
+      protocol: TCP
+---
+# Headless: edge backends, IXFR between replicas, NOTIFY source.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: {{ .Values.service.headless.publishNotReadyAddresses }}
+  selector:
+    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: dns-udp
+      port: {{ .Values.listen.port }}
+      protocol: UDP
+    - name: dns-tcp
+      port: {{ .Values.listen.port }}
+      protocol: TCP
+    - name: internal
+      port: 8082
+      protocol: TCP

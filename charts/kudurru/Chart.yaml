@@ -1,0 +1,11 @@
+apiVersion: v2
+name: kudurru
+description: kudurru (koo-DOO-roo), a Kubernetes-native DNS server. Install kudurru-crds first.
+type: application
+version: 0.1.0-dev
+appVersion: 0.1.0-dev
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/robertherbaugh/kudurru
+sources:
+  - https://github.com/robertherbaugh/kudurru
+keywords: [dns, resolver, authoritative, blocking, dnsdist, keepalived]

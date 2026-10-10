@@ -1,0 +1,25 @@
+# build output
+/bin/
+/dist/
+/kudurru
+*.test
+*.out
+coverage.*
+
+# generated at build time (committed generated files live under api/ and config/crd/bases)
+/web/dist/
+/web/node_modules/
+
+# local state
+/.context/
+/.env
+*.db
+*.db-wal
+*.db-shm
+/hack/.cache/
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store

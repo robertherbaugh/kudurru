@@ -1,0 +1,2 @@
+# kudurru-crds has no configurable values; the CRDs are copied verbatim from config/crd/bases by `make manifests`.
+{}

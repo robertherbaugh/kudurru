@@ -1,0 +1,20 @@
+# Identical on every node (distributed by git/ansible/rsync). Node identity
+# comes from KUDURRU_NODE__NAME in the compose file.
+node:
+  dataDir: /var/lib/kudurru
+listeners:
+  dns:
+    - address: "0.0.0.0:5353"          # dnsdist owns :53 on the VIP
+      protocols: [udp, tcp]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+upstreams:
+  groups:
+    default:
+      servers: ["1.1.1.1:53", "9.9.9.9:53"]
+      strategy: parallel_best
+      timeout: 2s
+log:
+  level: info
+  format: json
