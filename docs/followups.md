@@ -68,6 +68,21 @@ Close an item by deleting its row and citing the commit.
 | ratelimit: apply `ratelimit.*` changes without a restart (cluster-scope keys); a slip counter next to `kudurru_dns_dropped_total{reason="ratelimit"}`; exemptions per ClientGroup once the policy package lands | hardening report | M3 |
 | Multi-socket listeners for DoT (same code path, left at one socket) and DoQ/DoH3 (needs QUIC connection-ID aware routing) | hardening report | M3 |
 
+## Edge and VIP
+
+| Item | Source | Target |
+|---|---|---|
+| `/internal/zones` on the internal server: `internalapi.PathZones` returning `internalapi.ZoneList{node, zones:[{name, serial, type}]}` (primary and secondary zones) from the zone cache; the client (`internalapi.Client.Zones`) and the edge poller exist and tolerate the 404 | docs/m3/edge.md | M3 (integrator/zones owner) |
+| D51 drain path: ingress must stop answering `health.kudurru.internal.` TXT with NOERROR while the node is lameduck (SERVFAIL), so dnsdist's must_resolve check drains it; lameduck never writes the track file (`vip.WithReason(ctx, vip.ReasonLameduck)` refuses Fault) | docs/m3/edge.md | M3 (ingress owner) |
+| health.go: call `installVRRPHealth(cmd)` in `newHealthCmd`; then `kudurru health --vrrp` works and `--probe-command "/usr/local/bin/kudurru health --vrrp"` can become the rendered default (§3.6 wording; `kudurru vip probe` today) | docs/m3/edge.md | M3 (CLI) |
+| Compose/chart: name static backends (`--backends=node-a=10.0.0.11:5353,...`) so the 2.1 validation function checks node ids; `--hmac-key-file` per VRID or the single-file form; edge ServiceAccount get/list/watch on `discovery.k8s.io/endpointslices`; keepalived DaemonSet `--peers-file` from the Node list | docs/m3/edge.md | M4 (deploy/chart) |
+| Flush edge packet caches (`DELETE /api/v1/cache?pool=resolver`) on `POST /dns/blocking` and list refreshes: the resolver pool caches blocked/unblocked answers up to their TTL | docs/m3/edge.md | M4 |
+| `edge.*`/`vip.*` settings keys (hostOnly) and serve wiring of `vip.NewKeepalived` (Events → audit `cluster.vip.changed`, event `vip.master_changed`; the Nodes/Edge pages) | docs/m3/edge.md | M4 (integrator) |
+| `vip.ServiceProvider` (kube-vip/MetalLB): Owner from the Service status / announcing node; chart annotations from `Annotations()` | docs/m3/edge.md | M4 |
+| `kudurru doctor` warns when `vip run --legacy` (unauthenticated VRRP) is in use | docs/m3/edge.md | M4 (CLI) |
+| First real `make edge-check` run (dnsdist `--check-config` on 12 golden files, `keepalived -t` on 4); the dynblocks-ebpf case may need `--cap-add SYS_ADMIN`; promote the edge workflow to required | docs/m3/edge.md | M4 (Docker runner) |
+| v0.2 console diff-apply (`newServer`/`setDown`/`rmServer`) and `reloadAllCertificates()` instead of restarts, gated on spike (a) (D17) | §3.6, docs/m3/edge.md | v0.2 |
+
 ## Auth
 
 | Item | Source | Target |
