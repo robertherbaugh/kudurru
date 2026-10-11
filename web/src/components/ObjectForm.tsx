@@ -16,6 +16,7 @@ import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
+import { ServicesField } from './ServicesField';
 
 type Obj = Record<string, unknown>;
 export type FieldErrors = Record<string, string>;
@@ -92,6 +93,7 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
         break;
       case 'strings':
       case 'refs':
+      case 'services':
         next = Array.isArray(v) ? (v as string[]).map((s) => s.trim()).filter(Boolean) : undefined;
         if (Array.isArray(next) && next.length === 0) next = undefined;
         break;
@@ -311,6 +313,8 @@ function Field({
       );
     case 'refs':
       return <RefsField def={def} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
+    case 'services':
+      return <ServicesField label={def.label} help={def.help} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
     case 'object': {
       const obj = value && typeof value === 'object' ? (value as Obj) : {};
       return (

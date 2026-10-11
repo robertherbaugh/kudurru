@@ -213,7 +213,11 @@ export interface PolicySpec {
   queryLog?: boolean;
   priority?: number;
   rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
+  /** Catalogue service IDs (GET /catalogue/services) blocked like a list. */
+  blockedServices?: string[];
   safeSearch?: boolean;
+  /** strict (default) or moderate; only YouTube has two levels. */
+  safeSearchMode?: 'strict' | 'moderate';
 }
 
 export type Policy = KObject<'Policy', PolicySpec, { observedGeneration?: number; conditions?: Condition[] }>;
@@ -698,4 +702,44 @@ export interface DoctorReport {
   checks: DoctorCheck[];
   failures: number;
   warnings: number;
+}
+
+// Blocked-services and safe-search catalogue (D60) --------------------------
+
+/** One blockable service of GET /catalogue/services. */
+export interface CatalogueService {
+  id: string;
+  name: string;
+  category: string;
+  /** The list name the query log records, "service:<id>". */
+  list: string;
+  rules: number;
+  domains: string[];
+  source: string;
+}
+
+/** One safe-search engine of GET /catalogue/safesearch. */
+export interface SafeSearchEngine {
+  id: string;
+  name: string;
+  /** The list name the query log records, "safesearch:<id>". */
+  list: string;
+  target?: string;
+  moderateTarget?: string;
+  addresses?: string[];
+  domains: number;
+  source: string;
+}
+
+/** GET /catalogue. */
+export interface CatalogueInfo {
+  schemaVersion: number;
+  version: string;
+  license: string;
+  homepage?: string;
+  origin: string;
+  digest: string;
+  services: number;
+  safeSearchEngines: number;
+  refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
 }
