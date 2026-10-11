@@ -198,6 +198,8 @@ type Options struct {
 	Roles func(ctx context.Context, p auth.Principal) []string
 	// IAM backs the read-only /iam routes.
 	IAM IAMReader
+	// Catalogue backs /catalogue; a nil Holder serves the embedded one.
+	Catalogue CatalogueSource
 	// UI is the single-page app bundle (web.FS); nil serves a built-in
 	// placeholder page. UIHandler, when set, replaces the built-in SPA
 	// handler (web.Handler with the same path prefix); it receives paths

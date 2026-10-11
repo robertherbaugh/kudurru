@@ -238,6 +238,131 @@
         ],
         "type": "object"
       },
+      "CatalogueInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "description": "SHA-256 of the catalogue document.",
+            "type": "string"
+          },
+          "homepage": {
+            "type": "string"
+          },
+          "license": {
+            "description": "SPDX licence of the catalogue data.",
+            "type": "string"
+          },
+          "origin": {
+            "description": "\"embedded\" (built into the binary) or the blocking.catalogue.url it was downloaded from.",
+            "type": "string"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/CatalogueRefresh"
+          },
+          "safeSearchEngines": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "description": "Catalogue document schema version.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "services": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "version": {
+            "description": "Catalogue version (YYYY.MM.DD).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "version",
+          "license",
+          "origin",
+          "digest",
+          "services",
+          "safeSearchEngines",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "CatalogueRefresh": {
+        "additionalProperties": false,
+        "properties": {
+          "lastAttempt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "lastSuccess": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "CatalogueService": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "video, social, messaging, gaming, music, ai, dating, ...",
+            "type": "string"
+          },
+          "domains": {
+            "description": "The service's rules as list text (||domain^).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The ID Policy.spec.blockedServices names.",
+            "type": "string"
+          },
+          "list": {
+            "description": "The list name the query log records for this service's blocks (service:\u003cid\u003e).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {
+            "description": "Number of rules (||domain^).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Where the entry comes from: a vendor documentation URL or \"first-party domains of the service\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "list",
+          "rules",
+          "domains",
+          "source"
+        ],
+        "type": "object"
+      },
       "ClientItem": {
         "additionalProperties": false,
         "properties": {
@@ -1135,6 +1260,31 @@
         ],
         "type": "object"
       },
+      "ListCatalogueService": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueService"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListClientItem": {
         "additionalProperties": false,
         "properties": {
@@ -1220,6 +1370,31 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/NodeInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "ListSafeSearchEngine": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SafeSearchEngine"
             },
             "type": "array"
           },
@@ -2176,6 +2351,54 @@
           "rollup_1m",
           "rollup_1h",
           "rollup_1d"
+        ],
+        "type": "object"
+      },
+      "SafeSearchEngine": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "description": "Addresses answered directly when the vendor documents an address instead of a host name.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "domains": {
+            "description": "Number of host names rewritten.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "list": {
+            "description": "The list name the query log records for its rewrites (safesearch:\u003cid\u003e).",
+            "type": "string"
+          },
+          "moderateTarget": {
+            "description": "CNAME target in moderate mode (safeSearchMode: moderate); empty when the engine has one level.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "description": "The vendor documentation the rewrite follows.",
+            "type": "string"
+          },
+          "target": {
+            "description": "CNAME target in strict mode.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "list",
+          "domains",
+          "source"
         ],
         "type": "object"
       },
@@ -5698,6 +5921,286 @@
           "resource": "cache",
           "scope": "cluster",
           "verb": "flush"
+        }
+      }
+    },
+    "/catalogue": {
+      "get": {
+        "operationId": "getCatalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "The blocked-services and safe-search catalogue in service",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/catalogue/safesearch": {
+      "get": {
+        "operationId": "listCatalogueSafeSearch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSafeSearchEngine"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Search engines Policy.spec.safeSearch rewrites",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/catalogue/services": {
+      "get": {
+        "operationId": "listCatalogueServices",
+        "parameters": [
+          {
+            "description": "Only services of this category.",
+            "explode": false,
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "description": "Only services of this category.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCatalogueService"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Services Policy.spec.blockedServices can block",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },
