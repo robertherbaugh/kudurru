@@ -127,4 +127,14 @@ export const BASIC_KEYS = new Set([
   'querylog.privacy',
   'querylog.retention.raw',
   'querylog.retention.maxDBBytes',
+  // The block page (C5); shown when the server has the keys.
+  'blockPage.enabled',
+  'blockPage.ipv4',
+  'blockPage.ipv6',
+  'blockPage.title',
+  'blockPage.message',
+  'blockPage.contact',
+  'blockPage.showDetails',
+  'listeners.blockPage.http',
+  'listeners.blockPage.https',
 ]);

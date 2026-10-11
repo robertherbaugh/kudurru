@@ -27,7 +27,7 @@ import type {
   ZoneRecord,
   ZoneSummary,
 } from '../api/types';
-import { createDB, CLIENTS, makeQueryRow, type MockDB } from './fixtures';
+import { createDB, CLIENTS, makeQueryRow, setPath, type MockDB } from './fixtures';
 import { getPath } from '../lib/settings';
 import { rng } from './rand';
 
@@ -1204,8 +1204,8 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
-    const next = mergePatch(db.settings, patch);
-    const invalid = validateUpstreams(next);
+    const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    const invalid = validateSchema(next, changed) ?? validateUpstreams(next);
     if (invalid) return fail(400, 'invalid', invalid);
     db.settings = next;
     return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
@@ -1218,7 +1218,10 @@ export const handlers = [
     const changed = changedKeys(patch);
     const bad = changed.find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
-    db.nodeConfig = mergePatch(db.nodeConfig, patch);
+    const next = withDefaults(mergePatch(db.nodeConfig, patch), patch, changed);
+    const invalid = validateSchema(next, changed);
+    if (invalid) return fail(400, 'invalid', invalid);
+    db.nodeConfig = next;
     // Node-scope changes live in memory only.
     return ok({ ...settingsBody('node', changed), persisted: false });
   }),
@@ -1316,6 +1319,30 @@ export const handlers = [
     return ok({ items: page, node: 'kudurru-0', ...(next ? { cursor_next: next, continue: next } : {}) });
   }),
 
+  // block page (C5) -------------------------------------------------------
+  http.get(`${B}/blockpage/preview`, ({ request }) => {
+    const g = guard(request, 'settings', 'read');
+    if (g) return g;
+    const domain = new URL(request.url).searchParams.get('domain') || 'example.com';
+    const esc = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const t = getPath(db.settings, 'blockPage.title');
+    const title = esc(typeof t === 'string' && t ? t : 'This site is blocked');
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f5f2;color:#1d1b18}main{max-width:36rem;padding:2rem;border-radius:12px;background:#fff;box-shadow:0 1px 4px #0002}code{font-size:1.1em}dl{display:grid;grid-template-columns:auto 1fr;gap:.25rem 1rem}@media (prefers-color-scheme:dark){body{background:#1b1a18;color:#eee}main{background:#26241f}}</style></head><body><main><p>kudurru</p><h1>${title}</h1><p><code>${esc(domain)}</code> is blocked on this network.</p><dl><dt>Why</dt><dd>list default/ads (rule ||${esc(domain)}^)</dd><dt>Client</dt><dd>192.168.1.30</dd><dt>Node</dt><dd>kudurru-0</dd></dl><p>Ask your administrator if you think this is a mistake.</p></main></body></html>`;
+    return new HttpResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }),
+
+  // catalogue icons (C4) --------------------------------------------------
+  http.get(`${B}/catalogue/icons`, ({ request }) =>
+    guard(request, 'policies', 'read') ?? ok({ items: MOCK_ICONS.map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg` })) }),
+  ),
+  http.get(`${B}/catalogue/icons/:file`, ({ params }) => {
+    const id = String(params.file).replace(/\.svg$/, '');
+    if (!MOCK_ICONS.includes(id)) return fail(404, 'not_found', `no icon ${id}`);
+    const hue = [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="hsl(${hue} 60% 45%)"/><text x="12" y="16" font-size="11" text-anchor="middle" fill="#fff" font-family="sans-serif">${id.slice(0, 2).toUpperCase()}</text></svg>`;
+    return new HttpResponse(svg, { headers: { 'Content-Type': 'image/svg+xml' } });
+  }),
+
   // blocked-services and safe-search catalogue (D60) ----------------------
   http.get(`${B}/catalogue`, ({ request }) =>
     guard(request, 'policies', 'read') ??
@@ -1375,6 +1402,32 @@ function changedKeys(patch: Record<string, unknown>): string[] {
   return [...out];
 }
 
+/** A null at a key resets it to its default (internal/api patchSettings). */
+function withDefaults(next: Record<string, unknown>, patch: Record<string, unknown>, changed: string[]): Record<string, unknown> {
+  for (const p of changed) {
+    if (getPath(patch, p) !== null) continue;
+    const k = db.schema.find((x) => x.path === p);
+    if (k) setPath(next, p, structuredClone(k.default));
+  }
+  return next;
+}
+
+/** The C1 checks the server makes from the schema metadata: enum and bounds. */
+function validateSchema(next: Record<string, unknown>, changed: string[]): string | null {
+  for (const p of changed) {
+    const k = db.schema.find((x) => x.path === p);
+    const v = getPath(next, p);
+    if (!k) continue;
+    if (k.enum?.length && typeof v === 'string' && !k.enum.some((o) => o.value === v)) {
+      return `settings: ${p}: "${v}" is not one of ${k.enum.map((o) => o.value).join(', ')}`;
+    }
+    if (typeof v === 'number' && ((k.min !== undefined && v < k.min) || (k.max !== undefined && v > k.max))) {
+      return `settings: ${p}: ${v} is outside ${k.min ?? '-∞'}..${k.max ?? '∞'}`;
+    }
+  }
+  return null;
+}
+
 const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
 
 /** What internal/upstream Config.Validate refuses, in its words. */
@@ -1409,6 +1462,9 @@ export function mergePatch(target: Record<string, unknown>, patch: Record<string
 }
 
 export type { Policy };
+
+/** Icon ids the mock binary "embeds" (C4), including a few upstream providers. */
+const MOCK_ICONS = ['youtube', 'netflix', 'tiktok', 'google', 'cloudflare', 'quad9', 'adguard-home', 'nextdns', 'mullvad'];
 
 /** A few entries of the embedded catalogue for GET /catalogue/services. */
 const MOCK_SERVICES = [

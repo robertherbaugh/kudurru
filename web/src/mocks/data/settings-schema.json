@@ -111,6 +111,99 @@
       "writeOnly": false
     },
     {
+      "path": "blockPage.contact",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Who to ask: an e-mail address or URL shown as \"Ask your administrator\".",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "group": "Block page",
+      "label": "Administrator contact"
+    },
+    {
+      "path": "blockPage.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": false,
+      "help": "Serve the block page on listeners.blockPage.* and answer the blockPage response with its address.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "group": "Block page",
+      "label": "Block page"
+    },
+    {
+      "path": "blockPage.ipv4",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv4 address blocked A queries are answered with under the blockPage response; empty uses the node's advertised address.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "format": "ipv4",
+      "group": "Block page",
+      "label": "IPv4 address clients are sent to"
+    },
+    {
+      "path": "blockPage.ipv6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv6 address blocked AAAA queries are answered with; empty answers NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "format": "ipv6",
+      "group": "Block page",
+      "label": "IPv6 address clients are sent to"
+    },
+    {
+      "path": "blockPage.message",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "Text under the heading (plain text, no HTML).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "group": "Block page",
+      "label": "Message"
+    },
+    {
+      "path": "blockPage.showDetails",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Show the client which list, rule, service or policy blocked the name.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "group": "Block page",
+      "label": "Show why (list, rule, policy)"
+    },
+    {
+      "path": "blockPage.title",
+      "type": "string",
+      "scope": "cluster",
+      "default": "This site is blocked",
+      "help": "Heading of the block page (plain text).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false,
+      "group": "Block page",
+      "label": "Title"
+    },
+    {
       "path": "blocking.allowDegraded",
       "type": "bool",
       "scope": "cluster",
@@ -141,6 +234,38 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
+      "writeOnly": false,
+      "group": "Blocking",
+      "label": "Block response TTL",
+      "presets": [
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "10m",
+        "1h"
+      ]
+    },
+    {
+      "path": "blocking.catalogue.refreshInterval",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "How often the leader downloads blocking.catalogue.url (at least 1m; conditional GET).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.catalogue.url",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "URL of a blocked-services and safe-search catalogue document that replaces the embedded one; empty serves the catalogue built into the binary.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
       "writeOnly": false
     },
     {
@@ -152,7 +277,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Blocking",
+      "format": "ipv4",
+      "label": "Custom IPv4 answer"
     },
     {
       "path": "blocking.customIP.v6",
@@ -163,7 +291,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Blocking",
+      "format": "ipv6",
+      "label": "Custom IPv6 answer"
     },
     {
       "path": "blocking.defaultResponse",
@@ -174,7 +305,36 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Blocking",
+      "label": "Default block response",
+      "enum": [
+        {
+          "value": "zeroIP",
+          "label": "Zero IP (0.0.0.0 / ::)",
+          "help": "A and AAAA get the unspecified address, other types NODATA."
+        },
+        {
+          "value": "nxdomain",
+          "label": "NXDOMAIN",
+          "help": "The name does not exist."
+        },
+        {
+          "value": "customIP",
+          "label": "Custom IP",
+          "help": "The addresses in blocking.customIP; empty answers NODATA."
+        },
+        {
+          "value": "refused",
+          "label": "REFUSED",
+          "help": "Discouraged: stub resolvers fail over."
+        },
+        {
+          "value": "blockPage",
+          "label": "Block page",
+          "help": "Browsers are sent to the block page explaining the block."
+        }
+      ]
     },
     {
       "path": "blocking.enabled",
@@ -229,7 +389,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Cache",
+      "label": "Maximum entries",
+      "min": 0
     },
     {
       "path": "cache.maxTTL",
@@ -428,6 +591,34 @@
       "envLocked": false,
       "restartRequired": true,
       "writeOnly": false
+    },
+    {
+      "path": "listeners.blockPage.http",
+      "type": "string",
+      "scope": "node",
+      "default": ":80",
+      "help": "HTTP listener of the block page.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "format": "hostport",
+      "group": "Block page",
+      "label": "HTTP listener"
+    },
+    {
+      "path": "listeners.blockPage.https",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Optional HTTPS listener of the block page (:443); browsers warn about its certificate.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "format": "hostport",
+      "group": "Block page",
+      "label": "HTTPS listener"
     },
     {
       "path": "listeners.dns",
@@ -633,7 +824,27 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Logging",
+      "label": "Log level",
+      "enum": [
+        {
+          "value": "debug",
+          "label": "Debug"
+        },
+        {
+          "value": "info",
+          "label": "Info"
+        },
+        {
+          "value": "warn",
+          "label": "Warnings"
+        },
+        {
+          "value": "error",
+          "label": "Errors only"
+        }
+      ]
     },
     {
       "path": "node.dataDir",
@@ -765,7 +976,33 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Query log",
+      "label": "Privacy",
+      "enum": [
+        {
+          "value": "full",
+          "label": "Everything",
+          "help": "Client, domain and answer are stored."
+        },
+        {
+          "value": "anonymize_client",
+          "label": "Anonymize clients"
+        },
+        {
+          "value": "hide_domains",
+          "label": "Hide domains"
+        },
+        {
+          "value": "hide_domains_clients",
+          "label": "Hide domains and clients"
+        },
+        {
+          "value": "nothing",
+          "label": "Nothing",
+          "help": "Per-minute totals only."
+        }
+      ]
     },
     {
       "path": "querylog.retention.maxDBBytes",
@@ -871,7 +1108,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Rate limiting",
+      "min": 0,
+      "max": 100
     },
     {
       "path": "rbac.bindings",
@@ -950,7 +1190,13 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "label": "Bootstrap resolvers",
+      "items": {
+        "type": "string",
+        "format": "hostport"
+      }
     },
     {
       "path": "upstreams.conditional",
@@ -961,7 +1207,13 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "label": "Conditional forwarding",
+      "values": {
+        "type": "string",
+        "ref": "upstreamGroup"
+      }
     },
     {
       "path": "upstreams.ecs.ipv4Prefix",
@@ -972,7 +1224,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "min": 0,
+      "max": 32
     },
     {
       "path": "upstreams.ecs.ipv6Prefix",
@@ -983,7 +1238,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "min": 0,
+      "max": 128
     },
     {
       "path": "upstreams.ecs.mode",
@@ -994,7 +1252,24 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "label": "EDNS Client Subnet",
+      "enum": [
+        {
+          "value": "strip",
+          "label": "Strip",
+          "help": "Never send a client subnet (privacy default)."
+        },
+        {
+          "value": "forward",
+          "label": "Forward"
+        },
+        {
+          "value": "add",
+          "label": "Forward or add"
+        }
+      ]
     },
     {
       "path": "upstreams.groups",
@@ -1014,7 +1289,48 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "group": "Upstreams",
+      "label": "Upstream groups",
+      "values": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "servers",
+            "type": "string[]",
+            "items": {
+              "type": "string",
+              "format": "upstream"
+            }
+          },
+          {
+            "name": "strategy",
+            "type": "string",
+            "enum": [
+              {
+                "value": "parallel_best",
+                "label": "Parallel best"
+              },
+              {
+                "value": "strict",
+                "label": "Strict order"
+              },
+              {
+                "value": "random",
+                "label": "Random"
+              },
+              {
+                "value": "rtt_weighted",
+                "label": "Fastest first"
+              }
+            ]
+          },
+          {
+            "name": "timeout",
+            "type": "duration"
+          }
+        ]
+      }
     }
   ]
 }

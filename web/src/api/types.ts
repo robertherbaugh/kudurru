@@ -150,7 +150,7 @@ export type DNSRecordSet = KObject<
 >;
 
 export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
-export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP';
+export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
 export interface ListSource {
   url?: string;
@@ -594,7 +594,61 @@ export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   type: SettingType;
   /** The effective value ("<redacted>" for writeOnly keys). */
   value?: unknown;
-};
+} & SettingMeta;
+
+/** C1 value formats of string keys (and string[] items). */
+export type SettingFormat = 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'hostport' | 'url' | 'domain' | 'upstream' | 'email';
+
+/** C1: the kinds of object a value may name. */
+export type SettingRef = 'upstreamGroup' | 'clientGroup' | 'blockList' | 'policy' | 'zone';
+
+/** C1: one allowed value of a closed set. */
+export interface SettingEnumOption {
+  value: string;
+  label: string;
+  help?: string;
+}
+
+/** C1: the shape of a value (a key, a list item, a map value or an object field). */
+export interface SettingShape {
+  type: SettingType | 'object';
+  enum?: SettingEnumOption[];
+  min?: number;
+  max?: number;
+  format?: SettingFormat;
+  ref?: SettingRef;
+  presets?: string[];
+  items?: SettingShape;
+  values?: SettingShape;
+  fields?: SettingShapeField[];
+}
+
+/** C1: one field of an object shape. */
+export interface SettingShapeField extends SettingShape {
+  name: string;
+  label?: string;
+  help?: string;
+}
+
+/**
+ * C1 settings metadata (GET /settings/_schema): optional on every key; the
+ * UI falls back to lib/settingsMeta.ts and then to the bare type.
+ */
+export interface SettingMeta {
+  enum?: SettingEnumOption[];
+  min?: number;
+  max?: number;
+  presets?: string[];
+  format?: SettingFormat;
+  ref?: SettingRef;
+  items?: SettingShape;
+  values?: SettingShape;
+  fields?: SettingShapeField[];
+  /** UI section ("DNS", "Blocking", "Query log", ...). */
+  group?: string;
+  /** Human label; the path stays the key. */
+  label?: string;
+}
 
 /** GET|PATCH /settings and /node/config: the keys of one scope under `settings`. */
 export type SettingsBody = S['SettingsBody'];
@@ -773,4 +827,9 @@ export interface CatalogueInfo {
   services: number;
   safeSearchEngines: number;
   refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
+}
+
+/** GET /catalogue/icons (C4): the icons this binary embeds. */
+export interface CatalogueIconIndex {
+  items: { id: string; path: string }[];
 }

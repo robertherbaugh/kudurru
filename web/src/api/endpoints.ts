@@ -52,7 +52,7 @@ import type {
   ZoneImportResult,
   ListSearchHit,
 } from './types';
-import type { CatalogueInfo, CatalogueService, SafeSearchEngine } from './types';
+import type { CatalogueIconIndex, CatalogueInfo, CatalogueService, SafeSearchEngine } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -214,6 +214,15 @@ export function endpoints(c: ApiClient) {
       info: () => c.get<CatalogueInfo>('/catalogue'),
       services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
       safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
+      /** C4: the embedded icons (404 on servers without them). */
+      icons: () => c.get<CatalogueIconIndex>('/catalogue/icons'),
+      iconURL: (id: string) => c.url(`/catalogue/icons/${enc(id)}.svg`),
+    },
+
+    // Block page (C5): the admin preview of the page blocked web requests see.
+    blockPage: {
+      preview: (domain: string) => c.request<string>('GET', '/blockpage/preview', { query: { domain }, asText: true, headers: { Accept: 'text/html' } }),
+      previewURL: (domain: string) => c.url('/blockpage/preview', { domain }),
     },
   };
 }

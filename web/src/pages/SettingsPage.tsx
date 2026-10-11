@@ -1,6 +1,8 @@
 // Settings (§10 principle 10): Basic shows the handful of keys most people
 // change plus appearance; Expert lists every key of GET /settings/_schema
-// grouped by section with search. Cluster keys are patched with
+// in sections by the C1 `group` (lib/settingsMeta.ts), with search over
+// labels, paths and help. Every key gets a typed control from its shape
+// (SettingRow). Cluster keys are patched with
 // PATCH /settings, node keys with PATCH /node/config (JSON merge patch);
 // host-only and environment-locked keys are read-only with the reason.
 // Both answer the envelope {scope, node, settings, changed, restartRequired,
@@ -15,10 +17,12 @@ import { qk, useApi, useCan } from '../api/context';
 import type { SettingKey, SettingsBody } from '../api/types';
 import { AppearanceControls } from '../components/AppearanceButton';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { BlockPageIntro } from '../components/BlockPagePreview';
 import { SettingRow } from '../components/SettingRow';
 import { Link, useSearchParams } from '../lib/router';
-import { BASIC_KEYS, getPath, mergePatchFor, sectionOf } from '../lib/settings';
-import { mapPatch } from '../lib/upstreams';
+import { BASIC_KEYS, getPath, mergePatchFor } from '../lib/settings';
+import { compareGroups, groupOf, labelOf, metaFor } from '../lib/settingsMeta';
+import { groupNames, mapPatch, strategyLabelOf, upstreamsOf } from '../lib/upstreams';
 
 export interface SettingsListProps {
   keys: SettingKey[];
@@ -49,36 +53,65 @@ export function noticeFor(body: SettingsBody): SaveNotice | null {
   return { persisted: body.persisted !== false, restartRequired: restart };
 }
 
+/** upstreams.groups is edited on the Upstreams pages; the row shows what is configured. */
+function GroupsSummary({ value }: { value: unknown }) {
+  const cfg = upstreamsOf({ settings: { upstreams: { groups: value } } } as unknown as SettingsBody);
+  const names = groupNames(cfg);
+  return (
+    <div className="k-stack-sm" data-testid="groups-summary">
+      <ul className="k-link-list k-stack-sm">
+        {names.map((n) => (
+          <li key={n}>
+            <Link href={`/upstreams/${encodeURIComponent(n)}`} className="k-mono">
+              {n}
+            </Link>{' '}
+            <span className="k-muted k-small">
+              {cfg.groups[n]?.servers.length ?? 0} server{cfg.groups[n]?.servers.length === 1 ? '' : 's'}, {strategyLabelOf(cfg.groups[n]?.strategy ?? '')}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <Link href="/upstreams" className="k-small">
+        Edit on the Upstreams page
+      </Link>
+    </div>
+  );
+}
+
 /** The generated settings list (exported for tests). */
 export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNode, onSave, grouped = true }: SettingsListProps) {
   const sections = useMemo(() => {
     const m = new Map<string, SettingKey[]>();
     for (const k of keys) {
-      const s = grouped ? sectionOf(k.path) : '';
+      const s = grouped ? groupOf(k, metaFor(k, keys)) : '';
       m.set(s, [...(m.get(s) ?? []), k]);
     }
-    return [...m];
+    return [...m].sort(([a], [b]) => compareGroups(a, b));
   }, [keys, grouped]);
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return (
     <div className="k-stack-lg">
       {sections.map(([section, list]) => (
-        <section key={section || 'all'} className="k-panel" aria-labelledby={section ? `sec-${section}` : undefined}>
+        <section key={section || 'all'} className="k-panel" aria-labelledby={section ? `sec-${slug(section)}` : undefined} data-section={section}>
           {section ? (
-            <h2 id={`sec-${section}`} className="k-h3">
+            <h2 id={`sec-${slug(section)}`} className="k-h3">
               {section}
             </h2>
           ) : null}
+          {section === 'Block page' ? <BlockPageIntro /> : null}
           {list.map((k) => (
             <SettingRow
               key={k.path}
               k={k}
+              meta={metaFor(k, keys)}
               value={valueOf(k, cluster, node)}
               canWrite={k.scope === 'node' ? canWriteNode : canWriteCluster}
               onSave={onSave}
+              summary={k.path === 'upstreams.groups' ? <GroupsSummary value={valueOf(k, cluster, node)} /> : undefined}
               extra={
-                k.path.startsWith('upstreams.') ? (
+                k.path.startsWith('upstreams.') && k.path !== 'upstreams.groups' ? (
                   <Link href="/upstreams" className="k-small">
-                    Edit on the Upstreams page
+                    Also on the Upstreams page
                   </Link>
                 ) : undefined
               }
@@ -107,7 +140,12 @@ export default function SettingsPage() {
     const all = schema.data?.items ?? [];
     if (view === 'basic') return all.filter((k) => BASIC_KEYS.has(k.path));
     const s = search.trim().toLowerCase();
-    return s ? all.filter((k) => k.path.toLowerCase().includes(s) || k.help.toLowerCase().includes(s)) : all;
+    return s
+      ? all.filter((k) => {
+          const m = metaFor(k, all);
+          return [k.path, k.help, labelOf(k, m), groupOf(k, m)].some((t) => t.toLowerCase().includes(s));
+        })
+      : all;
   }, [schema.data, view, search]);
 
   const [notice, setNotice] = useState<SaveNotice | null>(null);
@@ -115,6 +153,7 @@ export default function SettingsPage() {
   const onSave = async (k: SettingKey, value: unknown) => {
     // A merge patch merges maps: keys removed in the editor must be sent as null.
     const before = valueOf(k, cluster.data?.settings, node.data?.settings);
+    // null resets the key to its default (internal/api patchSettings).
     const v =
       k.type === 'map' && value && typeof value === 'object' && before && typeof before === 'object'
         ? mapPatch(before as Record<string, unknown>, value as Record<string, unknown>)
@@ -125,7 +164,7 @@ export default function SettingsPage() {
       qc.setQueryData(k.scope === 'node' ? qk.nodeConfig : qk.settings, body);
       void qc.invalidateQueries({ queryKey: qk.schema });
       setNotice(noticeFor(body));
-      notify.success(`${k.path} saved${k.restartRequired || body.restartRequired?.length ? '; takes effect after a restart' : ''}`);
+      notify.success(`${k.path} ${value === null ? 'reset to its default' : 'saved'}${k.restartRequired || body.restartRequired?.length ? '; takes effect after a restart' : ''}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.describe() : (err as Error).message;
       throw new Error(msg, { cause: err });
