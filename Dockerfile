@@ -21,7 +21,7 @@ COPY --from=build /out/kudurru /usr/local/bin/kudurru
 # NET_BIND_SERVICE as documented in docs/architecture.md §5.2 and §6.1.
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]
-EXPOSE 53/udp 53/tcp 853/tcp 443/tcp 8080/tcp 8081/tcp 9153/tcp
+EXPOSE 53/udp 53/tcp 853/tcp 853/udp 443/tcp 443/udp 8080/tcp 8081/tcp 9153/tcp
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=5 CMD ["kudurru", "health", "--ready"]
 ENTRYPOINT ["kudurru"]
 CMD ["serve"]

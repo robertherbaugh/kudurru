@@ -86,9 +86,9 @@ The same YAML works in both modes: `kudurru apply -f zone.yaml` against a Docker
 
 | Release | Name | Headline |
 |---|---|---|
-| v0.1 | stone | Resolver with DoT/DoH, primary and forward zones with AXFR out, blocking engine with client groups, Pi-hole-grade dashboard with long-term views, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2 | clay copies | Secondary/stub zones, RFC 2136, DoQ/DoH3, DNSSEC validation, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
-| v1.0 | temple | DNSSEC signing, catalog zones, raft store, ACME, Pi-hole API façade, API freeze |
+| v0.1 | stone | Resolver with DoT/DoH/DoQ/DoH3, primary and forward zones with AXFR out, blocking engine with client groups, Pi-hole-grade dashboard with long-term views, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
+| v0.2 | clay copies | Secondary/stub zones, RFC 2136, DNSSEC validation, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
 Full milestones with exit criteria are in [docs/architecture.md §13](docs/architecture.md#13-roadmap).
 

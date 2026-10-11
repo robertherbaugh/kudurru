@@ -1,30 +1,34 @@
 # Open questions for the project owner
 
-These are the decisions the architecture leaves to the project owner. Each has a proposed default that the v0.1 plan assumes; answer them before the v0.1 schedule is committed. Record each answer as a decision in [architecture.md §16](architecture.md#16-decision-log).
+These were the decisions the architecture left to the project owner. Answers are recorded as decisions in [architecture.md §16](architecture.md#16-decision-log). Numbers match §15 of the architecture. New questions go in a fresh open table above the Decided table.
 
-| # | Question | Proposed default | Why it matters |
+**All 21 questions were answered by the project owner on 2026-10-10 and 2026-10-11.** The Decided table below is the record; the architecture decision log holds the rationale.
+
+## Decided
+
+| # | Decision | Date | Log |
 |---|---|---|---|
-| 1 | **Project home.** Module `github.com/robertherbaugh/kudurru`, images under `ghcr.io/robertherbaugh/`, CRD group `kudurru.io`. Is the `kudurru.io` domain owned or wanted? | Keep as is; the CRD group is the only thing that is painful to change later | A CRD group rename after v0.1 means a migration for every user |
-| 2 | **Compose HA ladder.** v0.1 static twins (file-managed, read-only UI), v0.2 follower mode with fenced promote, v1.0 raft. | Accept the ladder | Pulling raft forward costs the Cloudflare and UniFi integrations in v0.2 |
-| 3 | **Sessions.** Sealed cookies in v0.1 (no mid-session group refresh, no session listing); SQLite session store in v0.2 for Docker; external store option for Kubernetes in v1.0. | Accept | A Kubernetes Deployment has no shared database in v0.1 |
-| 4 | **Kubernetes as a DNS data source.** `external` zones from Ingress/Gateway/LoadBalancer hostnames in v0.2 only, or also replace CoreDNS for `cluster.local`? | External zones only; `cluster.local` stays with CoreDNS before 1.x | CoreDNS-grade conformance is a large, separate burden |
-| 5 | **Blocked-services and safe-search data.** Maintain a kudurru-owned permissively licensed catalogue, or drop those features? AdGuard's tables are GPL. | Own catalogue, v0.2 | Licensing of embedded data, not just code |
-| 6 | **DHCP.** Out of scope for 1.0; UniFi or the router owns it and kudurru reads inventory from UniFi. | Confirm out of scope | DHCP was the largest bug cluster in both Gravity and Technitium |
-| 7 | **Default block response.** `zeroIP` with a 10 minute TTL and EDE 15, or `nxdomain`? | `zeroIP` | One-click allow feels responsive with a short TTL |
-| 8 | **Query log defaults.** Privacy `full`, raw rows kept 30 days up to 10 GiB, answer summary stored only in `full`. | Accept | Privacy posture of the project |
-| 9 | **Cloudflare ownership marker.** Comment only (works on the Free plan) or comment plus tag; honour and produce external-dns TXT heritage records? | Comment, plus tag when the plan allows; read heritage TXT, never write it | Coexistence with a parallel external-dns |
-| 10 | **UniFi legacy API.** Allow undocumented endpoints behind a flag for alias, fixed-IP and VLAN data, or official API only? | Behind a flag, with version detection | Official API lacks some inventory fields |
-| 11 | **Edge default in Helm.** dnsdist off by default; flip on once console diff-apply is proven? | Off | Fewer moving parts for a first install |
-| 12 | **Pi-hole API façade.** Optional module in v1.0, or pull into v0.2 for Home Assistant, Homarr and PADD users? | v1.0 | Protects v0.2 scope |
-| 13 | **Transports.** Implement DoQ and DoH3 natively in v0.2, or rely on dnsdist for QUIC? | Native in v0.2 | Core size versus "extreme feature set" |
-| 14 | **Hardware floor.** Raspberry Pi 4 class (arm64, 1 GB) is supported; is `armv7` a release target? | arm64 and amd64 only | Build matrix and testing cost |
-| 15 | **Authorization in Kubernetes.** SubjectAccessReview by default; apiserver impersonation as a v0.2 opt-in. | Confirm | The impersonate grant makes a compromised DNS server cluster-admin-equivalent |
-| 16 | **Frontend stack.** React + TypeScript + shadcn/ui, or Lit + PatternFly (Gravity's stack)? | React | Contributor pool and component ecosystem |
-| 17 | **keepalived build.** Compile 2.4.3 from the upstream tarball (gets `auth_hmac`; kudurru carries the GPL source offer) or ship Alpine's 2.3.4 package (no authenticated VRRP)? | Compile 2.4.3 | Authenticated VRRP adverts versus image reproducibility |
-| 18 | **VIP drain policy.** `kudurru lameduck` moves the VIP (FAULT) on every rolling restart of the MASTER and, with `nopreempt`, it does not come back. Acceptable, or should lameduck only drain dnsdist backends? | Move the VIP | Behaviour during routine upgrades |
-| 19 | **PROXYv2 authentication.** Shared-secret TLV in v0.1 (proposed) versus NetworkPolicy and host firewalls only; should the loopback compose profile also require it? | TLV required for non-loopback peers; loopback exempt | Any neighbour in a trusted CIDR could otherwise forge client addresses |
-| 20 | **RPZ.** Add response policy zones (BIND/Knot-compatible blocklist transport) in v0.2 or v1.0, or leave reserved? | Leave reserved | Lets kudurru publish its blocklists to other resolvers |
-| 21 | **Encryption key rotation.** Dual-key window via `KUDURRU_ENCRYPTION_KEY_PREVIOUS`, or an explicit `kudurru admin rotate-key` that rewrites the store in place? | Dual-key window | Operator UX for a rare but critical operation |
+| 1 | **Project home.** Module `github.com/robertherbaugh/kudurru`, images under `ghcr.io/robertherbaugh/`, CRD group `kudurru.io`. | 2026-10-10 | D49 |
+| 2 | **Compose HA ladder.** v0.1 static twins, v0.2 follower mode with fenced promote, v1.0 raft. | 2026-10-10 | D50 |
+| 3 | **Sessions.** Sealed cookies in v0.1 for both modes; SQLite session store in v0.2 for Docker; optional external store for Kubernetes in v1.0. | 2026-10-10 | D54 |
+| 4 | **Kubernetes as a DNS data source.** `external` zones from Ingress, Gateway API routes and LoadBalancer Services in v0.2; `cluster.local` stays with CoreDNS before 1.x. | 2026-10-10 | D64 |
+| 5 | **Blocked-services and safe-search data.** A kudurru-owned, permissively licensed catalogue in a separate data repository, shipped in **v0.1** (M2). | 2026-10-10 | D60 |
+| 6 | **DHCP.** Out of scope for 1.0; candidate for 2.0. | 2026-10-10 | D52 |
+| 7 | **Default block response.** `zeroIP` with a 10 minute TTL and EDE 15. | 2026-10-10 | D58 |
+| 8 | **Query log defaults.** Privacy `full`, raw rows 30 days up to 10 GiB, answer summary only in `full`, rollups 35 d / 400 d / forever. | 2026-10-10 | D59 |
+| 9 | **Cloudflare ownership marker.** Record comment `kudurru:owner=<clusterID>` plus a tag when the plan allows; external-dns heritage TXT records are read for adoption, never written. | 2026-10-10 | D62 |
+| 10 | **UniFi legacy API.** Official Integration API by default; legacy controller endpoints behind a flag with version detection and per-endpoint 404 tolerance. | 2026-10-10 | D63 |
+| 11 | **Edge default in Helm.** dnsdist off by default in v0.1; revisit once console diff-apply is proven in v0.2. | 2026-10-10 | D65 |
+| 12 | **Pi-hole API façade.** Optional module in v1.0. | 2026-10-10 | D66 |
+| 13 | **Transports.** DoQ and DoH3 are native in **v0.1**: all five transports (Do53, DoT, DoH, DoQ, DoH3) ship in milestone M1. | 2026-10-10 | D67 |
+| 14 | **Hardware floor.** Raspberry Pi 4 class (arm64, 1 GB) supported; release targets are linux amd64 and arm64 only. | 2026-10-10 | D68 |
+| 15 | **Authorization in Kubernetes.** SubjectAccessReview by default; apiserver impersonation stays a v0.2 opt-in. | 2026-10-10 | D55 |
+| 16 | **Frontend stack.** Bun + React 19 + TypeScript + Astryx (Meta's design system, MIT); uPlot/ECharts for charts until `@astryxdesign/charts` leaves canary. | 2026-10-10 | D69 |
+| 17 | **keepalived build.** Compile 2.4.3 from the upstream tarball with the GPL source offer. | 2026-10-10 | D53 |
+| 18 | **VIP drain policy.** Lameduck keeps the VIP and only drains the node from dnsdist; the VIP moves on real failure or an explicit `kudurru vip drain`. | 2026-10-10 | D51 |
+| 19 | **PROXYv2 authentication.** Exact peer allow-list plus the shared-secret TLV for every non-loopback peer; the loopback compose profile is exempt. | 2026-10-10 | D56 |
+| 20 | **RPZ.** Import RPZ feeds as a BlockList source in v0.2; publish kudurru's own blocklists as transferable RPZ zones in v1.0. | 2026-10-10 | D61 |
+| 21 | **Encryption key rotation.** Dual-key window via `KUDURRU_ENCRYPTION_KEY_PREVIOUS`; stored secrets are re-encrypted on start and old sessions stay valid until their lifetime ends. | 2026-10-10 | D57 |
 
 ## Week-1 spikes before the schedule is committed
 
