@@ -1,4 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useApi } from '../api/context';
 import { describe, expect, it } from 'vitest';
 import { mockDB, signIn } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
@@ -52,5 +54,33 @@ describe('change password', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Change password' }));
     await waitFor(() => expect(screen.queryByText('Choose a new password')).toBeNull());
     expect(admin.mustChangePassword).toBe(false);
+  });
+
+  it('refetches the answers the forced session got before the change', async () => {
+    const admin = mockDB().users.find((u) => u.username === 'admin')!;
+    admin.mustChangePassword = true;
+    let calls = 0;
+    function Probe() {
+      const api = useApi();
+      const q = useQuery({
+        queryKey: ['probe'],
+        queryFn: async () => {
+          await api.cluster.version();
+          return ++calls;
+        },
+      });
+      return <span>{q.data ? `probe ${q.data}` : 'pending'}</span>;
+    }
+    renderWithApp(
+      <>
+        <AccountMenu />
+        <Probe />
+      </>,
+    );
+    expect(await screen.findByText('probe 1')).toBeInTheDocument();
+    const dialog = await screen.findByRole('alertdialog');
+    fill(dialog, 'admin', 'a-better-password');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('probe 2')).toBeInTheDocument();
   });
 });
