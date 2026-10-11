@@ -467,7 +467,7 @@ func decodeHint(e *Error, raw json.RawMessage) {
 		return
 	}
 	decodeHintObject(e, raw)
-	if e.Hint == "" {
+	if e.Hint == "" && e.Missing == nil {
 		e.Hint = string(raw)
 	}
 }
