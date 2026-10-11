@@ -85,7 +85,7 @@ func (s *Service) Sweep(ctx context.Context) (SweepResult, error) {
 				continue
 			}
 			res.Expired++
-		case r.EffectiveState() != v1alpha1.UnblockPending && !(Active(r, now) && r.Status.Allow.ExpiresAt != nil):
+		case r.EffectiveState() != v1alpha1.UnblockPending && (!Active(r, now) || r.Status.Allow.ExpiresAt == nil):
 			if decided := decidedAt(r); !decided.IsZero() && now.Sub(decided) >= set.Retention.Std() {
 				err := s.opts.Store.Delete(ctx, keyOf(r.Namespace, r.Name), store.DeleteOptions{Manager: Manager, Force: true})
 				if err != nil && !errors.Is(err, store.ErrNotFound) {

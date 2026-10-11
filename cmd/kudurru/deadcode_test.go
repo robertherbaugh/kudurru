@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -20,14 +19,15 @@ func TestNoTemplateExecution(t *testing.T) {
 	if testing.Short() {
 		t.Skip("links the binary")
 	}
-	gobin := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if _, err := os.Stat(gobin); err != nil {
-		gobin = "go"
+	gobin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go toolchain on PATH")
 	}
 	out := filepath.Join(t.TempDir(), "kudurru")
+	var dump []byte
 	cmd := exec.Command(gobin, "build", "-ldflags=-dumpdep", "-o", out, ".") //nolint:gosec // the test's own toolchain
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	dump, err := cmd.CombinedOutput()
+	dump, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, tail(dump))
 	}

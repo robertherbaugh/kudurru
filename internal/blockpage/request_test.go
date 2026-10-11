@@ -219,7 +219,7 @@ func TestFormText(t *testing.T) {
 		{"  Sam  ", "Sam", false},
 		{"a\r\nb", "a b", false},
 		{"a\r\nb", "a\nb", true},
-		{"x‮y\x00z\tw", "xyz w", false},
+		{"x\u202ey\x00z\tw", "xyz w", false},
 	} {
 		if got, ok := formText(c.in, 100, c.multiline); !ok || got != c.want {
 			t.Errorf("formText(%q) = %q %v, want %q", c.in, got, ok, c.want)
