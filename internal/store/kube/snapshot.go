@@ -80,7 +80,7 @@ func (s *Store) Restore(ctx context.Context, r io.Reader) error {
 		return err
 	}
 	var errs []error
-	for _, o := range objs {
+	for _, o := range restoreOrder(objs) {
 		manager := store.ManagedBy(o)
 		if manager == "" {
 			manager = store.ManagerBootstrap
@@ -91,6 +91,25 @@ func (s *Store) Restore(ctx context.Context, r io.Reader) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// restoreOrder moves API tokens after every other object (stable
+// otherwise). Secrets get their creationTimestamp from the apiserver, and
+// the auth layer refuses a token older than the user or service account it
+// belongs to (a deleted account of the same name, docs/m5/security.md S2),
+// so tokens must be re-created after their owners; the sorted snapshot
+// lists "APIToken/..." first.
+func restoreOrder(objs []store.Object) []store.Object {
+	out := make([]store.Object, 0, len(objs))
+	var tokens []store.Object
+	for _, o := range objs {
+		if o.GetObjectKind().GroupVersionKind().Kind == "APIToken" {
+			tokens = append(tokens, o)
+			continue
+		}
+		out = append(out, o)
+	}
+	return append(out, tokens...)
 }
 
 // decodeObjects reads typed kudurru objects from a YAML or JSON stream,

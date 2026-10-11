@@ -178,8 +178,11 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 		resp.Content = map[string]*huma.MediaType{"application/json": {Schema: reg.Schema(reflect.TypeOf(respExample), true, "")}}
 	}
 	op.Responses = map[string]*huma.Response{strconv.Itoa(status): resp}
-	// The auth handler reads the body itself.
+	// The auth handler reads the body itself. Login and token bodies are
+	// tiny and the login route is public: never buffer more than the auth
+	// handler accepts (64 KiB) for an anonymous caller.
 	op.SkipValidateBody = true
+	op.MaxBodyBytes = maxAuthBodyBytes
 	for _, m := range pathParamRE.FindAllStringSubmatch(op.Path, -1) {
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}
@@ -209,6 +212,10 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 	}
 	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) { return serve(nil) })
 }
+
+// maxAuthBodyBytes caps the bodies of the forwarded auth routes (the auth
+// handler refuses larger ones too).
+const maxAuthBodyBytes = 64 << 10
 
 // forwardBodyInput captures the body of a forwarded auth route.
 type forwardBodyInput struct {

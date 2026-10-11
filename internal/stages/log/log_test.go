@@ -130,6 +130,21 @@ func TestObserverSkipsHealthName(t *testing.T) {
 	}
 }
 
+// TestObserverSkipsSyntheticRequests is the regression test of the M5
+// finding "the built-in dig forges query-log rows": POST /api/v1/dns/query
+// (stats.read, every viewer) runs a query as any client address the caller
+// names, and the log stage recorded it as that client's traffic.
+func TestObserverSkipsSyntheticRequests(t *testing.T) {
+	rec := &recorder{}
+	o := &Observer{Node: "n", Collector: rec}
+	req := request("www.example.com.", dns.TypeA)
+	req.Client.Synthetic = true
+	o.Observe(req, &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded}, nil, time.Millisecond)
+	if len(rec.events) != 0 {
+		t.Errorf("a synthetic request was logged as %+v", rec.events[0])
+	}
+}
+
 func TestZoneNameTypedNil(t *testing.T) {
 	var z *fakeZone
 	if got := zoneName(z); got != "" {

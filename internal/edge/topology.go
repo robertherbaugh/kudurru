@@ -434,6 +434,11 @@ func (t *Topology) Validate() error {
 		if b.Protocol.TLS() && (b.CertFile == "" || b.KeyFile == "") {
 			add("bind %s (%s): certificate and key files are required", b.Address, b.Protocol)
 		}
+		for _, f := range append([]string{b.CertFile, b.KeyFile}, b.DoHPaths...) {
+			if !safeValue(f) {
+				add("bind %s (%s): %q may only contain printable ASCII without spaces, quotes or backslashes", b.Address, b.Protocol, f)
+			}
+		}
 	}
 	pools := map[string]bool{}
 	for _, p := range t.Pools {
@@ -461,6 +466,11 @@ func (t *Topology) Validate() error {
 	for _, b := range t.Backends {
 		if err := validHostPort(b.Address); err != nil {
 			add("backend %s: %v", b.DisplayName(), err)
+		}
+		if b.InternalAddress != "" {
+			if err := validHostPort(b.InternalAddress); err != nil {
+				add("backend %s: internal address: %v", b.DisplayName(), err)
+			}
 		}
 		if prev, dup := ids[b.ID]; dup {
 			add("backends %s and %s share id %s", prev, b.DisplayName(), b.ID)
@@ -563,6 +573,18 @@ func safeName(s string) bool {
 	return true
 }
 
+// safeValue reports whether s (a file or URL path rendered into
+// dnsdist.yml and dnsdist.lua) is printable ASCII without spaces, quotes
+// or backslashes, so no renderer has to escape it.
+func safeValue(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x21 || c > 0x7e || c == '"' || c == '\'' || c == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
 func validHostPort(s string) error {
 	host, port, err := net.SplitHostPort(s)
 	if err != nil {
@@ -570,6 +592,11 @@ func validHostPort(s string) error {
 	}
 	if host == "" {
 		return errors.New("empty host")
+	}
+	// The host is an IP address or a DNS name: nothing else may reach the
+	// rendered configuration (a newline would end a Lua comment).
+	if _, err := netip.ParseAddr(host); err != nil && !safeName(host) {
+		return fmt.Errorf("host %q is neither an IP address nor a DNS name", host)
 	}
 	if p, err := strconv.Atoi(port); err != nil || p <= 0 || p > 65535 {
 		return fmt.Errorf("invalid port %q", port)

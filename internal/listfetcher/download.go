@@ -45,8 +45,18 @@ func ConfigMapKey(namespace, name string) string { return "configmap://" + names
 // DownloadOptions configure a Downloader.
 type DownloadOptions struct {
 	// Client performs the requests; default an http.Client with
-	// DefaultHTTPTimeout and the proxy from the environment.
+	// DefaultHTTPTimeout, the proxy from the environment and, unless
+	// AllowLocalAddresses is set, a dialer that refuses local addresses.
 	Client *http.Client
+	// AllowLocalAddresses lets list URLs reach loopback, link-local
+	// (169.254.0.0/16 and fe80::/10: cloud metadata services), unspecified,
+	// multicast and the known cloud metadata addresses
+	// (blocking.allowLocalListURLs). Off by default: a BlockList writer
+	// (the operator role) must not turn the fetching node into a proxy for
+	// node-local services (SSRF). Private LAN ranges are always allowed.
+	// With a caller-supplied Client only literal addresses in the URL are
+	// checked.
+	AllowLocalAddresses bool
 	// MaxHTTPSize caps a body; default DefaultMaxHTTPSize.
 	MaxHTTPSize int64
 	// Attempts per download for transient failures (network errors, 429,
@@ -80,7 +90,11 @@ type Downloader struct {
 // NewDownloader returns a Downloader writing into cache.
 func NewDownloader(cache *DiskCache, opts DownloadOptions) *Downloader {
 	if opts.Client == nil {
-		opts.Client = &http.Client{Timeout: DefaultHTTPTimeout, Transport: http.DefaultTransport}
+		if opts.AllowLocalAddresses {
+			opts.Client = &http.Client{Timeout: DefaultHTTPTimeout, Transport: http.DefaultTransport}
+		} else {
+			opts.Client = guardedClient()
+		}
 	}
 	if opts.MaxHTTPSize <= 0 {
 		opts.MaxHTTPSize = DefaultMaxHTTPSize
@@ -146,6 +160,11 @@ func (d *Downloader) Fetch(ctx context.Context, src Source, origin string) (Resu
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return Result{}, fmt.Errorf("%w: %q", ErrUnsupportedURL, src.Key)
 	}
+	if !d.opts.AllowLocalAddresses {
+		if err := checkURLHost(u); err != nil {
+			return Result{}, fmt.Errorf("listfetcher: GET %s: %w", redact(src.Key), err)
+		}
+	}
 	backoff := d.opts.RetryBackoff
 	var last error
 	for attempt := 1; attempt <= d.opts.Attempts; attempt++ {
@@ -186,6 +205,9 @@ func (d *Downloader) fetchOnce(ctx context.Context, src Source, origin string) (
 	}
 	resp, err := d.opts.Client.Do(req)
 	if err != nil {
+		if errors.Is(err, ErrLocalAddress) {
+			return Result{}, false, fmt.Errorf("listfetcher: GET %s: %w", redact(src.Key), err)
+		}
 		return Result{}, true, fmt.Errorf("listfetcher: GET %s: %w", redact(src.Key), err)
 	}
 	defer func() {

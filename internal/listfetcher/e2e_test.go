@@ -61,8 +61,8 @@ func TestEndToEndTwoNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newNode("a", cluster.Self{Name: "a"}, nil, func(c *DiskCache) *Downloader { return NewDownloader(c, DownloadOptions{}) })
-	f, err := New(Options{Store: st, Objects: a.objs, Cache: a.cache, Downloader: NewDownloader(a.cache, DownloadOptions{}), Logger: quiet()})
+	a := newNode("a", cluster.Self{Name: "a"}, nil, func(c *DiskCache) *Downloader { return NewDownloader(c, DownloadOptions{AllowLocalAddresses: true}) })
+	f, err := New(Options{Store: st, Objects: a.objs, Cache: a.cache, Downloader: NewDownloader(a.cache, DownloadOptions{AllowLocalAddresses: true}), Logger: quiet()})
 	if err != nil {
 		t.Fatal(err)
 	}

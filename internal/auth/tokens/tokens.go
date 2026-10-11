@@ -396,7 +396,7 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	if tok.Spec.ExpiresAt != nil && !now.Before(tok.Spec.ExpiresAt.Time) {
 		return auth.Principal{}, auth.Unauthenticated(errors.New("token expired"))
 	}
-	p := auth.Principal{AuthMethod: auth.MethodToken, TokenID: id, Scopes: slices.Clone(tok.Spec.Scopes)}
+	p := auth.Principal{AuthMethod: auth.MethodToken, TokenID: id, Scopes: slices.Clone(tok.Spec.Scopes), CredentialIssuedAt: tok.CreationTimestamp.Time}
 	owner := tok.Spec.Owner
 	switch owner.Kind {
 	case internalv1.OwnerUser:
@@ -415,6 +415,11 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 		sa, ok := t.serviceAccount(owner.Namespace, owner.Name)
 		if !ok || sa.Spec.Disabled {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("service account missing or disabled"))
+		}
+		// A token older than the account belongs to a deleted account of
+		// the same name (whole-second timestamps on both sides).
+		if created := sa.CreationTimestamp.Time; !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {
+			return auth.Principal{}, auth.Unauthenticated(errors.New("token predates its service account"))
 		}
 		p.Kind, p.ID = auth.KindServiceAccount, ServiceAccountID(owner.Namespace, owner.Name)
 		p.Name = "serviceaccount:" + owner.Namespace + ":" + owner.Name

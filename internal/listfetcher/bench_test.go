@@ -95,7 +95,7 @@ func BenchmarkFetchAndPublish1M(b *testing.B) {
 	fx := &fixture{clk: newClock()}
 	fx.st = &countingStore{Store: memory.New()}
 	fx.cache, _ = OpenDiskCache(b.TempDir(), quiet())
-	fx.dl = NewDownloader(fx.cache, DownloadOptions{Now: fx.clk.Now})
+	fx.dl = NewDownloader(fx.cache, DownloadOptions{Now: fx.clk.Now, AllowLocalAddresses: true})
 	f, err := New(Options{Store: fx.st, Objects: newStoreObjects(fx.st), Cache: fx.cache, Downloader: fx.dl, Logger: quiet(), Now: fx.clk.Now})
 	if err != nil {
 		b.Fatal(err)

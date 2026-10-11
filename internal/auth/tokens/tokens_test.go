@@ -206,6 +206,44 @@ func TestServiceAccountTokens(t *testing.T) {
 	})
 }
 
+// TestRecreatedServiceAccountDoesNotInheritTokens is the service-account
+// half of the M5 finding S2: a token of a deleted service account must not
+// act for a later service account with the same namespace and name (which
+// may be a builtin admin, like the break-glass account).
+func TestRecreatedServiceAccountDoesNotInheritTokens(t *testing.T) {
+	authtest.Drivers(t, func(t *testing.T, st store.Store) {
+		ctx := context.Background()
+		c := &clock{t: time.Now()}
+		tk := newTokens(t, st, c, 0)
+		if _, err := tk.EnsureServiceAccount(ctx, "dns", "ci", "CI", false); err != nil {
+			t.Fatal(err)
+		}
+		wire, _, err := tk.Create(ctx, CreateOptions{Owner: internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: "ci", Namespace: "dns"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := store.Key{Kind: internalv1.KindServiceAccount, Namespace: "dns", Name: "ci"}
+		if err := st.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerSystem, Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		tk.ServiceAccounts().Remove(key)
+		time.Sleep(1100 * time.Millisecond) // creation timestamps have one-second resolution
+		if _, err := tk.EnsureServiceAccount(ctx, "dns", "ci", "re-created", true); err != nil {
+			t.Fatal(err)
+		}
+		if p, err := tk.Verify(ctx, wire, ""); err == nil {
+			t.Fatalf("the old token acts for the re-created account: %+v", p)
+		}
+		fresh, _, err := tk.Create(ctx, CreateOptions{Owner: internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: "ci", Namespace: "dns"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p, err := tk.Verify(ctx, fresh, ""); err != nil || !p.BuiltinAdmin {
+			t.Fatalf("a token of the new account: %+v %v", p, err)
+		}
+	})
+}
+
 func TestBootstrapToken(t *testing.T) {
 	authtest.Drivers(t, func(t *testing.T, st store.Store) {
 		ctx := context.Background()

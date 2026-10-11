@@ -61,6 +61,36 @@ func TestPrivacyTransform(t *testing.T) {
 	}
 }
 
+// TestHideDomainsHidesZone is the regression test of the M5 finding
+// "hide_domains keeps the matched zone": the authoritative or forward zone
+// of a query (its apex, e.g. "payroll.corp.example") was stored in the
+// zone dictionary and as the "zone:<apex>" upstream although the mode
+// promises that no domain is kept.
+func TestHideDomainsHidesZone(t *testing.T) {
+	for _, mode := range []Mode{PrivacyHideDomains, PrivacyHideDomainsClients, PrivacyNothing} {
+		p, err := NewPrivacy(PrivacyOptions{Mode: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e := ev("192.168.1.77", "www.payroll.corp.example.")
+		e.Zone = "payroll.corp.example."
+		e.Status = pipeline.StatusAuthoritative
+		if !p.Apply(e) {
+			t.Fatalf("%s: event dropped", mode)
+		}
+		if e.Zone != HiddenName {
+			t.Errorf("%s: zone %q kept", mode, e.Zone)
+		}
+	}
+	p, _ := NewPrivacy(PrivacyOptions{Mode: PrivacyAnonymizeClient})
+	e := ev("192.168.1.77", "www.payroll.corp.example.")
+	e.Zone = "payroll.corp.example."
+	p.Apply(e)
+	if e.Zone != "payroll.corp.example." {
+		t.Errorf("anonymize_client hid the zone: %q", e.Zone)
+	}
+}
+
 func TestPseudonymRotatesDaily(t *testing.T) {
 	fc := testclock.NewFakeClock(time.Date(2026, 10, 11, 23, 0, 0, 0, time.UTC))
 	p, _ := NewPrivacy(PrivacyOptions{Mode: PrivacyAnonymizeClient, Pseudonym: true, Clock: fc})

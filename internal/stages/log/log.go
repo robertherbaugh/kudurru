@@ -66,7 +66,8 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 
 	// The health name is probed every second by dnsdist and keepalived and
 	// is never logged.
-	if o.Collector == nil || strings.EqualFold(q.Name, ingress.HealthName) {
+	// Synthetic requests (the API's built-in dig) are not client traffic.
+	if o.Collector == nil || req.Client.Synthetic || strings.EqualFold(q.Name, ingress.HealthName) {
 		return
 	}
 	ev := &querylog.Event{

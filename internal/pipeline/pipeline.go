@@ -84,6 +84,11 @@ type Client struct {
 	// 8945). Queries whose signature fails verification never reach the
 	// pipeline; the transport answers them NOTAUTH itself.
 	TSIGKey string
+	// Synthetic marks a request kudurru made itself rather than received
+	// (the API's built-in dig, POST /api/v1/dns/query, which runs as any
+	// client address its caller names). The log stage does not record it,
+	// so it can never forge a client's query-log rows.
+	Synthetic bool
 }
 
 // Request is the per-query context handed through the stages.

@@ -159,7 +159,7 @@ func TestFallbackTiming(t *testing.T) {
 	var dlCache *DiskCache
 	rep := newReplica(t, newStoreObjects(st), ResolverOptions{Now: clk.Now, InitStrategy: InitBlocking})
 	dlCache = rep.cache
-	dl := NewDownloader(dlCache, DownloadOptions{Now: clk.Now})
+	dl := NewDownloader(dlCache, DownloadOptions{Now: clk.Now, AllowLocalAddresses: true})
 	dl.sleep = func(context.Context, time.Duration) error { return nil }
 	rep.r.opts.Downloader = dl
 	ctx := context.Background()
@@ -207,7 +207,7 @@ func TestNoLeaderNoDigest(t *testing.T) {
 	srv := newListServer(t, hostsV1)
 	applyList(t, st, "ads", v1alpha1.ListSource{URL: srv.URL})
 	rep := newReplica(t, newStoreObjects(st), ResolverOptions{Now: clk.Now, Membership: &cluster.Static{SelfName: "b"}})
-	dl := NewDownloader(rep.cache, DownloadOptions{Now: clk.Now})
+	dl := NewDownloader(rep.cache, DownloadOptions{Now: clk.Now, AllowLocalAddresses: true})
 	rep.r.opts.Downloader = dl
 	ctx := context.Background()
 	if res, _ := rep.r.Resolve(ctx); res.Waiting != 1 {

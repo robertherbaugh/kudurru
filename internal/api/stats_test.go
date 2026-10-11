@@ -281,3 +281,51 @@ func waitSubscribers(t *testing.T, tail *querylog.Tail, n int) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// TestQueryStreamLimit is the regression test of the M5 hardening "the
+// live tail accepts unbounded concurrent streams": every stream holds a
+// goroutine, a subscriber buffer and a connection with no write deadline,
+// so a querylog reader could exhaust the node. Streams beyond the cap get
+// 503 with Retry-After, and a closed stream frees its slot.
+func TestQueryStreamLimit(t *testing.T) {
+	defer func(n int) { maxQueryStreams = n }(maxQueryStreams)
+	maxQueryStreams = 2
+	tail := querylog.NewTail(16, 4, nil)
+	h := newHarness(t, func(o *Options) { o.Tail = tail })
+	ts := httptest.NewServer(h.srv)
+	defer ts.Close()
+	open := func() *http.Response {
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/api/v1/queries/stream", nil)
+		req.Header.Set("Authorization", apitest.Bearer("operator"))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	first, second := open(), open()
+	defer func() { _ = second.Body.Close() }()
+	if first.StatusCode != http.StatusOK || second.StatusCode != http.StatusOK {
+		t.Fatalf("streams within the cap: %d %d", first.StatusCode, second.StatusCode)
+	}
+	waitSubscribers(t, tail, 2)
+	third := open()
+	_ = third.Body.Close()
+	if third.StatusCode != http.StatusServiceUnavailable || third.Header.Get("Retry-After") == "" {
+		t.Fatalf("stream over the cap: %d (Retry-After %q)", third.StatusCode, third.Header.Get("Retry-After"))
+	}
+	_ = first.Body.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		r := open()
+		code := r.StatusCode
+		_ = r.Body.Close()
+		if code == http.StatusOK {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a closed stream did not free its slot: %d", code)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

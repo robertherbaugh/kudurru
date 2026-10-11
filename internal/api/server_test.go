@@ -252,6 +252,29 @@ func TestAuthForwarding(t *testing.T) {
 	newHarness(t).do(http.MethodGet, "/api/v1/auth/status", "", nil).want(http.StatusNotImplemented)
 }
 
+// TestForwardedAuthBodyCap is the regression test of the M5 hardening
+// "anonymous login requests are buffered up to 32 MiB": the forwarded auth
+// routes inherited the 32 MiB object cap and huma read the whole body into
+// memory before the auth handler (which caps at 64 KiB) saw it, so
+// concurrent anonymous logins could exhaust memory.
+func TestForwardedAuthBodyCap(t *testing.T) {
+	called := 0
+	h := newHarness(t, func(o *Options) {
+		o.AuthHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called++; w.WriteHeader(http.StatusOK) })
+	})
+	big := `{"username":"admin","password":"` + strings.Repeat("x", 1<<20) + `"}`
+	if r := h.do(http.MethodPost, "/api/v1/auth/login", "", big, "Content-Type", "application/json"); r.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("1 MiB login body: %d", r.Code)
+	}
+	if called != 0 {
+		t.Fatal("the oversized body reached the auth handler")
+	}
+	h.do(http.MethodPost, "/api/v1/auth/login", "", map[string]string{"username": "admin", "password": "pw"}).want(http.StatusOK)
+	if called != 1 {
+		t.Fatalf("auth handler calls %d, want 1", called)
+	}
+}
+
 func TestMeWithBearerRoles(t *testing.T) {
 	h := newHarness(t, func(o *Options) {
 		o.Roles = func(_ context.Context, p auth.Principal) []string { return []string{"zone-admin@zone:" + p.Name} }

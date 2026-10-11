@@ -247,7 +247,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	listObjs := listfetcher.NewZoneCacheObjects(zc)
-	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{})
+	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{AllowLocalAddresses: cfg.Blocking.AllowLocalListURLs})
 	initStrategy, err := listfetcher.ParseInitStrategy(cfg.Blocking.InitStrategy)
 	if err != nil {
 		return err
@@ -516,12 +516,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
 	// the RBAC engine and the admin socket.
-	stackOpts := stack.Options{
-		Config: cfg, Store: st, Keys: encKeys, Kube: restCfg,
-		TrustForwardedProto: len(cfg.Listeners.API.TrustedProxies) > 0,
-		APIPrefix:           strings.TrimSuffix(cfg.Listeners.API.PathPrefix, "/") + "/api/v1",
-		Logger:              logger,
-	}
+	stackOpts := identityOptions(cfg, st, encKeys, logger)
+	stackOpts.Kube = restCfg
 	if cfg.Store.Driver == "kube" {
 		stackOpts.Namespace = kube.PodNamespace()
 	}
@@ -750,4 +746,34 @@ func readEncryptionKeys() (key, previous []byte, err error) {
 		return nil, nil, err
 	}
 	return key, previous, nil
+}
+
+// identityOptions are the stack.Options that do not depend on the
+// deployment shape (the Kubernetes config, namespace and internal token
+// are added by the caller).
+func identityOptions(cfg *config.Config, st store.Store, k keys.Keys, logger *slog.Logger) stack.Options {
+	return stack.Options{
+		Config: cfg, Store: st, Keys: k,
+		TrustForwardedProto: len(cfg.Listeners.API.TrustedProxies) > 0,
+		APIPrefix:           strings.TrimSuffix(cfg.Listeners.API.PathPrefix, "/") + "/api/v1",
+		ClientIP:            apiClientIP,
+		Logger:              logger,
+	}
+}
+
+// apiClientIP is stack.Options.ClientIP: the client address the API
+// server's RealIP step derived (the right-most untrusted X-Forwarded-For
+// entry behind listeners.api.trustedProxies), so login lockouts count
+// clients rather than the reverse proxy every request arrives from.
+// Requests that did not pass the API server (the admin socket) fall back
+// to the transport peer.
+func apiClientIP(r *http.Request) string {
+	if a := api.ClientIP(r.Context()); a.IsValid() {
+		return a.String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

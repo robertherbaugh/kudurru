@@ -270,6 +270,9 @@ func hideDomains(ev *Event) {
 	if ev.CNAME != "" {
 		ev.CNAME = HiddenName
 	}
+	if ev.Zone != "" {
+		ev.Zone = HiddenName // the zone apex is a domain too
+	}
 	ev.Rule = "" // rule text names the domain
 	ev.Answer = ""
 }

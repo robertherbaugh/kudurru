@@ -567,6 +567,11 @@ func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput
 	old, err := s.opts.Store.List(ctx, "DNSRecordSet", store.ListOptions{Namespace: ns, LabelSelector: map[string]string{labelImport: in.Zone}})
 	if err == nil {
 		for _, o := range old.Items {
+			// Only this zone's own chunks: the label alone is no proof (any
+			// writer of another zone can set it).
+			if rs, ok := o.(*v1alpha1.DNSRecordSet); !ok || rs.Spec.ZoneRef.Name != in.Zone {
+				continue
+			}
 			if !written[o.GetName()] && store.ManagedBy(o) == store.ManagerAPI {
 				_ = s.deleteObject(ctx, k, o, "")
 			}

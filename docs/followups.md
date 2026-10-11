@@ -104,6 +104,17 @@ Close an item by deleting its row and citing the commit.
 | architecture.md: §6.2 `auth.adminSocket.{path,group}` (instead of `listeners.socket`), `auth.kubernetes.mode`; §8 the internal kinds live in `api/internalkinds/v1alpha1` (Go's internal rule forbids `api/internal`); `POST /api/v1/auth/password`; `GET /auth/status` `localLoginMode`; Node principals (internal token) hold implicit viewer+auditor; §5.3 secrets need delete | docs/m3/auth.md | M3 (integrator) |
 | `autoProvision: never` and `syncGroups` once the user store exists; RP-initiated logout | auth spike | v0.2 |
 
+## Security (docs/m5/security.md)
+
+| Item | Source | Target |
+|---|---|---|
+| Principals whose only binding is zone-scoped (zone-admin) get 403 `tokens.own at scope cluster` on `/auth/tokens`: `stack.Guard` checks the permission at cluster scope although every built-in role holds `tokens.own` (the API forwards these routes as `authenticated` for that reason). Fail-closed, but zone-admins cannot mint tokens; check `tokens.own` at any scope the principal holds (keeping token scopes as restrictions) | docs/m5/security.md | v0.1.x |
+| Token `lastUsedIP` records `RemoteAddr` (the reverse proxy behind `listeners.api.trustedProxies`); give `tokens.Options` the API's ClientIP like the stack (`apiClientIP` in serve.go) | docs/m5/security.md | v0.1.x |
+| external-dns webhook: optional shared-secret header (`externalDNS.webhook.tokenFile`, the external-dns webhook provider can send custom headers) so the listener can leave loopback without relying on a NetworkPolicy | docs/m5/security.md | v0.2 |
+| OIDC docs: warn that the default username chain starts at `preferred_username`, which some IdPs let users edit; recommend group bindings or `claimMappings.username.claim: sub` for `User` subjects | docs/m5/security.md | M5 docs |
+| A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | docs/m5/security.md | v0.2 |
+| `TestSupervisorPeersFile` (internal/edge/keepalived) passes with `-race` (what `make test` runs) but times out without it, waiting for the HUP after the peers file changes: the log shows the supervisor checking and starting the fake keepalived again instead. Reproduced 3/3 with the package and its only kudurru dependency (internal/edge) as on 347f4c7, so it predates M5; a timing assumption in the test or a restart path that wins the race when the code runs fast | M5 security run | M5 |
+
 ## Dashboard (web/)
 
 | Item | Source | Target |

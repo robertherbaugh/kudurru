@@ -62,6 +62,12 @@ type Principal struct {
 	Scopes []string
 	// TokenID is the id of the API token that authenticated the request.
 	TokenID string
+	// CredentialIssuedAt is when the credential that authenticated the
+	// request was issued (a session's iat, an API token's creation time).
+	// LoadPrincipal refuses a credential older than the local account it
+	// names, so a re-created account never inherits the sessions and
+	// tokens of a deleted one with the same name. Zero skips the check.
+	CredentialIssuedAt time.Time
 	// Implicit are grants held without a binding (a peer node's read-only
 	// grants), in wire form.
 	Implicit []string

@@ -58,5 +58,6 @@ func (a *Authenticator) Authenticate(w http.ResponseWriter, r *http.Request) (au
 	p.AuthMethod = auth.MethodCookie
 	p.Grants = append([]string(nil), s.RolesSnapshot...)
 	p.GrantsIssuedAt = s.IssuedAt
+	p.CredentialIssuedAt = s.IssuedAt
 	return p, r.WithContext(auth.WithSession(ctx, s)), nil
 }
