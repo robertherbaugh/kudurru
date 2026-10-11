@@ -26,10 +26,23 @@ func (c *Controller) reconcileBlockList(ctx context.Context, key store.Key) (boo
 	}
 	next := cur.DeepCopy()
 	next.Status.ObservedGeneration = cur.Generation
-	v := serving(fmt.Sprintf("%d sources", len(cur.Spec.Sources)))
+	off := 0
+	for i := range cur.Spec.Sources {
+		if !cur.Spec.Sources[i].IsEnabled() {
+			off++
+		}
+	}
+	msg := fmt.Sprintf("%d sources", len(cur.Spec.Sources))
+	switch {
+	case off > 0 && off == len(cur.Spec.Sources):
+		msg = "all sources disabled"
+	case off > 0:
+		msg += fmt.Sprintf(" (%d disabled)", off)
+	}
+	v := serving(msg)
 	var failed []string
 	for _, s := range cur.Status.Sources {
-		if s.Error != "" {
+		if s.Error != "" && (s.Enabled == nil || *s.Enabled) {
 			failed = append(failed, fmt.Sprintf("%s: %s", s.Name, s.Error))
 		}
 	}

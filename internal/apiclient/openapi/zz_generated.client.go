@@ -170,6 +170,42 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for PolicyListRole.
+const (
+	PolicyListRoleAllow PolicyListRole = "allow"
+	PolicyListRoleBlock PolicyListRole = "block"
+)
+
+// Valid indicates whether the value is a known member of the PolicyListRole enum.
+func (e PolicyListRole) Valid() bool {
+	switch e {
+	case PolicyListRoleAllow:
+		return true
+	case PolicyListRoleBlock:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicySafeSearchMode.
+const (
+	PolicySafeSearchModeModerate PolicySafeSearchMode = "moderate"
+	PolicySafeSearchModeStrict   PolicySafeSearchMode = "strict"
+)
+
+// Valid indicates whether the value is a known member of the PolicySafeSearchMode enum.
+func (e PolicySafeSearchMode) Valid() bool {
+	switch e {
+	case PolicySafeSearchModeModerate:
+		return true
+	case PolicySafeSearchModeStrict:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryActionInputBodyAction.
 const (
 	QueryActionInputBodyActionAllow QueryActionInputBodyAction = "allow"
@@ -688,6 +724,7 @@ const (
 	QuerySuggestionsParamsFieldClient   QuerySuggestionsParamsField = "client"
 	QuerySuggestionsParamsFieldDomain   QuerySuggestionsParamsField = "domain"
 	QuerySuggestionsParamsFieldList     QuerySuggestionsParamsField = "list"
+	QuerySuggestionsParamsFieldPolicy   QuerySuggestionsParamsField = "policy"
 	QuerySuggestionsParamsFieldUpstream QuerySuggestionsParamsField = "upstream"
 	QuerySuggestionsParamsFieldZone     QuerySuggestionsParamsField = "zone"
 )
@@ -700,6 +737,8 @@ func (e QuerySuggestionsParamsField) Valid() bool {
 	case QuerySuggestionsParamsFieldDomain:
 		return true
 	case QuerySuggestionsParamsFieldList:
+		return true
+	case QuerySuggestionsParamsFieldPolicy:
 		return true
 	case QuerySuggestionsParamsFieldUpstream:
 		return true
@@ -1009,6 +1048,18 @@ type BlockingState struct {
 // BlockingStateScope defines model for BlockingState.Scope.
 type BlockingStateScope string
 
+// CatalogueIcon defines model for CatalogueIcon.
+type CatalogueIcon struct {
+	// Id The icon slug (the homarr-labs/dashboard-icons file name).
+	Id string `json:"id"`
+
+	// OnDark Path of the variant for dark backgrounds, when one exists.
+	OnDark *string `json:"onDark,omitempty"`
+
+	// Path /api/v1/catalogue/icons/{id}.svg
+	Path string `json:"path"`
+}
+
 // CatalogueInfo defines model for CatalogueInfo.
 type CatalogueInfo struct {
 	// Digest SHA-256 of the catalogue document.
@@ -1049,6 +1100,12 @@ type CatalogueService struct {
 
 	// Domains The service's rules as list text (||domain^).
 	Domains []string `json:"domains"`
+
+	// Icon Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.
+	Icon *string `json:"icon,omitempty"`
+
+	// IconOnDark The logo drawn for dark backgrounds, when the default one is dark artwork.
+	IconOnDark *string `json:"iconOnDark,omitempty"`
 
 	// Id The ID Policy.spec.blockedServices names.
 	Id string `json:"id"`
@@ -1116,6 +1173,16 @@ type ClusterInfo struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// Condition defines model for Condition.
+type Condition struct {
+	LastTransitionTime time.Time `json:"lastTransitionTime"`
+	Message            string    `json:"message"`
+	ObservedGeneration *int64    `json:"observedGeneration,omitempty"`
+	Reason             string    `json:"reason"`
+	Status             string    `json:"status"`
+	Type               string    `json:"type"`
 }
 
 // CreateTokenRequest defines model for CreateTokenRequest.
@@ -1384,6 +1451,50 @@ type ImportResult struct {
 	ZoneName string   `json:"zoneName"`
 }
 
+// InlineEntries defines model for InlineEntries.
+type InlineEntries struct {
+	// Continue Token for the next page; empty on the last page.
+	Continue *string       `json:"continue,omitempty"`
+	Items    []InlineEntry `json:"items"`
+
+	// Matched Entries matching q (Total without q).
+	Matched int64 `json:"matched"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries in the source.
+	Total int64 `json:"total"`
+}
+
+// InlineEntriesPatch defines model for InlineEntriesPatch.
+type InlineEntriesPatch struct {
+	Add    *[]string `json:"add,omitempty"`
+	Remove *[]string `json:"remove,omitempty"`
+}
+
+// InlineEntriesResult defines model for InlineEntriesResult.
+type InlineEntriesResult struct {
+	Added           []string `json:"added"`
+	Removed         []string `json:"removed"`
+	ResourceVersion string   `json:"resourceVersion"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries in the source after the change.
+	Total int64 `json:"total"`
+}
+
+// InlineEntry defines model for InlineEntry.
+type InlineEntry struct {
+	// Line 1-based position in spec.sources[].inline.
+	Line int64 `json:"line"`
+
+	// Value The entry as written in spec.sources[].inline.
+	Value string `json:"value"`
+}
+
 // LatencySummary defines model for LatencySummary.
 type LatencySummary struct {
 	AvgMs float64 `json:"avg_ms"`
@@ -1397,6 +1508,16 @@ type ListApplyResult struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
 	Continue *string       `json:"continue,omitempty"`
 	Items    []ApplyResult `json:"items"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// ListCatalogueIcon defines model for ListCatalogueIcon.
+type ListCatalogueIcon struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string         `json:"continue,omitempty"`
+	Items    []CatalogueIcon `json:"items"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -1611,6 +1732,154 @@ type Point struct {
 	Ts            time.Time `json:"ts"`
 }
 
+// PolicyClient defines model for PolicyClient.
+type PolicyClient struct {
+	Count int64   `json:"count"`
+	Key   string  `json:"key"`
+	Name  *string `json:"name,omitempty"`
+}
+
+// PolicyDomain defines model for PolicyDomain.
+type PolicyDomain struct {
+	Count  int64  `json:"count"`
+	Domain string `json:"domain"`
+}
+
+// PolicyGroup defines model for PolicyGroup.
+type PolicyGroup struct {
+	// Clients Client matchers of the group (spec.clients).
+	Clients int64  `json:"clients"`
+	Enabled bool   `json:"enabled"`
+	Exists  bool   `json:"exists"`
+	Ref     string `json:"ref"`
+
+	// Seen24h Distinct clients this node's query log attributed to the group (as their first group) in the last 24 hours; absent without a query log.
+	Seen24h *int64 `json:"seen24h,omitempty"`
+}
+
+// PolicyList defines model for PolicyList.
+type PolicyList struct {
+	Enabled bool  `json:"enabled"`
+	Entries int64 `json:"entries"`
+	Exists  bool  `json:"exists"`
+
+	// Mode The list's own spec.mode (how it is applied); the role when it does not exist.
+	Mode  string `json:"mode"`
+	Ready bool   `json:"ready"`
+	Ref   string `json:"ref"`
+
+	// Role Which reference field names it: blockListRefs (block) or allowListRefs (allow).
+	Role           PolicyListRole `json:"role"`
+	SourcesEnabled int64          `json:"sourcesEnabled"`
+	SourcesTotal   int64          `json:"sourcesTotal"`
+}
+
+// PolicyListRole Which reference field names it: blockListRefs (block) or allowListRefs (allow).
+type PolicyListRole string
+
+// PolicySafeSearch defines model for PolicySafeSearch.
+type PolicySafeSearch struct {
+	Enabled bool `json:"enabled"`
+
+	// Engines Every engine the catalogue rewrites (all apply when enabled).
+	Engines []PolicySafeSearchEngine `json:"engines"`
+	Mode    PolicySafeSearchMode     `json:"mode"`
+}
+
+// PolicySafeSearchMode defines model for PolicySafeSearch.Mode.
+type PolicySafeSearchMode string
+
+// PolicySafeSearchEngine defines model for PolicySafeSearchEngine.
+type PolicySafeSearchEngine struct {
+	// Icon Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.
+	Icon *string `json:"icon,omitempty"`
+
+	// IconOnDark The logo drawn for dark backgrounds, when the default one is dark artwork.
+	IconOnDark *string `json:"iconOnDark,omitempty"`
+	Id         string  `json:"id"`
+	Name       string  `json:"name"`
+}
+
+// PolicySchedule defines model for PolicySchedule.
+type PolicySchedule struct {
+	// Error Why the schedule is invalid; the policy then applies at all times.
+	Error *string `json:"error,omitempty"`
+
+	// NextChange When now flips next (within eight days).
+	NextChange *time.Time `json:"nextChange,omitempty"`
+
+	// Now The schedule allows the policy now.
+	Now bool `json:"now"`
+
+	// Summary "Mon-Fri 08:00-17:00 (Europe/Berlin)"
+	Summary string `json:"summary"`
+}
+
+// PolicyService defines model for PolicyService.
+type PolicyService struct {
+	// Icon Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.
+	Icon *string `json:"icon,omitempty"`
+
+	// IconOnDark The logo drawn for dark backgrounds, when the default one is dark artwork.
+	IconOnDark *string `json:"iconOnDark,omitempty"`
+	Id         string  `json:"id"`
+
+	// Known The catalogue in service has the ID.
+	Known bool `json:"known"`
+
+	// Name The catalogue name; the ID when unknown.
+	Name  string `json:"name"`
+	Rules int64  `json:"rules"`
+}
+
+// PolicyState defines model for PolicyState.
+type PolicyState struct {
+	// Active enabled and the schedule allows it now (an invalid schedule applies at all times).
+	Active bool `json:"active"`
+
+	// BlockMode spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list.
+	BlockMode  string      `json:"blockMode"`
+	BlockTTL   *string     `json:"blockTTL,omitempty"`
+	Conditions []Condition `json:"conditions"`
+
+	// Enabled false while the kudurru.io/enabled annotation is "false".
+	Enabled   bool          `json:"enabled"`
+	Groups    []PolicyGroup `json:"groups"`
+	Lists     []PolicyList  `json:"lists"`
+	ManagedBy *string       `json:"managedBy,omitempty"`
+
+	// Policy namespace/name
+	Policy     string           `json:"policy"`
+	Priority   int64            `json:"priority"`
+	SafeSearch PolicySafeSearch `json:"safeSearch"`
+	Schedule   *PolicySchedule  `json:"schedule,omitempty"`
+	Services   []PolicyService  `json:"services"`
+
+	// ShadowedBy Enabled policies (namespace/name, rank order) that outrank this one for at least one of its client groups: they decide for those clients and their settings win; the lists of all active policies still apply.
+	ShadowedBy *[]string       `json:"shadowedBy,omitempty"`
+	Stats24h   *PolicyStats24h `json:"stats24h,omitempty"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs        float64              `json:"took_ms"`
+	UpstreamGroup *PolicyUpstreamGroup `json:"upstreamGroup,omitempty"`
+}
+
+// PolicyStats24h defines model for PolicyStats24h.
+type PolicyStats24h struct {
+	Blocked        int64          `json:"blocked"`
+	BlockedPercent float64        `json:"blockedPercent"`
+	Queries        int64          `json:"queries"`
+	TopBlocked     []PolicyDomain `json:"topBlocked"`
+	TopClients     []PolicyClient `json:"topClients"`
+}
+
+// PolicyUpstreamGroup defines model for PolicyUpstreamGroup.
+type PolicyUpstreamGroup struct {
+	// Exists upstreams.groups has it; queries fall back to the default group otherwise.
+	Exists bool   `json:"exists"`
+	Name   string `json:"name"`
+}
+
 // Processed defines model for Processed.
 type Processed struct {
 	Processed ProcessedItems `json:"processed"`
@@ -1697,6 +1966,7 @@ type QueryRow struct {
 	Id          int64       `json:"id"`
 	List        *string     `json:"list,omitempty"`
 	Node        string      `json:"node"`
+	Policy      *string     `json:"policy,omitempty"`
 	Proto       string      `json:"proto"`
 	Qclass      int64       `json:"qclass"`
 	Qtype       string      `json:"qtype"`
@@ -1811,8 +2081,14 @@ type SafeSearchEngine struct {
 	Addresses *[]string `json:"addresses,omitempty"`
 
 	// Domains Number of host names rewritten.
-	Domains int64  `json:"domains"`
-	Id      string `json:"id"`
+	Domains int64 `json:"domains"`
+
+	// Icon Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.
+	Icon *string `json:"icon,omitempty"`
+
+	// IconOnDark The logo drawn for dark backgrounds, when the default one is dark artwork.
+	IconOnDark *string `json:"iconOnDark,omitempty"`
+	Id         string  `json:"id"`
 
 	// List The list name the query log records for its rewrites (safesearch:<id>).
 	List string `json:"list"`
@@ -2338,6 +2614,22 @@ type PutBlocklistsParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 
+// ListInlineEntriesParams defines parameters for ListInlineEntries.
+type ListInlineEntriesParams struct {
+	// Q Substring filter, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// PatchInlineEntriesParams defines parameters for PatchInlineEntries.
+type PatchInlineEntriesParams struct {
+	// IfMatch Apply only when the stored resourceVersion equals this value (412 otherwise).
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
 // PreviewBlockPageParams defines parameters for PreviewBlockPage.
 type PreviewBlockPageParams struct {
 	// Domain Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.
@@ -2348,6 +2640,11 @@ type PreviewBlockPageParams struct {
 type FlushCacheParams struct {
 	// Name Same as the body field.
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
+}
+
+// GetCatalogueIconParams defines parameters for GetCatalogueIcon.
+type GetCatalogueIconParams struct {
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
 // ListCatalogueServicesParams defines parameters for ListCatalogueServices.
@@ -2496,6 +2793,9 @@ type ListQueriesParams struct {
 	List        *string                       `form:"list,omitempty" json:"list,omitempty"`
 	Zone        *string                       `form:"zone,omitempty" json:"zone,omitempty"`
 
+	// Policy Deciding policy, namespace/name.
+	Policy *string `form:"policy,omitempty" json:"policy,omitempty"`
+
 	// Since RFC 3339, inclusive.
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
 
@@ -2525,6 +2825,9 @@ type QueryStreamParams struct {
 	Upstream    *string                       `form:"upstream,omitempty" json:"upstream,omitempty"`
 	List        *string                       `form:"list,omitempty" json:"list,omitempty"`
 	Zone        *string                       `form:"zone,omitempty" json:"zone,omitempty"`
+
+	// Policy Deciding policy, namespace/name.
+	Policy *string `form:"policy,omitempty" json:"policy,omitempty"`
 
 	// Since RFC 3339, inclusive.
 	Since *string `form:"since,omitempty" json:"since,omitempty"`
@@ -2726,6 +3029,9 @@ type CreateBlocklistsJSONRequestBody CreateBlocklistsJSONBody
 
 // PutBlocklistsJSONRequestBody defines body for PutBlocklists for application/json ContentType.
 type PutBlocklistsJSONRequestBody PutBlocklistsJSONBody
+
+// PatchInlineEntriesJSONRequestBody defines body for PatchInlineEntries for application/json ContentType.
+type PatchInlineEntriesJSONRequestBody = InlineEntriesPatch
 
 // BatchDeleteBlocklistsJSONRequestBody defines body for BatchDeleteBlocklists for application/json ContentType.
 type BatchDeleteBlocklistsJSONRequestBody = BatchDeleteInputBody
@@ -3028,6 +3334,31 @@ type ClientInterface interface {
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListInlineEntries Page through the entries of an inline BlockList source
+	//
+	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+	ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchInlineEntries Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// BatchDeleteBlocklistsWithBody Delete several blocklists
 	//
 	// Takes any type of body and a specified content type.
@@ -3067,6 +3398,18 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 	GetCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCatalogueIcons Logos embedded in this build
+	//
+	// Corresponds with GET /catalogue/icons (the `ListCatalogueIcons` operationId).
+	ListCatalogueIcons(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCatalogueIcon One embedded logo (image/svg+xml)
+	//
+	// {file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with <img>; the logos are trademarks of their owners and identify the service only.
+	//
+	// Corresponds with GET /catalogue/icons/{file} (the `GetCatalogueIcon` operationId).
+	GetCatalogueIcon(ctx context.Context, file string, params *GetCatalogueIconParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCatalogueSafeSearch Search engines Policy.spec.safeSearch rewrites
 	//
@@ -3393,6 +3736,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /policies/{namespace}/{name} (the `PutPolicies` operationId).
 	PutPolicies(ctx context.Context, namespace string, name string, params *PutPoliciesParams, body PutPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPolicyState A policy's current state
+	//
+	// Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.
+	//
+	// Corresponds with GET /policies/{namespace}/{name}/state (the `GetPolicyState` operationId).
+	GetPolicyState(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchDeletePoliciesWithBody Delete several policies
 	//
@@ -3997,6 +4347,61 @@ func (c *Client) RefreshBlockList(ctx context.Context, namespace string, name st
 	return c.Client.Do(req)
 }
 
+// ListInlineEntries Page through the entries of an inline BlockList source
+//
+// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+func (c *Client) ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListInlineEntriesRequest(c.Server, namespace, name, source, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *Client) PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchInlineEntriesRequestWithBody(c.Server, namespace, name, source, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchInlineEntries Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *Client) PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchInlineEntriesRequest(c.Server, namespace, name, source, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // BatchDeleteBlocklistsWithBody Delete several blocklists
 //
 // Takes any type of body and a specified content type.
@@ -4087,6 +4492,38 @@ func (c *Client) FlushCache(ctx context.Context, params *FlushCacheParams, body 
 // Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 func (c *Client) GetCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCatalogueRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCatalogueIcons Logos embedded in this build
+//
+// Corresponds with GET /catalogue/icons (the `ListCatalogueIcons` operationId).
+func (c *Client) ListCatalogueIcons(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCatalogueIconsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCatalogueIcon One embedded logo (image/svg+xml)
+//
+// {file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with <img>; the logos are trademarks of their owners and identify the service only.
+//
+// Corresponds with GET /catalogue/icons/{file} (the `GetCatalogueIcon` operationId).
+func (c *Client) GetCatalogueIcon(ctx context.Context, file string, params *GetCatalogueIconParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCatalogueIconRequest(c.Server, file, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4953,6 +5390,23 @@ func (c *Client) PutPoliciesWithBody(ctx context.Context, namespace string, name
 // Corresponds with PUT /policies/{namespace}/{name} (the `PutPolicies` operationId).
 func (c *Client) PutPolicies(ctx context.Context, namespace string, name string, params *PutPoliciesParams, body PutPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPutPoliciesRequest(c.Server, namespace, name, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPolicyState A policy's current state
+//
+// Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.
+//
+// Corresponds with GET /policies/{namespace}/{name}/state (the `GetPolicyState` operationId).
+func (c *Client) GetPolicyState(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPolicyStateRequest(c.Server, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -6554,6 +7008,181 @@ func NewRefreshBlockListRequest(server string, namespace string, name string) (*
 	return req, nil
 }
 
+// NewListInlineEntriesRequest constructs an http.Request for the ListInlineEntries method
+func NewListInlineEntriesRequest(server string, namespace string, name string, source string, params *ListInlineEntriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/%s/%s/sources/%s/entries", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchInlineEntriesRequest calls the generic PatchInlineEntries builder with application/json body
+func NewPatchInlineEntriesRequest(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchInlineEntriesRequestWithBody(server, namespace, name, source, params, "application/json", bodyReader)
+}
+
+// NewPatchInlineEntriesRequestWithBody constructs an http.Request for the PatchInlineEntries method, with any body, and a specified content type
+func NewPatchInlineEntriesRequestWithBody(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/%s/%s/sources/%s/entries", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewBatchDeleteBlocklistsRequest calls the generic BatchDeleteBlocklists builder with application/json body
 func NewBatchDeleteBlocklistsRequest(server string, body BatchDeleteBlocklistsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -6737,6 +7366,82 @@ func NewGetCatalogueRequest(server string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCatalogueIconsRequest constructs an http.Request for the ListCatalogueIcons method
+func NewListCatalogueIconsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/catalogue/icons")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCatalogueIconRequest constructs an http.Request for the GetCatalogueIcon method
+func NewGetCatalogueIconRequest(server string, file string, params *GetCatalogueIconParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "file", file, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/catalogue/icons/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -8639,6 +9344,47 @@ func NewPutPoliciesRequestWithBody(server string, namespace string, name string,
 	return req, nil
 }
 
+// NewGetPolicyStateRequest constructs an http.Request for the GetPolicyState method
+func NewGetPolicyStateRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/%s/state", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewBatchDeletePoliciesRequest calls the generic BatchDeletePolicies builder with application/json body
 func NewBatchDeletePoliciesRequest(server string, body BatchDeletePoliciesJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -8794,6 +9540,18 @@ func NewListQueriesRequest(server string, params *ListQueriesParams) (*http.Requ
 		if params.Zone != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "zone", *params.Zone, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Policy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "policy", *params.Policy, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -9004,6 +9762,18 @@ func NewQueryStreamRequest(server string, params *QueryStreamParams) (*http.Requ
 		if params.Zone != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "zone", *params.Zone, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Policy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "policy", *params.Policy, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -10757,6 +11527,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockListWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*RefreshBlockListResponse, error)
 
+	// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+	//
+	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+	ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error)
+
+	// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+
+	// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+
 	// BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -10800,6 +11597,22 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 	GetCatalogueWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCatalogueResponse, error)
+
+	// ListCatalogueIconsWithResponse Logos embedded in this build
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /catalogue/icons (the `ListCatalogueIcons` operationId).
+	ListCatalogueIconsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueIconsResponse, error)
+
+	// GetCatalogueIconWithResponse One embedded logo (image/svg+xml)
+	//
+	// {file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with <img>; the logos are trademarks of their owners and identify the service only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /catalogue/icons/{file} (the `GetCatalogueIcon` operationId).
+	GetCatalogueIconWithResponse(ctx context.Context, file string, params *GetCatalogueIconParams, reqEditors ...RequestEditorFn) (*GetCatalogueIconResponse, error)
 
 	// ListCatalogueSafeSearchWithResponse Search engines Policy.spec.safeSearch rewrites
 	//
@@ -11178,6 +11991,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /policies/{namespace}/{name} (the `PutPolicies` operationId).
 	PutPoliciesWithResponse(ctx context.Context, namespace string, name string, params *PutPoliciesParams, body PutPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutPoliciesResponse, error)
+
+	// GetPolicyStateWithResponse A policy's current state
+	//
+	// Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /policies/{namespace}/{name}/state (the `GetPolicyState` operationId).
+	GetPolicyStateWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPolicyStateResponse, error)
 
 	// BatchDeletePoliciesWithBodyWithResponse Delete several policies
 	//
@@ -13258,6 +14080,214 @@ func (r RefreshBlockListResponse) ContentType() string {
 	return ""
 }
 
+// ListInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for ListInlineEntries
+type ListInlineEntriesResponse200Headers struct {
+	ETag *string
+}
+
+type ListInlineEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *InlineEntries
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListInlineEntriesResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON200() *InlineEntries {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListInlineEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListInlineEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListInlineEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListInlineEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PatchInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for PatchInlineEntries
+type PatchInlineEntriesResponse200Headers struct {
+	ETag *string
+}
+
+type PatchInlineEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *InlineEntriesResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PatchInlineEntriesResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON200() *InlineEntriesResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PatchInlineEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchInlineEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchInlineEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PatchInlineEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type BatchDeleteBlocklistsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13629,6 +14659,155 @@ func (r GetCatalogueResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCatalogueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCatalogueIconsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ListCatalogueIcon
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCatalogueIconsResponse) GetJSON200() *ListCatalogueIcon {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListCatalogueIconsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCatalogueIconsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListCatalogueIconsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListCatalogueIconsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCatalogueIconsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCatalogueIconsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCatalogueIconsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCatalogueIconsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetCatalogueIconResponse200Headers the declared response headers of an HTTP 200 response for GetCatalogueIcon
+type GetCatalogueIconResponse200Headers struct {
+	CacheControl          *string
+	ContentLength         *string
+	ContentSecurityPolicy *string
+	ContentType           *string
+	ETag                  *string
+}
+
+type GetCatalogueIconResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetCatalogueIconResponse200Headers
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetCatalogueIconResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCatalogueIconResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetCatalogueIconResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetCatalogueIconResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetCatalogueIconResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCatalogueIconResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCatalogueIconResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCatalogueIconResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCatalogueIconResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -17453,6 +18632,96 @@ func (r PutPoliciesResponse) ContentType() string {
 	return ""
 }
 
+type GetPolicyStateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PolicyState
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPolicyStateResponse) GetJSON200() *PolicyState {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetPolicyStateResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetPolicyStateResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetPolicyStateResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetPolicyStateResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetPolicyStateResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetPolicyStateResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetPolicyStateResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPolicyStateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPolicyStateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPolicyStateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPolicyStateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type BatchDeletePoliciesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -20084,6 +21353,51 @@ func (c *ClientWithResponses) RefreshBlockListWithResponse(ctx context.Context, 
 	return ParseRefreshBlockListResponse(rsp)
 }
 
+// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+//
+// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+func (c *ClientWithResponses) ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error) {
+	rsp, err := c.ListInlineEntries(ctx, namespace, name, source, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListInlineEntriesResponse(rsp)
+}
+
+// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *ClientWithResponses) PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
+	rsp, err := c.PatchInlineEntriesWithBody(ctx, namespace, name, source, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchInlineEntriesResponse(rsp)
+}
+
+// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *ClientWithResponses) PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
+	rsp, err := c.PatchInlineEntries(ctx, namespace, name, source, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchInlineEntriesResponse(rsp)
+}
+
 // BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -20162,6 +21476,34 @@ func (c *ClientWithResponses) GetCatalogueWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseGetCatalogueResponse(rsp)
+}
+
+// ListCatalogueIconsWithResponse Logos embedded in this build
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /catalogue/icons (the `ListCatalogueIcons` operationId).
+func (c *ClientWithResponses) ListCatalogueIconsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueIconsResponse, error) {
+	rsp, err := c.ListCatalogueIcons(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCatalogueIconsResponse(rsp)
+}
+
+// GetCatalogueIconWithResponse One embedded logo (image/svg+xml)
+//
+// {file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with <img>; the logos are trademarks of their owners and identify the service only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /catalogue/icons/{file} (the `GetCatalogueIcon` operationId).
+func (c *ClientWithResponses) GetCatalogueIconWithResponse(ctx context.Context, file string, params *GetCatalogueIconParams, reqEditors ...RequestEditorFn) (*GetCatalogueIconResponse, error) {
+	rsp, err := c.GetCatalogueIcon(ctx, file, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCatalogueIconResponse(rsp)
 }
 
 // ListCatalogueSafeSearchWithResponse Search engines Policy.spec.safeSearch rewrites
@@ -20864,6 +22206,21 @@ func (c *ClientWithResponses) PutPoliciesWithResponse(ctx context.Context, names
 		return nil, err
 	}
 	return ParsePutPoliciesResponse(rsp)
+}
+
+// GetPolicyStateWithResponse A policy's current state
+//
+// Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /policies/{namespace}/{name}/state (the `GetPolicyState` operationId).
+func (c *ClientWithResponses) GetPolicyStateWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPolicyStateResponse, error) {
+	rsp, err := c.GetPolicyState(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPolicyStateResponse(rsp)
 }
 
 // BatchDeletePoliciesWithBodyWithResponse Delete several policies
@@ -22863,6 +24220,196 @@ func ParseRefreshBlockListResponse(rsp *http.Response) (*RefreshBlockListRespons
 	return response, nil
 }
 
+// ParseListInlineEntriesResponse parses an HTTP response from a ListInlineEntriesWithResponse call
+func ParseListInlineEntriesResponse(rsp *http.Response) (*ListInlineEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListInlineEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InlineEntries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListInlineEntriesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePatchInlineEntriesResponse parses an HTTP response from a PatchInlineEntriesWithResponse call
+func ParsePatchInlineEntriesResponse(rsp *http.Response) (*PatchInlineEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchInlineEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InlineEntriesResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PatchInlineEntriesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseBatchDeleteBlocklistsResponse parses an HTTP response from a BatchDeleteBlocklistsWithResponse call
 func ParseBatchDeleteBlocklistsResponse(rsp *http.Response) (*BatchDeleteBlocklistsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -23199,6 +24746,158 @@ func ParseGetCatalogueResponse(rsp *http.Response) (*GetCatalogueResponse, error
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListCatalogueIconsResponse parses an HTTP response from a ListCatalogueIconsWithResponse call
+func ParseListCatalogueIconsResponse(rsp *http.Response) (*ListCatalogueIconsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCatalogueIconsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListCatalogueIcon
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCatalogueIconResponse parses an HTTP response from a GetCatalogueIconWithResponse call
+func ParseGetCatalogueIconResponse(rsp *http.Response) (*GetCatalogueIconResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCatalogueIconResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetCatalogueIconResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		if values := rsp.Header.Values("Content-Length"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Length", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentLength = &value
+		}
+		if values := rsp.Header.Values("Content-Security-Policy"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Security-Policy", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentSecurityPolicy = &value
+		}
+		if values := rsp.Header.Values("Content-Type"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Type", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentType = &value
+		}
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
@@ -26597,6 +28296,81 @@ func ParsePutPoliciesResponse(rsp *http.Response) (*PutPoliciesResponse, error) 
 			headers.Location = &value
 		}
 		response.Headers201 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetPolicyStateResponse parses an HTTP response from a GetPolicyStateWithResponse call
+func ParseGetPolicyStateResponse(rsp *http.Response) (*GetPolicyStateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPolicyStateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
 	}
 
 	return response, nil

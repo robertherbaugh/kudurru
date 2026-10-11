@@ -8,12 +8,15 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -132,6 +135,262 @@ func (s *Server) registerLists() {
 		perm{resource: "blocklists", verb: "read"}, s.searchLists)
 	register(s, operation(http.MethodPost, "/domains/{action}/{kind}", "addDomains", "Allow or deny domains through the UI lists", "blocklists"),
 		perm{resource: "blocklists", verb: "write"}, s.addDomains)
+	entriesPath := "/blocklists/{namespace}/{name}/sources/{source}/entries"
+	getEntries := operation(http.MethodGet, entriesPath, "listInlineEntries", "Page through the entries of an inline BlockList source", "blocklists")
+	getEntries.Description = "The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. " +
+		"{source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). " +
+		"The ETag header is the object's resourceVersion for If-Match on PATCH."
+	register(s, getEntries, perm{resource: "blocklists", verb: "read"}, s.listInlineEntries)
+	patchEntries := operation(http.MethodPatch, entriesPath, "patchInlineEntries", "Add and remove entries of an inline BlockList source", "blocklists")
+	patchEntries.Description = "Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. " +
+		"Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format."
+	patchEntries.Errors = []int{http.StatusPreconditionFailed, http.StatusUnprocessableEntity}
+	register(s, patchEntries, perm{resource: "blocklists", verb: "write"}, s.patchInlineEntries)
+}
+
+// InlineEntry is one line of an inline source.
+type InlineEntry struct {
+	Value string `json:"value" doc:"The entry as written in spec.sources[].inline."`
+	Line  int    `json:"line" doc:"1-based position in spec.sources[].inline."`
+}
+
+// InlineEntries is GET /blocklists/{namespace}/{name}/sources/{source}/entries.
+type InlineEntries struct {
+	Items    []InlineEntry `json:"items" nullable:"false"`
+	Continue string        `json:"continue,omitempty" doc:"Token for the next page; empty on the last page."`
+	// Total counts every entry of the source, Matched those matching q.
+	Total   int `json:"total" doc:"Entries in the source."`
+	Matched int `json:"matched" doc:"Entries matching q (Total without q)."`
+	Took
+}
+
+type inlineEntriesInput struct {
+	Namespace string `path:"namespace"`
+	Name      string `path:"name"`
+	Source    string `path:"source" doc:"Source name or index."`
+	Q         string `query:"q" doc:"Substring filter, case-insensitive."`
+	Limit     int    `query:"limit" minimum:"0" maximum:"1000" doc:"Page size (default 100)."`
+	Continue  string `query:"continue"`
+}
+
+type inlineEntriesOutput struct {
+	ETag string `header:"ETag" doc:"The resourceVersion of the BlockList."`
+	Body *InlineEntries
+}
+
+// InlineEntriesPatch is the body of PATCH …/entries.
+type InlineEntriesPatch struct {
+	Add    []string `json:"add,omitempty" maxItems:"10000"`
+	Remove []string `json:"remove,omitempty" maxItems:"10000"`
+}
+
+// InlineEntriesResult is the answer of PATCH …/entries.
+type InlineEntriesResult struct {
+	// Added and Removed are the entries that changed the source.
+	Added   []string `json:"added" nullable:"false"`
+	Removed []string `json:"removed" nullable:"false"`
+	Total   int      `json:"total" doc:"Entries in the source after the change."`
+	// ResourceVersion is the BlockList's new resourceVersion (also the ETag).
+	ResourceVersion string `json:"resourceVersion"`
+	Took
+}
+
+type patchInlineEntriesInput struct {
+	Namespace string `path:"namespace"`
+	Name      string `path:"name"`
+	Source    string `path:"source" doc:"Source name or index."`
+	IfMatch   string `header:"If-Match" doc:"Apply only when the stored resourceVersion equals this value (412 otherwise)."`
+	Body      InlineEntriesPatch
+}
+
+type patchInlineEntriesOutput struct {
+	ETag string `header:"ETag"`
+	Body *InlineEntriesResult
+}
+
+// maxInlineEntryBytes bounds one added entry.
+const maxInlineEntryBytes = 1024
+
+// inlineSource finds the source of bl named source: by its name (the
+// status.sources[] name), else by index. Only inline sources qualify.
+func inlineSource(bl *v1alpha1.BlockList, source string) (int, error) {
+	idx := -1
+	for i, src := range bl.Spec.Sources {
+		if blocking.SourceName(i, src) == source {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		if n, err := strconv.Atoi(source); err == nil && n >= 0 && n < len(bl.Spec.Sources) {
+			idx = n
+		}
+	}
+	if idx < 0 {
+		return 0, errNotFound(fmt.Sprintf("source %q of BlockList %s/%s", source, bl.Namespace, bl.Name))
+	}
+	if src := bl.Spec.Sources[idx]; src.URL != "" || src.ConfigMapRef != nil {
+		return 0, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
+			fmt.Sprintf("source %q is fetched from a URL or ConfigMap and has no inline entries", source), "edit the list at its origin")
+	}
+	return idx, nil
+}
+
+func (s *Server) getBlockList(ctx context.Context, ns, name string) (*v1alpha1.BlockList, error) {
+	k, _ := kindByPlural("blocklists")
+	obj, err := s.getObject(ctx, k, ns, name)
+	if err != nil {
+		return nil, err
+	}
+	bl, ok := obj.(*v1alpha1.BlockList)
+	if !ok {
+		return nil, errNotFound(ns + "/" + name)
+	}
+	return bl, nil
+}
+
+func (s *Server) listInlineEntries(ctx context.Context, in *inlineEntriesInput) (*inlineEntriesOutput, error) {
+	bl, err := s.getBlockList(ctx, in.Namespace, in.Name)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := inlineSource(bl, in.Source)
+	if err != nil {
+		return nil, err
+	}
+	start := 0
+	if pos, err := decodeCursor(in.Continue); err != nil {
+		return nil, err
+	} else if pos != "" {
+		if start, err = strconv.Atoi(pos); err != nil || start < 0 {
+			return nil, errInvalid("continue: not a token returned by this API")
+		}
+	}
+	lines := bl.Spec.Sources[idx].Inline
+	limit := clampLimit(in.Limit, 100, 1000)
+	q := strings.ToLower(strings.TrimSpace(in.Q))
+	out := &InlineEntries{Items: []InlineEntry{}, Total: len(lines)}
+	for i, v := range lines {
+		if q != "" && !strings.Contains(strings.ToLower(v), q) {
+			continue
+		}
+		out.Matched++
+		if i < start {
+			continue
+		}
+		if len(out.Items) == limit {
+			if out.Continue == "" {
+				out.Continue = encodeCursor(strconv.Itoa(i))
+			}
+			continue
+		}
+		out.Items = append(out.Items, InlineEntry{Value: v, Line: i + 1})
+	}
+	return &inlineEntriesOutput{ETag: bl.ResourceVersion, Body: out}, nil
+}
+
+// checkInlineEntry validates one entry to add: a single non-blank line
+// that parses as a rule of format (comments are kept as written).
+func checkInlineEntry(e string, format parser.Format) error {
+	switch {
+	case strings.TrimSpace(e) == "":
+		return errInvalid("add: empty entry")
+	case strings.ContainsAny(e, "\r\n"):
+		return errInvalid("add: %q contains a line break; send one entry per item", e)
+	case len(e) > maxInlineEntryBytes:
+		return errInvalid("add: an entry is longer than %d bytes", maxInlineEntryBytes)
+	}
+	if format == "" {
+		format = parser.FormatAuto
+	}
+	res, err := parser.Parse(strings.NewReader(e), parser.Options{Format: format, KeepInvalid: 1, KeepUnsupported: -1}, nil)
+	if err != nil {
+		return errInvalid("add: %q: %v", e, err)
+	}
+	if res.Invalid > 0 {
+		reason := "not a valid rule"
+		if len(res.InvalidSamples) > 0 {
+			reason = res.InvalidSamples[0].Reason
+		}
+		return errInvalid("add: %q is not a valid %s entry: %s", e, format, reason)
+	}
+	return nil
+}
+
+// patchAttempts bounds the read-modify-write retries of a PATCH without
+// If-Match that loses a race with another writer.
+const patchAttempts = 3
+
+func (s *Server) patchInlineEntries(ctx context.Context, in *patchInlineEntriesInput) (*patchInlineEntriesOutput, error) {
+	if len(in.Body.Add) == 0 && len(in.Body.Remove) == 0 {
+		return nil, errInvalid("body: add or remove at least one entry")
+	}
+	k, _ := kindByPlural("blocklists")
+	for attempt := 1; ; attempt++ {
+		bl, err := s.getBlockList(ctx, in.Namespace, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		idx, err := inlineSource(bl, in.Source)
+		if err != nil {
+			return nil, err
+		}
+		if in.IfMatch != "" && in.IfMatch != bl.ResourceVersion {
+			return nil, errPrecondition(in.IfMatch, bl.ResourceVersion)
+		}
+		src := &bl.Spec.Sources[idx]
+		res := &InlineEntriesResult{Added: []string{}, Removed: []string{}}
+		drop := map[string]bool{}
+		for _, e := range in.Body.Remove {
+			drop[e] = true
+		}
+		kept := make([]string, 0, len(src.Inline)+len(in.Body.Add))
+		have := make(map[string]bool, len(src.Inline))
+		for _, e := range src.Inline {
+			if drop[e] {
+				res.Removed = append(res.Removed, e)
+				continue
+			}
+			kept = append(kept, e)
+			have[e] = true
+		}
+		for _, e := range in.Body.Add {
+			if err := checkInlineEntry(e, parser.Format(src.Format)); err != nil {
+				return nil, err
+			}
+			if have[e] || drop[e] {
+				continue
+			}
+			have[e] = true
+			kept = append(kept, e)
+			res.Added = append(res.Added, e)
+		}
+		res.Total = len(kept)
+		if len(res.Added) == 0 && len(res.Removed) == 0 {
+			res.ResourceVersion = bl.ResourceVersion
+			return &patchInlineEntriesOutput{ETag: bl.ResourceVersion, Body: res}, nil
+		}
+		if len(kept) == 0 {
+			return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
+				"an inline source needs at least one entry", "switch the source off (spec.sources[].enabled: false) or delete it")
+		}
+		src.Inline = kept
+		body, err := typedObject(bl)
+		if err != nil {
+			return nil, storeError(err)
+		}
+		wr, err := s.writeObject(ctx, writeRequest{kind: k, body: body, namespace: in.Namespace, name: in.Name, ifMatch: bl.ResourceVersion})
+		var apiErr *Error
+		lostRace := errors.As(err, &apiErr) && (apiErr.Status == http.StatusPreconditionFailed || apiErr.Body.Key == KeyConflict)
+		if lostRace && in.IfMatch == "" && attempt < patchAttempts {
+			continue // another writer won the race: re-read and re-apply
+		}
+		if err != nil {
+			return nil, err
+		}
+		res.ResourceVersion = wr.obj.GetResourceVersion()
+		return &patchInlineEntriesOutput{ETag: res.ResourceVersion, Body: res}, nil
+	}
 }
 
 func (s *Server) refreshList(ctx context.Context, in *nsObjectInput) (*refreshOutput, error) {

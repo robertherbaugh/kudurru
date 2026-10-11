@@ -83,6 +83,25 @@ for (const [name, { pkg, dir }] of [...seen].sort(([a], [b]) => a.localeCompare(
   out.push(textOf(dir, /^(LICEN[CS]E|COPYING)(\.(md|txt))?$/i) || fallback(pkg, lic), '', '');
 }
 
+// Assets the dashboard shows that the Go binary serves rather than the
+// bundle: the catalogue logos (GET /api/v1/catalogue/icons/{slug}.svg).
+const assets: { name: string; license: string; text: string; note: string }[] = [
+  {
+    name: 'Dashboard Icons (https://github.com/homarr-labs/dashboard-icons), commit 104a791794ef',
+    license: 'Apache-2.0',
+    text: '../internal/listdata/catalogue/icons/LICENSE',
+    note:
+      'Service, search-engine and DNS-provider logos served by the kudurru API from internal/listdata/catalogue/icons ' +
+      '(files and checksums in PROVENANCE.md there). The logos are trademarks of their respective owners, ' +
+      'shown only to identify what they name.',
+  },
+];
+for (const a of assets) {
+  if (DENY.test(a.license)) bad.push(`${a.name} (${a.license})`);
+  out.push(`${a.name} (${a.license})`, '-'.repeat(60), a.note, '');
+  out.push(existsSync(a.text) ? readFileSync(a.text, 'utf8').trim() : `(licence text: ${a.text})`, '', '');
+}
+
 if (bad.length) {
   console.error(`licenses: copyleft dependencies in the bundle: ${bad.join(', ')}`);
   process.exit(1);

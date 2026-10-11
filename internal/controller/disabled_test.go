@@ -81,3 +81,30 @@ func TestDisabledCondition(t *testing.T) {
 		return c != nil && !strings.Contains(c.Message, "disabled")
 	})
 }
+
+// TestDisabledSources: spec.sources[].enabled: false is counted in the
+// Ready message, "all sources disabled" when none is left, and the fetch
+// error a disabled source may still carry is not Degraded.
+func TestDisabledSources(t *testing.T) {
+	e := newEnv(t)
+	e.start()
+	no := false
+	bl := func(sources ...v1alpha1.ListSource) *v1alpha1.BlockList {
+		return &v1alpha1.BlockList{ObjectMeta: metav1.ObjectMeta{Namespace: "home", Name: "ads"}, Spec: v1alpha1.BlockListSpec{Sources: sources}}
+	}
+	ready := func() *metav1.Condition {
+		var out v1alpha1.BlockList
+		_ = e.st.Get(context.Background(), store.Key{Kind: KindBlockList, Namespace: "home", Name: "ads"}, &out)
+		return condition(out.Status.Conditions, v1alpha1.ConditionReady)
+	}
+	e.apply(bl(v1alpha1.ListSource{Inline: []string{"a.example"}}, v1alpha1.ListSource{Inline: []string{"b.example"}, Enabled: &no}))
+	e.eventually("one disabled", func() bool {
+		c := ready()
+		return c != nil && c.Status == metav1.ConditionTrue && c.Message == "2 sources (1 disabled)"
+	})
+	e.apply(bl(v1alpha1.ListSource{Inline: []string{"a.example"}, Enabled: &no}, v1alpha1.ListSource{Inline: []string{"b.example"}, Enabled: &no}))
+	e.eventually("all disabled", func() bool {
+		c := ready()
+		return c != nil && c.Status == metav1.ConditionTrue && c.Message == "all sources disabled"
+	})
+}

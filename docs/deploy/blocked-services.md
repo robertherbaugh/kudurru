@@ -31,6 +31,21 @@ SafeSearch switch. `GET /api/v1/catalogue/services` lists the service IDs,
 the version in service and where it came from. All three need
 `policies.read`.
 
+Services and engines carry `icon` (and `iconOnDark` for dark artwork), the
+path of a logo built into the binary: `GET /api/v1/catalogue/icons/{slug}.svg`
+(`image/svg+xml`, strong ETag, `Cache-Control: public, max-age=86400`).
+`GET /api/v1/catalogue/icons` lists every logo, including the upstream DNS
+providers the Upstreams page shows (cloudflare, google, adguard-home,
+nextdns, mullvad, cisco for OpenDNS, control-d). Both routes are public:
+the logos are static files of the build. They come from
+[homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons)
+(Apache-2.0; commit, files and checksums in
+`internal/listdata/catalogue/icons/PROVENANCE.md`), carry no script, event
+handler or external reference, and are trademarks of their owners, shown
+only to identify the service. An entry without a logo (Roblox, Fortnite,
+9GAG, VK, Vimeo, Tinder, Pixabay, Minecraft) has no `icon`; the dashboard
+draws a monogram.
+
 ### Blocked services
 
 - Each service compiles like a block list named `service:<id>`, with
@@ -120,10 +135,11 @@ the embedded one. `GET /api/v1/catalogue` reports `origin`, `version`,
   "homepage": "https://...",
   "services": [
     {
-      "id": "youtube",
-      "name": "YouTube",
-      "category": "video",
-      "rules": ["||youtube.com^", "||ytimg.com^"],
+      "id": "twitter",
+      "icon": "x",
+      "name": "X (Twitter)",
+      "category": "social",
+      "rules": ["||x.com^", "||twitter.com^"],
       "source": "first-party domains of the service"
     }
   ],
@@ -158,6 +174,11 @@ Rules this build checks (`catalogue.Parse`):
 - Service and engine `id`s match `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
   and are unique; `category` matches the same pattern; `name` and `source`
   are non-empty (at most 256 bytes).
+- `icon` is optional on services and engines and matches the same pattern:
+  the slug of a logo built into the binary (`GET /api/v1/catalogue/icons`),
+  for when it differs from the `id`. Without it an entry uses the logo named
+  like its `id`, if there is one. A slug this build does not have is not an
+  error: the entry has no logo.
 - A service has 1 to 1000 `rules`, each a single adblock rule that compiles
   to a block entry: no `@@` exceptions, no modifiers, no cosmetic rules, no
   comments.

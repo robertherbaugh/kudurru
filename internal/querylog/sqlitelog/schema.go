@@ -14,8 +14,13 @@ import (
 const FileName = "querylog.db"
 
 // SchemaVersion is the schema this package writes. A database with a newer
-// version is refused (ErrSchemaTooNew) rather than silently mis-read.
-const SchemaVersion = 1
+// version is refused (ErrSchemaTooNew) rather than silently mis-read; an
+// older one is upgraded in place by the steps in migrations.
+//
+//  1. v0.1 (docs/architecture.md §11.2)
+//  2. query.policy and dict_policy: the deciding policy per row; rows
+//     written before the upgrade keep policy NULL
+const SchemaVersion = 2
 
 // ErrSchemaTooNew is returned by Open for a database written by a newer
 // kudurru.
@@ -174,6 +179,7 @@ var schema = []string{
 	`CREATE TABLE dict_zone     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)`,
 	`CREATE TABLE dict_list     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)`,
 	`CREATE TABLE dict_node     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)`,
+	createDictPolicy,
 	`CREATE TABLE query (
   id          INTEGER PRIMARY KEY,
   ts          INTEGER NOT NULL,
@@ -196,7 +202,8 @@ var schema = []string{
   flags       INTEGER NOT NULL DEFAULT 0,
   ecs         TEXT,
   trace_id    BLOB,
-  answer      TEXT
+  answer      TEXT,
+  policy      INTEGER REFERENCES dict_policy
 )`,
 	`CREATE INDEX query_ts        ON query(ts)`,
 	`CREATE INDEX query_client_ts ON query(client, ts)`,
@@ -237,7 +244,18 @@ const (
 	metaLastRetention = "last_retention"
 )
 
-// migrate creates the schema on an empty database and refuses newer ones.
+// createDictPolicy is the dictionary of query.policy (schema 2).
+const createDictPolicy = `CREATE TABLE dict_policy   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)`
+
+// migrations[v] upgrades a database at schema version v to v+1 inside one
+// transaction. Every step is additive (new tables, nullable columns), so
+// existing rows stay valid and no table is rewritten.
+var migrations = map[int][]string{
+	1: {createDictPolicy, `ALTER TABLE query ADD COLUMN policy INTEGER REFERENCES dict_policy`},
+}
+
+// migrate creates the schema on an empty database, upgrades an older one
+// step by step and refuses newer ones.
 func migrate(ctx context.Context, db *sql.DB) (created bool, err error) {
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='meta'`).Scan(&n); err != nil {
@@ -255,8 +273,15 @@ func migrate(ctx context.Context, db *sql.DB) (created bool, err error) {
 			return false, fmt.Errorf("%w (database %d, binary %d)", ErrSchemaTooNew, ver, SchemaVersion)
 		case ver == SchemaVersion:
 			return false, nil
+		case ver < 1:
+			return false, fmt.Errorf("sqlitelog: unsupported schema version %q", v.String)
 		}
-		return false, fmt.Errorf("sqlitelog: unsupported schema version %q", v.String)
+		for ; ver < SchemaVersion; ver++ {
+			if err := upgrade(ctx, db, ver); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -272,4 +297,26 @@ func migrate(ctx context.Context, db *sql.DB) (created bool, err error) {
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+// upgrade runs migrations[from] and records schema version from+1.
+func upgrade(ctx context.Context, db *sql.DB, from int) error {
+	steps, ok := migrations[from]
+	if !ok {
+		return fmt.Errorf("sqlitelog: no upgrade from schema version %d", from)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range steps {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("sqlitelog: upgrade schema %d to %d: %w\n%s", from, from+1, err, stmt)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, from+1, metaSchemaVersion); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

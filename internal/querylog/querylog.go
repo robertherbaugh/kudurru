@@ -46,6 +46,11 @@ type Event struct {
 	ClientName string `json:"client_name,omitempty"`
 	// ClientGroup is the first client group the query was attributed to.
 	ClientGroup string `json:"client_group,omitempty"`
+	// Policy is the deciding policy, "namespace/name": the
+	// highest-priority active policy of the client's groups, or the
+	// default policy as the fallback (policy.Decision.Policy). Empty when
+	// no policy applied.
+	Policy string `json:"policy,omitempty"`
 	// Zone is the authoritative or forward zone that matched, if any.
 	Zone string `json:"zone,omitempty"`
 	// CNAME is the CNAME-chain name that caused a block (blocked_cname).
