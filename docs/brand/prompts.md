@@ -1,8 +1,8 @@
 # kudurru image-generation prompts
 
-These prompts are ready for future image generation. They have not been run. The intended deliverables are actual raster images; descriptions such as “vector-like” refer to the visual style, not the file format.
+These prompts preserve the initial branding brief for possible future image generation. They were not run in this workspace and are not the known provenance of the supplied logos. Use the current [branding kit](README.md) and its supplied sources as the visual reference for any future work. Descriptions such as “vector-like” refer to the visual style, not the file format.
 
-Generate the primary mark first. Use its approved output as a reference for all subsequent compositions. A reference image should be supplied through the generation tool's image input; merely naming a file in a prompt does not attach it.
+For a new exploration, generate the primary mark first and use its approved output as a reference for subsequent compositions. To extend the current identity, supply an existing kit asset instead. A reference image should be supplied through the generation tool's image input; merely naming a file in a prompt does not attach it.
 
 ## Background and export settings
 
@@ -12,7 +12,7 @@ If the API/CLI fallback is explicitly selected later, the imagegen skill's defau
 
 > Solid pure white (#FFFFFF), completely uniform. No shadow, paper texture, checkerboard, or off-white pixels in the background. Keep the foreground a single solid dark color and all edges clean, suitable for later background removal.
 
-Generate at high quality. Suggested generation sizes are 1024 × 1024 for the mark, 1536 × 1024 for the lockup, and 1536 × 1024 for the social composition. Crop, pad, or resample to the final export dimensions in the [brief](README.md#planned-minimal-kit) afterward. Remove a white matte with edge decontamination before making transparent exports; do not label an opaque image as transparent. Do not switch models to obtain transparency without explicit confirmation.
+Generate at high quality. Suggested generation sizes are 1024 × 1024 for the mark, 1536 × 1024 for the lockup, and 1536 × 1024 for the social composition. Crop, pad, or resample to the final export dimensions in the [kit](README.md#asset-inventory) afterward. Remove a white matte with edge decontamination before making transparent exports; do not label an opaque image as transparent. Do not switch models to obtain transparency without explicit confirmation.
 
 ## 1. Primary mark
 

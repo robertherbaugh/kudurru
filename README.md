@@ -1,5 +1,10 @@
 # kudurru
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/assets/kudurru-logo-mixed-paper.png">
+  <img src="docs/brand/assets/kudurru-logo-mixed.png" width="420" height="140" alt="">
+</picture>
+
 > Babylonian boundary stones that recorded land grants and who held which territory. That’s a DNS zone: a record of authority over a defined space. The original kudurru stone was kept in a temple, and the landholder got a clay copy to prove ownership. That’s an authoritative primary with distributed secondaries, which is how DNS zone transfers work. Pronunciation is koo-DOO-roo. As a CLI it’s seven letters (kudurru).
 
 **kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. It takes the best idea from each of the servers we admire and puts them in one Apache-2.0 Go binary:
@@ -98,7 +103,7 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 - [Open questions](docs/open-questions.md): decisions that need a project owner's answer before v0.1 is scheduled.
 - [Research notes](docs/research/): point-in-time studies of the reference projects that the architecture cites.
 - [Contributing](CONTRIBUTING.md): licensing rules (no GPL or EUPL code is ever ported), layout, and how to build.
-- [Branding brief](docs/brand/README.md): proposed visual identity, usage rules, export plan, and image-generation prompts.
+- [Branding kit](docs/brand/README.md): logos, icons, color tokens, usage rules, and original artwork.
 
 ## Repository layout
 
