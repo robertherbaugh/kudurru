@@ -46,6 +46,17 @@
   --color-text-secondary: var(--color-text-primary);
 }
 
+/*
+ * The Astryx reset (main.tsx) strips list markers and link underlines.
+ * Lists and links in running text keep the browser's: these rules sit in
+ * the reset's own layer, so the layout lists here that set list-style and
+ * every Astryx component (higher layers) are unaffected.
+ */
+@layer reset {
+  :where(ol, ul) { list-style: revert-layer; margin: revert-layer; padding: revert-layer; }
+  :where(a) { text-decoration: revert-layer; }
+}
+
 html,
 body,
 #root {
