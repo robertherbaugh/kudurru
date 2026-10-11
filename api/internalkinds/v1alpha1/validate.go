@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -64,6 +65,16 @@ func (e *ValidationError) Error() string {
 		msgs = append(msgs, f.String())
 	}
 	return fmt.Sprintf("%s %q is invalid: %s", e.Kind, e.Name, strings.Join(msgs, "; "))
+}
+
+// FieldCauses returns one metav1.StatusCause per rejected field. Store
+// drivers match it structurally to build their *validator.Error.
+func (e *ValidationError) FieldCauses() []metav1.StatusCause {
+	out := make([]metav1.StatusCause, 0, len(e.Fields))
+	for _, f := range e.Fields {
+		out = append(out, metav1.StatusCause{Type: metav1.CauseTypeFieldValueInvalid, Field: f.Field, Message: f.Message})
+	}
+	return out
 }
 
 // AsValidationError returns the *ValidationError in err's chain.

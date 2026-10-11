@@ -26,9 +26,10 @@ const snapshotPageSize = 500
 // kudurru.io object, read page by page from the apiserver (each kind is a
 // consistent list) and sorted by key. It is the backup format and what
 // `kudurru apply -f` and Restore accept. managedFields are omitted.
-// opts.Safe has nothing to strip yet: the internal kinds (Secrets labelled
-// kudurru.io/kind) are not served by this driver in v0.1.
-func (s *Store) Snapshot(ctx context.Context, w io.Writer, _ store.SnapshotOptions) error {
+// The internal kinds (Options.InternalKinds, kept in Secrets) are included
+// unless opts.Safe, which strips users, token hashes and the other identity
+// objects.
+func (s *Store) Snapshot(ctx context.Context, w io.Writer, opts store.SnapshotOptions) error {
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -45,6 +46,13 @@ func (s *Store) Snapshot(ctx context.Context, w io.Writer, _ store.SnapshotOptio
 				break
 			}
 		}
+	}
+	if !opts.Safe {
+		internal, err := s.snapshotInternal(ctx)
+		if err != nil {
+			return err
+		}
+		items = append(items, internal...)
 	}
 	sort.SliceStable(items, func(i, j int) bool { return store.KeyOf(items[i]).String() < store.KeyOf(items[j]).String() })
 	if items == nil {

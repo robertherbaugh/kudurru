@@ -43,6 +43,9 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 	if s.isClosed() {
 		return nil, store.ErrClosed
 	}
+	if ki, ok := s.internal.get(kind); ok {
+		return s.watchInternal(ctx, ki, opts)
+	}
 	ki, err := s.kinds.get(kind)
 	if err != nil {
 		return nil, err
@@ -193,6 +196,9 @@ type watcher struct {
 	ns      string
 	remove  func()
 	untrack func()
+	// convert, when set, turns an informer object into the store object
+	// (the Secrets of internal kinds); false skips it.
+	convert func(obj any) (store.Object, bool)
 
 	mu      sync.RWMutex
 	stopped bool
@@ -235,6 +241,13 @@ func (w *watcher) send(ev store.Event) {
 
 // emit copies an informer object (shared, read-only) and forwards it.
 func (w *watcher) emit(t store.EventType, obj any) {
+	if w.convert != nil {
+		o, ok := w.convert(obj) // a fresh object, already normalized
+		if ok && (w.ns == "" || o.GetNamespace() == w.ns) {
+			w.send(store.Event{Type: t, Object: o})
+		}
+		return
+	}
 	o, ok := obj.(store.Object)
 	if !ok {
 		return

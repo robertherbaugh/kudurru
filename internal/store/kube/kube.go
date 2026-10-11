@@ -43,6 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	coordinationv1client "k8s.io/client-go/kubernetes/typed/coordination/v1"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -101,6 +102,12 @@ type Options struct {
 	Scheme *runtime.Scheme
 	// Logger receives driver logs. Default slog.Default().
 	Logger *slog.Logger
+	// InternalKinds are kinds served as Secrets labelled
+	// kudurru.io/kind=<Kind> in Namespace instead of CRDs (internal.go):
+	// the identity layer's LocalUser, APIToken, ServiceAccount,
+	// RoleBinding and IdentityProvider. They must be registered in Scheme
+	// (internalkinds.AddToScheme). Snapshot omits them when Safe.
+	InternalKinds []store.Kind
 }
 
 func (o *Options) setDefaults() error {
@@ -163,6 +170,10 @@ type Store struct {
 	cache   cache.Cache   // informers for Watch
 	leases  coordinationv1client.LeasesGetter
 	log     *slog.Logger
+
+	internal *internalKinds  // Options.InternalKinds, served as Secrets
+	coreREST rest.Interface  // core/v1 client for the internal-kind informer
+	bgCtx    context.Context // cancelled by Close
 	contact *contact // last successful apiserver round trip
 
 	cancel         context.CancelFunc // stops the cache and background work
@@ -204,6 +215,10 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	internal, err := splitInternal(kinds, opts.InternalKinds)
+	if err != nil {
+		return nil, err
+	}
 	httpClient, err := rest.HTTPClientFor(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: http client: %w", err)
@@ -230,6 +245,10 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: coordination client: %w", err)
 	}
+	core, err := corev1client.NewForConfigAndClient(cfg, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("store/kube: core client: %w", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Store{
 		opts:           opts,
@@ -238,6 +257,9 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		c:              c,
 		cache:          ca,
 		leases:         leases,
+		internal:       internal,
+		coreREST:       core.RESTClient(),
+		bgCtx:          ctx,
 		log:            opts.Logger.With("component", "store/kube"),
 		contact:        ct,
 		cancel:         cancel,

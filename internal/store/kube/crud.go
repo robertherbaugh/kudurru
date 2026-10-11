@@ -42,6 +42,9 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	if ki, ok := s.internal.get(key.Kind); ok {
+		return s.getInternal(ctx, ki, key, into)
+	}
 	ki, err := s.kinds.get(key.Kind)
 	if err != nil {
 		return err
@@ -70,6 +73,9 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
+	}
+	if ki, ok := s.internal.get(kind); ok {
+		return s.listInternal(ctx, ki, opts)
 	}
 	ki, err := s.kinds.get(kind)
 	if err != nil {
@@ -138,6 +144,9 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 	}
 	if s.isClosed() {
 		return nil, store.ErrClosed
+	}
+	if ki, ok := s.internal.get(store.KindOf(obj)); ok {
+		return s.applyInternal(ctx, ki, obj, opts)
 	}
 	ki, err := s.kinds.forObject(obj)
 	if err != nil {
@@ -216,6 +225,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	if ki, ok := s.internal.get(key.Kind); ok {
+		return s.deleteInternal(ctx, ki, key, opts)
+	}
 	ki, err := s.kinds.get(key.Kind)
 	if err != nil {
 		return err
@@ -265,6 +277,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 	if s.isClosed() {
 		return store.ErrClosed
+	}
+	if ki, ok := s.internal.get(store.KindOf(obj)); ok {
+		return s.updateStatusInternal(ctx, ki, obj)
 	}
 	ki, err := s.kinds.forObject(obj)
 	if err != nil {
