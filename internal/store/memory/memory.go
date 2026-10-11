@@ -328,6 +328,9 @@ func (s *Store) Close() error {
 	s.closed = true
 	for kind, ws := range s.watchers {
 		for _, w := range ws {
+			// Mark stopped first so a later Stop (e.g. from a consumer's
+			// context cancellation) is a no-op instead of a double close.
+			w.once.Do(func() {})
 			close(w.ch)
 		}
 		delete(s.watchers, kind)
