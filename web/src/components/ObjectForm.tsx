@@ -16,6 +16,7 @@ import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
+import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
 type Obj = Record<string, unknown>;
 export type FieldErrors = Record<string, string>;
@@ -84,6 +85,7 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
       case 'text':
       case 'duration':
       case 'enum':
+      case 'upstreamGroup':
         next = typeof v === 'string' ? v.trim() : v;
         if (next === '') next = undefined;
         break;
@@ -325,6 +327,8 @@ function Field({
     }
     case 'objects':
       return <ObjectsField def={def} path={path} value={Array.isArray(value) ? (value as Obj[]) : []} onChange={onChange} errors={errors} disabled={disabled} />;
+    case 'upstreamGroup':
+      return <UpstreamGroupSelect label={def.label} help={def.help} value={typeof value === 'string' ? value : ''} onChange={(v) => onChange(v)} isDisabled={disabled} error={errors[path]} />;
   }
 }
 

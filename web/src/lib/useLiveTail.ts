@@ -1,7 +1,7 @@
 // Live tail of the query log over SSE (GET /queries/stream, §10
 // principle 5). EventSource reconnects by itself and re-sends the last
 // event id in the Last-Event-ID header; when the user pauses and resumes,
-// the last seen id goes into ?lastEventId= on the new connection so the
+// the last seen id goes into ?last_event_id= on the new connection so the
 // server replays what was missed (EventSource cannot set headers).
 import { useEffect, useRef, useState } from 'react';
 import type { QueryRow } from '../api/types';
@@ -9,7 +9,7 @@ import type { QueryRow } from '../api/types';
 export type TailState = 'off' | 'connecting' | 'live' | 'retrying' | 'unsupported';
 
 export interface LiveTailOptions {
-  /** Stream URL without lastEventId (filters and scope already applied). */
+  /** Stream URL without last_event_id (filters and scope already applied). */
   url: string;
   enabled: boolean;
   /** Called with each batch of new rows, oldest first. */
@@ -32,7 +32,7 @@ export function useLiveTail({ url, enabled, onRows }: LiveTailOptions): TailStat
       setState('unsupported');
       return undefined;
     }
-    const full = lastId.current ? `${url}${url.includes('?') ? '&' : '?'}lastEventId=${encodeURIComponent(lastId.current)}` : url;
+    const full = lastId.current ? `${url}${url.includes('?') ? '&' : '?'}last_event_id=${encodeURIComponent(lastId.current)}` : url;
     const es = new EventSource(full, { withCredentials: true });
     setState('connecting');
     // Batch rows per animation frame: a busy resolver sends hundreds/s.

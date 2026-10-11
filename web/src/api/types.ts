@@ -1,10 +1,16 @@
-// Hand-written wire types for /api/v1 (docs/architecture.md §10).
+// Wire types for /api/v1 (docs/architecture.md §10).
 //
-// They mirror api/v1alpha1 (objects) and internal/querylog/sqlitelog
-// (stats, query log) field for field. When api/openapi.json lands,
-// `bun run gen:api` writes src/api/generated.ts and each type below becomes
-// an alias of `components['schemas'][...]`; nothing outside this file names
-// a schema directly, so that swap is mechanical.
+// Routes served by huma alias the generated schemas of api/openapi.json
+// (`bun run gen:api` writes src/api/generated.ts); the aliases narrow a
+// few `string` fields to their enums. Objects mirror api/v1alpha1 and the
+// stats and query-log types internal/querylog/sqlitelog, field for field.
+// The forwarded /auth/* and /iam/* routes are hand-written from
+// internal/auth/stack (routes.go, iam.go) because their OpenAPI
+// documentation did not match the handlers; regenerate and alias them once
+// it does. Nothing outside this file names a generated schema.
+import type { components } from './generated';
+
+type S = components['schemas'];
 
 // ---------------------------------------------------------------------------
 // Envelopes and errors
@@ -244,18 +250,12 @@ export interface Processed {
 // ---------------------------------------------------------------------------
 // Convenience views
 
-/** GET /zones row. */
-export interface ZoneSummary {
-  name: string;
-  zoneName: string;
+/** GET /zones row and GET /zones/{zone} (internal/api zones.go). */
+export type ZoneSummary = Omit<S['ZoneSummary'], 'type'> & {
   type: ZoneType;
-  serial: number;
-  recordCount: number;
-  ready: boolean;
-  managedBy: string;
-  /** Transfer and NOTIFY state; optional until the API exposes it. */
+  /** Transfer and NOTIFY state; not served yet, so the panel stays hidden. */
   transfer?: ZoneTransferStatus;
-}
+};
 
 export interface ZoneTransferStatus {
   zoneTransfer: AccessMode;
@@ -277,38 +277,78 @@ export interface ZoneRecord {
   managedBy?: string;
 }
 
+/** Result of POST /zones/{zone}/import (all or nothing: a bad line is a 400). */
+export type ZoneImportResult = S['ImportResult'];
+
 // ---------------------------------------------------------------------------
-// Auth
+// Auth (forwarded to internal/auth/stack; hand-written, see the header)
 
-export interface Principal {
-  kind: 'User' | 'ServiceAccount' | 'KubernetesServiceAccount' | 'LocalRoot' | 'Node';
-  id: string;
-  name: string;
-  groups?: string[];
-}
+export type PrincipalKind = 'User' | 'ServiceAccount' | 'KubernetesServiceAccount' | 'LocalRoot' | 'Node';
 
+/** GET /auth/me, and the answer of POST /auth/login and /auth/password. */
 export interface Me {
-  principal: Principal;
+  principal: {
+    kind: PrincipalKind;
+    id: string;
+    name: string;
+    groups: string[];
+    /** How the request authenticated (cookie, token, ...). */
+    auth?: string;
+    authMethod?: string;
+    provider?: string;
+  };
+  /** Effective grants in wire form ("admin", "zone-admin@zone:home-example-com"). */
   roles: string[];
-  csrf: string;
+  /** Cookie sessions echo it in X-Kudurru-CSRF. */
+  csrf?: string;
   /** resource → verbs granted at cluster scope. */
   permissions: Record<string, string[]>;
+  /** scope ("zone:home-example-com") → resource → verbs. */
+  scopedPermissions?: Record<string, Record<string, string[]>>;
+  /** A local user still on a generated or reset password. */
   mustChangePassword?: boolean;
+  expiresAt?: string;
+  idleExpiresAt?: string;
 }
 
+/** GET /auth/status (stack StatusResponse). */
 export interface AuthStatus {
-  localLogin: 'enabled' | 'admins-only' | 'disabled' | boolean;
-  providers: { id: string; displayName: string }[];
+  /** False only when auth.localLogin is disabled. */
+  localLogin: boolean;
+  localLoginMode?: 'enabled' | 'admins-only' | 'disabled';
+  providers: { id: string; displayName: string }[] | null;
   hasDefaultCredentials: boolean;
+  session?: { idleTimeout: string; lifetime: string };
 }
 
+/** Who owns a token (api/internalkinds TokenOwner). */
+export interface TokenOwner {
+  kind: 'User' | 'ServiceAccount';
+  name: string;
+  namespace?: string;
+  id?: string;
+  provider?: string;
+}
+
+/** GET /auth/tokens row (stack TokenInfo); never the secret. */
 export interface ApiToken {
   id: string;
-  name: string;
+  description?: string;
+  owner: TokenOwner;
   createdAt: string;
-  expiresAt?: string;
+  /** null: the token never expires. */
+  expiresAt: string | null;
   lastUsedAt?: string;
   lastUsedIP?: string;
+  scopes?: string[];
+}
+
+/** Body of POST /auth/tokens (stack CreateTokenRequest; unknown fields are rejected). */
+export interface CreateTokenRequest {
+  description?: string;
+  /** A Go duration ("720h"); empty means auth.tokens.maxLifetime or never. */
+  expiresIn?: string;
+  /** Grants in wire form ("viewer", "zone-admin@zone:home-example-com"). */
   scopes?: string[];
 }
 
@@ -317,47 +357,34 @@ export interface CreatedToken extends ApiToken {
   token: string;
 }
 
+/** Body of POST /auth/password (stack PasswordRequest). */
+export interface PasswordChangeRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 // ---------------------------------------------------------------------------
 // Runtime
 
+/** GET|POST /dns/blocking (internal/api runtime.go). */
 export interface BlockingState {
   blocking: boolean;
   /** Seconds left until blocking re-enables; absent when indefinite. */
   timer?: number;
   /** When blocking re-enables (RFC 3339). */
   until?: string;
-}
-
-export interface DnsQueryRequest {
-  name: string;
-  type: string;
-  client?: string;
-}
-
-export interface DnsRR {
-  name: string;
-  type: string;
-  ttl: number;
-  class?: string;
-  data: string;
-}
-
-export interface DnsQueryResult {
-  rcode: string;
-  status: string;
-  status_class: StatusClass;
-  answer: DnsRR[];
-  authority: DnsRR[];
-  additional: DnsRR[];
-  upstream?: string;
-  list?: string;
-  rule?: string;
-  zone?: string;
-  cname_chain?: string[];
-  ede?: { code: number; text?: string };
-  took_ms: number;
+  /** blocking.enabled from the settings; when false the toggle has no effect. */
+  configured?: boolean;
+  scope?: 'node' | 'cluster';
   node?: string;
 }
+
+export type DnsProto = NonNullable<S['DNSQueryRequest']['proto']>;
+export type DnsQueryRequest = S['DNSQueryRequest'];
+export type DnsFlags = S['DNSFlags'];
+
+/** POST /dns/query: the sections are presentation lines (name ttl class type rdata, tab-separated). */
+export type DnsQueryResult = Omit<S['DNSQueryResult'], 'status_class'> & { status_class: StatusClass };
 
 // ---------------------------------------------------------------------------
 // Stats (sqlitelog api.go)
@@ -437,8 +464,13 @@ export interface UpstreamItem {
   p95_ms: number;
 }
 
+/** Health of one upstream server right now (GET /stats/upstreams servers[]). */
+export type UpstreamServer = S['UpstreamServer'];
+
 export interface UpstreamsResult extends ScopeInfo, Window {
-  upstreams: UpstreamItem[];
+  upstreams: UpstreamItem[] | null;
+  /** Live health per configured server (not windowed). */
+  servers: UpstreamServer[];
   approximate: boolean;
 }
 
@@ -553,149 +585,148 @@ export interface QuerylogStatus {
 
 export type SettingType = 'string' | 'int' | 'bool' | 'duration' | 'bytes' | 'string[]' | 'list' | 'map';
 
-/** One row of GET /settings/_schema (internal/config.Key). */
-export interface SettingKey {
-  path: string;
+/** One row of GET /settings/_schema (internal/config.Key plus the effective value). */
+export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   type: SettingType;
-  scope: 'node' | 'cluster';
-  default: unknown;
-  help: string;
-  hostOnly?: boolean;
-  envLocked?: boolean;
-  restartRequired?: boolean;
-  writeOnly?: boolean;
-}
+  /** The effective value ("<redacted>" for writeOnly keys). */
+  value?: unknown;
+};
 
-export interface NodeInfo {
-  name: string;
-  version: string;
-  roles: string[];
+/** GET|PATCH /settings and /node/config: the keys of one scope under `settings`. */
+export type SettingsBody = S['SettingsBody'];
+
+/** GET /nodes row. `ready` is absent for peers until scatter-gather lands. */
+export type NodeInfo = S['NodeInfo'];
+
+/** One component of the /healthz document (internal/health Component). */
+export interface HealthComponent {
   ready: boolean;
-  leader: boolean;
-  vipMaster?: boolean;
-  qps: number;
-  snapshotAge?: string;
-  address?: string;
-  storeDriver?: string;
-  startedAt?: string;
-}
-
-export interface NodeHealth {
-  name: string;
-  checks: { name: string; ok: boolean; message?: string }[];
-}
-
-export interface ClusterInfo {
-  mode: string;
-  leader: string;
-  nodes: string[];
-  epoch?: number;
-  readOnly?: boolean;
-}
-
-export interface DiagnosisMessage {
-  id: string;
-  severity: 'error' | 'warning' | 'info';
-  reason: string;
-  message: string;
-  object?: { kind: string; namespace?: string; name: string };
-  hint?: string;
-  node?: string;
+  message?: string;
   since?: string;
 }
 
-export interface VersionInfo {
-  version: string;
-  commit: string;
-  date: string;
-  go?: string;
+/** The /healthz document of a node. */
+export interface HealthDoc {
+  status?: string;
+  components?: Record<string, HealthComponent>;
+  unready?: string[] | null;
+  version?: string;
+  node?: string;
+  [key: string]: unknown;
 }
 
-/** GET /clients row: one client seen by the query log or named in a group. */
-export interface ClientInventoryItem {
-  ip: string;
-  name?: string;
-  mac?: string;
-  /** ClientGroup names the identify stage resolves this client to. */
-  groups: string[];
-  lastSeen?: string;
-  queries24h: number;
-  blocked24h: number;
+/** GET /nodes/{name}/health. */
+export type NodeHealth = Omit<S['NodeHealth'], 'health'> & { health: HealthDoc };
+
+/** GET /cluster: store driver, leader, epoch and shape. */
+export type ClusterInfo = S['ClusterInfo'];
+
+/** GET /edge: the dnsdist and keepalived supervisors and the dnsdist backends. */
+export type EdgeInfo = S['EdgeInfo'];
+export type EdgeComponentState = S['EdgeComponent'];
+
+/** GET /info/messages row. `object` is "Kind/namespace/name" or "Kind/name". */
+export type DiagnosisMessage = S['DiagnosisMessage'];
+
+export type VersionInfo = S['VersionOutputBody'];
+
+/** GET /clients row: the top-clients ranking of the window. */
+export type ClientItem = S['ClientItem'] & {
+  /** Last query of the client (RFC 3339), when the server knows it. */
+  last_seen?: string;
+};
+
+/** One audit event (internal/audit Event). */
+export type AuditEvent = S['Event'];
+
+/** GET /audit: a page of events with a keyset cursor. */
+export type AuditPage = S['AuditPage'];
+
+export interface AuditQuery {
+  kind?: string | undefined;
+  name?: string | undefined;
+  actor?: string | undefined;
+  since?: string | undefined;
+  limit?: number;
+  /** The `continue` (or `cursor_next`) of the previous page. */
+  cursor?: string | undefined;
+  /** desc lists newest first; the server default is oldest first. */
+  order?: 'asc' | 'desc';
 }
 
-/** GET /edge: dnsdist backends and VIP owners (single node: empty). */
-export interface EdgeInfo {
-  backends: { name: string; address: string; up: boolean; qps?: number }[];
-  vip?: { address: string; owner?: string }[];
-}
+/** One hit of GET /blocklists/_search?domain=; `list` is "namespace/name". */
+export type ListSearchHit = Omit<S['ListSearchHit'], 'mode'> & { mode: 'block' | 'allow' };
 
-export interface AuditEntry {
-  id: string;
-  ts: string;
-  actor: string;
-  action: string;
-  kind: string;
-  namespace?: string;
-  name: string;
-  outcome: 'success' | 'denied' | 'error';
-  authzPath?: string;
-}
+/** DELETE /querylog. */
+export type PurgeResult = S['PurgeResult'];
 
-/** Result of POST /zones/{zone}/import. */
-export interface ZoneImportResult {
-  imported: number;
-  recordSet?: string;
-  skipped?: { line: number; error: string }[];
-}
-
-/** One hit of GET /blocklists/_search?domain=. */
-export interface ListSearchHit {
-  list: string;
-  namespace: string;
-  rule: string;
-  mode: 'block' | 'allow';
-}
+/** GET /doctor: the server-side half of `kudurru doctor` as this node sees it. */
+export type DoctorCheck = S['DoctorCheck'];
+export type DoctorReport = S['DoctorReport'];
 
 // ---------------------------------------------------------------------------
-// IAM (read-only in v0.1; the write API is v0.2)
+// IAM (read-only in v0.1; the write API is v0.2). Hand-written from
+// internal/auth/stack/iam.go and internal/auth/adminsock (see the header).
 
+/** A local user (adminsock User). */
 export interface IamUser {
   name: string;
   displayName?: string;
-  local: boolean;
-  roles?: string[];
-  disabled?: boolean;
+  builtinAdmin: boolean;
+  disabled: boolean;
+  mustChangePassword: boolean;
+  groups?: string[];
+  lastLoginAt?: string;
+  passwordChangedAt?: string;
 }
 
+/** A kudurru service account (stack ServiceAccountInfo). */
 export interface IamServiceAccount {
+  namespace: string;
+  name: string;
+  description?: string;
+  disabled: boolean;
+  builtinAdmin: boolean;
+  /** Number of API tokens it holds. */
+  tokens: number;
+}
+
+/** An RBAC scope: cluster, or one zone ("zone" + name). */
+export interface RbacScope {
+  kind: 'cluster' | 'zone' | 'zonegroup' | 'clientgroup' | '';
+  name?: string;
+}
+
+export interface RbacSubject {
+  kind: 'User' | 'Group' | 'ServiceAccount';
   name: string;
   namespace?: string;
-  tokens?: number;
 }
 
+/** A role binding from the config file (source "config") or a RoleBinding object (stack RoleBindingInfo). */
 export interface IamRoleBinding {
+  source: 'config' | 'object';
+  namespace?: string;
   name: string;
   role: string;
-  subjects: { kind: string; name: string }[];
+  scope: RbacScope;
+  subjects: RbacSubject[] | null;
+  managedBy?: string;
 }
 
+/** A configured OIDC provider, without secrets (stack IdentityProviderInfo). */
 export interface IamIdentityProvider {
-  name: string;
+  id: string;
+  displayName: string;
   issuer: string;
-  clientID?: string;
+  clientID: string;
+  cliClientID?: string;
+  scopes?: string[] | null;
+  redirectURL?: string;
+  source?: 'config' | 'object';
 }
 
-/** GET /doctor: the server-side half of `kudurru doctor` as this node sees it. */
-export interface DoctorCheck {
-  check: string;
-  status: 'ok' | 'warn' | 'fail';
-  message: string;
-}
-
-export interface DoctorReport {
-  node: string;
-  version: string;
-  checks: DoctorCheck[];
-  failures: number;
-  warnings: number;
+/** The IAM list envelope; diagnoses explain ignored bindings or providers. */
+export interface IamList<T> extends ListEnvelope<T> {
+  diagnoses?: string[];
 }

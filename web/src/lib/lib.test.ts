@@ -7,6 +7,7 @@ import { listHealth } from './listHealth';
 import { ownership, readOnlyReason, withMeta } from './managedBy';
 import { isApiURL, isAppRoute, matchPath } from './router';
 import { envVarName, getPath, lockFor, mergePatchFor, parseValue } from './settings';
+import { settingKey } from '../test/utils';
 
 describe('base path', () => {
   it.each([
@@ -69,7 +70,7 @@ describe('format', () => {
 });
 
 describe('settings metadata', () => {
-  const key = { path: 'querylog.retention.raw', type: 'duration' as const, scope: 'cluster' as const, default: '24h', help: '' };
+  const key = settingKey({ path: 'querylog.retention.raw', type: 'duration', scope: 'cluster', default: '24h' });
 
   it('derives env var names and merge patches', () => {
     expect(envVarName('querylog.retention.raw')).toBe('KUDURRU_QUERYLOG__RETENTION__RAW');
