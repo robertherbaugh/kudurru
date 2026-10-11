@@ -85,8 +85,8 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 			}
 			t.cacheStg.SetDisabled(off)
 		}
-		if config.ChangedUnder(changed, "blocking") && t.blocking != nil {
-			t.blocking.Reconfigure(blockingstage.OptionsFrom(next.Blocking))
+		if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
+			t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))
 		}
 		if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {
 			rlc, err := ingress.RateLimitFromConfig(next.RateLimit)

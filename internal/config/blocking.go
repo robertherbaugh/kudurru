@@ -14,7 +14,7 @@ type Blocking struct {
 	// Enabled applies blocklists at all; false is a permanent off switch
 	// (the temporary disable is a runtime toggle).
 	Enabled bool `koanf:"enabled" json:"enabled"`
-	// DefaultResponse is zeroIP, nxdomain, customIP or refused.
+	// DefaultResponse is zeroIP, nxdomain, customIP, refused or blockPage.
 	DefaultResponse string `koanf:"defaultResponse" json:"defaultResponse"`
 	// BlockTTL is the TTL of synthesised block responses.
 	BlockTTL Duration `koanf:"blockTTL" json:"blockTTL"`
@@ -54,12 +54,12 @@ type BlockingCustomIP struct {
 
 // Block responses accepted by blocking.defaultResponse (the BlockResponse
 // values of api/v1alpha1).
-var blockResponses = map[string]bool{"zeroIP": true, "nxdomain": true, "customIP": true, "refused": true}
+var blockResponses = map[string]bool{"zeroIP": true, "nxdomain": true, "customIP": true, "refused": true, "blockPage": true}
 
 func (b *Blocking) validate() []error {
 	var errs []error
 	if !blockResponses[b.DefaultResponse] {
-		errs = append(errs, fmt.Errorf("blocking.defaultResponse: unknown response %q (zeroIP, nxdomain, customIP, refused)", b.DefaultResponse))
+		errs = append(errs, fmt.Errorf("blocking.defaultResponse: unknown response %q (zeroIP, nxdomain, customIP, refused, blockPage)", b.DefaultResponse))
 	}
 	if b.BlockTTL < 0 {
 		errs = append(errs, fmt.Errorf("blocking.blockTTL: %s is negative", b.BlockTTL))

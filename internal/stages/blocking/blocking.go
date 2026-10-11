@@ -35,7 +35,9 @@
 // blockMode, else blocking.defaultResponse): zeroIP answers 0.0.0.0 for A
 // and :: for AAAA and NODATA for other types; nxdomain answers NXDOMAIN
 // without an SOA; customIP answers the configured addresses (NODATA for a
-// family without one); refused answers REFUSED. The TTL is the policy's
+// family without one); blockPage answers the block page addresses
+// (blockPage.ipv4/ipv6, internal/blockpage) the same way, and zeroIP when
+// the block page is off or has no address; refused answers REFUSED. The TTL is the policy's
 // blockTTL, else blocking.blockTTL (10 m). When the query carried EDNS the
 // answer carries EDE 15 (Blocked), or 17 (Filtered) for allow-only blocks.
 // Response.Status is blocked_list, blocked_regex, blocked_exact (exact or
@@ -88,6 +90,9 @@ type Options struct {
 	// CustomV4 and CustomV6 answer the customIP response of policies and
 	// of the default (a BlockList's own customIP takes precedence).
 	CustomV4, CustomV6 netip.Addr
+	// BlockPageV4 and BlockPageV6 answer the blockPage response; when both
+	// are invalid (the block page is off) blockPage answers like zeroIP.
+	BlockPageV4, BlockPageV6 netip.Addr
 	// BlockTTL applies when the policy sets none; zero means 10 m.
 	BlockTTL time.Duration
 	// AllowDegraded keeps Ready true while referenced lists are not
@@ -124,6 +129,16 @@ func OptionsFrom(c config.Blocking) Options {
 	return o
 }
 
+// OptionsFromConfig is OptionsFrom plus the block page addresses
+// (config.BlockPageAddrs) when blockPage.enabled.
+func OptionsFromConfig(c *config.Config) Options {
+	o := OptionsFrom(c.Blocking)
+	if c.BlockPage.Enabled {
+		o.BlockPageV4, o.BlockPageV6 = c.BlockPageAddrs()
+	}
+	return o
+}
+
 // Stage implements pipeline.Stage.
 type Stage struct {
 	opts    Options
@@ -137,11 +152,13 @@ type defaults struct {
 	disabled           bool
 	response           v1alpha1.BlockResponse
 	customV4, customV6 netip.Addr
+	pageV4, pageV6     netip.Addr
 	blockTTL           time.Duration
 }
 
 func defaultsOf(o Options) *defaults {
-	d := &defaults{disabled: o.Disabled, response: o.DefaultResponse, customV4: o.CustomV4, customV6: o.CustomV6, blockTTL: o.BlockTTL}
+	d := &defaults{disabled: o.Disabled, response: o.DefaultResponse, customV4: o.CustomV4, customV6: o.CustomV6,
+		pageV4: o.BlockPageV4, pageV6: o.BlockPageV6, blockTTL: o.BlockTTL}
 	if d.response == "" {
 		d.response = v1alpha1.BlockResponse("zeroIP")
 	}
@@ -152,7 +169,7 @@ func defaultsOf(o Options) *defaults {
 }
 
 // Reconfigure applies the blocking.* settings that are hot (enabled,
-// defaultResponse, blockTTL, customIP) from o; Toggle, Index, AllowDegraded
+// defaultResponse, blockTTL, customIP) and the block page addresses from o; Toggle, Index, AllowDegraded
 // and the metrics stay. Queries in flight finish with the old values.
 func (s *Stage) Reconfigure(o Options) { s.live.Store(defaultsOf(o)) }
 
@@ -382,6 +399,12 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 	if mode == "" {
 		mode = live.response
 	}
+	if mode == "blockPage" {
+		v4, v6 = live.pageV4, live.pageV6
+		if !v4.IsValid() && !v6.IsValid() {
+			mode = "zeroIP"
+		}
+	}
 	ttl := d.BlockTTL
 	if ttl <= 0 {
 		ttl = live.blockTTL
@@ -396,12 +419,12 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 
 // Response describes a synthesised block response.
 type Response struct {
-	// Mode is zeroIP (also for unknown values), nxdomain, customIP or
-	// refused.
+	// Mode is zeroIP (also for unknown values), nxdomain, customIP,
+	// blockPage or refused.
 	Mode v1alpha1.BlockResponse
 	// TTL of the answer records.
 	TTL time.Duration
-	// V4 and V6 are the customIP answers.
+	// V4 and V6 are the customIP and blockPage answers.
 	V4, V6 netip.Addr
 	// EDE is the RFC 8914 info code added when the query carried EDNS;
 	// EDEText its extra text (the list name). EDE 0 (Other) without text
@@ -427,7 +450,7 @@ func Synthesize(q *dns.Msg, r Response) *dns.Msg {
 		m.Rcode = dns.RcodeNameError
 	case "refused":
 		m.Rcode = dns.RcodeRefused
-	case "customIP":
+	case "customIP", "blockPage":
 		switch {
 		case qq.Qtype == dns.TypeA && r.V4.Is4():
 			m.Answer = []dns.RR{&dns.A{Hdr: hdr, A: r.V4.AsSlice()}}

@@ -445,7 +445,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
-	bopts := blockingstage.OptionsFrom(cfg.Blocking)
+	bopts := blockingstage.OptionsFromConfig(cfg)
 	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogues
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
