@@ -62,17 +62,23 @@ test('number keys are bounded inputs and durations are preset selects', async ({
   await expect(page.locator('[data-configkey="blocking.blockTTL"]').getByRole('combobox', { name: 'Block response TTL' })).toHaveValue('10m');
 });
 
-test('the block page section previews the page', async ({ page }) => {
-  const section = main(page).getByRole('region', { name: 'Block page' });
-  await expect(section.getByTestId('blockpage-intro')).toContainText('certificate warning');
-  // The frame is sandboxed without scripts, so Playwright cannot look
-  // inside it: check that the framed request succeeds (cookie auth) and
-  // what it answers.
-  const framed = page.waitForResponse((r) => r.url().includes('/api/v1/blockpage/preview?domain=ads.example.com'));
-  await section.getByRole('button', { name: 'Preview' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Block page preview' });
-  await expect(dialog.locator('iframe[title="Block page for ads.example.com"]')).toHaveAttribute('sandbox', '');
-  const res = await framed;
-  expect(res.status()).toBe(200);
-  expect(await res.text()).toContain('ads.example.com');
+test.describe('block page', () => {
+  // Playwright injects its utility script into every frame; Chrome logs
+  // refusing it in the script-less sandbox. A user's browser logs nothing.
+  test.use({ allowConsole: /Blocked script execution in .*\/api\/v1\/blockpage\/preview/ });
+
+  test('the block page section previews the page', async ({ page }) => {
+    const section = main(page).getByRole('region', { name: 'Block page' });
+    await expect(section.getByTestId('blockpage-intro')).toContainText('certificate warning');
+    // The frame is sandboxed without scripts, so Playwright cannot look
+    // inside it: check that the framed request succeeds (cookie auth) and
+    // what it answers.
+    const framed = page.waitForResponse((r) => r.url().includes('/api/v1/blockpage/preview?domain=ads.example.com'));
+    await section.getByRole('button', { name: 'Preview' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Block page preview' });
+    await expect(dialog.locator('iframe[title="Block page for ads.example.com"]')).toHaveAttribute('sandbox', '');
+    const res = await framed;
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain('ads.example.com');
+  });
 });
