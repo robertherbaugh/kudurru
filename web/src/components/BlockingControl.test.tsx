@@ -65,11 +65,18 @@ describe('BlockingPanel', () => {
     expect(onSet).toHaveBeenCalledWith(want);
   });
 
-  it('accepts a custom duration in minutes or as a Go duration and rejects garbage', () => {
+  it('disables for a preset duration, a custom one in minutes or as a Go duration, and rejects garbage', () => {
     const onSet = vi.fn();
     renderWithApp(<BlockingPanel state={{ blocking: true }} fetchedAt={T0} canToggle onSet={onSet} />, { user: null });
     fireEvent.click(screen.getByRole('button', { name: 'Disable blocking' }));
-    const input = screen.getByRole('textbox', { name: /Custom duration/ });
+    const sel = screen.getByRole('combobox', { name: 'Other duration' });
+    fireEvent.change(sel, { target: { value: '2h' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    expect(onSet).toHaveBeenLastCalledWith({ blocking: false, timer: 7200 });
+    onSet.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Disable blocking' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Other duration' }), { target: { value: '__custom__' } });
+    const input = screen.getByRole('textbox', { name: 'Other duration (custom)' });
     fireEvent.change(input, { target: { value: 'soon' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
     expect(onSet).not.toHaveBeenCalled();

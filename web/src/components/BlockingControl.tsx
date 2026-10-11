@@ -1,10 +1,9 @@
 // Disable blocking with a countdown (§10 principle 7): 10 s / 30 s / 5 min
-// / custom / indefinite. POST /dns/blocking toggles the node-local switch
+// / indefinite, or a longer duration picked from presets (custom allowed). POST /dns/blocking toggles the node-local switch
 // today and the cluster-wide Publisher once replication lands; the UI
 // only shows what the server reports back.
 import { Button } from '@astryxdesign/core/Button';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMemo, useState } from 'react';
 import { useCan } from '../api/context';
 import { useBlocking, useSetBlocking } from '../api/hooks';
@@ -13,6 +12,7 @@ import { formatCountdown, parseDuration } from '../lib/format';
 import { Link } from '../lib/router';
 import { useCountdown } from '../lib/useCountdown';
 import { useNotify } from './Feedback';
+import { DurationField, durationPresets } from './fields/DurationField';
 import { FormDialog } from './FormDialog';
 
 /** The preset durations offered when disabling, in seconds (0 = indefinite). */
@@ -22,6 +22,9 @@ export const BLOCKING_PRESETS: { label: string; seconds: number }[] = [
   { label: '5 minutes', seconds: 300 },
   { label: 'Indefinitely', seconds: 0 },
 ];
+
+/** Longer pauses offered in the "Other duration" select. */
+export const BLOCKING_DURATIONS = durationPresets(['15m', '30m', '1h', '2h', '6h', '12h', '24h']);
 
 /** The instant blocking re-enables, from `until` or from `timer` at fetch time. */
 export function resumeAt(state: BlockingState | undefined, fetchedAt: number): string | undefined {
@@ -47,7 +50,7 @@ export interface BlockingPanelProps {
 /** Presentational blocking switch; BlockingControl wires it to the API. */
 export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpire, compact }: BlockingPanelProps) {
   const [open, setOpen] = useState(false);
-  const [custom, setCustom] = useState('');
+  const [custom, setCustom] = useState('15m');
   const [customError, setCustomError] = useState<string | undefined>();
   const until = useMemo(() => resumeAt(state, fetchedAt), [state, fetchedAt]);
   const left = useCountdown(until, onExpire);
@@ -140,13 +143,13 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
             submitCustom();
           }}
         >
-          <TextInput
-            label="Custom duration"
-            description="Minutes, or a duration such as 90s or 1h30m"
+          <DurationField
+            label="Other duration"
+            description="Custom takes minutes or a duration such as 90s or 1h30m"
             value={custom}
             onChange={(v) => setCustom(v)}
-            status={customError ? { type: 'error', message: customError } : undefined}
-            placeholder="15"
+            presets={BLOCKING_DURATIONS}
+            error={customError}
           />
           <Button type="submit" label="Disable" variant="primary" />
         </form>

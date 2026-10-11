@@ -17,6 +17,7 @@ import { ErrorBanner, useNotify } from '../components/Feedback';
 import { formatBytes, formatDateTime, formatExact, formatMS } from '../lib/format';
 import { Link } from '../lib/router';
 import { hostError, splitPresentation } from '../lib/rr';
+import { formatError } from '../components/fields/formats';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
 const DIG_PROTOS: { value: DnsProto; label: string }[] = [
@@ -78,6 +79,7 @@ function Dig() {
   const [dnssec, setDnssec] = useState(false);
   const [client, setClient] = useState('');
   const [err, setErr] = useState<string>();
+  const [clientErr, setClientErr] = useState<string>();
   const m = useMutation({
     mutationFn: () =>
       api.runtime.dig({
@@ -104,8 +106,10 @@ function Dig() {
         onSubmit={(e) => {
           e.preventDefault();
           const he = hostError(name);
+          const ce = formatError('ip', client);
           setErr(he ?? undefined);
-          if (!he) m.mutate();
+          setClientErr(ce ?? undefined);
+          if (!he && !ce) m.mutate();
         }}
       >
         <TextInput label="Name" value={name} onChange={setName} placeholder="example.com" status={err ? { type: 'error', message: err } : undefined} />
@@ -127,7 +131,15 @@ function Dig() {
             ))}
           </select>
         </label>
-        <TextInput label="As client" value={client} onChange={setClient} placeholder="192.168.1.30" isOptional />
+        <TextInput
+          label="As client"
+          description="The client IP the query is evaluated for (its groups and policies)"
+          value={client}
+          onChange={setClient}
+          placeholder="192.168.1.30"
+          isOptional
+          status={clientErr ? { type: 'error', message: clientErr } : undefined}
+        />
         <CheckboxInput label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
         <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
       </form>
