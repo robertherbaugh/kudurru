@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
@@ -253,7 +254,8 @@ func (u *Users) dummyHash(ctx context.Context) string {
 // lastLoginAt in the background.
 func (u *Users) Login(ctx context.Context, username, password, clientIP string) (*internalv1.LocalUser, error) {
 	name := NormalizeUsername(username)
-	if d := u.ipLim.Locked(clientIP); d > 0 {
+	ipKey := limiterIPKey(clientIP)
+	if d := u.ipLim.Locked(ipKey); d > 0 {
 		return nil, &LockedError{By: "ip", RetryAfter: d}
 	}
 	if d := u.usrLim.Locked(name); d > 0 {
@@ -272,7 +274,7 @@ func (u *Users) Login(ctx context.Context, username, password, clientIP string) 
 		return nil, err
 	}
 	if !ok || !known || usr.Spec.PasswordHash == "" {
-		u.ipLim.Fail(clientIP)
+		u.ipLim.Fail(ipKey)
 		u.usrLim.Fail(name)
 		u.log.WarnContext(ctx, "local login failed", "username", SanitizeForLog(username), "client", clientIP, "known", known)
 		return nil, ErrInvalidCredentials
@@ -299,7 +301,23 @@ func (u *Users) recordLogin(ctx context.Context, name string) {
 // Locked reports the remaining lockout for a client IP or username (for
 // tests and diagnostics).
 func (u *Users) Locked(clientIP, username string) time.Duration {
-	return max(u.ipLim.Locked(clientIP), u.usrLim.Locked(NormalizeUsername(username)))
+	return max(u.ipLim.Locked(limiterIPKey(clientIP)), u.usrLim.Locked(NormalizeUsername(username)))
+}
+
+// limiterIPKey is the per-IP limiter key of a client address: IPv4
+// addresses as they are, IPv6 addresses by their /64 (one host usually
+// owns a whole /64 and could otherwise rotate addresses to multiply its
+// guesses). Unparseable values are used verbatim.
+func limiterIPKey(clientIP string) string {
+	a, err := netip.ParseAddr(clientIP)
+	if err != nil {
+		return clientIP
+	}
+	a = a.Unmap()
+	if a.Is4() {
+		return a.String()
+	}
+	return netip.PrefixFrom(a.WithZone(""), 64).Masked().String()
 }
 
 // CreateOptions describes a new local user.

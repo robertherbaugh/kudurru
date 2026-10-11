@@ -369,3 +369,31 @@ func TestSanitizeForLog(t *testing.T) {
 		}
 	}
 }
+
+// TestIPv6LockoutCoversThePrefix is the regression test of the M5 hardening
+// "per-IP login lockouts key IPv6 clients by /128": a single host owns a
+// whole /64 and could rotate addresses to try five passwords per address.
+func TestIPv6LockoutCoversThePrefix(t *testing.T) {
+	ctx := context.Background()
+	c := &clock{t: time.Now()}
+	u := newUsers(t, authtest.Memory(t), c)
+	if _, err := u.Create(ctx, CreateOptions{Name: "alice", Password: "alice-password"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		ip := "2001:db8:1:2::" + string(rune('a'+i))
+		if _, err := u.Login(ctx, "mallory", "x", ip); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("failure %d: %v", i+1, err)
+		}
+	}
+	var locked *LockedError
+	if _, err := u.Login(ctx, "alice", "alice-password", "2001:db8:1:2::ffff"); !errors.As(err, &locked) || locked.By != "ip" {
+		t.Fatalf("another address of the same /64: %v, want an ip lockout", err)
+	}
+	if _, err := u.Login(ctx, "alice", "alice-password", "2001:db8:1:3::1"); err != nil {
+		t.Fatalf("another /64: %v", err)
+	}
+	if _, err := u.Login(ctx, "alice", "alice-password", "::ffff:192.0.2.1"); err != nil {
+		t.Fatalf("an IPv4-mapped address: %v", err)
+	}
+}
