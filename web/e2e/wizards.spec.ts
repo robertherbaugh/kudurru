@@ -2,6 +2,7 @@
 // dialogs over the list page (?new=1): a forward zone and an upstream
 // group from a provider preset. Each test removes what it created.
 import { expect, expectRendered, main, settle, test } from './fixtures';
+import { choose } from './support/astryx';
 
 test('the zone wizard creates a forward zone', async ({ page }) => {
   const apex = `fwd-${Date.now().toString(36)}.example`;
@@ -14,9 +15,7 @@ test('the zone wizard creates a forward zone', async ({ page }) => {
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('textbox', { name: /^Zone name/ }).fill(apex);
   await main(page).getByRole('button', { name: 'Next' }).click();
-  const group = main(page).getByRole('combobox', { name: /Upstream group/ });
-  await expect(group.getByRole('option', { name: 'default', exact: true })).toBeAttached();
-  await group.selectOption('default');
+  await choose(main(page).getByRole('combobox', { name: /Upstream group/ }), 'default');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await expect(main(page).getByTestId('zone-review')).toContainText(`${apex}.`);
   await main(page).getByRole('button', { name: 'Create zone' }).click();
@@ -42,11 +41,11 @@ test('the upstream wizard creates a group from a provider preset', async ({ page
   await expect(page.getByRole('dialog', { name: 'New upstream group' })).toBeVisible();
   await main(page).getByRole('radio', { name: /^Quad9/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
-  await main(page).getByRole('combobox', { name: 'Transport' }).selectOption('dot');
+  await choose(main(page).getByRole('combobox', { name: 'Transport' }), 'DNS over TLS (DoT)');
   await expect(main(page).getByTestId('preset-servers')).toContainText('tls://dns.quad9.net');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('textbox', { name: /^Name/ }).fill(name);
-  await main(page).getByRole('combobox', { name: 'Strategy' }).selectOption('strict');
+  await choose(main(page).getByRole('combobox', { name: 'Strategy' }), 'Strict order');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await expect(main(page).getByTestId('upstream-review')).toContainText('quad9-dot=tls://dns.quad9.net');
   await main(page).getByRole('button', { name: 'Create group' }).click();

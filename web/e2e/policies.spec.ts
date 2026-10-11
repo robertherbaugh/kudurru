@@ -5,6 +5,7 @@
 // group, and the client page which group and policy apply to 127.0.0.1.
 import { badLines, env, expect, expectRendered, main, settle, test } from './fixtures';
 import { query } from './support/dns';
+import { choose } from './support/astryx';
 import { BLOCKLIST } from './support/kudurru';
 
 const unique = () => Math.random().toString(36).slice(2, 8);
@@ -114,7 +115,7 @@ test('the group wizard creates a group with typed matchers', async ({ page }) =>
   await main(page).getByRole('button', { name: 'Next' }).click();
   await expect(main(page).getByRole('heading', { level: 3, name: 'Members' })).toBeVisible();
   await main(page).getByRole('button', { name: 'Add matcher' }).click();
-  await main(page).getByRole('combobox', { name: 'Matcher 1 kind' }).selectOption('cidr');
+  await choose(main(page).getByRole('combobox', { name: 'Matcher 1 kind' }), 'CIDR range');
   const value = main(page).getByRole('textbox', { name: 'Matcher 1 CIDR range' });
   await value.fill('10.99.0.0/33');
   await main(page).getByRole('button', { name: 'Next' }).click();
