@@ -55,6 +55,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | GET | `/api/v1/catalogue` | The blocked-services and safe-search catalogue in service | `policies.read` (cluster) |
+| GET | `/api/v1/catalogue/icons` | Logos embedded in this build | public |
+| GET | `/api/v1/catalogue/icons/{file}` | One embedded logo (image/svg+xml) | public |
 | GET | `/api/v1/catalogue/safesearch` | Search engines Policy.spec.safeSearch rewrites | `policies.read` (cluster) |
 | GET | `/api/v1/catalogue/services` | Services Policy.spec.blockedServices can block | `policies.read` (cluster) |
 
@@ -130,6 +132,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/policies/{namespace}/{name}` | Get a Policy | `policies.read` (cluster) |
 | PUT | `/api/v1/policies/{namespace}/{name}` | Create or replace a Policy | `policies.write` (cluster) |
 | DELETE | `/api/v1/policies/{namespace}/{name}` | Delete a Policy | `policies.delete` (cluster) |
+| GET | `/api/v1/policies/{namespace}/{name}/state` | A policy's current state | `policies.read` (cluster) |
 | POST | `/api/v1/policies:batchDelete` | Delete several policies | `policies.delete` (cluster) |
 
 ## querylog

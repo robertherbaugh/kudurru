@@ -248,10 +248,12 @@ type QueryFilter struct {
 	StatusClass pipeline.Class    `json:"status_class,omitempty"`
 	// QType keeps one query type (0: any).
 	QType uint16 `json:"qtype,omitempty"`
-	// Upstream, List and Zone match dictionary names exactly.
+	// Upstream, List, Zone and Policy (the deciding policy,
+	// "namespace/name") match dictionary names exactly.
 	Upstream string `json:"upstream,omitempty"`
 	List     string `json:"list,omitempty"`
 	Zone     string `json:"zone,omitempty"`
+	Policy   string `json:"policy,omitempty"`
 	// Since and Until bound ts (inclusive, exclusive).
 	Since time.Time `json:"since,omitzero"`
 	Until time.Time `json:"until,omitzero"`
@@ -281,28 +283,31 @@ type QueryPage struct {
 
 // QueryRow is one query with its "why" fields.
 type QueryRow struct {
-	ID          uint64         `json:"id"`
-	TS          time.Time      `json:"ts"`
-	Node        string         `json:"node"`
-	Proto       string         `json:"proto"`
-	Client      QueryClient    `json:"client"`
-	Domain      string         `json:"domain"`
-	CNAME       string         `json:"cname,omitempty"`
-	QType       string         `json:"qtype"`
-	QClass      int            `json:"qclass"`
-	Status      string         `json:"status"`
-	StatusClass string         `json:"status_class"`
-	Rcode       string         `json:"rcode"`
-	Reply       QueryReply     `json:"reply"`
-	Upstream    string         `json:"upstream,omitempty"`
-	Zone        string         `json:"zone,omitempty"`
-	List        string         `json:"list,omitempty"`
-	Rule        string         `json:"rule,omitempty"`
-	DNSSEC      string         `json:"dnssec"`
-	EDE         *int           `json:"ede,omitempty"`
-	ECS         string         `json:"ecs,omitempty"`
-	TraceID     string         `json:"trace_id,omitempty"`
-	Flags       querylog.Flags `json:"flags"`
+	ID          uint64      `json:"id"`
+	TS          time.Time   `json:"ts"`
+	Node        string      `json:"node"`
+	Proto       string      `json:"proto"`
+	Client      QueryClient `json:"client"`
+	Domain      string      `json:"domain"`
+	CNAME       string      `json:"cname,omitempty"`
+	QType       string      `json:"qtype"`
+	QClass      int         `json:"qclass"`
+	Status      string      `json:"status"`
+	StatusClass string      `json:"status_class"`
+	Rcode       string      `json:"rcode"`
+	Reply       QueryReply  `json:"reply"`
+	Upstream    string      `json:"upstream,omitempty"`
+	Zone        string      `json:"zone,omitempty"`
+	List        string      `json:"list,omitempty"`
+	Rule        string      `json:"rule,omitempty"`
+	// Policy is the deciding policy, "namespace/name"; empty when no
+	// policy applied and on rows written before schema version 2.
+	Policy  string         `json:"policy,omitempty"`
+	DNSSEC  string         `json:"dnssec"`
+	EDE     *int           `json:"ede,omitempty"`
+	ECS     string         `json:"ecs,omitempty"`
+	TraceID string         `json:"trace_id,omitempty"`
+	Flags   querylog.Flags `json:"flags"`
 }
 
 // QueryClient is the client of a row.
@@ -326,6 +331,7 @@ const (
 	FieldUpstream = "upstream"
 	FieldList     = "list"
 	FieldZone     = "zone"
+	FieldPolicy   = "policy"
 )
 
 // Suggestions is GET /queries/suggestions.

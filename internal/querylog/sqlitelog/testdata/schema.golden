@@ -10,6 +10,9 @@ CREATE TABLE dict_list     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 -- table dict_node
 CREATE TABLE dict_node     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 
+-- table dict_policy
+CREATE TABLE dict_policy   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+
 -- table dict_upstream
 CREATE TABLE dict_upstream (id INTEGER PRIMARY KEY, addr TEXT NOT NULL UNIQUE);
 
@@ -42,7 +45,8 @@ CREATE TABLE query (
   flags       INTEGER NOT NULL DEFAULT 0,
   ecs         TEXT,
   trace_id    BLOB,
-  answer      TEXT
+  answer      TEXT,
+  policy      INTEGER REFERENCES dict_policy
 );
 
 -- table rollup_1d

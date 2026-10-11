@@ -1169,7 +1169,7 @@ listener workers ─(per-worker SPSC ring 4096, non-blocking; overflow = drop + 
 PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA auto_vacuum=INCREMENTAL;
 PRAGMA wal_autocheckpoint=2000; PRAGMA mmap_size=268435456; PRAGMA busy_timeout=1000; PRAGMA temp_store=MEMORY;
 
-CREATE TABLE meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID;      -- schema_version, node_id, first_ts, privacy_mode_at_write
+CREATE TABLE meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID;      -- schema_version (2; older files are upgraded in place on open), node_id, first_ts, privacy_mode_at_write
 
 CREATE TABLE dict_domain   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, etld1 TEXT, first_seen INTEGER, last_seen INTEGER);
 CREATE TABLE dict_client   (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT, grp TEXT, first_seen INTEGER, last_seen INTEGER, UNIQUE(ip,name));
@@ -1177,6 +1177,7 @@ CREATE TABLE dict_upstream (id INTEGER PRIMARY KEY, addr TEXT NOT NULL UNIQUE); 
 CREATE TABLE dict_zone     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
 CREATE TABLE dict_list     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);     -- blocklist / rule source
 CREATE TABLE dict_node     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+CREATE TABLE dict_policy   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);     -- "namespace/name" of the deciding policy (schema 2)
 
 CREATE TABLE query (
   id          INTEGER PRIMARY KEY,          -- rowid, monotonic per node (time-ordered); keyset cursor
@@ -1200,7 +1201,8 @@ CREATE TABLE query (
   flags       INTEGER NOT NULL DEFAULT 0,   -- RD, DO, TC, AD, CD, cached, stale, prefetch, ecs, traceparent
   ecs         TEXT,
   trace_id    BLOB,                         -- 16 bytes, NULL unless traced
-  answer      TEXT                          -- short summary (first ~3 RRs), NULL in restricted privacy modes
+  answer      TEXT,                         -- short summary (first ~3 RRs), NULL in restricted privacy modes
+  policy      INTEGER REFERENCES dict_policy -- deciding policy (schema 2; NULL on older rows and when no policy applied)
 );
 -- Deliberately four indexes only (each costs ~10-15 B/row and write amplification):
 CREATE INDEX query_ts        ON query(ts);

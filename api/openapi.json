@@ -481,6 +481,28 @@
         ],
         "type": "object"
       },
+      "CatalogueIcon": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The icon slug (the homarr-labs/dashboard-icons file name).",
+            "type": "string"
+          },
+          "onDark": {
+            "description": "Path of the variant for dark backgrounds, when one exists.",
+            "type": "string"
+          },
+          "path": {
+            "description": "/api/v1/catalogue/icons/{id}.svg",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "type": "object"
+      },
       "CatalogueInfo": {
         "additionalProperties": false,
         "properties": {
@@ -573,6 +595,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "icon": {
+            "description": "Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.",
+            "type": "string"
+          },
+          "iconOnDark": {
+            "description": "The logo drawn for dark backgrounds, when the default one is dark artwork.",
+            "type": "string"
           },
           "id": {
             "description": "The ID Policy.spec.blockedServices names.",
@@ -789,6 +819,39 @@
           "readOnly",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "Condition": {
+        "additionalProperties": false,
+        "properties": {
+          "lastTransitionTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "observedGeneration": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "lastTransitionTime",
+          "reason",
+          "message"
         ],
         "type": "object"
       },
@@ -1797,6 +1860,31 @@
         ],
         "type": "object"
       },
+      "ListCatalogueIcon": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueIcon"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListCatalogueService": {
         "additionalProperties": false,
         "properties": {
@@ -2363,6 +2451,391 @@
         ],
         "type": "object"
       },
+      "PolicyClient": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "count"
+        ],
+        "type": "object"
+      },
+      "PolicyDomain": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "domain": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "count"
+        ],
+        "type": "object"
+      },
+      "PolicyGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "clients": {
+            "description": "Client matchers of the group (spec.clients).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "seen24h": {
+            "description": "Distinct clients this node's query log attributed to the group (as their first group) in the last 24 hours; absent without a query log.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref",
+          "exists",
+          "enabled",
+          "clients"
+        ],
+        "type": "object"
+      },
+      "PolicyList": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "entries": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "mode": {
+            "description": "The list's own spec.mode (how it is applied); the role when it does not exist.",
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "role": {
+            "description": "Which reference field names it: blockListRefs (block) or allowListRefs (allow).",
+            "enum": [
+              "block",
+              "allow"
+            ],
+            "type": "string"
+          },
+          "sourcesEnabled": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sourcesTotal": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref",
+          "role",
+          "mode",
+          "exists",
+          "enabled",
+          "ready",
+          "entries",
+          "sourcesEnabled",
+          "sourcesTotal"
+        ],
+        "type": "object"
+      },
+      "PolicySafeSearch": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "engines": {
+            "description": "Every engine the catalogue rewrites (all apply when enabled).",
+            "items": {
+              "$ref": "#/components/schemas/PolicySafeSearchEngine"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "strict",
+              "moderate"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "mode",
+          "engines"
+        ],
+        "type": "object"
+      },
+      "PolicySafeSearchEngine": {
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "description": "Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.",
+            "type": "string"
+          },
+          "iconOnDark": {
+            "description": "The logo drawn for dark backgrounds, when the default one is dark artwork.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "PolicySchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "description": "Why the schedule is invalid; the policy then applies at all times.",
+            "type": "string"
+          },
+          "nextChange": {
+            "description": "When now flips next (within eight days).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "now": {
+            "description": "The schedule allows the policy now.",
+            "type": "boolean"
+          },
+          "summary": {
+            "description": "\"Mon-Fri 08:00-17:00 (Europe/Berlin)\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "now",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "PolicyService": {
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "description": "Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.",
+            "type": "string"
+          },
+          "iconOnDark": {
+            "description": "The logo drawn for dark backgrounds, when the default one is dark artwork.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "known": {
+            "description": "The catalogue in service has the ID.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The catalogue name; the ID when unknown.",
+            "type": "string"
+          },
+          "rules": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "known",
+          "rules"
+        ],
+        "type": "object"
+      },
+      "PolicyState": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "enabled and the schedule allows it now (an invalid schedule applies at all times).",
+            "type": "boolean"
+          },
+          "blockMode": {
+            "description": "spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list.",
+            "type": "string"
+          },
+          "blockTTL": {
+            "type": "string"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "description": "false while the kudurru.io/enabled annotation is \"false\".",
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyGroup"
+            },
+            "type": "array"
+          },
+          "lists": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyList"
+            },
+            "type": "array"
+          },
+          "managedBy": {
+            "type": "string"
+          },
+          "policy": {
+            "description": "namespace/name",
+            "type": "string"
+          },
+          "priority": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "safeSearch": {
+            "$ref": "#/components/schemas/PolicySafeSearch"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/PolicySchedule"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyService"
+            },
+            "type": "array"
+          },
+          "shadowedBy": {
+            "description": "Enabled policies (namespace/name, rank order) that outrank this one for at least one of its client groups: they decide for those clients and their settings win; the lists of all active policies still apply.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "stats24h": {
+            "$ref": "#/components/schemas/PolicyStats24h"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "upstreamGroup": {
+            "$ref": "#/components/schemas/PolicyUpstreamGroup"
+          }
+        },
+        "required": [
+          "policy",
+          "enabled",
+          "active",
+          "priority",
+          "groups",
+          "lists",
+          "services",
+          "safeSearch",
+          "blockMode",
+          "conditions",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "PolicyStats24h": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "blockedPercent": {
+            "format": "double",
+            "type": "number"
+          },
+          "queries": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "topBlocked": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyDomain"
+            },
+            "type": "array"
+          },
+          "topClients": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyClient"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "queries",
+          "blocked",
+          "blockedPercent",
+          "topBlocked",
+          "topClients"
+        ],
+        "type": "object"
+      },
+      "PolicyUpstreamGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "exists": {
+            "description": "upstreams.groups has it; queries fall back to the default group otherwise.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "exists"
+        ],
+        "type": "object"
+      },
       "Processed": {
         "additionalProperties": false,
         "properties": {
@@ -2610,6 +3083,9 @@
             "type": "string"
           },
           "node": {
+            "type": "string"
+          },
+          "policy": {
             "type": "string"
           },
           "proto": {
@@ -2983,6 +3459,14 @@
             "description": "Number of host names rewritten.",
             "format": "int64",
             "type": "integer"
+          },
+          "icon": {
+            "description": "Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.",
+            "type": "string"
+          },
+          "iconOnDark": {
+            "description": "The logo drawn for dark backgrounds, when the default one is dark artwork.",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -7248,6 +7732,190 @@
           "scope": "cluster",
           "verb": "read"
         }
+      }
+    },
+    "/catalogue/icons": {
+      "get": {
+        "operationId": "listCatalogueIcons",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCatalogueIcon"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Logos embedded in this build",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": "public"
+      }
+    },
+    "/catalogue/icons/{file}": {
+      "get": {
+        "description": "{file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with \u003cimg\u003e; the logos are trademarks of their owners and identify the service only.",
+        "operationId": "getCatalogueIcon",
+        "parameters": [
+          {
+            "description": "{slug}.svg",
+            "in": "path",
+            "name": "file",
+            "required": true,
+            "schema": {
+              "description": "{slug}.svg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The SVG document",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "One embedded logo (image/svg+xml)",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": "public"
       }
     },
     "/catalogue/safesearch": {
@@ -12166,6 +12834,121 @@
         }
       }
     },
+    "/policies/{namespace}/{name}/state": {
+      "get": {
+        "description": "Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.",
+        "operationId": "getPolicyState",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyState"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "A policy's current state",
+        "tags": [
+          "policies"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/policies:batchDelete": {
       "post": {
         "operationId": "batchDeletePolicies",
@@ -12360,6 +13143,16 @@
             "in": "query",
             "name": "zone",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deciding policy, namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "description": "Deciding policy, namespace/name.",
               "type": "string"
             }
           },
@@ -12595,6 +13388,16 @@
             }
           },
           {
+            "description": "Deciding policy, namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "description": "Deciding policy, namespace/name.",
+              "type": "string"
+            }
+          },
+          {
             "description": "RFC 3339, inclusive.",
             "explode": false,
             "in": "query",
@@ -12775,7 +13578,8 @@
                 "client",
                 "upstream",
                 "list",
-                "zone"
+                "zone",
+                "policy"
               ],
               "type": "string"
             }
