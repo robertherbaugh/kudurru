@@ -18,7 +18,7 @@ SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
@@ -229,6 +229,16 @@ web-lint: web-install
 ## web-dev: the dashboard against the MSW mock API (no server needed)
 web-dev: web-install
 	cd web && $(BUN) run dev:mock
+
+## web-e2e: the Playwright suite (web/e2e) against a real `kudurru serve`
+## with the embedded dashboard: builds the bundle and the binary, starts
+## the server on free loopback ports with its own data directory, sends
+## DNS traffic and drives every page in Chrome. Locally it uses
+## /usr/bin/google-chrome (KUDURRU_E2E_CHROME names another; without one,
+## run `cd web && bunx playwright install chromium` once); CI uses
+## Playwright's chromium. The HTML report lands in web/playwright-report.
+web-e2e: web-build build
+	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 ## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are
 ## installed into bin/ at pinned versions; helm comes from the system.
 KUBECONFORM_VERSION ?= v0.8.0
