@@ -221,8 +221,8 @@ func TestSupervisorInitialCheckFailure(t *testing.T) {
 
 func TestParseLine(t *testing.T) {
 	tests := map[string]Notification{
-		`INSTANCE "VI_dns" MASTER 200`:          {Kind: "INSTANCE", Name: "VI_dns", State: "MASTER", Priority: 200},
-		`GROUP "G1" BACKUP 0`:                   {Kind: "GROUP", Name: "G1", State: "BACKUP"},
+		`INSTANCE "VI_dns" MASTER 200`:           {Kind: "INSTANCE", Name: "VI_dns", State: "MASTER", Priority: 200},
+		`GROUP "G1" BACKUP 0`:                    {Kind: "GROUP", Name: "G1", State: "BACKUP"},
 		`INSTANCE "VI_x" MASTER_RX_LOWER_PRI 90`: {Kind: "INSTANCE", Name: "VI_x", State: "MASTER_RX_LOWER_PRI", Priority: 90},
 		"INSTANCE \"VI_dns\" FAULT 0\n":          {Kind: "INSTANCE", Name: "VI_dns", State: "FAULT"},
 	}
