@@ -51,11 +51,13 @@ clients get the `default` policy, which other clients share. A group list
 applies through the group's policies, so a policy that covers several
 groups applies it to all of them.
 
-Policies managed by a file (objects.d) or an integration are not edited:
-the dashboard and `GET /api/v1/allowlist` (`unattached`) name them; add the
-list to their `allowListRefs` / `blockListRefs` in the file. A policy created
-after an entry gets the everyone lists at the next Allowlist or Denylist
-change.
+The leader keeps these references (every 30 seconds and on every
+Allowlist or Denylist change): a policy created after the entries gets the
+everyone lists, a policy that starts naming a group gets the group's lists,
+and one that stops naming the group loses them. Policies managed by a file
+(objects.d) or an integration are not edited: the dashboard and
+`GET /api/v1/allowlist` (`unattached`) name them; add the list to their
+`allowListRefs` / `blockListRefs` in the file.
 
 A structured entry:
 

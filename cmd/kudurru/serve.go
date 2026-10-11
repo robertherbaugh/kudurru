@@ -677,7 +677,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		{"api", false, apiSrv.Run},
 		{"unblock", false, unblockBook.Run},
 		{"unblock-janitor", true, unblockBook.RunJanitor},
-		{"domainlist-migration", true, domainlist.New(domainlist.Options{Store: st, Logger: logger}).RunMigration},
+		{"domainlist", true, domainlist.New(domainlist.Options{Store: st, Logger: logger}).Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
 			return err

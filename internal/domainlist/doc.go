@@ -11,8 +11,10 @@
 // the policies whose clientGroupRefs name the group (allowListRefs for
 // allow, blockListRefs for deny), as unblock approvals did before; a
 // policy managed by a file or an integration is reported instead of
-// edited. Allow wins over block, so an allow entry overrides every block
-// list of the policies concerned.
+// edited. Every write attaches its lists, and the leader's Reconcile keeps
+// the references current as policies come and go or change their groups.
+// Allow wins over block, so an allow entry overrides every block list of
+// the policies concerned.
 //
 // One logical entry is (namespace, action, type, value) across those
 // lists: an entry scoped to two groups is a copy in each group's list,
