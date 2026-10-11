@@ -176,6 +176,7 @@ export default function QueryLogPage() {
         </label>
         <SuggestInput label="Upstream" field="upstream" value={filters.upstream ?? ''} onCommit={(v) => set({ upstream: v || null })} />
         <SuggestInput label="List" field="list" value={filters.list ?? ''} onCommit={(v) => set({ list: v || null })} />
+        <SuggestInput label="Zone" field="zone" value={filters.zone ?? ''} onCommit={(v) => set({ zone: v || null })} />
         <label className="k-label" htmlFor={`${ids}-since`}>
           Since
           <input
@@ -205,9 +206,9 @@ export default function QueryLogPage() {
         ) : null}
       </form>
 
-      {filters.status || filters.zone || filters.policy ? (
+      {filters.status || filters.policy ? (
         <p className="k-small">
-          Also filtered by {filters.status ? <code>status={filters.status}</code> : null} {filters.zone ? <code>zone={filters.zone}</code> : null}{' '}
+          Also filtered by {filters.status ? <code>status={filters.status}</code> : null}{' '}
           {filters.policy ? (
             <>
               policy <Link href={`/policies/${filters.policy.split('/').map(encodeURIComponent).join('/')}`}>{filters.policy}</Link>

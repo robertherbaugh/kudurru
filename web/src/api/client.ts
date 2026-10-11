@@ -27,14 +27,17 @@ export class ApiError extends Error {
   readonly key: string;
   readonly hint: ApiErrorBody['error']['hint'];
   readonly retryAfter: number | undefined;
+  /** The failing paths of a 400 invalid (error.fields). */
+  readonly fields: string[];
 
-  constructor(status: number, key: string, message: string, hint?: ApiErrorBody['error']['hint'], retryAfter?: number) {
+  constructor(status: number, key: string, message: string, hint?: ApiErrorBody['error']['hint'], retryAfter?: number, fields?: string[]) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.key = key;
     this.hint = hint;
     this.retryAfter = retryAfter;
+    this.fields = fields ?? [];
   }
 
   /** The {resource, verb, scope} a 403 says is missing. */
@@ -186,6 +189,7 @@ async function toError(res: Response, path: string, onUnauthenticated?: () => vo
     e?.message ?? (res.statusText || `HTTP ${res.status}`),
     e?.hint,
     Number.isFinite(retry) && retry > 0 ? retry : undefined,
+    Array.isArray(e?.fields) ? e.fields : undefined,
   );
   if (res.status === 401 && !path.startsWith('/auth/')) {
     onUnauthenticated?.();

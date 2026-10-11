@@ -103,6 +103,60 @@ settings schema. The permission matrix follows permissions.yaml (admin = all
 verbs, viewer = the viewer role plus querylog.read). `bun run dev:mock`
 serves them in the browser; `?mockUser=admin` skips the form.
 
+## Pages, wizards and dialogs
+
+The information architecture of the dashboard (UX round 2, 2026-10-11).
+Every new screen follows it; `web/src/components/Wizard.tsx`,
+`web/src/components/FormDialog.tsx` and `web/src/components/fields/` are the
+building blocks.
+
+- **Dedicated page** for every object a user configures or inspects. It has
+  a URL, a current-state header (enabled, health or ready, managedBy,
+  counts), sections, and actions. List pages are tables whose rows link to
+  the detail page. Routes: `/policies/:ns/:name`, `/lists/:ns/:name`,
+  `/groups/:ns/:name`, `/clients/:key`, `/zones/:zone`, `/upstreams/:group`.
+- **Wizard on its own route** for creating anything with more than about
+  four fields or several concepts: `/policies/new`, `/lists/new`,
+  `/groups/new`, `/zones/new`, `/upstreams/new`. Editing an existing object
+  happens on its detail page, in inline sections with their own Save, or at
+  `/…/:name/edit` reusing the wizard steps with every step reachable. Wizard
+  step state may live in `?step=`. The word `new` is therefore not a usable
+  object name on those routes (the zone and upstream wizards refuse it).
+- **Dialog (FormDialog)** only for short, single-purpose actions:
+  confirmations, adding one source or entry, adding domains to allow/deny,
+  cache flush, the blocking timer, password change, token creation,
+  appearance, the record editor (a small typed form), zone file import and
+  the block page preview. Nothing that scrolls more than one screen.
+- **Typed controls.** Never a free-text box for:
+  - a value from a closed set: `EnumSelect` (with the chosen option's help
+    under it) or, for a wizard's first choice, `ChoiceCards`;
+  - a duration: `DurationField` (presets from the settings schema's
+    `presets`, "Custom…" for anything else); TTLs and SOA timers in seconds:
+    `SecondsField`;
+  - a reference to another object: `ObjectRefPicker` or
+    `UpstreamGroupSelect`;
+  - a boolean: `Switch`;
+  - a number with bounds: `NumberField` (native number input with min/max
+    and an inline range error); a size: `BytesField` (number and unit);
+  - a list: `StringListField` (rows with add/remove, "Paste many", a
+    per-row check); lists of objects and maps: the row editors of
+    `ShapeField`.
+
+  Free text stays for names, domains, URLs, addresses and CIDRs, each with
+  format validation and an example (`fields/formats.ts`: ip, ipv4, ipv6,
+  cidr, hostport, url, domain, upstream, email).
+- **Settings are rendered from the schema** (contract C1): GET
+  `/settings/_schema` gives each key its control (enum, min/max, presets,
+  format, ref, items/keys/values/fields shapes), its section (`group`, in
+  the order of `config.Groups`) and its label (the path is shown small
+  underneath). Raw JSON is only the "Edit as JSON" escape hatch of list and
+  map keys. A key that differs from its default shows "changed" and offers
+  "Reset to default" (`null` in the merge patch). A 400 names the failing
+  parts of a value inline (`error.fields`). Keys without metadata (servers
+  before C1) fall back to a control from the bare type.
+- **Read-only objects** (managedBy file, bootstrap or Kubernetes) show the
+  same page with the controls disabled and the reason (`readOnlyReason`).
+
 ## Wiring for serve (integrator)
 
 `cmd/kudurru/serve.go` has no API listener yet; the api package adds the

@@ -54,7 +54,7 @@ import type {
   ListEntry,
   ListEntriesPatch,
 } from './types';
-import type { CatalogueIcon, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
+import type { CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -229,9 +229,10 @@ export function endpoints(c: ApiClient) {
       info: () => c.get<CatalogueInfo>('/catalogue'),
       services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
       safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
-      icons: () => c.get<ListEnvelope<CatalogueIcon>>('/catalogue/icons'),
-      /** The URL of an `icon` API path (/api/v1/catalogue/icons/x.svg) under this client's base. */
-      iconURL: (path: string) => c.url(path.replace(/^(?:.*\/)?api\/v1(?=\/)/, '')),
+      /** C4: the embedded icons (404 on servers without them). */
+      icons: () => c.get<CatalogueIconIndex>('/catalogue/icons'),
+      /** An icon's URL under this client's base: an `icon` API path (/api/v1/catalogue/icons/x.svg) or an icon id. */
+      iconURL: (pathOrId: string) => c.url(pathOrId.includes('/') ? pathOrId.replace(/^(?:.*\/)?api\/v1(?=\/)/, '') : `/catalogue/icons/${enc(pathOrId)}.svg`),
     },
 
     // Block page (C5): the preview is text/html, framed by the Settings page

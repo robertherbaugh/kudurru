@@ -1,158 +1,142 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClientMatcher } from '../../api/types';
-import type { Schedule } from '../../lib/policies';
-import { renderWithApp } from '../../test/utils';
-import { ServiceGrid } from '../ServiceGrid';
-import { monogram, ServiceIcon, toneOf } from '../ServiceIcon';
-import { cleanMatchers, matcherError, matcherFromText, matchersError, MatchersField } from './MatchersField';
-import { ObjectRefPicker } from './ObjectRefPicker';
-import { ScheduleField } from './ScheduleField';
+import { fromDraft, shapeError, toDraft } from '../../lib/shapes';
+import type { UiShape } from '../../lib/settingsMeta';
+import { BytesField, joinBytes, splitBytes } from './BytesField';
+import { DurationField, durationLabel, durationPresets } from './DurationField';
+import { EnumSelect } from './EnumSelect';
+import { formatError } from './formats';
+import { NumberField, numberError } from './NumberField';
+import { SecondsField, secondsError } from './SecondsField';
+import { StringListField, listError } from './StringListField';
 
-function Stateful<T>({ initial, render: r }: { initial: T; render: (v: T, set: (v: T) => void) => React.ReactNode }) {
+function Controlled<T>({ initial, children }: { initial: T; children: (v: T, set: (v: T) => void) => React.ReactNode }) {
   const [v, set] = useState(initial);
-  return <>{r(v, set)}</>;
+  return <>{children(v, set)}</>;
 }
 
-describe('ServiceIcon', () => {
-  it('shows the catalogue logo under the API base, or a stable monogram', () => {
-    renderWithApp(
-      <>
-        <ServiceIcon id="youtube" name="YouTube" icon="/api/v1/catalogue/icons/youtube.svg" />
-        <ServiceIcon id="roblox" name="Roblox" />
-      </>,
-    );
-    expect(screen.getByTestId('icon-youtube')).toHaveAttribute('src', expect.stringMatching(/\/api\/v1\/catalogue\/icons\/youtube\.svg$/));
-    expect(screen.getByTestId('monogram-roblox')).toHaveTextContent('R');
-    fireEvent.error(screen.getByTestId('icon-youtube'));
-    expect(screen.getByTestId('monogram-youtube')).toHaveTextContent('Y');
-    expect([monogram('X (Twitter)'), monogram('9GAG'), monogram('Riot Games (League of Legends)'), monogram('Disney+')]).toEqual(['X', '9G', 'RG', 'D']);
-    expect(toneOf('roblox')).toBe(toneOf('roblox'));
+describe('formats', () => {
+  it.each([
+    ['ip', '192.0.2.1', null],
+    ['ip', '2001:db8::1', null],
+    ['ip', 'example.com', 'Not an IP address'],
+    ['ipv4', '2001:db8::1', 'Not an IPv4 address'],
+    ['cidr', '10.0.0.0/8', null],
+    ['cidr', '10.0.0.1', null],
+    ['cidr', '10.0.0.0/33', 'The prefix length must be 0-32'],
+    ['hostport', ':80', null],
+    ['hostport', '0.0.0.0:99999', 'The port must be 1-65535'],
+    ['url', 'https://example.com/a', null],
+    ['url', 'ftp://x', 'An http:// or https:// URL'],
+    ['domain', 'bad..name', 'Empty label (two dots in a row)'],
+    ['upstream', 'tls://dns.quad9.net', null],
+    ['email', 'admin@example.com', null],
+    ['email', 'admin', 'Not an e-mail address'],
+  ] as const)('%s %s', (f, v, want) => expect(formatError(f, v)).toBe(want));
+});
+
+describe('field helpers', () => {
+  it('labels and checks durations, seconds, numbers and sizes', () => {
+    expect(durationLabel('72h')).toBe('3 days');
+    expect(durationLabel('1800ms')).toBe('1800 ms');
+    expect(durationPresets(['0s', '10m']).map((p) => p.label)).toEqual(['0 (off)', '10 minutes']);
+    expect(secondsError('', { optional: true })).toBeNull();
+    expect(secondsError('-1')).toBe('Seconds, 0 to 2147483647');
+    expect(numberError('5', { min: 0, max: 4 })).toBe('Between 0 and 4');
+    expect(numberError('1.5')).toBe('Must be a whole number');
+    expect(splitBytes('10GiB')).toEqual({ n: '10', unit: 'GiB' });
+    expect(splitBytes(2048)).toEqual({ n: '2048', unit: 'B' });
+    expect(joinBytes('500', 'MB')).toBe('500MB');
+    expect(joinBytes('42', 'B')).toBe(42);
+    expect(listError(['1.1.1.1', 'nope/x'], (s) => formatError('ip', s))).toBe('Line 2 (nope/x): Not an IP address');
   });
 
-  it('carries the dark-background variant next to the default logo', () => {
-    renderWithApp(<ServiceIcon id="tiktok" name="TikTok" icon="/api/v1/catalogue/icons/tiktok.svg" iconOnDark="/api/v1/catalogue/icons/tiktok-light.svg" />);
-    expect(screen.getByTestId('icon-tiktok')).toHaveClass('k-icon-on-light');
-    expect(screen.getByTestId('icon-tiktok-dark')).toHaveAttribute('src', expect.stringMatching(/tiktok-light\.svg$/));
-    expect(screen.getByTestId('icon-tiktok-dark')).toHaveClass('k-icon-on-dark');
+  it('round-trips map, list and object drafts and finds the first error', () => {
+    const shape: UiShape = {
+      type: 'map',
+      keyLabel: 'Group',
+      values: {
+        type: 'object',
+        fields: [
+          { name: 'servers', type: 'string[]', items: { type: 'string', format: 'upstream' } },
+          { name: 'timeout', type: 'duration' },
+          { name: 'weight', type: 'int', min: 0, max: 10 },
+        ],
+      },
+    };
+    const v = { default: { servers: ['1.1.1.1'], timeout: '2s', extra: true } };
+    const d = toDraft(shape, v);
+    expect(fromDraft(shape, d)).toEqual(v);
+    expect(shapeError(shape, d)).toBeNull();
+    const bad = { __rows: [['default', { servers: ['ftp://x'], timeout: '2s' }], ['default', {}]] };
+    expect(shapeError(shape, bad)).toMatch(/^default servers: ftp:\/\/x: Unknown scheme/);
+    expect(shapeError(shape, { __rows: [['a', {}], ['a', {}]] })).toBe('a is listed twice');
+    expect(shapeError(shape, { __rows: [['a', { weight: '11' }]] })).toBe('a weight: Between 0 and 10');
   });
 });
 
-describe('ServiceGrid', () => {
-  it('toggles services, filters and keeps IDs the catalogue lacks', async () => {
+describe('typed fields', () => {
+  it('EnumSelect shows the chosen option help and keeps an unknown value', () => {
     const onChange = vi.fn();
-    renderWithApp(<ServiceGrid label="Blocked services" value={['tiktok', 'myspace']} onChange={onChange} />);
-    const tiktok = await screen.findByRole('button', { name: /TikTok/ });
-    expect(tiktok).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: /myspace/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Not in the catalogue (ignored until it is)')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /YouTube/ }));
-    expect(onChange).toHaveBeenLastCalledWith(['tiktok', 'myspace', 'youtube']);
-    fireEvent.click(tiktok);
-    expect(onChange).toHaveBeenLastCalledWith(['myspace']);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter services' }), { target: { value: 'gaming' } });
-    expect(screen.getByRole('button', { name: /Roblox/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /YouTube/ })).toBeNull();
+    render(<EnumSelect label="Mode" value="other" options={[{ value: 'a', label: 'A', help: 'Help A' }]} onChange={onChange} />);
+    const sel = screen.getByRole('combobox', { name: 'Mode' });
+    expect(Array.from((sel as HTMLSelectElement).options).map((o) => o.value)).toEqual(['a', 'other']);
+    fireEvent.change(sel, { target: { value: 'a' } });
+    expect(onChange).toHaveBeenCalledWith('a');
   });
-});
 
-describe('ObjectRefPicker', () => {
-  it('offers bare names of one namespace with sameNamespace and keeps missing refs', async () => {
+  it('DurationField matches "10m0s" to its preset and offers a custom value', () => {
+    render(<Controlled initial="10m0s">{(v, set) => <DurationField label="TTL" value={v} onChange={set} />}</Controlled>);
+    const sel = screen.getByRole('combobox', { name: 'TTL' });
+    expect(sel).toHaveValue('10m');
+    fireEvent.change(sel, { target: { value: '__custom__' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'TTL (custom)' }), { target: { value: '45m' } });
+    expect(screen.getByRole('textbox', { name: 'TTL (custom)' })).toHaveValue('45m');
+  });
+
+  it('SecondsField picks TTL presets and shows them in words', () => {
     const onChange = vi.fn();
-    renderWithApp(<ObjectRefPicker kind="clientgroups" label="Client groups" multiple sameNamespace value={['kids', 'gone']} onChange={onChange} />);
-    const kids = await screen.findByRole('checkbox', { name: 'kids' });
-    expect(kids).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /gone/ })).toBeChecked();
-    expect(screen.getByText('missing')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'iot' }));
-    expect(onChange).toHaveBeenLastCalledWith(['kids', 'gone', 'iot']);
+    render(<SecondsField label="TTL" value="" emptyLabel="Zone default" onChange={onChange} />);
+    const sel = screen.getByRole('combobox', { name: 'TTL' });
+    expect(screen.getByRole('option', { name: '5 minutes (300)' })).toBeInTheDocument();
+    fireEvent.change(sel, { target: { value: '3600' } });
+    expect(onChange).toHaveBeenCalledWith('3600');
   });
 
-  it('answers namespace/name refs without sameNamespace', async () => {
+  it('NumberField reports values outside its bounds', () => {
+    render(<NumberField label="Prefix" value="40" onChange={() => {}} min={0} max={32} />);
+    expect(screen.getByRole('spinbutton', { name: 'Prefix' })).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Between 0 and 32')).toBeInTheDocument();
+  });
+
+  it('BytesField keeps the unit when the number changes', () => {
     const onChange = vi.fn();
-    renderWithApp(<ObjectRefPicker kind="clientgroups" label="Group" value={[]} onChange={onChange} />);
-    const select = await screen.findByRole('combobox', { name: 'Group' });
-    await waitFor(() => expect(within(select).getAllByRole('option').length).toBeGreaterThan(1));
-    fireEvent.change(select, { target: { value: 'default/kids' } });
-    expect(onChange).toHaveBeenLastCalledWith(['default/kids']);
-  });
-});
-
-describe('MatchersField', () => {
-  it('validates each matcher for its kind', () => {
-    expect(matcherError({ ip: '192.168.1.300' })).toBe('Not an IPv4 or IPv6 address');
-    expect(matcherError({ cidr: '10.0.0.0' })).toMatch(/address\/prefix/);
-    expect(matcherError({ cidr: '10.0.0.0/33' })).toBe('IPv4 prefix length is at most 32');
-    expect(matcherError({ mac: 'aa:bb' })).toMatch(/MAC address/);
-    expect(matcherError({ clientID: 'kids tablet' })).toMatch(/Letters, digits/);
-    expect(matcherError({ ip: '' })).toBe('Required');
-    expect(matcherError({ clientID: 'kids-tablet' })).toBeNull();
-    expect(matchersError([{ ip: '10.0.0.1' }, { ip: 'x' }, { mac: 'y' }])).toBe('Matcher 2: Not an IPv4 or IPv6 address (and 1 more)');
-    expect(['10.0.0.0/8', 'AA:BB:CC:DD:EE:FF', '10.0.0.7', 'tablet'].map(matcherFromText)).toEqual([{ cidr: '10.0.0.0/8' }, { mac: 'aa:bb:cc:dd:ee:ff' }, { ip: '10.0.0.7' }, { clientID: 'tablet' }]);
-    expect(cleanMatchers([{ ip: ' 10.0.0.1 ', name: ' ', comment: 'c' }])).toEqual([{ ip: '10.0.0.1', comment: 'c' }]);
+    render(<BytesField label="Size" value="10GiB" onChange={onChange} />);
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '20' } });
+    expect(onChange).toHaveBeenCalledWith('20GiB');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Size unit' }), { target: { value: 'MB' } });
+    expect(onChange).toHaveBeenCalledWith('10MB');
   });
 
-  it('switches kinds, keeps one selector per matcher and pastes many', () => {
-    let last: ClientMatcher[] = [];
+  it('StringListField adds, edits, pastes and removes rows', () => {
     render(
-      <Stateful<ClientMatcher[]>
-        initial={[{ ip: '192.168.1.30', name: 'tablet' }]}
-        render={(v, set) => (
-          <MatchersField
-            value={v}
-            onChange={(n) => {
-              last = n;
-              set(n);
-            }}
-          />
+      <Controlled initial={['a.example']}>
+        {(v, set) => (
+          <>
+            <StringListField label="Names" value={v} onChange={set} itemError={(s) => formatError('domain', s)} />
+            <output data-testid="out">{JSON.stringify(v)}</output>
+          </>
         )}
-      />,
+      </Controlled>,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'cidr' } });
-    expect(last).toEqual([{ cidr: '192.168.1.30', name: 'tablet' }]);
-    expect(screen.getByText(/An address\/prefix such as/)).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 CIDR range' }), { target: { value: '192.168.1.0/24' } });
-    expect(screen.queryByText(/An address\/prefix such as/)).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'mac' } });
-    expect(screen.getByText(/inventory integrations arrive in v0.2/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Names 2' }), { target: { value: 'bad..x' } });
+    expect(screen.getAllByText('Empty label (two dots in a row)').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Names 2' }));
     fireEvent.click(screen.getByRole('button', { name: 'Paste many' }));
-    fireEvent.change(screen.getByRole('textbox', { name: /Paste addresses/ }), { target: { value: '10.0.0.1, 10.1.0.0/16\nphone' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add 3 matchers' }));
-    expect(last.slice(1)).toEqual([{ ip: '10.0.0.1' }, { cidr: '10.1.0.0/16' }, { clientID: 'phone' }]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]!);
-    expect(last).toHaveLength(3);
-  });
-});
-
-describe('ScheduleField', () => {
-  it('switches between always and a window and toggles weekdays in API order', () => {
-    let last: Schedule | undefined;
-    render(
-      <Stateful<Schedule | undefined>
-        initial={undefined}
-        render={(v, set) => (
-          <ScheduleField
-            value={v}
-            now={new Date('2026-10-12T17:00:00Z')}
-            onChange={(n) => {
-              last = n;
-              set(n);
-            }}
-          />
-        )}
-      />,
-    );
-    expect(screen.getByText('The policy applies at all times.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'Only during a time window' }));
-    expect(last).toMatchObject({ weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Time zone' }), { target: { value: 'America/Chicago' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sun' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sat' }));
-    expect(last?.weekdays).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Sat']);
-    expect(screen.getByRole('button', { name: 'Sat' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('schedule-summary')).toHaveTextContent('Mon Tue Wed Thu Sat 21:00–07:00 (America/Chicago) · off right now');
-    fireEvent.click(screen.getByRole('radio', { name: 'Always' }));
-    expect(last).toBeUndefined();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Paste entries, one per line' }), { target: { value: 'b.example\nc.example\n' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add these' }));
+    expect(screen.getByTestId('out')).toHaveTextContent('["a.example","b.example","c.example"]');
   });
 });

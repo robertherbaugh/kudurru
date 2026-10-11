@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
-import AccessPage, { actorText, resourceText, scopeText } from './AccessPage';
+import AccessPage, { actorText, resourceText, scopeString, scopeText } from './AccessPage';
 
 /** Records the query strings of GET /audit while passing through to the mock. */
 function spyAudit(): URLSearchParams[] {
@@ -22,7 +22,9 @@ describe('AccessPage', () => {
     expect(within(table).getByText('grafana')).toBeInTheDocument();
     expect(within(table).getByText('never')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Description/ }), { target: { value: 'ci-deploy' } });
-    fireEvent.change(screen.getByRole('textbox', { name: /^Scopes/ }), { target: { value: 'viewer' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Limit to role' }), { target: { value: 'viewer' } });
+    expect(screen.getByText('Read zones, records, lists, policies, stats and settings.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Expires in' })).toHaveValue('720h');
     const create = screen.getByRole('button', { name: 'Create token' });
     await waitFor(() => expect(create).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(create);
@@ -30,6 +32,23 @@ describe('AccessPage', () => {
     expect(screen.getByTestId('new-token').textContent).toMatch(/^kdr_/);
     const t = mockDB().tokens.find((x) => x.description === 'ci-deploy');
     expect(t?.scopes).toEqual(['viewer']);
+  });
+
+  it('scopes a token to one zone', async () => {
+    renderWithApp(<AccessPage />, { route: '/access' });
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Description/ }), { target: { value: 'dns-edit' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Limit to role' }), { target: { value: 'zone-admin' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'For' }), { target: { value: 'zone' } });
+    const zone = await screen.findByRole('combobox', { name: 'Zone' });
+    await waitFor(() => expect(within(zone).getAllByRole('option').length).toBeGreaterThan(1));
+    fireEvent.change(zone, { target: { value: 'example-internal' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Expires in' }), { target: { value: '' } });
+    const create = screen.getByRole('button', { name: 'Create token' });
+    await waitFor(() => expect(create).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(create);
+    expect(await screen.findByText('Token dns-edit created')).toBeInTheDocument();
+    expect(scopeString('zone-admin', 'zone', 'example-internal')).toBe('zone-admin@zone:example-internal');
+    expect(mockDB().tokens.find((x) => x.description === 'dns-edit')?.scopes).toEqual(['zone-admin@zone:example-internal']);
   });
 
   it('lists the audit log newest first and pages with the cursor', async () => {

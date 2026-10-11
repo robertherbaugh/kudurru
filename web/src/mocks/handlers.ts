@@ -28,7 +28,7 @@ import type {
   ZoneRecord,
   ZoneSummary,
 } from '../api/types';
-import { createDB, CLIENTS, makeQueryRow, type MockDB } from './fixtures';
+import { createDB, CLIENTS, makeQueryRow, setPath, type MockDB } from './fixtures';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
@@ -62,9 +62,9 @@ function ok(body: Record<string, unknown> | unknown[], init?: ResponseInit) {
   return HttpResponse.json(payload as JsonBodyType, init);
 }
 
-function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>) {
+function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>, fields?: string[]) {
   return HttpResponse.json(
-    { error: { key, message, ...(hint !== undefined ? { hint } : {}) }, took_ms: 0.4 } as JsonBodyType,
+    { error: { key, message, ...(hint !== undefined ? { hint } : {}), ...(fields?.length ? { fields } : {}) }, took_ms: 0.4 } as JsonBodyType,
     { status, ...(headers ? { headers } : {}) },
   );
 }
@@ -1316,8 +1316,10 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
-    const next = mergePatch(db.settings, patch);
-    const invalid = validateUpstreams(next);
+    const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    const bad1 = validateSchema(next, changed);
+    if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
+    const invalid = validateUpstreams(next) ?? validateBlockPage(next);
     if (invalid) return fail(400, 'invalid', invalid);
     db.settings = next;
     return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
@@ -1330,7 +1332,10 @@ export const handlers = [
     const changed = changedKeys(patch);
     const bad = changed.find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
-    db.nodeConfig = mergePatch(db.nodeConfig, patch);
+    const next = withDefaults(mergePatch(db.nodeConfig, patch), patch, changed);
+    const invalid = validateSchema(next, changed);
+    if (invalid) return fail(400, 'invalid', invalid.message, invalid.hint, undefined, [invalid.field]);
+    db.nodeConfig = next;
     // Node-scope changes live in memory only.
     return ok({ ...settingsBody('node', changed), persisted: false });
   }),
@@ -1437,15 +1442,28 @@ export const handlers = [
     return ok(policyState(p));
   }),
 
+  // block page (C5) -------------------------------------------------------
+  http.get(`${B}/blockpage/preview`, ({ request }) => {
+    const g = guard(request, 'settings', 'read');
+    if (g) return g;
+    const domain = new URL(request.url).searchParams.get('domain') || 'example.com';
+    const esc = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const t = getPath(db.settings, 'blockPage.title');
+    const title = esc(typeof t === 'string' && t ? t : 'This site is blocked');
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f5f2;color:#1d1b18}main{max-width:36rem;padding:2rem;border-radius:12px;background:#fff;box-shadow:0 1px 4px #0002}code{font-size:1.1em}dl{display:grid;grid-template-columns:auto 1fr;gap:.25rem 1rem}@media (prefers-color-scheme:dark){body{background:#1b1a18;color:#eee}main{background:#26241f}}</style></head><body><main><p>kudurru</p><h1>${title}</h1><p><code>${esc(domain)}</code> is blocked on this network.</p><dl><dt>Why</dt><dd>list default/ads (rule ||${esc(domain)}^)</dd><dt>Client</dt><dd>192.168.1.30</dd><dt>Node</dt><dd>kudurru-0</dd></dl><p>Ask your administrator if you think this is a mistake.</p></main></body></html>`;
+    return new HttpResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }),
+
   // blocked-services and safe-search catalogue (D60) ----------------------
-  http.get(`${B}/catalogue/icons`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: Object.keys(MOCK_ICONS).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { onDark: `/api/v1/catalogue/icons/${id}-light.svg` } : {}) })) })),
+  // The icon routes are public (plain <img src>).
+  http.get(`${B}/catalogue/icons`, () => ok({ items: Object.keys(MOCK_ICONS).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { onDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) })) })),
   http.get(`${B}/catalogue/icons/:file`, ({ params }) => {
     const file = String(params.file).replace(/\.svg$/, '');
-    const light = file.endsWith('-light') && ON_DARK.has(file.slice(0, -'-light'.length));
-    const id = light ? file.slice(0, -'-light'.length) : file;
+    const light = file.endsWith('-dark') && ON_DARK.has(file.slice(0, -'-dark'.length));
+    const id = light ? file.slice(0, -'-dark'.length) : file;
     const icon = light && MOCK_ICONS[id] ? (['#f2f2f2', MOCK_ICONS[id][1]] as [string, string]) : MOCK_ICONS[id];
     if (!icon) return fail(404, 'not_found', `no icon ${id}`);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${icon[0]}"/><text x="16" y="21.5" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">${icon[1]}</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${icon[0]}"/><text x="16" y="21.5" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="${light ? '#111' : '#fff'}">${icon[1]}</text></svg>`;
     return new HttpResponse(svg, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400, immutable' } });
   }),
   http.get(`${B}/catalogue`, ({ request }) =>
@@ -1505,6 +1523,41 @@ function changedKeys(patch: Record<string, unknown>): string[] {
   return [...out];
 }
 
+/** A null at a key resets it to its default (internal/api patchSettings). */
+function withDefaults(next: Record<string, unknown>, patch: Record<string, unknown>, changed: string[]): Record<string, unknown> {
+  for (const p of changed) {
+    if (getPath(patch, p) !== null) continue;
+    const k = db.schema.find((x) => x.path === p);
+    if (k) setPath(next, p, structuredClone(k.default));
+  }
+  return next;
+}
+
+/** The C1 checks the server makes from the schema metadata (enum and bounds), with error.fields and the allowed values as the hint. */
+function validateSchema(next: Record<string, unknown>, changed: string[]): { message: string; field: string; hint?: string } | null {
+  for (const p of changed) {
+    const k = db.schema.find((x) => x.path === p);
+    const v = getPath(next, p);
+    if (!k) continue;
+    if (k.enum?.length && typeof v === 'string' && !k.enum.some((o) => o.value === v)) {
+      const allowed = k.enum.map((o) => o.value);
+      return { message: `settings: ${p}: "${v}" is not allowed`, field: p, hint: `${p} must be one of: ${allowed.join(', ')}` };
+    }
+    if (typeof v === 'number' && ((typeof k.min === 'number' && v < k.min) || (typeof k.max === 'number' && v > k.max))) {
+      return { message: `settings: ${p}: ${v} is outside ${k.min ?? '-∞'}..${k.max ?? '∞'}`, field: p };
+    }
+  }
+  return null;
+}
+
+/** What internal/config/blockpage.go refuses (the node's listener has an address in the mock). */
+function validateBlockPage(settings: Record<string, unknown>): string | null {
+  if (getPath(settings, 'blocking.defaultResponse') === 'blockPage' && getPath(settings, 'blockPage.enabled') !== true) {
+    return 'settings: blocking.defaultResponse blockPage needs blockPage.enabled: true (the block page listener)';
+  }
+  return null;
+}
+
 const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
 
 /** What internal/upstream Config.Validate refuses, in its words. */
@@ -1555,13 +1608,20 @@ const MOCK_ICONS: Record<string, [string, string]> = {
   google: ['#4285f4', 'G'],
   bing: ['#008373', 'b'],
   duckduckgo: ['#de5833', 'D'],
+  // Upstream providers (UpstreamWizardPage presets).
+  cloudflare: ['#f38020', 'C'],
+  'adguard-home': ['#68bc71', 'A'],
+  nextdns: ['#007bff', 'N'],
+  mullvad: ['#294d73', 'M'],
+  cisco: ['#049fd9', 'C'],
+  'control-d': ['#1a1a1a', 'D'],
 };
 
 /** Logos drawn dark on transparent get a light variant for dark backgrounds (GET /catalogue/icons onDark). */
-const ON_DARK = new Set(['tiktok']);
+const ON_DARK = new Set(['tiktok', 'control-d']);
 
 const icon = (id: string) =>
-  MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { iconOnDark: `/api/v1/catalogue/icons/${id}-light.svg` } : {}) } : {};
+  MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { iconOnDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) } : {};
 
 const svc = (id: string, name: string, category: string, domains: string[]) => ({
   id,

@@ -484,6 +484,30 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-block-size: 280px; overflow-y: auto; }
 .k-checklist label { display: flex; align-items: center; gap: 8px; font-weight: normal; }
 
+/* Typed settings, fields and wizards (spa-settings, UX round 2) */
+.k-setting-label { font-weight: var(--font-weight-semibold, 600); }
+.k-setting .k-setting-key { font-weight: normal; }
+.k-setting[data-changed='true'] .k-setting-label::after { content: ''; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--color-text-accent, var(--q-cached)); margin-inline-start: 6px; vertical-align: middle; }
+.k-number { inline-size: 12ch; }
+.k-unit { inline-size: auto; }
+.k-map-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: end; }
+.k-map-row > .k-fieldset { grid-column: 1 / -1; }
+@media (max-width: 720px) { .k-map-row { grid-template-columns: 1fr; } }
+.k-preview-frame { inline-size: 100%; block-size: min(60dvh, 560px); border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); background: #fff; }
+.k-choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; border: 0; padding: 0; margin: 0; }
+.k-choice-grid > legend { padding: 0; margin-block-end: 8px; font-weight: 600; font-size: var(--font-size-sm, 0.875rem); }
+.k-choice { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); cursor: pointer; font-weight: normal; }
+.k-choice:hover { background: var(--k-hover); }
+.k-choice:has(input:checked) { border-color: var(--color-text-accent, var(--q-cached)); background: var(--k-selected); }
+.k-choice:has(input:focus-visible) { outline: 2px solid var(--k-focus); outline-offset: 2px; }
+.k-choice input { margin-block-start: 3px; }
+.k-choice strong { display: block; }
+.k-provider-icon { inline-size: 28px; block-size: 28px; flex: none; border-radius: 6px; display: inline-grid; place-items: center; font-size: 0.8rem; font-weight: 600; background: var(--color-background-muted); color: var(--color-text-secondary); overflow: hidden; }
+.k-provider-icon img { inline-size: 100%; block-size: 100%; object-fit: contain; }
+.k-review { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.k-review dt { color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
+.k-review dd { margin: 0; overflow-wrap: anywhere; }
+.k-header-state { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: center; }
 /* Lists, list page, new-list wizard, Domains ---------------------------- */
 
 /* Current-state facts of an object page: label over value, as many per row as fit. */

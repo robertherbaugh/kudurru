@@ -12,33 +12,40 @@ export interface EnumOption {
 
 export interface EnumSelectProps {
   label: string;
+  isLabelHidden?: boolean | undefined;
   value: string;
   options: EnumOption[];
   onChange: (v: string) => void;
   /** A first option meaning "not set" (inherit), e.g. "Default (from settings)". */
   emptyLabel?: string;
-  description?: string;
-  isDisabled?: boolean;
-  error?: string;
+  description?: string | undefined;
+  isDisabled?: boolean | undefined;
+  error?: string | undefined;
 }
 
-export function EnumSelect({ label, value, options, onChange, emptyLabel, description, isDisabled, error }: EnumSelectProps) {
+export function EnumSelect({ label, isLabelHidden, value, options, onChange, emptyLabel, description, isDisabled, error }: EnumSelectProps) {
   const id = useId();
   const all = value && !options.some((o) => o.value === value) ? [...options, { value, label: value }] : options;
   const selected = all.find((o) => o.value === value);
-  const hint = error ?? selected?.help;
-  const describedBy = [description ? `${id}-d` : '', hint ? `${id}-h` : ''].filter(Boolean).join(' ') || undefined;
-  // The label names the select; description and help describe it, so a
-  // screen reader (and getByRole name) hears the label alone.
   return (
-    <div className="k-label">
-      <label htmlFor={id}>{label}</label>
+    <label className="k-label" htmlFor={id}>
+      {isLabelHidden ? <span className="k-visually-hidden">{label}</span> : label}
       {description ? (
         <span id={`${id}-d`} className="k-muted k-small">
           {description}
         </span>
       ) : null}
-      <select id={id} className="k-native-select" value={value} disabled={isDisabled} aria-invalid={error ? true : undefined} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)}>
+      {/* Named by the label alone; description and help describe it. */}
+      <select
+        id={id}
+        className="k-native-select"
+        value={value}
+        disabled={isDisabled}
+        aria-label={label}
+        aria-describedby={[description ? `${id}-d` : '', error || selected?.help ? `${id}-h` : ''].filter(Boolean).join(' ') || undefined}
+        aria-invalid={error ? true : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
         {all.map((o) => (
           <option key={o.value} value={o.value}>
@@ -46,11 +53,15 @@ export function EnumSelect({ label, value, options, onChange, emptyLabel, descri
           </option>
         ))}
       </select>
-      {hint ? (
-        <span id={`${id}-h`} className={error ? 'k-error-text' : 'k-muted k-small'}>
-          {hint}
+      {error ? (
+        <span id={`${id}-h`} className="k-error-text">
+          {error}
+        </span>
+      ) : selected?.help ? (
+        <span id={`${id}-h`} className="k-muted k-small">
+          {selected.help}
         </span>
       ) : null}
-    </div>
+    </label>
   );
 }

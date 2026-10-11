@@ -1,5 +1,5 @@
-// The logo of a blocked service or safe-search engine: the SVG the
-// catalogue names (`icon`, a public API path served from the binary,
+// The one logo/monogram component (services, safe-search engines and,
+// through ProviderIcon, upstream providers): the SVG the catalogue names (`icon`, a public API path served from the binary,
 // ux-plan C4, from homarr-labs/dashboard-icons; `iconOnDark` replaces it
 // on dark backgrounds, switched in CSS like the brand logo) or, when there
 // is none or it fails to load, a monogram on a colour picked from the ID.
@@ -17,12 +17,18 @@ export interface ServiceIconProps {
   size?: number;
 }
 
-/** One or two letters for the monogram: "YouTube" → "Y", "X (Twitter)" → "X", "9GAG" → "9G". */
+/**
+ * One or two letters for the monogram: the initials of two words
+ * ("Control D" → "CD"), a leading digit with the next letter ("9GAG" →
+ * "9G"), the first letter with the word's first digit ("Quad9" → "Q9"),
+ * else the first letter ("YouTube" → "Y", "X (Twitter)" → "X").
+ */
 export function monogram(name: string): string {
   const words = name.replace(/\(.*?\)/g, ' ').trim().split(/[\s+._-]+/).filter(Boolean);
   if (words.length >= 2) return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
   const w = words[0] ?? name;
-  return (/^\d/.test(w) ? w.slice(0, 2) : w.slice(0, 1)).toUpperCase() || '?';
+  if (/^\d/.test(w)) return w.slice(0, 2).toUpperCase();
+  return ((w[0] ?? '?') + (/\d/.exec(w)?.[0] ?? '')).toUpperCase();
 }
 
 /** A stable tone 0..7 for an ID (styles.css .k-monogram[data-tone]). */
@@ -38,18 +44,18 @@ export function ServiceIcon({ id, name, icon, iconOnDark, size = 32 }: ServiceIc
   const style = { inlineSize: size, blockSize: size };
   if (icon && !failed) {
     const img = (src: string, cls: string, testId: string) => (
-      <img className={`k-service-icon ${cls}`} src={api.catalogue.iconURL(src)} alt="" aria-hidden="true" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} data-testid={testId} />
+      <img className={`k-service-icon ${cls}`} src={api.catalogue.iconURL(src)} alt="" aria-hidden="true" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} data-testid={testId} data-icon={id} />
     );
     if (!iconOnDark) return img(icon, '', `icon-${id}`);
     return (
-      <span className="k-service-icon-pair" aria-hidden="true">
+      <span className="k-service-icon-pair" aria-hidden="true" data-icon={id}>
         {img(icon, 'k-icon-on-light', `icon-${id}`)}
         {img(iconOnDark, 'k-icon-on-dark', `icon-${id}-dark`)}
       </span>
     );
   }
   return (
-    <span className="k-monogram" data-tone={toneOf(id)} aria-hidden="true" style={{ ...style, fontSize: Math.round(size * 0.42) }} data-testid={`monogram-${id}`}>
+    <span className="k-monogram" data-tone={toneOf(id)} aria-hidden="true" style={{ ...style, fontSize: Math.round(size * 0.42) }} data-testid={`monogram-${id}`} data-icon="monogram">
       {monogram(name)}
     </span>
   );
