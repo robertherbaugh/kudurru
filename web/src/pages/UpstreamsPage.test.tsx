@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PROVIDERS, serversFor, transportsOf } from '../lib/upstreamPresets';
 import { bootstrapError, conditionalKeyError, mapPatch, serverError, serverLabel } from '../lib/upstreams';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import UpstreamGroupPage from './UpstreamGroupPage';
 import UpstreamsPage from './UpstreamsPage';
@@ -155,7 +156,7 @@ describe('UpstreamWizardDialog', () => {
     expect(document.querySelector('[data-choice="quad9"] [data-icon]')).toHaveTextContent('Q9');
     fireEvent.click(quad9);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Transport' }), { target: { value: 'dot' } });
+    pick(await findSelector('Transport'), /^DNS over TLS/);
     expect(within(screen.getByTestId('preset-servers')).getByText('tls://dns.quad9.net')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('textbox', { name: /^Name/ })).toHaveValue('quad9');

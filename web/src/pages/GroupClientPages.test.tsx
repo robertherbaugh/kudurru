@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import ClientDetailPage from './ClientDetailPage';
 import GroupDetailPage from './GroupDetailPage';
@@ -49,7 +50,7 @@ describe('GroupDetailPage', () => {
     renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
     await clickWhenEnabled('New policy');
     const dialog = await screen.findByRole('dialog', { name: 'New policy' });
-    expect(await within(dialog).findByRole('checkbox', { name: /^kids·/ })).toBeChecked();
+    expect(await within(dialog).findByRole('checkbox', { name: 'kids' })).toBeChecked();
     expect(window.location.pathname).toBe('/groups/default/kids');
   });
 
@@ -97,7 +98,7 @@ describe('GroupWizardDialog', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 IP address' }), { target: { value: 'not-an-ip' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Matcher 1: Not an IPv4 or IPv6 address')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'cidr' } });
+    pick(getSelector('Matcher 1 kind'), 'CIDR range');
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 CIDR range' }), { target: { value: '192.168.50.0/24' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Add guest-phone' }));
     await goTo('Policies');

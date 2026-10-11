@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BlockList, Policy } from '../../api/types';
 import { mockDB } from '../../mocks/handlers';
+import { getSelector, pick, valueOf } from '../../test/controls';
 import { renderWithApp } from '../../test/utils';
 import { ListWizardDialog, withListRef, wizardSources } from './ListWizard';
 
@@ -21,7 +22,7 @@ describe('ListWizardDialog', () => {
     expect(screen.getAllByText('MIT').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Add a URL' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^URL 1/ }), { target: { value: 'https://lists.example.net/adblock/extra.txt' } });
-    expect(screen.getByRole('combobox', { name: /^Format of URL 1/ })).toHaveValue('adblock');
+    expect(valueOf(getSelector(/^Format of URL 1/))).toBe('adblock');
     expect(screen.getByText('2 sources chosen.')).toBeInTheDocument();
     next();
     // Options: a suggested name, validated; the default policy is preselected.
@@ -35,7 +36,7 @@ describe('ListWizardDialog', () => {
     expect(await screen.findAllByText('A list named starter exists already')).not.toHaveLength(0);
     fireEvent.change(name, { target: { value: 'home-ads' } });
     expect(await screen.findByRole('checkbox', { name: 'default/default' })).toBeChecked();
-    fireEvent.change(screen.getByRole('combobox', { name: /^Refresh interval/ }), { target: { value: '6h' } });
+    pick(getSelector(/^Refresh interval/), 'Every 6 hours');
     next();
     // Review
     const sources = await screen.findByRole('table', { name: 'Sources to create' });
@@ -70,7 +71,7 @@ describe('ListWizardDialog', () => {
     next();
     const name = await screen.findByRole('textbox', { name: /^Name/ });
     expect(name).toHaveValue('my-allow-list');
-    expect(screen.queryByRole('combobox', { name: /^Block response/ })).toBeNull();
+    expect(() => getSelector(/^Block response/)).toThrow();
     fireEvent.click(screen.getByRole('switch', { name: /Start enabled/ }));
     next();
     fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));

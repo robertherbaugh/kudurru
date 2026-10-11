@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
 import { server } from '../test/setup';
+import { findSelector, getSelector, pick } from '../test/controls';
 import { API, renderWithApp } from '../test/utils';
 import PoliciesPage from './PoliciesPage';
 import PolicyDetailPage from './PolicyDetailPage';
@@ -172,7 +173,7 @@ describe('PolicyWizardDialog', () => {
     const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     // Who: the name and at least one group are required.
-    await screen.findByRole('checkbox', { name: /^kids·/ });
+    await screen.findByRole('checkbox', { name: 'kids' });
     next();
     expect(await screen.findByText(/^Name: Required/)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'default' } });
@@ -181,30 +182,28 @@ describe('PolicyWizardDialog', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'kids-games' } });
     next();
     expect(await screen.findByText(/Pick at least one client group/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'kids' }));
     expect(screen.getByTestId('priority-hint')).toHaveTextContent('streaming-off (30), kids-bedtime (20)');
     await goTo('What');
 
     // What: lists and services.
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^starter·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'starter' }));
     fireEvent.click(await screen.findByRole('button', { name: /Roblox/ }));
     fireEvent.click(screen.getByRole('button', { name: /Fortnite/ }));
     await goTo('Safe search');
 
     // Safe search.
     fireEvent.click(await screen.findByRole('switch', { name: /Enforce safe search/ }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Level' }), { target: { value: 'moderate' } });
+    pick(getSelector('Level'), /^Moderate/);
     await goTo('How');
 
     // How.
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Block response' }), { target: { value: 'nxdomain' } });
+    pick(await findSelector('Block response'), /^NXDOMAIN/);
     await goTo('When');
 
     // When: a window.
     fireEvent.click(await screen.findByRole('radio', { name: 'Only during a time window' }));
-    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '15:00' } });
-    fireEvent.change(screen.getByLabelText('End'), { target: { value: '18:30' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Time zone' }), { target: { value: 'Europe/Berlin' } });
+    pick(getSelector('Time zone'), 'Europe/Berlin');
     await goTo('Review');
 
     // Review, with a way back to a step.
@@ -213,7 +212,7 @@ describe('PolicyWizardDialog', () => {
     expect(review).toHaveTextContent('Roblox');
     expect(review).toHaveTextContent('On (moderate)');
     expect(review).toHaveTextContent('NXDOMAIN');
-    expect(review).toHaveTextContent('15:00–18:30 (Europe/Berlin)');
+    expect(review).toHaveTextContent('21:00–07:00 (Europe/Berlin)');
     fireEvent.click(within(review).getByRole('button', { name: 'Edit blocked services' }));
     fireEvent.click(await screen.findByRole('button', { name: /YouTube/ }));
     for (const step of ['Safe search', 'How', 'When', 'Review']) await goTo(step);
@@ -228,7 +227,7 @@ describe('PolicyWizardDialog', () => {
       safeSearch: true,
       safeSearchMode: 'moderate',
       blockMode: 'nxdomain',
-      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '15:00', end: '18:30', tz: 'Europe/Berlin' },
+      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00', tz: 'Europe/Berlin' },
     });
     await waitFor(() => expect(window.location.pathname).toBe('/policies/default/kids-games'));
   });
@@ -237,7 +236,7 @@ describe('PolicyWizardDialog', () => {
     server.use(http.put(`${API}/objects/policies/:ns/:name`, () => HttpResponse.json({ error: { key: 'invalid', message: 'spec.blockedServices: too many' } }, { status: 400 })));
     renderWithApp(<PolicyWizardDialog isOpen onClose={() => {}} />, { route: '/policies?new=1' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'x' } });
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'kids' }));
     for (const step of ['What', 'Safe search', 'How', 'When', 'Review']) await goTo(step);
     fireEvent.click(screen.getByRole('button', { name: 'Create policy' }));
     expect(await screen.findByText('spec.blockedServices: too many')).toBeInTheDocument();
