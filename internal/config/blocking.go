@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"time"
 )
 
 // Blocking holds the cluster-wide blocking defaults (docs/architecture.md
@@ -21,6 +22,12 @@ type Blocking struct {
 	AllowDegraded bool `koanf:"allowDegraded" json:"allowDegraded"`
 	// CustomIP holds the answers of the customIP response.
 	CustomIP BlockingCustomIP `koanf:"customIP" json:"customIP"`
+	// RefreshInterval applies to BlockLists without spec.refreshInterval.
+	RefreshInterval Duration `koanf:"refreshInterval" json:"refreshInterval"`
+	// InitStrategy is fast, blocking or failOnError.
+	InitStrategy string `koanf:"initStrategy" json:"initStrategy"`
+	// ListsDir is the list body cache; "" means <node.dataDir>/lists.
+	ListsDir string `koanf:"listsDir" json:"listsDir"`
 }
 
 // BlockingCustomIP is the customIP block response.
@@ -53,6 +60,14 @@ func (b *Blocking) validate() []error {
 	}
 	if b.DefaultResponse == "customIP" && b.CustomIP.V4 == "" && b.CustomIP.V6 == "" {
 		errs = append(errs, fmt.Errorf("blocking.defaultResponse customIP needs blocking.customIP.v4 or blocking.customIP.v6"))
+	}
+	switch b.InitStrategy {
+	case "fast", "blocking", "failOnError":
+	default:
+		errs = append(errs, fmt.Errorf("blocking.initStrategy: unknown strategy %q (fast, blocking, failOnError)", b.InitStrategy))
+	}
+	if b.RefreshInterval.Std() < time.Minute {
+		errs = append(errs, fmt.Errorf("blocking.refreshInterval: %s is shorter than 1m", b.RefreshInterval))
 	}
 	return errs
 }

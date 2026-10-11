@@ -30,7 +30,7 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 	}
 	out := Spec{Name: name, Mode: mode}
 	for i, src := range spec.Sources {
-		sname := sourceName(i, src)
+		sname := SourceName(i, src)
 		format := parser.Format(src.Format)
 		if len(src.Inline) > 0 {
 			out.Sources = append(out.Sources, LinesSource(sname, format, src.Inline))
@@ -48,7 +48,11 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 	return out, nil
 }
 
-func sourceName(i int, src v1alpha1.ListSource) string {
+// SourceName is the name a source carries in compile statistics and in
+// BlockList.status.sources[].name: its explicit name, else its URL, else
+// "configmap/<name>", else "inline-<index>". The list fetcher and the
+// controller key per-source status by it.
+func SourceName(i int, src v1alpha1.ListSource) string {
 	switch {
 	case src.Name != "":
 		return src.Name

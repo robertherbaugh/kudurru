@@ -39,9 +39,9 @@ Close an item by deleting its row and citing the commit.
 | Builder could reject data below a DNAME owner with a condition (RFC 6672 §2.4) | zone report | M2 |
 | `make bench` gate for `BenchmarkLookup100k` after re-recording the baseline | zone report | M2 |
 | api/v1alpha1: reasons `AsExpected`, `ZoneNotFound`, `NotSelected`, `MissingReference`, `Unsupported` (today constants in internal/controller); `BlockListStatus.unsupported`; `ListSource.subdomains` | controller, blocking reports | M2 |
-| BlockList status ownership: controller owns Ready/Degraded, listfetcher writes only sources/entries/digests | controller report | M2 (listfetcher) |
 | Per-integration Leases: one Runner per elector name or an elector per runnable | controller report | v0.2 |
 | objects: `cluster.role` key driving `Options.Static` and `CheckAPIWrite` in the API middleware; reload inline objects without restart; starter blocklist into `bootstrap.Options.StarterBlockList` | objects report | M2/M3 |
+| objects: `cluster.role` key driving `Options.Static` and `CheckAPIWrite` in the API middleware; reload inline objects without restart; bootstrap `Policy/default` priority as explicit fallback | objects report | M2/M3 |
 | Validator/API: validate unstructured input then the typed object (or default `spec.policy` to `{}` in the CRD) | objects report | M3 |
 
 ## Dataplane
