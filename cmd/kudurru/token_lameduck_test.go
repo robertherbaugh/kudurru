@@ -1,14 +1,10 @@
 package main
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 )
@@ -37,4 +33,3 @@ func TestTokenGenerate(t *testing.T) {
 		t.Errorf("--out over an existing file: %v", err)
 	}
 }
-
