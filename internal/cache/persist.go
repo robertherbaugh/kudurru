@@ -2,10 +2,13 @@ package cache
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"time"
 )
 
 // dumpMagic starts every dump; the byte after it is the format version.
@@ -25,13 +28,20 @@ var ErrBadDump = errors.New("cache: not a kudurru cache dump")
 // Times are absolute, so an entry loaded after a restart keeps counting
 // down from when it was stored.
 func (c *Cache) Dump(w io.Writer) error {
+	_, err := c.WriteDump(w)
+	return err
+}
+
+// WriteDump is Dump that also returns how many entries it wrote.
+func (c *Cache) WriteDump(w io.Writer) (int, error) {
 	bw := bufio.NewWriter(w)
 	if _, err := bw.WriteString(dumpMagic); err != nil {
-		return err
+		return 0, err
 	}
 	if err := bw.WriteByte(dumpVersion); err != nil {
-		return err
+		return 0, err
 	}
+	written := 0
 	now := c.nanos()
 	var buf [binary.MaxVarintLen64]byte
 	putU := func(v uint64) { n := binary.PutUvarint(buf[:], v); _, _ = bw.Write(buf[:n]) }
@@ -55,12 +65,79 @@ func (c *Cache) Dump(w io.Writer) error {
 			putI(e.staleUntil)
 			putU(uint64(len(e.wire)))
 			if _, err := bw.Write(e.wire); err != nil {
-				return err
+				return written, err
 			}
+			written++
 		}
 	}
 	putU(0)
-	return bw.Flush()
+	return written, bw.Flush()
+}
+
+// PersistStats describes one Save or Restore of a Persister.
+type PersistStats struct {
+	// Entries is how many entries were written or loaded.
+	Entries int
+	// Bytes is the size of the stored dump.
+	Bytes int
+	// WrittenAt is when the dump was taken.
+	WrittenAt time.Time
+}
+
+// Persister is the persistence hook contract of the cache: it keeps a dump
+// of the live entries across restarts (docs/architecture.md §3.3
+// "persistence", the M1 carry-over "cache Dump/Load across restarts").
+// internal/cache/persist implements it on a local.db blob.
+//
+// Restore runs once at start, before the DNS listeners serve, on an empty
+// cache; a missing dump is not an error (zero stats), a dump that is too
+// old or of another format returns an error the caller logs and ignores.
+// Save may run at any time while the cache serves (Dump takes each shard
+// lock only to copy its entries) and runs once more at shutdown.
+type Persister interface {
+	Save(ctx context.Context, c *Cache) (PersistStats, error)
+	Restore(ctx context.Context, c *Cache) (PersistStats, error)
+}
+
+// RunPersister saves c through p every interval (never periodically when
+// interval is zero) and once more when ctx ends, bounded by finalTimeout
+// (5 s when zero). It is the always-on runnable serve adds next to Run;
+// failures are logged and retried on the next tick.
+func RunPersister(ctx context.Context, c *Cache, p Persister, interval, finalTimeout time.Duration, logger *slog.Logger) error {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if finalTimeout <= 0 {
+		finalTimeout = 5 * time.Second
+	}
+	save := func(ctx context.Context, final bool) {
+		st, err := p.Save(ctx, c)
+		switch {
+		case err != nil:
+			logger.Warn("cache dump not saved", "err", err, "final", final)
+		case final:
+			logger.Info("cache dump saved", "entries", st.Entries, "bytes", st.Bytes)
+		default:
+			logger.Debug("cache dump saved", "entries", st.Entries, "bytes", st.Bytes)
+		}
+	}
+	var tick <-chan time.Time
+	if interval > 0 {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		tick = t.C
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalTimeout)
+			save(fctx, true)
+			cancel()
+			return nil
+		case <-tick:
+			save(ctx, false)
+		}
+	}
 }
 
 // Load adds the entries of a Dump, skipping those past their stale window,
