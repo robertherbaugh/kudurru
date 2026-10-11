@@ -700,6 +700,16 @@ func eventRow(ev *querylog.Event) StreamRow {
 // sseHeartbeat is the interval of keep-alive comments on the stream.
 var sseHeartbeat = 15 * time.Second
 
+// maxQueryStreams caps the concurrent live-tail streams of one server:
+// each holds a goroutine, a subscriber buffer and a connection. Streams
+// beyond it get 503 with Retry-After.
+var maxQueryStreams = 64
+
+// sseWriteTimeout bounds every write cycle of a stream (events, flush,
+// heartbeat), so a client that stops reading is disconnected instead of
+// holding its goroutine forever.
+const sseWriteTimeout = 30 * time.Second
+
 func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamResponse, error) {
 	if s.opts.Tail == nil && s.opts.Querylog == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
@@ -708,6 +718,14 @@ func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamRe
 	if err != nil {
 		return nil, err
 	}
+	select {
+	case s.streams <- struct{}{}:
+	default:
+		e := newError(http.StatusServiceUnavailable, KeyUnavailable,
+			fmt.Sprintf("too many live query streams on this node (%d)", cap(s.streams)), "close another stream or retry shortly")
+		e.GetHeaders().Set("Retry-After", "5")
+		return nil, e
+	}
 	var lastID uint64
 	if v := in.LastEventID; v != "" {
 		lastID, _ = strconv.ParseUint(v, 10, 64)
@@ -715,6 +733,7 @@ func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamRe
 		lastID, _ = strconv.ParseUint(v, 10, 64)
 	}
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
+		defer func() { <-s.streams }()
 		r, w := humago.Unwrap(hctx)
 		sctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -730,7 +749,8 @@ func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamRe
 		h.Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 		rc := http.NewResponseController(w)
-		_ = rc.SetWriteDeadline(time.Time{})
+		arm := func() { _ = rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout)) }
+		arm()
 		send := func(ev *querylog.Event) bool {
 			if ev.ID != 0 && ev.ID <= lastID {
 				return true
@@ -774,6 +794,7 @@ func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamRe
 				if !ok {
 					return
 				}
+				arm()
 				if !send(ev) {
 					return
 				}
@@ -796,6 +817,7 @@ func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamRe
 					return
 				}
 			case <-tick.C:
+				arm()
 				if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil || rc.Flush() != nil {
 					return
 				}

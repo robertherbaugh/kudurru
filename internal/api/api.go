@@ -219,6 +219,9 @@ type Server struct {
 
 	cfgMu sync.RWMutex
 	cfg   *config.Config
+
+	// streams is the semaphore of the live-tail streams (maxQueryStreams).
+	streams chan struct{}
 }
 
 // New builds the server and registers every route.
@@ -277,6 +280,7 @@ func New(opts Options) (*Server, error) {
 		trusted: trusted,
 		prefix:  strings.TrimSuffix(opts.Config.Listeners.API.PathPrefix, "/"),
 		cfg:     opts.Config,
+		streams: make(chan struct{}, max(maxQueryStreams, 1)),
 	}
 	s.api = newHumaAPI(s.mux, s.prefix)
 	s.ui = opts.UIHandler
