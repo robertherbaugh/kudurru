@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type Config struct {
 	Store     StoreConfig `koanf:"store" json:"store"`
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
+	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
 	Log       Log         `koanf:"log" json:"log"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
@@ -62,6 +64,38 @@ type Listeners struct {
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
+	// Internal is the node-to-node listener (§3.1, D47).
+	Internal InternalListener `koanf:"internal" json:"internal"`
+}
+
+// InternalListener is the node-to-node listener (:8082). It is always
+// TLS; the token and node certificate are derived from the encryption key
+// unless TokenFile and TLS name files.
+type InternalListener struct {
+	Address   string      `koanf:"address" json:"address"`
+	TokenFile string      `koanf:"tokenFile" json:"tokenFile"`
+	TLS       InternalTLS `koanf:"tls" json:"tls"`
+}
+
+// InternalTLS overrides the derived internal-listener certificate and CA.
+type InternalTLS struct {
+	CertFile   string `koanf:"certFile" json:"certFile"`
+	KeyFile    string `koanf:"keyFile" json:"keyFile"`
+	CAFile     string `koanf:"caFile" json:"caFile"`
+	ServerName string `koanf:"serverName" json:"serverName"`
+}
+
+// Blocking holds the list-loading settings of the blocking engine
+// (docs/architecture.md §6.2, §7.3).
+type Blocking struct {
+	// RefreshInterval applies to BlockLists without spec.refreshInterval.
+	RefreshInterval Duration `koanf:"refreshInterval" json:"refreshInterval"`
+	// InitStrategy is fast, blocking or failOnError.
+	InitStrategy string `koanf:"initStrategy" json:"initStrategy"`
+	// AllowDegraded keeps the node ready while lists are still loading.
+	AllowDegraded bool `koanf:"allowDegraded" json:"allowDegraded"`
+	// ListsDir is the list body cache; "" means <node.dataDir>/lists.
+	ListsDir string `koanf:"listsDir" json:"listsDir"`
 }
 
 // DNSListener is one DNS bind.
@@ -194,6 +228,15 @@ func (d Duration) String() string { return time.Duration(d).String() }
 // Std returns the time.Duration.
 func (d Duration) Std() time.Duration { return time.Duration(d) }
 
+// BlockingListsDir returns blocking.listsDir, defaulting to
+// <node.dataDir>/lists (§6.3).
+func (c *Config) BlockingListsDir() string {
+	if c.Blocking.ListsDir != "" {
+		return c.Blocking.ListsDir
+	}
+	return filepath.Join(c.Node.DataDir, "lists")
+}
+
 // Log configures logging.
 type Log struct {
 	Level  string `koanf:"level" json:"level"`
@@ -287,6 +330,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv6Prefix: %d is outside 0-128", p))
 	}
 	errs = append(errs, c.Cache.validate()...)
+	errs = append(errs, c.Blocking.validate()...)
+	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
+		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
+	}
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
@@ -323,6 +370,20 @@ func (c *Cache) validate() []error {
 	}
 	if c.Prefetch.Threshold < 0 {
 		errs = append(errs, fmt.Errorf("cache.prefetch.threshold: %d is negative", c.Prefetch.Threshold))
+	}
+	return errs
+}
+
+// validate checks the blocking keys.
+func (b *Blocking) validate() []error {
+	var errs []error
+	switch b.InitStrategy {
+	case "fast", "blocking", "failOnError":
+	default:
+		errs = append(errs, fmt.Errorf("blocking.initStrategy: unknown strategy %q (fast, blocking, failOnError)", b.InitStrategy))
+	}
+	if b.RefreshInterval.Std() < time.Minute {
+		errs = append(errs, fmt.Errorf("blocking.refreshInterval: %s is shorter than 1m", b.RefreshInterval))
 	}
 	return errs
 }
