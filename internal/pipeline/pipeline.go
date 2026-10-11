@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"net/netip"
 	"time"
 
@@ -67,6 +68,11 @@ type Client struct {
 	ClientID    string
 	MACs        []string
 	GroupIDs    []string
+	// TSIGKey is the lower-case, absolute name of the TSIG key that signed
+	// the query, set only after the transport verified the signature (RFC
+	// 8945). Queries whose signature fails verification never reach the
+	// pipeline; the transport answers them NOTAUTH itself.
+	TSIGKey string
 }
 
 // Request is the per-query context handed through the stages.
@@ -108,6 +114,12 @@ type Response struct {
 	List      string // matched list for the UI "why" row
 	Rule      string // matched rule text
 	Cacheable bool
+	// Transfer, when set, is a multi-message answer (an AXFR or IXFR
+	// stream, RFC 5936 §2.2). Stream transports (TCP, DoT) write every
+	// message it yields, in order, instead of Msg; Msg is the first of
+	// them, kept for observers and for transports that cannot stream.
+	// Stages set it only for requests that arrived over TCP or DoT.
+	Transfer iter.Seq[*dns.Msg]
 }
 
 // Next calls the rest of the chain.
