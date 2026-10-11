@@ -818,6 +818,4 @@ export interface CatalogueInfo {
 }
 
 /** GET /catalogue/icons (C4): the icons this binary embeds. */
-export interface CatalogueIconIndex {
-  items: { id: string; path: string }[];
-}
+export type CatalogueIconIndex = ListEnvelope<S['CatalogueIcon']>;

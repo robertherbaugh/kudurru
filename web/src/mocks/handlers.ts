@@ -1445,8 +1445,8 @@ export const handlers = [
   }),
 
   // catalogue icons (C4) --------------------------------------------------
-  http.get(`${B}/catalogue/icons`, ({ request }) =>
-    guard(request, 'policies', 'read') ?? ok({ items: MOCK_ICONS.map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg` })) }),
+  http.get(`${B}/catalogue/icons`, () =>
+    ok({ items: MOCK_ICONS.filter((id) => !id.endsWith('-dark')).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg`, ...(MOCK_ICONS.includes(`${id}-dark`) ? { onDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) })) }),
   ),
   http.get(`${B}/catalogue/icons/:file`, ({ params }) => {
     const id = String(params.file).replace(/\.svg$/, '');
@@ -1586,7 +1586,7 @@ export function mergePatch(target: Record<string, unknown>, patch: Record<string
 export type { Policy };
 
 /** Icon ids the mock binary "embeds" (C4), including a few upstream providers. */
-const MOCK_ICONS = ['youtube', 'netflix', 'tiktok', 'google', 'cloudflare', 'quad9', 'adguard-home', 'nextdns', 'mullvad'];
+const MOCK_ICONS = ['youtube', 'netflix', 'tiktok', 'google', 'cloudflare', 'adguard-home', 'nextdns', 'mullvad', 'cisco', 'control-d', 'control-d-dark'];
 
 /** A few entries of the embedded catalogue for GET /catalogue/services. */
 const MOCK_SERVICES = [

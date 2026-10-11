@@ -148,8 +148,11 @@ describe('UpstreamWizardPage', () => {
     const quad9 = await screen.findByRole('radio', { name: /^Quad9/ });
     await waitFor(() => expect(quad9).toBeEnabled());
     // Icons from the C4 index where the server has one, monograms elsewhere.
-    await waitFor(() => expect(document.querySelector('[data-choice="quad9"] img')?.getAttribute('src')).toContain('/catalogue/icons/quad9.svg'));
-    expect(document.querySelector('[data-choice="controld"] [data-icon]')).toHaveTextContent('CD');
+    await waitFor(() => expect(document.querySelector('[data-choice="cloudflare"] img')?.getAttribute('src')).toContain('/catalogue/icons/cloudflare.svg'));
+    expect(document.querySelector('[data-choice="opendns"] img')?.getAttribute('src')).toContain('/catalogue/icons/cisco.svg');
+    expect(document.querySelector('[data-choice="controld"] img')?.getAttribute('src')).toContain('/catalogue/icons/control-d.svg');
+    // No Quad9 logo in dashboard-icons: a monogram.
+    expect(document.querySelector('[data-choice="quad9"] [data-icon]')).toHaveTextContent('Q9');
     fireEvent.click(quad9);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     fireEvent.change(await screen.findByRole('combobox', { name: 'Transport' }), { target: { value: 'dot' } });
