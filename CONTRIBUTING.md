@@ -21,6 +21,10 @@ make generate     # controller-gen: deepcopy, CRDs, RBAC
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
+## Branches and releases
+
+Open pull requests against `main`; each push to one builds `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` for trying the branch. Releases are cut by merging `main` into `release-candidate` (tags `v<VERSION>-rc.<N>`, a GitHub pre-release) and `release-candidate` into `release` (tags `v<VERSION>`, moves `latest`), where `VERSION` is the file in the repository root. Never push release tags by hand. The steps and the checks around them are in [docs/release-checklist.md](docs/release-checklist.md#release-pipeline).
+
 ## Layout and seams
 
 - `api/v1alpha1/` holds the Go types for every kind. The same structs are the CRDs, what the SQLite driver persists, and what the REST API, CLI and UI exchange. Change the type, run `make generate`, and all three follow.

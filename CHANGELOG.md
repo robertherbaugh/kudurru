@@ -258,6 +258,13 @@ a real server instead of its mocks.
   keyless signatures, `crds.yaml` and `install.yaml`; Helm charts pushed to
   `oci://ghcr.io/robertherbaugh/charts`; the `kudurru-dnsdist` and
   `kudurru-keepalived` images are built and signed on the same tag.
+- Release branches (D139): pull requests against `main` push a
+  `dev-<PR>` image; merging into `release-candidate` tags
+  `v<VERSION>-rc.<N>` and publishes a pre-release; merging into `release`
+  tags `v<VERSION>`, publishes the release and moves `latest`. `VERSION` in
+  the repository root is the single version source. Release binaries and
+  images now embed the built dashboard (goreleaser runs `make web-build`),
+  and the `<major>.<minor>` image tag is gone.
 - Binary-size budget in CI (`make size`).
 
 ### Known limitations

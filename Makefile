@@ -1,9 +1,10 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
 # RELEASE_VERSION is what a build without a reachable tag reports (a
-# tarball, a shallow clone, a fork without tags); bump it together with the
-# charts' version when preparing the next release (docs/release-checklist.md).
-RELEASE_VERSION := 0.1.0-rc.1
+# tarball, a shallow clone, a fork without tags): the VERSION file, which
+# also names the next release candidate and release tags
+# (docs/release-checklist.md, "Release pipeline").
+RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null)
 VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)

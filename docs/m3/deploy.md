@@ -14,7 +14,7 @@ release pipeline for kudurru (docs/architecture.md §5.2, §5.4, §5.7, §6.4,
 | Compose | `deploy/compose/single`, `single-edge`, `ha/node-{a,b,c}` (ha-static twins) |
 | Monitoring | `deploy/grafana/kudurru-overview.json` (generated: 11 rows, 57 panels, 64 queries), `deploy/prometheus/rules.yaml` (12 alerts on existing metrics) |
 | Packages | `deploy/systemd/` unit, default config, env file, pre/post-install scripts |
-| Images and release | `Dockerfile` (CGO_ENABLED=0 distroless, `release` and `debug` targets), `.goreleaser.yaml`, `.github/workflows/release.yml`, the `helm` job in `ci.yml` |
+| Images and release | `Dockerfile` (CGO_ENABLED=0 distroless, `release` and `debug` targets), `.goreleaser.yaml`, `.github/workflows/publish.yml` (called by `release-candidate.yml` and `release.yml`, D139), the `helm` job in `ci.yml` |
 | Make | `helm-lint` (strict), `helm-check`, `deploy-tools`, `deploy-assets`, `release-manifests`, `docker-debug` |
 | Tests | `deploy/` (package `deploy`, tests only plus a doc file) |
 

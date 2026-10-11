@@ -1,0 +1,13 @@
+# Build context of the root Dockerfile (make docker, dev-image.yml, edge and
+# kind checks): the Go module plus the built web/dist. Tool downloads,
+# dependencies and build output stay out of it.
+.git
+.context
+bin
+dist
+web/node_modules
+web/coverage
+web/playwright-report
+web/test-results
+site/public
+site/resources

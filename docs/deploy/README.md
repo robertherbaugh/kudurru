@@ -15,19 +15,28 @@ The block page (blocked names open a page explaining the block, with a Request a
 
 ## Release artifacts
 
-Every `v*` tag runs `.github/workflows/release.yml`, which runs goreleaser
+Releases are cut by merging `main` into `release-candidate` (a
+`v<version>-rc.<N>` pre-release) and `release-candidate` into `release` (the
+`v<version>` release, which also moves `latest`); the version comes from the
+`VERSION` file ([release-checklist.md](../release-checklist.md#release-pipeline)).
+Both run `.github/workflows/publish.yml`, which runs goreleaser
 (`.goreleaser.yaml`) and publishes:
 
 - `ghcr.io/robertherbaugh/kudurru:<version>`: distroless static, nonroot
   (uid 65532), `linux/amd64` and `linux/arm64`, built by ko, with an SPDX SBOM
   and a cosign keyless signature; `<version>-debug` adds busybox (a shell and
-  `nslookup`);
+  `nslookup`); a release also moves `latest` (and `latest-debug`), a
+  release candidate does not;
 - binaries for linux and darwin on amd64 and arm64, deb/rpm/apk packages with
   a hardened systemd unit, a compose bundle, `crds.yaml` and `install.yaml`
   (`kustomize build config/default`), all covered by `checksums.txt`, which is
   cosign-signed, plus GitHub build provenance;
 - the Helm charts at `oci://ghcr.io/robertherbaugh/charts/kudurru` and
   `.../kudurru-crds`, cosign-signed.
+
+Every pull request against `main` also pushes
+`ghcr.io/robertherbaugh/kudurru:dev-<PR number>` (unsigned, for testing the
+branch; later pushes overwrite it).
 
 Verify an image:
 

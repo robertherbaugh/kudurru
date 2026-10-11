@@ -1,17 +1,67 @@
 # Release checklist
 
 How to cut a kudurru release (written for v0.1.0-rc.1, then v0.1.0; no tag
-exists yet). The
-pipeline itself is `.goreleaser.yaml` plus `.github/workflows/release.yml`
-(docs/architecture.md §12, docs/deploy/README.md); this file is the order of
-the manual steps around it and the checks that need the project owner's
-hardware.
+exists yet). The pipeline is the branch workflows below plus
+`.goreleaser.yaml` and `.github/workflows/publish.yml` (docs/architecture.md
+§12 and D139, docs/deploy/README.md); this file is the order of the manual
+steps around it and the checks that need the project owner's hardware.
 
-Version names: the git tag is `v<version>` (for example `v0.1.0-rc.1`);
-goreleaser, the images, the Helm charts and `kudurru version` use the
-version without the `v`. Tags with a pre-release suffix (`-rc.1`) publish a
-GitHub pre-release and do not move the `latest` or `<major>.<minor>` image
-tags (`prerelease: auto`).
+Version names: `VERSION` in the repository root holds `MAJOR.MINOR.PATCH`
+(no `v`, no suffix) and is the only version maintained by hand. The git
+tags are `v<version>-rc.<N>` for release candidates and `v<version>` for the
+release; goreleaser, the images, the Helm charts and `kudurru version` use
+the version without the `v`. A release candidate publishes a GitHub
+pre-release and does not move the `latest` image tags (`prerelease: auto`).
+
+## Release pipeline
+
+```
+feature ──PR──▶ main ──PR──▶ release-candidate ──PR──▶ release
+           dev-<PR>         v<VERSION>-rc.<N>           v<VERSION>
+           image            pre-release, image         release, image + latest
+```
+
+| Step | Workflow | What it publishes |
+|---|---|---|
+| Push to a pull request against `main` (same repository, not Dependabot) | `dev-image.yml` | `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` from the PR's head commit with the dashboard bundle, linux/amd64 and linux/arm64, unsigned. Every push overwrites the same tag; `kudurru version` reports `<VERSION>-dev.<PR>` and the commit. |
+| Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>` and `<VERSION>-rc.<N>-debug`, charts and supervisor images at that version. |
+| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug` and `latest-debug`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
+| Pull request into `release-candidate` or `release` | `promotion.yml` | Nothing: fails unless the source branch is `main` (for `release-candidate`) or `release-candidate` (for `release`), and dry-runs the tag the merge would create. |
+
+`hack/release-tag.sh rc|release` computes the tags and refuses:
+
+- a VERSION that is not `MAJOR.MINOR.PATCH`;
+- a candidate or release for a VERSION whose `v<VERSION>` tag already
+  exists: bump `VERSION` on `main` after every release;
+- a release with no `v<VERSION>-rc.<N>`, or whose tree differs from the
+  latest candidate's: a release ships exactly what its last candidate
+  shipped. If `release-candidate` was pushed again while the promotion PR
+  was open, wait for the new candidate to be tagged, then re-run the
+  `promotion` check (or the `release` workflow).
+
+Re-running a workflow at the same commit reuses its tag. To re-publish an
+existing tag by hand, run `publish` with workflow_dispatch and the tag.
+
+The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
+workflow, which is why the branch workflows call `publish.yml` and
+`docs-pages.yml` themselves. Pushing a `v*` tag by hand publishes nothing.
+
+Repository settings the pipeline relies on (once):
+
+- [ ] Branches `release-candidate` and `release` exist (created from `main`
+      before the first promotion; creating a branch publishes nothing) and
+      are protected: changes through pull requests only, `promotion` and the
+      `ci` checks required.
+- [ ] Promotion pull requests are merged with a merge commit, not squash or
+      rebase (a branch ruleset can restrict the merge method per branch):
+      `release-candidate` must keep `main`'s history, or the next promotion
+      conflicts and the release tree check fails.
+- [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
+- [ ] The `github-pages` environment allows deployments from the `release`
+      branch (docs-pages runs in the context of the `release` push).
+- [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
+      write access (it does when the first image was pushed by a workflow
+      of this repository).
 
 ## 1. Prepare the release commit
 
@@ -22,8 +72,9 @@ tags (`prerelease: auto`).
 - [ ] Every row in docs/followups.md targeted at this release is closed or
       explicitly moved to the next one.
 - [ ] Version strings agree:
-  - `RELEASE_VERSION` in the Makefile (what a build without a reachable tag
-    reports, e.g. from a tarball);
+  - `VERSION` holds the version being released (the Makefile's
+    `RELEASE_VERSION`, what a build without a reachable tag reports, reads
+    it);
   - `version` and `appVersion` in `charts/kudurru/Chart.yaml` and
     `charts/kudurru-crds/Chart.yaml` (the release workflow re-stamps both
     from the tag when packaging, the committed values are what `helm
@@ -57,6 +108,9 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
 - [ ] With Docker available: `goreleaser release --snapshot --clean
       --skip=publish,sign` (archives, deb/rpm/apk, SBOMs, ko images into the
       local daemon).
+- [ ] The before hooks run `make web-build`, so every goreleaser run needs
+      Bun on `PATH`; `git checkout web/dist/index.html` afterwards restores
+      the committed placeholder.
 - [ ] `rm -rf dist` afterwards.
 
 Dry runs for v0.1.0-rc.1 (not tagged yet):
@@ -110,16 +164,22 @@ On the owner's hardware:
       chashed against a real dnsdist, with `kdig +quic/+tls/+https` through
       the edge.
 
-## 4. Tag and publish
+## 4. Promote and publish
 
-- [ ] `git tag -s v0.1.0-rc.1 -m "kudurru v0.1.0-rc.1"` on the release commit
-      and `git push origin v0.1.0-rc.1`.
-- [ ] `release.yml` runs: `make test`, `make helm-check`, then `goreleaser
-      release --clean`, which publishes the GitHub release with archives,
+- [ ] Release candidate: open a pull request from `main` into
+      `release-candidate`, wait for `promotion` and CI, merge it with a merge
+      commit. `release-candidate.yml` tags `v<VERSION>-rc.<N>`.
+- [ ] Release: once the candidate passed section 3, open a pull request from
+      `release-candidate` into `release` and merge it with a merge commit.
+      `release.yml` tags `v<VERSION>`.
+- [ ] `publish.yml` runs for the tag: `make test`, `make helm-check`, then
+      `goreleaser release --clean` (its before hook builds the dashboard
+      bundle into web/dist), which publishes the GitHub release with archives,
       deb/rpm/apk, `checksums.txt` (cosign keyless signature and
       certificate), SBOMs, `crds.yaml` and `install.yaml`, and pushes the ko
       images `ghcr.io/robertherbaugh/kudurru:<version>` and `<version>-debug`
-      (linux/amd64, linux/arm64). Build provenance is attested for the
+      (linux/amd64, linux/arm64), plus `latest` and `latest-debug` for a
+      release. Build provenance is attested for the
       archives, packages and checksums.
 - [ ] The workflow packages both charts with `--version <version>
       --app-version <version>`, pushes them to
@@ -141,7 +201,7 @@ On the owner's hardware:
       https://token.actions.githubusercontent.com checksums.txt`, then
       `sha256sum -c checksums.txt` on the downloaded artifacts.
 - [ ] Images: `cosign verify ghcr.io/robertherbaugh/kudurru:<version>` with the
-      same identity flags (`release.yml` already ran this for both ko
+      same identity flags (`publish.yml` already ran this for both ko
       images: `docker_signs` with `artifacts: manifests` signs the ko index
       digests), and `docker run --rm
       ghcr.io/robertherbaugh/kudurru:<version> version` prints `<version>`.
@@ -155,6 +215,9 @@ On the owner's hardware:
 ## 6. After the release
 
 - [ ] Announce with the CHANGELOG section and the known gaps.
-- [ ] For a release candidate: collect issues, fix on `main`, cut `-rc.2` or
-      the GA tag. For the GA release: set `RELEASE_VERSION` and the chart
-      versions to the next development version (for example `0.2.0-dev`).
+- [ ] For a release candidate: collect issues, fix on `main`, merge `main`
+      into `release-candidate` again for the next `-rc.<N>`, or promote the
+      candidate to `release`. For the release: bump `VERSION` on `main` to
+      the next version (for example `0.2.0`) and the chart versions with it;
+      the next promotion into `release-candidate` fails until `VERSION` is
+      bumped.

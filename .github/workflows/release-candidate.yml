@@ -1,0 +1,56 @@
+# main -> release-candidate: every push (a merge from main) tags the next
+# v<VERSION>-rc.<N>, then publish.yml builds and pushes the
+# ghcr.io/robertherbaugh/kudurru:<VERSION>-rc.<N> image (and -debug), the
+# charts and the supervisor images, and creates the GitHub pre-release.
+# `latest` does not move. VERSION is the file in the repository root;
+# hack/release-tag.sh picks N and refuses a VERSION that is already released.
+# docs/release-checklist.md, "Release pipeline".
+name: release-candidate
+on:
+  push:
+    branches: [release-candidate]
+permissions:
+  contents: read
+# One candidate at a time so two pushes never pick the same N.
+concurrency:
+  group: release-candidate
+  cancel-in-progress: false
+jobs:
+  tag:
+    # Creating the branch is a push too; only merges publish.
+    if: ${{ !github.event.created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the tag
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      previous: ${{ steps.tag.outputs.previous }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Next v<VERSION>-rc.<N>
+        id: tag
+        run: hack/release-tag.sh rc
+      # Tags pushed with GITHUB_TOKEN start no workflow, so publish.yml is
+      # called below rather than triggered by the tag.
+      - name: Push the tag
+        if: steps.tag.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "kudurru ${TAG}"
+          git push origin "refs/tags/${TAG}"
+  publish:
+    needs: tag
+    permissions:
+      contents: write        # GitHub release and assets
+      packages: write        # ghcr.io images and Helm charts
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      previous-tag: ${{ needs.tag.outputs.previous }}

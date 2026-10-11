@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -67,6 +69,20 @@ func TestGoreleaserConfig(t *testing.T) {
 	}
 	if !tags["{{ .Version }}"] || !tags["{{ .Version }}-debug"] {
 		t.Errorf("images need the version tag and the -debug variant, got %v", tags)
+	}
+	// A release candidate publishes <version>-rc.<N> only; the release moves
+	// latest (docs/release-checklist.md, "Release pipeline").
+	if !tags["{{ if not .Prerelease }}latest{{ end }}"] {
+		t.Errorf("images need latest for releases only, got %v", tags)
+	}
+	for tg := range tags {
+		if strings.Contains(tg, "latest") && !strings.Contains(tg, "if not .Prerelease") {
+			t.Errorf("image tag %q moves latest on a release candidate", tg)
+		}
+	}
+	// Every binary embeds web/dist: the before hook builds the dashboard.
+	if !slices.Contains(list(mapOf(cfg["before"])["hooks"]), any("make web-build")) {
+		t.Errorf("before hooks must run make web-build, or the binaries embed the placeholder dashboard")
 	}
 	for _, n := range list(cfg["nfpms"]) {
 		nm := mapOf(n)
@@ -187,4 +203,123 @@ func TestDockerfile(t *testing.T) {
 	if i, j := strings.Index(s, "AS debug"), strings.Index(s, "AS release"); i > j {
 		t.Errorf("the release stage must be last so a plain docker build produces it")
 	}
+}
+
+// TestVersionFile checks VERSION, the source of the release candidate and
+// release tags (hack/release-tag.sh) and of RELEASE_VERSION in the Makefile.
+func TestVersionFile(t *testing.T) {
+	v := strings.TrimSpace(string(readRepoFile(t, "VERSION")))
+	if !regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`).MatchString(v) {
+		t.Errorf("VERSION is %q, want MAJOR.MINOR.PATCH without a v or a suffix", v)
+	}
+	if !strings.Contains(string(readRepoFile(t, "Makefile")), "RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION") {
+		t.Errorf("the Makefile's RELEASE_VERSION must come from VERSION")
+	}
+}
+
+// TestReleaseTagScript runs hack/release-tag.sh in a scratch repository
+// through a release cycle: candidates, a release, re-runs and the refusals.
+func TestReleaseTagScript(t *testing.T) {
+	for _, tool := range []string{"git", "bash"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not installed", tool)
+		}
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "hack"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "hack", "release-tag.sh"), readRepoFile(t, "hack/release-tag.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	commit := func(version, file string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte(version+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if file != "" {
+			if err := os.WriteFile(filepath.Join(dir, file), []byte(file), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		git("add", "-A")
+		git("commit", "-q", "--allow-empty", "-m", "c")
+	}
+	// run returns the key=value output, or the error message with ok false.
+	run := func(mode string) (map[string]string, string, bool) {
+		t.Helper()
+		cmd := exec.Command("bash", "hack/release-tag.sh", mode)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GITHUB_OUTPUT=")
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			return nil, stderr.String(), false
+		}
+		out := map[string]string{}
+		for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+			k, v, _ := strings.Cut(line, "=")
+			out[k] = v
+		}
+		return out, "", true
+	}
+	want := func(mode string, kv ...string) {
+		t.Helper()
+		out, msg, ok := run(mode)
+		if !ok {
+			t.Fatalf("%s failed: %s", mode, msg)
+		}
+		for i := 0; i < len(kv); i += 2 {
+			if out[kv[i]] != kv[i+1] {
+				t.Errorf("%s: %s = %q, want %q (%v)", mode, kv[i], out[kv[i]], kv[i+1], out)
+			}
+		}
+	}
+	refuse := func(mode, contains string) {
+		t.Helper()
+		out, msg, ok := run(mode)
+		if ok {
+			t.Fatalf("%s succeeded with %v, want a refusal containing %q", mode, out, contains)
+		}
+		if !strings.Contains(msg, contains) {
+			t.Errorf("%s: %q does not contain %q", mode, msg, contains)
+		}
+	}
+
+	git("init", "-q", "-b", "main")
+	commit("v0.1", "")
+	refuse("rc", "want MAJOR.MINOR.PATCH")
+	commit("0.1.0", "a")
+	want("rc", "version", "0.1.0", "tag", "v0.1.0-rc.1", "exists", "false", "previous", "")
+	refuse("release", "no release candidate for 0.1.0")
+	git("tag", "-a", "v0.1.0-rc.1", "-m", "rc.1")
+	want("rc", "tag", "v0.1.0-rc.1", "exists", "true")
+	for n := 2; n <= 10; n++ {
+		commit("0.1.0", "")
+		git("tag", "v0.1.0-rc."+strconv.Itoa(n))
+	}
+	commit("0.1.0", "b")
+	want("rc", "tag", "v0.1.0-rc.11", "previous", "v0.1.0-rc.10")
+	refuse("release", "does not match v0.1.0-rc.10")
+	git("tag", "v0.1.0-rc.11")
+	want("release", "tag", "v0.1.0", "exists", "false", "previous", "", "rc", "v0.1.0-rc.11")
+	git("tag", "-a", "v0.1.0", "-m", "v0.1.0")
+	want("release", "tag", "v0.1.0", "exists", "true")
+	refuse("rc", "v0.1.0 is already released")
+	commit("0.1.0", "c")
+	refuse("release", "v0.1.0 is already released")
+	commit("0.2.0", "")
+	want("rc", "tag", "v0.2.0-rc.1", "previous", "v0.1.0")
+	git("tag", "v0.2.0-rc.1")
+	want("release", "tag", "v0.2.0", "previous", "v0.1.0", "rc", "v0.2.0-rc.1")
 }

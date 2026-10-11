@@ -1,123 +1,66 @@
+# release-candidate -> release: every push (a merge from release-candidate)
+# tags v<VERSION>, then publish.yml builds and pushes the
+# ghcr.io/robertherbaugh/kudurru:<VERSION> and :latest images (and -debug),
+# the charts and the supervisor images, and creates the GitHub release; the
+# docs site is published from the same tag. hack/release-tag.sh refuses a
+# tree that differs from the latest v<VERSION>-rc.<N>, so a release ships
+# exactly what its last candidate shipped, and a VERSION that is already
+# released. docs/release-checklist.md, "Release pipeline".
 name: release
 on:
   push:
-    tags: ["v*"]
+    branches: [release]
 permissions:
   contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
-  release:
+  tag:
+    # Creating the branch is a push too; only merges publish.
+    if: ${{ !github.event.created }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the tag
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      previous: ${{ steps.tag.outputs.previous }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: v<VERSION>, checked against the latest release candidate
+        id: tag
+        run: hack/release-tag.sh release
+      # Tags pushed with GITHUB_TOKEN start no workflow, so publish.yml and
+      # docs-pages.yml are called below rather than triggered by the tag.
+      - name: Push the tag
+        if: steps.tag.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          RC: ${{ steps.tag.outputs.rc }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "kudurru ${TAG} (from ${RC})"
+          git push origin "refs/tags/${TAG}"
+  publish:
+    needs: tag
     permissions:
       contents: write        # GitHub release and assets
       packages: write        # ghcr.io images and Helm charts
       id-token: write        # cosign keyless signing, provenance
       attestations: write    # SLSA build provenance
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - uses: sigstore/cosign-installer@v3
-      - uses: azure/setup-helm@v4
-      - name: Log in to ghcr.io
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Test before publishing
-        run: make test
-      - name: Chart render matrix and kubeconform
-        run: make helm-check
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KO_DOCKER_REPO: ghcr.io/robertherbaugh/kudurru
-      - name: Verify the ko image signatures (docker_signs, artifacts manifests)
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          version="${TAG#v}"
-          for ref in "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"; do
-            cosign verify "${ref}" \
-              --certificate-identity-regexp '^https://github.com/robertherbaugh/kudurru/' \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
-            echo "verified ${ref}"
-          done
-      - name: Build provenance for the release artifacts
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: |
-            dist/*.tar.gz
-            dist/*.deb
-            dist/*.rpm
-            dist/*.apk
-            dist/checksums.txt
-      - name: Push the Helm charts to oci://ghcr.io/robertherbaugh/charts
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          version="${TAG#v}"
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          mkdir -p bin/charts
-          for chart in kudurru-crds kudurru; do
-            helm package "charts/${chart}" --version "${version}" --app-version "${version}" -d bin/charts
-            out=$(helm push "bin/charts/${chart}-${version}.tgz" oci://ghcr.io/robertherbaugh/charts 2>&1)
-            echo "${out}"
-            digest=$(echo "${out}" | awk '/^Digest:/ {print $2}')
-            cosign sign --yes "ghcr.io/robertherbaugh/charts/${chart}@${digest}"
-          done
-  supervisor-images:
-    # kudurru-dnsdist and kudurru-keepalived aggregate the GPL programs with
-    # the kudurru supervisor binary from the ko image the release job just
-    # pushed (images/*/Dockerfile, docs/release-checklist.md §4).
-    needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      previous-tag: ${{ needs.tag.outputs.previous }}
+  docs:
+    needs: [tag, publish]
     permissions:
       contents: read
-      packages: write        # ghcr.io images
-      id-token: write        # cosign keyless signing
-    strategy:
-      fail-fast: false
-      matrix:
-        image: [dnsdist, keepalived]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: sigstore/cosign-installer@v3
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Derive the image tag (<program version>-k<kudurru version>)
-        id: tag
-        env:
-          TAG: ${{ github.ref_name }}
-          IMAGE: ${{ matrix.image }}
-        run: |
-          version="${TAG#v}"
-          case "${IMAGE}" in
-            dnsdist)    program=$(sed -n 's/^ARG DNSDIST_IMAGE=.*:\(.*\)$/\1/p' images/dnsdist/Dockerfile) ;;
-            keepalived) program=$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$/\1/p' images/keepalived/Dockerfile) ;;
-          esac
-          test -n "${program}"
-          echo "kudurru=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=${program}-k${version}" >> "$GITHUB_OUTPUT"
-      - name: Build and push ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: images/${{ matrix.image }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: false
-          build-args: |
-            KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:${{ steps.tag.outputs.kudurru }}
-          tags: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
-      - name: Sign the image by digest
-        run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs-pages.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
