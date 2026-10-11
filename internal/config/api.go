@@ -38,24 +38,14 @@ const (
 // Enabled reports whether the API listener terminates TLS.
 func (t APITLS) Enabled() bool { return t.CertFile != "" || t.Auto == APITLSSelfSigned }
 
-// validate checks the API listener keys.
+// validate checks the API listener keys the metadata cannot express.
 func (l *APIListener) validate() []error {
 	var errs []error
-	switch l.TLS.Auto {
-	case "", APITLSSelfSigned, APITLSOff:
-	default:
-		errs = append(errs, fmt.Errorf("listeners.api.tls.auto: unknown mode %q (selfsigned, off)", l.TLS.Auto))
-	}
 	if (l.TLS.CertFile == "") != (l.TLS.KeyFile == "") {
 		errs = append(errs, fmt.Errorf("listeners.api.tls: certFile and keyFile must be set together"))
 	}
 	if p := l.PathPrefix; p != "" && (!strings.HasPrefix(p, "/") || strings.HasSuffix(p, "/") || strings.ContainsAny(p, "?#{} ")) {
 		errs = append(errs, fmt.Errorf("listeners.api.pathPrefix: %q must start with / and not end with / (e.g. /kudurru)", p))
-	}
-	for _, e := range l.TrustedProxies {
-		if _, err := ParsePrefixOrAddr(e); err != nil {
-			errs = append(errs, fmt.Errorf("listeners.api.trustedProxies: %w", err))
-		}
 	}
 	return errs
 }
