@@ -24,7 +24,7 @@ privilege is in the description.
 | # | Severity | Finding | Reproduction (regression test) | Fix |
 |---|---|---|---|---|
 | S1 | Medium | **SSRF through block list URLs.** BlockList sources were fetched with `http.DefaultTransport`. An operator (any `blocklists.write` holder, not an admin) could point a source at `http://127.0.0.1:8083/` (dnsdist's webserver), the kubelet, a sidecar or `http://169.254.169.254/` (cloud metadata). The leader fetched it and stored the body. Status fields, rule counts and `GET /blocklists/_search` then act as an oracle for the response. | `internal/listfetcher`: `TestFetchRefusesLocalAddresses` covers literal loopback, `localhost`, `[::1]`, IPv4-mapped loopback, `0.0.0.0`, `169.254.169.254` and `fd00:ec2::254`; before the fix the local httptest server was reached. `TestGuardedDialerChecksResolvedAddress` covers names that resolve to loopback, the DNS-rebinding and redirect case. | aa02a40 |
-| S2 | Medium | **A re-created local account inherits the old account's credentials.** Local principals are keyed by name (`local:<name>`), and LoadPrincipal re-read the live account by name. After a user was deleted, its personal API tokens (no expiry by default) and sessions (up to 12 h) came back to life when an account with the same name was created later. They then acted with the new account's rights. With `kudurru admin reset-password --create` the new account is a **builtin admin**, so an ex-user's old token became an admin token. | `internal/auth/stack`: `TestRecreatedUserDoesNotInheritCredentials`, on both store drivers. Before the fix the old token answered 200 with Decision.Path `local` (builtin admin). | f780092 |
+| S2 | Medium | **A re-created local account inherits the old account's credentials.** Local principals are keyed by name (`local:<name>`), and LoadPrincipal re-read the live account by name. After a user was deleted, its personal API tokens (no expiry by default) and sessions (up to 12 h) came back to life when an account with the same name was created later. They then acted with the new account's rights. With `kudurru admin reset-password --create` the new account is a **builtin admin**, so an ex-user's old token became an admin token. | `internal/auth/stack`: `TestRecreatedUserDoesNotInheritCredentials`, on both store drivers. Before the fix the old token answered 200 with Decision.Path `local` (builtin admin). The same held for kudurru service accounts: `internal/auth/tokens` `TestRecreatedServiceAccountDoesNotInheritTokens` (the old token came back with `BuiltinAdmin: true`). | f780092, 2e7e8ad, 46975d9 |
 | S3 | Medium | **Login lockouts counted the reverse proxy, not the client.** `serve.go` built the identity stack without `ClientIP`, so `POST /auth/login` used `RemoteAddr`. Behind `listeners.api.trustedProxies` (ingress, Traefik) every login came from the proxy address. Five failed logins by anyone locked **every** user out for 5 minutes, repeatably (availability). The per-client limit was also meaningless there. | `cmd/kudurru`: `TestLoginLockoutCountsClientsBehindTrustedProxy` wires the stack and the API server the way `serve` does. Before the fix the second client behind the same proxy got 429. | 2c17bc3 |
 | S4 | Medium | **The unauthenticated external-dns webhook listened on all interfaces by default.** `externalDNS.webhook.listen` defaulted to `:8888`. Enabling the webhook (`externalDNS.webhook.enabled: true`) therefore exposed record writes in every primary zone, without authentication, to anyone who could reach the node (a LAN host in the Docker shape). The help text said to keep it on loopback, but the default did not. | `internal/config` `TestAPIDefaults` and `internal/integration/externaldns` `TestOptionsFrom` now pin the loopback default (before: `:8888`). | 3fd49cf |
 | S5 | Low | **The built-in dig forged query-log rows.** `POST /api/v1/dns/query` needs only `stats.read` (every viewer) and runs a query as **any client address the caller names**. The log stage recorded it as that client's traffic: query log rows, top clients and per-client statistics. Under `anonymize_client` even the `api-dig` client name was dropped, so the rows could not be told from real ones. | `internal/stages/log` `TestObserverSkipsSyntheticRequests`; `internal/api` `TestDNSQueryIsSynthetic`. | 9c6ff88 |
@@ -58,6 +58,12 @@ privilege is in the description.
   `users.LoadPrincipal` refuses a credential issued before the account's
   `creationTimestamp`, compared at one-second resolution because iat and
   creation timestamps are whole seconds.
+  - `tokens.Verify` applies the same rule to service-account owners.
+  - The kube driver's `Restore` applies API tokens after every other
+    object. Secrets get new creation timestamps on restore, and the sorted
+    snapshot lists `APIToken/...` first, so without this a restore would
+    have invalidated the tokens. The sqlite driver keeps the recorded
+    timestamps.
 - **S3:** `serve.go` now builds the stack options with `identityOptions`,
   which sets `ClientIP: apiClientIP`. That is the address of the API
   server's RealIP step (`api.ClientIP`), falling back to the transport
@@ -321,8 +327,30 @@ See docs/followups.md, "Security (docs/m5/security.md)":
 ## Shared files touched
 
 All changes are small and additive. The new config key and the
-`Principal` and `Client` fields are additions; the only behaviour changes
-are the two defaults (S1 and S4) and the stricter edge validation (S9).
+`Principal` and `Client` fields are additions. Besides refusing what the
+findings describe, the behaviour changes are the two defaults (S1 and S4)
+and the stricter edge validation (S9). docs/architecture.md is not
+edited, to avoid decision-number collisions with the parallel packages;
+the decision rows to record are under
+[Architecture changes](#architecture-changes).
+
+### Architecture changes
+
+For the integrator to record in §16 and §6.2:
+
+- `blocking.allowLocalListURLs` (node, hostOnly, default false): list URLs
+  may not reach loopback, link-local, unspecified, multicast or metadata
+  addresses. The alternative, a full private-range deny list, was rejected
+  because LAN-hosted lists are a common home setup.
+- `externalDNS.webhook.listen` defaults to `127.0.0.1:8888` (it was
+  `:8888`); the chart keeps `:<port>`.
+- Credentials (sessions, API tokens) are refused when they predate the
+  local user or service account they name; kube restores apply tokens
+  last. The alternative, an owner UID in `TokenOwner`, needs an
+  internal-kind schema change and would not cover sessions.
+- `pipeline.Client.Synthetic`: requests kudurru makes itself are not
+  logged.
+- At most 64 live query streams per node.
 
 | File | Change |
 |---|---|
@@ -332,6 +360,7 @@ are the two defaults (S1 and S4) and the stricter edge validation (S9).
 | `internal/auth/auth.go` | `Principal.CredentialIssuedAt` (S2) |
 | `internal/pipeline/pipeline.go`, `internal/stages/log/log.go` | `Client.Synthetic` and its skip in the log stage (S5) |
 | `internal/edge/topology.go` | stricter `Validate` (S9) |
+| `internal/store/kube/snapshot.go` | `restoreOrder`: API tokens are restored after their owners (S2) |
 | `internal/listfetcher/*_test.go` | fixtures that fetch from httptest on 127.0.0.1 set `AllowLocalAddresses: true` |
 
 ## Test and lint status
