@@ -1,0 +1,27 @@
+# Identical on every node (ha-static, §6.5): distributed by git, ansible or
+# rsync together with objects.d/. Node identity and the PROXYv2 peers come
+# from the environment in docker-compose.yml.
+node:
+  dataDir: /var/lib/kudurru
+store:
+  driver: sqlite
+listeners:
+  dns:
+    - address: "0.0.0.0:5353"          # dnsdist owns :53 (and the VIP)
+      protocols: [udp, tcp]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+  internal: { address: "0.0.0.0:8082" }   # TLS; credentials derived from the shared encryption key
+upstreams:
+  groups:
+    default:
+      servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
+      strategy: parallel_best
+      timeout: 2s
+  bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
+blocking:
+  enabled: true
+log:
+  level: info
+  format: json
