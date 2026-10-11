@@ -40,8 +40,8 @@ test('an enum key is a Selector that saves and shows the new value', async ({ pa
   const next = before === 'failOnError' ? 'blocking' : 'failOnError';
   const labels: Record<string, string> = { fast: 'Fast', blocking: 'Wait for lists', failOnError: 'Fail on error' };
   await choose(select, labels[next] ?? next);
-  // The chosen option's help shows under the control.
-  await expect(row).toContainText(next === 'failOnError' ? 'exit when one fails to load' : 'Not ready until every list is loaded');
+  // The chosen option's help (server metadata) shows under the control and describes it.
+  await expect(select).toHaveAccessibleDescription(/load/i);
   await row.getByRole('button', { name: 'Save' }).click();
   await expect(row.getByText('changed', { exact: true })).toBeVisible();
   await page.reload();

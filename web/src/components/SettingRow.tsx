@@ -186,6 +186,7 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
 
   const control = () => {
     if (lock.locked) {
+      if (k.type === 'bool' && !k.writeOnly) return <Switch label={label} isLabelHidden value={value === true} isDisabled onChange={() => {}} />;
       if (structured && composite) return <ShapeField label={label} isLabelHidden shape={shape} value={toDraft(shape, value)} onChange={() => {}} isDisabled />;
       return composite ? (
         <pre id={id} className="k-pre" aria-readonly="true" tabIndex={0}>

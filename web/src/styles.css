@@ -396,7 +396,7 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-stack-sm { display: flex; flex-direction: column; gap: 6px; }
 
 /* Typed settings, fields and wizards (spa-settings, UX round 2) */
-.k-setting .k-setting-key { font-weight: normal; }
+.k-setting .k-setting-key { font-weight: normal; font-size: var(--text-supporting-size); }
 .k-setting[data-changed='true'] .k-setting-label::after { content: ''; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--color-text-accent, var(--q-cached)); margin-inline-start: 6px; vertical-align: middle; }
 .k-map-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: end; }
 .k-map-row > .k-fieldset { grid-column: 1 / -1; }
