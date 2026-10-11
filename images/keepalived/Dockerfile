@@ -1,17 +1,36 @@
 # kudurru-keepalived: keepalived 2.4.3 compiled from the upstream release
-# tarball (GPL-2.0+, unmodified) plus the kudurru supervisor as PID 1
-# (`kudurru vip run`): render keepalived.conf, `keepalived -t`, exec, SIGHUP on
-# re-render, consume the notify FIFO. docs/architecture.md §3.6, decision D46.
+# tarball (GPL-2.0+, unmodified) plus the kudurru supervisor (`kudurru vip
+# run`): render keepalived.conf, `keepalived -t`, run keepalived as a child,
+# SIGHUP on re-render; keepalived runs `kudurru vip fifo` as its notify FIFO
+# script. docs/architecture.md §3.6, decisions D46/D53.
 #
 # Alpine's keepalived package is still 2.3.x, which lacks auth_hmac (the only
 # authenticated VRRP option), so we build from source. The written source
 # offer required by the GPL is in README.md; the tarball and this build script
 # are kept with every release.
 #
-# UNTESTED: this Dockerfile is the M4 build target and has not been built yet.
+# Process tree: tini (Alpine package, MIT) is PID 1; `kudurru vip run` is its
+# only child, keepalived the supervisor's child (it must run as root: VRRP
+# sockets and VIP management need NET_ADMIN/NET_RAW). Scripts (the VRRP probe,
+# the FIFO consumer) run as keepalived_script under enable_script_security,
+# so /usr/local/bin/kudurru is root-owned and not writable.
+#
+# keepalived_script is uid/gid 953, the uid dnsdist runs as in the
+# kudurru-dnsdist image: the 0640 dnsdist API key on the shared volume is
+# readable by the probe without extra group plumbing.
+#
+# Runtime contract:
+#   /etc/keepalived   keepalived.conf (+ .candidate, .prev), root
+#   /run/kudurru      shared volume `kudurru-run`: vrrp.fifo, weight-<vip>
+#                     track files (written by the local kudurru), vip-state.json
+#                     (written by `kudurru vip fifo`), dnsdist-api.key (read)
+#   /run/secrets/vrrp_hmac_<vrid>  auth_hmac keys, 32-64 ASCII bytes without a
+#                     trailing newline (openssl rand -hex 16 | tr -d '\n')
+# Port 8085/tcp: supervisor /healthz/*, /status, /metrics (kudurru_vip_master).
+# Needs cap_add NET_ADMIN, NET_RAW, NET_BROADCAST and host networking.
 ARG ALPINE_VERSION=3.23
 ARG KEEPALIVED_VERSION=2.4.3
-ARG KEEPALIVED_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+ARG KEEPALIVED_SHA256=a0faef8e401c143487b131b526df7541c1e33d9b8814642fa9dfe8bb250a9632
 ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
 
 FROM ${KUDURRU_IMAGE} AS kudurru
@@ -30,13 +49,19 @@ RUN curl -fsSLo keepalived.tar.gz "https://www.keepalived.org/software/keepalive
  && mkdir -p /out/usr/share/keepalived && cp COPYING /out/usr/share/keepalived/COPYING
 
 FROM alpine:${ALPINE_VERSION}
-RUN apk add --no-cache libnl3 openssl glib pcre2 file iproute2 \
- && addgroup -S keepalived_script && adduser -S -G keepalived_script keepalived_script \
- && mkdir -p /etc/keepalived /run/kudurru
+RUN apk add --no-cache libnl3 openssl glib pcre2 file iproute2 tini \
+ && addgroup -S -g 953 keepalived_script \
+ && adduser -S -D -H -u 953 -G keepalived_script keepalived_script \
+ && mkdir -p /etc/keepalived /run/kudurru /run/secrets \
+ && chmod 1777 /run/kudurru
 COPY --from=build /out/usr/sbin/keepalived /usr/sbin/keepalived
 COPY --from=build /out/usr/share/keepalived/COPYING /usr/share/doc/kudurru-keepalived/COPYING
 COPY --from=kudurru /usr/local/bin/kudurru /usr/local/bin/kudurru
 COPY README.md /usr/share/doc/kudurru-keepalived/README.md
-# keepalived itself must run as root (VRRP, VIP management); scripts run as
-# keepalived_script under enable_script_security.
-ENTRYPOINT ["/usr/local/bin/kudurru", "vip", "run"]
+VOLUME ["/run/kudurru"]
+EXPOSE 8085/tcp
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["/usr/local/bin/kudurru", "health", "--ops-address", "127.0.0.1:8085", "--ready"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/local/bin/kudurru", "vip", "run"]
