@@ -312,7 +312,7 @@ func (s *Server) Handler(scheme string) http.Handler {
 		h.Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(body)
+			_, _ = w.Write(body) //nolint:gosec // html/template output: every value is escaped (TestHandlerHostileHost)
 		}
 		kind := ""
 		if reason != nil {
