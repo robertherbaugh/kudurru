@@ -162,10 +162,12 @@ type Stats struct {
 	Unsupported int
 	// Ignored counts hosts-file boilerplate (localhost and friends).
 	Ignored int
-	// Regexes is the number of compiled regex rules; RegexDropped the number
-	// cut by the hard cap.
-	Regexes      int
-	RegexDropped int
+	// Regexes is the number of compiled regex rules; RegexUnindexed how many
+	// of them have no four-byte literal and run for every lookup;
+	// RegexDropped the number cut by the hard cap.
+	Regexes        int
+	RegexUnindexed int
+	RegexDropped   int
 	// Bytes approximates the heap footprint of the compiled matchers.
 	Bytes int
 	// CompileTime is the wall time Compile spent building this list.
@@ -413,20 +415,24 @@ func (c *compiler) build(l *List) {
 	l.except = c.except.build(true)
 	entries := l.primary.entries() + l.except.entries()
 	l.stats = Stats{
-		Entries:      entries,
-		RuleCount:    c.ruleCount,
-		Exceptions:   l.except.entries(),
-		Duplicates:   added - entries,
-		Invalid:      c.invalid + c.regexInvalid + c.rejected,
-		Unsupported:  c.unsupported,
-		Ignored:      c.ignored,
-		Regexes:      l.primary.regex.Len() + l.except.regex.Len(),
-		RegexDropped: c.regexDropped,
-		Bytes:        l.primary.bytes() + l.except.bytes(),
+		Entries:        entries,
+		RuleCount:      c.ruleCount,
+		Exceptions:     l.except.entries(),
+		Duplicates:     added - entries,
+		Invalid:        c.invalid + c.regexInvalid + c.rejected,
+		Unsupported:    c.unsupported,
+		Ignored:        c.ignored,
+		Regexes:        l.primary.regex.Len() + l.except.regex.Len(),
+		RegexUnindexed: l.primary.regex.Unindexed() + l.except.regex.Unindexed(),
+		RegexDropped:   c.regexDropped,
+		Bytes:          l.primary.bytes() + l.except.bytes(),
 	}
 	l.unsupported = c.unsupportedRules
 	if l.stats.Regexes > matcher.RegexWarnThreshold {
-		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules (more than %d): every one is evaluated for each query the exact and suffix sets do not answer", l.stats.Regexes, matcher.RegexWarnThreshold))
+		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules (more than %d); %d of them have no indexable literal", l.stats.Regexes, matcher.RegexWarnThreshold, l.stats.RegexUnindexed))
+	}
+	if l.stats.RegexUnindexed > matcher.RegexUnindexedWarnThreshold {
+		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules have no literal of 4 or more characters and are evaluated for every query the exact and suffix sets do not answer (more than %d slows lookups noticeably)", l.stats.RegexUnindexed, matcher.RegexUnindexedWarnThreshold))
 	}
 	if c.regexDropped > 0 {
 		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules dropped by the per-list hard cap of %d", c.regexDropped, c.regexCap))

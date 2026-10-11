@@ -26,7 +26,7 @@ func TestRealCorpus(t *testing.T) {
 	}
 	ref := map[string]bool{}
 	if _, err := parser.Parse(strings.NewReader(string(body)), parser.Options{}, func(r parser.Rule) error {
-		ref[r.Pattern] = true
+		ref[strings.Clone(r.Pattern)] = true
 		return nil
 	}); err != nil {
 		t.Fatal(err)

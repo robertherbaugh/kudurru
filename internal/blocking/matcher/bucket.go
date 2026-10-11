@@ -8,15 +8,46 @@ import (
 	"strings"
 )
 
+// fenceStride is the sampling interval of a bucket's fence index.
+const fenceStride = 16
+
 // bucket is a sorted set of fixed-width records stored as one concatenated
 // string, so a set of n records costs n*width bytes plus one string header
 // and is searched with a binary search that never allocates.
+//
+// Large buckets carry a fence: the first eight bytes (big-endian) of every
+// fenceStride-th record. A lookup binary-searches the small, cache-resident
+// fence first and then only one block of fenceStride records, which cuts
+// the cache misses of a hit in a bucket of 10^5 records from about 15 to
+// about 3 for 0.5 bytes per record.
 type bucket struct {
 	data string
 	// tags holds one tag per record, or is empty when every record carries
 	// tag (the common case: a list written in one syntax).
-	tags string
-	tag  uint8
+	tags  string
+	tag   uint8
+	fence []uint64
+}
+
+// prefix8 packs the first eight bytes of s big-endian, zero-padded, so that
+// for strings of equal length prefix8 order agrees with string order.
+func prefix8(s string) uint64 {
+	var v uint64
+	for i := range min(len(s), 8) {
+		v |= uint64(s[i]) << (56 - 8*i)
+	}
+	return v
+}
+
+func (b *bucket) buildFence(w int) {
+	n := len(b.data) / w
+	if n <= 2*fenceStride {
+		return
+	}
+	b.fence = make([]uint64, (n+fenceStride-1)/fenceStride)
+	for k := range b.fence {
+		b.fence[k] = prefix8(b.data[k*fenceStride*w:])
+	}
 }
 
 // find reports the index of key in b; every record in b has width len(key).
@@ -27,6 +58,25 @@ func (b *bucket) find(key string) (int, bool) {
 	}
 	n := len(b.data) / w
 	lo, hi := 0, n
+	if f := b.fence; len(f) > 0 {
+		// Records whose prefix equals p start inside the block before the
+		// first fence >= p and end before the first fence > p.
+		p := prefix8(key)
+		i, j := 0, len(f)
+		for i < j {
+			mid := int(uint(i+j) >> 1)
+			if f[mid] < p {
+				i = mid + 1
+			} else {
+				j = mid
+			}
+		}
+		j = i
+		for j < len(f) && f[j] == p {
+			j++
+		}
+		lo, hi = max(i-1, 0)*fenceStride, min(j*fenceStride, n)
+	}
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
 		if b.data[mid*w:mid*w+w] < key {
@@ -49,7 +99,7 @@ func (b *bucket) tagAt(i int) uint8 {
 }
 
 func (b *bucket) bytes() int {
-	return len(b.data) + len(b.tags)
+	return len(b.data) + len(b.tags) + 8*len(b.fence)
 }
 
 // arena collects the unsorted records of one width while a builder runs.
@@ -113,5 +163,6 @@ func (a *arena) build(w int) (bucket, int) {
 			break
 		}
 	}
+	b.buildFence(w)
 	return b, len(tags)
 }

@@ -140,7 +140,7 @@ func TestCompileStats(t *testing.T) {
 	st := l.Stats()
 	want := Stats{
 		Entries: 6, RuleCount: 11, Exceptions: 1, Duplicates: 5,
-		Invalid: 1, Unsupported: 1, Ignored: 1, Regexes: 1,
+		Invalid: 1, Unsupported: 1, Ignored: 1, Regexes: 1, RegexUnindexed: 1,
 	}
 	st.Bytes, st.CompileTime = 0, 0
 	if st != want {
@@ -155,6 +155,23 @@ func TestCompileStats(t *testing.T) {
 	}
 	if l.Name() != "s" || l.Mode() != ModeBlock {
 		t.Error("Name/Mode")
+	}
+}
+
+// TestCompiledEntriesDoNotAlias compiles a list whose first rules are
+// followed by enough lines to overwrite the parser's read buffer many times
+// and checks that the compiled entries, regex sources included, are intact.
+func TestCompiledEntriesDoNotAlias(t *testing.T) {
+	body := "/^kept-regex[0-9]\\./\n||kept.example^\nkept-exact.example\n" + strings.Repeat("0.0.0.0 filler-line-overwriting-the-buffer.example\n", 20000)
+	l := mustCompile(t, Spec{Name: "a", Mode: ModeBlock, Sources: []Source{BytesSource("s", parser.FormatAdblock, []byte(body))}})
+	for name, rule := range map[string]string{
+		"kept-regex1.example": `/^kept-regex[0-9]\./`,
+		"x.kept.example":      "||kept.example^",
+		"kept-exact.example":  "kept-exact.example",
+	} {
+		if m, ok := l.Match(name); !ok || m.Rule() != rule {
+			t.Errorf("Match(%q) = %q, %v; want %q", name, m.Rule(), ok, rule)
+		}
 	}
 }
 
@@ -187,6 +204,21 @@ func TestRegexCapAndWarnings(t *testing.T) {
 	unlimited, _ := Compile(spec, nil, CompileOptions{RegexHardCap: -1})
 	if st := unlimited.Stats(); st.Regexes != 601 || st.RegexDropped != 0 {
 		t.Fatalf("unlimited: Regexes = %d, RegexDropped = %d", st.Regexes, st.RegexDropped)
+	}
+}
+
+func TestUnindexedRegexWarning(t *testing.T) {
+	var lines []string
+	for i := range 60 {
+		lines = append(lines, fmt.Sprintf(`^[a-z]{%d}\.`, i+1))
+	}
+	lines = append(lines, `^long-literal[0-9]+\.`)
+	l := mustCompile(t, Spec{Name: "re", Mode: ModeBlock, Sources: []Source{LinesSource("s", parser.FormatRegex, lines)}})
+	if st := l.Stats(); st.Regexes != 61 || st.RegexUnindexed != 60 {
+		t.Fatalf("Regexes = %d, RegexUnindexed = %d", st.Regexes, st.RegexUnindexed)
+	}
+	if w := strings.Join(l.Warnings(), "\n"); !strings.Contains(w, "60 regex rules have no literal") {
+		t.Errorf("warnings = %q", w)
 	}
 }
 

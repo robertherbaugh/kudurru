@@ -111,6 +111,10 @@ func (s Syntax) Render(pattern string, exception bool) string {
 // Rule is one compiled-able rule. Pattern is the normalised name (or base
 // name for suffix rules), the RE2 source for regex rules, or the address
 // text for IP rules.
+//
+// Pattern may share memory with the parser's read buffer: it is valid only
+// until the callback that received the Rule returns. Use strings.Clone to
+// keep it (the matcher builders copy what they store).
 type Rule struct {
 	Kind      Kind
 	Syntax    Syntax

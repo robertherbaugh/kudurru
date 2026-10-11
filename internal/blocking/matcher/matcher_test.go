@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/netip"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -238,6 +240,59 @@ func TestRandomAgainstReference(t *testing.T) {
 	}
 }
 
+// TestBucketFence checks the fence index where it is easy to get wrong:
+// many records sharing their first eight bytes (so equal fence values span
+// several blocks), records shorter than eight bytes, and keys before,
+// between and after every record.
+func TestBucketFence(t *testing.T) {
+	tests := []struct {
+		name    string
+		records func(i int) string
+		n       int
+	}{
+		{"shared prefix", func(i int) string { return fmt.Sprintf("aaaaaaaa%04d", i*2) }, 1000},
+		{"mixed prefixes", func(i int) string {
+			return fmt.Sprintf("%c%c%c%c%c%c%c%c%04d", 'a'+i%3, 'a', 'a', 'a', 'a', 'a', 'a', 'a', i*2)
+		}, 1000},
+		{"short records", func(i int) string { return fmt.Sprintf("%03d", i*2) }, 400},
+		{"tiny bucket", func(i int) string { return fmt.Sprintf("k%02d", i*2) }, 20},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var a arena
+			in := map[string]bool{}
+			for i := range tc.n {
+				r := tc.records(i)
+				a.add(r, 1)
+				in[r] = true
+			}
+			w := len(tc.records(0))
+			b, n := a.build(w)
+			if n != len(in) {
+				t.Fatalf("built %d records, want %d", n, len(in))
+			}
+			if tc.n > 2*fenceStride && len(b.fence) == 0 {
+				t.Fatal("no fence for a large bucket")
+			}
+			for i := range 2*tc.n + 2 {
+				for _, probe := range []string{tc.records(i / 2), strings.Repeat("\x00", w), strings.Repeat("~", w)} {
+					if len(probe) != w {
+						continue
+					}
+					_, ok := b.find(probe)
+					if ok != in[probe] {
+						t.Fatalf("find(%q) = %v, want %v", probe, ok, in[probe])
+					}
+				}
+				odd := tc.records(i)[:w-1] + "1" // never present: records end in an even digit
+				if _, ok := b.find(odd); ok {
+					t.Fatalf("find(%q) = true", odd)
+				}
+			}
+		})
+	}
+}
+
 func TestLookupsDoNotAllocate(t *testing.T) {
 	var eb ExactBuilder
 	var sb SuffixBuilder
@@ -341,6 +396,68 @@ func TestRegex(t *testing.T) {
 	}
 	if r.Bytes() <= 0 {
 		t.Error("Bytes() <= 0")
+	}
+}
+
+// TestRegexIndexAgainstScan cross-checks the gram index with the linear
+// scan, including first-added-wins ordering, expressions without a literal,
+// and the overflow fallback when one gram collects many expressions.
+func TestRegexIndexAgainstScan(t *testing.T) {
+	r := rand.New(rand.NewPCG(3, 4)) //nolint:gosec // deterministic test data
+	word := func() string {
+		const a = "abcdef.-"
+		n := 2 + r.IntN(6)
+		var sb strings.Builder
+		for range n {
+			sb.WriteByte(a[r.IntN(len(a))])
+		}
+		return sb.String()
+	}
+	var b RegexBuilder
+	for i := range 400 {
+		var src string
+		switch i % 4 {
+		case 0:
+			src = regexp.QuoteMeta(word()) + `[0-9]*\.` + regexp.QuoteMeta(word())
+		case 1:
+			src = "^" + regexp.QuoteMeta(word()) + "(x|y)?" + regexp.QuoteMeta(word())
+		case 2:
+			src = `[a-f]{3}` // no literal: always run
+		default:
+			src = regexp.QuoteMeta("same") + "-" + strconv.Itoa(i) // many share the gram "same"
+		}
+		_ = b.Add(src, uint8(i%7))
+	}
+	re := b.Build()
+	if re.Unindexed() == 0 || re.Unindexed() == re.Len() {
+		t.Fatalf("Unindexed() = %d of %d", re.Unindexed(), re.Len())
+	}
+	for range 20000 {
+		name := word() + word() + word()
+		if r.IntN(10) == 0 {
+			name = "same-" + strconv.Itoa(r.IntN(400)) + name
+		}
+		src, tag, ok := re.Match(name)
+		wsrc, wtag, wok := re.scan(name)
+		if src != wsrc || tag != wtag || ok != wok {
+			t.Fatalf("Match(%q) = (%q, %d, %v), scan = (%q, %d, %v)", name, src, tag, ok, wsrc, wtag, wok)
+		}
+	}
+
+	// 200 expressions whose only literal is "same" share one gram, so a name
+	// containing it overflows the candidate buffer and takes the scan path.
+	var ob RegexBuilder
+	for n := 200; n >= 1; n-- {
+		if err := ob.Add(`same[0-9]{`+strconv.Itoa(n)+`}$`, uint8(n%256)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	over := ob.Build()
+	if src, _, ok := over.Match("x.same" + strings.Repeat("7", 150)); !ok || src != `same[0-9]{150}$` {
+		t.Fatalf("overflow Match = %q, %v", src, ok)
+	}
+	if _, _, ok := over.Match("x.same1x"); ok {
+		t.Fatal("overflow Match matched a non-matching name")
 	}
 }
 

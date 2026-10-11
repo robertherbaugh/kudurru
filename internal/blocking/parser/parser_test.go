@@ -14,6 +14,7 @@ func parseAll(t *testing.T, src string, opts Options) ([]Rule, *Result) {
 	t.Helper()
 	var rules []Rule
 	res, err := Parse(strings.NewReader(src), opts, func(r Rule) error {
+		r.Pattern = strings.Clone(r.Pattern) // Pattern is only valid during the callback
 		rules = append(rules, r)
 		return nil
 	})
@@ -426,6 +427,30 @@ func TestUnsupportedKeepsModifiers(t *testing.T) {
 	}
 	if !reflect.DeepEqual(u, want) {
 		t.Errorf("got %+v\nwant %+v", u, want)
+	}
+}
+
+// TestRetainedStringsDoNotAlias checks that everything the parser keeps
+// after the callback returns survives the read buffer being overwritten.
+func TestRetainedStringsDoNotAlias(t *testing.T) {
+	head := "||kept.example^$dnstype=AAAA\nbad!name.example\n# Title: kept title\n"
+	src := head + strings.Repeat("0.0.0.0 filler-line-overwriting-the-buffer.example\n", 20000)
+	_, res, err := func() ([]Rule, *Result, error) {
+		res, err := Parse(strings.NewReader(src), Options{Format: FormatAdblock}, nil)
+		return nil, res, err
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := res.UnsupportedRules[0]
+	if u.Text != "||kept.example^$dnstype=AAAA" || u.Pattern != "||kept.example^" || u.Modifiers[0] != (Modifier{Name: "dnstype", Value: "AAAA"}) {
+		t.Errorf("unsupported rule corrupted: %+v", u)
+	}
+	if d := res.InvalidSamples[0]; d.Text != "bad!name.example" {
+		t.Errorf("invalid sample corrupted: %+v", d)
+	}
+	if res.Title != "kept title" {
+		t.Errorf("title corrupted: %q", res.Title)
 	}
 }
 

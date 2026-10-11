@@ -2,12 +2,17 @@
 // (docs/architecture.md §7.3), cheapest first:
 //
 //  1. Exact: lower-cased names bucketed by length, each bucket one sorted
-//     concatenated string searched with a binary search.
+//     concatenated string searched with a binary search; a maphash bit
+//     filter in front answers most misses with one memory access, and a
+//     sampled fence index (8 bytes per 16 records) keeps the binary search
+//     of a hit inside one block.
 //  2. Suffix: "name or any subdomain of name" entries (||x^, *.x and
-//     hosts-style entries with subdomain semantics), bucketed by TLD with a
-//     maphash bit filter in front; lookups walk parent labels broadest-first.
-//  3. Regex: a capped linear scan of RE2 expressions with a required-literal
-//     prefilter.
+//     hosts-style entries with subdomain semantics), bucketed by TLD with
+//     the same buckets and a bit filter over the full base names; lookups
+//     walk parent labels broadest-first.
+//  3. Regex: RE2 expressions (capped per list) indexed by a four-byte gram
+//     of their required literal, so a lookup runs only the expressions
+//     whose gram occurs in the name plus the few without a usable literal.
 //
 // IPSet adds the response-side IP entries (bare IP addresses in a list).
 //

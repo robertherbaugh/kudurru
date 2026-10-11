@@ -11,6 +11,7 @@ import (
 	"regexp/syntax"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // Errors returned by Parse for bodies that are not lists at all; callers
@@ -54,7 +55,7 @@ type Options struct {
 
 // Parse reads a list from r and calls emit for every rule, in order. A
 // non-nil error from emit stops parsing and is returned. emit may be nil to
-// only count.
+// only count. Rule.Pattern is valid only until emit returns.
 func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 	if !opts.Format.Valid() {
 		return nil, fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
@@ -222,7 +223,7 @@ func (p *state) process(n int, raw []byte, tooLong bool) error {
 	}
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, t)
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, newline)
-	line := string(t)
+	line := bufferString(t)
 	if p.format == FormatRegex {
 		return p.regexLine(n, line)
 	}
@@ -513,10 +514,17 @@ func (p *state) rule(r Rule) error {
 	return p.emit(r)
 }
 
+// unsupported counts u and retains a copy that no longer aliases the read
+// buffer.
 func (p *state) unsupported(u UnsupportedRule) {
 	p.res.Unsupported++
 	p.res.UnsupportedReasons[u.Reason]++
 	if len(p.res.UnsupportedRules) < p.opts.KeepUnsupported {
+		u.Text, u.Pattern = strings.Clone(u.Text), strings.Clone(u.Pattern)
+		for i := range u.Modifiers {
+			u.Modifiers[i].Name = strings.Clone(u.Modifiers[i].Name)
+			u.Modifiers[i].Value = strings.Clone(u.Modifiers[i].Value)
+		}
 		p.res.UnsupportedRules = append(p.res.UnsupportedRules, u)
 	}
 }
@@ -525,8 +533,21 @@ func (p *state) invalid(n int, text, reason, detail string) {
 	p.res.Invalid++
 	p.res.InvalidReasons[reason]++
 	if len(p.res.InvalidSamples) < p.opts.KeepInvalid {
-		p.res.InvalidSamples = append(p.res.InvalidSamples, Diagnostic{Line: n, Text: text, Reason: reason, Detail: detail})
+		p.res.InvalidSamples = append(p.res.InvalidSamples, Diagnostic{Line: n, Text: strings.Clone(text), Reason: reason, Detail: strings.Clone(detail)})
 	}
+}
+
+// bufferString returns a string that shares b's memory instead of copying
+// it. The parser uses it for the line being processed, which lives in the
+// bufio buffer until the next read: rules handed to the callback may alias
+// it (Rule.Pattern is documented as valid only during the callback), and
+// everything the parser retains is cloned. This removes one allocation per
+// line, about a third of the garbage of a list compile.
+func bufferString(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return unsafe.String(&b[0], len(b)) //nolint:gosec // lifetime documented above; retained strings are cloned
 }
 
 // trimTerminator removes a closing "^|", "^" or "|" and reports whether one
