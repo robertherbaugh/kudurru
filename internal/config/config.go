@@ -446,52 +446,19 @@ func Load(path string, environ []string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate checks invariants the schema cannot express.
+// Validate checks every key against its metadata (enum, bounds, format
+// and the shape of list and map values; shape.go), then the invariants
+// the metadata cannot express. Errors name the key; the metadata ones are
+// *FieldError.
 func (c *Config) Validate() error {
-	var errs []error
+	errs := c.validateSchema()
 	if len(c.Listeners.DNS) == 0 {
 		errs = append(errs, errors.New("listeners.dns: at least one listener is required"))
 	}
-	for i, l := range c.Listeners.DNS {
-		if l.Address == "" {
-			errs = append(errs, fmt.Errorf("listeners.dns[%d].address is required", i))
-		}
-		for _, p := range l.Protocols {
-			if p != "udp" && p != "tcp" {
-				errs = append(errs, fmt.Errorf("listeners.dns[%d]: unsupported protocol %q (udp, tcp)", i, p))
-			}
-		}
-	}
 	errs = append(errs, c.Listeners.validateTLS()...)
 	errs = append(errs, c.Listeners.validateProxyProtocol()...)
-	switch c.Store.Driver {
-	case "sqlite", "kube":
-	default:
-		errs = append(errs, fmt.Errorf("store.driver: unknown driver %q (sqlite, kube)", c.Store.Driver))
-	}
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
-	}
-	for name, g := range c.Upstreams.Groups {
-		if len(g.Servers) == 0 {
-			errs = append(errs, fmt.Errorf("upstreams.groups.%s: servers is empty", name))
-		}
-		switch g.Strategy {
-		case "", "parallel_best", "strict", "random", "rtt_weighted":
-		default:
-			errs = append(errs, fmt.Errorf("upstreams.groups.%s: unknown strategy %q", name, g.Strategy))
-		}
-	}
-	switch c.Upstreams.ECS.Mode {
-	case "", "strip", "forward", "add":
-	default:
-		errs = append(errs, fmt.Errorf("upstreams.ecs.mode: unknown mode %q (strip, forward, add)", c.Upstreams.ECS.Mode))
-	}
-	if p := c.Upstreams.ECS.IPv4Prefix; p < 0 || p > 32 {
-		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv4Prefix: %d is outside 0-32", p))
-	}
-	if p := c.Upstreams.ECS.IPv6Prefix; p < 0 || p > 128 {
-		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv6Prefix: %d is outside 0-128", p))
 	}
 	errs = append(errs, c.Cache.validate()...)
 	errs = append(errs, c.Blocking.validate()...)
@@ -500,64 +467,37 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}
 	errs = append(errs, validateTSIGKeys(c.TSIGKeys)...)
-	if src := c.Notify.Source; src != "" {
-		if a, err := netip.ParseAddr(src); err != nil || a.Zone() != "" {
-			errs = append(errs, fmt.Errorf("notify.source: %q is not an IP address", src))
-		}
-	}
-	errs = append(errs, c.RateLimit.validate()...)
 	errs = append(errs, c.Listeners.API.validate()...)
 	errs = append(errs, c.ExternalDNS.validate()...)
 	errs = append(errs, c.Auth.validate()...)
-	errs = append(errs, c.RBAC.validate()...)
-	if c.Listeners.Sockets < 0 {
-		errs = append(errs, fmt.Errorf("listeners.sockets: %d is negative", c.Listeners.Sockets))
-	}
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
 		}
 	}
-	switch strings.SplitN(c.Log.Level, ",", 2)[0] {
-	case "debug", "info", "warn", "error":
-	default:
-		errs = append(errs, fmt.Errorf("log.level: unknown level %q", c.Log.Level))
-	}
 	return errors.Join(errs...)
 }
 
-// validateTSIGKeys checks the tsigKeys list: a name, a supported algorithm
-// and a secret file per key, names unique case-insensitively. The files
-// are read when the DNS server builds its keyring.
+// validateTSIGKeys checks that tsigKeys names are unique
+// case-insensitively; the metadata requires a name, a supported algorithm
+// and a secret file per key. The files are read when the DNS server
+// builds its keyring.
 func validateTSIGKeys(keys []TSIGKey) []error {
 	var errs []error
 	seen := map[string]bool{}
 	for i, k := range keys {
 		name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(k.Name), "."))
-		if name == "" {
-			errs = append(errs, fmt.Errorf("tsigKeys[%d].name is required", i))
-		} else if seen[name] {
+		if name != "" && seen[name] {
 			errs = append(errs, fmt.Errorf("tsigKeys[%d]: key %q is defined twice", i, k.Name))
 		}
 		seen[name] = true
-		switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(k.Algorithm), ".")) {
-		case "hmac-sha256", "hmac-sha512":
-		default:
-			errs = append(errs, fmt.Errorf("tsigKeys[%d].algorithm: %q is not supported (hmac-sha256, hmac-sha512)", i, k.Algorithm))
-		}
-		if k.SecretFile == "" {
-			errs = append(errs, fmt.Errorf("tsigKeys[%d].secretFile is required", i))
-		}
 	}
 	return errs
 }
 
-// validate checks the cache bounds.
+// validate checks the cache durations.
 func (c *Cache) validate() []error {
 	var errs []error
-	if c.MaxEntries < 0 {
-		errs = append(errs, fmt.Errorf("cache.maxEntries: %d is negative", c.MaxEntries))
-	}
 	for _, d := range []struct {
 		key string
 		v   Duration
@@ -573,39 +513,24 @@ func (c *Cache) validate() []error {
 	if c.MaxTTL > 0 && c.MinTTL > c.MaxTTL {
 		errs = append(errs, fmt.Errorf("cache.minTTL (%s) exceeds cache.maxTTL (%s)", c.MinTTL, c.MaxTTL))
 	}
-	if c.Prefetch.Threshold < 0 {
-		errs = append(errs, fmt.Errorf("cache.prefetch.threshold: %d is negative", c.Prefetch.Threshold))
-	}
 	return errs
 }
 
-// validate checks the blocking keys.
-
-// validateTLS checks the dot, doh, doq and doh3 listener lists.
+// validateTLS checks the doh and doh3 paths; the metadata requires an
+// address and a certificate and key for every dot, doh, doq and doh3
+// listener.
 func (l *Listeners) validateTLS() []error {
 	var errs []error
-	check := func(key string, i int, address, path string, tls TLSFiles, http bool) {
-		if address == "" {
-			errs = append(errs, fmt.Errorf("listeners.%s[%d].address is required", key, i))
-		}
-		if tls.CertFile == "" || tls.KeyFile == "" {
-			errs = append(errs, fmt.Errorf("listeners.%s[%d].tls: certFile and keyFile are required", key, i))
-		}
-		if http && path != "" && !strings.HasPrefix(path, "/") {
+	check := func(key string, i int, path string) {
+		if path != "" && !strings.HasPrefix(path, "/") {
 			errs = append(errs, fmt.Errorf("listeners.%s[%d].path %q must start with /", key, i, path))
 		}
 	}
-	for i, x := range l.DoT {
-		check("dot", i, x.Address, "", x.TLS, false)
-	}
-	for i, x := range l.DoQ {
-		check("doq", i, x.Address, "", x.TLS, false)
-	}
 	for i, x := range l.DoH {
-		check("doh", i, x.Address, x.Path, x.TLS, true)
+		check("doh", i, x.Path)
 	}
 	for i, x := range l.DoH3 {
-		check("doh3", i, x.Address, x.Path, x.TLS, true)
+		check("doh3", i, x.Path)
 	}
 	return errs
 }

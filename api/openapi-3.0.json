@@ -3586,12 +3586,142 @@
         ],
         "type": "object"
       },
+      "SettingField": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "help": {
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "int",
+              "bool",
+              "duration",
+              "bytes",
+              "string[]",
+              "list",
+              "map",
+              "object"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
       "SettingKey": {
         "additionalProperties": false,
         "properties": {
           "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "envLocked": {
             "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
           },
           "help": {
             "type": "string"
@@ -3599,7 +3729,41 @@
           "hostOnly": {
             "type": "boolean"
           },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
           "path": {
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
             "type": "string"
           },
           "restartRequired": {
@@ -3616,6 +3780,9 @@
             "type": "string"
           },
           "value": {},
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
           "writeOnly": {
             "type": "boolean"
           }
@@ -3631,6 +3798,111 @@
           "restartRequired",
           "writeOnly",
           "value"
+        ],
+        "type": "object"
+      },
+      "SettingOption": {
+        "additionalProperties": false,
+        "properties": {
+          "help": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "type": "object"
+      },
+      "SettingShape": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "int",
+              "bool",
+              "duration",
+              "bytes",
+              "string[]",
+              "list",
+              "map",
+              "object"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },

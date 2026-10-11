@@ -71,21 +71,11 @@ const (
 	LocalLoginDisabled   = "disabled"
 )
 
-// validate checks the auth keys. The identity provider and binding entries
-// get a shallow check here and a full one when internal/auth/oidc and
-// internal/rbac build them.
+// validate checks the auth keys the metadata cannot express. The identity
+// provider and binding entries get a shallow check from the metadata and
+// a full one when internal/auth/oidc and internal/rbac build them.
 func (a *Auth) validate() []error {
 	var errs []error
-	switch a.LocalLogin {
-	case LocalLoginEnabled, LocalLoginAdminsOnly, LocalLoginDisabled:
-	default:
-		errs = append(errs, fmt.Errorf("auth.localLogin: unknown mode %q (enabled, admins-only, disabled)", a.LocalLogin))
-	}
-	switch a.Session.Secure {
-	case "auto", "always", "never":
-	default:
-		errs = append(errs, fmt.Errorf("auth.session.secure: unknown mode %q (auto, always, never)", a.Session.Secure))
-	}
 	if a.Session.IdleTimeout.Std() < time.Minute {
 		errs = append(errs, fmt.Errorf("auth.session.idleTimeout: %s is shorter than 1m", a.Session.IdleTimeout))
 	}
@@ -95,40 +85,16 @@ func (a *Auth) validate() []error {
 	if a.Tokens.MaxLifetime < 0 {
 		errs = append(errs, fmt.Errorf("auth.tokens.maxLifetime: %s is negative", a.Tokens.MaxLifetime))
 	}
-	switch a.Kubernetes.Mode {
-	case "sar":
-	case "impersonate":
+	if a.Kubernetes.Mode == "impersonate" {
 		errs = append(errs, errors.New("auth.kubernetes.mode: impersonate is planned for v0.2 (D55: the impersonate grant makes kudurru cluster-admin-equivalent); v0.1 supports only sar"))
-	default:
-		errs = append(errs, fmt.Errorf("auth.kubernetes.mode: unknown mode %q (sar)", a.Kubernetes.Mode))
-	}
-	if a.AdminSocket.Group < -1 {
-		errs = append(errs, fmt.Errorf("auth.adminSocket.group: %d is not a gid (-1 for none)", a.AdminSocket.Group))
 	}
 	seen := map[string]bool{}
 	for i, p := range a.IdentityProviders {
 		id, _ := p["id"].(string)
-		switch {
-		case id == "":
-			errs = append(errs, fmt.Errorf("auth.identityProviders[%d].id is required", i))
-		case seen[id]:
+		if id != "" && seen[id] {
 			errs = append(errs, fmt.Errorf("auth.identityProviders[%d]: id %q is defined twice", i, id))
 		}
 		seen[id] = true
-	}
-	return errs
-}
-
-// validate checks the binding entries shallowly.
-func (r *RBAC) validate() []error {
-	var errs []error
-	for i, b := range r.Bindings {
-		if role, _ := b["role"].(string); role == "" {
-			errs = append(errs, fmt.Errorf("rbac.bindings[%d].role is required", i))
-		}
-		if subs, _ := b["subjects"].([]any); len(subs) == 0 {
-			errs = append(errs, fmt.Errorf("rbac.bindings[%d].subjects: at least one subject is required", i))
-		}
 	}
 	return errs
 }

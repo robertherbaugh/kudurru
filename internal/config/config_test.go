@@ -143,7 +143,7 @@ func TestLoadRejectsBadInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid config must be rejected")
 	}
-	for _, want := range []string{"servers is empty", "unknown strategy", "unknown group", "unknown level"} {
+	for _, want := range []string{"upstreams.groups[default].servers is required", "upstreams.groups[default].strategy: unknown value \"fastest\"", "unknown group", "log.level: unknown value \"loud\""} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q: %v", want, err)
 		}
@@ -219,9 +219,9 @@ listeners:
 	}
 	for _, want := range []string{
 		"listeners.dot[0].address is required",
-		"listeners.dot[0].tls: certFile and keyFile are required",
+		"listeners.dot[0].tls.keyFile is required",
 		`listeners.doh[0].path "dns-query" must start with /`,
-		"listeners.doq[0].tls: certFile and keyFile are required",
+		"listeners.doq[0].tls.certFile is required",
 		"proxyProtocolSecretFile is required when proxyProtocolFrom contains a non-loopback peer (10.0.0.11/32)",
 	} {
 		if !strings.Contains(err.Error(), want) {

@@ -3,7 +3,7 @@
 // no failed query, no console error or uncaught exception, and no
 // undefined/NaN/[object Object] in the content.
 import { expect, expectRendered, main, settle, test } from './fixtures';
-import { ZONE } from './support/kudurru';
+import { BLOCKLIST, ZONE } from './support/kudurru';
 
 /** Every navigation entry (path, sidebar label). */
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   ['/queries', 'Query log'],
   ['/history', 'Long-term'],
   ['/lists', 'Lists'],
+  ['/domains', 'Domains'],
   ['/groups', 'Groups'],
   ['/clients', 'Clients'],
   ['/policies', 'Policies'],
@@ -24,7 +25,7 @@ const NAV = [
 ] as const;
 
 /** Views that are not navigation entries of their own. */
-const MORE = [`/zones/${ZONE.object}`, '/settings?view=expert', '/access?tab=iam', '/access?tab=audit'];
+const MORE = [`/zones/${ZONE.object}`, `/lists/default/${BLOCKLIST.name}`, '/lists/new', '/settings?view=expert', '/access?tab=iam', '/access?tab=audit'];
 
 test('the sidebar links exactly the pages this suite covers', async ({ page }) => {
   await page.goto('/');

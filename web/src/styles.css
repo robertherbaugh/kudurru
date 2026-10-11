@@ -365,6 +365,7 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-linklike:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; border-radius: 2px; }
 
 .k-col-check { inline-size: 36px; }
+.k-col-line { inline-size: 64px; }
 .k-col-bar { inline-size: 30%; min-inline-size: 80px; }
 .k-row-actions { text-align: end; overflow: visible !important; }
 .k-log-empty { padding: var(--k-gap); margin: 0; }
@@ -482,3 +483,25 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-stack-sm { display: flex; flex-direction: column; gap: 6px; }
 .k-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-block-size: 280px; overflow-y: auto; }
 .k-checklist label { display: flex; align-items: center; gap: 8px; font-weight: normal; }
+
+/* Lists, list page, new-list wizard, Domains ---------------------------- */
+
+/* Current-state facts of an object page: label over value, as many per row as fit. */
+.k-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 20px; margin: 0; }
+.k-facts dt { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
+.k-facts dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* A disabled source or list keeps its row, in secondary text. */
+.k-table tr.k-row-off td { color: var(--color-text-secondary); }
+.k-source-kind { display: inline-flex; color: var(--color-text-secondary); }
+.k-grow { flex: 1 1 320px; min-inline-size: 0; }
+.k-panel.k-ui-list { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px 12px; }
+.k-row-link { font-weight: var(--font-weight-semibold, 600); text-decoration: none; }
+.k-row-link:hover { text-decoration: underline; }
+/* Radio and checkbox choices as cards (wizard type and curated lists). */
+.k-choice-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--k-gap-sm); border: 0; padding: 0; margin: 0; }
+.k-choice-card { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); cursor: pointer; font-weight: normal; }
+.k-choice-card:hover { background: var(--k-hover); }
+.k-choice-card[data-selected='true'] { border-color: var(--color-accent); background: var(--k-selected); }
+.k-choice-card:focus-within { outline: 2px solid var(--k-focus); outline-offset: 1px; }
+.k-choice-card > input { margin-block-start: 3px; flex: none; }
+.k-curated { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--k-gap-sm); }

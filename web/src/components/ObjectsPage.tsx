@@ -2,7 +2,8 @@
 // search, enabled switches and comments on every row, "managed by" badges,
 // multi-select with :batchDelete, and the generated create/edit form in a
 // dialog. Objects managed elsewhere are listed but not selectable and open
-// read-only.
+// read-only. Kinds with their own page and wizard (Lists) pass detailPath
+// and createPath: names link to the page and "New" opens the wizard.
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Switch } from '@astryxdesign/core/Switch';
@@ -13,7 +14,7 @@ import { qk, useApi, useCan } from '../api/context';
 import type { AnyObject } from '../api/types';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, withMeta } from '../lib/managedBy';
 import type { KindSchema } from '../lib/objectSchemas';
-import { useSearchParams } from '../lib/router';
+import { Link, useSearchParams } from '../lib/router';
 import { ErrorBanner, Loading, useNotify } from './Feedback';
 import { FormDialog } from './FormDialog';
 import { ManagedBadge } from './ManagedBadge';
@@ -38,13 +39,17 @@ export interface ObjectsPageProps<T extends AnyObject> {
   children?: ReactNode;
   /** Called after a create or edit was saved. */
   onSaved?: (obj: AnyObject) => void;
+  /** The object's own page: the name links there instead of opening the form dialog. */
+  detailPath?: (obj: T) => string;
+  /** The create wizard's route: "New" goes there instead of opening the form dialog. */
+  createPath?: string;
 }
 
 function key(o: AnyObject): string {
   return `${o.metadata.namespace ?? ''}/${o.metadata.name}`;
 }
 
-export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved }: ObjectsPageProps<T>) {
+export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, createPath }: ObjectsPageProps<T>) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -120,7 +125,13 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
         </div>
         <div className="k-actions">
           {headerActions}
-          <Button label={`New ${schema.singular}`} variant="primary" isDisabled={!canWrite} tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`} onClick={() => setEditing('new')} />
+          <Button
+            label={`New ${schema.singular}`}
+            variant="primary"
+            isDisabled={!canWrite}
+            tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`}
+            {...(createPath ? { href: createPath } : { onClick: () => setEditing('new') })}
+          />
         </div>
       </div>
       {children}
@@ -191,9 +202,15 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
                       />
                     </td>
                     <td>
-                      <button type="button" className="k-linklike" onClick={() => setEditing(o)}>
-                        {o.metadata.name}
-                      </button>
+                      {detailPath ? (
+                        <Link href={detailPath(o)} className="k-row-link">
+                          {o.metadata.name}
+                        </Link>
+                      ) : (
+                        <button type="button" className="k-linklike" onClick={() => setEditing(o)}>
+                          {o.metadata.name}
+                        </button>
+                      )}
                       {o.metadata.namespace && o.metadata.namespace !== 'default' ? <span className="k-muted k-small"> ({o.metadata.namespace})</span> : null}
                       {comment ? <div className="k-muted k-small">{comment}</div> : null}
                     </td>
@@ -217,7 +234,11 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
                     </td>
                     <td className="k-nowrap">
                       {rowActions?.(o)}
-                      <Button label={own.editable ? 'Edit' : 'View'} size="sm" variant="ghost" onClick={() => setEditing(o)} />
+                      {detailPath ? (
+                        <Button label="Open" size="sm" variant="ghost" href={detailPath(o)} />
+                      ) : (
+                        <Button label={own.editable ? 'Edit' : 'View'} size="sm" variant="ghost" onClick={() => setEditing(o)} />
+                      )}
                     </td>
                   </tr>
                 );
