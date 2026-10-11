@@ -1,0 +1,2 @@
+NAME   ZONE               NAMES   READY   AGE
+web    home-example-com   2       True    24h

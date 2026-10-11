@@ -1,0 +1,2 @@
+NAME               ZONE                TYPE      SERIAL       RECORDS   READY   MANAGED-BY   AGE
+home-example-com   home.example.com.   primary   2026100101   12        True    api          10d

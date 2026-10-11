@@ -1,0 +1,16 @@
+Name:         lab-example-com
+Kind:         DNSZone
+API Version:  kudurru.io/v1alpha1
+Labels:       <none>
+Annotations:  kudurru.io/managed-by=file:objects.d/zones.yaml
+Managed By:   file:objects.d/zones.yaml
+Created:      2026-10-11T09:00:00Z (3h ago)
+Spec:
+  type: forward
+  zoneName: lab.example.com.
+Conditions:
+  TYPE    STATUS   REASON       AGE   MESSAGE
+  Ready   False    NoUpstream   30m   no forwarders
+Diagnoses:
+  SEVERITY   REASON       MESSAGE                          HINT
+  error      NoUpstream   forward zone has no forwarders   set spec.forward.servers

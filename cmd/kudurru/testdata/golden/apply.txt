@@ -1,0 +1,4 @@
+dnszone/new-example-com created
+dnsrecordset/default/web unchanged
+blocklist/default/ads updated
+clientgroup/home/iot created

@@ -1,0 +1,3 @@
+NAME               ZONE                TYPE      SERIAL       RECORDS   READY   MANAGED-BY                  AGE   NAMESERVERS             CONTENT-HASH
+home-example-com   home.example.com.   primary   2026100101   12        True    api                         10d   ns1.home.example.com.   0123456789ab
+lab-example-com    lab.example.com.    forward   0            0         False   file:objects.d/zones.yaml   3h    -                       -

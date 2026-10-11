@@ -442,9 +442,13 @@ func describe(w io.Writer, k cli.Kind, raw json.RawMessage, diags []diagnosis, o
 		[2]string{"Annotations", mapString(m.Annotations)},
 		[2]string{"Managed By", cli.ManagedBy(m)},
 		[2]string{"Created", createdString(m.CreationTimestamp, o)},
-		[2]string{"Generation", fmt.Sprint(m.Generation)},
-		[2]string{"Resource Version", m.ResourceVersion},
 	)
+	if m.Generation != 0 {
+		pairs = append(pairs, [2]string{"Generation", fmt.Sprint(m.Generation)})
+	}
+	if m.ResourceVersion != "" {
+		pairs = append(pairs, [2]string{"Resource Version", m.ResourceVersion})
+	}
 	if err := cli.KeyValues(w, "", pairs); err != nil {
 		return err
 	}
