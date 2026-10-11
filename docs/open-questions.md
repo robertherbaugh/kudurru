@@ -32,7 +32,7 @@ These were the decisions the architecture left to the project owner. Answers are
 
 ## Week-1 spikes before the schedule is committed
 
-Independent of the answers above, these must be measured before v0.1 milestones are dated:
+Independent of the answers above, these must be measured before v0.1 milestones are dated. **Status 2026-10-11:** items 3, 4, 5, 7 and 9 are done (reports in [spikes/](spikes/)); items 1, 2, 6 and 8 need a dnsdist binary, Docker/kind and two VMs.
 
 1. dnsdist 2.1 started from YAML plus console `newServer` and `reloadAllCertificates()`: does the console work under YAML config?
 2. PROXYv2 with the shared-secret TLV plus `chashed` backend selection plus health-check validation function smoke test.

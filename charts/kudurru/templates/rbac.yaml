@@ -7,12 +7,13 @@ metadata:
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
 rules:
+  # Server-side apply needs create+patch; file-managed objects and finalizers need delete (D77).
   - apiGroups: ["kudurru.io"]
     resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
   - apiGroups: ["kudurru.io"]
     resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status"]
-    verbs: ["update", "patch"]
+    verbs: ["get", "update", "patch"]
   - apiGroups: ["externaldns.k8s.io"]
     resources: ["dnsendpoints"]
     verbs: ["get", "list", "watch"]
