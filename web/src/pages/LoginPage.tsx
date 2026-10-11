@@ -8,6 +8,7 @@ import { Card } from '@astryxdesign/core/Card';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ApiError } from '../api/client';
 import { qk, useApi, useApiContext } from '../api/context';
 import { errorText } from '../components/Feedback';
 import { useLocation } from '../lib/router';
@@ -65,7 +66,13 @@ export function LoginPage() {
             />
           ) : null}
           {oidcError ? <Banner status="error" title="Single sign-on failed" description={oidcError} /> : null}
-          {status.isError ? <Banner status="error" title="The kudurru API is unreachable" description={errorText(status.error)} /> : null}
+          {status.isError ? (
+            <Banner
+              status="error"
+              title={status.error instanceof ApiError && status.error.status === 0 ? 'The kudurru API is unreachable' : 'Sign-in options could not be loaded'}
+              description={errorText(status.error)}
+            />
+          ) : null}
           {localEnabled ? (
             <form
               className="k-form"

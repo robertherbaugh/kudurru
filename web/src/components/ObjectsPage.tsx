@@ -224,7 +224,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
         </div>
       ) : null}
 
-      <Dialog isOpen={editing !== null} onOpenChange={(open) => !open && setEditing(null)} purpose="form" width={760} aria-labelledby={titleId}>
+      <Dialog isOpen={editing !== null} onOpenChange={(open) => !open && setEditing(null)} purpose="form" width={760} maxHeight="90dvh" aria-labelledby={titleId}>
         {editing !== null ? (
           <div className="k-stack-lg">
             <h2 id={titleId} className="k-dialog-title">

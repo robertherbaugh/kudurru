@@ -1,9 +1,12 @@
 // Vitest setup: jest-dom matchers and the browser APIs jsdom lacks.
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
 import { handlers, resetDB } from '../mocks/handlers';
+
+// CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
+configure({ asyncUtilTimeout: 5000 });
 
 /** The MSW server answering /api/v1 from the fixtures in every test. */
 export const server = setupServer(...handlers);

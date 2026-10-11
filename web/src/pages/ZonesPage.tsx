@@ -94,7 +94,7 @@ function NewZoneDialog({ open, onClose }: { open: boolean; onClose: () => void }
     if (!Object.keys(e).length) m.mutate();
   };
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={520} aria-labelledby={titleId}>
+    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={520} maxHeight="90dvh" aria-labelledby={titleId}>
       <form
         className="k-stack-lg"
         noValidate

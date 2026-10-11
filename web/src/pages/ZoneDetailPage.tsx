@@ -42,7 +42,7 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
     if (f) void f.text().then(setText);
   };
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={720} aria-labelledby={titleId}>
+    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={720} maxHeight="90dvh" aria-labelledby={titleId}>
       <form
         className="k-stack-lg"
         onSubmit={(e) => {
@@ -268,7 +268,7 @@ export default function ZoneDetailPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      <Dialog isOpen={editing !== null} onOpenChange={(o) => !o && setEditing(null)} purpose="form" width={720} aria-labelledby={editorTitle}>
+      <Dialog isOpen={editing !== null} onOpenChange={(o) => !o && setEditing(null)} purpose="form" width={720} maxHeight="90dvh" aria-labelledby={editorTitle}>
         {editing !== null ? (
           <div className="k-stack-lg">
             <h2 id={editorTitle} className="k-dialog-title">

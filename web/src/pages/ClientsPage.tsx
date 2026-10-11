@@ -145,7 +145,7 @@ export default function ClientsPage() {
           </table>
         </div>
       ) : null}
-      <Dialog isOpen={assigning} onOpenChange={setAssigning} purpose="form" width={460} aria-labelledby={titleId}>
+      <Dialog isOpen={assigning} onOpenChange={setAssigning} purpose="form" width={460} maxHeight="90dvh" aria-labelledby={titleId}>
         <form
           className="k-stack-lg"
           onSubmit={(e) => {

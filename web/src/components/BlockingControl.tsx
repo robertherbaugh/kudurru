@@ -104,7 +104,7 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
           onClick={() => onSet({ blocking: true })}
         />
       )}
-      <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={420} aria-labelledby={titleId}>
+      <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={420} maxHeight="90dvh" aria-labelledby={titleId}>
         <div className="k-stack-lg">
           <h2 id={titleId} className="k-dialog-title">
             Disable blocking

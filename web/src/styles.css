@@ -359,7 +359,7 @@ body {
   padding: var(--k-gap);
   box-sizing: border-box;
 }
-.k-login-card { inline-size: min(420px, 100%); }
+.k-login-card { inline-size: min(420px, 100%); padding: var(--spacing-6, 24px); box-sizing: border-box; }
 
 .k-visually-hidden {
   position: absolute !important;
