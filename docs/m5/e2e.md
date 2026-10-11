@@ -57,14 +57,34 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
 Measured on this sandbox (8 shared CPUs, 3 other agents running), BIND
 9.18.50, Go 1.27.2. `make e2e` builds the binary in 2.3-3.2 s.
 
-PLACEHOLDER_MATRIX
+| Test | Result | Time / measurement |
+|---|---|---|
+| `TestBINDSecondary/AXFR` | pass | named loaded the zone 0.11-0.76 s after start; zone identical to kudurru's AXFR; `dig @named` sees the records |
+| `TestBINDSecondary/NOTIFY` | pass | file change → kudurru serial +1 in 0.81-0.84 s → named at the new serial 0.84-1.01 s after the change (named's refresh timer is ≥ 300 s) |
+| `TestBINDSecondary/TSIGRefused` | pass | unsigned: REFUSED; wrong secret, unknown key: bad authentication |
+| `TestBINDSecondary/ZoneTransferDeny` | pass | REFUSED with a valid key; named answers SERVFAIL for the zone |
+| `TestBINDUpstream/ForwardZone` | pass | A (UDP), CNAME chain (TCP), NXDOMAIN through a forward DNSZone to named |
+| `TestBINDUpstream/Conditional` | **skip, E2E-1** | SERVFAIL: `upstreams.conditional` not consulted |
+| `TestBINDUpstream/DefaultGroupNotNamed` | pass | |
+| `TestTwoNodes` (6 subtests) | pass | each node ready in 0.12-0.60 s; 108-byte list pulled and verified in 0.7-0.9 ms |
+| `TestSIGTERMLameduck/InFlightQueriesComplete` | pass | 2 in-flight queries answered 1.50 s after SIGTERM; exit 0 after 1.51-1.53 s |
+| `TestSIGTERMLameduck/ReadinessFlipsBeforeListenersClose` | **skip, E2E-3** | 503 seen, but the window before the ops listener closes is 1.7-13 ms |
+| `TestRestartKeepsState` (5 subtests) | pass, `NoFirstBoot` **skip, E2E-4** | restart ready in 55-242 ms; serial, cache (1 entry) and query-log ids continuous |
+| `TestConfigValidationFails` (12 cases) | pass | each exits 1 in 10-380 ms with `error:` naming the key |
+| `TestPortConflictsFailFast` (7 cases) | pass | exit 1 in 66-550 ms naming the address |
+| `TestReadyMeansServing` | **skip, E2E-5** | first query after readiness SERVFAIL on 4/4 restarts |
+| `make test-auth-e2e` (dex v2.46.0 + mock OP) | pass | 17 dex subtests + mock OP, 12 s including the cached dex build |
+
+Wall clock: `make e2e` 28 s (two binary builds of 12 s each under load,
+2.3-3.2 s when idle); `KUDURRU_E2E_KNOWN_BUGS=1 make e2e` fails exactly
+the five skipped tests above.
 
 ## Bugs found
 
 | Id | Severity | What | Test (skip marker) | Owner |
 |---|---|---|---|---|
 | E2E-1 | high | `upstreams.conditional` never takes effect. On first boot, bootstrap seeds a root forward zone, and the authoritative stage sets `UpstreamGroup=default` for every forwarded name. `upstream.Set.Route` returns any non-empty hint before it consults the suffix map. Every conditional rule (including dnsmasq imports) is ignored and the names go to the default group. The forward-zone path (`DNSZone type: forward`, `forward.upstreamGroup`) works. | `TestBINDUpstream/Conditional` | upstream / authoritative |
-| E2E-3 | medium | No lameduck window. serve.go wires `checker.Lameduck` but no `LameduckDuration`, and no config key exists, so readiness is 503 for about 2 ms (2.2 ms measured) before the ops listener closes. In-flight queries are drained correctly (both answered 1.5 s after SIGTERM). dnsdist health checks and non-Kubernetes load balancers never observe the drain. In Kubernetes the chart's preStop sleep hides it. | `TestSIGTERMLameduck/ReadinessFlipsBeforeListenersClose` | serve / config |
+| E2E-3 | medium | No lameduck window. serve.go wires `checker.Lameduck` but no `LameduckDuration`, and no config key exists, so readiness is 503 for only 1.7-13 ms before the ops listener closes. In-flight queries are drained correctly (both answered 1.5 s after SIGTERM). dnsdist health checks and non-Kubernetes load balancers never observe the drain. In Kubernetes the chart's preStop sleep hides it. | `TestSIGTERMLameduck/ReadinessFlipsBeforeListenersClose` | serve / config |
 | E2E-5 | medium | `/healthz/ready` turns 200 when zonecache reaches `Live`, before the first live snapshot is published. For about 50 ms every query, primary zones and forwarding alike, answers SERVFAIL `servfail_unsynced` (`zonecache:unsynced`). Reproduced on 4 of 4 restarts with 10 ms readiness polling. A rolling restart therefore sends real traffic to a node that answers SERVFAIL. | `TestReadyMeansServing` | zonecache |
 | E2E-6 | low | keepalived `Config.Validate`'s `safePath` admits `{` and `}` in every path-like field, because of the `{vrid}` placeholder. `--hmac-key-file /x}` renders `key 1 file:/x}` and closes the `auth_hmac` block early. These are operator flags, and `keepalived -t` runs before every swap, so this is not remotely reachable. | `FuzzKeepalivedRender` (inputs filtered unless `KUDURRU_E2E_KNOWN_BUGS=1`; crasher kept in `test/fuzz/testdata/fuzz/FuzzKeepalivedRender/`) | edge |
 | E2E-4 | low | serve.go logs "generated the encryption key" on every start: `keys.Load` sets `Generated` for a key read back from the file. The key is reused correctly; only the log line is wrong. | `TestRestartKeepsState/NoFirstBoot` | auth/keys |
@@ -78,6 +98,11 @@ Gaps recorded as follow-ups rather than bugs:
   a second instance on the same host dies at startup. That is how the
   first two-node run failed.
 - **keepalived validation.** It accepts `0.0.0.0` as the unicast source.
+- **edge.Build.** It accepts listen hosts and backend hosts that are not
+  addresses; they are quoted, and dnsdist refuses them at check time.
+- **edge.Build.** It accepts listen hosts and backend hosts that are not
+  addresses. They render quoted, and `dnsdist --check-config` refuses
+  them.
 - **Fuzz budget.** `FuzzImportBIND` spends its budget on `$GENERATE`
   inputs near the 1M-record cap.
 
@@ -163,7 +188,7 @@ uses `internalapi.NewCredentials` from the shared key and the same
   - The exit code is 0, and the exit comes 1.5 s after SIGTERM: the DNS
     listeners drain.
   - Readiness goes 200 → 503 → connection refused and never returns to
-    200. The window is about 2 ms (E2E-3).
+    200. The window is 1.7-13 ms (E2E-3).
 - **TestRestartKeepsState.** Three runs over one data dir, with an
   `objectsDir` zone, the sqlite query log (`exclude.sudn: false`, since
   `.test` is special-use and would be excluded) and a forwarded name
@@ -234,13 +259,37 @@ The query-log filters, BIND import, and keepalived/dnsdist input
 validation from the brief are covered by `FuzzQueryLogFilter`,
 `FuzzImportBIND` (already existed) and the three edge targets.
 
-PLACEHOLDER_FUZZ
+### Fuzz run
+
+All 17 targets for 60 s each (`FUZZ_JOBS=3 FUZZ_PARALLEL=1`, shared
+machine), no crasher apart from E2E-6 and two harness false positives
+fixed in the targets (an invalid HTTP header value built by the client; a
+Lua-quoted `!` flagged by the keepalived character set):
+
+| Target | execs in 60 s |
+|---|---|
+| proxyproto `FuzzParse` / `FuzzDatagram` / `FuzzStream` | 1.88M / 1.95M / 1.91M |
+| blocking parser `FuzzParse` | 302k |
+| zone `FuzzCanonicalKey` / `FuzzImportBIND` | 539k / 190k (stalls on `$GENERATE` near the 1M cap, follow-up) |
+| `FuzzConfigLoad` / `FuzzConfigEnv` / `FuzzConfigValues` | 12.5k / 19.8k / 54-180k |
+| `FuzzDoHRequest` | 15k (HTTPS round trip per input) |
+| `FuzzTSIGVerify` | 110-162k |
+| `FuzzQueryLogFilter` / `FuzzQueryLogNames` | 14k / 18k |
+| `FuzzDnsmasqImport` | 17-90k |
+| `FuzzKeepalivedRender` / `FuzzKeepalivedFIFOLine` | 25k / 216k |
+| `FuzzDNSDistRender` | 3-20k |
+
+Go minimizes every new interesting input for `-fuzzminimizetime`
+(default 60 s); with one worker that stalled whole runs (`FuzzDoHRequest`
+did 1.4k execs). `hack/fuzz.sh` passes `-fuzzminimizetime 5s`
+(`FUZZ_MINIMIZE`), which brought it to 15k. The 12 smallest inputs each
+`test/fuzz` target found are committed as its seed corpus.
 
 ## 5. dex
 
 `make test-auth-e2e` (dex v2.46.0 built from the pinned tarball, plus the
 mock OP) now runs in the `e2e` CI job. The separate `auth-e2e` job is gone,
-so it does not run twice. Locally: PLACEHOLDER_DEX
+so it does not run twice. Locally, with the cached dex build, `TestDexEndToEnd` (17 subtests) and `TestMockOPEndToEnd` passed in 12 s.
 
 ## Not done here
 
