@@ -43,9 +43,25 @@ if (!window.matchMedia) {
 }
 
 // jsdom logs "Not implemented" for scrolling; the app only scrolls to top.
-window.scrollTo = (() => undefined) as typeof window.scrollTo;
-Element.prototype.scrollTo = function scrollTo() {} as typeof Element.prototype.scrollTo;
+window.scrollTo = (() => undefined);
+Element.prototype.scrollTo = function scrollTo() {};
 Element.prototype.scrollIntoView = function scrollIntoView() {};
+
+// jsdom does no layout, so every offset size is 0 and TanStack Virtual
+// would render no rows. Give the query-log scroller a viewport and each
+// virtual row (one <tbody>) a fixed height.
+const offsetSize = (axis: 'w' | 'h') =>
+  function (this: HTMLElement): number {
+    if (this.dataset.testid === 'query-log-scroll') return axis === 'h' ? 800 : 1200;
+    if (this.tagName === 'TBODY' && this.dataset.index !== undefined) return axis === 'h' ? 34 : 1200;
+    return 0;
+  };
+Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: offsetSize('h') });
+Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: offsetSize('w') });
+
+// No canvas in jsdom: charts detect the null context and skip drawing
+// (their data tables and legends still render).
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
 
 // jsdom has HTMLDialogElement but not its modal methods.
 const dialogProto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
