@@ -26,6 +26,16 @@ func operation(method, path, id, summary string, tags ...string) huma.Operation 
 func register[I, O any](s *Server, op huma.Operation, p perm, h func(context.Context, *I) (*O, error)) {
 	s.declare(&op, p)
 	huma.Register(s.api, op, h)
+	// Routes that create or replace document 201 Created next to 200.
+	if op.Method == http.MethodPut && strings.Contains(op.Path, "{name}") {
+		if item := s.api.OpenAPI().Paths[op.Path]; item != nil && item.Put != nil {
+			if ok := item.Put.Responses["200"]; ok != nil && item.Put.Responses["201"] == nil {
+				created := *ok
+				created.Description = "Created"
+				item.Put.Responses["201"] = &created
+			}
+		}
+	}
 }
 
 func (s *Server) declare(op *huma.Operation, p perm) {
@@ -59,6 +69,16 @@ func (s *Server) declare(op *huma.Operation, p perm) {
 	s.routes = append(s.routes, route)
 	if !p.public {
 		addErrorResponses(op, http.StatusUnauthorized, http.StatusForbidden)
+	}
+	// The envelope statuses every handler may answer (§10).
+	switch op.Method {
+	case http.MethodGet:
+		addErrorResponses(op, http.StatusBadRequest, http.StatusNotFound, http.StatusServiceUnavailable)
+	default:
+		addErrorResponses(op, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable)
+		if op.Method == http.MethodPut || op.Method == http.MethodDelete {
+			addErrorResponses(op, http.StatusPreconditionFailed)
+		}
 	}
 }
 
