@@ -58,6 +58,7 @@ type Route struct {
 //	GET    /auth/oidc/{idp}/callback       public
 //	GET    /auth/tokens                    tokens.own
 //	POST   /auth/tokens                    tokens.own
+//	GET    /auth/tokens/{id}               tokens.own (others' tokens need tokens.read)
 //	DELETE /auth/tokens/{id}               tokens.own (others' tokens need tokens.delete)
 //	GET    /iam/users                      users.read
 //	GET    /iam/serviceaccounts            serviceaccounts.read
@@ -74,6 +75,7 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/callback", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
 		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
+		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
 		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},

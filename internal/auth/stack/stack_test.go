@@ -280,6 +280,12 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		if r := e.do(http.MethodDelete, "/api/v1/auth/tokens/"+tokID, nil, withCookie(alice), withHeader(auth.CSRFHeader, aliceCSRF)); r.code != 404 {
 			t.Fatalf("alice deleting admin's token: %d", r.code)
 		}
+		if r := e.do(http.MethodGet, "/api/v1/auth/tokens/"+tokID, nil, withCookie(alice)); r.code != 404 {
+			t.Fatalf("alice reading admin's token: %d", r.code)
+		}
+		if r := e.do(http.MethodGet, "/api/v1/auth/tokens/"+tokID, nil, withCookie(cookie)); r.code != 200 || r.body["id"] != tokID || r.body["token"] != nil {
+			t.Fatalf("admin reading the own token: %d %s", r.code, r.raw)
+		}
 
 		// A RoleBinding object grants zone-admin on home to alice, live.
 		rb := &internalv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "alice-home", Namespace: "dns"}, Spec: internalv1.RoleBindingSpec{
