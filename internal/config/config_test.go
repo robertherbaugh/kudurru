@@ -149,3 +149,93 @@ func TestLoadRejectsBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadTLSListenersAndProxySecret(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kudurru.yaml")
+	if err := os.WriteFile(path, []byte(`
+listeners:
+  dns:  [{ address: "0.0.0.0:5353", protocols: [udp, tcp] }]
+  dot:  [{ address: "0.0.0.0:853", tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  doh:  [{ address: "0.0.0.0:443", path: /dns-query, tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  doq:  [{ address: "0.0.0.0:853", tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  doh3: [{ address: "0.0.0.0:443", tls: { certFile: /certs/tls.crt, keyFile: /certs/tls.key } }]
+  proxyProtocolFrom: ["10.0.0.11/32"]
+  proxyProtocolSecretFile: /run/secrets/proxy
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := cfg.Listeners
+	if len(l.DoT) != 1 || l.DoT[0].Address != "0.0.0.0:853" || l.DoT[0].TLS.CertFile != "/certs/tls.crt" || l.DoT[0].TLS.KeyFile != "/certs/tls.key" {
+		t.Errorf("dot: %+v", l.DoT)
+	}
+	if len(l.DoH) != 1 || l.DoH[0].Path != "/dns-query" || l.DoH[0].TLS.KeyFile != "/certs/tls.key" {
+		t.Errorf("doh: %+v", l.DoH)
+	}
+	if len(l.DoQ) != 1 || len(l.DoH3) != 1 || l.DoH3[0].Path != "" {
+		t.Errorf("doq/doh3: %+v %+v", l.DoQ, l.DoH3)
+	}
+	if l.ProxyProtocolSecretFile != "/run/secrets/proxy" {
+		t.Errorf("secret file: %q", l.ProxyProtocolSecretFile)
+	}
+
+	// Defaults: no TLS listeners.
+	def, err := Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(def.Listeners.DoT)+len(def.Listeners.DoH)+len(def.Listeners.DoQ)+len(def.Listeners.DoH3) != 0 || def.Listeners.ProxyProtocolSecretFile != "" {
+		t.Errorf("TLS listeners must default to none: %+v", def.Listeners)
+	}
+
+	// The secret file path can come from the environment like any string key.
+	env, err := Load("", []string{"KUDURRU_LISTENERS__PROXYPROTOCOLSECRETFILE=/run/secrets/env"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.Listeners.ProxyProtocolSecretFile != "/run/secrets/env" {
+		t.Errorf("env override: %q", env.Listeners.ProxyProtocolSecretFile)
+	}
+}
+
+func TestValidateTLSListenersAndProxySecret(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.yaml")
+	_ = os.WriteFile(path, []byte(`
+listeners:
+  dot:  [{ address: "", tls: { certFile: /c } }]
+  doh:  [{ address: ":443", path: dns-query, tls: { certFile: /c, keyFile: /k } }]
+  doq:  [{ address: ":853" }]
+  doh3: [{ address: ":443", path: /dns-query, tls: { certFile: /c, keyFile: /k } }]
+  proxyProtocolFrom: ["127.0.0.1/32", "10.0.0.11/32"]
+`), 0o600)
+	_, err := Load(path, nil)
+	if err == nil {
+		t.Fatal("invalid listeners must be rejected")
+	}
+	for _, want := range []string{
+		"listeners.dot[0].address is required",
+		"listeners.dot[0].tls: certFile and keyFile are required",
+		`listeners.doh[0].path "dns-query" must start with /`,
+		"listeners.doq[0].tls: certFile and keyFile are required",
+		"proxyProtocolSecretFile is required when proxyProtocolFrom contains a non-loopback peer (10.0.0.11/32)",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "doh3") {
+		t.Errorf("valid doh3 listener reported: %v", err)
+	}
+
+	// Loopback-only peers need no secret (D56).
+	ok := filepath.Join(dir, "ok.yaml")
+	_ = os.WriteFile(ok, []byte("listeners: { proxyProtocolFrom: [\"127.0.0.1/32\", \"::1/128\"] }\n"), 0o600)
+	if _, err := Load(ok, nil); err != nil {
+		t.Fatalf("loopback-only proxyProtocolFrom must not need a secret: %v", err)
+	}
+}

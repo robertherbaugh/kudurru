@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -41,17 +42,45 @@ type Node struct {
 
 // Listeners are the bound addresses.
 type Listeners struct {
-	DNS               []DNSListener `koanf:"dns" json:"dns"`
-	API               Listener      `koanf:"api" json:"api"`
-	Ops               Listener      `koanf:"ops" json:"ops"`
-	Metrics           Listener      `koanf:"metrics" json:"metrics"`
-	ProxyProtocolFrom []string      `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
+	DNS  []DNSListener  `koanf:"dns" json:"dns"`
+	DoT  []TLSListener  `koanf:"dot" json:"dot"`
+	DoH  []HTTPListener `koanf:"doh" json:"doh"`
+	DoQ  []TLSListener  `koanf:"doq" json:"doq"`
+	DoH3 []HTTPListener `koanf:"doh3" json:"doh3"`
+
+	API               Listener `koanf:"api" json:"api"`
+	Ops               Listener `koanf:"ops" json:"ops"`
+	Metrics           Listener `koanf:"metrics" json:"metrics"`
+	ProxyProtocolFrom []string `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
+	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
+	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
+	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
 }
 
 // DNSListener is one DNS bind.
 type DNSListener struct {
 	Address   string   `koanf:"address" json:"address"`
 	Protocols []string `koanf:"protocols" json:"protocols"`
+}
+
+// TLSFiles names a PEM certificate and key. Listeners naming the same pair
+// share one reload watcher.
+type TLSFiles struct {
+	CertFile string `koanf:"certFile" json:"certFile"`
+	KeyFile  string `koanf:"keyFile" json:"keyFile"`
+}
+
+// TLSListener is a DoT (tcp) or DoQ (udp, ALPN doq) bind.
+type TLSListener struct {
+	Address string   `koanf:"address" json:"address"`
+	TLS     TLSFiles `koanf:"tls" json:"tls"`
+}
+
+// HTTPListener is a DoH (tcp, h2 and http/1.1) or DoH3 (udp, h3) bind.
+type HTTPListener struct {
+	Address string   `koanf:"address" json:"address"`
+	Path    string   `koanf:"path" json:"path"`
+	TLS     TLSFiles `koanf:"tls" json:"tls"`
 }
 
 // Listener is an HTTP bind.
@@ -157,6 +186,8 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	errs = append(errs, c.Listeners.validateTLS()...)
+	errs = append(errs, c.Listeners.validateProxyProtocol()...)
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
@@ -181,6 +212,60 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("log.level: unknown level %q", c.Log.Level))
 	}
 	return errors.Join(errs...)
+}
+
+// validateTLS checks the dot, doh, doq and doh3 listener lists.
+func (l *Listeners) validateTLS() []error {
+	var errs []error
+	check := func(key string, i int, address, path string, tls TLSFiles, http bool) {
+		if address == "" {
+			errs = append(errs, fmt.Errorf("listeners.%s[%d].address is required", key, i))
+		}
+		if tls.CertFile == "" || tls.KeyFile == "" {
+			errs = append(errs, fmt.Errorf("listeners.%s[%d].tls: certFile and keyFile are required", key, i))
+		}
+		if http && path != "" && !strings.HasPrefix(path, "/") {
+			errs = append(errs, fmt.Errorf("listeners.%s[%d].path %q must start with /", key, i, path))
+		}
+	}
+	for i, x := range l.DoT {
+		check("dot", i, x.Address, "", x.TLS, false)
+	}
+	for i, x := range l.DoQ {
+		check("doq", i, x.Address, "", x.TLS, false)
+	}
+	for i, x := range l.DoH {
+		check("doh", i, x.Address, x.Path, x.TLS, true)
+	}
+	for i, x := range l.DoH3 {
+		check("doh3", i, x.Address, x.Path, x.TLS, true)
+	}
+	return errs
+}
+
+// validateProxyProtocol enforces D56: every non-loopback PROXYv2 peer needs
+// the shared secret. Entries that do not parse are reported by the DNS
+// server when it builds the policy.
+func (l *Listeners) validateProxyProtocol() []error {
+	if l.ProxyProtocolSecretFile != "" {
+		return nil
+	}
+	for _, entry := range l.ProxyProtocolFrom {
+		entry = strings.TrimSpace(entry)
+		var addr netip.Addr
+		if pfx, err := netip.ParsePrefix(entry); err == nil {
+			addr = pfx.Addr()
+		} else if a, err := netip.ParseAddr(entry); err == nil {
+			addr = a
+		} else {
+			continue
+		}
+		addr = addr.Unmap()
+		if addr != netip.AddrFrom4([4]byte{127, 0, 0, 1}) && addr != netip.IPv6Loopback() {
+			return []error{fmt.Errorf("listeners.proxyProtocolSecretFile is required when proxyProtocolFrom contains a non-loopback peer (%s)", entry)}
+		}
+	}
+	return nil
 }
 
 // envOverrides maps KUDURRU_<SECTION>__<KEY>[_FILE]=value onto schema paths.
