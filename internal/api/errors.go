@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -54,11 +55,12 @@ type ErrorBody struct {
 	// Message is the human-readable explanation; for validation errors it
 	// names the field path.
 	Message string `json:"message"`
-	// Hint tells the caller how to fix the request: the owner for
-	// managed_by ("file:objects.d/zones.yaml"), the missing permission for
-	// forbidden, the offending fields for invalid.
-	Hint string `json:"hint,omitempty"`
-	// Missing is the permission a 403 lacked.
+	// Hint tells the caller how to fix the request. It is a string (the
+	// owner for managed_by, e.g. "file:objects.d/zones.yaml"; the
+	// offending fields for invalid) except for 403 forbidden, where it is
+	// {"missing":{resource,verb,scope}} so the UI can explain the denial.
+	Hint any `json:"hint,omitempty"`
+	// Missing repeats the permission a 403 lacked.
 	Missing *Missing `json:"missing,omitempty"`
 	// Fields are the JSON paths of a validation failure.
 	Fields []string `json:"fields,omitempty"`
@@ -93,7 +95,16 @@ func (e *Error) setTook(ms float64) { e.TookMS = ms }
 
 // newError builds an Error.
 func newError(status int, key, message, hint string) *Error {
-	return &Error{Status: status, Body: ErrorBody{Key: key, Message: message, Hint: hint}}
+	e := &Error{Status: status, Body: ErrorBody{Key: key, Message: message}}
+	if hint != "" {
+		e.Body.Hint = hint
+	}
+	return e
+}
+
+// ForbiddenHint is the hint object of a 403 response.
+type ForbiddenHint struct {
+	Missing Missing `json:"missing"`
 }
 
 func errInvalid(format string, args ...any) *Error {
@@ -121,13 +132,32 @@ func errUnauthenticated() *Error {
 
 func errForbidden(m Missing, reason string) *Error {
 	e := newError(http.StatusForbidden, KeyForbidden,
-		fmt.Sprintf("permission %s.%s at scope %s is required", m.Resource, m.Verb, m.Scope),
-		"ask an administrator for a RoleBinding that grants "+m.Resource+"."+m.Verb+" at scope "+m.Scope)
+		fmt.Sprintf("permission %s.%s at scope %s is required; ask an administrator for a RoleBinding that grants it", m.Resource, m.Verb, m.Scope), "")
 	if reason != "" {
 		e.Body.Message += " (" + reason + ")"
 	}
+	e.Body.Hint = ForbiddenHint{Missing: m}
 	e.Body.Missing = &m
 	return e
+}
+
+func errConflict(message, hint string) *Error {
+	return newError(http.StatusConflict, KeyConflict, message, hint)
+}
+
+func errManagedBy(key store.Key, owner string) *Error {
+	return newError(http.StatusConflict, KeyManagedBy,
+		fmt.Sprintf("%s is managed by %s; change it there", key, owner), owner)
+}
+
+func errPrecondition(want, have string) *Error {
+	return newError(http.StatusPreconditionFailed, KeyPrecondition,
+		fmt.Sprintf("If-Match %q does not match the current resourceVersion %q", want, have),
+		"read the object again and retry with its current resourceVersion")
+}
+
+func errUnavailable(format string, args ...any) *Error {
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, fmt.Sprintf(format, args...), "")
 }
 
 // storeError maps store, validator and loader errors onto the envelope.
@@ -143,8 +173,7 @@ func storeError(err error) error {
 	var ve *validator.Error
 	switch {
 	case errors.As(err, &mb):
-		return newError(http.StatusConflict, KeyManagedBy,
-			fmt.Sprintf("%s is managed by %s", mb.Key, mb.Owner), mb.Owner)
+		return errManagedBy(mb.Key, mb.Owner)
 	case errors.As(err, &ve):
 		e := newError(http.StatusBadRequest, KeyInvalid, ve.Error(), ve.Hint())
 		e.Body.Fields = ve.Fields()
@@ -165,6 +194,15 @@ func storeError(err error) error {
 		return newError(http.StatusGatewayTimeout, KeyUnavailable, err.Error(), "")
 	}
 	return newError(http.StatusInternalServerError, KeyInternal, err.Error(), "")
+}
+
+// writeJSON writes v as a JSON response with status.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }
 
 // statusKey is the default key for a status code huma itself produces.
@@ -206,6 +244,9 @@ var installErrorsOnce sync.Once
 // per process is safe.
 func installHumaErrors() {
 	installErrorsOnce.Do(func() {
+		huma.NewErrorWithContext = func(_ huma.Context, status int, msg string, errs ...error) huma.StatusError {
+			return huma.NewError(status, msg, errs...)
+		}
 		huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
 			key := statusKey(status)
 			if status == http.StatusUnprocessableEntity {

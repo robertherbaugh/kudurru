@@ -35,9 +35,16 @@ type reqState struct {
 	route string
 	// authz is the authorizer path that granted or denied.
 	authz string
-	// clusterAllowed caches the cluster-scope decision of the route's
-	// declared permission for handlers that filter per object.
-	clusterAllowed bool
+	// clusterAllowed records that the route's declared permission
+	// (allowedResource.allowedVerb) was granted at cluster scope, so
+	// per-object checks of the same permission can be skipped.
+	clusterAllowed  bool
+	allowedResource string
+	allowedVerb     string
+	// method, path and userAgent are kept for audit records.
+	method    string
+	path      string
+	userAgent string
 }
 
 type stateKey struct{}
@@ -166,7 +173,7 @@ func recoverMW(logger *slog.Logger) func(http.Handler) http.Handler {
 func requestIDMW(trusted *trustedProxies) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			st := &reqState{start: time.Now()}
+			st := &reqState{start: time.Now(), method: r.Method, path: r.URL.Path, userAgent: truncate(r.UserAgent(), 256)}
 			id := r.Header.Get(HeaderRequestID)
 			if id == "" || len(id) > 64 || !trusted.trusts(remoteAddr(r)) || strings.ContainsAny(id, "\r\n\" ") {
 				id = newRequestID()
@@ -176,6 +183,13 @@ func requestIDMW(trusted *trustedProxies) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(withState(r.Context(), st)))
 		})
 	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func newRequestID() string {
