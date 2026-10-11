@@ -1,0 +1,18 @@
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: { name: home-example }
+spec:
+  zoneName: home.example.
+  type: primary
+  soa: { mname: ns1.home.example., rname: hostmaster.home.example. }
+  nameservers: [ns1.home.example.]
+---
+apiVersion: kudurru.io/v1alpha1
+kind: DNSRecordSet
+metadata: { name: hosts, namespace: default }
+spec:
+  zoneRef: { name: home-example }
+  endpoints:
+    - { dnsName: ns1.home.example, recordType: A, targets: ["127.0.0.1"] }
+    - { dnsName: nas.home.example, recordType: A, targets: ["10.0.0.20"], recordTTL: 300 }
+    - { dnsName: "*.apps.home.example", recordType: CNAME, targets: [nas.home.example] }

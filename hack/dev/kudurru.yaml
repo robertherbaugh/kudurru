@@ -2,6 +2,7 @@
 node:
   name: dev
   dataDir: ./hack/.cache/kudurru
+objectsDir: ./hack/dev/objects.d
 listeners:
   dns:
     - address: "127.0.0.1:5353"

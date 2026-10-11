@@ -23,11 +23,12 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
-	Node      Node      `koanf:"node" json:"node"`
-	Listeners Listeners `koanf:"listeners" json:"listeners"`
-	Upstreams Upstreams `koanf:"upstreams" json:"upstreams"`
-	Cache     Cache     `koanf:"cache" json:"cache"`
-	Log       Log       `koanf:"log" json:"log"`
+	Node      Node        `koanf:"node" json:"node"`
+	Listeners Listeners   `koanf:"listeners" json:"listeners"`
+	Store     StoreConfig `koanf:"store" json:"store"`
+	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
+	Cache     Cache       `koanf:"cache" json:"cache"`
+	Log       Log         `koanf:"log" json:"log"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
 	// of object files, both reconciled by internal/objects (§6.2).
@@ -92,6 +93,25 @@ type HTTPListener struct {
 // Listener is an HTTP bind.
 type Listener struct {
 	Address string `koanf:"address" json:"address"`
+}
+
+// StoreConfig selects and tunes the Store driver (docs/architecture.md §4.3).
+type StoreConfig struct {
+	// Driver is sqlite (state.db under node.dataDir) or kube (CRDs via the
+	// apiserver).
+	Driver string    `koanf:"driver" json:"driver"`
+	Kube   KubeStore `koanf:"kube" json:"kube"`
+}
+
+// KubeStore tunes the kube driver and the local.db cold-start path (§4.4).
+type KubeStore struct {
+	StartupTimeout Duration     `koanf:"startupTimeout" json:"startupTimeout"`
+	Snapshot       KubeSnapshot `koanf:"snapshot" json:"snapshot"`
+}
+
+// KubeSnapshot bounds how old a local.db snapshot may be and still serve.
+type KubeSnapshot struct {
+	MaxAge Duration `koanf:"maxAge" json:"maxAge"`
 }
 
 // Upstreams configures forwarding.
@@ -237,6 +257,11 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Listeners.validateTLS()...)
 	errs = append(errs, c.Listeners.validateProxyProtocol()...)
+	switch c.Store.Driver {
+	case "sqlite", "kube":
+	default:
+		errs = append(errs, fmt.Errorf("store.driver: unknown driver %q (sqlite, kube)", c.Store.Driver))
+	}
 	if _, ok := c.Upstreams.Groups["default"]; !ok {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
