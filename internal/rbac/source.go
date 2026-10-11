@@ -13,7 +13,8 @@ import (
 
 // BindingSource is the live binding authorizer: the static bindings of the
 // config file (rbac.bindings) plus the RoleBinding objects of the store,
-// swapped atomically when either changes (WatchRoleBindings feeds it).
+// swapped atomically when either changes (the identity layer feeds
+// SetObjects from a Store.Watch-fed RoleBinding cache, internal/auth/stack).
 //
 // It also honours pre-resolved grants (Principal.Grants: a cookie
 // session's roles snapshot or an OIDC user's frozen token grants). Such a

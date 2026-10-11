@@ -89,6 +89,10 @@ type Principal struct {
 	// BuiltinAdmin is the implicit admin of the unix-socket peer, the
 	// first-boot admin and the bootstrap service account (Path "local").
 	BuiltinAdmin bool
+	// Implicit are grants the principal holds by construction, without a
+	// binding (Path "local"): the read-only grants of a peer node that
+	// presented the internal token.
+	Implicit []Grant
 }
 
 // Authorizer decides.

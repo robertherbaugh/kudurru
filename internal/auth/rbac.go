@@ -38,6 +38,11 @@ func RBACPrincipal(p Principal) rbac.Principal {
 			out.Grants = append(out.Grants, g)
 		}
 	}
+	for _, s := range p.Implicit {
+		if g, err := rbac.ParseGrant(s); err == nil {
+			out.Implicit = append(out.Implicit, g)
+		}
+	}
 	if len(p.Scopes) > 0 {
 		for _, s := range p.Scopes {
 			if g, err := rbac.ParseGrant(s); err == nil {

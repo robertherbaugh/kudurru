@@ -1,5 +1,10 @@
 // Package auth holds principals, sessions and the authenticator chain
-// (docs/architecture.md §8). Only the seams exist in the scaffold.
+// (docs/architecture.md §8): the Principal and Session types, the
+// Middleware that runs the Authenticate and LoadPrincipal steps of §8.8
+// over pluggable Authenticator steps (implemented by internal/auth/tokens,
+// internal/auth/oidc, internal/auth/k8s, internal/auth/session and the
+// unix-peer and internal-token steps here), CSRF, the contract's error
+// body, the Authorize helper and the mapping to rbac.Principal.
 package auth
 
 import (
@@ -57,6 +62,9 @@ type Principal struct {
 	Scopes []string
 	// TokenID is the id of the API token that authenticated the request.
 	TokenID string
+	// Implicit are grants held without a binding (a peer node's read-only
+	// grants), in wire form.
+	Implicit []string
 }
 
 // Session is the payload of a sealed cookie or a db row. RolesSnapshot

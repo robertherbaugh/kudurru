@@ -18,7 +18,8 @@ const (
 //
 //  1. API token scopes (Principal.Restrict) narrow everything below;
 //  2. the implicit admin (Principal.BuiltinAdmin: unix-socket peer,
-//     first-boot admin, bootstrap service account) is allowed, Path local;
+//     first-boot admin, bootstrap service account) is allowed, Path local,
+//     and so is whatever Principal.Implicit grants (peer nodes);
 //  3. otherwise the Chain decides, first Allowed wins: SubjectAccessReview
 //     for Kubernetes identities (Path sar), then kudurru bindings (Path
 //     binding). Either path suffices (D22); Decision.Path names it.
@@ -59,6 +60,9 @@ func (e *Engine) Authorize(ctx context.Context, p Principal, a Attributes) (Deci
 	}
 	if p.BuiltinAdmin {
 		return Decision{Allowed: true, Path: PathLocal, Reason: "builtin admin"}, nil
+	}
+	if len(p.Implicit) > 0 && e.grantsAllow(p.Implicit, a) {
+		return Decision{Allowed: true, Path: PathLocal, Reason: "implicit grant"}, nil
 	}
 	return e.chain.Authorize(ctx, p, a)
 }
