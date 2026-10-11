@@ -1,5 +1,5 @@
 // Realistic fixtures for MSW (development with `bun run dev:mock` and the
-// tests): 3 zones with 50 records, 6 block/allow lists including the
+// tests): 3 zones with 50 records, 7 block/allow lists including the
 // starter list, 4 client groups, 3 policies, 24 h of time series, 500
 // query-log rows and 2 nodes. Everything is generated from a fixed seed
 // relative to a fixed clock (`now`), so tests see the same data each run.
@@ -238,16 +238,37 @@ function buildRecordSets(): DNSRecordSet[] {
   ];
 }
 
+/**
+ * 2,852 names shaped like the embedded starter list (Steven Black's
+ * unified hosts reduced to domains), so the entries browser pages through
+ * a list of the real size.
+ */
+export function starterEntries(): string[] {
+  const words = ['ads', 'adserver', 'track', 'tracker', 'telemetry', 'metrics', 'pixel', 'analytics', 'banner', 'stats', 'beacon', 'click', 'counter', 'promo', 'sponsor'];
+  const bases = ['adnet', 'clickstream', 'pixelhub', 'trackly', 'statcount', 'admetrics', 'bannerfarm', 'beaconly', 'promoserve', 'tagmanager', 'adsrv', 'datafeed', 'impress'];
+  const tlds = ['com', 'net', 'io', 'org', 'biz', 'info'];
+  const out = ['ads.google.com', 'tiktokv.com', 'doubleclick.net', 'googlesyndication.com', 'adservice.google.com'];
+  for (let i = 0; out.length < 2852; i++) {
+    const w = words[i % words.length] ?? 'ads';
+    const b = bases[Math.floor(i / words.length) % bases.length] ?? 'adnet';
+    const t = tlds[Math.floor(i / (words.length * bases.length)) % tlds.length] ?? 'com';
+    const n = Math.floor(i / (words.length * bases.length * tlds.length));
+    out.push(`${w}${n ? n : ''}.${b}.${t}`);
+  }
+  return out;
+}
+
 function buildLists(now: number): BlockList[] {
   const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
+  const starter = starterEntries();
   return [
     {
       apiVersion: API,
       kind: 'BlockList',
       metadata: meta('starter', 'bootstrap', { annotations: { 'kudurru.io/comment': 'Embedded starter list (Steven Black, MIT), 2,852 names' } }),
-      spec: { mode: 'block', sources: [{ name: 'embedded', inline: ['ads.google.com', 'tiktokv.com', '…'], format: 'domains' }] },
+      spec: { mode: 'block', sources: [{ name: 'embedded', inline: starter, format: 'domains' }] },
       // Inline sources are compiled, never fetched: no lastFetched (listfetcher).
-      status: { entries: 2852, ruleCount: 2852, invalid: 0, sources: [{ name: 'embedded', entries: 2852, digest: 'sha256:9a1b' }], conditions: ready() },
+      status: { entries: starter.length, ruleCount: starter.length, invalid: 0, sources: [{ name: 'embedded', entries: starter.length, digest: 'sha256:9a1b' }], conditions: ready() },
     },
     {
       apiVersion: API,
@@ -260,6 +281,37 @@ function buildLists(now: number): BlockList[] {
         invalid: 3,
         lastFetched: iso(3_600_000 * 4),
         sources: [{ name: 'unified', entries: 81234, invalid: 3, etag: '"5f2c"', digest: 'sha256:51c0', lastFetched: iso(3_600_000 * 4) }],
+        conditions: ready(),
+      },
+    },
+    {
+      // Four sources of every kind, one turned off (spec.sources[].enabled, ux-plan C2).
+      apiVersion: API,
+      kind: 'BlockList',
+      metadata: meta('family', 'api', { annotations: { 'kudurru.io/comment': 'Kids and guests' } }),
+      spec: {
+        mode: 'block',
+        refreshInterval: '12h',
+        response: 'nxdomain',
+        sources: [
+          { name: 'hagezi-pro', url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt', format: 'adblock' },
+          { name: 'oisd-nsfw', url: 'https://nsfw.oisd.nl/', format: 'adblock', subdomains: true },
+          { name: 'gambling', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-only/hosts', format: 'hosts', enabled: false },
+          { name: 'extra', inline: ['roblox.com', 'fortnite.com', '*.epicgames.com'], format: 'domains' },
+        ],
+      },
+      status: {
+        entries: 312_407,
+        ruleCount: 312_407,
+        invalid: 12,
+        unsupported: 214,
+        lastFetched: iso(3_600_000 * 2),
+        sources: [
+          { name: 'hagezi-pro', entries: 168_220, invalid: 12, digest: 'sha256:aa01', etag: '"h1"', lastFetched: iso(3_600_000 * 2) },
+          { name: 'oisd-nsfw', entries: 144_184, digest: 'sha256:aa02', lastFetched: iso(3_600_000 * 2) },
+          { name: 'gambling', entries: 2_581, digest: 'sha256:aa03', lastFetched: iso(3_600_000 * 50), enabled: false },
+          { name: 'extra', entries: 3 },
+        ],
         conditions: ready(),
       },
     },
@@ -349,7 +401,7 @@ function buildPolicies(): Policy[] {
       metadata: meta('kids-bedtime', 'api', { annotations: { 'kudurru.io/comment': 'Social media off on school nights' } }),
       spec: {
         clientGroupRefs: ['kids'],
-        blockListRefs: ['starter', 'stevenblack', 'regex-trackers'],
+        blockListRefs: ['starter', 'stevenblack', 'regex-trackers', 'family'],
         schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00', tz: 'America/Chicago' },
         safeSearch: true,
         priority: 20,
