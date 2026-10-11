@@ -289,10 +289,18 @@ edge-check: edge-images
 	docker run --rm --entrypoint /bin/sh \
 	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; dnsdist --version | head -1; for d in /golden/*/; do \
+	    case $$d in *-ebpf/) continue;; esac; \
+	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
+	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
+	# eBPF DynBlocks: --check-config creates the BPF maps, which needs
+	# CAP_SYS_ADMIN (or CAP_BPF) as an effective capability, so root.
+	docker run --rm --user 0 --cap-add SYS_ADMIN --entrypoint /bin/sh \
+	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; for d in /golden/*-ebpf/; do \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
 	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/internal/edge/keepalived/testdata:/golden:ro \
-	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; \
+	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; umask 077; \
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
 	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version

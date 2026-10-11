@@ -38,18 +38,26 @@ FROM ${KUDURRU_IMAGE} AS kudurru
 FROM alpine:${ALPINE_VERSION} AS build
 ARG KEEPALIVED_VERSION
 ARG KEEPALIVED_SHA256
-RUN apk add --no-cache build-base autoconf automake curl file-dev glib-dev \
-      libnl3-dev libnfnetlink-dev openssl-dev pcre2-dev linux-headers
+# configure: VRRP only. No LVS (IPVS), no BFD and no firewall integration:
+# keepalived only installs iptables/nftables rules for vrrp_strict or
+# no_accept, which the rendered configuration never sets. ipsets are part of
+# the iptables support, so --disable-iptables already turns libipset off
+# (configure.ac rejects an explicit --disable-libipset next to it).
+# --enable-json keeps the SIGJSON state dump for troubleshooting. The result
+# links only libcrypto (auth_hmac) and libmagic (script file checks): no libnl
+# (IPVS only), no glib (DBus only), no pcre2 (--enable-regex only).
+RUN apk add --no-cache build-base autoconf automake curl file-dev openssl-dev linux-headers
 WORKDIR /src
 RUN curl -fsSLo keepalived.tar.gz "https://www.keepalived.org/software/keepalived-${KEEPALIVED_VERSION}.tar.gz" \
  && echo "${KEEPALIVED_SHA256}  keepalived.tar.gz" | sha256sum -c - \
  && tar -xzf keepalived.tar.gz --strip-components=1 \
- && ./configure --prefix=/usr --sysconfdir=/etc --disable-lvs --disable-bfd --enable-json --disable-iptables --disable-libipset \
+ && ./configure --prefix=/usr --sysconfdir=/etc --disable-lvs --disable-bfd --enable-json \
+      --disable-iptables --disable-nftables \
  && make -j"$(nproc)" && make install DESTDIR=/out \
  && mkdir -p /out/usr/share/keepalived && cp COPYING /out/usr/share/keepalived/COPYING
 
 FROM alpine:${ALPINE_VERSION}
-RUN apk add --no-cache libnl3 openssl glib pcre2 file iproute2 tini \
+RUN apk add --no-cache libcrypto3 libmagic iproute2 tini \
  && addgroup -S -g 953 keepalived_script \
  && adduser -S -D -H -u 953 -G keepalived_script keepalived_script \
  && mkdir -p /etc/keepalived /run/kudurru /run/secrets \

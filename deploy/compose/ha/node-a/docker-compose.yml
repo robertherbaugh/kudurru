@@ -11,6 +11,7 @@
 #   openssl rand -base64 18 > secrets/admin_password
 #   openssl rand -hex 32 > secrets/proxy_secret          # PROXYv2 TLV 0xE0
 #   openssl rand -hex 16 > secrets/vrrp_hmac             # keepalived auth_hmac
+#   chmod 0600 secrets/vrrp_hmac                         # keepalived -t rejects a group/world-readable key
 name: kudurru
 services:
   kudurru:
