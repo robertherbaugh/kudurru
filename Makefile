@@ -28,13 +28,13 @@ build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
 
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
-## larger than SIZE_BUDGET bytes (D75). The budget is 10 % above the
-## 54,874,272 bytes measured for v0.1.0-rc.1 (linux/amd64, Go 1.27.2, the
-## placeholder dashboard): 46,575,776 at the end of M1, 53,862,560 at the end
-## of M4 (auth, OIDC, API, dashboard embed, edge and VIP supervisors), plus
-## 1,011,712 for the self-hosted Scalar docs bundle (internal/api/scalar).
-## Raise it deliberately, in the change that explains the growth.
-SIZE_BUDGET ?= 60362000
+## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
+## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
+## 60,362,000), 58,523,808 after the v0.1 UX round (linux/amd64, Go 1.27.2,
+## built dashboard). The project owner set the ceiling to 100,000,000 bytes
+## (D138); growth still needs a reason in the change that causes it, and
+## cmd/kudurru TestNoTemplateExecution guards the one known 12 MB trap.
+SIZE_BUDGET ?= 100000000
 size: build
 	@size=$$(wc -c < $(BIN) | tr -d ' '); \
 	echo "$(BIN): $$size bytes, budget $(SIZE_BUDGET) bytes ($$((size * 100 / $(SIZE_BUDGET)))% used, $$(( ($(SIZE_BUDGET) - size) / 1024 )) KiB headroom)"; \
