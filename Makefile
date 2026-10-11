@@ -11,7 +11,7 @@ export CGO_ENABLED
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
 GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
-.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated
+.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds
 
 all: build
 
@@ -44,10 +44,17 @@ manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/... output:crd:artifacts:config=config/crd/bases
 	mkdir -p charts/kudurru-crds/templates
 	cp config/crd/bases/*.yaml charts/kudurru-crds/templates/
+	$(MAKE) --no-print-directory validator-crds
+
+## validator-crds: copy the CRDs into the store validator's go:embed directory (D34)
+validator-crds:
+	mkdir -p internal/store/validator/crds
+	rm -f internal/store/validator/crds/*.yaml
+	cp config/crd/bases/*.yaml internal/store/validator/crds/
 
 ## check-generated: fail if `make generate` would change tracked files
 check-generated: generate
-	git diff --exit-code -- api config/crd charts/kudurru-crds
+	git diff --exit-code -- api config/crd charts/kudurru-crds internal/store/validator/crds
 
 helm-lint:
 	helm lint charts/kudurru charts/kudurru-crds
