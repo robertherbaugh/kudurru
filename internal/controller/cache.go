@@ -2,6 +2,7 @@ package controller
 
 import (
 	"sync"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -311,14 +312,14 @@ func (c *cache) snapshotZone(zone string) (*v1alpha1.DNSZone, []*v1alpha1.DNSRec
 }
 
 // build returns the zone-model build of zone at the current version,
-// building it when the cached one is older, and the build it replaced (nil
-// when there was none or it is the same).
+// building it when the cached one is older or past its NextExpiry, and the
+// build it replaced (nil when there was none or it is the same).
 func (c *cache) build(zone string) (cur, prev *zoneBuild) {
 	c.mu.RLock()
 	version := c.zoneVersion[zone]
 	c.mu.RUnlock()
 	c.viewMu.Lock()
-	if b, ok := c.builds[zone]; ok && c.buildAt[zone] == version {
+	if b, ok := c.builds[zone]; ok && c.buildAt[zone] == version && (b.NextExpiry.IsZero() || time.Now().Before(b.NextExpiry)) {
 		c.viewMu.Unlock()
 		return b, nil
 	}

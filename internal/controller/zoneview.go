@@ -132,6 +132,10 @@ type zoneBuild struct {
 	// Conflicts holds, per record set, the endpoints the zone model
 	// refused that the controller's own rules do not report.
 	Conflicts map[store.Key][]conflict
+	// NextExpiry is the earliest expiresAt of a record still served at
+	// build time (zone.Zone.NextExpiry), zero when none expires. The build
+	// is stale from that instant: the record leaves the hash.
+	NextExpiry time.Time
 }
 
 // buildZone builds zone from rrsets with the zone model. A nil zone has
@@ -143,7 +147,7 @@ func buildZone(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet) *zoneBui
 	}
 	z, errs := ZoneContentHash(zone, rrsets, time.Time{})
 	if z != nil {
-		b.Hash, b.RecordCount = z.ContentHash(), z.RecordCount()
+		b.Hash, b.RecordCount, b.NextExpiry = z.ContentHash(), z.RecordCount(), z.NextExpiry()
 	} else {
 		b.ZoneErr = errs.Zone.ToAggregate()
 	}
