@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -184,18 +186,41 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 		resp.Content = map[string]*huma.MediaType{"application/json": {Schema: reg.Schema(reflect.TypeOf(respExample), true, "")}}
 	}
 	op.Responses = map[string]*huma.Response{strconv.Itoa(status): resp}
+	// The auth handler reads the body itself.
+	op.SkipValidateBody = true
 	for _, m := range pathParamRE.FindAllStringSubmatch(op.Path, -1) {
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}
-	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+	serve := func(body []byte) (*huma.StreamResponse, error) {
 		if s.opts.AuthHandler == nil {
 			return nil, errNotImplemented("authentication (no auth handler is configured)")
 		}
 		return &huma.StreamResponse{Body: func(ctx huma.Context) {
 			r, w := humago.Unwrap(ctx)
+			if body != nil {
+				// huma consumed the body for the documented schema; hand
+				// the auth handler a fresh reader over the same bytes.
+				r.Body = io.NopCloser(bytes.NewReader(body))
+				r.ContentLength = int64(len(body))
+			}
 			s.opts.AuthHandler.ServeHTTP(w, r)
 		}}, nil
-	})
+	}
+	if reqExample != nil {
+		register(s, op, p, func(_ context.Context, in *forwardBodyInput) (*huma.StreamResponse, error) {
+			if in.RawBody == nil {
+				in.RawBody = []byte{}
+			}
+			return serve(in.RawBody)
+		})
+		return
+	}
+	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) { return serve(nil) })
+}
+
+// forwardBodyInput captures the body of a forwarded auth route.
+type forwardBodyInput struct {
+	RawBody []byte `contentType:"application/json"`
 }
 
 // pathParamRE finds the {name} wildcards of a route path.

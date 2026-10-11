@@ -219,3 +219,13 @@ func staticLoader(t testing.TB, st store.Store) *objects.Loader {
 	}
 	return l
 }
+
+// loaderFor is a file-mode objects.Loader over dir.
+func loaderFor(t testing.TB, st store.Store, dir string) *objects.Loader {
+	t.Helper()
+	l, err := objects.New(objects.Options{Store: st, Validator: testValidator(t), Dir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l
+}

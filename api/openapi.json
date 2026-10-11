@@ -1345,22 +1345,6 @@
         ],
         "type": "object"
       },
-      "LoginRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "password": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "type": "object"
-      },
       "Me": {
         "additionalProperties": false,
         "properties": {
@@ -2623,21 +2607,6 @@
         ],
         "type": "object"
       },
-      "TokenRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "expiresIn": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "type": "object"
-      },
       "TopBody": {
         "additionalProperties": false,
         "properties": {
@@ -3497,7 +3466,9 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
               }
             }
           },
@@ -3808,7 +3779,9 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TokenRequest"
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
               }
             }
           },
