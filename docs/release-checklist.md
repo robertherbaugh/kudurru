@@ -99,13 +99,14 @@ without them, listed as known gaps in the notes):
 - [ ] The workflow packages both charts with `--version <version>
       --app-version <version>`, pushes them to
       `oci://ghcr.io/robertherbaugh/charts` and cosign-signs each chart digest.
-- [ ] Supervisor images (no release job yet, docs/followups.md): build and
-      push `ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k<version>` and
+- [ ] The `supervisor-images` job (after `release`) builds and pushes
+      `ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k<version>` and
       `ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k<version>` from
       `images/dnsdist` and `images/keepalived` with
-      `--build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>`
-      for linux/amd64 and linux/arm64, then `cosign sign --yes <image>@<digest>`.
-      Their READMEs carry the GPL notices and source offer.
+      `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>` for
+      linux/amd64 and linux/arm64 and cosign-signs each digest (the program
+      versions come from the Dockerfile ARGs). Check both jobs succeeded;
+      the image READMEs carry the GPL notices and source offer.
 
 ## 5. Verify what was published
 
