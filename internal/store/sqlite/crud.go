@@ -497,7 +497,7 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 	if prev != nil {
 		old = prev.obj
 	}
-	if err := s.opts.Validator.Validate(ctx, next, old); err != nil {
+	if err := s.validate(ctx, next, old); err != nil {
 		return nil, err
 	}
 	// Apply writes the main resource only (D70).
@@ -624,7 +624,7 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) (err error) 
 		}
 		in := obj.DeepCopyObject().(store.Object)
 		in.GetObjectKind().SetGroupVersionKind(ki.gvk)
-		if err := s.opts.Validator.ValidateStatus(ctx, in, prev.obj); err != nil {
+		if err := s.validateStatus(ctx, in, prev.obj); err != nil {
 			return nil, err
 		}
 		next := prev.obj.DeepCopyObject().(store.Object)

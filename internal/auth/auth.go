@@ -31,6 +31,32 @@ type Principal struct {
 	// AuthMethod is how the principal authenticated: cookie, token, jwt,
 	// k8s, unix, internal.
 	AuthMethod string
+
+	// The fields below are filled per request by the authenticators and
+	// LoadPrincipal (§8.8); sealed sessions persist none of them.
+
+	// UID is the Kubernetes user UID of a KubernetesServiceAccount.
+	UID string
+	// ServiceAccount is "<namespace>/<name>" for kudurru and Kubernetes
+	// service accounts; binding subjects of kind ServiceAccount match it.
+	ServiceAccount string
+	// BuiltinAdmin grants admin without a binding: the first-boot admin,
+	// the bootstrap service account and the unix-socket peer.
+	BuiltinAdmin bool
+	// MustChangePassword restricts a local user to changing the password.
+	MustChangePassword bool
+	// Grants are pre-resolved grants in wire form ("role" or
+	// "role@kind:name"): a cookie session's roles snapshot or the frozen
+	// grants of an OIDC user's personal token, honoured while the
+	// bindings still provide them (rbac.BindingSource).
+	Grants []string
+	// GrantsIssuedAt is when Grants were resolved.
+	GrantsIssuedAt time.Time
+	// Scopes, when non-empty, narrow every decision to these grants (API
+	// token scopes, §8.6).
+	Scopes []string
+	// TokenID is the id of the API token that authenticated the request.
+	TokenID string
 }
 
 // Session is the payload of a sealed cookie or a db row. RolesSnapshot

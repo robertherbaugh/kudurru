@@ -27,8 +27,8 @@ import (
 
 // The internal kinds are validated in Go: there is no CRD schema for them.
 // Names must be DNS subdomains (RFC 1123) so that the kube driver can embed
-// them in Secret names; namespaces are DNS labels. Messages carry the field
-// path so the API can return them as 400 "invalid".
+// them in Secret names; namespaces are DNS labels. Every rejected field is
+// reported with its path so the API can return it as 400 "invalid".
 
 // MaxPasswordHashLen bounds a stored PHC string.
 const MaxPasswordHashLen = 512
@@ -36,75 +36,130 @@ const MaxPasswordHashLen = 512
 var (
 	tokenIDPattern    = regexp.MustCompile(`^[a-z0-9]{12}$`)
 	secretHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	grantPattern      = regexp.MustCompile(`^[a-z0-9-]+(@[a-z]+:[^@:\s]+)?$`)
 )
 
-func validateMeta(kind, namespace, name string) []error {
-	var errs []error
+// FieldError is one rejected field: Field is the JSON path
+// ("spec.subjects[0].name"), Message the reason without the path.
+type FieldError struct {
+	Field   string
+	Message string
+}
+
+func (f FieldError) String() string { return f.Field + ": " + f.Message }
+
+// ValidationError is returned by Validate. Store drivers convert it into
+// their *validator.Error (one cause per field) so the API maps it to 400
+// "invalid" exactly like a CRD schema rejection.
+//
+// +kubebuilder:object:generate=false
+type ValidationError struct {
+	Kind, Namespace, Name string
+	Fields                []FieldError
+}
+
+func (e *ValidationError) Error() string {
+	msgs := make([]string, 0, len(e.Fields))
+	for _, f := range e.Fields {
+		msgs = append(msgs, f.String())
+	}
+	return fmt.Sprintf("%s %q is invalid: %s", e.Kind, e.Name, strings.Join(msgs, "; "))
+}
+
+// AsValidationError returns the *ValidationError in err's chain.
+func AsValidationError(err error) (*ValidationError, bool) {
+	var v *ValidationError
+	ok := errors.As(err, &v)
+	return v, ok
+}
+
+type fieldErrs []FieldError
+
+func (f *fieldErrs) add(field, format string, args ...any) {
+	*f = append(*f, FieldError{Field: field, Message: fmt.Sprintf(format, args...)})
+}
+
+func (f fieldErrs) err(kind, namespace, name string) error {
+	if len(f) == 0 {
+		return nil
+	}
+	return &ValidationError{Kind: kind, Namespace: namespace, Name: name, Fields: f}
+}
+
+func validateMeta(kind, namespace, name string) fieldErrs {
+	var errs fieldErrs
 	if name == "" {
-		errs = append(errs, errors.New("metadata.name: required"))
+		errs.add("metadata.name", "required")
 	} else if msgs := validation.IsDNS1123Subdomain(name); len(msgs) > 0 {
-		errs = append(errs, fmt.Errorf("metadata.name: %q: %s", name, strings.Join(msgs, "; ")))
+		errs.add("metadata.name", "%q: %s", name, strings.Join(msgs, "; "))
 	}
 	if Namespaced(kind) {
 		if namespace == "" {
-			errs = append(errs, errors.New("metadata.namespace: required"))
+			errs.add("metadata.namespace", "required")
 		} else if msgs := validation.IsDNS1123Label(namespace); len(msgs) > 0 {
-			errs = append(errs, fmt.Errorf("metadata.namespace: %q: %s", namespace, strings.Join(msgs, "; ")))
+			errs.add("metadata.namespace", "%q: %s", namespace, strings.Join(msgs, "; "))
 		}
 	} else if namespace != "" {
-		errs = append(errs, fmt.Errorf("metadata.namespace: %s is cluster-scoped", kind))
+		errs.add("metadata.namespace", "%s is cluster-scoped", kind)
 	}
 	return errs
 }
 
-func joinErrs(kind string, errs []error) error {
-	if len(errs) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%s: %w", kind, errors.Join(errs...))
-}
+// ValidGrant reports whether g is a grant in wire form: "role" or
+// "role@kind:name".
+func ValidGrant(g string) bool { return grantPattern.MatchString(g) }
 
 // Validate implements Validator.
 func (u *LocalUser) Validate() error {
 	errs := validateMeta(KindLocalUser, u.Namespace, u.Name)
 	if h := u.Spec.PasswordHash; h != "" && (len(h) > MaxPasswordHashLen || !strings.HasPrefix(h, "$argon2id$")) {
-		errs = append(errs, errors.New("spec.passwordHash: must be an Argon2id PHC string"))
+		errs.add("spec.passwordHash", "must be an Argon2id PHC string")
 	}
 	for i, g := range u.Spec.Groups {
 		if g == "" {
-			errs = append(errs, fmt.Errorf("spec.groups[%d]: empty group name", i))
+			errs.add(fmt.Sprintf("spec.groups[%d]", i), "empty group name")
 		}
 	}
-	return joinErrs(KindLocalUser, errs)
+	return errs.err(KindLocalUser, u.Namespace, u.Name)
 }
 
 // Validate implements Validator.
 func (t *APIToken) Validate() error {
 	errs := validateMeta(KindAPIToken, t.Namespace, t.Name)
 	if t.Name != "" && !tokenIDPattern.MatchString(t.Name) {
-		errs = append(errs, errors.New("metadata.name: a token id is 12 characters of [a-z0-9]"))
+		errs.add("metadata.name", "a token id is 12 characters of [a-z0-9]")
 	}
 	if !secretHashPattern.MatchString(t.Spec.SecretHash) {
-		errs = append(errs, errors.New("spec.secretHash: must be 64 lowercase hex digits (sha256)"))
+		errs.add("spec.secretHash", "must be a lowercase hex sha256")
 	}
 	switch t.Spec.Owner.Kind {
 	case OwnerUser:
 		if t.Spec.Owner.Name == "" {
-			errs = append(errs, errors.New("spec.owner.name: required"))
+			errs.add("spec.owner.name", "required")
 		}
 	case OwnerServiceAccount:
 		if t.Spec.Owner.Name == "" || t.Spec.Owner.Namespace == "" {
-			errs = append(errs, errors.New("spec.owner: a ServiceAccount owner needs name and namespace"))
+			errs.add("spec.owner", "a ServiceAccount owner needs name and namespace")
 		}
 	default:
-		errs = append(errs, fmt.Errorf("spec.owner.kind: %q is not User or ServiceAccount", t.Spec.Owner.Kind))
+		errs.add("spec.owner.kind", "%q is not User or ServiceAccount", t.Spec.Owner.Kind)
 	}
-	return joinErrs(KindAPIToken, errs)
+	for i, g := range t.Spec.Grants {
+		if !ValidGrant(g) {
+			errs.add(fmt.Sprintf("spec.grants[%d]", i), "%q is not role or role@kind:name", g)
+		}
+	}
+	for i, g := range t.Spec.Scopes {
+		if !ValidGrant(g) {
+			errs.add(fmt.Sprintf("spec.scopes[%d]", i), "%q is not role or role@kind:name", g)
+		}
+	}
+	return errs.err(KindAPIToken, t.Namespace, t.Name)
 }
 
 // Validate implements Validator.
 func (a *ServiceAccount) Validate() error {
-	return joinErrs(KindServiceAccount, validateMeta(KindServiceAccount, a.Namespace, a.Name))
+	return validateMeta(KindServiceAccount, a.Namespace, a.Name).err(KindServiceAccount, a.Namespace, a.Name)
 }
 
 // Validate implements Validator. Role names are checked against the
@@ -112,38 +167,38 @@ func (a *ServiceAccount) Validate() error {
 func (b *RoleBinding) Validate() error {
 	errs := validateMeta(KindRoleBinding, b.Namespace, b.Name)
 	if b.Spec.Role == "" {
-		errs = append(errs, errors.New("spec.role: required"))
+		errs.add("spec.role", "required")
 	}
 	switch b.Spec.Scope.Kind {
 	case "", "cluster":
 		if b.Spec.Scope.Name != "" {
-			errs = append(errs, errors.New("spec.scope.name: must be empty for cluster scope"))
+			errs.add("spec.scope.name", "must be empty for cluster scope")
 		}
 	case "zone", "zonegroup", "clientgroup":
 		if b.Spec.Scope.Name == "" {
-			errs = append(errs, fmt.Errorf("spec.scope.name: required for scope kind %s", b.Spec.Scope.Kind))
+			errs.add("spec.scope.name", "required for scope kind %s", b.Spec.Scope.Kind)
 		}
 	default:
-		errs = append(errs, fmt.Errorf("spec.scope.kind: %q is not cluster, zone, zonegroup or clientgroup", b.Spec.Scope.Kind))
+		errs.add("spec.scope.kind", "%q is not cluster, zone, zonegroup or clientgroup", b.Spec.Scope.Kind)
 	}
 	if len(b.Spec.Subjects) == 0 {
-		errs = append(errs, errors.New("spec.subjects: at least one subject is required"))
+		errs.add("spec.subjects", "at least one subject is required")
 	}
 	for i, s := range b.Spec.Subjects {
 		if s.Name == "" {
-			errs = append(errs, fmt.Errorf("spec.subjects[%d].name: required", i))
+			errs.add(fmt.Sprintf("spec.subjects[%d].name", i), "required")
 		}
 		switch s.Kind {
 		case "User", "Group":
 		case "ServiceAccount":
 			if s.Namespace == "" {
-				errs = append(errs, fmt.Errorf("spec.subjects[%d].namespace: required for a ServiceAccount", i))
+				errs.add(fmt.Sprintf("spec.subjects[%d].namespace", i), "required for a ServiceAccount")
 			}
 		default:
-			errs = append(errs, fmt.Errorf("spec.subjects[%d].kind: %q is not User, Group or ServiceAccount", i, s.Kind))
+			errs.add(fmt.Sprintf("spec.subjects[%d].kind", i), "%q is not User, Group or ServiceAccount", s.Kind)
 		}
 	}
-	return joinErrs(KindRoleBinding, errs)
+	return errs.err(KindRoleBinding, b.Namespace, b.Name)
 }
 
 // Validate implements Validator. The OIDC-specific rules (https issuer,
@@ -152,16 +207,16 @@ func (b *RoleBinding) Validate() error {
 func (p *IdentityProvider) Validate() error {
 	errs := validateMeta(KindIdentityProvider, p.Namespace, p.Name)
 	if msgs := validation.IsDNS1123Label(p.Name); p.Name != "" && len(msgs) > 0 {
-		errs = append(errs, fmt.Errorf("metadata.name: an identity provider id is a DNS label: %s", strings.Join(msgs, "; ")))
+		errs.add("metadata.name", "an identity provider id is a DNS label: %s", strings.Join(msgs, "; "))
 	}
 	if p.Spec.Issuer == "" {
-		errs = append(errs, errors.New("spec.issuer: required"))
+		errs.add("spec.issuer", "required")
 	}
 	if p.Spec.ClientID == "" {
-		errs = append(errs, errors.New("spec.clientID: required"))
+		errs.add("spec.clientID", "required")
 	}
 	if p.Spec.ClientSecretRef != nil && p.Spec.ClientSecretFile != "" {
-		errs = append(errs, errors.New("spec: clientSecretRef and clientSecretFile are mutually exclusive"))
+		errs.add("spec", "clientSecretRef and clientSecretFile are mutually exclusive")
 	}
-	return joinErrs(KindIdentityProvider, errs)
+	return errs.err(KindIdentityProvider, p.Namespace, p.Name)
 }
