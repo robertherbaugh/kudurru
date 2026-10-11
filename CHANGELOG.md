@@ -135,8 +135,10 @@ record what changed on the way.
   (`--peers-from nodes:<selector>`).
 - `kudurru health --vrrp` is the keepalived check (`kudurru vip probe` is the
   same probe).
-- `dnsdist.CacheFlusher` flushes the local edge's resolver cache when blocking
-  is toggled (to be wired by the server).
+- The server flushes the local edge's resolver cache (sidecar, compose) on
+  every compiled list snapshot and every blocking toggle, so list and toggle
+  changes are visible through dnsdist at once; remote edges still wait for
+  the TTL (v0.2).
 
 ### Deployment and packaging
 
@@ -145,10 +147,14 @@ record what changed on the way.
   rendered from the chart; OIDC providers through `auth.oidc.providers`.
 - Compose profiles: single instance, single instance behind dnsdist, and a
   three-node HA set with dnsdist and keepalived.
+- The settings ConfigMap is read through `KUDURRU_SETTINGS_FILE` with hot
+  reload, so settings changes no longer roll the pods; the compose files
+  persist UI settings edits in `/var/lib/kudurru/settings.yaml`.
 - goreleaser: archives, deb/rpm/apk with a systemd unit, ko images
   (`linux/amd64`, `linux/arm64`, distroless, plus `-debug`), SBOMs, cosign
   keyless signatures, `crds.yaml` and `install.yaml`; Helm charts pushed to
-  `oci://ghcr.io/robertherbaugh/charts`.
+  `oci://ghcr.io/robertherbaugh/charts`; the `kudurru-dnsdist` and
+  `kudurru-keepalived` images are built and signed on the same tag.
 - Binary-size budget in CI (`make size`).
 
 ### Known limitations
