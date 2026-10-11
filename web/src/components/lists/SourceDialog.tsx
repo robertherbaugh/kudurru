@@ -80,7 +80,7 @@ export interface SourceDialogProps {
 export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDialogProps) {
   const editing = !!initial;
   const initialKind = initial ? sourceKind(initial) : 'url';
-  const [choice, setChoice] = useState<SourceChoice>(initialKind === 'inline' ? 'paste' : initialKind);
+  const [choice, setChoice] = useState<SourceChoice>(initialKind === 'inline' || initialKind === 'entries' ? 'paste' : initialKind);
   const [name, setName] = useState(initial?.name ?? '');
   const [nameTouched, setNameTouched] = useState(editing);
   const [url, setUrl] = useState(initial?.url ?? '');
@@ -121,6 +121,8 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
     const base: ListSource = { name: name.trim(), format };
     if (subdomains) base.subdomains = true;
     if (initial?.enabled === false) base.enabled = false;
+    // Entries switched off stay off (the server reports the ones a new body no longer has).
+    if (initial?.exclude?.length) base.exclude = initial.exclude;
     switch (choice) {
       case 'url':
         return { ...base, url: url.trim() };

@@ -4,6 +4,72 @@
  */
 
 export interface paths {
+    "/allowlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Allowlist entries
+         * @description Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+         */
+        get: operations["listAllowlist"];
+        put?: never;
+        /**
+         * Add Allowlist entries
+         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+         */
+        post: operations["createAllowlistEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/allowlist/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Allowlist entry */
+        get: operations["getAllowlistEntry"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a Allowlist entry
+         * @description Removes every copy; a list left empty is deleted and its policy references removed.
+         */
+        delete: operations["deleteAllowlistEntry"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a Allowlist entry
+         * @description Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+         */
+        patch: operations["patchAllowlistEntry"];
+        trace?: never;
+    };
+    "/allowlist:batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch on, off or delete several Allowlist entries */
+        post: operations["batchAllowlistEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/apply": {
         parameters: {
             query?: never;
@@ -295,20 +361,20 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Page through the entries of an inline BlockList source
-         * @description The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+         * Page through the entries of a BlockList source
+         * @description Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.
          */
-        get: operations["listInlineEntries"];
+        get: operations["listSourceEntries"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /**
-         * Add and remove entries of an inline BlockList source
-         * @description Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+         * Switch entries of a BlockList source off and on, add and remove inline entries
+         * @description Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
          */
-        patch: operations["patchInlineEntries"];
+        patch: operations["patchSourceEntries"];
         trace?: never;
     };
     "/blocklists:batchDelete": {
@@ -541,6 +607,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/denylist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Denylist entries
+         * @description Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+         */
+        get: operations["listDenylist"];
+        put?: never;
+        /**
+         * Add Denylist entries
+         * @description Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+         */
+        post: operations["createDenylistEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/denylist/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Denylist entry */
+        get: operations["getDenylistEntry"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a Denylist entry
+         * @description Removes every copy; a list left empty is deleted and its policy references removed.
+         */
+        delete: operations["deleteDenylistEntry"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a Denylist entry
+         * @description Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+         */
+        patch: operations["patchDenylistEntry"];
+        trace?: never;
+    };
+    "/denylist:batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch on, off or delete several Denylist entries */
+        post: operations["batchDenylistEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dns/blocking": {
         parameters: {
             query?: never;
@@ -619,6 +751,26 @@ export interface paths {
         };
         /** The checks of `kudurru doctor` as this node sees them */
         get: operations["doctor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Allowlist and Denylist entries together
+         * @description The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.
+         */
+        get: operations["listDomainEntries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1752,6 +1904,155 @@ export interface components {
             /** Format: int64 */
             warnings: number;
         };
+        DomainEntries: {
+            /** @description Token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["DomainEntry"][];
+            lists: components["schemas"]["DomainListInfo"][];
+            /**
+             * Format: int64
+             * @description Entries matching the filters.
+             */
+            matched: number;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            /**
+             * Format: int64
+             * @description Entries of the action(s) and namespace(s), before filters.
+             */
+            total: number;
+            /** @description Policies that should reference a list but are managed by a file or an integration; add the list there. */
+            unattached: components["schemas"]["DomainUnattached"][];
+        };
+        DomainEntriesBatch: {
+            ids: string[] | null;
+            /** @enum {string} */
+            op: "enable" | "disable" | "delete";
+        };
+        DomainEntriesCreate: {
+            comment?: string;
+            /** @description Default true. */
+            enabled?: boolean;
+            /** @description ClientGroups (ns/name or a name in namespace); empty applies to everyone. */
+            groups?: string[] | null;
+            /** @description Default the server's default namespace. */
+            namespace?: string;
+            /**
+             * @description Where the entry was added from (default manual).
+             * @enum {string}
+             */
+            origin?: "manual" | "querylog" | "api";
+            /**
+             * @description Default exact.
+             * @enum {string}
+             */
+            type?: "exact" | "wildcard" | "regex";
+            /** @description One entry per value, all of one type. */
+            values: string[] | null;
+        };
+        DomainEntry: {
+            /** @enum {string} */
+            action: "allow" | "deny";
+            comment?: string;
+            /** Format: date-time */
+            created?: string;
+            /** @description The actor that added the entry (user:alice). */
+            createdBy?: string;
+            enabled: boolean;
+            /** @description Applies to every client (stored in ui-allow / ui-deny). */
+            everyone: boolean;
+            /** @description ClientGroups (ns/name) with a group-scoped copy. */
+            groups: string[];
+            /** @description Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}. */
+            id: string;
+            lists: components["schemas"]["DomainEntryList"][];
+            /** Format: date-time */
+            modified?: string;
+            namespace: string;
+            /** @enum {string} */
+            origin: "manual" | "querylog" | "unblock" | "api" | "migrated";
+            overrides: components["schemas"]["DomainOverride"][];
+            /** @description Policies that reference the entry's lists, ns/name. */
+            policies: string[];
+            readOnly: boolean;
+            readOnlyReason?: string;
+            /** @description The UnblockRequest (ns/name) whose approval added the entry. */
+            request?: string;
+            /** @description The rule as compiled and shown in the query log: name, *.name or /expression/. */
+            rule: string;
+            /** @enum {string} */
+            type: "exact" | "wildcard" | "regex";
+            /** @description exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes. */
+            value: string;
+        };
+        DomainEntryList: {
+            /** @description The ClientGroup of a group list, ns/name. */
+            group?: string;
+            /** @description The BlockList, ns/name (ui-allow, ui-deny, ui-allow-<group>, ui-deny-<group>). */
+            list: string;
+            /** @description The list's owner when not the API. */
+            managedBy?: string;
+            /** @description The source holding the entry (ui). */
+            source: string;
+        };
+        DomainEntryPatch: {
+            comment?: string;
+            enabled?: boolean;
+            groups?: string[] | null;
+            /**
+             * @description everyone, or groups (with groups).
+             * @enum {string}
+             */
+            scope?: "everyone" | "groups";
+            /** @enum {string} */
+            type?: "exact" | "wildcard" | "regex";
+            value?: string;
+        };
+        DomainListInfo: {
+            /** @enum {string} */
+            action: "allow" | "deny";
+            /** @description The list's kudurru.io/enabled switch. */
+            enabled: boolean;
+            /** Format: int64 */
+            entries: number;
+            group?: string;
+            list: string;
+            managedBy?: string;
+            policies: string[];
+        };
+        DomainOverride: {
+            /** @description The compiled list, ns/name. */
+            list: string;
+            /** @description The rule of that list that matches the name. */
+            rule: string;
+        };
+        DomainUnattached: {
+            list: string;
+            managedBy: string;
+            policy: string;
+        };
+        DomainWriteResult: {
+            /** @description Policies that reference the written lists. */
+            attached: string[];
+            /**
+             * Format: int64
+             * @description Response-cache entries of the names removed on this node.
+             */
+            flushed: number;
+            /** @description The entries written, as stored after the write. */
+            items: components["schemas"]["DomainEntry"][];
+            processed: components["schemas"]["ProcessedItems"];
+            /** @description Policies that should reference a list but are managed elsewhere. */
+            skipped: string[];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
         DomainsRequest: {
             domains: string[] | null;
             list?: string;
@@ -1893,54 +2194,6 @@ export interface components {
             warnings: string[];
             zone: string;
             zoneName: string;
-        };
-        InlineEntries: {
-            /** @description Token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["InlineEntry"][];
-            /**
-             * Format: int64
-             * @description Entries matching q (Total without q).
-             */
-            matched: number;
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-            /**
-             * Format: int64
-             * @description Entries in the source.
-             */
-            total: number;
-        };
-        InlineEntriesPatch: {
-            add?: string[] | null;
-            remove?: string[] | null;
-        };
-        InlineEntriesResult: {
-            added: string[];
-            removed: string[];
-            resourceVersion: string;
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-            /**
-             * Format: int64
-             * @description Entries in the source after the change.
-             */
-            total: number;
-        };
-        InlineEntry: {
-            /**
-             * Format: int64
-             * @description 1-based position in spec.sources[].inline.
-             */
-            line: number;
-            /** @description The entry as written in spec.sources[].inline. */
-            value: string;
         };
         LatencySummary: {
             /** Format: double */
@@ -2666,6 +2919,87 @@ export interface components {
              */
             took_ms: number;
         };
+        SourceEntries: {
+            /** @description Token for the next page; empty on the last page. */
+            continue?: string;
+            /** @description url and configMap: sha256 of the body this node holds. */
+            digest?: string;
+            /**
+             * Format: int64
+             * @description Entries switched off.
+             */
+            excluded: number;
+            /**
+             * Format: date-time
+             * @description url and configMap: when this node's body was fetched.
+             */
+            fetched?: string;
+            items: components["schemas"]["SourceEntry"][];
+            /** @enum {string} */
+            kind: "inline" | "url" | "configMap" | "entries";
+            /**
+             * Format: int64
+             * @description Entries matching q and enabled.
+             */
+            matched: number;
+            /** @description This node's body is not the one status.sources[].digest publishes yet. */
+            stale: boolean;
+            /** @description spec.sources[].exclude values that match no entry of the current body. */
+            staleExcludes: string[];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            /**
+             * Format: int64
+             * @description Entries in the source.
+             */
+            total: number;
+        };
+        SourceEntriesPatch: {
+            /** @description Inline sources only: lines to add. */
+            add?: string[] | null;
+            /** @description Entries to switch off: added to spec.sources[].exclude (enabled: false for structured entries). */
+            disable?: string[] | null;
+            /** @description Entries (values as GET lists them) to switch back on. */
+            enable?: string[] | null;
+            /** @description Inline sources only: lines to remove. */
+            remove?: string[] | null;
+        };
+        SourceEntriesResult: {
+            added: string[];
+            disabled: string[];
+            enabled: string[];
+            /**
+             * Format: int64
+             * @description Exclude values, or structured entries switched off, after the change.
+             */
+            excluded: number;
+            removed: string[];
+            resourceVersion: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            /**
+             * Format: int64
+             * @description Inline lines or structured entries after the change (0 for url and configMap sources).
+             */
+            total: number;
+        };
+        SourceEntry: {
+            /** @description false when switched off (spec.sources[].exclude, or enabled: false of a structured entry). */
+            enabled: boolean;
+            /**
+             * Format: int64
+             * @description 1-based line of the body (inline: position in spec.sources[].inline; entries: position in spec.sources[].entries).
+             */
+            line: number;
+            /** @description inline: the line as written; url and configMap: the rule as the source's format normalises it (one item per host of a hosts line); entries: the rendered rule. */
+            value: string;
+        };
         Stats: {
             /** Format: int64 */
             batches: number;
@@ -3103,6 +3437,577 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAllowlist: {
+        parameters: {
+            query?: {
+                /** @description Only this namespace (default: every namespace). */
+                namespace?: string;
+                type?: "exact" | "wildcard" | "regex";
+                enabled?: "true" | "false";
+                /** @description everyone, or a ClientGroup (ns/name). */
+                scope?: string;
+                /** @description Substring of the value or comment, case-insensitive. */
+                q?: string;
+                /** @description Page size (default 100). */
+                limit?: number;
+                continue?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainEntries"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createAllowlistEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntriesCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAllowlistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainEntry"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAllowlistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchAllowlistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchAllowlistEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntriesBatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     apply: {
         parameters: {
             query?: never;
@@ -4943,11 +5848,13 @@ export interface operations {
             };
         };
     };
-    listInlineEntries: {
+    listSourceEntries: {
         parameters: {
             query?: {
                 /** @description Substring filter, case-insensitive. */
                 q?: string;
+                /** @description Only entries switched on (true) or off (false). */
+                enabled?: "true" | "false";
                 /** @description Page size (default 100). */
                 limit?: number;
                 continue?: string;
@@ -4970,7 +5877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InlineEntries"];
+                    "application/json": components["schemas"]["SourceEntries"];
                 };
             };
             /** @description Bad Request */
@@ -5038,7 +5945,7 @@ export interface operations {
             };
         };
     };
-    patchInlineEntries: {
+    patchSourceEntries: {
         parameters: {
             query?: never;
             header?: {
@@ -5055,7 +5962,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["InlineEntriesPatch"];
+                "application/json": components["schemas"]["SourceEntriesPatch"];
             };
         };
         responses: {
@@ -5066,7 +5973,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InlineEntriesResult"];
+                    "application/json": components["schemas"]["SourceEntriesResult"];
                 };
             };
             /** @description Bad Request */
@@ -6586,6 +7493,577 @@ export interface operations {
             };
         };
     };
+    listDenylist: {
+        parameters: {
+            query?: {
+                /** @description Only this namespace (default: every namespace). */
+                namespace?: string;
+                type?: "exact" | "wildcard" | "regex";
+                enabled?: "true" | "false";
+                /** @description everyone, or a ClientGroup (ns/name). */
+                scope?: string;
+                /** @description Substring of the value or comment, case-insensitive. */
+                q?: string;
+                /** @description Page size (default 100). */
+                limit?: number;
+                continue?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainEntries"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createDenylistEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntriesCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDenylistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainEntry"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteDenylistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchDenylistEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchDenylistEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainEntriesBatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainWriteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getBlocking: {
         parameters: {
             query?: never;
@@ -7091,6 +8569,103 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDomainEntries: {
+        parameters: {
+            query?: {
+                /** @description Only Allowlist (allow) or Denylist (deny) entries. */
+                action?: "allow" | "deny";
+                /** @description Only this namespace (default: every namespace). */
+                namespace?: string;
+                type?: "exact" | "wildcard" | "regex";
+                enabled?: "true" | "false";
+                /** @description everyone, or a ClientGroup (ns/name). */
+                scope?: string;
+                /** @description Substring of the value or comment, case-insensitive. */
+                q?: string;
+                /** @description Page size (default 100). */
+                limit?: number;
+                continue?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainEntries"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -165,6 +165,10 @@ export interface ListSource {
   subdomains?: boolean;
   /** false: not fetched or compiled, cache kept (ux-plan C2); omitted = true. */
   enabled?: boolean;
+  /** Structured entries (the dashboard's allow and deny lists ui-*); exclusive with url, inline and configMapRef. */
+  entries?: ListSourceEntry[];
+  /** Normalised rules of this url, configMap or inline source that are switched off. */
+  exclude?: string[];
 }
 
 export interface BlockListSpec {
@@ -185,6 +189,10 @@ export interface SourceStatus {
   error?: string;
   /** false for a disabled source (ux-plan C2). */
   enabled?: boolean;
+  /** Entries of the source switched off (exclude[] hits, or entries[] with enabled: false). */
+  excluded?: number;
+  /** exclude[] values that match no entry of the current body (at most 50). */
+  staleExcludes?: string[];
 }
 
 export interface BlockListStatus {
@@ -260,19 +268,6 @@ export interface Processed {
     errors: { item: string; error: string }[];
   };
   took_ms?: number;
-}
-
-/** One line of an inline source (GET /blocklists/{ns}/{name}/sources/{source}/entries, ux-plan C2). */
-export interface ListEntry {
-  value: string;
-  /** Position in spec.sources[i].inline. */
-  line: number;
-}
-
-/** Body of PATCH …/sources/{source}/entries. */
-export interface ListEntriesPatch {
-  add?: string[];
-  remove?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -868,3 +863,88 @@ export type UnblockMatch = NonNullable<UnblockApproval['match']>;
 export type UnblockDenial = S['UnblockDenial'];
 /** The answer of approve and deny; skipped policies are managed elsewhere. */
 export type UnblockDecisionResult = S['UnblockDecisionResult'];
+
+// Allowlist, Denylist and the per-source entries browser ---------------------
+//
+// The routes alias the generated schemas (api/openapi.json); the BlockList
+// fields they work on (spec.sources[].entries and exclude, status
+// excluded and staleExcludes) are hand-written above with the object.
+
+export type DomainAction = S['DomainEntry']['action'];
+/** exact "ads.example.com", wildcard "*.example.com" (the name and every subdomain), regex RE2 without slashes. */
+export type DomainEntryType = S['DomainEntry']['type'];
+export type DomainOrigin = S['DomainEntry']['origin'];
+
+/** One structured entry of a source (spec.sources[].entries, the ui-* lists; api/v1alpha1 ListEntry). */
+export interface ListSourceEntry {
+  value: string;
+  type?: DomainEntryType;
+  /** Omitted = true. */
+  enabled?: boolean;
+  comment?: string;
+  created?: string;
+  /** Actor "kind:id", e.g. "User:operator", "system". */
+  createdBy?: string;
+  modified?: string;
+  origin?: DomainOrigin;
+  /** UnblockRequest "ns/name" when origin is unblock. */
+  request?: string;
+}
+
+/** One entry of GET /blocklists/{ns}/{name}/sources/{source}/entries (inline: the line; url/configMap: the normalised rule; entries: the rendered rule). */
+export type ListEntry = S['SourceEntry'];
+
+export type SourceEntriesKind = S['SourceEntries']['kind'];
+
+/** GET …/sources/{source}/entries (503 unavailable while this node has no cached body). */
+export type SourceEntriesPage = Omit<S['SourceEntries'], 'took_ms'> & { took_ms?: number };
+
+export interface SourceEntriesQuery {
+  q?: string;
+  enabled?: 'true' | 'false';
+  limit?: number;
+  continue?: string;
+}
+
+/** Body of PATCH …/sources/{source}/entries: add/remove for inline sources, enable/disable for every kind. */
+export type ListEntriesPatch = { [K in keyof S['SourceEntriesPatch']]?: string[] };
+
+/** Answer of PATCH …/entries; servers before the allowlist stream answered processed{success,errors}. */
+export type ListEntriesPatchResult = Partial<S['SourceEntriesResult']> & { processed?: Processed['processed'] };
+
+/** Where one copy of a logical entry lives. */
+export type DomainEntryList = S['DomainEntryList'];
+
+/** One logical allow or deny entry (namespace, action, type, value) across its lists. */
+export type DomainEntry = S['DomainEntry'];
+
+/** One list behind the entries of GET /allowlist, /denylist or /domains. */
+export type DomainListInfo = S['DomainListInfo'];
+
+/** A policy that should reference a list but is managed elsewhere. */
+export type DomainUnattached = S['DomainUnattached'];
+
+export type DomainEntriesPage = Omit<S['DomainEntries'], 'took_ms'> & { took_ms?: number };
+
+export interface DomainEntriesQuery {
+  namespace?: string;
+  /** /domains only. */
+  action?: DomainAction;
+  type?: DomainEntryType;
+  enabled?: 'true' | 'false';
+  /** "everyone" or a group "ns/name". */
+  scope?: string;
+  q?: string;
+  limit?: number;
+  continue?: string;
+}
+
+/** POST /allowlist|/denylist: 1..1000 values of one type; no groups = everyone. */
+export type DomainEntriesCreate = Omit<S['DomainEntriesCreate'], 'values' | 'groups'> & { values: string[]; groups?: string[] };
+
+export type DomainEntryPatch = Omit<S['DomainEntryPatch'], 'groups'> & { groups?: string[] };
+
+export type DomainBatch = Omit<S['DomainEntriesBatch'], 'ids'> & { ids: string[] };
+
+/** The answer of every write; skipped: policies that should reference a list but are managed elsewhere. */
+export type DomainWriteResult = Omit<S['DomainWriteResult'], 'took_ms'> & { took_ms?: number };

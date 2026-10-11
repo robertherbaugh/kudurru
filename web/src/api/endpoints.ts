@@ -51,9 +51,12 @@ import type {
   IamIdentityProvider,
   ZoneImportResult,
   ListSearchHit,
-  ListEntry,
   ListEntriesPatch,
+  ListEntriesPatchResult,
+  SourceEntriesPage,
+  SourceEntriesQuery,
 } from './types';
+import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainEntryPatch, DomainWriteResult } from './types';
 import type { CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 
@@ -143,14 +146,28 @@ export function endpoints(c: ApiClient) {
     lists: {
       refresh: (namespace: string, name: string) => c.post<void>(`/blocklists/${enc(namespace)}/${enc(name)}/refresh`),
       search: (domain: string) => c.get<ListEnvelope<ListSearchHit>>('/blocklists/_search', { domain }),
-      addDomains: (action: 'allow' | 'deny', kind: 'exact' | 'regex', domains: string[], namespace?: string, list?: string) =>
-        c.post<Processed>(`/domains/${action}/${kind}`, { domains, namespace, list }),
-      /** A page of an inline source's entries; `q` filters by substring (ux-plan C2). */
-      entries: (namespace: string, name: string, source: string, q: { q?: string; limit?: number; continue?: string } = {}) =>
-        c.get<ListEnvelope<ListEntry>>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, q),
-      /** Adds and removes inline entries without sending the whole list. */
+      /**
+       * A page of one source's entries, any kind: inline lines, the rules of a
+       * url or configMap body this node cached, or structured entries; `q`
+       * filters by substring, `enabled: 'false'` shows the switched-off ones.
+       */
+      entries: (namespace: string, name: string, source: string, q: SourceEntriesQuery = {}) =>
+        c.get<SourceEntriesPage>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, { ...q }),
+      /** Adds and removes inline entries, switches entries of any source on and off. */
       patchEntries: (namespace: string, name: string, source: string, body: ListEntriesPatch) =>
-        c.patch<Partial<Processed> | undefined>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, body, 'application/json'),
+        c.patch<ListEntriesPatchResult | undefined>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, body, 'application/json'),
+    },
+
+    // The Allowlist and Denylist (one logical entry across ui-allow /
+    // ui-allow-<group>, ui-deny / ui-deny-<group>); /domains lists both.
+    domains: {
+      list: (action: DomainAction | undefined, q: DomainEntriesQuery = {}) =>
+        c.get<DomainEntriesPage>(action ? `/${action}list` : '/domains', { ...q }),
+      get: (action: DomainAction, id: string) => c.get<DomainEntry>(`/${action}list/${enc(id)}`),
+      create: (action: DomainAction, body: DomainEntriesCreate) => c.post<DomainWriteResult>(`/${action}list`, body),
+      patch: (action: DomainAction, id: string, body: DomainEntryPatch) => c.patch<DomainWriteResult>(`/${action}list/${enc(id)}`, body, 'application/json'),
+      delete: (action: DomainAction, id: string) => c.delete(`/${action}list/${enc(id)}`),
+      batch: (action: DomainAction, body: DomainBatch) => c.post<DomainWriteResult>(`/${action}list:batch`, body),
     },
 
     policies: {
@@ -189,7 +206,6 @@ export function endpoints(c: ApiClient) {
       suggestions: (field: SuggestionField, prefix: string, signal?: AbortSignal) =>
         c.get<Suggestions>('/queries/suggestions', { field, prefix }, signal),
       streamURL: (s: ScopeParams, f: QueryFilter) => c.url('/queries/stream', { ...scopeQuery(s), ...(f as Query) }),
-      action: (id: number, action: 'allow' | 'deny') => c.post<Processed>(`/queries/${id}/actions`, { action }),
       purge: (before?: string) => c.delete<PurgeResult>('/querylog', before ? { before } : undefined),
       status: () => c.get<QuerylogStatus>('/querylog/status'),
     },
