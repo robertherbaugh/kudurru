@@ -3,9 +3,11 @@
 // the range, each with the "approximate" badge when the server merged
 // top-N rollups lossily. Drill-downs carry the range into the log.
 import { Badge } from '@astryxdesign/core/Badge';
+import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
+import { HStack } from '@astryxdesign/core/HStack';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { useQuery } from '@tanstack/react-query';
-import { useId, useMemo } from 'react';
+import { useMemo } from 'react';
 import { qk, useApi, useScopeParams } from '../api/context';
 import type { TopDim } from '../api/types';
 import { StackedBars } from '../charts/StackedBars';
@@ -61,8 +63,6 @@ export default function LongTermPage() {
   // Round "now" to the minute so the query key is stable across renders.
   const now = Math.floor(Date.now() / 60_000) * 60_000;
   const { from, to, preset } = rangeFrom(sp, now);
-  const fromId = useId();
-  const toId = useId();
   const ts = useQuery({ queryKey: qk.stats('timeseries-range', scope, from, to), queryFn: () => api.stats.timeseries(scope, { from, to }) });
   const main = useMemo(() => seriesFor(ts.data), [ts.data]);
   const totals = useMemo(() => {
@@ -80,21 +80,20 @@ export default function LongTermPage() {
           <h1>Long-term</h1>
           <ScopeNote scope={ts.data} />
         </div>
-        <div className="k-actions">
+        {/* The segmented control renders no label, so the row lines up on the controls' bottom edge. */}
+        <HStack gap={2} align="end" wrap="wrap">
           <SegmentedControl label="Range" value={preset === 'custom' ? '' : preset} onChange={(v) => setParams({ range: v, from: null, to: null })}>
             {PRESETS.map((p) => (
               <SegmentedControlItem key={p.value} value={p.value} label={p.label} />
             ))}
           </SegmentedControl>
-          <label className="k-label" htmlFor={fromId}>
-            From
-            <input id={fromId} className="k-native-input" type="datetime-local" value={toLocalInput(from)} onChange={(e) => setParams({ from: fromLocalInput(e.target.value) || null, to })} />
-          </label>
-          <label className="k-label" htmlFor={toId}>
-            To
-            <input id={toId} className="k-native-input" type="datetime-local" value={toLocalInput(to)} onChange={(e) => setParams({ to: fromLocalInput(e.target.value) || null, from })} />
-          </label>
-        </div>
+          <DateTimeInput
+            label="From"
+            value={(toLocalInput(from) || undefined) as ISODateTimeString | undefined}
+            onChange={(v) => setParams({ from: fromLocalInput(v ?? '') || null, to })}
+          />
+          <DateTimeInput label="To" value={(toLocalInput(to) || undefined) as ISODateTimeString | undefined} onChange={(v) => setParams({ to: fromLocalInput(v ?? '') || null, from })} />
+        </HStack>
       </div>
 
       <div className="k-grid k-grid-tiles" role="list" aria-label="Totals for the range">

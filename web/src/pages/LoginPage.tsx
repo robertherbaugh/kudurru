@@ -5,13 +5,13 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useApiContext } from '../api/context';
 import { BrandLogo } from '../components/BrandLogo';
 import { errorText } from '../components/Feedback';
+import { TextField } from '../components/fields/TextField';
 import { useLocation } from '../lib/router';
 
 export function LoginPage() {
@@ -79,8 +79,8 @@ export function LoginPage() {
                 void submit();
               }}
             >
-              <TextInput label="Username" value={username} onChange={setUsername} autoComplete="username" hasAutoFocus isRequired />
-              <TextInput
+              <TextField label="Username" value={username} onChange={setUsername} autoComplete="username" hasAutoFocus isRequired />
+              <TextField
                 label="Password"
                 type="password"
                 value={password}

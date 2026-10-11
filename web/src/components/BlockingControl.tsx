@@ -3,7 +3,9 @@
 // today and the cluster-wide Publisher once replication lands; the UI
 // only shows what the server reports back.
 import { Button } from '@astryxdesign/core/Button';
+import { HStack } from '@astryxdesign/core/HStack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useMemo, useState } from 'react';
 import { useCan } from '../api/context';
 import { useBlocking, useSetBlocking } from '../api/hooks';
@@ -137,21 +139,25 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
           ))}
         </div>
         <form
-          className="k-row-end"
           onSubmit={(e) => {
             e.preventDefault();
             submitCustom();
           }}
         >
-          <DurationField
-            label="Other duration"
-            description="Custom takes minutes or a duration such as 90s or 1h30m"
-            value={custom}
-            onChange={(v) => setCustom(v)}
-            presets={BLOCKING_DURATIONS}
-            error={customError}
-          />
-          <Button type="submit" label="Disable" variant="primary" />
+          {/* The help hangs under the field, so the button goes below it rather than beside. */}
+          <VStack gap={3}>
+            <DurationField
+              label="Other duration"
+              description="Custom takes minutes or a duration such as 90s or 1h30m"
+              value={custom}
+              onChange={(v) => setCustom(v)}
+              presets={BLOCKING_DURATIONS}
+              error={customError}
+            />
+            <HStack>
+              <Button type="submit" label="Disable" variant="primary" />
+            </HStack>
+          </VStack>
         </form>
       </FormDialog>
     </div>

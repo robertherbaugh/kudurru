@@ -8,6 +8,8 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { HStack } from '@astryxdesign/core/HStack';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
@@ -15,6 +17,7 @@ import type { ClientGroup, QueryRow } from '../api/types';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { matcherFor } from '../components/fields/MatchersField';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
+import { TextField } from '../components/fields/TextField';
 import { QueryLogTable } from '../components/QueryLogTable';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
@@ -172,23 +175,27 @@ export default function ClientDetailPage({ params }: PageProps) {
               <Banner status="info" title={`The last query resolved to ${shortRef(c.group)}`} description="Group changes apply to the next query; MAC and hostname matchers are not evaluated here." />
             ) : null}
             <form
-              className="k-row-end"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (pick[0]) addTo.mutate(splitRef(pick[0]).name);
               }}
             >
-              <ObjectRefPicker
-                kind="clientgroups"
-                label="Add to group"
-                sameNamespace
-                value={pick}
-                onChange={setPick}
-                emptyLabel="Choose a group…"
-                filter={(o) => writableGroups.includes(o as ClientGroup)}
-                isDisabled={!can('clientgroups', 'write')}
-              />
-              <Button type="submit" label="Add" variant="secondary" isDisabled={!pick[0] || !can('clientgroups', 'write')} isLoading={addTo.isPending} />
+              {/* The picker's help hangs under it, so the action goes below rather than beside. */}
+              <VStack gap={2}>
+                <ObjectRefPicker
+                  kind="clientgroups"
+                  label="Add to group"
+                  sameNamespace
+                  value={pick}
+                  onChange={setPick}
+                  emptyLabel="Choose a group…"
+                  filter={(o) => writableGroups.includes(o as ClientGroup)}
+                  isDisabled={!can('clientgroups', 'write')}
+                />
+                <HStack>
+                  <Button type="submit" label="Add" variant="secondary" isDisabled={!pick[0] || !can('clientgroups', 'write')} isLoading={addTo.isPending} />
+                </HStack>
+              </VStack>
             </form>
           </section>
           <EffectivePolicy selection={selection} />
@@ -201,18 +208,17 @@ export default function ClientDetailPage({ params }: PageProps) {
         </h2>
         <p className="k-muted k-small">Adds the domain to ui-allow or ui-deny, the lists the query log's Allow and Deny buttons use; every policy with those lists follows.</p>
         <form
-          className="k-row-end"
           onSubmit={(e) => {
             e.preventDefault();
           }}
         >
-          <label className="k-label">
-            Domain
-            <input className="k-native-input k-mono" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="ads.example.com" aria-invalid={domainErr ? true : undefined} spellCheck={false} />
-            {domainErr ? <span className="k-error-text">{domainErr}</span> : null}
-          </label>
-          <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
-          <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
+          <VStack gap={2}>
+            <TextField label="Domain" value={domain} onChange={setDomain} placeholder="ads.example.com" mono error={domainErr ?? undefined} />
+            <HStack gap={2} wrap="wrap">
+              <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
+              <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
+            </HStack>
+          </VStack>
         </form>
       </section>
 

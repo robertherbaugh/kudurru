@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import QueryLogPage, { filtersFrom, fromLocalInput, toLocalInput } from './QueryLogPage';
@@ -46,7 +47,7 @@ describe('QueryLogPage', () => {
     expect(seen[0]?.get('domain')).toBe('*.doubleclick.net');
     expect(seen[0]?.get('scope')).toBe('node');
     expect(seen[0]?.get('node')).toBe('kudurru-1');
-    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveValue('blocked');
+    expect(valueOf(getSelector('Status'))).toBe('blocked');
   });
 
   it('expands the "why" row from the keyboard', async () => {

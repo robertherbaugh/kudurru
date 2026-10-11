@@ -4,7 +4,7 @@
 // cannot dismiss it.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useState } from 'react';
@@ -12,6 +12,7 @@ import { qk, useApiContext, useSession, useSignOut } from '../api/context';
 import type { Me } from '../api/types';
 import { Link } from '../lib/router';
 import { errorText, useNotify } from './Feedback';
+import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
 
 /** The minimum length the server accepts (internal/auth/users MinPasswordLen). */
@@ -72,7 +73,6 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
     setErrors(e);
     if (!Object.keys(e).length) m.mutate();
   };
-  const status = (k: string) => (errors[k] ? { type: 'error' as const, message: errors[k] } : undefined);
   const close = () => {
     reset();
     m.reset();
@@ -95,18 +95,20 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
         </>
       }
     >
-      <TextInput label="Current password" type="password" autoComplete="current-password" value={current} onChange={setCurrent} status={status('current')} />
-      <TextInput
+      <TextField label="Current password" type="password" autoComplete="current-password" value={current} onChange={setCurrent} error={errors.current} />
+      <TextField
         label="New password"
         type="password"
         autoComplete="new-password"
         value={next}
         onChange={setNext}
-        description={`At least ${MIN_PASSWORD_LEN} characters`}
-        status={status('next')}
+        help={`At least ${MIN_PASSWORD_LEN} characters`}
+        error={errors.next}
       />
-      <TextInput label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} status={status('confirm')} />
-      <p className="k-muted k-small">Changing the password signs out every other session of this account.</p>
+      <TextField label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} error={errors.confirm} />
+      <Text type="supporting" display="block">
+        Changing the password signs out every other session of this account.
+      </Text>
       {m.error ? <Banner status="error" title="The password was not changed" description={errorText(m.error)} /> : null}
     </FormDialog>
   );

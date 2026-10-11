@@ -4,6 +4,7 @@ import { App } from './App';
 import { signIn } from './mocks/handlers';
 import { ROUTES } from './routes';
 import { API } from './test/utils';
+import { getSelector, valueOf } from './test/controls';
 
 function renderApp(route: string) {
   window.history.replaceState(null, '', route);
@@ -34,7 +35,7 @@ describe('App', () => {
     fireEvent.click(tile);
     expect(await screen.findByRole('heading', { level: 1, name: 'Query log' })).toBeInTheDocument();
     expect(window.location.search).toContain('status_class=blocked');
-    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveValue('blocked');
+    expect(valueOf(getSelector('Status'))).toBe('blocked');
   });
 
   it.each(ROUTES.filter((r) => !r.hidden).map((r) => [r.path, r.label] as const))('renders %s (%s) with a nav entry', async (path, label) => {

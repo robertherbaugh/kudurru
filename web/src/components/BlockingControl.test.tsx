@@ -1,5 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import { BlockingPanel, resumeAt } from './BlockingControl';
 
@@ -69,13 +70,12 @@ describe('BlockingPanel', () => {
     const onSet = vi.fn();
     renderWithApp(<BlockingPanel state={{ blocking: true }} fetchedAt={T0} canToggle onSet={onSet} />, { user: null });
     fireEvent.click(screen.getByRole('button', { name: 'Disable blocking' }));
-    const sel = screen.getByRole('combobox', { name: 'Other duration' });
-    fireEvent.change(sel, { target: { value: '2h' } });
+    pick(getSelector('Other duration'), '2 hours');
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
     expect(onSet).toHaveBeenLastCalledWith({ blocking: false, timer: 7200 });
     onSet.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Disable blocking' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Other duration' }), { target: { value: '__custom__' } });
+    pick(getSelector('Other duration'), 'Custom…');
     const input = screen.getByRole('textbox', { name: 'Other duration (custom)' });
     fireEvent.change(input, { target: { value: 'soon' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));

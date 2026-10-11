@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { splitPresentation } from '../lib/rr';
+import { findSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
 import ToolsPage from './ToolsPage';
@@ -46,7 +47,7 @@ describe('ToolsPage dig', () => {
   it('sends the transport and the DO bit, and shows a pipeline error', async () => {
     const seen = spyDig();
     renderWithApp(<ToolsPage />, { route: '/tools' });
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Transport' }), { target: { value: 'dot' } });
+    pick(await findSelector('Transport'), 'DoT');
     fireEvent.click(screen.getByRole('checkbox', { name: 'DNSSEC (DO bit)' }));
     const r = await dig('example.org');
     await waitFor(() => expect(seen[0]).toMatchObject({ name: 'example.org', type: 'A', proto: 'dot', dnssec: true }));
