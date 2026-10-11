@@ -238,6 +238,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
+	reg.MustRegister(zoneview.NewCollector(zc)) // kudurru_zone_serial, kudurru_zone_records (§11.6)
 
 	// Blocklists (§7.3, D15): the leader fetches, every node pulls bodies by
 	// digest over the internal listener (D47) and compiles locally.
@@ -312,6 +313,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 					ls = listResolver.Lists()
 				}
 				return internalapi.Status{Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls}
+			},
+			// Zones and serials for the edge supervisors (§3.6 step 5).
+			Zones: func(context.Context) internalapi.ZoneList {
+				zl := internalapi.ZoneList{Node: cfg.Node.Name}
+				for _, z := range zoneview.Served(zc) {
+					zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Name(), Serial: z.Serial(), Type: string(z.Type())})
+				}
+				return zl
 			},
 			Registerer: reg, Logger: logger,
 		})
