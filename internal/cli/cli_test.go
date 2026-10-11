@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -321,13 +323,18 @@ func TestAgeAndReady(t *testing.T) {
 	}
 }
 
-func TestAdminCall(t *testing.T) {
+func shortSocketDir(t *testing.T) string {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "kdr-cli")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	sock := filepath.Join(dir, "a.sock")
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+func TestAdminClientNDJSON(t *testing.T) {
+	sock := filepath.Join(shortSocketDir(t), "a.sock")
 	l, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)
@@ -341,7 +348,11 @@ func TestAdminCall(t *testing.T) {
 			}
 			line, _ := bufio.NewReader(c).ReadString('\n')
 			var req AdminRequest
-			_ = json.Unmarshal([]byte(line), &req)
+			if json.Unmarshal([]byte(line), &req) != nil {
+				_, _ = c.Write([]byte(`{"ok":false,"error":"bad request"}` + "\n"))
+				_ = c.Close()
+				continue
+			}
 			switch req.Op {
 			case "echo":
 				b, _ := json.Marshal(map[string]any{"ok": true, "result": req.Args})
@@ -356,24 +367,79 @@ func TestAdminCall(t *testing.T) {
 			_ = c.Close()
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	var out map[string]string
-	if err := AdminCall(ctx, sock, "echo", map[string]string{"a": "b"}, &out); err != nil || out["a"] != "b" {
-		t.Fatalf("echo: %v %v", out, err)
+	ctx := context.Background()
+	for _, proto := range []string{AdminProtocolNDJSON, AdminProtocolAuto} {
+		a := &AdminClient{Socket: sock, Protocol: proto, Timeout: 5 * time.Second}
+		var out map[string]string
+		if err := a.Call(ctx, "echo", map[string]string{"a": "b"}, &out); err != nil || out["a"] != "b" {
+			t.Fatalf("%s echo: %v %v", proto, out, err)
+		}
+		if err := a.Call(ctx, "string-error", nil, nil); err == nil || err.Error() != "admin string-error: denied: uid 1000" {
+			t.Fatalf("%s string error: %v", proto, err)
+		}
+		var ae *AdminError
+		if err := a.Call(ctx, "nope", nil, nil); !errors.As(err, &ae) || ae.Key != "unknown_op" {
+			t.Fatalf("%s object error: %v", proto, err)
+		}
 	}
-	if err := AdminCall(ctx, sock, "string-error", nil, nil); err == nil || err.Error() != "admin string-error: denied: uid 1000" {
-		t.Fatalf("string error: %v", err)
-	}
-	var ae *AdminError
-	if err := AdminCall(ctx, sock, "nope", nil, nil); !errors.As(err, &ae) || ae.Key != "unknown_op" {
-		t.Fatalf("object error: %v", err)
-	}
-	if err := AdminCall(ctx, sock, "garbage", nil, nil); err == nil || !strings.Contains(err.Error(), "bad response") {
+	a := &AdminClient{Socket: sock, Protocol: AdminProtocolNDJSON}
+	if err := a.Call(ctx, "garbage", nil, nil); err == nil || !strings.Contains(err.Error(), "bad response") {
 		t.Fatalf("garbage: %v", err)
 	}
-	if err := AdminCall(ctx, filepath.Join(dir, "none.sock"), "echo", nil, nil); err == nil {
-		t.Fatal("missing socket")
+	if err := (&AdminClient{Socket: sock, Protocol: "smoke"}).Call(ctx, "echo", nil, nil); err == nil {
+		t.Fatal("unknown protocol accepted")
+	}
+	missing := &AdminClient{Socket: filepath.Join(filepath.Dir(sock), "none.sock")}
+	if err := missing.Call(ctx, "echo", nil, nil); err == nil || !strings.Contains(err.Error(), "inside the kudurru container") {
+		t.Fatalf("missing socket: %v", err)
+	}
+}
+
+func TestAdminClientHTTP(t *testing.T) {
+	sock := filepath.Join(shortSocketDir(t), "h.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /admin/v1/create-token", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if r.Header.Get("Content-Type") != "application/json" || string(b) != `{"user":"bob"}` {
+			w.WriteHeader(400)
+			_, _ = io.WriteString(w, `{"error":{"key":"invalid","message":"unexpected body"}}`)
+			return
+		}
+		w.WriteHeader(201)
+		_, _ = io.WriteString(w, `{"id":"t1","token":"kdr_t1_x"}`)
+	})
+	mux.HandleFunc("GET /admin/v1/list-users", func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > 0 {
+			w.WriteHeader(400)
+			return
+		}
+		_, _ = io.WriteString(w, `{"users":[]}`)
+	})
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: time.Second}
+	go func() { _ = srv.Serve(l) }()
+	defer func() { _ = srv.Close() }()
+
+	a := &AdminClient{Socket: sock}
+	ctx := context.Background()
+	var tok struct{ ID, Token string }
+	if err := a.Call(ctx, AdminCreateToken, map[string]string{"user": "bob"}, &tok); err != nil || tok.Token != "kdr_t1_x" {
+		t.Fatalf("create-token: %+v %v", tok, err)
+	}
+	var users map[string][]any
+	if err := a.Call(ctx, AdminListUsers, nil, &users); err != nil || users["users"] == nil {
+		t.Fatalf("list-users: %v %v", users, err)
+	}
+	var ae *AdminError
+	if err := a.Call(ctx, AdminCreateToken, map[string]string{"user": "eve"}, nil); !errors.As(err, &ae) || ae.Key != "invalid" {
+		t.Fatalf("API error: %v", err)
+	}
+	// An unknown route is a plain 404, still an AdminError.
+	if err := (&AdminClient{Socket: sock, Protocol: AdminProtocolHTTP}).Call(ctx, "nope", nil, nil); !errors.As(err, &ae) {
+		t.Fatalf("404: %v", err)
 	}
 }
 
