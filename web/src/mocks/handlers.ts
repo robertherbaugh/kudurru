@@ -1590,7 +1590,7 @@ const MOCK_ICONS = ['youtube', 'netflix', 'tiktok', 'google', 'cloudflare', 'qua
 
 /** A few entries of the embedded catalogue for GET /catalogue/services. */
 const MOCK_SERVICES = [
-  { id: 'youtube', name: 'YouTube', category: 'video', list: 'service:youtube', rules: 2, domains: ['||youtube.com^', '||ytimg.com^'], source: 'first-party domains of the service' },
+  { id: 'youtube', name: 'YouTube', category: 'video', icon: '/api/v1/catalogue/icons/youtube.svg', list: 'service:youtube', rules: 2, domains: ['||youtube.com^', '||ytimg.com^'], source: 'first-party domains of the service' },
   { id: 'netflix', name: 'Netflix', category: 'video', list: 'service:netflix', rules: 1, domains: ['||netflix.com^'], source: 'first-party domains of the service' },
   { id: 'tiktok', name: 'TikTok', category: 'social', list: 'service:tiktok', rules: 1, domains: ['||tiktok.com^'], source: 'first-party domains of the service' },
   { id: 'roblox', name: 'Roblox', category: 'gaming', list: 'service:roblox', rules: 1, domains: ['||roblox.com^'], source: 'first-party domains of the service' },

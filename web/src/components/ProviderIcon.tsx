@@ -5,13 +5,22 @@
 // name is always next to it.
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useApi } from '../api/context';
+import { useApi, useCan } from '../api/context';
+import { catalogueServicesKey } from './ServicesField';
 
-/** The icon ids this server embeds; empty when it has no icon index. */
+/**
+ * The icon ids this server embeds; empty when it has none. The index is
+ * only asked for when the catalogue's services carry icons (C4), so a
+ * server without them never answers a 404 the browser would log.
+ */
 export function useIconIds(): Set<string> {
   const api = useApi();
+  const can = useCan();
+  const services = useQuery({ queryKey: catalogueServicesKey, queryFn: () => api.catalogue.services(), staleTime: 5 * 60_000, enabled: can('policies', 'read') });
+  const hasIcons = !!services.data?.items.some((s) => (s as { icon?: string }).icon);
   const q = useQuery({
     queryKey: ['catalogue', 'icons'],
+    enabled: hasIcons,
     queryFn: async () => {
       try {
         return (await api.catalogue.icons()).items.map((i) => i.id);

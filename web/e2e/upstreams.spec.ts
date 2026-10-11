@@ -8,7 +8,12 @@ test('/upstreams lists the configured group and its server', async ({ page }) =>
   await expectRendered(page);
   await expect(main(page).getByRole('heading', { level: 1 })).toHaveText(/upstreams/i);
   await expect(main(page)).toContainText('default');
+  // The table links each group to its page, which lists the servers.
+  await main(page).getByRole('link', { name: 'default', exact: true }).click();
+  await expect(page).toHaveURL(/\/upstreams\/default$/);
+  await settle(page);
   await expect(main(page)).toContainText(env('KUDURRU_E2E_UPSTREAM'));
+  await expectRendered(page);
 });
 
 test('the sidebar links the Upstreams page', async ({ page }) => {

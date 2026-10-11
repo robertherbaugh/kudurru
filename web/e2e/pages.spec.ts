@@ -25,7 +25,7 @@ const NAV = [
 ] as const;
 
 /** Views that are not navigation entries of their own. */
-const MORE = [`/zones/${ZONE.object}`, `/lists/default/${BLOCKLIST.name}`, '/lists/new', '/settings?view=expert', '/access?tab=iam', '/access?tab=audit'];
+const MORE = [`/zones/${ZONE.object}`, `/lists/default/${BLOCKLIST.name}`, '/lists/new', '/zones/new', '/upstreams/new', '/upstreams/default', '/settings?view=expert', '/access?tab=iam', '/access?tab=audit'];
 
 test('the sidebar links exactly the pages this suite covers', async ({ page }) => {
   await page.goto('/');
