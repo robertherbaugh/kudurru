@@ -17,12 +17,23 @@ jobs:
         run: make check-generated
       - name: Vet
         run: make vet
+      # kube-apiserver and etcd for the kube driver tests: keyed on the
+      # Makefile, which pins ENVTEST_K8S_VERSION and the setup-envtest version.
+      - name: Cache envtest control-plane binaries
+        id: envtest-cache
+        uses: actions/cache@v4
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
       - name: Install envtest control-plane binaries
+        if: steps.envtest-cache.outputs.cache-hit != 'true'
         run: make envtest
       - name: Test
         run: make test
       - name: Build
         run: make build
+      - name: Binary-size budget (D75)
+        run: make size
       - name: Smoke test the binary
         run: ./bin/kudurru version
   auth-e2e:

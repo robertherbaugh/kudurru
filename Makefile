@@ -13,12 +13,25 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
+
+## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
+## larger than SIZE_BUDGET bytes (D75). The budget is 10 % above the
+## 46,575,776 bytes measured at the end of milestone M1 (linux/amd64,
+## Go 1.27.2); raise it deliberately, in the change that explains the growth.
+SIZE_BUDGET ?= 51234000
+size: build
+	@size=$$(wc -c < $(BIN) | tr -d ' '); \
+	echo "$(BIN): $$size bytes, budget $(SIZE_BUDGET) bytes ($$((size * 100 / $(SIZE_BUDGET)))% used, $$(( ($(SIZE_BUDGET) - size) / 1024 )) KiB headroom)"; \
+	if [ "$$size" -gt "$(SIZE_BUDGET)" ]; then \
+		echo "error: $(BIN) exceeds the binary-size budget by $$((size - $(SIZE_BUDGET))) bytes (see D75; raise SIZE_BUDGET in the Makefile with a justification)"; \
+		exit 1; \
+	fi
 
 run: build
 	$(BIN) serve --config hack/dev/kudurru.yaml
