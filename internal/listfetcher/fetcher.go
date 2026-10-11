@@ -127,7 +127,7 @@ func (f *Fetcher) RefreshNow(namespace, name string) error {
 	pl := plan(found, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
 	f.mu.Lock()
 	for _, ps := range pl.sources {
-		if ps.key != "" {
+		if ps.key != "" && !ps.disabled {
 			f.forced[ps.key] = true
 		}
 	}
@@ -238,7 +238,7 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 		plans = append(plans, pl)
 		for i := range pl.sources {
 			ps := &pl.sources[i]
-			if ps.key == "" {
+			if ps.key == "" || ps.disabled {
 				continue
 			}
 			kp := keys[ps.key]
@@ -429,6 +429,11 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 	f.mu.Lock()
 	for i := range pl.sources {
 		ps := &pl.sources[i]
+		if ps.disabled {
+			owned.Sources = append(owned.Sources, disabledStatus(ps))
+			fp.add(ps.name, "disabled")
+			continue
+		}
 		ss := v1alpha1.SourceStatus{Name: ps.name}
 		if ps.key == "" {
 			ss.Digest = inlineDigest(ps.inline)
@@ -540,10 +545,15 @@ func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
 	out := listStats{fp: fp, entries: st.Entries, ruleCount: st.RuleCount, inval: st.Invalid, unsupported: st.Unsupported, perSource: map[string][2]int{}}
 	for i, ps := range pl.sources {
 		ss := st.Sources[i]
-		if ss.Name != ps.name {
+		statusOff := ss.Enabled != nil && !*ss.Enabled
+		if ss.Name != ps.name || statusOff != ps.disabled {
 			return listStats{}, false
 		}
-		check.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
+		if ps.disabled {
+			check.add(ps.name, "disabled")
+		} else {
+			check.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
+		}
 		out.perSource[ss.Name] = [2]int{ss.Entries, ss.Invalid}
 	}
 	if check.String() != fp {

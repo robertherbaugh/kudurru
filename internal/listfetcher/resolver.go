@@ -349,6 +349,16 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 		fp.add("list", pl.name, string(pl.mode))
 		for i := range pl.sources {
 			ps := &pl.sources[i]
+			if ps.disabled {
+				// Switched off: not compiled, not fetched, but the cached
+				// body stays for when it is switched back on.
+				if ps.key != "" {
+					referenced[ps.key] = true
+					delete(r.pendingSince, ps.key)
+				}
+				fp.add(ps.name, "disabled")
+				continue
+			}
 			if ps.key == "" {
 				d := inlineDigest(ps.inline)
 				src := blocking.LinesSource(ps.name, ps.format, ps.inline)
@@ -398,6 +408,11 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			spec.Sources = append(spec.Sources, opened.fileSource(ps.name, ps, f, fe.Size))
 			ls.Digests = append(ls.Digests, fe.Digest)
 			fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), fe.Digest)
+		}
+		if pl.allDisabled() {
+			// Loaded with 0 entries, so policies referencing it are not
+			// held back as "not compiled yet".
+			spec.Sources = []blocking.Source{emptySource()}
 		}
 		if len(spec.Sources) > 0 {
 			specs = append(specs, spec)

@@ -378,11 +378,19 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 		if mode == "" {
 			mode = v1alpha1.ListMode(blocking.ModeBlock)
 		}
-		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response, Inline: len(bl.Spec.Sources) > 0}
-		for _, s := range bl.Spec.Sources {
+		// Inline: every enabled source is inline (disabled ones contribute
+		// nothing to the compiled list).
+		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response}
+		for i := range bl.Spec.Sources {
+			s := &bl.Spec.Sources[i]
+			if !s.IsEnabled() {
+				continue
+			}
 			if len(s.Inline) == 0 {
 				info.Inline = false
+				break
 			}
+			info.Inline = true
 		}
 		if c := bl.Spec.CustomIP; c != nil {
 			if a, err := netip.ParseAddr(c.V4); err == nil && a.Unmap().Is4() {

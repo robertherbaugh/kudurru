@@ -45,6 +45,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | PUT | `/api/v1/blocklists/{namespace}/{name}` | Create or replace a BlockList | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/blocklists/{namespace}/{name}` | Delete a BlockList | `blocklists.delete` (cluster) |
 | POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) |
+| GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of an inline BlockList source | `blocklists.read` (cluster) |
+| PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Add and remove entries of an inline BlockList source | `blocklists.write` (cluster) |
 | POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) |
 | POST | `/api/v1/domains/{action}/{kind}` | Allow or deny domains through the UI lists | `blocklists.write` (cluster) |
 

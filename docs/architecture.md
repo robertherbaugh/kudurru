@@ -288,7 +288,7 @@ Other kinds (abbreviated; full schemas are generated into `charts/kudurru-crds`)
 
 | Kind (scope) | Spec essentials | Status | CRD |
 |---|---|---|---|
-| `BlockList` (ns) | `sources[]{url\|inline\|configMapRef, format auto\|hosts\|domains\|adblock\|regex}`, `mode block\|allow`, `refreshInterval`, `response nxdomain\|zeroIP\|refused\|customIP{v4,v6}` | `Loaded{entries,ruleCount,invalid,etag,lastFetched}`, `sources[].digest`, `Ready` | v0.1 |
+| `BlockList` (ns) | `sources[]{url\|inline\|configMapRef, format auto\|hosts\|domains\|adblock\|regex, subdomains, enabled}`, `mode block\|allow`, `refreshInterval`, `response nxdomain\|zeroIP\|refused\|customIP{v4,v6}` | `Loaded{entries,ruleCount,invalid,etag,lastFetched}`, `sources[].digest`, `Ready` | v0.1 |
 | `ClientGroup` (ns) | `clients[]{ip\|cidr\|mac(v0.2)\|clientID(v0.2)\|hostname\|nameGlob, name, comment}`, `sources{integrationRef}` (v0.2) | `Ready`, `members` | v0.1 |
 | `Policy` (ns) | `clientGroupRefs[]`, `blockListRefs[]`, `allowListRefs[]`, `allowOnly`, `schedule{weekdays,start,end,tz}`, `upstreamGroup`, `blockMode`, `blockTTL`, `queryLog`, `priority`, `rewrites[]` (v0.2), `safeSearch` (v0.2) | `Ready` | v0.1 |
 | `Kudurru` (cluster singleton `default`) | cluster-wide settings: upstream groups, cache, blocking defaults, querylog defaults, auth providers, edge/vip defaults, feature flags | `Ready`, `Listening`, `UpstreamsHealthy`, `blocking{disabledUntil}` | YAML/ConfigMap v0.1 (spec); the writable runtime status field lives in the `kudurru-runtime` ConfigMap in v0.1 k8s (see §7.1 step 7); CRD v0.2 |

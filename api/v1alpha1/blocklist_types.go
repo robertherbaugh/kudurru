@@ -36,7 +36,18 @@ type ListSource struct {
 	// subdomains". Adblock and wildcard rules are not affected.
 	// +optional
 	Subdomains bool `json:"subdomains,omitempty"`
+	// Enabled false switches this one source off without removing it, like
+	// Pi-hole's per-adlist switch: it is not fetched and not compiled, its
+	// cached body and status digest are kept, and status.sources[] reports
+	// it with enabled: false. Omitted means true. The kudurru.io/enabled
+	// annotation switches the whole list off.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
 }
+
+// IsEnabled reports whether the source is switched on (Enabled unset or
+// true).
+func (s *ListSource) IsEnabled() bool { return s.Enabled == nil || *s.Enabled }
 
 // CustomIP is the answer for BlockResponse customIP.
 type CustomIP struct {
@@ -67,6 +78,12 @@ type BlockListSpec struct {
 // SourceStatus reports the last fetch of one source.
 type SourceStatus struct {
 	Name string `json:"name"`
+	// Enabled is false for a source switched off with
+	// spec.sources[].enabled and absent otherwise. A disabled source keeps
+	// the digest, etag, lastFetched and counts of its last fetch and
+	// reports no error; status.entries leaves it out.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
 	// Digest is the sha256 of the fetched body; replicas pull by digest
 	// from the leader (decision D15).
 	// +optional

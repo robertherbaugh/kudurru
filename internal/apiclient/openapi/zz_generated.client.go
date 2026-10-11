@@ -1108,6 +1108,50 @@ type ImportResult struct {
 	ZoneName string   `json:"zoneName"`
 }
 
+// InlineEntries defines model for InlineEntries.
+type InlineEntries struct {
+	// Continue Token for the next page; empty on the last page.
+	Continue *string       `json:"continue,omitempty"`
+	Items    []InlineEntry `json:"items"`
+
+	// Matched Entries matching q (Total without q).
+	Matched int64 `json:"matched"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries in the source.
+	Total int64 `json:"total"`
+}
+
+// InlineEntriesPatch defines model for InlineEntriesPatch.
+type InlineEntriesPatch struct {
+	Add    *[]string `json:"add,omitempty"`
+	Remove *[]string `json:"remove,omitempty"`
+}
+
+// InlineEntriesResult defines model for InlineEntriesResult.
+type InlineEntriesResult struct {
+	Added           []string `json:"added"`
+	Removed         []string `json:"removed"`
+	ResourceVersion string   `json:"resourceVersion"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries in the source after the change.
+	Total int64 `json:"total"`
+}
+
+// InlineEntry defines model for InlineEntry.
+type InlineEntry struct {
+	// Line 1-based position in spec.sources[].inline.
+	Line int64 `json:"line"`
+
+	// Value The entry as written in spec.sources[].inline.
+	Value string `json:"value"`
+}
+
 // LatencySummary defines model for LatencySummary.
 type LatencySummary struct {
 	AvgMs float64 `json:"avg_ms"`
@@ -1983,6 +2027,22 @@ type PutBlocklistsParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 
+// ListInlineEntriesParams defines parameters for ListInlineEntries.
+type ListInlineEntriesParams struct {
+	// Q Substring filter, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// PatchInlineEntriesParams defines parameters for PatchInlineEntries.
+type PatchInlineEntriesParams struct {
+	// IfMatch Apply only when the stored resourceVersion equals this value (412 otherwise).
+	IfMatch *string `json:"If-Match,omitempty"`
+}
+
 // FlushCacheParams defines parameters for FlushCache.
 type FlushCacheParams struct {
 	// Name Same as the body field.
@@ -2366,6 +2426,9 @@ type CreateBlocklistsJSONRequestBody CreateBlocklistsJSONBody
 // PutBlocklistsJSONRequestBody defines body for PutBlocklists for application/json ContentType.
 type PutBlocklistsJSONRequestBody PutBlocklistsJSONBody
 
+// PatchInlineEntriesJSONRequestBody defines body for PatchInlineEntries for application/json ContentType.
+type PatchInlineEntriesJSONRequestBody = InlineEntriesPatch
+
 // BatchDeleteBlocklistsJSONRequestBody defines body for BatchDeleteBlocklists for application/json ContentType.
 type BatchDeleteBlocklistsJSONRequestBody = BatchDeleteInputBody
 
@@ -2666,6 +2729,31 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListInlineEntries Page through the entries of an inline BlockList source
+	//
+	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+	ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchInlineEntries Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchDeleteBlocklistsWithBody Delete several blocklists
 	//
@@ -3619,6 +3707,61 @@ func (c *Client) PutBlocklists(ctx context.Context, namespace string, name strin
 // Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 func (c *Client) RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRefreshBlockListRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListInlineEntries Page through the entries of an inline BlockList source
+//
+// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+func (c *Client) ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListInlineEntriesRequest(c.Server, namespace, name, source, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *Client) PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchInlineEntriesRequestWithBody(c.Server, namespace, name, source, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchInlineEntries Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *Client) PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchInlineEntriesRequest(c.Server, namespace, name, source, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6164,6 +6307,181 @@ func NewRefreshBlockListRequest(server string, namespace string, name string) (*
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListInlineEntriesRequest constructs an http.Request for the ListInlineEntries method
+func NewListInlineEntriesRequest(server string, namespace string, name string, source string, params *ListInlineEntriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/%s/%s/sources/%s/entries", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchInlineEntriesRequest calls the generic PatchInlineEntries builder with application/json body
+func NewPatchInlineEntriesRequest(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchInlineEntriesRequestWithBody(server, namespace, name, source, params, "application/json", bodyReader)
+}
+
+// NewPatchInlineEntriesRequestWithBody constructs an http.Request for the PatchInlineEntries method, with any body, and a specified content type
+func NewPatchInlineEntriesRequestWithBody(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "source", source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/%s/%s/sources/%s/entries", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -10318,6 +10636,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockListWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*RefreshBlockListResponse, error)
 
+	// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+	//
+	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+	ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error)
+
+	// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+
+	// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+	//
+	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+	PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+
 	// BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -12804,6 +13149,214 @@ func (r RefreshBlockListResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RefreshBlockListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for ListInlineEntries
+type ListInlineEntriesResponse200Headers struct {
+	ETag *string
+}
+
+type ListInlineEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *InlineEntries
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListInlineEntriesResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON200() *InlineEntries {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListInlineEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListInlineEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListInlineEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListInlineEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListInlineEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PatchInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for PatchInlineEntries
+type PatchInlineEntriesResponse200Headers struct {
+	ETag *string
+}
+
+type PatchInlineEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *InlineEntriesResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PatchInlineEntriesResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON200() *InlineEntriesResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PatchInlineEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PatchInlineEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchInlineEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchInlineEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PatchInlineEntriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19536,6 +20089,51 @@ func (c *ClientWithResponses) RefreshBlockListWithResponse(ctx context.Context, 
 	return ParseRefreshBlockListResponse(rsp)
 }
 
+// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+//
+// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
+func (c *ClientWithResponses) ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error) {
+	rsp, err := c.ListInlineEntries(ctx, namespace, name, source, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListInlineEntriesResponse(rsp)
+}
+
+// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *ClientWithResponses) PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
+	rsp, err := c.PatchInlineEntriesWithBody(ctx, namespace, name, source, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchInlineEntriesResponse(rsp)
+}
+
+// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+//
+// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
+func (c *ClientWithResponses) PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
+	rsp, err := c.PatchInlineEntries(ctx, namespace, name, source, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchInlineEntriesResponse(rsp)
+}
+
 // BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -22295,6 +22893,196 @@ func ParseRefreshBlockListResponse(rsp *http.Response) (*RefreshBlockListRespons
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListInlineEntriesResponse parses an HTTP response from a ListInlineEntriesWithResponse call
+func ParseListInlineEntriesResponse(rsp *http.Response) (*ListInlineEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListInlineEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InlineEntries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListInlineEntriesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePatchInlineEntriesResponse parses an HTTP response from a PatchInlineEntriesWithResponse call
+func ParsePatchInlineEntriesResponse(rsp *http.Response) (*PatchInlineEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchInlineEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InlineEntriesResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PatchInlineEntriesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

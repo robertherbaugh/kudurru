@@ -101,6 +101,14 @@ spec:
                       required:
                       - name
                       type: object
+                    enabled:
+                      description: |-
+                        Enabled false switches this one source off without removing it, like
+                        Pi-hole's per-adlist switch: it is not fetched and not compiled, its
+                        cached body and status digest are kept, and status.sources[] reports
+                        it with enabled: false. Omitted means true. The kudurru.io/enabled
+                        annotation switches the whole list off.
+                      type: boolean
                     format:
                       default: auto
                       description: ListFormat is the syntax of a blocklist source.
@@ -222,6 +230,13 @@ spec:
                         Digest is the sha256 of the fetched body; replicas pull by digest
                         from the leader (decision D15).
                       type: string
+                    enabled:
+                      description: |-
+                        Enabled is false for a source switched off with
+                        spec.sources[].enabled and absent otherwise. A disabled source keeps
+                        the digest, etag, lastFetched and counts of its last fetch and
+                        reports no error; status.entries leaves it out.
+                      type: boolean
                     entries:
                       type: integer
                     error:
