@@ -41,8 +41,12 @@ licences. Attributions are added to this file as the dependencies land:
   label from the right; CoreDNS's tree is itself derived from the biogo
   LLRB, BSD-3-Clause) and the lookup order of plugin/file/lookup.go (zone
   cuts, exact match, CNAME chase, closest-encloser wildcard); the zone and
-  authoritative-stage golden tests follow the plugin/test.Case style. No
-  CoreDNS source file is copied verbatim.
+  authoritative-stage golden tests follow the plugin/test.Case style. The
+  TransferProvider capability of internal/stages/authoritative
+  (Transfer(zone, serial) returning a channel of RR chunks, the single SOA
+  for a current serial, AXFR in place of IXFR without a journal) follows
+  the Transferer interface of plugin/transfer. No CoreDNS source file is
+  copied verbatim.
 - quic-go (https://github.com/quic-go/quic-go), MIT: QUIC and HTTP/3
   transport for the DoQ and DoH3 listeners.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
