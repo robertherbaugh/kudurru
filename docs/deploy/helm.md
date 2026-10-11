@@ -190,3 +190,10 @@ a list of OpenID Providers rendered into the settings key
 `auth.identityProviders` (the §5.2 outline's single-issuer `auth.oidc`
 became a list). `webhook` from the §5.2 outline is not in the chart: the
 validating webhook does not exist in the binary.
+
+OIDC usernames: without `claimMappings.username.claim` a provider's
+username is the first of `preferred_username`, `upn`, `email` (only when
+`email_verified` is true) and `sub`. Some identity providers let users edit
+`preferred_username`, so a role binding with a `User` subject could be
+claimed by another account. Bind groups instead, or set
+`claimMappings.username.claim: sub` (with a `prefix`) on such providers.

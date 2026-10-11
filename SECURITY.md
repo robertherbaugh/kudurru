@@ -109,6 +109,10 @@ by scopes, and can never mint a broader or longer-lived token.
 - Change the generated first-boot admin password; prefer OIDC for people
   and scoped, expiring API tokens (`auth.tokens.maxLifetime`) for
   automation.
+- With OIDC, bind groups rather than `User` subjects, or map the username
+  to an immutable claim (`claimMappings.username.claim: sub`): the default
+  chain starts at `preferred_username`, which some identity providers let
+  users edit (docs/deploy/helm.md).
 - Keep `listeners.proxyProtocolSecretFile` set whenever PROXYv2 is enabled.
 - Keep the external-dns webhook on loopback or behind a NetworkPolicy.
 - Pick a `querylog.privacy` mode that matches your obligations; it cannot
