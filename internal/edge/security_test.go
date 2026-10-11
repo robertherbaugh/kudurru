@@ -16,13 +16,21 @@ func TestValidateRefusesUnsafeRenderedStrings(t *testing.T) {
 		opts Options
 		be   []Backend
 	}{
-		"backend address newline": {be: []Backend{{Name: "n1", Address: "10.0.0.1\nos.execute('id')--:5353"}}},
-		"backend address quote":   {be: []Backend{{Name: "n1", Address: `10.0.0.1"x:5353`}}},
-		"backend address space":   {be: []Backend{{Name: "n1", Address: "a b:5353"}}},
-		"internal address":        {be: []Backend{{Name: "n1", Address: "10.0.0.1:5353", InternalAddress: "x\ny:8082"}}},
-		"bind address":            {opts: Options{Listen: []string{"0.0.0.0\n--"}}},
-		"cert file newline":       {opts: Options{Protocols: []Protocol{DoT}, CertFile: "/c\nos.exit()", KeyFile: "/k"}},
-		"key file quote":          {opts: Options{Protocols: []Protocol{DoT}, CertFile: "/c", KeyFile: `/k"`}},
+		"backend address newline":  {be: []Backend{{Name: "n1", Address: "10.0.0.1\nos.execute('id')--:5353"}}},
+		"backend address quote":    {be: []Backend{{Name: "n1", Address: `10.0.0.1"x:5353`}}},
+		"backend address space":    {be: []Backend{{Name: "n1", Address: "a b:5353"}}},
+		"internal address":         {be: []Backend{{Name: "n1", Address: "10.0.0.1:5353", InternalAddress: "x\ny:8082"}}},
+		"bind address":             {opts: Options{Listen: []string{"0.0.0.0\n--"}}},
+		"bind host not an address": {opts: Options{Listen: []string{"!"}}},
+		"bind host name":           {opts: Options{Listen: []string{"localhost"}}},
+		"bind zone":                {opts: Options{Listen: []string{"fe80::1%eth0}"}}},
+		"backend bracketed name":   {be: []Backend{{Name: "n1", Address: "[0]:1"}}},
+		"backend numeric name":     {be: []Backend{{Name: "n1", Address: "10.0.1:5353"}}},
+		"backend unspecified":      {be: []Backend{{Name: "n1", Address: "0.0.0.0:5353"}}},
+		"backend port 0":           {be: []Backend{{Name: "n1", Address: "10.0.0.1:0"}}},
+		"backend zone":             {be: []Backend{{Name: "n1", Address: "[fe80::1%a\nb]:5353"}}},
+		"cert file newline":        {opts: Options{Protocols: []Protocol{DoT}, CertFile: "/c\nos.exit()", KeyFile: "/k"}},
+		"key file quote":           {opts: Options{Protocols: []Protocol{DoT}, CertFile: "/c", KeyFile: `/k"`}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.opts.ServerID = "e"

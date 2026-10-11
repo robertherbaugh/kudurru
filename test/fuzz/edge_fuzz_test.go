@@ -1,6 +1,7 @@
 package fuzz
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -56,6 +57,11 @@ func FuzzKeepalivedRender(f *testing.F) {
 		if err != nil {
 			return
 		}
+		for _, a := range []string{src, peer} {
+			if ip, err := netip.ParseAddr(a); err != nil || ip.IsUnspecified() || ip.Zone() != "" || (ip.Is4() && ip.As4()[0] == 0) {
+				t.Fatalf("unicast address %q accepted", a)
+			}
+		}
 		if o, c := strings.Count(string(out), "{"), strings.Count(string(out), "}"); o != c {
 			t.Fatalf("unbalanced braces (%d/%d):\n%s", o, c, out)
 		}
@@ -103,6 +109,14 @@ func FuzzDNSDistRender(f *testing.F) {
 		topo, err := edge.Build(o, []edge.Backend{{Name: backendName, Address: backendAddr}}, creds)
 		if err != nil {
 			return
+		}
+		if _, err := netip.ParseAddr(listen); err != nil {
+			t.Fatalf("listen %q is not an address but was accepted", listen)
+		}
+		if ap, err := netip.ParseAddrPort(backendAddr); err == nil && ap.Addr().IsUnspecified() {
+			t.Fatalf("unspecified backend %q accepted", backendAddr)
+		} else if err != nil && strings.HasPrefix(backendAddr, "[") {
+			t.Fatalf("bracketed backend host %q accepted", backendAddr)
 		}
 		inputs := map[string]string{
 			"server_id": serverID, "listen": listen, "acl": acl, "zone": zone,

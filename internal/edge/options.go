@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,6 +57,11 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 	}
 	if len(o.Listen) == 0 {
 		o.Listen = []string{"0.0.0.0"}
+	}
+	for _, host := range o.Listen {
+		if _, err := netip.ParseAddr(host); err != nil {
+			return nil, fmt.Errorf("edge: listen address %q: %w (dnsdist binds to IP addresses)", host, err)
+		}
 	}
 	if len(o.Protocols) == 0 {
 		o.Protocols = []Protocol{Do53}
