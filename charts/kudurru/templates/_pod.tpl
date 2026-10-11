@@ -66,6 +66,8 @@ spec:
               fieldPath: metadata.name
         - name: KUDURRU_HEADLESS_SERVICE
           value: {{ include "kudurru.headlessFQDN" . | quote }}
+        - name: KUDURRU_SETTINGS_FILE
+          value: /etc/kudurru/settings/settings.yaml
         - name: KUDURRU_ENCRYPTION_KEY_FILE
           value: /etc/kudurru/secrets/encryption/key
         {{- if .Values.auth.encryptionKeyPreviousSecret }}
@@ -157,8 +159,8 @@ spec:
       {{- if gt (int .Values.lameduckSeconds) 0 }}
       lifecycle:
         preStop:
-          sleep:
-            seconds: {{ .Values.lameduckSeconds }}
+          exec:
+            command: ["kudurru", "lameduck", "{{ .Values.lameduckSeconds }}s"]
       {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}

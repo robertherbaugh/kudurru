@@ -260,7 +260,7 @@ affinity: {}
 podAnnotations: {}
 podLabels: {}
 terminationGracePeriodSeconds: 30
-# -- preStop sleeps this long so endpoints drain before SIGTERM starts the
+# -- preStop runs `kudurru lameduck <n>s`: readiness fails and the health name answers SERVFAIL so endpoints and dnsdist drain before SIGTERM starts the
 # binary's own lameduck (readiness 503, then shutdown).
 lameduckSeconds: 5
 
