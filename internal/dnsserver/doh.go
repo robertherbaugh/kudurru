@@ -86,6 +86,11 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := d.h.resolveFreshID(r.Context(), req, clientFromHTTP(r, d.proto))
+	if resp == nil {
+		// A pipeline drop: abort the exchange without a response (HTTP/2
+		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
+		panic(http.ErrAbortHandler)
+	}
 	out, err := resp.Pack()
 	if err != nil {
 		d.h.logger().Debug("doh: pack failed", "err", err)

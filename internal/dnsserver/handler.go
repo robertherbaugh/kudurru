@@ -47,11 +47,14 @@ func (h *Handler) timeout() time.Duration {
 // equals r.Id. ctx carries transport cancellation (an HTTP/2 or QUIC stream
 // reset); Resolve adds the query deadline.
 //
-// A stage may ask the transport to send nothing at all (the ingress rate
-// limiter's drop, docs/architecture.md §7.1 step 2) by answering with a
-// Response whose Msg is nil and whose Status is pipeline.StatusDropped or
-// pipeline.StatusBlockedRateLimit. The udp listener honours that by not
-// writing; every other transport, and Resolve itself, answers SERVFAIL.
+// A stage may ask the transport to send nothing at all: the ingress rate
+// limiter's drop (docs/architecture.md §7.1 step 2) answers with a Response
+// whose Msg is nil and whose Status is pipeline.StatusDropped or
+// pipeline.StatusBlockedRateLimit, the control stage returns
+// pipeline.ErrDrop. The listeners honour both: udp writes nothing, tcp and
+// dot close the connection, doq resets the stream (DOQ_REQUEST_CANCELLED)
+// and doh/doh3 abort the HTTP exchange. Resolve itself, which must return
+// a message, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
 	if m, _ := h.resolve(ctx, r, client); m != nil {
 		return m
@@ -59,7 +62,8 @@ func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 	return servfail(r)
 }
 
-// IsDrop reports whether resp asks the transport to send nothing.
+// IsDrop reports whether resp asks the transport to send nothing (see
+// Resolve; pipeline.ErrDrop is the error form).
 func IsDrop(resp *pipeline.Response) bool {
 	return resp != nil && resp.Msg == nil &&
 		(resp.Status == pipeline.StatusDropped || resp.Status == pipeline.StatusBlockedRateLimit)
@@ -88,7 +92,7 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 	req.Deadline = req.Received.Add(timeout)
 
 	resp, err := h.Chain.Serve(req)
-	if err == nil && IsDrop(resp) {
+	if (err == nil && IsDrop(resp)) || errors.Is(err, pipeline.ErrDrop) {
 		return nil, nil
 	}
 	if err != nil || resp == nil || resp.Msg == nil {
@@ -119,12 +123,17 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 // (a forwarder bridging to UDP, a cache key, the query log) can reuse the
 // client's fixed ID, the CVE-2026-47703 class [go-dns-stack §4.1]; the
 // response carries the client's ID again.
+//
+// It returns nil when the pipeline dropped the query; the caller then sends
+// nothing (Resolve).
 func (h *Handler) resolveFreshID(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
 	orig := r.Id
 	r.Id = dns.Id()
-	m := h.Resolve(ctx, r, client)
+	m, _ := h.resolve(ctx, r, client)
 	r.Id = orig
-	m.Id = orig
+	if m != nil {
+		m.Id = orig
+	}
 	return m
 }
 
