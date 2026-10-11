@@ -197,7 +197,7 @@ export interface ClientMatcher {
 
 export type ClientGroup = KObject<
   'ClientGroup',
-  { clients?: ClientMatcher[] },
+  { clients?: ClientMatcher[]; sources?: { integrationRef?: { name: string; namespace?: string } } },
   { observedGeneration?: number; members?: number; conditions?: Condition[] }
 >;
 
@@ -212,6 +212,7 @@ export interface PolicySpec {
   blockTTL?: string;
   queryLog?: boolean;
   priority?: number;
+  rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
   safeSearch?: boolean;
 }
 
@@ -608,6 +609,24 @@ export interface VersionInfo {
   commit: string;
   date: string;
   go?: string;
+}
+
+/** GET /clients row: one client seen by the query log or named in a group. */
+export interface ClientInventoryItem {
+  ip: string;
+  name?: string;
+  mac?: string;
+  /** ClientGroup names the identify stage resolves this client to. */
+  groups: string[];
+  lastSeen?: string;
+  queries24h: number;
+  blocked24h: number;
+}
+
+/** GET /edge: dnsdist backends and VIP owners (single node: empty). */
+export interface EdgeInfo {
+  backends: { name: string; address: string; up: boolean; qps?: number }[];
+  vip?: { address: string; owner?: string }[];
 }
 
 export interface AuditEntry {

@@ -7,8 +7,10 @@ import type {
   AuditEntry,
   AuthStatus,
   BlockingState,
+  ClientInventoryItem,
   ClientTimeseries,
   ClusterInfo,
+  EdgeInfo,
   CreatedToken,
   DiagnosisMessage,
   DnsQueryRequest,
@@ -113,6 +115,10 @@ export function endpoints(c: ApiClient) {
         c.post<Processed>(`/domains/${action}/${kind}`, { domains, namespace, list }),
     },
 
+    clients: {
+      inventory: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientInventoryItem>>('/clients', q),
+    },
+
     runtime: {
       blocking: () => c.get<BlockingState>('/dns/blocking'),
       setBlocking: (blocking: boolean, timer?: number) =>
@@ -156,6 +162,7 @@ export function endpoints(c: ApiClient) {
       nodes: () => c.get<ListEnvelope<NodeInfo>>('/nodes'),
       health: (name: string) => c.get<NodeHealth>(`/nodes/${enc(name)}/health`),
       info: () => c.get<ClusterInfo>('/cluster'),
+      edge: () => c.get<EdgeInfo>('/edge'),
       messages: () => c.get<ListEnvelope<DiagnosisMessage>>('/info/messages'),
       version: () => c.get<VersionInfo>('/version'),
     },
