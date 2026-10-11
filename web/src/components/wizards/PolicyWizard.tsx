@@ -6,19 +6,20 @@
 // the dialog and opens the policy's page. ?namespace= (or the namespace
 // prop) creates it in another namespace; `groups` preselects client groups.
 import { Banner } from '@astryxdesign/core/Banner';
-import { Button } from '@astryxdesign/core/Button';
-import { VStack } from '@astryxdesign/core/Stack';
+import { FormLayout } from '@astryxdesign/core/FormLayout';
+import { MetadataList } from '@astryxdesign/core/MetadataList';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan } from '../../api/context';
 import type { Policy, PolicySpec } from '../../api/types';
 import { errorText, useNotify } from '../Feedback';
+import { TextField } from '../fields/TextField';
 import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../PolicyFields';
 import { ServiceIcon } from '../ServiceIcon';
 import { useCatalogueServices } from '../ServiceGrid';
-import { Wizard, WizardDialog, useWizardNav, type WizardStep } from '../Wizard';
+import { ReviewRow, Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { COMMENT } from '../../lib/managedBy';
 import { nameError } from '../../lib/objectSchemas';
 import { blockResponseLabel, DEFAULT_NAMESPACE, scheduleSummary } from '../../lib/policies';
@@ -105,18 +106,21 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
       label: 'Who',
       description: 'Name the policy and pick the client groups it applies to.',
       content: (
-        <div className="k-stack-lg">
-          <div className="k-form-grid">
-            <VStack gap={1}>
-              <TextInput label="Name" value={name} onChange={setName} isRequired status={showErrors && nameError(name.trim()) ? { type: 'error', message: nameError(name.trim()) ?? '' } : undefined} />
-              <Text type="supporting" display="block">
-                Lower-case letters, digits and "-", e.g. kids-school-nights
-              </Text>
-            </VStack>
-            <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
-          </div>
+        <VStack gap={5}>
+          <FormLayout direction="horizontal">
+            <TextField
+              label="Name"
+              value={name}
+              onChange={setName}
+              isRequired
+              mono
+              help='Lower-case letters, digits and "-", e.g. kids-school-nights'
+              error={showErrors ? (nameError(name.trim()) ?? undefined) : undefined}
+            />
+            <TextField label="Comment" value={comment} onChange={setComment} isOptional />
+          </FormLayout>
           <WhoFields {...props} />
-        </div>
+        </VStack>
       ),
       validate: () => {
         setShowErrors(true);
@@ -128,10 +132,10 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
       label: 'What',
       description: 'Block and allow lists, and whole services to block.',
       content: (
-        <div className="k-stack-lg">
+        <VStack gap={5}>
           <WhatFields {...props} />
           <ServicesFields {...props} />
-        </div>
+        </VStack>
       ),
     },
     { id: 'safesearch', label: 'Safe search', isOptional: true, content: <SafeSearchFields {...props} /> },
@@ -160,61 +164,52 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
 }
 
 function Review({ name, namespace, comment, spec }: { name: string; namespace: string; comment: string; spec: PolicySpec }) {
-  const nav = useWizardNav();
   const services = useCatalogueServices();
   const byId = new Map((services.data?.items ?? []).map((s) => [s.id, s]));
-  const edit = (step: string, what: string) => <Button label={`Edit ${what}`} size="sm" variant="ghost" onClick={() => nav.goTo(step)}>Edit</Button>;
-  const names = (xs: string[] | undefined) => (xs?.length ? xs.join(', ') : <span className="k-muted">none</span>);
+  const none = <Text color="secondary">none</Text>;
+  const names = (xs: string[] | undefined) => (xs?.length ? xs.join(', ') : none);
   return (
-    <dl className="k-review" data-testid="policy-review">
-      <dt>Name</dt>
-      <dd>
-        <span className="k-mono">{name}</span>
-        {namespace !== DEFAULT_NAMESPACE ? <span className="k-muted"> in {namespace}</span> : null}
-        {comment ? <span className="k-muted"> · {comment}</span> : null}
-      </dd>
-      <dd className="k-review-edit">{edit('who', 'name')}</dd>
-      <dt>Groups</dt>
-      <dd>
-        {names(spec.clientGroupRefs)} <span className="k-muted">· priority {spec.priority ?? 0}</span>
-      </dd>
-      <dd className="k-review-edit">{edit('who', 'groups')}</dd>
-      <dt>Block lists</dt>
-      <dd>{spec.allowOnly ? <strong>Allow only: everything else is blocked</strong> : names(spec.blockListRefs)}</dd>
-      <dd className="k-review-edit">{edit('what', 'block lists')}</dd>
-      <dt>Allow lists</dt>
-      <dd>{names(spec.allowListRefs)}</dd>
-      <dd className="k-review-edit">{edit('what', 'allow lists')}</dd>
-      <dt>Blocked services</dt>
-      <dd>
+    <MetadataList data-testid="policy-review">
+      <ReviewRow label="Name" step="who" what="name">
+        <Text type="code">{name}</Text>
+        {namespace !== DEFAULT_NAMESPACE ? <Text color="secondary"> in {namespace}</Text> : null}
+        {comment ? <Text color="secondary"> · {comment}</Text> : null}
+      </ReviewRow>
+      <ReviewRow label="Groups" step="who" what="groups">
+        {names(spec.clientGroupRefs)} <Text color="secondary">· priority {spec.priority ?? 0}</Text>
+      </ReviewRow>
+      <ReviewRow label="Block lists" step="what" what="block lists">
+        {spec.allowOnly ? <Text weight="semibold">Allow only: everything else is blocked</Text> : names(spec.blockListRefs)}
+      </ReviewRow>
+      <ReviewRow label="Allow lists" step="what" what="allow lists">
+        {names(spec.allowListRefs)}
+      </ReviewRow>
+      <ReviewRow label="Blocked services" step="what" what="blocked services">
         {spec.blockedServices?.length ? (
-          <ul className="k-logo-list" aria-label="Blocked services">
+          <HStack gap={3} wrap="wrap" role="list" aria-label="Blocked services">
             {spec.blockedServices.map((id) => (
-              <li key={id}>
+              <HStack key={id} gap={1} vAlign="center" role="listitem">
                 <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} iconOnDark={byId.get(id)?.iconOnDark} size={20} />
-                <span>{byId.get(id)?.name ?? id}</span>
-              </li>
+                <Text>{byId.get(id)?.name ?? id}</Text>
+              </HStack>
             ))}
-          </ul>
+          </HStack>
         ) : (
-          <span className="k-muted">none</span>
+          none
         )}
-      </dd>
-      <dd className="k-review-edit">{edit('what', 'blocked services')}</dd>
-      <dt>Safe search</dt>
-      <dd>{spec.safeSearch ? `On (${spec.safeSearchMode === 'moderate' ? 'moderate' : 'strict'})` : 'Off'}</dd>
-      <dd className="k-review-edit">{edit('safesearch', 'safe search')}</dd>
-      <dt>Block response</dt>
-      <dd>
+      </ReviewRow>
+      <ReviewRow label="Safe search" step="safesearch" what="safe search">
+        {spec.safeSearch ? `On (${spec.safeSearchMode === 'moderate' ? 'moderate' : 'strict'})` : 'Off'}
+      </ReviewRow>
+      <ReviewRow label="Block response" step="how" what="block response">
         {blockResponseLabel(spec.blockMode)}
         {spec.blockTTL ? ` · TTL ${spec.blockTTL}` : ''}
         {spec.upstreamGroup ? ` · upstream group ${spec.upstreamGroup}` : ''}
         {spec.queryLog === false ? ' · not logged' : ''}
-      </dd>
-      <dd className="k-review-edit">{edit('how', 'block response')}</dd>
-      <dt>When</dt>
-      <dd>{scheduleSummary(spec.schedule)}</dd>
-      <dd className="k-review-edit">{edit('when', 'schedule')}</dd>
-    </dl>
+      </ReviewRow>
+      <ReviewRow label="When" step="when" what="schedule">
+        {scheduleSummary(spec.schedule)}
+      </ReviewRow>
+    </MetadataList>
   );
 }

@@ -6,16 +6,22 @@
 // the moment it exists. Create closes the dialog and opens the group's page.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { CheckboxList, CheckboxListItem } from '@astryxdesign/core/CheckboxList';
+import { FormLayout } from '@astryxdesign/core/FormLayout';
+import { Heading } from '@astryxdesign/core/Heading';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { MetadataList } from '@astryxdesign/core/MetadataList';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../../api/context';
 import type { ClientGroup, ClientMatcher, Policy } from '../../api/types';
 import { errorText, useNotify } from '../Feedback';
+import { FieldShell } from '../fields/FieldHelp';
+import { TextField } from '../fields/TextField';
 import { cleanMatchers, describeMatcher, matcherFor, MatchersField, matchersError, matcherValue } from '../fields/MatchersField';
-import { Wizard, WizardDialog, useWizardNav, type WizardStep } from '../Wizard';
+import { ReviewRow, Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { formatExact } from '../../lib/format';
 import { COMMENT, objectOwnership } from '../../lib/managedBy';
 import { nameError } from '../../lib/objectSchemas';
@@ -113,15 +119,18 @@ function GroupWizard({ onClose }: GroupWizardProps) {
       id: 'name',
       label: 'Name',
       content: (
-        <div className="k-form-grid">
-          <VStack gap={1}>
-            <TextInput label="Name" value={name} onChange={setName} isRequired status={showErrors && nameError(name.trim()) ? { type: 'error', message: nameError(name.trim()) ?? '' } : undefined} />
-            <Text type="supporting" display="block">
-              Lower-case letters, digits and "-", e.g. kids
-            </Text>
-          </VStack>
-          <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
-        </div>
+        <FormLayout direction="horizontal">
+          <TextField
+            label="Name"
+            value={name}
+            onChange={setName}
+            isRequired
+            mono
+            help='Lower-case letters, digits and "-", e.g. kids'
+            error={showErrors ? (nameError(name.trim()) ?? undefined) : undefined}
+          />
+          <TextField label="Comment" value={comment} onChange={setComment} isOptional />
+        </FormLayout>
       ),
       validate: () => {
         setShowErrors(true);
@@ -133,29 +142,34 @@ function GroupWizard({ onClose }: GroupWizardProps) {
       label: 'Members',
       description: 'The devices of the group: by address, range, client ID or MAC address.',
       content: (
-        <div className="k-stack-lg">
+        <VStack gap={5}>
           <MatchersField value={matchers} onChange={setMatchers} showErrors={showErrors} />
           {seen.length ? (
-            <fieldset className="k-fieldset">
-              <legend>Seen in the last 24 hours</legend>
-              <p className="k-muted k-small">Add a client by the address or client ID it queried with.</p>
-              <ul className="k-checklist">
-                {seen.map((c) => (
-                  <li key={c.key} className="k-row">
+            <List
+              density="compact"
+              hasDividers
+              header={
+                <VStack gap={0.5}>
+                  <Heading level={4}>Seen in the last 24 hours</Heading>
+                  <Text type="supporting">Add a client by the address or client ID it queried with.</Text>
+                </VStack>
+              }
+            >
+              {seen.map((c) => (
+                <ListItem
+                  key={c.key}
+                  label={c.name ?? c.key}
+                  description={`${c.name ? `${c.key} · ` : ''}${formatExact(c.count)} queries${c.group ? ` · now in ${c.group.replace(/^default\//, '')}` : ''}`}
+                  endContent={
                     <Button label={`Add ${c.name ?? c.key}`} size="sm" variant="secondary" onClick={() => setMatchers([...matchers, matcherFor(c, '')])}>
                       Add
                     </Button>
-                    <span>{c.name ?? c.key}</span>
-                    {c.name ? <span className="k-muted k-small k-mono">{c.key}</span> : null}
-                    <span className="k-muted k-small">
-                      {formatExact(c.count)} queries{c.group ? ` · now in ${c.group.replace(/^default\//, '')}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </fieldset>
+                  }
+                />
+              ))}
+            </List>
           ) : null}
-        </div>
+        </VStack>
       ),
       validate: () => matchersError(matchers),
     },
@@ -165,29 +179,20 @@ function GroupWizard({ onClose }: GroupWizardProps) {
       isOptional: true,
       description: 'Add the group to existing policies. Without one its members get the default policy.',
       content: (
-        <fieldset className="k-fieldset">
-          <legend>Apply these policies</legend>
-          {writable.length === 0 ? <p className="k-muted k-small">No policy can be edited here.</p> : null}
-          <ul className="k-checklist">
-            {writable.map((p) => (
-              <li key={p.metadata.name}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={attach.includes(p.metadata.name)}
-                    onChange={(e) => setAttach(e.target.checked ? [...attach, p.metadata.name] : attach.filter((x) => x !== p.metadata.name))}
-                  />{' '}
-                  <span className="k-mono">{p.metadata.name}</span>
-                  <span className="k-muted k-small">
-                    {' '}
-                    · priority {p.spec.priority ?? 0} · groups {(p.spec.clientGroupRefs ?? []).join(', ') || 'none'}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <p className="k-muted k-small">Or create a policy for the group afterwards from its page.</p>
-        </fieldset>
+        <FieldShell help={writable.length ? 'Or create a policy for the group afterwards from its page.' : 'No policy can be edited here; create one for the group afterwards from its page.'} describes="group">
+          {() => (
+            <CheckboxList label="Apply these policies" value={attach} onChange={setAttach}>
+              {writable.map((p) => (
+                <CheckboxListItem
+                  key={p.metadata.name}
+                  value={p.metadata.name}
+                  label={p.metadata.name}
+                  description={`priority ${p.spec.priority ?? 0} · groups ${(p.spec.clientGroupRefs ?? []).join(', ') || 'none'}`}
+                />
+              ))}
+            </CheckboxList>
+          )}
+        </FieldShell>
       ),
     },
     {
@@ -212,26 +217,18 @@ function GroupWizard({ onClose }: GroupWizardProps) {
 }
 
 function Review({ name, comment, matchers, attach }: { name: string; comment: string; matchers: ClientMatcher[]; attach: string[] }) {
-  const nav = useWizardNav();
-  const edit = (step: string, what: string) => (
-    <Button label={`Edit ${what}`} size="sm" variant="ghost" onClick={() => nav.goTo(step)}>
-      Edit
-    </Button>
-  );
   return (
-    <dl className="k-review" data-testid="group-review">
-      <dt>Name</dt>
-      <dd>
-        <span className="k-mono">{name}</span>
-        {comment ? <span className="k-muted"> · {comment}</span> : null}
-      </dd>
-      <dd className="k-review-edit">{edit('name', 'name')}</dd>
-      <dt>Members</dt>
-      <dd>{matchers.length ? cleanMatchers(matchers).map(describeMatcher).join(', ') : <span className="k-muted">none yet</span>}</dd>
-      <dd className="k-review-edit">{edit('members', 'members')}</dd>
-      <dt>Policies</dt>
-      <dd>{attach.length ? attach.join(', ') : <span className="k-muted">the default policy</span>}</dd>
-      <dd className="k-review-edit">{edit('policies', 'policies')}</dd>
-    </dl>
+    <MetadataList data-testid="group-review">
+      <ReviewRow label="Name" step="name" what="name">
+        <Text type="code">{name}</Text>
+        {comment ? <Text color="secondary"> · {comment}</Text> : null}
+      </ReviewRow>
+      <ReviewRow label="Members" step="members" what="members">
+        {matchers.length ? cleanMatchers(matchers).map(describeMatcher).join(', ') : <Text color="secondary">none yet</Text>}
+      </ReviewRow>
+      <ReviewRow label="Policies" step="policies" what="policies">
+        {attach.length ? attach.join(', ') : <Text color="secondary">the default policy</Text>}
+      </ReviewRow>
+    </MetadataList>
   );
 }

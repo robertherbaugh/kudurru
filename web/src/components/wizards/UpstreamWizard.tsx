@@ -9,16 +9,17 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
-import { VStack } from '@astryxdesign/core/Stack';
+import { Link } from '@astryxdesign/core/Link';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMemo, useState } from 'react';
 import { useCan } from '../../api/context';
 import { errorText } from '../Feedback';
 import { DialogForm } from '../FormDialog';
 import { ChoiceCards } from '../fields/ChoiceCards';
 import { EnumSelect } from '../fields/EnumSelect';
+import { SwitchField, TextField } from '../fields/TextField';
 import { ProviderIcon } from '../ProviderIcon';
 import { GroupFields, groupFieldErrors, ServersField, strategyLabel, useUpstreams } from '../UpstreamGroup';
 import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
@@ -131,24 +132,21 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
               {provider.variants.length > 1 ? (
                 <EnumSelect label="Filtering" value={variant.id} options={provider.variants.map((v) => ({ value: v.id, label: v.label, help: v.help }))} onChange={setVariantId} />
               ) : (
-                <p className="k-small">
-                  <strong>{variant.label}</strong> <span className="k-muted">{variant.help}</span>
-                </p>
+                <Text>
+                  <Text weight="semibold">{variant.label}</Text> <Text color="secondary">{variant.help}</Text>
+                </Text>
               )}
               {provider.needsID ? (
-                <VStack gap={1}>
-                  <TextInput
-                    label={provider.needsID.label}
-                    placeholder={provider.needsID.placeholder}
-                    value={profile}
-                    onChange={setProfile}
-                    isRequired
-                    status={profile.trim() && !provider.needsID.pattern.test(profile.trim()) ? { type: 'error', message: 'Six letters or digits' } : undefined}
-                  />
-                  <Text type="supporting" display="block">
-                    {provider.needsID.help}
-                  </Text>
-                </VStack>
+                <TextField
+                  label={provider.needsID.label}
+                  mono
+                  placeholder={provider.needsID.placeholder}
+                  value={profile}
+                  onChange={setProfile}
+                  isRequired
+                  help={provider.needsID.help}
+                  error={profile.trim() && !provider.needsID.pattern.test(profile.trim()) ? 'Six letters or digits' : undefined}
+                />
               ) : null}
               <EnumSelect
                 label="Transport"
@@ -156,28 +154,31 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
                 options={TRANSPORTS.filter((x) => transports.includes(x.value)).map((x) => ({ value: x.value, label: x.label, help: x.help }))}
                 onChange={(v) => setTransport(v as Transport)}
               />
-              {t === 'plain' && variant.ipv6?.length ? <Switch label="Also use the IPv6 addresses" description="Only when this network has IPv6" value={ipv6} onChange={setIPv6} /> : null}
+              {t === 'plain' && variant.ipv6?.length ? <SwitchField label="Also use the IPv6 addresses" help="Only when this network has IPv6" value={ipv6} onChange={setIPv6} /> : null}
               {t !== 'plain' ? (
-                <p className="k-muted k-small">
+                <Text type="supporting">
                   Host names are looked up with the bootstrap resolvers ({u.cfg.bootstrap.join(', ') || 'the system resolver'}), set on the Upstreams page.
-                </p>
+                </Text>
               ) : null}
               {editing ? (
                 <ServersField value={custom} onChange={setCustom} />
               ) : (
-                <div className="k-stack-sm">
-                  <span className="k-label">Servers</span>
-                  <ul className="k-link-list k-stack-sm" data-testid="preset-servers">
+                <VStack gap={1}>
+                  <List
+                    density="compact"
+                    header={
+                      <Text type="label" weight="semibold">
+                        Servers
+                      </Text>
+                    }
+                    data-testid="preset-servers"
+                  >
                     {presetServers.map((s) => {
                       const { name: n, addr } = splitServerName(s);
-                      return (
-                        <li key={s}>
-                          <strong>{n}</strong> <span className="k-mono k-small">{addr}</span>
-                        </li>
-                      );
+                      return <ListItem key={s} label={n} description={<Text type="code">{addr}</Text>} />;
                     })}
-                  </ul>
-                  <span>
+                  </List>
+                  <HStack gap={2}>
                     <Button
                       label="Edit the list"
                       size="sm"
@@ -187,12 +188,16 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
                         setEditing(true);
                       }}
                     />
-                  </span>
-                </div>
+                  </HStack>
+                </VStack>
               )}
-              <p className="k-muted k-small">
-                Addresses as documented at <a href={provider.homepage} target="_blank" rel="noopener noreferrer">{provider.homepage}</a>.
-              </p>
+              <Text type="supporting">
+                Addresses as documented at{' '}
+                <Link href={provider.homepage} isExternalLink>
+                  {provider.homepage}
+                </Link>
+                .
+              </Text>
             </>
           ) : (
             <ServersField value={custom} onChange={setCustom} />
@@ -207,22 +212,19 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
       validate: () => newGroupNameError(groupName, existing) ?? groupFieldErrors({ ...group, servers }).timeout ?? null,
       content: (
         <>
-          <VStack gap={1}>
-            <TextInput
-              label="Name"
-              value={groupName}
-              onChange={(v) => {
-                setNameTouched(true);
-                setName(v);
-              }}
-              placeholder="corp"
-              isRequired
-              status={groupName && newGroupNameError(groupName, existing) ? { type: 'error', message: newGroupNameError(groupName, existing) ?? '' } : undefined}
-            />
-            <Text type="supporting" display="block">
-              Letters, digits, - _ and .
-            </Text>
-          </VStack>
+          <TextField
+            label="Name"
+            mono
+            value={groupName}
+            onChange={(v) => {
+              setNameTouched(true);
+              setName(v);
+            }}
+            placeholder="corp"
+            isRequired
+            help="Letters, digits, - _ and ."
+            error={groupName ? (newGroupNameError(groupName, existing) ?? undefined) : undefined}
+          />
           <GroupFields value={{ ...group, servers }} onChange={(g) => setGroup({ ...g, servers: group.servers })} serversHidden />
         </>
       ),

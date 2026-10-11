@@ -8,11 +8,12 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Heading } from '@astryxdesign/core/Heading';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { qk, useApi, useCan } from '../../api/context';
 import type { AccessMode, DNSZone, DNSZoneSpec } from '../../api/types';
 import { errorText, useNotify } from '../Feedback';
@@ -23,6 +24,7 @@ import { EnumSelect } from '../fields/EnumSelect';
 import { formatError } from '../fields/formats';
 import { SecondsField, secondsError } from '../fields/SecondsField';
 import { cleanList, listError, StringListField } from '../fields/StringListField';
+import { TextField } from '../fields/TextField';
 import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
 import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { useNavigate } from '../../lib/router';
@@ -138,6 +140,7 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
   const notify = useNotify();
   const navigate = useNavigate();
   const [d, setD] = useState<Draft>(EMPTY);
+  const soaId = useId();
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   // Object names and apexes: a second zone for the same apex is refused too.
@@ -189,7 +192,7 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
               },
             ]}
           />
-          <p className="k-muted k-small">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</p>
+          <Text type="supporting">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</Text>
         </>
       ),
     },
@@ -200,23 +203,20 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
       validate: () => apexError(d.apex, existing),
       content: (
         <>
-          <VStack gap={1}>
-            <TextInput
-              label="Zone name"
-              placeholder={d.type === 'primary' ? 'home.arpa' : 'corp.example'}
-              value={d.apex}
-              onChange={(v) => set('apex', v)}
-              isRequired
-              status={d.apex.trim() && apexError(d.apex, existing) ? { type: 'error', message: apexError(d.apex, existing) ?? '' } : undefined}
-            />
-            <Text type="supporting" display="block">
-              A domain name such as home.arpa or lab.example.com; a trailing dot is optional
-            </Text>
-          </VStack>
+          <TextField
+            label="Zone name"
+            mono
+            placeholder={d.type === 'primary' ? 'home.arpa' : 'corp.example'}
+            value={d.apex}
+            onChange={(v) => set('apex', v)}
+            isRequired
+            help="A domain name such as home.arpa or lab.example.com; a trailing dot is optional"
+            error={d.apex.trim() ? (apexError(d.apex, existing) ?? undefined) : undefined}
+          />
           {name && !apexError(d.apex, existing) ? (
-            <p className="k-small k-muted">
-              Object <code>dnszones/{name}</code>, zone <code>{name}.</code>
-            </p>
+            <Text type="supporting">
+              Object <Text type="code">dnszones/{name}</Text>, zone <Text type="code">{name}.</Text>
+            </Text>
           ) : null}
         </>
       ),
@@ -244,30 +244,30 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
                 itemError={(s) => hostError(s)}
                 addLabel="Add name server"
               />
-              <div className="k-form-grid">{secs('defaultTTL', 'Default TTL', 'Records without their own TTL')}</div>
-              <fieldset className="k-fieldset">
-                <legend>SOA</legend>
-                <div className="k-form-grid">
-                  <TextInput
+              <Grid columns={2} gap={4} align="start">
+                {secs('defaultTTL', 'Default TTL', 'Records without their own TTL')}
+              </Grid>
+              <VStack gap={2} role="group" aria-labelledby={soaId}>
+                <Heading level={4} id={soaId}>
+                  SOA
+                </Heading>
+                <Grid columns={2} gap={4} align="start">
+                  <TextField
                     label="Primary name server"
                     isOptional
+                    mono
                     placeholder="the first name server"
                     value={d.mname}
                     onChange={(v) => set('mname', v)}
-                    status={d.mname.trim() && hostError(d.mname) ? { type: 'error', message: hostError(d.mname) ?? '' } : undefined}
+                    error={d.mname.trim() ? (hostError(d.mname) ?? undefined) : undefined}
                   />
-                  <VStack gap={1}>
-                    <TextInput label="Responsible mailbox" isOptional placeholder="hostmaster@example.com" value={d.rname} onChange={(v) => set('rname', v)} />
-                    <Text type="supporting" display="block">
-                      An e-mail address; stored in SOA form
-                    </Text>
-                  </VStack>
+                  <TextField label="Responsible mailbox" isOptional placeholder="hostmaster@example.com" value={d.rname} onChange={(v) => set('rname', v)} help="An e-mail address; stored in SOA form" />
                   {secs('refresh', 'Refresh', 'How often secondaries check the serial')}
                   {secs('retry', 'Retry', 'After a failed refresh')}
                   {secs('expire', 'Expire', 'Secondaries stop answering after this without the primary')}
                   {secs('minimum', 'Negative TTL', 'How long resolvers cache "no such name"')}
-                </div>
-              </fieldset>
+                </Grid>
+              </VStack>
               <EnumSelect label="Who may query" value={d.queryAccess} options={QUERY_ACCESS} onChange={(v) => set('queryAccess', v as AccessMode)} />
               {usesACL(d.queryAccess) ? (
                 <StringListField
@@ -290,7 +290,7 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
           content: (
             <>
               <UpstreamGroupSelect value={d.upstreamGroup} onChange={(v) => set('upstreamGroup', v)} help="The servers of this group answer for the zone." />
-              <Text type="supporting" as="p">
+              <Text type="supporting">
                 Need a group for this zone? Create one on the Upstreams page first; it takes effect without a restart.
               </Text>
               <EnumSelect label="DNSSEC validation" value={d.dnssec} options={DNSSEC} onChange={(v) => set('dnssec', v as Draft['dnssec'])} />

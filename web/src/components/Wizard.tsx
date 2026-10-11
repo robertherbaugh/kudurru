@@ -25,6 +25,7 @@ import { DialogHeader } from '@astryxdesign/core/Dialog';
 import { FieldStatus } from '@astryxdesign/core/FieldStatus';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Layout, LayoutContent, LayoutFooter, LayoutHeader } from '@astryxdesign/core/Layout';
+import { MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Step, Stepper } from '@astryxdesign/core/Stepper';
 import { Text } from '@astryxdesign/core/Text';
@@ -73,6 +74,30 @@ const NavContext = createContext<WizardNav>({ goTo: () => undefined });
 /** Step navigation for a step's content, e.g. the review step's "Edit" links. */
 export function useWizardNav(): WizardNav {
   return useContext(NavContext);
+}
+
+export interface ReviewRowProps {
+  label: string;
+  /** The step (id) that sets the value. */
+  step: string;
+  /** For the Edit button's name: "Edit <what>". */
+  what: string;
+  children: ReactNode;
+}
+
+/** A review step's row (inside a MetadataList): the value, and Edit back to its step. */
+export function ReviewRow({ label, step, what, children }: ReviewRowProps) {
+  const nav = useWizardNav();
+  return (
+    <MetadataListItem label={label}>
+      <HStack gap={2} vAlign="center">
+        <StackItem size="fill">{children}</StackItem>
+        <Button label={`Edit ${what}`} size="sm" variant="ghost" onClick={() => nav.goTo(step)}>
+          Edit
+        </Button>
+      </HStack>
+    </MetadataListItem>
+  );
 }
 
 export interface WizardDialogProps {

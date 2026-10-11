@@ -8,18 +8,25 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { VStack } from '@astryxdesign/core/Stack';
+import { CheckboxList, CheckboxListItem } from '@astryxdesign/core/CheckboxList';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { FormLayout } from '@astryxdesign/core/FormLayout';
+import { Heading } from '@astryxdesign/core/Heading';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
+import { proportional, Table } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../../api/context';
 import type { BlockList, BlockListSpec, BlockResponse, ListFormat, ListSource, Policy } from '../../api/types';
 import { DurationField } from '../fields/DurationField';
-import { EnumSelect } from '../fields/EnumSelect';
+import { ChoiceCards } from '../fields/ChoiceCards';
+import { FieldShell } from '../fields/FieldHelp';
 import { ObjectRefPicker } from '../fields/ObjectRefPicker';
+import { SelectField } from '../fields/SelectField';
+import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
 import { errorText, useNotify } from '../Feedback';
 import { slugName, suggestName } from '../lists/SourceDialog';
 import { Wizard, WizardDialog } from '../Wizard';
@@ -32,6 +39,13 @@ import { useNavigate } from '../../lib/router';
 import { isIPv4, isIPv6 } from '../../lib/rr';
 import { toYAML } from '../../lib/yaml';
 import { REFRESH_PRESETS } from '../../pages/ListDetailPage';
+
+/** A row of the review's sources table. */
+interface SourceRow extends Record<string, unknown> {
+  name: string;
+  from: string;
+  format: string;
+}
 
 interface UrlRow {
   id: number;
@@ -150,6 +164,7 @@ function ListWizard({ onClose }: ListWizardProps) {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<WizardState>) => setS((prev) => ({ ...prev, ...patch }));
+  const urlsId = useId();
   const lists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists') });
   const policies = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
 
@@ -219,76 +234,73 @@ function ListWizard({ onClose }: ListWizardProps) {
   };
 
   const typeStep = (
-    <fieldset className="k-choice-cards">
-      <legend className="k-visually-hidden">List type</legend>
-      {(
-        [
-          ['block', 'Block list', 'Names on the list are blocked for the client groups of the policies that use it: ads, trackers, malware, or anything you choose.'],
-          ['allow', 'Allow list', 'Names on the list are never blocked, whatever the block lists of the same policy say. Use it for sites a block list breaks.'],
-        ] as const
-      ).map(([value, label, help]) => (
-        <label key={value} className="k-choice-card" data-selected={s.mode === value}>
-          <input type="radio" name="list-mode" value={value} checked={s.mode === value} onChange={() => set({ mode: value, ...(value === 'allow' ? { curated: [], response: '' } : {}) })} />
-          <span className="k-stack-sm">
-            <strong>{label}</strong>
-            <span className="k-muted k-small">{help}</span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+    <ChoiceCards
+      label="List type"
+      isLabelHidden
+      value={s.mode}
+      onChange={(v) => set({ mode: v as WizardState['mode'], ...(v === 'allow' ? { curated: [], response: '' } : {}) })}
+      choices={[
+        { value: 'block', label: 'Block list', description: 'Names on the list are blocked for the client groups of the policies that use it: ads, trackers, malware, or anything you choose.' },
+        { value: 'allow', label: 'Allow list', description: 'Names on the list are never blocked, whatever the block lists of the same policy say. Use it for sites a block list breaks.' },
+      ]}
+    />
   );
 
   const sourcesStep = (
-    <div className="k-stack-lg">
+    <VStack gap={5}>
       {s.mode === 'block' ? (
-        <fieldset className="k-fieldset">
-          <legend>Well-known lists</legend>
-          <span className="k-muted k-small">Published by their maintainers under their own licences; kudurru only fetches the URL you opt into.</span>
-          <ul className="k-curated">
-            {CURATED_LISTS.map((c) => {
-              const on = s.curated.includes(c.id);
-              return (
-                <li key={c.id}>
-                  <label className="k-choice-card" data-selected={on}>
-                    <input type="checkbox" checked={on} onChange={(e) => set({ curated: e.target.checked ? [...s.curated, c.id] : s.curated.filter((x) => x !== c.id) })} aria-label={`${c.publisher} ${c.name}`} />
-                    <span className="k-stack-sm">
-                      <span className="k-row">
-                        <strong>
-                          {c.publisher} {c.name}
-                        </strong>
-                        <Badge variant="neutral" label={c.licence} />
-                        <span className="k-muted k-small">
-                          {c.size}, {formatLabel(c.format).toLowerCase()}
-                        </span>
-                      </span>
-                      <span className="k-small">{c.description}</span>
-                      <span className="k-mono k-small k-muted k-break">{c.url}</span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </fieldset>
+        <FieldShell help="Published by their maintainers under their own licences; kudurru only fetches the URL you opt into." describes="group">
+          {() => (
+            <CheckboxList label="Well-known lists" value={s.curated} onChange={(v) => set({ curated: v })} hasDividers>
+              {CURATED_LISTS.map((c) => (
+                <CheckboxListItem
+                  key={c.id}
+                  value={c.id}
+                  label={`${c.publisher} ${c.name}`}
+                  endContent={<Badge variant="neutral" label={c.licence} />}
+                  description={
+                    <VStack gap={0.5}>
+                      <Text type="supporting">
+                        {c.size}, {formatLabel(c.format).toLowerCase()}. {c.description}
+                      </Text>
+                      <Text type="code" size="sm" color="secondary" wordBreak="break-all">
+                        {c.url}
+                      </Text>
+                    </VStack>
+                  }
+                />
+              ))}
+            </CheckboxList>
+          )}
+        </FieldShell>
       ) : null}
 
-      <fieldset className="k-fieldset">
-        <legend>List URLs</legend>
-        <span className="k-muted k-small">Any hosts, domains, adblock or regex list served over http(s). The format is detected from the URL; change it if it is wrong.</span>
+      <VStack gap={2} role="group" aria-labelledby={urlsId}>
+        <VStack gap={0.5}>
+          <Heading level={4} id={urlsId}>
+            List URLs
+          </Heading>
+          <Text type="supporting">Any hosts, domains, adblock or regex list served over http(s). The format is detected from the URL; change it if it is wrong.</Text>
+        </VStack>
         {s.urls.map((r, i) => (
-          <div key={r.id} className="k-array-item">
-            <TextInput
-              label={`URL ${i + 1}`}
-              placeholder="https://example.com/blocklist.txt"
-              value={r.url}
-              onChange={(v) => setUrl(r.id, { url: v, ...(r.formatTouched ? {} : { format: guessFormat(v) }) })}
-              status={r.url.trim() && !isHTTPURL(r.url) ? { type: 'error', message: 'An http(s) URL' } : undefined}
-            />
-            <EnumSelect label={`Format of URL ${i + 1}`} value={r.format} options={FORMAT_OPTIONS} onChange={(v) => setUrl(r.id, { format: v as ListFormat, formatTouched: true })} />
-            <Button label="Remove" variant="ghost" onClick={() => set({ urls: s.urls.filter((x) => x.id !== r.id) })} />
-          </div>
+          <HStack key={r.id} gap={2} vAlign="start">
+            <StackItem size="fill">
+              <TextField
+                label={`URL ${i + 1}`}
+                mono
+                placeholder="https://example.com/blocklist.txt"
+                value={r.url}
+                onChange={(v) => setUrl(r.id, { url: v, ...(r.formatTouched ? {} : { format: guessFormat(v) }) })}
+                error={r.url.trim() && !isHTTPURL(r.url) ? 'An http(s) URL' : undefined}
+              />
+            </StackItem>
+            <SelectField label={`Format of URL ${i + 1}`} value={r.format} options={FORMAT_OPTIONS} onChange={(v) => setUrl(r.id, { format: v as ListFormat, formatTouched: true })} />
+            <StackItem crossAlignSelf="end">
+              <Button label="Remove" variant="ghost" onClick={() => set({ urls: s.urls.filter((x) => x.id !== r.id) })} />
+            </StackItem>
+          </HStack>
         ))}
-        <div>
+        <HStack gap={2}>
           <Button
             label={s.urls.length ? 'Add another URL' : 'Add a URL'}
             variant="secondary"
@@ -297,58 +309,58 @@ function ListWizard({ onClose }: ListWizardProps) {
               setNextId((n) => n + 1);
             }}
           />
-        </div>
-      </fieldset>
+        </HStack>
+      </VStack>
 
-      <fieldset className="k-fieldset">
-        <legend>Your own entries</legend>
-        <VStack gap={1}>
-          <TextArea
-            label="Paste entries"
-            isOptional
-            placeholder={s.mode === 'allow' ? 's.youtube.com\n*.cdn.example.com' : 'ads.example.com\n||tracker.example^'}
-            rows={4}
-            hasSpellCheck={false}
-            value={s.paste}
-            onChange={(v) => set({ paste: v })}
-            status={pasteProblem ? { type: 'error', message: `"${pasteProblem.first}": ${pasteProblem.error}` } : undefined}
-          />
-          <Text type="supporting" display="block">
-            One per line; they become an inline source you can browse and edit on the list page.
-          </Text>
-        </VStack>
-        {pasteEntries.length ? <EnumSelect label="Format of the pasted entries" value={s.pasteFormat} options={FORMAT_OPTIONS} onChange={(v) => set({ pasteFormat: v as ListFormat })} /> : null}
-      </fieldset>
-      <p className="k-muted k-small" role="status">
+      <VStack gap={2}>
+        <TextAreaField
+          label="Paste entries"
+          isOptional
+          mono
+          placeholder={s.mode === 'allow' ? 's.youtube.com\n*.cdn.example.com' : 'ads.example.com\n||tracker.example^'}
+          rows={4}
+          hasSpellCheck={false}
+          value={s.paste}
+          onChange={(v) => set({ paste: v })}
+          help="Your own entries, one per line; they become an inline source you can browse and edit on the list page."
+          error={pasteProblem ? `"${pasteProblem.first}": ${pasteProblem.error}` : undefined}
+        />
+        {pasteEntries.length ? <SelectField label="Format of the pasted entries" value={s.pasteFormat} options={FORMAT_OPTIONS} onChange={(v) => set({ pasteFormat: v as ListFormat })} /> : null}
+      </VStack>
+      <Text type="supporting" role="status">
         {sources.length ? `${sources.length} ${sources.length === 1 ? 'source' : 'sources'} chosen.` : 'No source chosen yet.'}
-      </p>
-    </div>
+      </Text>
+    </VStack>
   );
 
   const optionsStep = (
-    <div className="k-form">
-      <div className="k-form-grid">
-        <VStack gap={1}>
-          <TextInput label="Name" value={name} onChange={(v) => set({ name: v, nameTouched: true })} status={optErr('name') ? { type: 'error', message: optErr('name') ?? '' } : undefined} />
-          <Text type="supporting" display="block">
-            Lower-case letters, digits and dashes; policies refer to the list by it.
-          </Text>
-        </VStack>
-        <TextInput label="Comment" placeholder="What the list is for" value={s.comment} onChange={(v) => set({ comment: v })} isOptional />
-      </div>
-      <div className="k-form-grid">
-        {hasUrl ? (
-          <DurationField label="Refresh interval" description="How often the URLs are fetched again." value={s.refreshInterval} presets={REFRESH_PRESETS} emptyLabel="Default (every day)" error={optErr('refreshInterval')} onChange={(v) => set({ refreshInterval: v })} />
-        ) : null}
-        {s.mode === 'block' ? (
-          <EnumSelect label="Block response" value={s.response} options={RESPONSE_OPTIONS} emptyLabel="Default (the policy's, else the server's)" onChange={(v) => set({ response: v })} />
-        ) : null}
-      </div>
+    <VStack gap={5}>
+      <FormLayout direction="horizontal">
+        <TextField
+          label="Name"
+          mono
+          value={name}
+          onChange={(v) => set({ name: v, nameTouched: true })}
+          help="Lower-case letters, digits and dashes; policies refer to the list by it."
+          error={optErr('name')}
+        />
+        <TextField label="Comment" placeholder="What the list is for" value={s.comment} onChange={(v) => set({ comment: v })} isOptional />
+      </FormLayout>
+      {hasUrl || s.mode === 'block' ? (
+        <FormLayout direction="horizontal">
+          {hasUrl ? (
+            <DurationField label="Refresh interval" description="How often the URLs are fetched again." value={s.refreshInterval} presets={REFRESH_PRESETS} emptyLabel="Default (every day)" error={optErr('refreshInterval')} onChange={(v) => set({ refreshInterval: v })} />
+          ) : null}
+          {s.mode === 'block' ? (
+            <SelectField label="Block response" value={s.response} options={RESPONSE_OPTIONS} emptyLabel="Default (the policy's, else the server's)" onChange={(v) => set({ response: v })} />
+          ) : null}
+        </FormLayout>
+      ) : null}
       {s.mode === 'block' && s.response === 'customIP' ? (
-        <div className="k-form-grid">
-          <TextInput label="Custom IPv4" placeholder="192.0.2.1" value={s.v4} onChange={(v) => set({ v4: v })} status={optErr('v4') ? { type: 'error', message: optErr('v4') ?? '' } : undefined} />
-          <TextInput label="Custom IPv6" placeholder="2001:db8::1" value={s.v6} onChange={(v) => set({ v6: v })} isOptional status={optErr('v6') ? { type: 'error', message: optErr('v6') ?? '' } : undefined} />
-        </div>
+        <FormLayout direction="horizontal">
+          <TextField label="Custom IPv4" mono placeholder="192.0.2.1" value={s.v4} onChange={(v) => set({ v4: v })} error={optErr('v4')} />
+          <TextField label="Custom IPv6" mono placeholder="2001:db8::1" value={s.v6} onChange={(v) => set({ v6: v })} isOptional error={optErr('v6')} />
+        </FormLayout>
       ) : null}
       <ObjectRefPicker
         kind="policies"
@@ -360,71 +372,41 @@ function ListWizard({ onClose }: ListWizardProps) {
         isDisabled={!can('policies', 'write')}
         onChange={(v) => set({ policies: v })}
       />
-      <Switch label="Start enabled" description="A disabled list is stored but not fetched or applied." value={s.enabled} onChange={(v) => set({ enabled: v })} />
-    </div>
+      <SwitchField label="Start enabled" help="A disabled list is stored but not fetched or applied." value={s.enabled} onChange={(v) => set({ enabled: v })} />
+    </VStack>
   );
 
   const obj = wizardObject({ ...s, name });
   const reviewStep = (
-    <div className="k-stack-lg">
-      <dl className="k-facts">
-        <div>
-          <dt>Type</dt>
-          <dd>{s.mode === 'allow' ? 'Allow list' : 'Block list'}</dd>
-        </div>
-        <div>
-          <dt>Name</dt>
-          <dd className="k-mono">
+    <VStack gap={5}>
+      <MetadataList columns="multi">
+        <MetadataListItem label="Type">{s.mode === 'allow' ? 'Allow list' : 'Block list'}</MetadataListItem>
+        <MetadataListItem label="Name">
+          <Text type="code">
             {s.namespace}/{name}
-          </dd>
-        </div>
-        <div>
-          <dt>Starts</dt>
-          <dd>{s.enabled ? 'enabled' : 'disabled'}</dd>
-        </div>
-        <div>
-          <dt>Used by</dt>
-          <dd>{chosenPolicies.length ? chosenPolicies.join(', ') : 'no policy yet'}</dd>
-        </div>
-        {hasUrl ? (
-          <div>
-            <dt>Refresh</dt>
-            <dd>{s.refreshInterval || 'every day (default)'}</dd>
-          </div>
-        ) : null}
-        {s.mode === 'block' ? (
-          <div>
-            <dt>Block response</dt>
-            <dd>{RESPONSE_OPTIONS.find((o) => o.value === s.response)?.label ?? 'default'}</dd>
-          </div>
-        ) : null}
-      </dl>
-      <div className="k-table-wrap">
-        <table className="k-table" aria-label="Sources to create">
-          <thead>
-            <tr>
-              <th scope="col">Source</th>
-              <th scope="col">From</th>
-              <th scope="col">Format</th>
-            </tr>
-          </thead>
-          <tbody>
-            {obj.spec.sources.map((x) => (
-              <tr key={x.name}>
-                <td className="k-mono">{x.name}</td>
-                <td className="k-mono k-small k-break">{x.url ?? `${formatExact(x.inline?.length ?? 0)} inline entries`}</td>
-                <td className="k-small">{formatLabel(x.format)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          </Text>
+        </MetadataListItem>
+        <MetadataListItem label="Starts">{s.enabled ? 'enabled' : 'disabled'}</MetadataListItem>
+        <MetadataListItem label="Used by">{chosenPolicies.length ? chosenPolicies.join(', ') : 'no policy yet'}</MetadataListItem>
+        {hasUrl ? <MetadataListItem label="Refresh">{s.refreshInterval || 'every day (default)'}</MetadataListItem> : null}
+        {s.mode === 'block' ? <MetadataListItem label="Block response">{RESPONSE_OPTIONS.find((o) => o.value === s.response)?.label ?? 'default'}</MetadataListItem> : null}
+      </MetadataList>
+      <Table<SourceRow>
+        aria-label="Sources to create"
+        density="compact"
+        idKey="name"
+        data={obj.spec.sources.map((x) => ({ name: x.name ?? '', from: x.url ?? `${formatExact(x.inline?.length ?? 0)} inline entries`, format: formatLabel(x.format) }))}
+        columns={[
+          { key: 'name', header: 'Source', renderCell: (r) => <Text type="code">{r.name}</Text> },
+          { key: 'from', header: 'From', width: proportional(3), renderCell: (r) => <Text type="code" size="sm" wordBreak="break-all">{r.from}</Text> },
+          { key: 'format', header: 'Format' },
+        ]}
+      />
       {!chosenPolicies.length ? <Banner status="warning" title="No policy uses this list" description="It is created but has no effect until a policy references it." /> : null}
-      <details className="k-panel">
-        <summary>YAML</summary>
-        <pre className="k-pre">{toYAML(applyable(obj))}</pre>
-      </details>
-    </div>
+      <Collapsible trigger="YAML" defaultIsOpen={false}>
+        <CodeBlock code={toYAML(applyable(obj))} language="yaml" />
+      </Collapsible>
+    </VStack>
   );
 
   return (
