@@ -19,7 +19,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
-	"github.com/robertherbaugh/kudurru/internal/store/kube/localdb"
+	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
 // The measurements recorded in docs/spikes/store-kube.md. They create

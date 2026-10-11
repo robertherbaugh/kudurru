@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
-	"github.com/robertherbaugh/kudurru/internal/store/kube/localdb"
+	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
 // ErrNotSynced is returned by MaterializedSnapshot before every informer

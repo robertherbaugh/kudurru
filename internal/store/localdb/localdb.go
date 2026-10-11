@@ -1,5 +1,10 @@
-// Package localdb is the kube driver's last-good snapshot in local.db
-// (docs/architecture.md §4.4, decisions D7 and D33).
+// Package localdb is the last-good config snapshot in local.db
+// (docs/architecture.md §4.4, §4.5, decisions D7 and D33).
+//
+// It lives beside the drivers rather than inside the kube driver because
+// its writer and reader is internal/zonecache, which is driver-independent;
+// the kube driver also offers MaterializedSnapshot/PersistSnapshots for
+// tests and tools.
 //
 // zonecache writes the complete materialised object set (every kudurru.io
 // kind as JSON) together with the resourceVersion high-water mark after
@@ -270,6 +275,25 @@ func (s *SnapshotStore) Write(ctx context.Context, snap *Snapshot) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("localdb: commit: %w", err)
+	}
+	return nil
+}
+
+// Touch records that the stored snapshot is still current at writtenAt
+// without rewriting its objects: zonecache calls it while the live set is
+// unchanged, so Snapshot.Age measures time since the set was last known
+// current. It returns ErrNoSnapshot when nothing has been written yet.
+func (s *SnapshotStore) Touch(ctx context.Context, writtenAt time.Time) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE kube_snapshot SET written_at_ns = ? WHERE id = 1`, writtenAt.UnixNano())
+	if err != nil {
+		return fmt.Errorf("localdb: touch: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("localdb: touch: %w", err)
+	}
+	if n == 0 {
+		return ErrNoSnapshot
 	}
 	return nil
 }

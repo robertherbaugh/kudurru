@@ -192,3 +192,26 @@ func TestOpenRejectsUnwritablePath(t *testing.T) {
 		t.Fatal("opening a database in a missing directory must fail")
 	}
 }
+
+func TestTouch(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), FileName))
+	if err := s.Touch(ctx, time.Now()); !errors.Is(err, ErrNoSnapshot) {
+		t.Fatalf("touch before any write: want ErrNoSnapshot, got %v", err)
+	}
+	old := time.Now().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	if err := s.Write(ctx, &Snapshot{Objects: testObjects(), ResourceVersions: map[store.Kind]string{"DNSZone": "41"}, WrittenAt: old}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Truncate(time.Microsecond)
+	if err := s.Touch(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.WrittenAt.Equal(now) || len(got.Objects) != 2 || got.ResourceVersions["DNSZone"] != "41" {
+		t.Fatalf("after touch: writtenAt %s (want %s), %d objects, rvs %v", got.WrittenAt, now, len(got.Objects), got.ResourceVersions)
+	}
+}
