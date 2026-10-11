@@ -396,14 +396,15 @@ var _ store.Elector = (*Elector)(nil)
 // Name returns the election name the elector was created with.
 func (e *Elector) Name() string { return e.name }
 
-// Run calls onStarted, blocks until ctx ends, then calls onStopped. It
-// never loses leadership and returns nil when ctx ends.
-func (e *Elector) Run(ctx context.Context, onStarted, onStopped func()) error {
+// Run calls onStarted with the term context (D78), blocks until ctx ends,
+// then calls onStopped. It never loses leadership and returns nil when ctx
+// ends.
+func (e *Elector) Run(ctx context.Context, onStarted func(term context.Context), onStopped func()) error {
 	if e.s.isClosed() {
 		return store.ErrClosed
 	}
 	if onStarted != nil {
-		onStarted()
+		onStarted(ctx)
 	}
 	<-ctx.Done()
 	if onStopped != nil {

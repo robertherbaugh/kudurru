@@ -518,7 +518,7 @@ func TestElectorAlwaysLeads(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	started, stopped := make(chan struct{}), make(chan struct{})
 	done := make(chan error, 1)
-	go func() { done <- e.Run(ctx, func() { close(started) }, func() { close(stopped) }) }()
+	go func() { done <- e.Run(ctx, func(context.Context) { close(started) }, func() { close(stopped) }) }()
 	<-started
 	cancel()
 	<-stopped
