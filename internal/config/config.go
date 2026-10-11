@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ type Config struct {
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
+	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
 	Log       Log         `koanf:"log" json:"log"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
@@ -172,6 +174,130 @@ type UpstreamGroup struct {
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
 }
 
+// Querylog configures the per-node query log (docs/architecture.md §11.2,
+// D59).
+type Querylog struct {
+	// Enabled turns the query log on. When false no events are collected.
+	Enabled bool `koanf:"enabled" json:"enabled"`
+	// Sink is sqlite (querylog.db under node.dataDir, rollups and the
+	// stats API) or slog (one structured log line per query, no storage).
+	Sink string `koanf:"sink" json:"sink"`
+	// Privacy is full, anonymize_client, hide_domains,
+	// hide_domains_clients or nothing; applied once at ingest.
+	Privacy string `koanf:"privacy" json:"privacy"`
+	// Anonymize selects how anonymize_client hides clients: prefix (/24,
+	// /48) or pseudonym (daily HMAC).
+	Anonymize string            `koanf:"anonymize" json:"anonymize"`
+	Retention QuerylogRetention `koanf:"retention" json:"retention"`
+	Exclude   QuerylogExclude   `koanf:"exclude" json:"exclude"`
+}
+
+// QuerylogRetention bounds the raw fact table.
+type QuerylogRetention struct {
+	// Raw is how long per-query rows are kept; 0 keeps them until
+	// MaxDBBytes forces deletion.
+	Raw Duration `koanf:"raw" json:"raw"`
+	// MaxDBBytes caps querylog.db; the oldest rows go first. 0 disables
+	// the cap.
+	MaxDBBytes ByteSize `koanf:"maxDBBytes" json:"maxDBBytes"`
+}
+
+// QuerylogExclude lists what is never logged.
+type QuerylogExclude struct {
+	// Domains: exact names, "*.suffix" wildcards or "/regex/".
+	Domains []string `koanf:"domains" json:"domains"`
+	// Clients: IP addresses, CIDR prefixes or client names.
+	Clients []string `koanf:"clients" json:"clients"`
+	// SUDN drops special-use names (.local, localhost, private reverse
+	// zones, ...).
+	SUDN bool `koanf:"sudn" json:"sudn"`
+}
+
+// validate checks the query log settings.
+func (q *Querylog) validate() []error {
+	var errs []error
+	switch q.Sink {
+	case "sqlite", "slog":
+	default:
+		errs = append(errs, fmt.Errorf("querylog.sink: unknown sink %q (sqlite, slog)", q.Sink))
+	}
+	switch q.Privacy {
+	case "full", "anonymize_client", "hide_domains", "hide_domains_clients", "nothing":
+	default:
+		errs = append(errs, fmt.Errorf("querylog.privacy: unknown mode %q (full, anonymize_client, hide_domains, hide_domains_clients, nothing)", q.Privacy))
+	}
+	switch q.Anonymize {
+	case "prefix", "pseudonym":
+	default:
+		errs = append(errs, fmt.Errorf("querylog.anonymize: unknown method %q (prefix, pseudonym)", q.Anonymize))
+	}
+	if q.Retention.Raw < 0 {
+		errs = append(errs, fmt.Errorf("querylog.retention.raw: %s is negative", q.Retention.Raw))
+	} else if q.Retention.Raw > 0 && q.Retention.Raw < Duration(time.Hour) {
+		// The hourly rollups are derived from the raw rows.
+		errs = append(errs, fmt.Errorf("querylog.retention.raw: %s is shorter than 1h (use 0 for size-only retention)", q.Retention.Raw))
+	}
+	if q.Retention.MaxDBBytes < 0 {
+		errs = append(errs, fmt.Errorf("querylog.retention.maxDBBytes: %d is negative", int64(q.Retention.MaxDBBytes)))
+	}
+	for _, d := range q.Exclude.Domains {
+		if len(d) > 2 && strings.HasPrefix(d, "/") && strings.HasSuffix(d, "/") {
+			if _, err := regexp.Compile(d[1 : len(d)-1]); err != nil {
+				errs = append(errs, fmt.Errorf("querylog.exclude.domains: %q: %w", d, err))
+			}
+		}
+	}
+	return errs
+}
+
+// ByteSize is a byte count that reads and writes as "10GiB" (binary
+// suffixes KiB..TiB, decimal KB..TB, or a plain integer).
+type ByteSize int64
+
+var byteUnits = []struct {
+	suffix string
+	mult   int64
+}{
+	{"TiB", 1 << 40}, {"GiB", 1 << 30}, {"MiB", 1 << 20}, {"KiB", 1 << 10},
+	{"TB", 1e12}, {"GB", 1e9}, {"MB", 1e6}, {"KB", 1e3}, {"B", 1},
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (b *ByteSize) UnmarshalText(text []byte) error {
+	s := strings.TrimSpace(string(text))
+	mult := int64(1)
+	for _, u := range byteUnits {
+		if strings.HasSuffix(s, u.suffix) {
+			s, mult = strings.TrimSpace(strings.TrimSuffix(s, u.suffix)), u.mult
+			break
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid byte size %q", string(text))
+	}
+	if n != 0 && (n*mult)/mult != n {
+		return fmt.Errorf("byte size %q overflows", string(text))
+	}
+	*b = ByteSize(n * mult)
+	return nil
+}
+
+// MarshalText implements encoding.TextMarshaler with the largest exact
+// binary suffix.
+func (b ByteSize) MarshalText() ([]byte, error) { return []byte(b.String()), nil }
+
+// String implements fmt.Stringer.
+func (b ByteSize) String() string {
+	n := int64(b)
+	for _, u := range byteUnits[:4] {
+		if n != 0 && n%u.mult == 0 {
+			return strconv.FormatInt(n/u.mult, 10) + u.suffix
+		}
+	}
+	return strconv.FormatInt(n, 10)
+}
+
 // Duration is a time.Duration that reads and writes as "2s" in YAML, JSON
 // and the environment.
 type Duration time.Duration
@@ -289,6 +415,7 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Cache.validate()...)
 	errs = append(errs, c.Blocking.validate()...)
+	errs = append(errs, c.Querylog.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))

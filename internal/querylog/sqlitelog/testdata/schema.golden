@@ -1,0 +1,134 @@
+-- table dict_client
+CREATE TABLE dict_client   (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT, grp TEXT, first_seen INTEGER, last_seen INTEGER, UNIQUE(ip,name));
+
+-- table dict_domain
+CREATE TABLE dict_domain   (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, etld1 TEXT, first_seen INTEGER, last_seen INTEGER);
+
+-- table dict_list
+CREATE TABLE dict_list     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+
+-- table dict_node
+CREATE TABLE dict_node     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+
+-- table dict_upstream
+CREATE TABLE dict_upstream (id INTEGER PRIMARY KEY, addr TEXT NOT NULL UNIQUE);
+
+-- table dict_zone
+CREATE TABLE dict_zone     (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+
+-- table meta
+CREATE TABLE meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID;
+
+-- table query
+CREATE TABLE query (
+  id          INTEGER PRIMARY KEY,
+  ts          INTEGER NOT NULL,
+  latency_us  INTEGER,
+  node        INTEGER NOT NULL REFERENCES dict_node,
+  proto       INTEGER NOT NULL,
+  client      INTEGER NOT NULL REFERENCES dict_client,
+  domain      INTEGER NOT NULL REFERENCES dict_domain,
+  qtype       INTEGER NOT NULL, qclass INTEGER NOT NULL DEFAULT 1,
+  status      INTEGER NOT NULL,
+  rcode       INTEGER NOT NULL,
+  reply_type  INTEGER NOT NULL,
+  upstream    INTEGER REFERENCES dict_upstream,
+  zone        INTEGER REFERENCES dict_zone,
+  list        INTEGER REFERENCES dict_list,
+  rule        TEXT,
+  cname       INTEGER REFERENCES dict_domain,
+  dnssec      INTEGER NOT NULL DEFAULT 0,
+  ede         INTEGER,
+  flags       INTEGER NOT NULL DEFAULT 0,
+  ecs         TEXT,
+  trace_id    BLOB,
+  answer      TEXT
+);
+
+-- table rollup_1d
+CREATE TABLE rollup_1d (
+  ts INTEGER NOT NULL, node INTEGER NOT NULL,
+  total INTEGER NOT NULL, blocked INTEGER NOT NULL, cached INTEGER NOT NULL, forwarded INTEGER NOT NULL, authoritative INTEGER NOT NULL, dropped INTEGER NOT NULL,
+  rc_noerror INTEGER, rc_nxdomain INTEGER, rc_servfail INTEGER, rc_refused INTEGER, rc_other INTEGER,
+  udp INTEGER, tcp INTEGER, dot INTEGER, doh INTEGER, doq INTEGER,
+  lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  PRIMARY KEY (ts, node)) WITHOUT ROWID;
+
+-- table rollup_1h
+CREATE TABLE rollup_1h (
+  ts INTEGER NOT NULL, node INTEGER NOT NULL,
+  total INTEGER NOT NULL, blocked INTEGER NOT NULL, cached INTEGER NOT NULL, forwarded INTEGER NOT NULL, authoritative INTEGER NOT NULL, dropped INTEGER NOT NULL,
+  rc_noerror INTEGER, rc_nxdomain INTEGER, rc_servfail INTEGER, rc_refused INTEGER, rc_other INTEGER,
+  udp INTEGER, tcp INTEGER, dot INTEGER, doh INTEGER, doq INTEGER,
+  lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  PRIMARY KEY (ts, node)) WITHOUT ROWID;
+
+-- table rollup_1m
+CREATE TABLE rollup_1m (
+  ts INTEGER NOT NULL, node INTEGER NOT NULL,
+  total INTEGER NOT NULL, blocked INTEGER NOT NULL, cached INTEGER NOT NULL, forwarded INTEGER NOT NULL, authoritative INTEGER NOT NULL, dropped INTEGER NOT NULL,
+  rc_noerror INTEGER, rc_nxdomain INTEGER, rc_servfail INTEGER, rc_refused INTEGER, rc_other INTEGER,
+  udp INTEGER, tcp INTEGER, dot INTEGER, doh INTEGER, doq INTEGER,
+  lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  PRIMARY KEY (ts, node)) WITHOUT ROWID;
+
+-- table rollup_client_1d
+CREATE TABLE rollup_client_1d (ts INTEGER, node INTEGER, client INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,client)) WITHOUT ROWID;
+
+-- table rollup_client_1h
+CREATE TABLE rollup_client_1h (ts INTEGER, node INTEGER, client INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,client)) WITHOUT ROWID;
+
+-- table rollup_client_1m
+CREATE TABLE rollup_client_1m (ts INTEGER, node INTEGER, client INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,client)) WITHOUT ROWID;
+
+-- table rollup_domain_1d
+CREATE TABLE rollup_domain_1d (ts INTEGER, node INTEGER, domain INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,domain)) WITHOUT ROWID;
+
+-- table rollup_domain_1h
+CREATE TABLE rollup_domain_1h (ts INTEGER, node INTEGER, domain INTEGER, total INTEGER, blocked INTEGER, PRIMARY KEY (ts,node,domain)) WITHOUT ROWID;
+
+-- table rollup_list_1h
+CREATE TABLE rollup_list_1h     (ts INTEGER, node INTEGER, list INTEGER, hits INTEGER, PRIMARY KEY (ts,node,list)) WITHOUT ROWID;
+
+-- table rollup_qtype_1h
+CREATE TABLE rollup_qtype_1h (ts INTEGER, node INTEGER, qtype INTEGER, total INTEGER, PRIMARY KEY (ts,node,qtype)) WITHOUT ROWID;
+
+-- table rollup_qtype_1m
+CREATE TABLE rollup_qtype_1m (ts INTEGER, node INTEGER, qtype INTEGER, total INTEGER, PRIMARY KEY (ts,node,qtype)) WITHOUT ROWID;
+
+-- table rollup_upstream_1h
+CREATE TABLE rollup_upstream_1h (ts INTEGER, node INTEGER, upstream INTEGER, total INTEGER, errors INTEGER, timeouts INTEGER, lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  PRIMARY KEY (ts,node,upstream)) WITHOUT ROWID;
+
+-- table rollup_upstream_1m
+CREATE TABLE rollup_upstream_1m (ts INTEGER, node INTEGER, upstream INTEGER, total INTEGER, errors INTEGER, timeouts INTEGER, lat_sum_us INTEGER, lat_cnt INTEGER,
+  lat_b0 INTEGER, lat_b1 INTEGER, lat_b2 INTEGER, lat_b3 INTEGER, lat_b4 INTEGER, lat_b5 INTEGER,
+  lat_b6 INTEGER, lat_b7 INTEGER, lat_b8 INTEGER, lat_b9 INTEGER, lat_b10 INTEGER, lat_b11 INTEGER,
+  PRIMARY KEY (ts,node,upstream)) WITHOUT ROWID;
+
+-- table rollup_zone_1h
+CREATE TABLE rollup_zone_1h     (ts INTEGER, node INTEGER, zone INTEGER, total INTEGER, PRIMARY KEY (ts,node,zone)) WITHOUT ROWID;
+
+-- index query_client_ts
+CREATE INDEX query_client_ts ON query(client, ts);
+
+-- index query_domain_ts
+CREATE INDEX query_domain_ts ON query(domain, ts);
+
+-- index query_status_ts
+CREATE INDEX query_status_ts ON query(status, ts) WHERE status >= 16;
+
+-- index query_ts
+CREATE INDEX query_ts        ON query(ts);
+
+-- index rollup_domain_1h_ts
+CREATE INDEX rollup_domain_1h_ts ON rollup_domain_1h(ts);
+
