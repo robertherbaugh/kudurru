@@ -23,3 +23,6 @@ coverage.*
 .vscode/
 *.swp
 .DS_Store
+
+# agent worktrees live inside the repo
+/.claude/
