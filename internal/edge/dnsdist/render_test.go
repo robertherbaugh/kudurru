@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -326,5 +327,22 @@ func TestNewRenderer(t *testing.T) {
 	}
 	if _, err := NewRenderer("toml"); err == nil {
 		t.Error("toml accepted")
+	}
+}
+
+func BenchmarkRenderYAML100Backends(b *testing.B) {
+	var bes []edge.Backend
+	for i := range 100 {
+		bes = append(bes, edge.Backend{Name: "kudurru-" + strconv.Itoa(i), Address: "10.244.0." + strconv.Itoa(i+1) + ":5353"})
+	}
+	top, err := edge.Build(edge.Options{ServerID: "e", ProxyProtocolSecret: goldenSecret}, bes, goldenCreds)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := (YAMLRenderer{}).Render(top); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
