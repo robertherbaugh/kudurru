@@ -66,6 +66,18 @@ type ListSink interface {
 	SetLists(*blocking.Snapshot)
 }
 
+// ExtraLists supplies lists that are not BlockList objects and are compiled
+// into the same snapshot: the blocked-services catalogue's "service:<id>"
+// lists (catalogue.Holder, D60). Their sources are in memory; nothing is
+// fetched for them.
+type ExtraLists interface {
+	// Lists returns the specs and a fingerprint that changes whenever the
+	// specs do.
+	Lists() ([]blocking.Spec, string)
+	// Subscribe returns a channel signalled when Lists changes.
+	Subscribe() <-chan struct{}
+}
+
 // ResolverOptions configure a Resolver.
 type ResolverOptions struct {
 	// Objects supplies the BlockLists with the leader's status digests;
@@ -100,6 +112,8 @@ type ResolverOptions struct {
 	MaxListBytes int64
 	// Compile tunes blocking.Rebuild.
 	Compile blocking.CompileOptions
+	// Extra lists compiled next to the BlockLists; optional.
+	Extra ExtraLists
 	// Registerer receives kudurru_blocklist_pulls_total and friends.
 	Registerer prometheus.Registerer
 	Logger     *slog.Logger
@@ -213,6 +227,10 @@ func (r *Resolver) Run(ctx context.Context) error {
 	case <-r.opts.Objects.Initialized():
 	}
 	changes := r.opts.Objects.Subscribe()
+	var extra <-chan struct{}
+	if r.opts.Extra != nil {
+		extra = r.opts.Extra.Subscribe()
+	}
 	r.pass(ctx, true)
 	for {
 		res := r.pass(ctx, false)
@@ -232,6 +250,7 @@ func (r *Resolver) Run(ctx context.Context) error {
 			t.Stop()
 			return nil
 		case <-changes:
+		case <-extra:
 		case <-t.C:
 		}
 		t.Stop()
@@ -381,6 +400,11 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			specs = append(specs, spec)
 			statuses = append(statuses, ls)
 		}
+	}
+	if r.opts.Extra != nil {
+		extra, efp := r.opts.Extra.Lists()
+		specs = append(specs, extra...)
+		fp.add("extra", efp)
 	}
 	for _, f := range res.Failures {
 		notes = append(notes, "failed: "+f)

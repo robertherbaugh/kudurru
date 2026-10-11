@@ -26,6 +26,7 @@ const (
 	allowException
 	passNone
 	passDisabled
+	rewriteSafeSearch
 	numOutcomes
 )
 
@@ -38,6 +39,8 @@ var outcomeLabels = [numOutcomes][2]string{
 	allowException: {"allow", "exception"},
 	passNone:       {"pass", "none"},
 	passDisabled:   {"pass", "disabled"},
+	// The safe-search answer of a search engine's host name (D60).
+	rewriteSafeSearch: {"rewrite", "safesearch"},
 }
 
 // metrics are the blocking instruments (docs/architecture.md §11.1). All
@@ -78,7 +81,7 @@ func newMetrics(reg prometheus.Registerer, enabled prometheus.Collector) (*metri
 	m := &metrics{
 		decisions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_block_decisions_total",
-			Help: "Blocking decisions for recursive queries of clients with a filtering policy, by action (block, allow, pass), source (allowlist, allow_only, exception, deny, response, disabled, none) and client group.",
+			Help: "Blocking decisions for recursive queries of clients with a filtering policy, by action (block, allow, pass, rewrite), source (allowlist, allow_only, exception, deny, response, disabled, none, safesearch) and client group.",
 		}, []string{"action", "source", "group"}),
 		listHits: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_block_list_hits_total",
