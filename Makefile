@@ -120,9 +120,12 @@ validator-crds:
 	rm -f internal/store/validator/crds/*.yaml
 	cp config/crd/bases/*.yaml internal/store/validator/crds/
 
-## check-generated: fail if `make generate` would change tracked files
+## check-generated: fail if `make generate` or `make docs-gen` would change
+## tracked files (the docs site's references follow the CRDs, the settings
+## table, the CLI and the OpenAPI document)
 check-generated: generate
-	git diff --exit-code -- api config/crd charts/kudurru-crds internal/store/validator/crds
+	$(MAKE) --no-print-directory docs-gen
+	git diff --exit-code -- api config/crd charts/kudurru-crds internal/store/validator/crds site/content/reference
 
 ## dex: build the pinned dex release (Apache-2.0; a separate test program,
 ## never linked) from its source tarball for the OIDC end-to-end test. dex
@@ -239,6 +242,68 @@ web-dev: web-install
 ## Playwright's chromium. The HTML report lands in web/playwright-report.
 web-e2e: web-build build
 	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
+
+## Docs site (site/, Hugo; site/README.md). The Hugo extended release
+## binary (Apache-2.0) is downloaded into bin/ at HUGO_VERSION and checked
+## against the pinned SHA-256 of the linux tarball; on other platforms
+## install Hugo extended $(HUGO_VERSION) and pass HUGO=/path/to/hugo.
+##   docs-gen:   regenerate the references under site/content/reference
+##               (settings, CRDs, CLI); TestReferenceDrift (hack/docsgen) and
+##               TestCLIReferenceDrift (cmd/kudurru) fail when they are stale
+##   docs-site:  build the site into site/public with --panicOnWarning, so
+##               an unresolved link in any page (docs/ included) fails
+##   docs-serve: live preview on http://localhost:1313/
+HUGO_VERSION            ?= 0.167.0
+HUGO_SHA256_linux_amd64 := 0163f5c3deddac1f494a1629ddc40c65d18de9d5794facd98f7f96ac2c7d8957
+HUGO_SHA256_linux_arm64 := c73eaba13738754b50de4d07606670d5c0cd2eaaf2057af657cec9efd3b01876
+HUGO_OS                 := $(shell uname -s | tr A-Z a-z)
+HUGO_ARCH               := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+HUGO_DIR                := $(CURDIR)/bin/hugo-$(HUGO_VERSION)
+HUGO                    ?= $(HUGO_DIR)/hugo
+HUGO_FLAGS              ?= --minify --gc --cleanDestinationDir --panicOnWarning
+# The Scalar bundle (MIT, internal/api/scalar) renders the REST reference
+# page; Hugo reads it decompressed from this ignored directory.
+DOCS_GENERATED          := site/.generated
+
+.PHONY: docs-gen docs-assets docs-site docs-serve docs-check-links hugo
+
+hugo: $(HUGO)
+
+$(HUGO_DIR)/hugo:
+	@sha='$(HUGO_SHA256_$(HUGO_OS)_$(HUGO_ARCH))'; \
+	if [ -z "$$sha" ]; then echo "error: no pinned Hugo checksum for $(HUGO_OS)/$(HUGO_ARCH); install Hugo extended $(HUGO_VERSION) and pass HUGO=/path/to/hugo"; exit 1; fi; \
+	rm -rf $(HUGO_DIR).dl && mkdir -p $(HUGO_DIR).dl && \
+	curl -fsSL -o $(HUGO_DIR).dl/hugo.tar.gz https://github.com/gohugoio/hugo/releases/download/v$(HUGO_VERSION)/hugo_extended_$(HUGO_VERSION)_$(HUGO_OS)-$(HUGO_ARCH).tar.gz && \
+	echo "$$sha  $(HUGO_DIR).dl/hugo.tar.gz" | sha256sum -c - && \
+	mkdir -p $(HUGO_DIR) && tar -xzf $(HUGO_DIR).dl/hugo.tar.gz -C $(HUGO_DIR) hugo && \
+	rm -rf $(HUGO_DIR).dl
+
+docs-gen:
+	go run ./hack/docsgen -root .
+	go test -count=1 ./cmd/kudurru -run '^TestCLIReferenceDrift$$' -update-cli-reference
+
+## docs-assets: the decompressed Scalar bundle, and the list of repository
+## files the link hook checks links into the repository against (Hugo cannot
+## stat files outside site/)
+docs-assets:
+	mkdir -p $(DOCS_GENERATED)/scalar
+	gunzip -c internal/api/scalar/standalone.js.gz > $(DOCS_GENERATED)/scalar/standalone.js
+	{ git ls-files --cached --others --exclude-standard 2>/dev/null || find . -path ./.git -prune -o -type f -print | sed 's|^\./||'; } > $(DOCS_GENERATED)/repo-files.txt
+
+docs-site: docs-assets $(HUGO)
+	cd site && $(HUGO) $(HUGO_FLAGS)
+
+docs-serve: docs-assets $(HUGO)
+	cd site && $(HUGO) server --bind 127.0.0.1 --port $${PORT:-1313}
+
+## docs-check-links: build the site below /kudurru/ (the GitHub Pages
+## project path) and check every internal link, asset and fragment of the
+## HTML with htmltest (MIT, site/.htmltest.yml)
+HTMLTEST ?= go run github.com/wjdp/htmltest@v0.17.0
+docs-check-links: docs-assets $(HUGO)
+	rm -rf bin/docs-links bin/docs-links-log
+	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/kudurru/ --destination ../bin/docs-links/kudurru
+	$(HTMLTEST) -c site/.htmltest.yml
 ## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are
 ## installed into bin/ at pinned versions; helm comes from the system.
 KUBECONFORM_VERSION ?= v0.8.0

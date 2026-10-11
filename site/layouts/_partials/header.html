@@ -1,0 +1,28 @@
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="brand" href="{{ "" | relURL }}" aria-label="kudurru documentation home">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="{{ "brand/kudurru-logo-mixed-paper.png" | relURL }}">
+        <img src="{{ "brand/kudurru-logo-mixed.png" | relURL }}" width="132" height="44" alt="kudurru">
+      </picture>
+      <span class="brand__docs">docs</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
+      <ul>
+        {{- $current := . }}
+        {{- range site.Menus.main }}
+          {{- $active := or ($current.IsMenuCurrent "main" .) ($current.HasMenuCurrent "main" .) }}
+          {{- with .Page }}{{ if or (eq $current .) ($current.IsDescendant .) }}{{ $active = true }}{{ end }}{{ end }}
+          <li><a href="{{ .URL }}"{{ if $active }} aria-current="page"{{ end }}>{{ .Name }}</a></li>
+        {{- end }}
+      </ul>
+    </nav>
+    <div class="search" role="search">
+      <label class="visually-hidden" for="search-input">Search the documentation</label>
+      <input id="search-input" class="search__input" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
+      <ol id="search-results" class="search__results" hidden></ol>
+    </div>
+    <a class="repo-link" href="{{ site.Params.repo }}" rel="noopener">GitHub</a>
+  </div>
+</header>

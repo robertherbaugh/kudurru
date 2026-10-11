@@ -1,0 +1,34 @@
+{{- /*
+  The API explorer: the OpenAPI document (api/openapi.json) rendered by the
+  Scalar bundle kudurru itself serves at /api/v1/docs (MIT,
+  internal/api/scalar). It loads nothing from a CDN: no web fonts, no
+  telemetry, no AI agent, and no "send request" button, because a static
+  site has no API behind it.
+*/ -}}
+<!doctype html>
+<html lang="{{ site.Language.Locale }}">
+<head>
+{{ partial "head.html" . }}
+</head>
+<body class="kind-scalar">
+<a class="skip-link" href="#main">Skip to content</a>
+{{ partial "header.html" . }}
+<div class="scalar-note">
+  <p>{{ .Description | markdownify }}
+    <a href="{{ "reference/api/openapi.json" | relURL }}">openapi.json</a> ·
+    <a href="{{ (site.GetPage "/reference/api/endpoints").RelPermalink }}">endpoint index</a> ·
+    <a href="{{ "reference/api/scalar-LICENSE.txt" | relURL }}">Scalar licence (MIT)</a></p>
+</div>
+<main id="main">
+  <script id="api-reference" data-proofer-ignore data-url="{{ "reference/api/openapi.json" | relURL }}" data-configuration="{{ jsonify (dict "withDefaultFonts" false "telemetry" false "agent" (dict "disabled" true) "hideTestRequestButton" true "hideClientButton" true) }}"></script>
+</main>
+{{- with resources.Get "scalar/standalone.js" }}
+{{- $js := . | fingerprint "sha384" }}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}"></script>
+{{- else }}
+{{- warnf "the Scalar bundle is missing: run `make docs-assets` (or `make docs-site`)" }}
+{{- end }}
+{{ $js := resources.Get "js/site.js" | minify | fingerprint -}}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
+</body>
+</html>
