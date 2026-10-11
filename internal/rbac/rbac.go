@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"sigs.k8s.io/yaml"
 )
@@ -66,6 +67,32 @@ type Principal struct {
 	Groups []string
 	// ServiceAccount is "<namespace>/<name>" for service accounts.
 	ServiceAccount string
+
+	// Kind is the auth principal kind (User, ServiceAccount,
+	// KubernetesServiceAccount, LocalRoot, Node). The SAR authorizer acts
+	// only on KubernetesServiceAccount.
+	Kind string
+	// UID is passed to SubjectAccessReview for Kubernetes identities.
+	UID string
+	// Grants are grants resolved earlier: a cookie session's roles
+	// snapshot (D48: the session carries no groups) or the frozen grants
+	// of an OIDC user's personal token. BindingSource honours each only
+	// while a live binding still provides it and it was not revoked after
+	// GrantsIssuedAt.
+	Grants []Grant
+	// GrantsIssuedAt is when Grants were resolved (session iat, token
+	// creation).
+	GrantsIssuedAt time.Time
+	// Restrict, when non-empty, narrows every decision to what one of
+	// these grants allows (API token scopes, §8.6).
+	Restrict []Grant
+	// BuiltinAdmin is the implicit admin of the unix-socket peer, the
+	// first-boot admin and the bootstrap service account (Path "local").
+	BuiltinAdmin bool
+	// Implicit are grants the principal holds by construction, without a
+	// binding (Path "local"): the read-only grants of a peer node that
+	// presented the internal token.
+	Implicit []Grant
 }
 
 // Authorizer decides.
@@ -209,25 +236,7 @@ func (b *BindingAuthorizer) Authorize(_ context.Context, p Principal, a Attribut
 	return Decision{Allowed: false, Path: "binding", Missing: &missing, Reason: "no binding grants " + a.Resource + "." + a.Verb}, nil
 }
 
-func matchesSubject(subjects []Subject, p Principal) bool {
-	for _, s := range subjects {
-		switch s.Kind {
-		case SubjectUser:
-			if s.Name != "" && s.Name == p.Name {
-				return true
-			}
-		case SubjectGroup:
-			if s.Name != "" && contains(p.Groups, s.Name) {
-				return true
-			}
-		case SubjectServiceAccount:
-			if p.ServiceAccount != "" && s.Namespace+"/"+s.Name == p.ServiceAccount {
-				return true
-			}
-		}
-	}
-	return false
-}
+func matchesSubject(subjects []Subject, p Principal) bool { return SubjectsMatch(subjects, p) }
 
 func contains(list []string, s string) bool {
 	for _, x := range list {

@@ -43,6 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	coordinationv1client "k8s.io/client-go/kubernetes/typed/coordination/v1"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -77,8 +78,8 @@ const applyRetries = 5
 
 // Options configures the driver. The zero value is usable in a pod.
 type Options struct {
-	// Namespace holds the driver's Leases (and, later, the Secrets of
-	// internal kinds). Default: the pod's namespace, else "default".
+	// Namespace holds the driver's Leases and the Secrets of internal
+	// kinds. Default: the pod's namespace (PodNamespace), else "default".
 	Namespace string
 	// Identity is this replica's Lease holder identity. Default: the
 	// hostname, which is the pod name in Kubernetes (§5.3). Outside a pod
@@ -101,6 +102,13 @@ type Options struct {
 	Scheme *runtime.Scheme
 	// Logger receives driver logs. Default slog.Default().
 	Logger *slog.Logger
+	// InternalKinds are kinds served as Secrets labelled
+	// kudurru.io/kind=<Kind> in Namespace instead of CRDs (internal.go):
+	// the identity layer's LocalUser, APIToken, ServiceAccount,
+	// RoleBinding and IdentityProvider. They must be registered in Scheme
+	// (internalkinds.AddToScheme); core/v1 is added to Scheme when it is
+	// missing. Snapshot omits them when Safe.
+	InternalKinds []store.Kind
 }
 
 func (o *Options) setDefaults() error {
@@ -145,6 +153,12 @@ func (o *Options) setDefaults() error {
 	return nil
 }
 
+// PodNamespace returns the namespace of the pod the process runs in (the
+// release namespace), or "default" outside a pod: the default of
+// Options.Namespace, and where the identity layer keeps kudurru's own
+// service accounts and reads clientSecretRef Secrets.
+func PodNamespace() string { return podNamespace() }
+
 func podNamespace() string {
 	if b, err := os.ReadFile(serviceAccountNamespaceFile); err == nil {
 		if ns := strings.TrimSpace(string(b)); ns != "" {
@@ -156,14 +170,18 @@ func podNamespace() string {
 
 // Store implements store.Store over the Kubernetes apiserver.
 type Store struct {
-	opts    Options
-	kinds   *registry
-	mapper  meta.RESTMapper
-	c       client.Client // uncached: reads and writes go to the apiserver
-	cache   cache.Cache   // informers for Watch
-	leases  coordinationv1client.LeasesGetter
-	log     *slog.Logger
-	contact *contact // last successful apiserver round trip
+	opts   Options
+	kinds  *registry
+	mapper meta.RESTMapper
+	c      client.Client // uncached: reads and writes go to the apiserver
+	cache  cache.Cache   // informers for Watch
+	leases coordinationv1client.LeasesGetter
+	log    *slog.Logger
+
+	internal *internalKinds  // Options.InternalKinds, served as Secrets
+	coreREST rest.Interface  // core/v1 client for the internal-kind informer
+	bgCtx    context.Context // cancelled by Close
+	contact  *contact        // last successful apiserver round trip
 
 	cancel         context.CancelFunc // stops the cache and background work
 	cacheDone      chan struct{}      // closed when cache.Start returns
@@ -204,6 +222,17 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	internal, err := splitInternal(kinds, opts.InternalKinds)
+	if err != nil {
+		return nil, err
+	}
+	if len(opts.InternalKinds) > 0 && !opts.Scheme.Recognizes(corev1.SchemeGroupVersion.WithKind("SecretList")) {
+		// Internal kinds are Secrets: the client needs core/v1 in its
+		// scheme (internalkinds.NewScheme carries only kudurru.io).
+		if err := corev1.AddToScheme(opts.Scheme); err != nil {
+			return nil, fmt.Errorf("store/kube: core/v1 scheme: %w", err)
+		}
+	}
 	httpClient, err := rest.HTTPClientFor(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: http client: %w", err)
@@ -230,6 +259,10 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: coordination client: %w", err)
 	}
+	core, err := corev1client.NewForConfigAndClient(cfg, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("store/kube: core client: %w", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Store{
 		opts:           opts,
@@ -238,6 +271,9 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		c:              c,
 		cache:          ca,
 		leases:         leases,
+		internal:       internal,
+		coreREST:       core.RESTClient(),
+		bgCtx:          ctx,
 		log:            opts.Logger.With("component", "store/kube"),
 		contact:        ct,
 		cancel:         cancel,

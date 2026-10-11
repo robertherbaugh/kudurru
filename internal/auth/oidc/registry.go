@@ -11,14 +11,15 @@ import (
 // Registry holds the configured providers (auth.identityProviders[]) and
 // mounts their routes.
 type Registry struct {
-	byID  map[string]*Provider
-	order []*Provider
+	byID     map[string]*Provider
+	byIssuer map[string]*Provider
+	order    []*Provider
 }
 
 // NewRegistry rejects duplicate provider IDs and duplicate issuers: bearer
 // ID tokens (v0.2 CLI) are routed by iss, so issuers must be unique.
 func NewRegistry(providers ...*Provider) (*Registry, error) {
-	r := &Registry{byID: map[string]*Provider{}}
+	r := &Registry{byID: map[string]*Provider{}, byIssuer: map[string]*Provider{}}
 	issuers := map[string]string{}
 	for _, p := range providers {
 		if _, dup := r.byID[p.ID()]; dup {
@@ -28,6 +29,7 @@ func NewRegistry(providers ...*Provider) (*Registry, error) {
 			return nil, fmt.Errorf("oidc: providers %q and %q share issuer %s", other, p.ID(), p.cfg.Issuer)
 		}
 		r.byID[p.ID()] = p
+		r.byIssuer[p.cfg.Issuer] = p
 		issuers[p.cfg.Issuer] = p.ID()
 		r.order = append(r.order, p)
 	}
@@ -55,11 +57,13 @@ func (r *Registry) Provider(id string) (*Provider, bool) {
 	return p, ok
 }
 
-// Register mounts GET <prefix>/auth/oidc/{idp}/start and .../callback on
-// mux (prefix is "/api/v1" in the API server). It fails if a provider's
-// redirectURL does not point at its callback route, the most common
-// misconfiguration.
-func (r *Registry) Register(mux *http.ServeMux, prefix string) error {
+// ByIssuer returns the provider whose issuer is exactly iss (bearer ID
+// tokens are routed by iss), or nil.
+func (r *Registry) ByIssuer(iss string) *Provider { return r.byIssuer[iss] }
+
+// CheckRedirects fails if a provider's redirectURL does not point at its
+// callback route under prefix, the most common misconfiguration.
+func (r *Registry) CheckRedirects(prefix string) error {
 	prefix = strings.TrimSuffix(prefix, "/")
 	var errs []error
 	for _, p := range r.order {
@@ -68,9 +72,16 @@ func (r *Registry) Register(mux *http.ServeMux, prefix string) error {
 			errs = append(errs, fmt.Errorf("oidc provider %q: redirectURL path %q must be %q", p.ID(), u.Path, want))
 		}
 	}
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	return errors.Join(errs...)
+}
+
+// Register mounts GET <prefix>/auth/oidc/{idp}/start and .../callback on
+// mux (prefix is "/api/v1" in the API server) after CheckRedirects.
+func (r *Registry) Register(mux *http.ServeMux, prefix string) error {
+	if err := r.CheckRedirects(prefix); err != nil {
+		return err
 	}
+	prefix = strings.TrimSuffix(prefix, "/")
 	mux.HandleFunc("GET "+prefix+"/auth/oidc/{idp}/start", r.route((*Provider).Start))
 	mux.HandleFunc("GET "+prefix+"/auth/oidc/{idp}/callback", r.route((*Provider).Callback))
 	return nil

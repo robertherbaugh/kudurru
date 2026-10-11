@@ -63,6 +63,11 @@ type ProviderConfig struct {
 	// RedirectURL is the absolute callback URL registered at the IdP, e.g.
 	// https://dns.example/api/v1/auth/oidc/corp/callback.
 	RedirectURL string `json:"redirectURL"`
+	// CLIClientID is the public client of `kudurru login` (v0.2); bearer
+	// ID tokens minted for it are accepted (§8.3).
+	CLIClientID string `json:"cliClientID,omitempty"`
+	// Audiences are extra aud values accepted for bearer ID tokens.
+	Audiences []string `json:"audiences,omitempty"`
 	// Scopes requested; default openid, profile, email, groups. openid is
 	// always added.
 	Scopes []string `json:"scopes,omitempty"`

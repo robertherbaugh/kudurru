@@ -78,12 +78,16 @@ client-go: openapi
 tidy:
 	go mod tidy
 
-## generate: deepcopy functions, CRD manifests and the CRD chart copies
+## generate: deepcopy functions, CRD manifests and the CRD chart copies.
+## Deepcopy covers api/v1alpha1 and the internal kinds of api/internalkinds/v1alpha1
+## (LocalUser, APIToken, ServiceAccount, RoleBinding, IdentityProvider); the
+## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
+## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
-	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/...
+	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/...
 
 manifests:
-	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/... output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
 	mkdir -p charts/kudurru-crds/templates
 	cp config/crd/bases/*.yaml charts/kudurru-crds/templates/
 	$(MAKE) --no-print-directory validator-crds

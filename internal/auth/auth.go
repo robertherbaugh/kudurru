@@ -1,5 +1,10 @@
 // Package auth holds principals, sessions and the authenticator chain
-// (docs/architecture.md §8). Only the seams exist in the scaffold.
+// (docs/architecture.md §8): the Principal and Session types, the
+// Middleware that runs the Authenticate and LoadPrincipal steps of §8.8
+// over pluggable Authenticator steps (implemented by internal/auth/tokens,
+// internal/auth/oidc, internal/auth/k8s, internal/auth/session and the
+// unix-peer and internal-token steps here), CSRF, the contract's error
+// body, the Authorize helper and the mapping to rbac.Principal.
 package auth
 
 import (
@@ -31,6 +36,35 @@ type Principal struct {
 	// AuthMethod is how the principal authenticated: cookie, token, jwt,
 	// k8s, unix, internal.
 	AuthMethod string
+
+	// The fields below are filled per request by the authenticators and
+	// LoadPrincipal (§8.8); sealed sessions persist none of them.
+
+	// UID is the Kubernetes user UID of a KubernetesServiceAccount.
+	UID string
+	// ServiceAccount is "<namespace>/<name>" for kudurru and Kubernetes
+	// service accounts; binding subjects of kind ServiceAccount match it.
+	ServiceAccount string
+	// BuiltinAdmin grants admin without a binding: the first-boot admin,
+	// the bootstrap service account and the unix-socket peer.
+	BuiltinAdmin bool
+	// MustChangePassword restricts a local user to changing the password.
+	MustChangePassword bool
+	// Grants are pre-resolved grants in wire form ("role" or
+	// "role@kind:name"): a cookie session's roles snapshot or the frozen
+	// grants of an OIDC user's personal token, honoured while the
+	// bindings still provide them (rbac.BindingSource).
+	Grants []string
+	// GrantsIssuedAt is when Grants were resolved.
+	GrantsIssuedAt time.Time
+	// Scopes, when non-empty, narrow every decision to these grants (API
+	// token scopes, §8.6).
+	Scopes []string
+	// TokenID is the id of the API token that authenticated the request.
+	TokenID string
+	// Implicit are grants held without a binding (a peer node's read-only
+	// grants), in wire form.
+	Implicit []string
 }
 
 // Session is the payload of a sealed cookie or a db row. RolesSnapshot

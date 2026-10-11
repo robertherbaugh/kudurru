@@ -23,8 +23,9 @@ Close an item by deleting its row and citing the commit.
 | Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
 | sqlite: daily leader loop calling `PruneAudit` (400 d); remaining §11.4 audit fields via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist | store-sqlite report | M3 / v0.2 |
 | Enforce the 1.5 MiB object cap (etcd) in the sqlite driver (the API refuses larger objects with 413 since docs/m3/api.md) | validator spike | M3 |
+| sqlite: `WithActor` from the auth principal in the API middleware (`auth.PrincipalFrom(ctx).ID`, docs/m3/auth.md); daily leader loop calling `PruneAudit` (400 d); remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing | store-sqlite report | M3 / v0.2 |
+| Enforce the 1.5 MiB object cap (etcd) in the sqlite driver and the API | validator spike | M3 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
-| Serve internal kinds (Secrets labelled kudurru.io/kind) in the kube driver; `SnapshotOptions.Safe` strips them | store-kube spike | M3 |
 | conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | M2 |
 
 ## Zone, controller, objects
@@ -87,9 +88,13 @@ Close an item by deleting its row and citing the commit.
 
 | Item | Source | Target |
 |---|---|---|
-| `roles_snapshot` is frozen at login: bump `sessionsValidAfter` when a RoleBinding is deleted or narrowed, or intersect sealed binding identities with live bindings at Authorize time | auth spike | M3 |
-| Export an rbac subject-matching helper so `oidc.BindingResolver` stops duplicating it | auth spike | M3 |
-| Wire `Registry.Register`, `session.Authenticator`, `ValidAfter` from the store snapshot, keys from `KUDURRU_ENCRYPTION_KEY[_PREVIOUS][_FILE]` into the API server | auth spike | M3 |
+| Binding revocation times (`rbac.BindingSource`, which stops honouring a sealed session grant once a binding change removed it) live in memory per replica; after a restart only the "a live binding still provides it" rule applies. Persist a revocation epoch (state.db / the runtime ConfigMap) or bump a cluster-wide grants-valid-after on narrowing | docs/m3/auth.md | v0.2 |
+| OIDC identities have no stored record: no per-user "log out everywhere" or disable, and an OIDC user's personal tokens stay valid until expiry while bindings still provide their frozen grants. Needs the v0.2 user store (with `autoProvision: never`, `syncGroups`) | docs/m3/auth.md | v0.2 |
+| Login lockouts (5/IP → 5 min, 10/user → 15 min) are in memory per replica, so N replicas allow N× the attempts; share counters through the store if that matters | docs/m3/auth.md | v0.2 |
+| Projected ServiceAccount tokens verified offline by JWKS are not re-checked against a deleted pod or ServiceAccount within their lifetime (TokenReview would catch it); cap the accepted `exp - iat` or re-validate with TokenReview every few minutes | docs/m3/auth.md | v0.2 |
+| Chart: the release-namespace Role needs `delete` on `secrets` (token revocation and user/RoleBinding deletion delete the Secrets of internal kinds); today it grants get/list/watch/create/update/patch | docs/m3/auth.md | M3 (chart owner) |
+| CLI: `kudurru admin reset-password`, `create-token` and `list-users` as a client of the admin-socket protocol, and `kudurru token generate` (prints a fresh kdr_ token for `KUDURRU_BOOTSTRAP_TOKEN`; the bootstrap error message names it) | docs/m3/auth.md | M3 (CLI) |
+| architecture.md: §6.2 `auth.adminSocket.{path,group}` (instead of `listeners.socket`), `auth.kubernetes.mode`; §8 the internal kinds live in `api/internalkinds/v1alpha1` (Go's internal rule forbids `api/internal`); `POST /api/v1/auth/password`; `GET /auth/status` `localLoginMode`; Node principals (internal token) hold implicit viewer+auditor; §5.3 secrets need delete | docs/m3/auth.md | M3 (integrator) |
 | `autoProvision: never` and `syncGroups` once the user store exists; RP-initiated logout | auth spike | v0.2 |
 
 ## Build, CI, docs

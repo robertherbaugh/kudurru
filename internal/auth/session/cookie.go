@@ -34,6 +34,21 @@ type CookieConfig struct {
 	// Only enable it when the RealIP(trustedProxies) step guarantees the
 	// header comes from a trusted proxy.
 	TrustForwardedProto bool
+	// HostPrefix names the cookie "__Host-<Name>" whenever it is Secure and
+	// its Path is "/" (D71): browsers then refuse it from subdomains and
+	// over plain HTTP. Over plain HTTP the bare name is used.
+	HostPrefix bool
+}
+
+// HostCookiePrefix is the cookie-name prefix of HostPrefix.
+const HostCookiePrefix = "__Host-"
+
+// NameFor returns the cookie name used for r (see HostPrefix).
+func (c CookieConfig) NameFor(r *http.Request) string {
+	if c.HostPrefix && c.path() == "/" && c.IsSecure(r) {
+		return HostCookiePrefix + c.name()
+	}
+	return c.name()
 }
 
 // Validate checks the mode and fills defaults.
@@ -77,7 +92,7 @@ func (c CookieConfig) Set(w http.ResponseWriter, r *http.Request, value string, 
 	// Secure follows auth.session.secure (auto|always|never); HttpOnly and
 	// SameSite=Lax are unconditional.
 	ck := &http.Cookie{ //nolint:gosec // G124: Secure is computed by IsSecure, see above
-		Name:     c.name(),
+		Name:     c.NameFor(r),
 		Value:    value,
 		Path:     c.path(),
 		HttpOnly: true,
@@ -93,7 +108,7 @@ func (c CookieConfig) Set(w http.ResponseWriter, r *http.Request, value string, 
 // Clear deletes the cookie.
 func (c CookieConfig) Clear(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is computed by IsSecure
-		Name:     c.name(),
+		Name:     c.NameFor(r),
 		Value:    "",
 		Path:     c.path(),
 		MaxAge:   -1,

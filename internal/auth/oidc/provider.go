@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,11 +79,16 @@ type Provider struct {
 	md       *metadata
 	lastFail time.Time
 	lastErr  error
+
+	bearer bearerCache
 }
 
 type metadata struct {
 	oauth2   oauth2.Config
 	verifier *gooidc.IDTokenVerifier
+	// bearer verifies bearer ID tokens: same keys, audience checked by
+	// checkBearerAudience.
+	bearer *gooidc.IDTokenVerifier
 }
 
 // NewProvider validates cfg and opts. It does not contact the IdP; call
@@ -178,6 +184,7 @@ func (p *Provider) metadata(ctx context.Context) (*metadata, error) {
 			Scopes:       p.cfg.Scopes,
 		},
 		verifier: op.VerifierContext(keyCtx, &gooidc.Config{ClientID: p.cfg.ClientID, Now: p.opts.Now}),
+		bearer:   op.VerifierContext(keyCtx, &gooidc.Config{SkipClientIDCheck: true, Now: p.opts.Now}),
 	}
 	p.lastFail, p.lastErr = time.Time{}, nil
 	return p.md, nil
@@ -385,6 +392,10 @@ func (p *Provider) callback(w http.ResponseWriter, r *http.Request) (auth.Sessio
 
 func (p *Provider) fail(w http.ResponseWriter, r *http.Request, e *LoginError) {
 	p.opts.ErrorHandler(w, r, e)
+}
+
+func decodeSegment(s string) ([]byte, error) {
+	return base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
 }
 
 func constantEqual(a, b string) bool {

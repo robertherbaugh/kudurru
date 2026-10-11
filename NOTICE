@@ -84,7 +84,8 @@ licences. Attributions are added to this file as the dependencies land:
   and ID token verification; its oidctest helpers back the mock OpenID
   Provider in tests.
 - golang.org/x/oauth2 and golang.org/x/crypto, BSD-3-Clause, Copyright The
-  Go Authors: authorization code + PKCE client; bcrypt in tests only.
+  Go Authors: authorization code + PKCE client; Argon2id password hashing
+  (golang.org/x/crypto/argon2) in internal/auth/users; bcrypt in tests only.
   golang.org/x/sync, BSD-3-Clause, Copyright The Go Authors: singleflight
   coalescing of identical cache misses in internal/cache.
   golang.org/x/net/publicsuffix, BSD-3-Clause, Copyright The Go Authors:
