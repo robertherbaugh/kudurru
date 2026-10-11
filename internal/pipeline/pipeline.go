@@ -79,6 +79,11 @@ type Request struct {
 	// Zone is set by the authoritative stage when a zone matched. It is an
 	// opaque handle here to keep miekg types out of the zone model.
 	Zone any
+	// UpstreamGroup, when non-empty, names the upstream group the upstream
+	// stage must forward to. The authoritative stage sets it for forward
+	// zones; it takes precedence over the conditional-forwarding map, and
+	// answers forwarded on its behalf are never cached.
+	UpstreamGroup string
 }
 
 // Question returns the first question or a zero value.
