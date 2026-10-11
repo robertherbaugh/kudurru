@@ -19,6 +19,7 @@ import { ScopeNote } from '../components/ScopeSelector';
 import { SuggestInput } from '../components/SuggestInput';
 import { formatDateTime, formatExact } from '../lib/format';
 import { Link, useSearchParams } from '../lib/router';
+import { writeSummary } from '../components/domains/DomainEntryDialogs';
 import { useLiveTail } from '../lib/useLiveTail';
 
 /** The filter keys the page reads from and writes to the URL. */
@@ -107,13 +108,15 @@ export default function QueryLogPage() {
 
   const first = q.data?.pages[0];
   const action = useMutation({
-    mutationFn: (v: { row: QueryRow; action: 'allow' | 'deny' }) => api.queries.action(v.row.id, v.action),
+    // An exact entry for everyone on the Allowlist or Denylist, marked as from the query log.
+    mutationFn: (v: { row: QueryRow; action: 'allow' | 'deny' }) => api.domains.create(v.action, { values: [v.row.domain.replace(/\.$/, '')], type: 'exact', origin: 'querylog' }),
     onSuccess: (res, v) => {
       const ok = res.processed.success.length;
       const errs = res.processed.errors;
-      if (ok) notify.success(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.row.domain} (list ui-${v.action})`);
+      if (ok) notify.success(writeSummary(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.row.domain} (list ui-${v.action})`, res, v.action));
       for (const e of errs) notify.error(new Error(`${e.item}: ${e.error}`));
       void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      void qc.invalidateQueries({ queryKey: qk.domains() });
     },
     onError: (err, v) => notify.error(err, `Could not ${v.action} ${v.row.domain}`),
   });
