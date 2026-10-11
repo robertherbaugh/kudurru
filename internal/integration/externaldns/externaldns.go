@@ -40,6 +40,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sort"
 	"strconv"
@@ -206,6 +207,10 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 	s.log.Info("external-dns webhook listening", "address", ln.Addr().String(), "namespace", s.opts.Namespace)
+	if ap, err := netip.ParseAddrPort(ln.Addr().String()); err == nil && !ap.Addr().Unmap().IsLoopback() {
+		s.log.Warn("the external-dns webhook has no authentication and listens beyond loopback: restrict who reaches it (NetworkPolicy, firewall)",
+			"address", ln.Addr().String())
+	}
 	select {
 	case <-ctx.Done():
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

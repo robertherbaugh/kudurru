@@ -310,7 +310,7 @@ func TestOptionsFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := OptionsFrom(cfg.ExternalDNS.Webhook)
-	if o.Namespace != "external-dns" || o.Address != ":8888" {
+	if o.Namespace != "external-dns" || o.Address != "127.0.0.1:8888" {
 		t.Fatalf("options %+v", o)
 	}
 }

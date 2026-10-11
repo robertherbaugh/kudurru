@@ -17,7 +17,7 @@ func TestAPIListenerDefaults(t *testing.T) {
 		t.Fatalf("api listener defaults %+v", api)
 	}
 	w := cfg.ExternalDNS.Webhook
-	if w.Enabled || w.Listen != ":8888" || w.Namespace != "external-dns" {
+	if w.Enabled || w.Listen != "127.0.0.1:8888" || w.Namespace != "external-dns" {
 		t.Fatalf("external-dns defaults %+v", w)
 	}
 }
