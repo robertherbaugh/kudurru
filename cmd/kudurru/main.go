@@ -152,9 +152,14 @@ func newConfigCmd(configPath *string, o *cliOpts) *cobra.Command {
 					if k.WriteOnly {
 						flags += "W"
 					}
-					_, _ = fmt.Fprintf(w, "%-32s %-10s %-8s %-9s %s\n", k.Path, k.Type, k.Scope, flags, k.Help)
+					help := k.Help
+					if d := k.Shape().Describe(); d != "" {
+						help += " [" + d + "]"
+					}
+					_, _ = fmt.Fprintf(w, "%-32s %-10s %-8s %-9s %s\n", k.Path, k.Type, k.Scope, flags, help)
 				}
 				_, _ = fmt.Fprintln(w, "\nFlags: H=hostOnly (file/env only, never the API)  R=restartRequired  W=writeOnly")
+				_, _ = fmt.Fprintln(w, "[...] lists the allowed values, ranges and formats; other values are rejected.")
 				return nil
 			},
 		},
