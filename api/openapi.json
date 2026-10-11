@@ -3374,10 +3374,37 @@
             }
           },
           {
+            "description": "cursor_next (or continue) of the previous page, read with the same order.",
             "explode": false,
             "in": "query",
             "name": "cursor",
             "schema": {
+              "description": "cursor_next (or continue) of the previous page, read with the same order.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as cursor.",
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "description": "Same as cursor.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "asc: oldest first (the default); desc: newest first.",
+            "explode": false,
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "asc: oldest first (the default); desc: newest first.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           }
@@ -3464,7 +3491,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Audit events of this node (oldest first)",
+        "summary": "Audit events of this node (oldest first; order=desc for newest first)",
         "tags": [
           "audit"
         ],
@@ -3529,10 +3556,37 @@
             }
           },
           {
+            "description": "cursor_next (or continue) of the previous page, read with the same order.",
             "explode": false,
             "in": "query",
             "name": "cursor",
             "schema": {
+              "description": "cursor_next (or continue) of the previous page, read with the same order.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as cursor.",
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "description": "Same as cursor.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "asc: oldest first (the default); desc: newest first.",
+            "explode": false,
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "asc: oldest first (the default); desc: newest first.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           }

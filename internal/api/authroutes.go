@@ -109,10 +109,14 @@ type auditInput struct {
 	Actor  string `query:"actor" doc:"Actor name or <kind>:<name>."`
 	Since  string `query:"since" doc:"RFC 3339."`
 	Limit  int    `query:"limit" minimum:"0" maximum:"1000"`
-	Cursor string `query:"cursor"`
+	Cursor string `query:"cursor" doc:"cursor_next (or continue) of the previous page, read with the same order."`
+	// Continue is the list-envelope name of Cursor.
+	Continue string `query:"continue" doc:"Same as cursor."`
+	Order    string `query:"order" enum:"asc,desc" default:"asc" doc:"asc: oldest first (the default); desc: newest first."`
 }
 
-// AuditPage is GET /audit: oldest first, keyset cursor on the event id.
+// AuditPage is GET /audit: oldest first (newest first with order=desc),
+// keyset cursor on the event id.
 type AuditPage struct {
 	Items      []AuditEvent `json:"items" nullable:"false"`
 	CursorNext string       `json:"cursor_next,omitempty"`
@@ -300,7 +304,7 @@ func (s *Server) iamList(ctx context.Context, resource string) (*iamOutput, erro
 }
 
 func (s *Server) registerAudit() {
-	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first)", "audit"),
+	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first; order=desc for newest first)", "audit"),
 		perm{resource: "audit", verb: "read"}, s.listAudit)
 	exportOp := operation(http.MethodGet, "/audit/export", "exportAudit", "Audit events as JSON lines", "audit")
 	exportOp.Responses = map[string]*huma.Response{"200": {Description: "application/x-ndjson, one AuditEvent per line",
@@ -317,7 +321,7 @@ func (s *Server) auditReader() (audit.Reader, error) {
 }
 
 func auditQuery(in *auditInput) (audit.Query, error) {
-	q := audit.Query{Kind: in.Kind, Name: in.Name, Actor: in.Actor, Limit: in.Limit}
+	q := audit.Query{Kind: in.Kind, Name: in.Name, Actor: in.Actor, Limit: in.Limit, Desc: in.Order == "desc"}
 	if in.Since != "" {
 		t, err := time.Parse(time.RFC3339, in.Since)
 		if err != nil {
@@ -325,14 +329,27 @@ func auditQuery(in *auditInput) (audit.Query, error) {
 		}
 		q.Since = t
 	}
-	if in.Cursor != "" {
-		id, err := strconv.ParseInt(in.Cursor, 10, 64)
-		if err != nil || id < 0 {
+	cursor := in.Cursor
+	if cursor == "" {
+		cursor = in.Continue
+	}
+	if cursor != "" {
+		id, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil || id < 0 || q.Desc && id == 0 {
 			return q, errInvalid("cursor: not a cursor returned by this API")
 		}
-		q.AfterID = id
+		advance(&q, id)
 	}
 	return q, nil
+}
+
+// advance moves q past the event id last (the last one of a page).
+func advance(q *audit.Query, last int64) {
+	if q.Desc {
+		q.BeforeID = last
+	} else {
+		q.AfterID = last
+	}
 }
 
 func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, error) {
@@ -392,7 +409,7 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 			if len(evs) < q.Limit {
 				return
 			}
-			q.AfterID = evs[len(evs)-1].ID
+			advance(&q, evs[len(evs)-1].ID)
 		}
 	}}, nil
 }

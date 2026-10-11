@@ -63,10 +63,15 @@ type AuditQuery struct {
 	Name      string
 	// AfterID returns rows with ID > AfterID (pagination cursor).
 	AfterID int64
+	// BeforeID, when positive, returns rows with ID < BeforeID (the
+	// cursor of a Desc page).
+	BeforeID int64
 	// Since returns rows at or after this time.
 	Since time.Time
 	// Limit bounds the result; default 100, maximum 1000.
 	Limit int
+	// Desc returns the newest rows first.
+	Desc bool
 }
 
 type actorKey struct{}
@@ -201,7 +206,8 @@ func (s *Store) RecordAudit(ctx context.Context, e AuditEntry) (AuditEntry, erro
 	return e, nil
 }
 
-// ReadAudit returns audit rows matching q in ID order.
+// ReadAudit returns audit rows matching q in ID order (descending with
+// q.Desc).
 func (s *Store) ReadAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, error) {
 	if s.isClosed() {
 		return nil, store.ErrClosed
@@ -216,6 +222,10 @@ func (s *Store) ReadAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, erro
 	var b strings.Builder
 	b.WriteString(`SELECT id, ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash FROM audit WHERE id > ?`)
 	args := []any{q.AfterID}
+	if q.BeforeID > 0 {
+		b.WriteString(` AND id < ?`)
+		args = append(args, q.BeforeID)
+	}
 	if q.Kind != "" {
 		b.WriteString(` AND kind = ?`)
 		args = append(args, string(q.Kind))
@@ -232,7 +242,11 @@ func (s *Store) ReadAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, erro
 		b.WriteString(` AND ts >= ?`)
 		args = append(args, q.Since.UnixNano())
 	}
-	b.WriteString(` ORDER BY id LIMIT ?`)
+	if q.Desc {
+		b.WriteString(` ORDER BY id DESC LIMIT ?`)
+	} else {
+		b.WriteString(` ORDER BY id LIMIT ?`)
+	}
 	args = append(args, limit)
 	return s.queryAudit(ctx, b.String(), args...)
 }

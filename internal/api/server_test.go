@@ -128,6 +128,21 @@ func TestAuditWithSQLite(t *testing.T) {
 	if len(page.Items) != 1 || page.Items[0].Result != "denied" {
 		t.Fatalf("page 2 %+v", page)
 	}
+	// Newest first, paged with continue.
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1", "auditor", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].Result != "denied" || page.Continue == "" {
+		t.Fatalf("desc page %+v", page)
+	}
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1&continue="+page.Continue, "auditor", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].ID != w.ID {
+		t.Fatalf("desc page 2 %+v", page)
+	}
+	var last AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1&continue="+page.Continue, "auditor", nil).want(http.StatusOK).json(&last)
+	if len(last.Items) != 0 || last.Continue != "" {
+		t.Fatalf("desc page 3 %+v", last)
+	}
+	h.do(http.MethodGet, "/api/v1/audit?order=sideways", "auditor", nil).want(http.StatusBadRequest)
 	h.do(http.MethodGet, "/api/v1/audit/export", "auditor", nil).want(http.StatusForbidden) // audit.export is admin-only
 	r := h.do(http.MethodGet, "/api/v1/audit/export", "admin", nil).want(http.StatusOK)
 	lines := strings.Split(strings.TrimSpace(r.Body.String()), "\n")

@@ -84,6 +84,14 @@ func TestMemoryReadFilters(t *testing.T) {
 	if len(evs) != 1 {
 		t.Fatalf("since %+v", evs)
 	}
+	evs, _ = m.Read(ctx, Query{Desc: true, Limit: 2})
+	if len(evs) != 2 || evs[0].ID != 4 || evs[1].ID != 3 {
+		t.Fatalf("desc %+v", evs)
+	}
+	evs, _ = m.Read(ctx, Query{Desc: true, BeforeID: 3})
+	if len(evs) != 1 || evs[0].ID != 2 {
+		t.Fatalf("desc cursor %+v", evs)
+	}
 }
 
 type failing struct{}
@@ -147,6 +155,18 @@ func TestSQLiteRecorder(t *testing.T) {
 	evs, _ = r.Read(ctx, Query{Actor: "bob"})
 	if len(evs) != 1 || evs[0].Result != ResultDenied {
 		t.Fatalf("actor filter %+v", evs)
+	}
+	newest, _ := r.Read(ctx, Query{Desc: true})
+	if len(newest) != 2 || newest[0].Actor.Name != "bob" || newest[1].ID != got.ID {
+		t.Fatalf("desc %+v", newest)
+	}
+	// The actor filter pages through the table: one row per round here.
+	evs, _ = r.Read(ctx, Query{Desc: true, Actor: "alice", Limit: 1})
+	if len(evs) != 1 || evs[0].ID != got.ID {
+		t.Fatalf("desc actor filter %+v", evs)
+	}
+	if evs, _ = r.Read(ctx, Query{Desc: true, BeforeID: got.ID}); len(evs) != 0 {
+		t.Fatalf("desc cursor %+v", evs)
 	}
 	if err := st.VerifyAudit(ctx); err != nil {
 		t.Fatal(err)
