@@ -91,4 +91,6 @@ hardware-bound items now live in one section at the end.
 | `goreleaser check` (2.18.3) | 1 configuration file validated |
 | `goreleaser build --snapshot --single-target --clean` | succeeded; `kudurru 0.0.0-SNAPSHOT-c9dc65f` (no tags in the worktree) |
 | `kudurru version` from a build without git metadata | `kudurru 0.1.0-rc.1 (unknown, go1.27.2, linux/amd64)` |
-| Chart permutations | 34 (kubeconform needs `make helm-check`) |
+| Chart permutations | 34; `make helm-check`: 630 chart resources and 115 kustomize resources valid against Kubernetes 1.30 |
+| Full `CGO_ENABLED=1 go test -race ./...` (envtest on) | green except `internal/controller` `TestMeasureRecordSetChanges/resync…` once under load average 13-15 (unowned package, passes alone; followups row added) |
+| `golangci-lint run ./...`, `go vet ./...` | 0 issues |

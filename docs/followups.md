@@ -33,6 +33,7 @@ the last section and in docs/release-checklist.md.
 | BlockList status ownership: controller owns Ready/Degraded, listfetcher writes only sources/entries/digests | controller report | M2 (listfetcher) |
 | Per-integration Leases: one Runner per elector name or an elector per runnable | controller report | v0.2 |
 | controller `TestKubeDriver` (envtest) reads the SerialBumped events right after the serial moves; under full-suite load the last Event can lag the status write (failed once in the M2 hardening run, passed alone 3/3): wait for the Event too. Likewise `TestMeasureRecordSetChanges/paced_updates` asserts exactly 2,000 status writes and sees 2,001-2,003 with `-cpu 1,2` (reproduced at e56cbea with the M1 memory driver, so not caused by the M2 changes) | hardening report | M2 |
+| controller `TestMeasureRecordSetChanges/resync_of_1000_converged_record_sets` expects zero status writes after a new term; under a load average of 13-15 on 8 CPUs (four agents) it saw 949 writes once in the full M5 race run and passed alone (the record sets carry `expiresAt` 0-999 s ahead, so a slow settle lets expiries move statuses): derive the expiries from a fake clock or set them far ahead | burndown-edge-release | v0.1.0 (controller owner) |
 | objects: `cluster.role` key driving `Options.Static` (the API answers 503 read_only from `CheckAPIWrite` since docs/m3/api.md); reload inline objects without restart; starter blocklist into `bootstrap.Options.StarterBlockList`; bootstrap `Policy/default` priority as explicit fallback | objects report | M2/M3 |
 
 ## Dataplane
