@@ -17,7 +17,8 @@
 // current one) are clickable, later ones only after every step before them
 // validated, so the review step can link back to the step that set a value
 // (useWizardNav inside a step's content). Each step change moves focus to
-// the step's heading.
+// the step's heading; an optional step says so beside it (the compact
+// Stepper has no room for "Optional" under six labels).
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Button } from '@astryxdesign/core/Button';
 import { DialogHeader } from '@astryxdesign/core/Dialog';
@@ -220,7 +221,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
                 }}
               >
                 {steps.map((s, i) => (
-                  <Step key={s.id} step={i} label={s.label} isOptional={s.isOptional} isDisabled={i > reached} />
+                  <Step key={s.id} step={i} label={s.label} isDisabled={i > reached} />
                 ))}
               </Stepper>
             </LayoutHeader>
@@ -230,11 +231,14 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
           <LayoutContent>
             <VStack gap={4} role="group" aria-labelledby={headingId} data-step={step.id}>
               <VStack gap={1}>
-                <Heading level={3} id={headingId} ref={headingRef} tabIndex={-1}>
-                  {step.label}
-                </Heading>
+                <HStack gap={2} vAlign="center">
+                  <Heading level={3} id={headingId} ref={headingRef} tabIndex={-1}>
+                    {step.label}
+                  </Heading>
+                  {step.isOptional ? <Text type="supporting">Optional</Text> : null}
+                </HStack>
                 {step.description ? (
-                  <Text type="supporting" as="p">
+                  <Text type="supporting" display="block">
                     {step.description}
                   </Text>
                 ) : null}
