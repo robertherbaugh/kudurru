@@ -158,8 +158,18 @@ ServiceMonitor and PodMonitor do not scrape yet.
 from edge pods (plus `edge.proxyProtocolFrom` as ipBlocks in the
 hostNetwork daemonset mode), the internal listener :8082 only from kudurru
 and edge pods, the API from `networkPolicy.apiFrom` (default: everyone),
-metrics from `networkPolicy.metricsFrom`, probes on :8081. Egress is not
+metrics from `networkPolicy.metricsFrom`, probes on :8081, and with
+`blockPage.enabled` the block page ports from everyone. Egress is not
 restricted.
+
+## Block page
+
+`blockPage.enabled` with `blockPage.ipv4` (or `ipv6`) serves the block page
+on the kudurru pods behind a `<release>-blockpage` Service (LoadBalancer by
+default, ports 80 and optionally 443) and sets `blockPage.enabled/ipv4/ipv6`
+in the settings ConfigMap; pick the `blockPage` response with
+`config.settings.blocking.defaultResponse` or per Policy. Setup, the HTTPS
+caveats and the edge and caching notes: [blocking-page.md](blocking-page.md).
 
 ## RBAC
 
@@ -185,7 +195,7 @@ the chart added beyond §5.2: `tls.secretName`, `edge.backendPort`,
 `vip.keepalived.keepalivedVersion`, `auth.encryptionKeyPreviousSecret`,
 `auth.bootstrapToken`, `podMonitor`, `probes`, `lameduckSeconds`,
 `clusterDomain` (default `cluster.local`), `persistence.standalone.enabled`,
-`extraEnv`, `extraVolumes`, `extraVolumeMounts`. `auth.oidc.providers` is
+`extraEnv`, `extraVolumes`, `extraVolumeMounts`, `blockPage`. `auth.oidc.providers` is
 a list of OpenID Providers rendered into the settings key
 `auth.identityProviders` (the §5.2 outline's single-issuer `auth.oidc`
 became a list). `webhook` from the §5.2 outline is not in the chart: the

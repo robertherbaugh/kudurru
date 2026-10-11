@@ -16,6 +16,7 @@ from PIL import Image
 SRC = Path("docs/brand/assets")
 ASSETS = Path("web/src/assets")  # imported by the SPA, hashed into dist/assets
 PUBLIC = Path("web/public")  # copied to the dist root under stable names
+BLOCKPAGE = Path("internal/blockpage/assets")  # embedded by the block page
 
 # name -> (width, height) in pixels: 2x of the CSS size in styles.css
 SCALED = {
@@ -45,6 +46,11 @@ def main() -> None:
         im.save(ASSETS / name, optimize=True)
     for src, dst in COPIED.items():
         shutil.copyfile(SRC / src, PUBLIC / dst)
+    # The block page inlines the header logos and serves the favicon.
+    BLOCKPAGE.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ASSETS / "kudurru-logo-mixed.png", BLOCKPAGE / "logo-light.png")
+    shutil.copyfile(ASSETS / "kudurru-logo-mixed-paper.png", BLOCKPAGE / "logo-dark.png")
+    shutil.copyfile(SRC / "favicon.ico", BLOCKPAGE / "favicon.ico")
 
 
 if __name__ == "__main__":
