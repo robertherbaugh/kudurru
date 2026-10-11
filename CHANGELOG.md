@@ -72,7 +72,8 @@ a real server instead of its mocks.
 
 - Every object a user configures has its own page and every multi-concept
   create flow is a wizard in a modal over the page you are on (`/…/new`
-  links open it there); other dialogs are kept for short actions (D132). Policies (`/policies/:ns/:name`: active now, schedule,
+  links open it there); other dialogs are kept for short actions (D132,
+  D142). Policies (`/policies/:ns/:name`: active now, schedule,
   shadowing, groups, lists, a blocked-services logo grid, safe search, 24 h
   activity), lists (`/lists/:ns/:name`), groups, clients (which group and
   policy apply and why), upstream groups and zones; wizards for new
@@ -107,6 +108,13 @@ a real server instead of its mocks.
   and the `unblockrequests` RBAC resource; `unblockRequests.*` settings.
   **Kubernetes: install the new CRD (`kudurru-crds` chart) before upgrading
   the server.**
+- Every form control is an Astryx component (Selector, NumberInput, Switch,
+  CheckboxInput/CheckboxList, RadioList, MultiSelector, Typeahead,
+  DateTimeInput, TextInput/TextArea) through `components/fields/`, with the
+  helper text under the control so rows align on their inputs; raw form
+  elements are a lint error. Settings rows split 60 % explanation / 40 %
+  value, and every key, option and nested field carries plain-language help
+  (a test fails on a missing one) (D141).
 - Themes built the Astryx way instead of CSS overrides on `:root`: the
   default Kudurru theme is a `defineTheme` theme over Astryx Neutral whose
   colours are stops of a palette generated from docs/brand
