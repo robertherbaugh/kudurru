@@ -139,9 +139,10 @@ func (v *Validator) GroupVersionKind(kind store.Kind) (gvk schema.GroupVersionKi
 // the old one). Status writes go through ValidateStatus.
 //
 // Typed objects reach the validator through their JSON encoding, the same
-// bytes a Kubernetes client sends. Fields whose Go type cannot express
-// "absent" (non-pointer structs such as metav1.Duration with omitempty)
-// therefore arrive as zero values and are not defaulted, in both modes.
+// bytes a Kubernetes client sends. Fields that encoding cannot leave out
+// (non-pointer structs such as metav1.Duration with omitempty, and fields
+// without omitempty) therefore arrive as zero values and are not
+// defaulted, in both modes; use ValidateUnstructured for decoded input.
 func (v *Validator) Validate(ctx context.Context, obj, old store.Object) error {
 	ks, err := v.kindFor(obj, old)
 	if err != nil {

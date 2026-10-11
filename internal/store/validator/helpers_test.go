@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -105,7 +106,7 @@ func stored(obj store.Object) store.Object {
 	out.SetUID("8d7c6f9e-0000-4000-8000-000000000001")
 	out.SetResourceVersion("7")
 	out.SetGeneration(3)
-	out.SetCreationTimestamp(metav1.Date(2026, 10, 1, 12, 0, 0, 0, metav1.Now().Location()))
+	out.SetCreationTimestamp(metav1.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
 	return out
 }
 

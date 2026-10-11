@@ -2,6 +2,7 @@ package validator
 
 import (
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -15,7 +16,7 @@ func readyCondition() metav1.Condition {
 		Reason:             v1alpha1.ReasonServing,
 		Message:            "serving 42 records",
 		ObservedGeneration: 3,
-		LastTransitionTime: metav1.Date(2026, 10, 11, 0, 0, 0, 0, metav1.Now().Location()),
+		LastTransitionTime: metav1.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC),
 	}
 }
 
