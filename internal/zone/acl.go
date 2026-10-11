@@ -86,29 +86,43 @@ func (a ACL) Allowed(addr netip.Addr) bool {
 	return allow
 }
 
-// accessPolicy is a compiled queryAccess mode.
+// accessPolicy is a compiled access mode: queryAccess with queryACL, or
+// zoneTransfer with transferACL.
 type accessPolicy struct {
 	mode    v1alpha1.AccessMode
 	acl     ACL
 	nsAddrs []netip.Addr
 }
 
+// accessModes lists the valid AccessMode values for error messages.
+var accessModes = []v1alpha1.AccessMode{
+	v1alpha1.AccessAllow, v1alpha1.AccessDeny, v1alpha1.AccessAllowOnlyPrivate,
+	v1alpha1.AccessAllowOnlyZoneNameServers, v1alpha1.AccessUseNetworkACL, v1alpha1.AccessZoneNameServersAndACL,
+}
+
 func compileAccess(p v1alpha1.ZonePolicy, path *field.Path) (accessPolicy, field.ErrorList) {
-	ap := accessPolicy{mode: p.QueryAccess}
+	return compileMode(p.QueryAccess, v1alpha1.AccessAllow, p.QueryACL, path.Child("queryAccess"), path.Child("queryACL"))
+}
+
+// compileTransfer compiles zoneTransfer and transferACL. An empty mode is
+// deny, the CRD default: a zone is never transferable by accident.
+func compileTransfer(p v1alpha1.ZonePolicy, path *field.Path) (accessPolicy, field.ErrorList) {
+	return compileMode(p.ZoneTransfer, v1alpha1.AccessDeny, p.TransferACL, path.Child("zoneTransfer"), path.Child("transferACL"))
+}
+
+func compileMode(mode, def v1alpha1.AccessMode, entries []string, modePath, aclPath *field.Path) (accessPolicy, field.ErrorList) {
+	ap := accessPolicy{mode: mode}
 	if ap.mode == "" {
-		ap.mode = v1alpha1.AccessAllow
+		ap.mode = def
 	}
 	var errs field.ErrorList
 	switch ap.mode {
 	case v1alpha1.AccessAllow, v1alpha1.AccessDeny, v1alpha1.AccessAllowOnlyPrivate,
 		v1alpha1.AccessAllowOnlyZoneNameServers, v1alpha1.AccessUseNetworkACL, v1alpha1.AccessZoneNameServersAndACL:
 	default:
-		errs = append(errs, field.NotSupported(path.Child("queryAccess"), p.QueryAccess, []v1alpha1.AccessMode{
-			v1alpha1.AccessAllow, v1alpha1.AccessDeny, v1alpha1.AccessAllowOnlyPrivate,
-			v1alpha1.AccessAllowOnlyZoneNameServers, v1alpha1.AccessUseNetworkACL, v1alpha1.AccessZoneNameServersAndACL,
-		}))
+		errs = append(errs, field.NotSupported(modePath, mode, accessModes))
 	}
-	acl, aerrs := ParseACL(p.QueryACL, path.Child("queryACL"))
+	acl, aerrs := ParseACL(entries, aclPath)
 	ap.acl = acl
 	return ap, append(errs, aerrs...)
 }

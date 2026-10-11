@@ -7,16 +7,55 @@ import (
 	"sync/atomic"
 )
 
+// Gate says how far the authoritative stage may trust a Set (decision D80,
+// docs/architecture.md §4.4).
+type Gate uint8
+
+// Gates.
+const (
+	// GateOpen: the set is live, or restored from a local.db snapshot
+	// younger than maxAge. Every zone is answered normally.
+	GateOpen Gate = iota
+	// GateUnsynced: nothing trustworthy has loaded yet, so any name might
+	// belong to a zone that is still missing. Every query is answered
+	// SERVFAIL except positive data a loaded primary zone asserts; nothing
+	// is forwarded.
+	GateUnsynced
+	// GateStale: the set comes from a local.db snapshot older than maxAge.
+	// Names under primary zones are answered SERVFAIL (never NXDOMAIN, and
+	// never from data that old); forward zones and names under no local
+	// zone continue to the rest of the pipeline.
+	GateStale
+)
+
+// String returns "open", "unsynced" or "stale".
+func (g Gate) String() string {
+	switch g {
+	case GateOpen:
+		return "open"
+	case GateUnsynced:
+		return "unsynced"
+	case GateStale:
+		return "stale"
+	}
+	return "unknown"
+}
+
 // Set is the read side of the zone cache as the authoritative stage sees
-// it: whether the cache has synced, and longest-suffix zone routing. The
-// zone cache publishes an immutable implementation per change (Snapshot
-// is the stock one) so readers never lock.
+// it: how far it may be trusted, and longest-suffix zone routing. The zone
+// cache publishes an immutable implementation per change (Snapshot is the
+// stock one) so readers never lock.
 type Set interface {
 	// Synced reports whether every store watch has synced at least once
-	// or the set was restored from a fresh-enough local snapshot (§4.4).
-	// Until then denials are not trustworthy: the authoritative stage
-	// answers SERVFAIL instead of NXDOMAIN or NODATA.
+	// or the set was restored from a fresh-enough local snapshot (§4.4);
+	// it is Gate() == GateOpen. Until then denials are not trustworthy:
+	// the authoritative stage answers SERVFAIL instead of NXDOMAIN or
+	// NODATA.
 	Synced() bool
+	// Gate refines Synced for the authoritative stage (D80): GateUnsynced
+	// answers every query SERVFAIL, GateStale only names under primary
+	// zones.
+	Gate() Gate
 	// Match returns the zone with the longest name that is a suffix of
 	// qname (the root zone "." matches everything), or nil.
 	Match(qname string) *Zone
@@ -27,15 +66,16 @@ type Set interface {
 // change with With, Without or NewSnapshot.
 type Snapshot struct {
 	byKey      map[string]*Zone
-	synced     bool
+	gate       Gate
 	generation uint64
 }
 
 var _ Set = (*Snapshot)(nil)
 
-// NewSnapshot returns a snapshot of zones. Zone names must be unique.
+// NewSnapshot returns a snapshot of zones. Zone names must be unique. A
+// synced snapshot has GateOpen, an unsynced one GateUnsynced.
 func NewSnapshot(generation uint64, synced bool, zones ...*Zone) (*Snapshot, error) {
-	s := &Snapshot{byKey: make(map[string]*Zone, len(zones)), synced: synced, generation: generation}
+	s := &Snapshot{byKey: make(map[string]*Zone, len(zones)), gate: gateOf(synced), generation: generation}
 	for _, z := range zones {
 		if z == nil {
 			continue
@@ -48,8 +88,18 @@ func NewSnapshot(generation uint64, synced bool, zones ...*Zone) (*Snapshot, err
 	return s, nil
 }
 
+func gateOf(synced bool) Gate {
+	if synced {
+		return GateOpen
+	}
+	return GateUnsynced
+}
+
 // Synced implements Set.
-func (s *Snapshot) Synced() bool { return s.synced }
+func (s *Snapshot) Synced() bool { return s.gate == GateOpen }
+
+// Gate implements Set.
+func (s *Snapshot) Gate() Gate { return s.gate }
 
 // Generation returns the generation given when the snapshot was made.
 func (s *Snapshot) Generation() uint64 { return s.generation }
@@ -116,11 +166,25 @@ func (s *Snapshot) Without(generation uint64, name string) *Snapshot {
 	return n
 }
 
-// WithSynced returns a copy of s with the synced flag set.
+// WithSynced returns a copy of s with the gate set to GateOpen (synced)
+// or GateUnsynced.
 func (s *Snapshot) WithSynced(generation uint64, synced bool) *Snapshot {
 	n := s.clone(generation)
-	n.synced = synced
+	n.gate = gateOf(synced)
 	return n
+}
+
+// WithGate returns s with gate g and the same generation. The zones are
+// shared, not copied (a snapshot is never modified), so this is cheap
+// enough to call per query: the zone cache adapter gates a built snapshot
+// by the cache state without rebuilding it.
+func (s *Snapshot) WithGate(g Gate) *Snapshot {
+	if s.gate == g {
+		return s
+	}
+	n := *s
+	n.gate = g
+	return &n
 }
 
 func (s *Snapshot) clone(generation uint64) *Snapshot {
@@ -128,7 +192,7 @@ func (s *Snapshot) clone(generation uint64) *Snapshot {
 	for k, v := range s.byKey {
 		m[k] = v
 	}
-	return &Snapshot{byKey: m, synced: s.synced, generation: generation}
+	return &Snapshot{byKey: m, gate: s.gate, generation: generation}
 }
 
 // Holder publishes snapshots lock-free. The zero value holds nothing,

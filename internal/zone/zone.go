@@ -3,6 +3,7 @@ package zone
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/miekg/dns"
@@ -34,6 +35,11 @@ type Zone struct {
 	serial   uint32
 	upstream string // forward zones
 	access   accessPolicy
+	transfer accessPolicy
+	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
+	transferKeys []string
+	notify       v1alpha1.NotifyMode
+	notifyTo     []netip.AddrPort
 
 	tree tree
 	// index maps every key in tree to its node. The tree gives canonical
@@ -109,6 +115,60 @@ func (z *Zone) Contains(name string) bool {
 // address (docs/architecture.md §7.1 step 6).
 func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(client) }
 
+// TransferAllowed applies spec.policy.zoneTransfer, transferACL and
+// transferTSIGKeyRefs to a transfer request (AXFR or IXFR out). The access
+// mode decides on the client address exactly as queryAccess does (an empty
+// mode is deny); when transferTSIGKeyRefs is non-empty the request must
+// also have been signed with one of those keys. tsigKey is the verified
+// key name ("" for an unsigned request), compared case-insensitively.
+// Forward zones are never transferable.
+func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
+	if z.typ != v1alpha1.ZoneTypePrimary || !z.transfer.allowed(client) {
+		return false
+	}
+	if len(z.transferKeys) == 0 {
+		return true
+	}
+	return tsigKey != "" && slices.Contains(z.transferKeys, KeyName(tsigKey))
+}
+
+// TransferKeys returns the canonical names of spec.policy.transferTSIGKeyRefs
+// in spec order. The first one also signs outbound NOTIFY messages.
+func (z *Zone) TransferKeys() []string { return slices.Clone(z.transferKeys) }
+
+// NotifyMode returns spec.policy.notify, "none" when unset.
+func (z *Zone) NotifyMode() v1alpha1.NotifyMode { return z.notify }
+
+// NotifyTargets returns spec.policy.notifyTargets as addresses with the
+// port defaulted to 53.
+func (z *Zone) NotifyTargets() []netip.AddrPort { return slices.Clone(z.notifyTo) }
+
+// NameServer is one apex NS host and the in-zone addresses (glue) the zone
+// itself publishes for it.
+type NameServer struct {
+	Host  string
+	Addrs []netip.Addr
+}
+
+// NameServers returns the apex NS hosts in canonical order with their
+// in-zone A/AAAA addresses. Hosts outside the zone have no addresses here;
+// the caller resolves them.
+func (z *Zone) NameServers() []NameServer {
+	if z.apex == nil {
+		return nil
+	}
+	ns := z.apex.get(dns.TypeNS)
+	if ns == nil {
+		return nil
+	}
+	out := make([]NameServer, 0, len(ns.RRs))
+	for _, rr := range ns.RRs {
+		host := rr.(*dns.NS).Ns
+		out = append(out, NameServer{Host: host, Addrs: z.hostAddrs(host)})
+	}
+	return out
+}
+
 // RRsets calls fn for every RRset in canonical order (owner name, then
 // type), the SOA first. Iteration stops when fn returns false. The RRsets
 // are shared; fn must not modify them.
@@ -152,12 +212,29 @@ type Builder struct {
 	now     time.Time
 	merge   bool
 	nsNames []string
-	owners  map[setKey]string // (owner key, type) -> source that defined it
+	// owners maps an endpoint identity to the source that claimed it
+	// first. Endpoints that are not served (disabled, expired, view-scoped)
+	// still claim their identity, so toggling one never moves ownership
+	// (the controller's rule, docs/m1/controller.md).
+	owners map[identity]string
+	// nameSource maps an owner key to the first source that put data at
+	// that name; it decides whether a CNAME conflict is Duplicated (another
+	// object) or Invalid (the same object).
+	nameSource map[string]string
+	// dnames counts the DNAME RRsets added so far; zero skips the
+	// occlusion checks.
+	dnames int
 }
 
-type setKey struct {
-	key string
-	t   uint16
+// identity is the duplicate-detection key of an endpoint within a zone:
+// owner, type and the external-dns set identifier. Endpoints with
+// different set identifiers are distinct (kudurru has no routing policies,
+// so their records are served as one RRset); the same identity from a
+// later source is Duplicated.
+type identity struct {
+	key   string
+	t     uint16
+	setID string
 }
 
 // NewBuilder validates the DNSZone and returns a Builder for its records.
@@ -181,8 +258,15 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		errs = append(errs, field.NotSupported(specPath.Child("type"), spec.Type,
 			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward}))
 	}
-	access, aerrs := compileAccess(spec.Policy, specPath.Child("policy"))
+	policyPath := specPath.Child("policy")
+	access, aerrs := compileAccess(spec.Policy, policyPath)
 	errs = append(errs, aerrs...)
+	transfer, terrs := compileTransfer(spec.Policy, policyPath)
+	errs = append(errs, terrs...)
+	keys, kerrs := compileKeyRefs(spec.Policy.TransferTSIGKeyRefs, policyPath.Child("transferTSIGKeyRefs"))
+	errs = append(errs, kerrs...)
+	notify, targets, nerrs := compileNotify(spec.Policy, policyPath)
+	errs = append(errs, nerrs...)
 
 	var nsNames []string
 	for i, ns := range spec.Nameservers {
@@ -200,6 +284,7 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 			continue
 		}
 		access.nsAddrs = append(access.nsAddrs, ip.Unmap())
+		transfer.nsAddrs = append(transfer.nsAddrs, ip.Unmap())
 	}
 	if len(errs) > 0 {
 		return nil, errs
@@ -210,12 +295,16 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		now = time.Now()
 	}
 	z := &Zone{
-		name:       nameFromKey(key),
-		key:        key,
-		typ:        spec.Type,
-		serial:     dz.Status.Serial,
-		access:     access,
-		generation: dz.Generation,
+		name:         nameFromKey(key),
+		key:          key,
+		typ:          spec.Type,
+		serial:       dz.Status.Serial,
+		access:       access,
+		transfer:     transfer,
+		transferKeys: keys,
+		notify:       notify,
+		notifyTo:     targets,
+		generation:   dz.Generation,
 	}
 	if spec.Type == v1alpha1.ZoneTypeForward {
 		z.upstream = DefaultUpstreamGroup
@@ -225,7 +314,8 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	} else {
 		z.apex = z.tree.upsert(key, z.name)
 	}
-	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames, owners: map[setKey]string{}}, nil
+	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
+		owners: map[identity]string{}, nameSource: map[string]string{}}, nil
 }
 
 // hostName validates a host name used in the zone spec (nameservers, SOA
@@ -291,6 +381,7 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 		return field.ErrorList{field.Forbidden(path, fmt.Sprintf("%s zones hold no records", b.z.typ))}
 	}
 	if !Served(ep, b.now) {
+		b.claim(source, ep)
 		return nil
 	}
 	rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
@@ -310,8 +401,8 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot be at the zone apex (RFC 1912 §2.4)")}
 		}
 	}
-	sk := setKey{key, rrtype}
-	if prev, ok := b.owners[sk]; ok && prev != source && !b.merge {
+	id := identity{key, rrtype, ep.SetIdentifier}
+	if prev, ok := b.owners[id]; ok && prev != source && !b.merge {
 		return field.ErrorList{&field.Error{
 			Type:     field.ErrorTypeDuplicate,
 			Field:    dnsName.String(),
@@ -322,14 +413,20 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 	n := b.z.tree.search(key)
 	if n != nil {
 		if rrtype == dns.TypeCNAME && !n.empty() && n.get(dns.TypeCNAME) == nil {
-			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot coexist with other records at the same name (RFC 1034 §3.6.2)")}
+			return field.ErrorList{b.conflict(dnsName, ep.DNSName, key, source, "a CNAME cannot coexist with other records at the same name (RFC 1034 §3.6.2)")}
 		}
 		if rrtype != dns.TypeCNAME && n.get(dns.TypeCNAME) != nil {
-			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "the name already has a CNAME; no other records may exist there (RFC 1034 §3.6.2)")}
+			return field.ErrorList{b.conflict(dnsName, ep.DNSName, key, source, "the name already has a CNAME; no other records may exist there (RFC 1034 §3.6.2)")}
 		}
 	}
-	if _, ok := b.owners[sk]; !ok {
-		b.owners[sk] = source
+	if err := b.occlusion(dnsName, ep.DNSName, key, rrtype); err != nil {
+		return field.ErrorList{err}
+	}
+	if _, ok := b.owners[id]; !ok {
+		b.owners[id] = source
+	}
+	if _, ok := b.nameSource[key]; !ok {
+		b.nameSource[key] = source
 	}
 	if n == nil {
 		n = b.insertName(key, owner)
@@ -338,6 +435,9 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 	if set == nil {
 		n.sets = append(n.sets, RRset{Name: n.name, Type: rrtype})
 		set = &n.sets[len(n.sets)-1]
+		if rrtype == dns.TypeDNAME {
+			b.dnames++
+		}
 	}
 	for _, rr := range rrs {
 		rr.Header().Name = n.name
@@ -452,7 +552,9 @@ func (b *Builder) Build() *Zone {
 		z.index[n.key] = n
 		return true
 	})
-	z.access.nsAddrs = append(z.access.nsAddrs, z.nameserverAddrs()...)
+	nsAddrs := z.nameserverAddrs()
+	z.access.nsAddrs = append(z.access.nsAddrs, nsAddrs...)
+	z.transfer.nsAddrs = append(z.transfer.nsAddrs, nsAddrs...)
 	z.hash = contentHash(z)
 	return z
 }
@@ -515,20 +617,27 @@ func (z *Zone) nameserverAddrs() []netip.Addr {
 		return nil
 	}
 	for _, rr := range ns.RRs {
-		k, err := canonicalKey(rr.(*dns.NS).Ns)
-		if err != nil {
-			continue
-		}
-		n := z.tree.search(k)
-		if n == nil {
-			continue
-		}
-		for _, t := range []uint16{dns.TypeA, dns.TypeAAAA} {
-			if s := n.get(t); s != nil {
-				for _, a := range s.RRs {
-					if ip, ok := addrOf(a); ok {
-						out = append(out, ip)
-					}
+		out = append(out, z.hostAddrs(rr.(*dns.NS).Ns)...)
+	}
+	return out
+}
+
+// hostAddrs returns the A and AAAA addresses the zone holds for host.
+func (z *Zone) hostAddrs(host string) []netip.Addr {
+	k, err := canonicalKey(host)
+	if err != nil {
+		return nil
+	}
+	n := z.tree.search(k)
+	if n == nil {
+		return nil
+	}
+	var out []netip.Addr
+	for _, t := range []uint16{dns.TypeA, dns.TypeAAAA} {
+		if s := n.get(t); s != nil {
+			for _, a := range s.RRs {
+				if ip, ok := addrOf(a); ok {
+					out = append(out, ip)
 				}
 			}
 		}

@@ -24,4 +24,19 @@ const (
 	ReasonDuplicated   = "Duplicated"
 	ReasonFetchFailed  = "ListFetchFailed"
 	ReasonFromSnapshot = "ServingFromSnapshot"
+	// ReasonAsExpected is the reason of a False Degraded condition.
+	ReasonAsExpected = "AsExpected"
+	// ReasonZoneNotFound: a DNSRecordSet's zoneRef names no DNSZone.
+	ReasonZoneNotFound = "ZoneNotFound"
+	// ReasonNotSelected: the zone's recordSetSelector does not admit the
+	// record set.
+	ReasonNotSelected = "NotSelected"
+	// ReasonMissingReference: a Policy names a ClientGroup or BlockList
+	// that does not exist.
+	ReasonMissingReference = "MissingReference"
+	// ReasonUnsupported: the zone type is not served by this version.
+	ReasonUnsupported = "Unsupported"
+	// ReasonOccluded: records below a DNAME owner, which no lookup can
+	// reach (RFC 6672 §2.4), were left out of the zone.
+	ReasonOccluded = "Occluded"
 )
