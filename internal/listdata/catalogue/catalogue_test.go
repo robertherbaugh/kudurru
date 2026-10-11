@@ -230,7 +230,7 @@ func TestParseRejects(t *testing.T) {
 		t.Error("an oversized document was accepted")
 	}
 	// Unknown fields are ignored within a schema version.
-	c, err := Parse(mutate(t, func(d map[string]any) { d["future"] = true; svc(d)["icon"] = "x.svg" }), "https://example/c.json")
+	c, err := Parse(mutate(t, func(d map[string]any) { d["future"] = true; svc(d)["logo"] = "x.svg" }), "https://example/c.json")
 	if err != nil || c.Origin() != "https://example/c.json" {
 		t.Fatalf("additive fields: %v", err)
 	}
