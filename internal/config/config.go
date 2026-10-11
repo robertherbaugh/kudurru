@@ -28,6 +28,7 @@ type Config struct {
 	Store     StoreConfig `koanf:"store" json:"store"`
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
+	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
 	Log       Log         `koanf:"log" json:"log"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
@@ -287,6 +288,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv6Prefix: %d is outside 0-128", p))
 	}
 	errs = append(errs, c.Cache.validate()...)
+	errs = append(errs, c.Blocking.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))

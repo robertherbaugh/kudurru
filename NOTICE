@@ -19,6 +19,10 @@ licences. Attributions are added to this file as the dependencies land:
   strategy from blocky's resolver package, and internal/cache follows its
   caching resolver (prefetch of entries hit often within a window, packed
   messages as cache values, never caching conditional or local answers).
+  internal/policy and internal/stages/blocking follow its client-group
+  model (several groups per client, lists united across them) and its
+  block response types (zero IP, NXDOMAIN, custom IP) with response-side
+  CNAME inspection.
   No blocky source file is copied verbatim.
 - dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: linked as
   the upstream client library of internal/upstream (plain, TCP, DoT, DoH,

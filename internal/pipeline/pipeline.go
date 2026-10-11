@@ -27,6 +27,14 @@ var Order = []string{
 // ErrNoAnswer is returned when every stage called next and nothing answered.
 var ErrNoAnswer = errors.New("pipeline: no stage produced an answer")
 
+// ErrDrop is returned (with a nil Response) by a stage that decided the
+// query must not be answered at all: the control stage drops malformed
+// queries this way. Observers record such queries as StatusDropped.
+// Transports should send nothing for UDP and DoQ and close the TCP, DoT,
+// DoH or DoH3 exchange; a transport that does not check for ErrDrop
+// answers SERVFAIL as it does for any error.
+var ErrDrop = errors.New("pipeline: query dropped")
+
 // Proto is the transport the query arrived on.
 type Proto uint8
 
@@ -66,7 +74,10 @@ type Client struct {
 	ProxiedFrom netip.Addr
 	ClientID    string
 	MACs        []string
-	GroupIDs    []string
+	// GroupIDs are the client's ClientGroups ("namespace/name", sorted),
+	// set by the identify stage. The slice is shared with the policy
+	// index: read it, never modify it.
+	GroupIDs []string
 }
 
 // Request is the per-query context handed through the stages.
@@ -90,6 +101,13 @@ type Request struct {
 	// It takes precedence over the conditional-forwarding map, and answers
 	// forwarded on its behalf are never cached.
 	UpstreamGroup string
+	// Policy is the client's policy decision, set by the identify stage
+	// for later stages (control, blocking, and v0.2 rewrite/safe-search).
+	// It holds a *policy.Decision (internal/policy; read it with
+	// policy.FromRequest). Like Zone it is an opaque handle here, because
+	// internal/policy depends on this package. The value is shared and
+	// immutable: stages must not modify it.
+	Policy any
 }
 
 // Question returns the first question or a zero value.
