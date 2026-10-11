@@ -7,8 +7,11 @@
 coverage.*
 
 # generated at build time (committed generated files live under api/ and config/crd/bases)
-/web/dist/
+# web/dist/index.html is a committed placeholder so Go builds without Bun;
+# `make web-build` overwrites it and writes the hashed bundle into assets/.
+/web/dist/assets/
 /web/node_modules/
+/web/coverage/
 
 # local state
 /.context/

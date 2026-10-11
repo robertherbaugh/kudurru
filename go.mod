@@ -2,6 +2,10 @@ module github.com/robertherbaugh/kudurru
 
 go 1.27
 
+// Bun installs the dashboard dependencies into web/node_modules; some npm
+// packages ship .go files that must not join ./... (see web/README.md).
+ignore ./web/node_modules
+
 require (
 	github.com/AdguardTeam/dnsproxy v0.86.0
 	github.com/coreos/go-oidc/v3 v3.21.0
