@@ -8,4 +8,3 @@
 // Without -fuzz, `go test` runs every target over its seed corpus (f.Add
 // and testdata/fuzz/<target>/), so the corpus is a regression suite.
 package fuzz
-
