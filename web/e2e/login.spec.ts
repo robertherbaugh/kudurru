@@ -60,14 +60,15 @@ test.describe('first boot with a generated password', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // mustChangePassword: the session may only change the password.
-    const newField = page.getByLabel(/new password/i).first();
+    // Text boxes only: the dialog itself is named "Choose a new password".
+    const newField = page.getByRole('textbox', { name: /new password/i }).first();
     await expect(newField, 'a change-password form after signing in with the generated password').toBeVisible();
-    const current = page.getByLabel(/current password/i);
+    const current = page.getByRole('textbox', { name: /current password/i });
     if (await current.count()) await current.fill(server.adminPassword);
     await newField.fill(newPassword);
-    const confirm = page.getByLabel(/confirm|repeat/i);
+    const confirm = page.getByRole('textbox', { name: /confirm|repeat/i });
     if (await confirm.count()) await confirm.fill(newPassword);
-    await page.getByRole('button', { name: /change password|set password|save|update/i }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: /change password|set password|save|update/i }).click();
 
     await expect(main(page).getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     await settle(page);
