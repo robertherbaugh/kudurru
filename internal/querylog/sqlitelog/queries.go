@@ -336,9 +336,9 @@ func (r *Reader) Status(ctx context.Context) (*Status, error) {
 		return nil, err
 	}
 	res := &Status{
-		Rows: w.rows.Load(), DBBytes: dbBytes, WALBytes: w.WALBytes(), Privacy: w.opts.Privacy.String(),
+		Rows: w.rows.Load(), DBBytes: dbBytes, WALBytes: w.WALBytes(), Privacy: w.privacy().String(),
 		Retention: Retention{
-			RawSeconds: int64(w.opts.RawRetention / time.Second), MaxDBBytes: w.opts.MaxDBBytes,
+			RawSeconds: int64(w.rawRetention() / time.Second), MaxDBBytes: w.maxDBBytes(),
 			Rollup1m: MinuteRetention.String(), Rollup1h: HourRetention.String(), Rollup1d: "forever",
 		},
 		Writer: w.Stats(),

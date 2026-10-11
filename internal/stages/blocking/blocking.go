@@ -120,10 +120,10 @@ type Stage struct {
 
 // defaults are the settings Reconfigure replaces at runtime.
 type defaults struct {
-	disabled         bool
-	response         v1alpha1.BlockResponse
+	disabled           bool
+	response           v1alpha1.BlockResponse
 	customV4, customV6 netip.Addr
-	blockTTL         time.Duration
+	blockTTL           time.Duration
 }
 
 func defaultsOf(o Options) *defaults {

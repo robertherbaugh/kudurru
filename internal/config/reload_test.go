@@ -74,7 +74,7 @@ func TestSettingsFileRejectsNodeAndUnknownKeys(t *testing.T) {
 	dir := t.TempDir()
 	settings := filepath.Join(dir, "settings.yaml")
 	for body, want := range map[string]string{
-		"node: { name: x }\n":                 "node-scope",
+		"node: { name: x }\n":                  "node-scope",
 		"listeners: { api: { address: x } }\n": "node-scope",
 		"cache: { bogus: 1 }\n":                "unknown settings key",
 		"nope: 1\n":                            "unknown settings key",

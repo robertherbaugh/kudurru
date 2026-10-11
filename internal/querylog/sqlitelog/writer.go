@@ -147,6 +147,10 @@ type Writer struct {
 
 	deleteBatch int // DeleteBatch; smaller in tests
 
+	// live holds the settings SetPrivacy and SetRetention change at
+	// runtime (settings hot reload); opts keeps the values at Open.
+	live atomic.Pointer[liveSettings]
+
 	flushSeq atomic.Uint64 // bumped after every committed rollup flush
 	rows     atomic.Int64
 	readers  atomic.Int64 // reads in flight (checkpoint gate)
@@ -182,8 +186,50 @@ func New(opts Options) *Writer {
 	if opts.MaintenanceInterval <= 0 {
 		opts.MaintenanceInterval = time.Second
 	}
-	return &Writer{opts: opts, metrics: opts.Metrics, clock: opts.Clock, log: opts.Logger, acc: newAccSet(), deleteBatch: DeleteBatch}
+	w := &Writer{opts: opts, metrics: opts.Metrics, clock: opts.Clock, log: opts.Logger, acc: newAccSet(), deleteBatch: DeleteBatch}
+	w.live.Store(&liveSettings{privacy: opts.Privacy, raw: opts.RawRetention, maxDBBytes: opts.MaxDBBytes})
+	return w
 }
+
+// liveSettings are the runtime-changeable writer settings.
+type liveSettings struct {
+	privacy    querylog.Mode
+	raw        time.Duration
+	maxDBBytes int64
+}
+
+// SetPrivacy changes the privacy mode for batches written from now on
+// (querylog.privacy hot reload): whether fact rows, per-client and
+// per-domain rollups and answer summaries are stored. Rows already written
+// keep what they hold. The collector's transform is changed separately
+// (querylog.Async.SetPrivacy).
+func (w *Writer) SetPrivacy(mode querylog.Mode) {
+	for {
+		cur := w.live.Load()
+		next := *cur
+		next.privacy = mode
+		if w.live.CompareAndSwap(cur, &next) {
+			return
+		}
+	}
+}
+
+// SetRetention changes querylog.retention.raw and maxDBBytes; the next
+// maintenance tick (size check) and the daily retention run use them.
+func (w *Writer) SetRetention(raw time.Duration, maxDBBytes int64) {
+	for {
+		cur := w.live.Load()
+		next := *cur
+		next.raw, next.maxDBBytes = raw, maxDBBytes
+		if w.live.CompareAndSwap(cur, &next) {
+			return
+		}
+	}
+}
+
+func (w *Writer) privacy() querylog.Mode      { return w.live.Load().privacy }
+func (w *Writer) rawRetention() time.Duration { return w.live.Load().raw }
+func (w *Writer) maxDBBytes() int64           { return w.live.Load().maxDBBytes }
 
 // Open creates New(opts) and opens it.
 func Open(ctx context.Context, opts Options) (*Writer, error) {
@@ -303,7 +349,7 @@ func (w *Writer) loadState(ctx context.Context, created bool) error {
 	} else {
 		w.lastAnalyze = w.clock.Now()
 	}
-	set := map[string]any{metaPrivacy: w.opts.Privacy.String(), metaHourDone: w.hourDone, metaDayDone: w.dayDone}
+	set := map[string]any{metaPrivacy: w.privacy().String(), metaHourDone: w.hourDone, metaDayDone: w.dayDone}
 	if created {
 		set[metaNodeID] = w.opts.Node
 		set[metaLastAnalyze] = w.lastAnalyze.Unix()
@@ -391,7 +437,8 @@ func (w *Writer) Write(batch []*querylog.Event) error {
 	if err != nil {
 		return fmt.Errorf("sqlitelog: begin: %w", err)
 	}
-	facts := w.opts.Privacy.StoresFacts()
+	mode := w.privacy()
+	facts := mode.StoresFacts()
 	ins := tx.StmtContext(ctx, w.ins)
 	maxID, first := w.maxID, w.firstTS
 	for _, ev := range batch {
@@ -501,7 +548,7 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	if ev.Traced() {
 		trace = ev.TraceID[:]
 	}
-	if ev.Answer != "" && w.opts.Privacy == querylog.PrivacyFull {
+	if ev.Answer != "" && w.privacy() == querylog.PrivacyFull {
 		answer = truncate(ev.Answer, maxAnswerBytes)
 	}
 	if ev.ID != 0 {
@@ -684,7 +731,7 @@ func (w *Writer) Maintain(ctx context.Context) error {
 		}
 		w.nextRetention = nextRetentionTime(now.Add(time.Minute), w.nextRetention.Minute())
 	}
-	if w.opts.MaxDBBytes > 0 && now.Sub(w.lastSizeCheck) >= sizeCheckInterval {
+	if w.maxDBBytes() > 0 && now.Sub(w.lastSizeCheck) >= sizeCheckInterval {
 		w.lastSizeCheck = now
 		if _, err := w.enforceSize(ctx); err != nil {
 			return err

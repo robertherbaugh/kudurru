@@ -127,11 +127,11 @@ func New(opts Options) *Cache {
 		n *= 2
 	}
 	c := &Cache{
-		shards:    make([]shard, n),
-		mask:      uint64(n - 1), //nolint:gosec // n is a small power of two
-		seed:      maphash.MakeSeed(),
-		now:       opts.Now,
-		m:         opts.Metrics,
+		shards: make([]shard, n),
+		mask:   uint64(n - 1), //nolint:gosec // n is a small power of two
+		seed:   maphash.MakeSeed(),
+		now:    opts.Now,
+		m:      opts.Metrics,
 	}
 	if c.now == nil {
 		c.now = time.Now
