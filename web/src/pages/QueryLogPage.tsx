@@ -2,12 +2,17 @@
 // down is a shareable link), keyset pagination over `cursor`, wildcard
 // search with suggestions, the live tail over SSE, and per-row Allow/Deny.
 import { Button } from '@astryxdesign/core/Button';
+import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack } from '@astryxdesign/core/HStack';
 import { Switch } from '@astryxdesign/core/Switch';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { QueryFilter, QueryRow, StatusClass } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
+import { SelectField } from '../components/fields/SelectField';
 import { PurgeQueryLog } from '../components/PurgeQueryLog';
 import { QueryLogTable } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
@@ -23,8 +28,7 @@ export const PAGE_SIZE = 100;
 const LIVE_MAX = 2000;
 
 const QTYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'SRV', 'PTR', 'NS', 'SOA', 'SVCB', 'CAA', 'ANY'];
-const CLASSES: { value: StatusClass | ''; label: string }[] = [
-  { value: '', label: 'Any status' },
+const CLASSES: { value: StatusClass; label: string }[] = [
   { value: 'permitted', label: 'Permitted' },
   { value: 'cached', label: 'Cached' },
   { value: 'blocked', label: 'Blocked' },
@@ -41,7 +45,7 @@ export function filtersFrom(sp: URLSearchParams): QueryFilter {
   return f;
 }
 
-/** ISO → the value of a datetime-local input (local time, minutes). */
+/** ISO → a DateTimeInput (datetime-local) value: local time, minutes. */
 export function toLocalInput(iso: string | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -50,7 +54,7 @@ export function toLocalInput(iso: string | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** A datetime-local value → ISO (UTC); "" stays "". */
+/** A DateTimeInput (datetime-local) value → ISO (UTC); "" stays "". */
 export function fromLocalInput(v: string): string {
   if (!v) return '';
   const d = new Date(v);
@@ -69,7 +73,6 @@ export default function QueryLogPage() {
   const [live, setLive] = useState(false);
   const [liveRows, setLiveRows] = useState<QueryRow[]>([]);
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set());
-  const ids = useId();
 
   const q = useInfiniteQuery({
     queryKey: qk.queries('log', scope, filters),
@@ -145,65 +148,44 @@ export default function QueryLogPage() {
       </div>
 
       <form
-        className="k-filters"
         aria-label="Filters"
         onSubmit={(e) => {
           e.preventDefault();
         }}
       >
-        <SuggestInput label="Domain" field="domain" value={filters.domain ?? ''} placeholder="*.example.com" onCommit={(v) => set({ domain: v || null })} />
-        <SuggestInput label="Client" field="client" value={filters.client ?? ''} placeholder="IP or name" onCommit={(v) => set({ client: v || null })} />
-        <label className="k-label" htmlFor={`${ids}-class`}>
-          Status
-          <select id={`${ids}-class`} className="k-native-select" value={filters.status_class ?? ''} onChange={(e) => set({ status_class: e.target.value || null })}>
-            {CLASSES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="k-label" htmlFor={`${ids}-qtype`}>
-          Type
-          <select id={`${ids}-qtype`} className="k-native-select" value={filters.qtype ?? ''} onChange={(e) => set({ qtype: e.target.value || null })}>
-            <option value="">Any type</option>
-            {QTYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <SuggestInput label="Upstream" field="upstream" value={filters.upstream ?? ''} onCommit={(v) => set({ upstream: v || null })} />
-        <SuggestInput label="List" field="list" value={filters.list ?? ''} onCommit={(v) => set({ list: v || null })} />
-        <SuggestInput label="Zone" field="zone" value={filters.zone ?? ''} onCommit={(v) => set({ zone: v || null })} />
-        <label className="k-label" htmlFor={`${ids}-since`}>
-          Since
-          <input
-            id={`${ids}-since`}
-            className="k-native-input"
-            type="datetime-local"
-            value={toLocalInput(filters.since)}
-            onChange={(e) => set({ since: fromLocalInput(e.target.value) || null })}
-          />
-        </label>
-        <label className="k-label" htmlFor={`${ids}-until`}>
-          Until
-          <input
-            id={`${ids}-until`}
-            className="k-native-input"
-            type="datetime-local"
-            value={toLocalInput(filters.until)}
-            onChange={(e) => set({ until: fromLocalInput(e.target.value) || null })}
-          />
-        </label>
-        {anyFilter ? (
-          <Button
-            label="Clear filters"
-            variant="ghost"
-            onClick={() => set(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))}
-          />
-        ) : null}
+        <VStack gap={2}>
+          <Grid columns={{ minWidth: 180 }} gap={2} align="start">
+            <SuggestInput label="Domain" field="domain" value={filters.domain ?? ''} placeholder="*.example.com" onCommit={(v) => set({ domain: v || null })} />
+            <SuggestInput label="Client" field="client" value={filters.client ?? ''} placeholder="IP or name" onCommit={(v) => set({ client: v || null })} />
+            <SelectField label="Status" value={filters.status_class ?? ''} emptyLabel="Any status" options={CLASSES} onChange={(v) => set({ status_class: v || null })} />
+            <SelectField
+              label="Type"
+              value={filters.qtype ?? ''}
+              emptyLabel="Any type"
+              options={QTYPES.map((t) => ({ value: t, label: t }))}
+              onChange={(v) => set({ qtype: v || null })}
+            />
+            <SuggestInput label="Upstream" field="upstream" value={filters.upstream ?? ''} onCommit={(v) => set({ upstream: v || null })} />
+            <SuggestInput label="List" field="list" value={filters.list ?? ''} onCommit={(v) => set({ list: v || null })} />
+            <SuggestInput label="Zone" field="zone" value={filters.zone ?? ''} onCommit={(v) => set({ zone: v || null })} />
+          </Grid>
+          {/* Date and time sit side by side from 400px, so the range gets its own row. */}
+          <HStack gap={2} align="end" wrap="wrap">
+            <DateTimeInput
+              label="Since"
+              value={(toLocalInput(filters.since) || undefined) as ISODateTimeString | undefined}
+              onChange={(v) => set({ since: fromLocalInput(v ?? '') || null })}
+              hasClear
+            />
+            <DateTimeInput
+              label="Until"
+              value={(toLocalInput(filters.until) || undefined) as ISODateTimeString | undefined}
+              onChange={(v) => set({ until: fromLocalInput(v ?? '') || null })}
+              hasClear
+            />
+            {anyFilter ? <Button label="Clear filters" variant="ghost" onClick={() => set(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))} /> : null}
+          </HStack>
+        </VStack>
       </form>
 
       {filters.status || filters.policy ? (

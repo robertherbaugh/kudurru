@@ -1,15 +1,16 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import type { BlockList, Policy } from '../api/types';
-import { mockDB } from '../mocks/handlers';
-import { renderWithApp } from '../test/utils';
-import ListWizardPage, { withListRef, wizardSources } from './ListWizardPage';
+import { describe, expect, it, vi } from 'vitest';
+import type { BlockList, Policy } from '../../api/types';
+import { mockDB } from '../../mocks/handlers';
+import { getSelector, pick, valueOf } from '../../test/controls';
+import { renderWithApp } from '../../test/utils';
+import { ListWizardDialog, withListRef, wizardSources } from './ListWizard';
 
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-describe('ListWizardPage', () => {
+describe('ListWizardDialog', () => {
   it('creates a block list from a well-known list and a URL and adds it to the default policy', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+    renderWithApp(<ListWizardDialog isOpen onClose={() => {}} />, { route: '/lists?new=1' });
     // Type
     expect(await screen.findByRole('radio', { name: /Block list/ })).toBeChecked();
     next();
@@ -21,7 +22,7 @@ describe('ListWizardPage', () => {
     expect(screen.getAllByText('MIT').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Add a URL' }));
     fireEvent.change(screen.getByRole('textbox', { name: /^URL 1/ }), { target: { value: 'https://lists.example.net/adblock/extra.txt' } });
-    expect(screen.getByRole('combobox', { name: /^Format of URL 1/ })).toHaveValue('adblock');
+    expect(valueOf(getSelector(/^Format of URL 1/))).toBe('adblock');
     expect(screen.getByText('2 sources chosen.')).toBeInTheDocument();
     next();
     // Options: a suggested name, validated; the default policy is preselected.
@@ -35,7 +36,7 @@ describe('ListWizardPage', () => {
     expect(await screen.findAllByText('A list named starter exists already')).not.toHaveLength(0);
     fireEvent.change(name, { target: { value: 'home-ads' } });
     expect(await screen.findByRole('checkbox', { name: 'default/default' })).toBeChecked();
-    fireEvent.change(screen.getByRole('combobox', { name: /^Refresh interval/ }), { target: { value: '6h' } });
+    pick(getSelector(/^Refresh interval/), 'Every 6 hours');
     next();
     // Review
     const sources = await screen.findByRole('table', { name: 'Sources to create' });
@@ -58,7 +59,7 @@ describe('ListWizardPage', () => {
   });
 
   it('creates an allow list from pasted entries without well-known block lists', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+    renderWithApp(<ListWizardDialog isOpen onClose={() => {}} />, { route: '/lists?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /Allow list/ }));
     next();
     expect(await screen.findByRole('group', { name: 'List URLs' })).toBeInTheDocument();
@@ -70,7 +71,7 @@ describe('ListWizardPage', () => {
     next();
     const name = await screen.findByRole('textbox', { name: /^Name/ });
     expect(name).toHaveValue('my-allow-list');
-    expect(screen.queryByRole('combobox', { name: /^Block response/ })).toBeNull();
+    expect(() => getSelector(/^Block response/)).toThrow();
     fireEvent.click(screen.getByRole('switch', { name: /Start enabled/ }));
     next();
     fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));
@@ -81,10 +82,11 @@ describe('ListWizardPage', () => {
     await waitFor(() => expect(mockDB().policies.find((p) => p.metadata.name === 'default')?.spec.allowListRefs).toContain('my-allow-list'));
   });
 
-  it('cancels back to the lists', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+  it('closes from Cancel while nothing was entered', async () => {
+    const onClose = vi.fn();
+    renderWithApp(<ListWizardDialog isOpen onClose={onClose} />, { route: '/lists?new=1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
-    expect(window.location.pathname).toBe('/lists');
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
 

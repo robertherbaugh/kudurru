@@ -4,37 +4,29 @@ import { Button } from '@astryxdesign/core/Button';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Switch } from '@astryxdesign/core/Switch';
 import { Palette } from 'lucide-react';
-import { useId, useState } from 'react';
+import { VStack } from '@astryxdesign/core/VStack';
+import { useState } from 'react';
+import { SelectField } from './fields/SelectField';
 import { FormDialog } from './FormDialog';
 import { THEMES, useAppearance, type Mode, type ThemeName } from '../lib/theme';
 
 export function AppearanceControls() {
   const a = useAppearance();
-  const themeId = useId();
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <SegmentedControl label="Mode" value={a.mode} onChange={(v) => a.setMode(v as Mode)}>
         <SegmentedControlItem value="system" label="Auto" />
         <SegmentedControlItem value="light" label="Light" />
         <SegmentedControlItem value="dark" label="Dark" />
       </SegmentedControl>
-      <label className="k-label" htmlFor={themeId}>
-        Theme
-        <select id={themeId} className="k-native-select" value={a.theme} onChange={(e) => a.setTheme(e.target.value as ThemeName)}>
-          {THEMES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectField label="Theme" value={a.theme} options={THEMES.map((t) => ({ value: t.id, label: t.label }))} onChange={(v) => a.setTheme(v as ThemeName)} />
       <Switch
         label="High contrast"
         description="Stronger status colours and borders"
         value={a.contrast === 'more'}
         onChange={(on) => a.setContrast(on ? 'more' : 'normal')}
       />
-    </div>
+    </VStack>
   );
 }
 

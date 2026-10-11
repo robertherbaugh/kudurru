@@ -1,7 +1,13 @@
-// A whole number with optional bounds (settings `min`/`max`, ECS prefixes,
-// percentages): a native number input that reports out-of-range values
-// inline. The value stays text so a half-typed number is not lost.
-import { useId } from 'react';
+// A whole number with optional bounds and unit (settings `min`/`max`, ECS
+// prefixes, percentages, TTLs): an Astryx NumberInput with the help and
+// the allowed range under it. The form keeps the value as text ("" = not
+// set) and gets every keystroke (the input event), so a Save button can
+// appear while typing and an out-of-range number is reported inline
+// rather than silently clamped: the bounds are checked here and not passed
+// to NumberInput, which would clamp on blur.
+import { NumberInput } from '@astryxdesign/core/NumberInput';
+import type { ReactNode } from 'react';
+import { FieldShell } from './FieldHelp';
 
 /** A user-facing error for a whole number within bounds, or null. */
 export function numberError(text: string, opts: { min?: number | undefined; max?: number | undefined; optional?: boolean } = {}): string | null {
@@ -16,56 +22,68 @@ export function numberError(text: string, opts: { min?: number | undefined; max?
   return null;
 }
 
+/** "0–32", "≥ 1", "≤ 100" or "". */
+export function rangeText(min?: number, max?: number): string {
+  return min !== undefined && max !== undefined ? `${min}–${max}` : min !== undefined ? `≥ ${min}` : max !== undefined ? `≤ ${max}` : '';
+}
+
 export interface NumberFieldProps {
   label: string;
-  isLabelHidden?: boolean;
+  isLabelHidden?: boolean | undefined;
   value: string;
   onChange: (v: string) => void;
   min?: number | undefined;
   max?: number | undefined;
-  description?: string | undefined;
+  /** Shown inside the input after the number ("seconds", "%"). */
+  unit?: string | undefined;
+  help?: ReactNode;
+  /** The old name of `help` (also shown under the control). */
+  description?: ReactNode;
   placeholder?: string | undefined;
   isDisabled?: boolean | undefined;
   /** Shown instead of the bounds check (e.g. the server's message). */
   error?: string | undefined;
-  optional?: boolean;
+  optional?: boolean | undefined;
+  /** Allow fractions (default: whole numbers). */
+  allowFraction?: boolean | undefined;
+  onEnter?: (() => void) | undefined;
+  width?: string | number | undefined;
 }
 
-export function NumberField({ label, isLabelHidden, value, onChange, min, max, description, placeholder, isDisabled, error, optional }: NumberFieldProps) {
-  const id = useId();
-  const msg = error ?? (value.trim() ? numberError(value, { min, max }) : null) ?? undefined;
-  const range = min !== undefined && max !== undefined ? `${min}–${max}` : min !== undefined ? `≥ ${min}` : max !== undefined ? `≤ ${max}` : '';
+export function NumberField({ label, isLabelHidden, value, onChange, min, max, unit, help: helpProp, description, placeholder, isDisabled, error, optional, allowFraction, onEnter, width }: NumberFieldProps) {
+  const help = helpProp ?? description;
+  const t = value.trim();
+  const msg = error ?? (t && !allowFraction ? numberError(value, { min, max }) : null) ?? undefined;
+  const range = rangeText(min, max);
+  const n = t === '' ? null : Number(t);
+  const foot =
+    help || range ? (
+      <>
+        {help}
+        {help && range ? ' ' : ''}
+        {range ? `Range ${range}.` : ''}
+      </>
+    ) : undefined;
   return (
-    <label className="k-label" htmlFor={id}>
-      <span className={isLabelHidden ? 'k-visually-hidden' : undefined}>
-        {label}
-        {optional ? <span className="k-muted k-small"> (optional)</span> : null}
-      </span>
-      {description ? (
-        <span id={`${id}-d`} className="k-muted k-small">
-          {description}
-        </span>
-      ) : null}
-      <span className="k-row">
-        <input
-          id={id}
-          className="k-native-input k-number"
-          type="number"
-          aria-label={label}
-          aria-describedby={description ? `${id}-d` : undefined}
-          inputMode="numeric"
-          step={1}
-          min={min}
-          max={max}
-          value={value}
+    <FieldShell help={foot} error={msg} width={width}>
+      {(status) => (
+        <NumberInput
+          label={label}
+          isLabelHidden={isLabelHidden}
+          isOptional={optional}
+          value={n === null || Number.isNaN(n) ? null : n}
+          hasClear
+          onChange={(v) => onChange(v === null ? '' : String(v))}
+          onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+          units={unit ?? null}
+          isIntegerOnly={!allowFraction}
+          isWheelEnabled={false}
           placeholder={placeholder}
-          disabled={isDisabled}
-          aria-invalid={msg ? true : undefined}
-          onChange={(e) => onChange(e.target.value)}
+          isDisabled={isDisabled}
+          status={status}
+          onEnter={onEnter}
         />
-        {range ? <span className="k-muted k-small">{range}</span> : null}
-      </span>
-      {msg ? <span className="k-error-text">{msg}</span> : null}
-    </label>
+      )}
+    </FieldShell>
   );
 }

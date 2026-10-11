@@ -6,14 +6,13 @@
 // it disagrees.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useState } from 'react';
 import type { Endpoint, ZoneRecord } from '../api/types';
 import { compose, dnsNameToOwner, ownerError, ownerToDNSName, parse, RECORD_TYPES, typeSpec, validate, type Errors, type Values } from '../lib/rr';
 import { errorText } from './Feedback';
 import { EnumSelect, type EnumOption } from './fields/EnumSelect';
 import { SecondsField } from './fields/SecondsField';
+import { SwitchField, TextField } from './fields/TextField';
 import { DialogForm } from './FormDialog';
 
 export interface RecordEditorProps {
@@ -141,14 +140,14 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
       }
     >
       <div className="k-form-grid">
-        <TextInput
+        <TextField
           label="Name"
-          description={`Relative to ${zoneName.replace(/\.$/, '')}; @ is the apex, a trailing dot makes it absolute`}
+          help={`Relative to ${zoneName.replace(/\.$/, '')}; @ is the apex, a trailing dot makes it absolute`}
           placeholder="www"
           value={owner}
           onChange={setOwner}
           isReadOnly={!!initial}
-          status={shown.owner ? { type: 'error', message: shown.owner } : undefined}
+          error={shown.owner}
         />
         <EnumSelect
           label="Type"
@@ -181,15 +180,15 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
                   onChange={(v) => setTarget(i, f.key, v)}
                 />
               ) : (
-                <TextInput
+                <TextField
                   key={f.key}
                   label={f.label}
-                  description={f.help}
+                  help={f.help}
                   placeholder={f.placeholder}
                   value={t[f.key] ?? ''}
                   onChange={(v) => setTarget(i, f.key, v)}
                   isOptional={f.optional}
-                  status={shown.targets[i]?.[f.key] ? { type: 'error', message: shown.targets[i]?.[f.key] as string } : undefined}
+                  error={shown.targets[i]?.[f.key]}
                 />
               ),
             )}
@@ -206,10 +205,10 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
       )}
 
       <div className="k-form-grid">
-        <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
-        <TextInput label="Record set" description="The DNSRecordSet object this record is stored in" value={recordSet} onChange={setRecordSet} isReadOnly={!!initial} />
+        <TextField label="Comment" value={comment} onChange={setComment} isOptional />
+        <TextField label="Record set" help="The DNSRecordSet object this record is stored in" value={recordSet} onChange={setRecordSet} isReadOnly={!!initial} />
       </div>
-      <Switch label="Disabled" description="Keep the record but stop serving it" value={disabled} onChange={setDisabled} />
+      <SwitchField label="Disabled" help="Keep the record but stop serving it" value={disabled} onChange={setDisabled} />
 
       {serverError ? <Banner status="error" title="The server rejected the record" description={serverError} /> : null}
       {errors && hasErrors(errors) ? (

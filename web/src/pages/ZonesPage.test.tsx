@@ -2,10 +2,11 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { importSummary, originOf } from '../components/ZoneImportDialog';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import ZoneDetailPage from './ZoneDetailPage';
 import ZonesPage from './ZonesPage';
-import ZoneWizardPage from './ZoneWizardPage';
+import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 
 const FILE = '$ORIGIN lab.example.\n@ 3600 IN SOA ns1 hostmaster 42 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10\nmail 300 IN A 192.0.2.25\n';
 
@@ -44,18 +45,32 @@ describe('zone import', () => {
     expect(mockDB().zones.find((z) => z.metadata.name === 'lab.example')?.spec.zoneName).toBe('lab.example.');
   });
 
+  it('reads a chosen zone file and takes the apex from its $ORIGIN', async () => {
+    renderWithApp(<ZonesPage />, { route: '/zones' });
+    const btn = await screen.findByRole('button', { name: 'Import zone file' });
+    await waitFor(() => expect(btn.getAttribute('aria-disabled') !== 'true' && !btn.hasAttribute('disabled')).toBe(true));
+    fireEvent.click(btn);
+    const dialog = await screen.findByRole('dialog');
+    const input = dialog.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input!, { target: { files: [new File([FILE], 'lab.zone', { type: 'text/plain' })] } });
+    await waitFor(() => expect(within(dialog).getByRole('textbox', { name: /paste the zone text/ })).toHaveValue(FILE));
+    expect(within(dialog).getByRole('textbox', { name: /^Zone apex/ })).toHaveValue('lab.example.');
+  });
+
   it('opens the new-zone wizard from the list', async () => {
     renderWithApp(<ZonesPage />, { route: '/zones' });
     const btn = await screen.findByRole('button', { name: 'New zone' });
     await waitFor(() => expect(btn.getAttribute('aria-disabled') !== 'true' && !btn.hasAttribute('disabled')).toBe(true));
     fireEvent.click(btn);
-    await waitFor(() => expect(window.location.pathname).toBe('/zones/new'));
+    expect(await screen.findByRole('dialog', { name: 'New zone' })).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search).toBe('/zones?new=1');
   });
 });
 
-describe('ZoneWizardPage', () => {
+describe('ZoneWizardDialog', () => {
   it('creates a forward zone with an upstream group picked from the configured ones', async () => {
-    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^Forward/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
@@ -64,9 +79,9 @@ describe('ZoneWizardPage', () => {
     expect((await screen.findAllByText('Empty label (two dots in a row)')).length).toBeGreaterThan(0);
     fireEvent.change(apex, { target: { value: 'Corp.Example.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    const sel = await screen.findByRole('combobox', { name: /Upstream group/ });
-    await waitFor(() => expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['Not set (default)', 'default', 'filtered']));
-    fireEvent.change(sel, { target: { value: 'filtered' } });
+    const sel = await findSelector(/Upstream group/);
+    await waitFor(() => expect(optionLabels(sel)).toEqual(['Not set (default)', 'default', 'filtered']));
+    pick(sel, /^filtered/);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByTestId('zone-review')).toHaveTextContent('corp.example.');
     fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
@@ -75,7 +90,7 @@ describe('ZoneWizardPage', () => {
   });
 
   it('creates a primary zone with typed SOA timers and a query ACL', async () => {
-    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
     const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
     fireEvent.change(apex, { target: { value: 'example.internal' } });
@@ -83,8 +98,8 @@ describe('ZoneWizardPage', () => {
     expect(await screen.findByText('A zone example.internal exists')).toBeInTheDocument();
     fireEvent.change(apex, { target: { value: 'lab.example' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Refresh' }), { target: { value: '7200' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Who may query' }), { target: { value: 'useNetworkACL' } });
+    pick(await findSelector('Refresh'), /^2 hours/);
+    pick(getSelector('Who may query'), /^Clients in the ACL/);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('The ACL needs at least one entry for this access mode')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add entry' }));

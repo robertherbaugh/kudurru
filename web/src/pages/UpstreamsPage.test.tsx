@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { PROVIDERS, serversFor, transportsOf } from '../lib/upstreamPresets';
 import { bootstrapError, conditionalKeyError, mapPatch, serverError, serverLabel } from '../lib/upstreams';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import UpstreamGroupPage from './UpstreamGroupPage';
 import UpstreamsPage from './UpstreamsPage';
-import UpstreamWizardPage from './UpstreamWizardPage';
+import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 
 function groups(): Record<string, { servers: string[]; strategy: string; timeout: string }> {
   return (mockDB().settings.upstreams as { groups: Record<string, { servers: string[]; strategy: string; timeout: string }> }).groups;
@@ -105,10 +106,9 @@ describe('UpstreamGroupPage', () => {
     expect(within(cf).getByText('tls://1.1.1.1:853')).toBeInTheDocument();
     expect(await within(cf).findByText('healthy')).toBeInTheDocument();
     expect(within(cf).getByText('8.4 ms')).toBeInTheDocument();
-    const strategy = screen.getByRole('combobox', { name: 'Strategy' });
-    fireEvent.change(strategy, { target: { value: 'strict' } });
+    pick(getSelector('Strategy'), 'Strict order');
     expect(screen.getByText('Ask the servers in order, moving on only on failure.')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Timeout' }), { target: { value: '5s' } });
+    pick(getSelector('Timeout'), '5 seconds');
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Servers 3' }), { target: { value: 'ftp://nope' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -142,9 +142,9 @@ describe('UpstreamGroupPage', () => {
   });
 });
 
-describe('UpstreamWizardPage', () => {
+describe('UpstreamWizardDialog', () => {
   it('creates a group from a provider preset', async () => {
-    renderWithApp(<UpstreamWizardPage />, { route: '/upstreams/new' });
+    renderWithApp(<UpstreamWizardDialog isOpen onClose={() => {}} />, { route: '/upstreams?new=1' });
     const quad9 = await screen.findByRole('radio', { name: /^Quad9/ });
     await waitFor(() => expect(quad9).toBeEnabled());
     // Icons from the C4 index where the server has one, monograms elsewhere.
@@ -155,7 +155,7 @@ describe('UpstreamWizardPage', () => {
     expect(document.querySelector('[data-choice="quad9"] [data-icon]')).toHaveTextContent('Q9');
     fireEvent.click(quad9);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Transport' }), { target: { value: 'dot' } });
+    pick(await findSelector('Transport'), /^DNS over TLS/);
     expect(within(screen.getByTestId('preset-servers')).getByText('tls://dns.quad9.net')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('textbox', { name: /^Name/ })).toHaveValue('quad9');
@@ -166,7 +166,7 @@ describe('UpstreamWizardPage', () => {
   });
 
   it('needs the NextDNS profile ID and validates custom servers and the name', async () => {
-    renderWithApp(<UpstreamWizardPage />, { route: '/upstreams/new' });
+    renderWithApp(<UpstreamWizardDialog isOpen onClose={() => {}} />, { route: '/upstreams?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^NextDNS/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByRole('textbox', { name: /^Profile ID/ });

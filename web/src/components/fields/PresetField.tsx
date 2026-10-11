@@ -1,9 +1,12 @@
 // A value picked from presets with "Custom…" for anything else: the shared
 // body of DurationField (Go durations) and SecondsField (TTLs in seconds).
 // `same` decides which preset the current value is, so "10m0s" (what
-// GET /settings answers) selects the "10 minutes" preset.
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useState } from 'react';
+// GET /settings answers) selects the "10 minutes" preset. The help sits
+// under the custom input when there is one, else under the Selector.
+import { VStack } from '@astryxdesign/core/VStack';
+import { useState, type ReactNode } from 'react';
+import { SelectField } from './SelectField';
+import { TextField } from './TextField';
 
 export interface Preset {
   value: string;
@@ -22,7 +25,7 @@ export interface PresetFieldProps {
   same?: (a: string, b: string) => boolean;
   /** A first option meaning "not set" (inherit the default). */
   emptyLabel?: string | undefined;
-  description?: string | undefined;
+  help?: ReactNode;
   isDisabled?: boolean | undefined;
   error?: string | undefined;
   /** Placeholder of the custom input, with examples. */
@@ -39,68 +42,56 @@ export function PresetField({
   presets,
   same = (a, b) => a === b,
   emptyLabel,
-  description,
+  help,
   isDisabled,
   error,
   customPlaceholder,
   customUnit,
 }: PresetFieldProps) {
-  const id = useId();
   const preset = value ? presets.find((p) => same(p.value, value)) : undefined;
   const [custom, setCustom] = useState(() => Boolean(value) && !preset);
   const selectValue = custom ? CUSTOM : value === '' ? (emptyLabel !== undefined ? '' : CUSTOM) : (preset?.value ?? CUSTOM);
+  const isCustom = selectValue === CUSTOM;
   return (
-    <div className="k-stack-sm">
-      <label className="k-label" htmlFor={id}>
-        {isLabelHidden ? <span className="k-visually-hidden">{label}</span> : label}
-        {description ? (
-          <span id={`${id}-d`} className="k-muted k-small">
-            {description}
-          </span>
-        ) : null}
-        <select
-          id={id}
-          className="k-native-select"
-          aria-label={label}
-          aria-describedby={description ? `${id}-d` : undefined}
-          value={selectValue}
-          disabled={isDisabled}
-          aria-invalid={error ? true : undefined}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === CUSTOM) {
-              setCustom(true);
-              return;
-            }
-            setCustom(false);
-            onChange(v);
-          }}
-        >
-          {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
-          {presets.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom…</option>
-        </select>
-      </label>
-      {selectValue === CUSTOM ? (
-        <span className="k-row">
-          <TextInput
-            label={`${label} (custom)`}
-            isLabelHidden
-            placeholder={customPlaceholder}
-            value={value}
-            onChange={onChange}
-            isDisabled={isDisabled}
-            status={error ? { type: 'error', message: error } : undefined}
-          />
-          {customUnit ? <span className="k-muted k-small">{customUnit}</span> : null}
-        </span>
-      ) : error ? (
-        <span className="k-error-text">{error}</span>
+    <VStack gap={2}>
+      <SelectField
+        label={label}
+        isLabelHidden={isLabelHidden}
+        value={selectValue}
+        options={[...presets, { value: CUSTOM, label: 'Custom…' }]}
+        emptyLabel={emptyLabel}
+        isDisabled={isDisabled}
+        help={isCustom ? undefined : help}
+        error={isCustom ? undefined : error}
+        onChange={(v) => {
+          if (v === CUSTOM) {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          onChange(v);
+        }}
+      />
+      {isCustom ? (
+        <TextField
+          label={`${label} (custom)`}
+          isLabelHidden
+          placeholder={customPlaceholder}
+          value={value}
+          onChange={onChange}
+          isDisabled={isDisabled}
+          help={
+            customUnit || help ? (
+              <>
+                {customUnit ? `In ${customUnit}.` : ''}
+                {customUnit && help ? ' ' : ''}
+                {help}
+              </>
+            ) : undefined
+          }
+          error={error}
+        />
       ) : null}
-    </div>
+    </VStack>
   );
 }

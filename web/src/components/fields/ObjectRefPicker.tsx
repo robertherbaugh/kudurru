@@ -1,20 +1,26 @@
 // Picks existing objects instead of typing their names: client groups,
 // block lists, policies or zones, read from GET /objects/{kind}. `multiple`
-// renders a checkbox list (with a filter once the list is long); otherwise a
-// select. Values are "namespace/name" for namespaced kinds and "name" for
+// renders an Astryx CheckboxList, or a MultiSelector with search once there
+// are more than seven; otherwise a Selector (searchable when long). Values are "namespace/name" for namespaced kinds and "name" for
 // zones; with `sameNamespace` they are bare names of objects in
 // `namespace`, the form Policy references take (clientGroupRefs,
 // blockListRefs: names in the policy's own namespace). A name that no
 // longer exists stays listed (marked missing) so editing never drops it
 // silently.
 import { useQuery } from '@tanstack/react-query';
-import { useId, useMemo, useState } from 'react';
+import { Badge } from '@astryxdesign/core/Badge';
+import { CheckboxList, CheckboxListItem } from '@astryxdesign/core/CheckboxList';
+import { MultiSelector } from '@astryxdesign/core/MultiSelector';
+import { useMemo } from 'react';
 import { qk, useApi } from '../../api/context';
 import type { AnyObject, ObjectKind } from '../../api/types';
+import { FieldShell } from './FieldHelp';
+import { SelectField, type SelectOption } from './SelectField';
 
 export interface ObjectRefPickerProps {
   kind: Exclude<ObjectKind, 'dnsrecordsets'>;
   label: string;
+  /** Help under the field. */
   description?: string;
   /** The namespace of `sameNamespace` refs; default "default". */
   namespace?: string;
@@ -37,10 +43,11 @@ export function refOf(o: AnyObject): string {
   return o.metadata.namespace ? `${o.metadata.namespace}/${o.metadata.name}` : o.metadata.name;
 }
 
+/** Up to this many choices show as a checkbox list; more get a MultiSelector with search. */
+const CHECKLIST_MAX = 7;
+
 export function ObjectRefPicker({ kind, label, description, namespace = 'default', sameNamespace, multiple, value, onChange, emptyLabel, filter, detail, isDisabled, error }: ObjectRefPickerProps) {
   const api = useApi();
-  const id = useId();
-  const [q, setQ] = useState('');
   const list = useQuery({ queryKey: qk.objects(kind), queryFn: () => api.objects.list<AnyObject>(kind) });
   const items = useMemo(
     () => (list.data?.items ?? []).filter((o) => (!filter || filter(o)) && (!sameNamespace || (o.metadata.namespace ?? 'default') === namespace)),
@@ -49,65 +56,74 @@ export function ObjectRefPicker({ kind, label, description, namespace = 'default
   const keyOf = (o: AnyObject) => (sameNamespace ? o.metadata.name : refOf(o));
   const known = new Set(items.map(keyOf));
   const missing = value.filter((v) => !known.has(v));
+  const state = list.isLoading ? 'Loading…' : !items.length && !missing.length ? 'None exist yet.' : '';
+  const help =
+    description || state ? (
+      <>
+        {description}
+        {description && state ? ' ' : ''}
+        {state}
+      </>
+    ) : undefined;
 
   if (!multiple) {
+    const options: SelectOption[] = [
+      ...items.map((o) => ({ value: keyOf(o), label: keyOf(o), detail: detail?.(o) })),
+      ...missing.map((m) => ({ value: m, label: `${m} (missing)` })),
+    ];
     return (
-      <label className="k-label" htmlFor={id}>
-        {label}
-        {description ? <span className="k-muted k-small">{description}</span> : null}
-        <select id={id} className="k-native-select" value={value[0] ?? ''} disabled={isDisabled || list.isLoading} onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}>
-          {emptyLabel !== undefined || !value[0] ? <option value="">{emptyLabel ?? 'Choose…'}</option> : null}
-          {items.map((o) => (
-            <option key={keyOf(o)} value={keyOf(o)}>
-              {keyOf(o)}
-              {detail?.(o) ? ` · ${detail(o)}` : ''}
-            </option>
-          ))}
-          {missing.map((m) => (
-            <option key={m} value={m}>
-              {m} (missing)
-            </option>
-          ))}
-        </select>
-        {error ? <span className="k-error-text">{error}</span> : null}
-      </label>
+      <SelectField
+        label={label}
+        value={value[0] ?? ''}
+        options={options}
+        emptyLabel={emptyLabel ?? (value[0] ? undefined : 'Choose…')}
+        onChange={(v) => onChange(v ? [v] : [])}
+        isDisabled={isDisabled}
+        isLoading={list.isLoading}
+        hasSearch={options.length > 8}
+        help={help}
+        error={error}
+      />
     );
   }
 
-  const shown = q ? items.filter((o) => keyOf(o).toLowerCase().includes(q.toLowerCase())) : items;
-  const toggle = (ref: string, on: boolean) => onChange(on ? [...value, ref] : value.filter((v) => v !== ref));
+  if (items.length + missing.length > CHECKLIST_MAX) {
+    return (
+      <FieldShell help={help} error={error}>
+        {(status) => (
+          <MultiSelector
+            label={label}
+            value={value}
+            onChange={(v) => onChange(v)}
+            options={[
+              ...items.map((o) => ({ value: keyOf(o), label: keyOf(o), description: detail?.(o) })),
+              ...missing.map((m) => ({ value: m, label: `${m} (missing)` })),
+            ]}
+            hasSearch
+            searchPlaceholder={`Filter ${label.toLowerCase()}`}
+            triggerDisplay="badges"
+            placeholder="None"
+            isDisabled={isDisabled}
+            isLoading={list.isLoading}
+            status={status}
+          />
+        )}
+      </FieldShell>
+    );
+  }
+
   return (
-    <fieldset className="k-fieldset" aria-describedby={description ? `${id}-d` : undefined} disabled={isDisabled}>
-      <legend className="k-label">{label}</legend>
-      {description ? (
-        <span id={`${id}-d`} className="k-muted k-small">
-          {description}
-        </span>
-      ) : null}
-      {items.length > 8 ? <input className="k-native-input" type="search" placeholder={`Filter ${label.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} aria-label={`Filter ${label}`} /> : null}
-      {list.isLoading ? <span className="k-muted k-small">Loading…</span> : null}
-      {!list.isLoading && !items.length && !missing.length ? <span className="k-muted k-small">None exist yet.</span> : null}
-      <ul className="k-checklist">
-        {shown.map((o) => {
-          const ref = keyOf(o);
-          return (
-            <li key={ref}>
-              <label>
-                <input type="checkbox" checked={value.includes(ref)} onChange={(e) => toggle(ref, e.target.checked)} /> <span className="k-mono">{ref}</span>
-                {detail?.(o) ? <span className="k-muted k-small"> · {detail(o)}</span> : null}
-              </label>
-            </li>
-          );
-        })}
-        {missing.map((m) => (
-          <li key={m}>
-            <label>
-              <input type="checkbox" checked onChange={() => toggle(m, false)} /> <span className="k-mono">{m}</span> <span className="k-error-text">missing</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      {error ? <span className="k-error-text">{error}</span> : null}
-    </fieldset>
+    <FieldShell help={help} error={error} describes="group">
+      {(status) => (
+        <CheckboxList label={label} value={value} onChange={onChange} isDisabled={isDisabled} status={status}>
+          {items.map((o) => (
+            <CheckboxListItem key={keyOf(o)} value={keyOf(o)} label={keyOf(o)} description={detail?.(o)} />
+          ))}
+          {missing.map((m) => (
+            <CheckboxListItem key={m} value={m} label={m} endContent={<Badge variant="error" label="missing" />} />
+          ))}
+        </CheckboxList>
+      )}
+    </FieldShell>
   );
 }

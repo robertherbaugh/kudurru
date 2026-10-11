@@ -4,12 +4,12 @@
 // <namespace>/default when the API owns that policy. Shared by the Lists
 // and Domains pages.
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi } from '../../api/context';
 import type { Processed } from '../../api/types';
 import { EnumSelect, type EnumOption } from '../fields/EnumSelect';
+import { TextAreaField } from '../fields/TextField';
 import { useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
 
@@ -113,9 +113,9 @@ export function AddDomainsDialog({ open, onClose, defaultType = 'deny:exact' }: 
           setResult(null);
         }}
       />
-      <TextArea
+      <TextAreaField
         label={kind === 'regex' ? 'Expressions' : 'Domains'}
-        description={`One per line, or separated by spaces. They go into the "${uiListOf(action)}" list (created on demand and used by the default policy).`}
+        help={`One per line, or separated by spaces. They go into the "${uiListOf(action)}" list (created on demand and used by the default policy).`}
         placeholder={kind === 'regex' ? '^ads?[0-9]*\\.\n(^|\\.)doubleclick\\.net$' : 'ads.example.com\n*.tracker.example'}
         value={text}
         onChange={(v) => {
@@ -124,7 +124,7 @@ export function AddDomainsDialog({ open, onClose, defaultType = 'deny:exact' }: 
         }}
         rows={5}
         hasSpellCheck={false}
-        status={firstError ? { type: 'error', message: `${firstError[0]}: ${firstError[1]}` } : undefined}
+        error={firstError ? `${firstError[0]}: ${firstError[1]}` : undefined}
       />
       {result ? (
         <div className="k-stack" role="status">

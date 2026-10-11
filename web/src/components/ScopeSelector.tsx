@@ -2,36 +2,26 @@
 // request carries the choice as scope=cluster|node&node=<name>; with one
 // node both give the same answer, but the control and the parameter are
 // there from v0.1 so multi-node needs no UI change.
-import { useId } from 'react';
 import { useScope } from '../api/context';
 import { useNodes } from '../api/hooks';
+import { SelectField } from './fields/SelectField';
 
 export function ScopeSelector() {
   const { scope, node, setScope } = useScope();
   const nodes = useNodes();
-  const id = useId();
   const value = scope === 'node' && node ? node : '';
   const names = nodes.data?.items.map((n) => n.name) ?? [];
-  if (value && !names.includes(value)) names.push(value);
+  // A chosen node that is no longer listed stays (SelectField keeps unknown values).
   return (
-    <span className="k-scope">
-      <label htmlFor={id} className="k-visually-hidden">
-        Node scope
-      </label>
-      <select
-        id={id}
-        className="k-native-select"
-        value={value}
-        onChange={(e) => setScope(e.target.value ? { scope: 'node', node: e.target.value } : { scope: 'cluster' })}
-      >
-        <option value="">All nodes{names.length ? ` (${names.length})` : ''}</option>
-        {names.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
-    </span>
+    <SelectField
+      label="Node scope"
+      isLabelHidden
+      size="sm"
+      value={value}
+      emptyLabel={`All nodes${names.length ? ` (${names.length})` : ''}`}
+      options={names.map((n) => ({ value: n, label: n }))}
+      onChange={(v) => setScope(v ? { scope: 'node', node: v } : { scope: 'cluster' })}
+    />
   );
 }
 

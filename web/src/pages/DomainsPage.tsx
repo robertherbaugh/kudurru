@@ -9,13 +9,15 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { HStack } from '@astryxdesign/core/HStack';
+import { StackItem } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { BlockList } from '../api/types';
 import { EnumSelect } from '../components/fields/EnumSelect';
+import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { AddDomainsDialog, DOMAIN_TYPES, type DomainAction, type DomainKind, type DomainType } from '../components/lists/AddDomainsDialog';
@@ -167,11 +169,12 @@ export default function DomainsPage() {
       ) : null}
       <p className="k-muted k-small">Entries have no switch of their own: remove one to stop it, or turn its whole list off above.</p>
 
-      <div className="k-row-end">
-        <TextInput
+      <HStack gap={2} wrap="wrap" align="start">
+        <TextField
           className="k-search"
           label="Search domains"
           isLabelHidden
+          startIcon="search"
           placeholder="Search domains and expressions"
           value={search}
           onChange={(v) => {
@@ -182,6 +185,7 @@ export default function DomainsPage() {
         />
         <EnumSelect
           label="Type"
+          isLabelHidden
           value={type}
           options={DOMAIN_TYPES}
           emptyLabel="All types"
@@ -190,9 +194,9 @@ export default function DomainsPage() {
             setPage(0);
           }}
         />
-        <span className="k-spacer" />
+        <StackItem size="fill" />
         {selected.size > 0 ? <Button label={`Remove ${selected.size} selected`} variant="destructive" onClick={() => setConfirm(all.filter((r) => selected.has(r.key)))} /> : null}
-      </div>
+      </HStack>
 
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}

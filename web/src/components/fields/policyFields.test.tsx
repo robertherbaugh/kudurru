@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClientMatcher } from '../../api/types';
 import type { Schedule } from '../../lib/policies';
 import { renderWithApp } from '../../test/utils';
+import { findSelector, getSelector, optionLabels, pick } from '../../test/controls';
 import { ServiceGrid } from '../ServiceGrid';
 import { monogram, ServiceIcon, toneOf } from '../ServiceIcon';
 import { cleanMatchers, matcherError, matcherFromText, matchersError, MatchersField } from './MatchersField';
@@ -51,7 +52,7 @@ describe('ServiceGrid', () => {
     expect(onChange).toHaveBeenLastCalledWith(['tiktok', 'myspace', 'youtube']);
     fireEvent.click(tiktok);
     expect(onChange).toHaveBeenLastCalledWith(['myspace']);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter services' }), { target: { value: 'gaming' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Filter services' }), { target: { value: 'gaming' } });
     expect(screen.getByRole('button', { name: /Roblox/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /YouTube/ })).toBeNull();
   });
@@ -61,10 +62,11 @@ describe('ObjectRefPicker', () => {
   it('offers bare names of one namespace with sameNamespace and keeps missing refs', async () => {
     const onChange = vi.fn();
     renderWithApp(<ObjectRefPicker kind="clientgroups" label="Client groups" multiple sameNamespace value={['kids', 'gone']} onChange={onChange} />);
-    const kids = await screen.findByRole('checkbox', { name: 'kids' });
+    await screen.findByRole('checkbox', { name: 'iot' });
+    const kids = screen.getByRole('checkbox', { name: 'kids' });
     expect(kids).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /gone/ })).toBeChecked();
-    expect(screen.getByText('missing')).toBeInTheDocument();
+    expect(screen.getAllByText('missing')[0]).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: 'iot' }));
     expect(onChange).toHaveBeenLastCalledWith(['kids', 'gone', 'iot']);
   });
@@ -72,9 +74,9 @@ describe('ObjectRefPicker', () => {
   it('answers namespace/name refs without sameNamespace', async () => {
     const onChange = vi.fn();
     renderWithApp(<ObjectRefPicker kind="clientgroups" label="Group" value={[]} onChange={onChange} />);
-    const select = await screen.findByRole('combobox', { name: 'Group' });
-    await waitFor(() => expect(within(select).getAllByRole('option').length).toBeGreaterThan(1));
-    fireEvent.change(select, { target: { value: 'default/kids' } });
+    const select = await findSelector('Group');
+    await waitFor(() => expect(optionLabels(select)).toContain('default/kids'));
+    pick(select, /^default\/kids/);
     expect(onChange).toHaveBeenLastCalledWith(['default/kids']);
   });
 });
@@ -109,12 +111,12 @@ describe('MatchersField', () => {
         )}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'cidr' } });
+    pick(getSelector('Matcher 1 kind'), 'CIDR range');
     expect(last).toEqual([{ cidr: '192.168.1.30', name: 'tablet' }]);
     expect(screen.getByText(/An address\/prefix such as/)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 CIDR range' }), { target: { value: '192.168.1.0/24' } });
     expect(screen.queryByText(/An address\/prefix such as/)).toBeNull();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'mac' } });
+    pick(getSelector('Matcher 1 kind'), 'MAC address');
     expect(screen.getByText(/inventory integrations arrive in v0.2/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Paste many' }));
     fireEvent.change(screen.getByRole('textbox', { name: /Paste addresses/ }), { target: { value: '10.0.0.1, 10.1.0.0/16\nphone' } });
@@ -146,7 +148,7 @@ describe('ScheduleField', () => {
     expect(screen.getByText('The policy applies at all times.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'Only during a time window' }));
     expect(last).toMatchObject({ weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Time zone' }), { target: { value: 'America/Chicago' } });
+    pick(getSelector('Time zone'), 'America/Chicago');
     fireEvent.click(screen.getByRole('button', { name: 'Sun' }));
     fireEvent.click(screen.getByRole('button', { name: 'Sat' }));
     expect(last?.weekdays).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Sat']);

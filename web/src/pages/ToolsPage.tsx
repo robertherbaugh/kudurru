@@ -6,11 +6,12 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack } from '@astryxdesign/core/HStack';
 import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ApplyResult, DnsProto, DnsQueryResult } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
@@ -18,6 +19,8 @@ import { formatBytes, formatDateTime, formatExact, formatMS } from '../lib/forma
 import { Link } from '../lib/router';
 import { hostError, splitPresentation } from '../lib/rr';
 import { formatError } from '../components/fields/formats';
+import { SelectField } from '../components/fields/SelectField';
+import { CheckboxField, TextField } from '../components/fields/TextField';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
 const DIG_PROTOS: { value: DnsProto; label: string }[] = [
@@ -71,8 +74,6 @@ export function setFlags(r: DnsQueryResult): string[] {
 
 function Dig() {
   const api = useApi();
-  const typeId = useId();
-  const protoId = useId();
   const [name, setName] = useState('');
   const [type, setType] = useState('A');
   const [proto, setProto] = useState<DnsProto>('udp');
@@ -102,7 +103,6 @@ function Dig() {
         listener.
       </p>
       <form
-        className="k-row-end"
         onSubmit={(e) => {
           e.preventDefault();
           const he = hostError(name);
@@ -112,36 +112,28 @@ function Dig() {
           if (!he && !ce) m.mutate();
         }}
       >
-        <TextInput label="Name" value={name} onChange={setName} placeholder="example.com" status={err ? { type: 'error', message: err } : undefined} />
-        <label className="k-label" htmlFor={typeId}>
-          Type
-          <select id={typeId} className="k-native-select" value={type} onChange={(e) => setType(e.target.value)}>
-            {DIG_TYPES.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
-        </label>
-        <label className="k-label" htmlFor={protoId}>
-          Transport
-          <select id={protoId} className="k-native-select" value={proto} onChange={(e) => setProto(e.target.value as DnsProto)}>
-            {DIG_PROTOS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextInput
-          label="As client"
-          description="The client IP the query is evaluated for (its groups and policies)"
-          value={client}
-          onChange={setClient}
-          placeholder="192.168.1.30"
-          isOptional
-          status={clientErr ? { type: 'error', message: clientErr } : undefined}
-        />
-        <CheckboxInput label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
-        <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
+        <VStack gap={3}>
+          {/* One row of fields lined up on their controls; help and errors hang below. */}
+          <Grid columns={{ minWidth: 180 }} gap={3} align="start">
+            <TextField label="Name" value={name} onChange={setName} placeholder="example.com" mono error={err} />
+            <SelectField label="Type" value={type} options={DIG_TYPES.map((t) => ({ value: t, label: t }))} onChange={setType} />
+            <SelectField label="Transport" value={proto} options={DIG_PROTOS} onChange={(v) => setProto(v as DnsProto)} />
+            <TextField
+              label="As client"
+              help="The client IP the query is evaluated for (its groups and policies)"
+              value={client}
+              onChange={setClient}
+              placeholder="192.168.1.30"
+              mono
+              isOptional
+              error={clientErr}
+            />
+          </Grid>
+          <HStack gap={4} align="center" wrap="wrap">
+            <CheckboxField label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
+            <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
+          </HStack>
+        </VStack>
       </form>
       {m.error ? <ErrorBanner error={m.error} /> : null}
       {r ? (
@@ -206,14 +198,15 @@ function FlushCache() {
         Response cache
       </h2>
       <form
-        className="k-row-end"
         onSubmit={(e) => {
           e.preventDefault();
           m.mutate();
         }}
       >
-        <TextInput label="Name" description="Empty flushes everything" value={name} onChange={setName} placeholder="example.com" isOptional />
-        <Button type="submit" label={name.trim() ? 'Flush name' : 'Flush all'} variant="secondary" isDisabled={!can('cache', 'flush')} isLoading={m.isPending} />
+        <VStack gap={3} hAlign="start">
+          <TextField label="Name" help="Empty flushes everything" value={name} onChange={setName} placeholder="example.com" mono isOptional fieldWidth="100%" />
+          <Button type="submit" label={name.trim() ? 'Flush name' : 'Flush all'} variant="secondary" isDisabled={!can('cache', 'flush')} isLoading={m.isPending} />
+        </VStack>
       </form>
     </section>
   );

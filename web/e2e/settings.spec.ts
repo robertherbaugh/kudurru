@@ -1,7 +1,8 @@
 // Settings shows the values the server runs with (GET /settings answers
 // the envelope {scope,node,settings,...}; the values are under .settings),
 // each key with the typed control of its C1 metadata.
-import { env, expect, expectRendered, main, settle, test } from './fixtures';
+import { env, expect, expectRendered, main, selector, settle, test } from './fixtures';
+import { choose } from './support/astryx';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/settings');
@@ -28,38 +29,62 @@ test('upstreams.groups links the configured group, whose page shows its server',
   await expectRendered(page);
 });
 
-test('an enum key is a select that saves and shows the new value', async ({ page }) => {
+test('an enum key is a Selector that saves and shows the new value', async ({ page }) => {
   // blocking.initStrategy only takes effect at the next start: harmless here.
   await page.goto('/settings?view=expert&q=initStrategy');
   await settle(page);
   const row = page.locator('[data-configkey="blocking.initStrategy"]');
-  const select = row.getByRole('combobox', { name: 'List loading at start' });
-  const before = await select.inputValue();
+  const select = selector(row, 'List loading at start');
+  const before = (await select.getAttribute('data-value')) ?? 'fast';
   // Something other than the default (fast), so the row shows "changed".
   const next = before === 'failOnError' ? 'blocking' : 'failOnError';
-  await select.selectOption(next);
+  const labels: Record<string, string> = { fast: 'Fast', blocking: 'Wait for lists', failOnError: 'Fail on error' };
+  await choose(select, labels[next] ?? next);
+  // The chosen option's help (server metadata) shows under the control and describes it.
+  await expect(select).toHaveAccessibleDescription(/load/i);
   await row.getByRole('button', { name: 'Save' }).click();
   await expect(row.getByText('changed', { exact: true })).toBeVisible();
   await page.reload();
   await settle(page);
-  await expect(row.getByRole('combobox', { name: 'List loading at start' })).toHaveValue(next);
+  await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', next);
   // Back to what the suite started with.
-  await row.getByRole('combobox', { name: 'List loading at start' }).selectOption(before);
+  await choose(selector(row, 'List loading at start'), labels[before] ?? before);
   await row.getByRole('button', { name: 'Save' }).click();
-  await expect(row.getByRole('combobox', { name: 'List loading at start' })).toHaveValue(before);
+  await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', before);
   await expect(row.getByRole('button', { name: 'Save' })).toHaveCount(0);
 });
 
-test('number keys are bounded inputs and durations are preset selects', async ({ page }) => {
+test('number keys are bounded inputs and durations are preset Selectors', async ({ page }) => {
   await page.goto('/settings?view=expert&q=ratelimit.slip');
   await settle(page);
-  const slip = page.locator('[data-configkey="ratelimit.slip"]').getByRole('spinbutton');
-  await expect(slip).toHaveAttribute('max', '100');
+  const row = page.locator('[data-configkey="ratelimit.slip"]');
+  const slip = row.getByRole('spinbutton');
+  await expect(row).toContainText('Range 0–100.');
   await slip.fill('150');
-  await expect(page.locator('[data-configkey="ratelimit.slip"]')).toContainText('Between 0 and 100');
+  await expect(row).toContainText('Between 0 and 100');
   await page.goto('/settings?view=expert&q=blockTTL');
   await settle(page);
-  await expect(page.locator('[data-configkey="blocking.blockTTL"]').getByRole('combobox', { name: 'Block response TTL' })).toHaveValue('10m');
+  await expect(selector(page.locator('[data-configkey="blocking.blockTTL"]'), 'Block response TTL')).toHaveAttribute('data-value', '10m');
+});
+
+test('a settings row puts the explanation left (60%) and the control right (40%), help under the control', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/settings?view=expert&q=defaultResponse');
+  await settle(page);
+  const row = page.locator('[data-configkey="blocking.defaultResponse"]');
+  const label = await row.getByText('Default block response', { exact: true }).first().boundingBox();
+  const control = await selector(row, 'Default block response').boundingBox();
+  const box = await row.boundingBox();
+  expect(label && control && box).toBeTruthy();
+  // The control column starts at about 60% of the row.
+  expect((control!.x - box!.x) / box!.width).toBeGreaterThan(0.55);
+  expect(control!.x).toBeGreaterThan(label!.x + label!.width);
+  // The selected option's help is under the control, not between label and control.
+  const ids = ((await selector(row, 'Default block response').getAttribute('aria-describedby')) ?? '').split(' ');
+  const helpId = ids.find((i) => i.endsWith('-help'));
+  expect(helpId).toBeTruthy();
+  const help = await row.locator(`[id="${helpId}"]`).boundingBox();
+  expect(help!.y).toBeGreaterThan(control!.y + control!.height - 1);
 });
 
 test.describe('block page', () => {

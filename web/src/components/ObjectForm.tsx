@@ -5,14 +5,14 @@
 // owner named.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
+import { NumberField } from './fields/NumberField';
+import { SelectField } from './fields/SelectField';
+import { SwitchField, TextAreaField, TextField } from './fields/TextField';
 import { DialogForm } from './FormDialog';
 
 type Obj = Record<string, unknown>;
@@ -174,19 +174,19 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
     >
       {readOnly && own ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       <div className="k-form-grid">
-        <TextInput
+        <TextField
           label="Name"
           value={name}
           onChange={setName}
           isReadOnly={!!initial}
           isRequired
-          status={errors['metadata.name'] ? { type: 'error', message: errors['metadata.name'] } : undefined}
-          description={initial ? undefined : 'Lower-case letters, digits and "-"'}
+          error={errors['metadata.name']}
+          help={initial ? undefined : 'Lower-case letters, digits and "-"'}
         />
-        {schema.namespaced ? <TextInput label="Namespace" value={namespace} onChange={setNamespace} isReadOnly={!!initial} /> : null}
+        {schema.namespaced ? <TextField label="Namespace" value={namespace} onChange={setNamespace} isReadOnly={!!initial} /> : null}
       </div>
-      <TextInput label="Comment" value={comment} onChange={setComment} isDisabled={readOnly} isOptional />
-      <Switch label="Enabled" value={enabled} onChange={setEnabled} isDisabled={readOnly} description="Disabled objects stay stored but take no effect." />
+      <TextField label="Comment" value={comment} onChange={setComment} isDisabled={readOnly} isOptional />
+      <SwitchField label="Enabled" value={enabled} onChange={setEnabled} isDisabled={readOnly} help="Disabled objects stay stored but take no effect." />
       <Fields fields={schema.fields} value={spec} onChange={setSpec} errors={errors} disabled={readOnly} />
       {serverError ? (
         <Banner status="error" title="The server rejected the change" description={serverError} />
@@ -227,11 +227,6 @@ function Fields({ fields, value, onChange, errors, disabled, prefix = '' }: Fiel
   );
 }
 
-function statusOf(errors: FieldErrors, path: string) {
-  const m = errors[path];
-  return m ? { type: 'error' as const, message: m } : undefined;
-}
-
 function Field({
   def,
   path,
@@ -247,62 +242,61 @@ function Field({
   errors: FieldErrors;
   disabled: boolean;
 }): ReactNode {
-  const id = useId();
   switch (def.type) {
     case 'text':
     case 'duration':
       return (
-        <TextInput
+        <TextField
           label={def.label}
-          description={def.help}
+          help={def.help}
           placeholder={def.placeholder}
           value={typeof value === 'string' ? value : ''}
           onChange={(v) => onChange(v)}
           isDisabled={disabled}
           isRequired={def.type === 'text' && def.required}
-          status={statusOf(errors, path)}
+          error={errors[path]}
         />
       );
     case 'number':
       return (
-        <TextInput
+        <NumberField
           label={def.label}
-          description={def.help}
+          help={def.help}
+          min={def.min}
+          max={def.max}
+          optional
           value={typeof value === 'number' ? String(value) : typeof value === 'string' ? value : ''}
           onChange={(v) => onChange(v.trim() === '' ? undefined : /^-?\d+$/.test(v.trim()) ? Number(v) : v)}
           isDisabled={disabled}
-          status={statusOf(errors, path)}
+          error={errors[path]}
         />
       );
     case 'bool':
-      return <Switch label={def.label} description={def.help} value={value === true} onChange={(v) => onChange(v)} isDisabled={disabled} />;
+      return <SwitchField label={def.label} help={def.help} value={value === true} onChange={(v) => onChange(v)} isDisabled={disabled} />;
     case 'enum':
       return (
-        <label className="k-label" htmlFor={id}>
-          {def.label}
-          <select id={id} className="k-native-select" value={typeof value === 'string' ? value : ''} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
-            {!def.required && !def.options.some((o) => o.value === '') ? <option value="">Not set</option> : null}
-            {def.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          {def.help ? <span className="k-muted k-small">{def.help}</span> : null}
-          {errors[path] ? <span className="k-error-text">{errors[path]}</span> : null}
-        </label>
+        <SelectField
+          label={def.label}
+          value={typeof value === 'string' ? value : ''}
+          options={def.options}
+          emptyLabel={!def.required && !def.options.some((o) => o.value === '') ? 'Not set' : undefined}
+          onChange={(v) => onChange(v)}
+          isDisabled={disabled}
+          help={def.help}
+          error={errors[path]}
+        />
       );
     case 'strings':
       return (
-        <TextArea
+        <TextAreaField
           label={def.label}
-          description={def.help}
+          help={def.help}
           placeholder={def.placeholder}
           rows={4}
           value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
           onChange={(v) => onChange(v.split(/\r?\n/))}
           isDisabled={disabled}
-          status={statusOf(errors, path)}
+          error={errors[path]}
           hasSpellCheck={false}
         />
       );
@@ -375,7 +369,7 @@ function ObjectsField({
       )}
       {showBulk ? (
         <div className="k-stack">
-          <TextArea label={`Add many ${def.itemLabel}s`} description="One per line or comma separated" value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} />
+          <TextAreaField label={`Add many ${def.itemLabel}s`} help="One per line or comma separated" value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} />
           <div className="k-row">
             <Button label={`Add ${bulk.split(/[\r\n,]+/).filter((s) => s.trim()).length || ''} ${def.itemLabel}s`.replace('  ', ' ')} size="sm" variant="primary" onClick={addMany} />
           </div>

@@ -2,11 +2,12 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, pick, typeNumber } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import PoliciesPage from './PoliciesPage';
 import PolicyDetailPage from './PolicyDetailPage';
-import PolicyWizardPage from './PolicyWizardPage';
+import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 
 /** Clicks a button once the session has loaded and enabled it. */
 async function clickWhenEnabled(name: string | RegExp, root: HTMLElement = document.body): Promise<void> {
@@ -18,7 +19,7 @@ async function clickWhenEnabled(name: string | RegExp, root: HTMLElement = docum
 /** Next, then waits for the step's heading. */
 async function goTo(step: string): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByRole('heading', { level: 2, name: step });
+  await screen.findByRole('heading', { level: 3, name: step });
 }
 
 const policy = (name: string) => mockDB().policies.find((p) => p.metadata.name === name);
@@ -50,8 +51,10 @@ describe('PoliciesPage', () => {
     renderWithApp(<PoliciesPage />, { route: '/policies?q=kids' });
     await screen.findByTestId('row-kids-bedtime');
     expect(screen.queryByTestId('row-default')).toBeNull();
-    const add = screen.getByRole('link', { name: 'New policy' });
-    expect(add).toHaveAttribute('href', '/policies/new');
+    await clickWhenEnabled('New policy');
+    expect(window.location.search).toBe('?q=kids&new=1');
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    expect(await within(dialog).findByRole('heading', { level: 3, name: 'Who' })).toBeInTheDocument();
   });
 });
 
@@ -75,17 +78,17 @@ describe('PolicyDetailPage', () => {
     renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'social-media' }} />, { route: '/policies/default/social-media' });
     await clickWhenEnabled('Edit Who');
     const who = screen.getByTestId('section-who');
-    fireEvent.click(await within(who).findByRole('checkbox', { name: /^kids·/ }));
-    fireEvent.change(within(who).getByRole('spinbutton', { name: /Priority/ }), { target: { value: '7' } });
+    fireEvent.click(await within(who).findByRole('checkbox', { name: 'kids' }));
+    typeNumber(within(who).getByRole('spinbutton', { name: /Priority/ }), '7');
     fireEvent.click(within(who).getByRole('button', { name: 'Save Who' }));
     await waitFor(() => expect(policy('social-media')?.spec.clientGroupRefs).toEqual(['default', 'kids']));
     expect(policy('social-media')?.spec).toMatchObject({ priority: 7, blockedServices: ['tiktok', 'facebook', 'instagram', '9gag'], safeSearch: true });
 
     await clickWhenEnabled('Edit How');
     const how = screen.getByTestId('section-how');
-    fireEvent.change(within(how).getByRole('combobox', { name: 'Block response' }), { target: { value: 'blockPage' } });
+    pick(getSelector('Block response', how), 'Block page');
     expect(within(how).getByText('Answer with the block page address (Settings → Block page)')).toBeInTheDocument();
-    fireEvent.change(within(how).getByRole('combobox', { name: 'Block TTL' }), { target: { value: '5m' } });
+    pick(getSelector('Block TTL', how), '5 minutes');
     fireEvent.click(within(how).getByRole('button', { name: 'Save How' }));
     await waitFor(() => expect(policy('social-media')?.spec).toMatchObject({ blockMode: 'blockPage', blockTTL: '5m' }));
   });
@@ -164,13 +167,13 @@ describe('PolicyDetailPage', () => {
   });
 });
 
-describe('PolicyWizardPage', () => {
+describe('PolicyWizardDialog', () => {
   it('walks Who → What → Safe search → How → When → Review and creates the policy', async () => {
-    renderWithApp(<PolicyWizardPage />, { route: '/policies/new' });
+    renderWithApp(<PolicyWizardDialog isOpen onClose={() => {}} />, { route: '/policies?new=1' });
     const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     // Who: the name and at least one group are required.
-    await screen.findByRole('checkbox', { name: /^kids·/ });
+    await screen.findByRole('checkbox', { name: 'kids' });
     next();
     expect(await screen.findByText(/^Name: Required/)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'default' } });
@@ -179,30 +182,28 @@ describe('PolicyWizardPage', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'kids-games' } });
     next();
     expect(await screen.findByText(/Pick at least one client group/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'kids' }));
     expect(screen.getByTestId('priority-hint')).toHaveTextContent('streaming-off (30), kids-bedtime (20)');
     await goTo('What');
 
     // What: lists and services.
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^starter·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'starter' }));
     fireEvent.click(await screen.findByRole('button', { name: /Roblox/ }));
     fireEvent.click(screen.getByRole('button', { name: /Fortnite/ }));
     await goTo('Safe search');
 
     // Safe search.
     fireEvent.click(await screen.findByRole('switch', { name: /Enforce safe search/ }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Level' }), { target: { value: 'moderate' } });
+    pick(getSelector('Level'), /^Moderate/);
     await goTo('How');
 
     // How.
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Block response' }), { target: { value: 'nxdomain' } });
+    pick(await findSelector('Block response'), /^NXDOMAIN/);
     await goTo('When');
 
     // When: a window.
     fireEvent.click(await screen.findByRole('radio', { name: 'Only during a time window' }));
-    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '15:00' } });
-    fireEvent.change(screen.getByLabelText('End'), { target: { value: '18:30' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Time zone' }), { target: { value: 'Europe/Berlin' } });
+    pick(getSelector('Time zone'), 'Europe/Berlin');
     await goTo('Review');
 
     // Review, with a way back to a step.
@@ -211,7 +212,7 @@ describe('PolicyWizardPage', () => {
     expect(review).toHaveTextContent('Roblox');
     expect(review).toHaveTextContent('On (moderate)');
     expect(review).toHaveTextContent('NXDOMAIN');
-    expect(review).toHaveTextContent('15:00–18:30 (Europe/Berlin)');
+    expect(review).toHaveTextContent('21:00–07:00 (Europe/Berlin)');
     fireEvent.click(within(review).getByRole('button', { name: 'Edit blocked services' }));
     fireEvent.click(await screen.findByRole('button', { name: /YouTube/ }));
     for (const step of ['Safe search', 'How', 'When', 'Review']) await goTo(step);
@@ -226,16 +227,16 @@ describe('PolicyWizardPage', () => {
       safeSearch: true,
       safeSearchMode: 'moderate',
       blockMode: 'nxdomain',
-      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '15:00', end: '18:30', tz: 'Europe/Berlin' },
+      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00', tz: 'Europe/Berlin' },
     });
     await waitFor(() => expect(window.location.pathname).toBe('/policies/default/kids-games'));
   });
 
   it('shows the server error on the last step', async () => {
     server.use(http.put(`${API}/objects/policies/:ns/:name`, () => HttpResponse.json({ error: { key: 'invalid', message: 'spec.blockedServices: too many' } }, { status: 400 })));
-    renderWithApp(<PolicyWizardPage />, { route: '/policies/new' });
+    renderWithApp(<PolicyWizardDialog isOpen onClose={() => {}} />, { route: '/policies?new=1' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'x' } });
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'kids' }));
     for (const step of ['What', 'Safe search', 'How', 'When', 'Review']) await goTo(step);
     fireEvent.click(screen.getByRole('button', { name: 'Create policy' }));
     expect(await screen.findByText('spec.blockedServices: too many')).toBeInTheDocument();

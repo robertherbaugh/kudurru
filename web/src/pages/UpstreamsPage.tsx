@@ -1,7 +1,7 @@
 // Upstreams: the resolver groups kudurru forwards to (upstreams.groups) as
 // a table whose rows open the group's page (/upstreams/:group) with its
 // servers' live health and traffic; new groups are created with the wizard
-// at /upstreams/new. Bootstrap resolvers, conditional forwarding and EDNS
+// in a modal (?new=1). Bootstrap resolvers, conditional forwarding and EDNS
 // Client Subnet are edited here. Everything is a cluster setting written
 // with PATCH /settings (a JSON merge patch); in Kubernetes the settings
 // ConfigMap owns them and the pages are read-only.
@@ -9,16 +9,17 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { UpstreamItem, UpstreamServer } from '../api/types';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { EnumSelect } from '../components/fields/EnumSelect';
 import { NumberField, numberError } from '../components/fields/NumberField';
 import { cleanList, StringListField } from '../components/fields/StringListField';
+import { TextField } from '../components/fields/TextField';
 import { healthSummary, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
+import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { formatExact } from '../lib/format';
-import { Link, useNavigate } from '../lib/router';
+import { Link, useNewParam } from '../lib/router';
 import { bootstrapError, conditionalKeyError, DEFAULT_GROUP, ECS_MODES, groupNames, mapPatch, type UpstreamsConfig } from '../lib/upstreams';
 
 export { healthFor, strategyLabel, trafficFor } from '../components/UpstreamGroup';
@@ -140,14 +141,14 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
       {rules.length === 0 ? <p className="k-muted">No rules; everything not matched by a policy or zone uses the default group.</p> : null}
       {rules.map((r, i) => (
         <div key={i} className="k-row-end">
-          <TextInput
+          <TextField
             label="Domain suffix"
             isLabelHidden={i > 0}
             value={r.suffix}
             onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, suffix: v } : x)))}
             placeholder="corp.example"
             isDisabled={!canWrite}
-            status={errors[i] ? { type: 'error', message: errors[i] } : undefined}
+            error={errors[i]}
           />
           <EnumSelect
             label="Group"
@@ -260,8 +261,8 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
       <EnumSelect label="Mode" value={mode} options={ECS_OPTIONS} isDisabled={!canWrite} onChange={setMode} />
       {mode !== 'strip' ? (
         <div className="k-row-end">
-          <NumberField label="IPv4 prefix" value={v4} onChange={setV4} min={0} max={32} isDisabled={!canWrite} description="Longest prefix sent" />
-          <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} description="Longest prefix sent" />
+          <NumberField label="IPv4 prefix" value={v4} onChange={setV4} min={0} max={32} isDisabled={!canWrite} help="Longest prefix sent" />
+          <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} help="Longest prefix sent" />
         </div>
       ) : null}
       {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}
@@ -275,7 +276,7 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
 }
 
 export default function UpstreamsPage() {
-  const navigate = useNavigate();
+  const [creating, setCreating] = useNewParam();
   const u = useUpstreams();
   const names = groupNames(u.cfg);
   return (
@@ -294,7 +295,7 @@ export default function UpstreamsPage() {
             variant="primary"
             isDisabled={!u.canWrite}
             tooltip={u.canWriteSetting ? undefined : 'Needs settings.write'}
-            onClick={() => navigate('/upstreams/new')}
+            onClick={() => setCreating(true)}
           />
         </div>
       </div>
@@ -323,6 +324,7 @@ export default function UpstreamsPage() {
           <ConditionalPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
         </>
       ) : null}
+      <UpstreamWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }

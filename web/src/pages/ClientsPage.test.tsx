@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import ClientsPage, { matcherFor } from './ClientsPage';
@@ -35,7 +36,7 @@ describe('ClientsPage', () => {
     await waitFor(() => expect(add).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(add);
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Group' }), { target: { value: 'kids' } });
+    pick(getSelector('Group', dialog), 'kids');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(mockDB().groups.find((g) => g.metadata.name === 'kids')?.spec.clients?.some((c) => c.ip === '192.168.1.40' && c.name === 'nas')).toBe(true));
   });

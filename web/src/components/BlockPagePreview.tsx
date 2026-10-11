@@ -5,10 +5,10 @@
 // the dashboard (frame-ancestors 'self'); it is shown in a sandboxed
 // iframe (no scripts, no same-origin access) or opened in a new tab.
 import { Button } from '@astryxdesign/core/Button';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useState } from 'react';
 import { useApi } from '../api/context';
 import { hostError } from '../lib/rr';
+import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
 
 export const BLOCK_PAGE_DOCS = 'https://github.com/robertherbaugh/kudurru/blob/main/docs/deploy/blocking-page.md';
@@ -67,13 +67,14 @@ export function BlockPagePreviewDialog({ isOpen, onClose }: { isOpen: boolean; o
         </>
       }
     >
-      <TextInput
+      <TextField
         label="Blocked domain"
-        description="The page shows this name as the blocked site"
+        help="The page shows this name as the blocked site"
         value={domain}
         onChange={setDomain}
         placeholder="ads.example.com"
-        status={err ? { type: 'error', message: err } : undefined}
+        mono
+        error={err}
       />
       <iframe key={shown} className="k-preview-frame" title={`Block page for ${shown}`} sandbox="" src={api.blockPage.previewURL(shown)} referrerPolicy="no-referrer" />
       <p className="k-muted k-small">Rendered by this server with the current block page settings; the reason shown is a sample.</p>

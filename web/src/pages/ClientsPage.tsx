@@ -6,12 +6,13 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ClientGroup, ClientItem } from '../api/types';
 import { matcherFor } from '../components/fields/MatchersField';
+import { SelectField } from '../components/fields/SelectField';
+import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { formatExact, formatRelative } from '../lib/format';
@@ -39,7 +40,6 @@ export default function ClientsPage() {
   const [assigning, setAssigning] = useState(false);
   const [group, setGroup] = useState('');
   const [comment, setComment] = useState('');
-  const groupId = useId();
 
   const inv = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups') });
@@ -99,7 +99,7 @@ export default function ClientsPage() {
           />
         </div>
       </div>
-      <TextInput label="Search clients" isLabelHidden placeholder="Search by address, name or group" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
+      <TextField label="Search clients" isLabelHidden startIcon="search" placeholder="Search by address, name or group" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       {inv.error ? <ErrorBanner error={inv.error} /> : null}
       {inv.isLoading ? <Loading /> : null}
       {inv.data ? (
@@ -173,17 +173,8 @@ export default function ClientsPage() {
           </>
         }
       >
-        <label className="k-label" htmlFor={groupId}>
-          Group
-          <select id={groupId} className="k-native-select" value={group} onChange={(e) => setGroup(e.target.value)}>
-            {writable.map((g) => (
-              <option key={g.metadata.name} value={g.metadata.name}>
-                {g.metadata.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
+        <SelectField label="Group" value={group} options={writable.map((g) => ({ value: g.metadata.name, label: g.metadata.name }))} onChange={setGroup} />
+        <TextField label="Comment" value={comment} onChange={setComment} isOptional />
       </FormDialog>
     </div>
   );

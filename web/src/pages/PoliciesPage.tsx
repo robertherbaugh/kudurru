@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import type { Policy } from '../api/types';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { ServiceIcon } from '../components/ServiceIcon';
+import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 import { useCatalogueServices } from '../components/ServiceGrid';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { derivePolicyState, objectHref, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
@@ -48,7 +49,7 @@ export default function PoliciesPage() {
       description="Which lists and services apply to which client groups, highest priority first. When several active policies match a client, the highest priority decides the settings and their lists are merged."
       schema={SCHEMAS.policies}
       detailPath={(p) => objectHref('policies', refOfObject(p))}
-      createPath="/policies/new"
+      wizard={PolicyWizardDialog}
       sort={byPriority}
       columns={[
         {

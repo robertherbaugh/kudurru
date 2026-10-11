@@ -13,6 +13,7 @@ import { qk, useApi, useCan } from '../api/context';
 import type { Policy } from '../api/types';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { GroupFields, groupFieldErrors, healthSummary, ServersTable, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { formatExact } from '../lib/format';
 import { Link, useNavigate } from '../lib/router';
@@ -60,6 +61,7 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string>();
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
   const gKey = JSON.stringify(g ?? null);
   useEffect(() => {
     setDraft(g ? { ...g, strategy: g.strategy || 'parallel_best', timeout: g.timeout || '2s' } : null);
@@ -75,8 +77,10 @@ export default function UpstreamGroupPage({ params }: PageProps) {
         <h1 className="k-mono">{name}</h1>
         <Banner status="warning" title="No such upstream group" description={`upstreams.groups has no group named ${name}.`} />
         <p>
-          <Link href="/upstreams">All upstream groups</Link> · <Link href="/upstreams/new">New group</Link>
+          <Link href="/upstreams">All upstream groups</Link>{' '}
+          <Button label="New group" size="sm" variant="secondary" isDisabled={!u.canWrite} onClick={() => setCreating(true)} />
         </p>
+        <UpstreamWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
       </div>
     );
   }

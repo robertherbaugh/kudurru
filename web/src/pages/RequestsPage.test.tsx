@@ -6,6 +6,7 @@ import { UnblockBadge, UnblockNotice } from '../components/UnblockBadge';
 import { approvalMessage } from '../components/unblock/UnblockDialogs';
 import { HOSTILE } from '../mocks/fixtures';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, optionLabels, optionsOf, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import { approvalBody, approvalDurationError, blockSource, scopeOptions } from '../lib/unblock';
@@ -56,8 +57,9 @@ describe('RequestsPage', () => {
     expect(within(roblox).getByText('hidden by query-log privacy')).toBeInTheDocument();
     expect(within(roblox).getByText(/service roblox/)).toBeInTheDocument();
     // The state filter counts every state.
-    expect(screen.getByRole('option', { name: 'Pending (3)' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'All (6)' })).toBeInTheDocument();
+    const state = getSelector(/^State/);
+    expect(optionLabels(state)).toContain('Pending (3)');
+    expect(optionLabels(state)).toContain('All (6)');
   });
 
   it('renders what the requester typed as text, never as HTML', async () => {
@@ -72,14 +74,14 @@ describe('RequestsPage', () => {
   it('filters by state through the URL', async () => {
     renderWithApp(<RequestsPage />, { route: '/requests' });
     await row('tiktokv.com');
-    fireEvent.change(screen.getByRole('combobox', { name: /^State/ }), { target: { value: 'Approved' } });
+    pick(getSelector(/^State/), /^Approved/);
     const dc = await row('doubleclick.net');
     expect(window.location.search).toBe('?state=Approved');
     expect(screen.queryByTestId('request-tiktokv.com')).toBeNull();
     // An approval in force can be revoked, not approved again.
     expect(within(dc).queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(within(dc).getByRole('button', { name: 'Deny' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: /^State/ }), { target: { value: 'all' } });
+    pick(getSelector(/^State/), /^All/);
     await row('cdn.tracker-cname.example');
     expect(screen.getAllByTestId(/^request-/).filter((e) => e.tagName === 'TR')).toHaveLength(6);
   });
@@ -103,14 +105,14 @@ describe('RequestsPage', () => {
     renderWithApp(<RequestsPage />, { route: '/requests' });
     fireEvent.click(await within(await row('tiktokv.com')).findByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
-    const scope = within(dialog).getByRole('combobox', { name: 'Scope' });
+    const scope = getSelector('Scope', dialog);
     expect(within(dialog).getByText(/attached to the default policy and the requester's policies/)).toBeInTheDocument();
-    fireEvent.change(scope, { target: { value: 'group' } });
+    pick(scope, /^The requester's group/);
     expect(within(dialog).getByText('Adds it to ui-allow-kids, attached to the policies of client group kids only.')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Match' }), { target: { value: 'subdomains' } });
-    const duration = within(dialog).getByRole('combobox', { name: 'Duration' });
-    expect(Array.from((duration as HTMLSelectElement).options).map((o) => o.text)).toEqual(['Permanently', '1 hour', '8 hours', '1 day', '7 days', 'Custom…']);
-    fireEvent.change(duration, { target: { value: '8h' } });
+    pick(getSelector('Match', dialog), 'This name and its subdomains');
+    const duration = getSelector('Duration', dialog);
+    expect(optionLabels(duration)).toEqual(['Permanently', '1 hour', '8 hours', '1 day', '7 days', 'Custom…']);
+    pick(duration, '8 hours');
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Note/ }), { target: { value: 'Until the project is done' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(req('tiktokv.com').state).toBe('Approved'));
@@ -129,7 +131,7 @@ describe('RequestsPage', () => {
     renderWithApp(<RequestsPage />, { route: '/requests' });
     fireEvent.click(await within(await row('graph.facebook.com')).findByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('combobox', { name: 'Duration' })).toHaveValue('');
+    expect(valueOf(getSelector('Duration', dialog))).toBe('');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(req('graph.facebook.com').state).toBe('Approved'));
     expect(bodies).toEqual([{ scope: 'everyone', match: 'exact' }]);
@@ -142,14 +144,16 @@ describe('RequestsPage', () => {
     renderWithApp(<RequestsPage />, { route: '/requests' });
     fireEvent.click(await within(await row('www.roblox.com')).findByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('option', { name: "The requester's group (the request names none)" })).toBeDisabled();
+    const none = optionsOf(getSelector('Scope', dialog)).find((o) => o.textContent?.includes("The requester's group (the request names none)"));
+    expect(none).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('reports policies managed elsewhere after an approval', async () => {
     renderWithApp(<RequestsPage />, { route: '/requests?state=Denied' });
     fireEvent.click(await within(await row('metrics.roku.com')).findByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Scope' }), { target: { value: 'group' } });
+    pick(getSelector('Scope', dialog), /^The requester's group/);
+    expect(valueOf(getSelector('Scope', dialog))).toBe('group');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
     expect(await screen.findByText(/not attached to iot-strict: managed elsewhere, add the list there\.$/)).toBeInTheDocument();
   });

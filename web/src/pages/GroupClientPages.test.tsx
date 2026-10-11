@@ -1,11 +1,12 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import ClientDetailPage from './ClientDetailPage';
 import GroupDetailPage from './GroupDetailPage';
 import GroupsPage from './GroupsPage';
-import GroupWizardPage from './GroupWizardPage';
+import { GroupWizardDialog } from '../components/wizards/GroupWizard';
 
 async function clickWhenEnabled(name: string | RegExp): Promise<void> {
   const btn = await screen.findByRole('button', { name });
@@ -15,7 +16,7 @@ async function clickWhenEnabled(name: string | RegExp): Promise<void> {
 
 async function goTo(step: string): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByRole('heading', { level: 2, name: step });
+  await screen.findByRole('heading', { level: 3, name: step });
 }
 
 const group = (name: string) => mockDB().groups.find((g) => g.metadata.name === name);
@@ -45,11 +46,19 @@ describe('GroupDetailPage', () => {
     expect(within(order).getByText('Disabled')).toBeInTheDocument();
   });
 
+  it('opens the policy wizard over the page with the group chosen', async () => {
+    renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
+    await clickWhenEnabled('New policy');
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    expect(await within(dialog).findByRole('checkbox', { name: 'kids' })).toBeChecked();
+    expect(window.location.pathname).toBe('/groups/default/kids');
+  });
+
   it('edits the matchers with validation before the save', async () => {
     renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
     await clickWhenEnabled('Edit Members');
     fireEvent.click(screen.getByRole('button', { name: 'Add matcher' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 4 kind' }), { target: { value: 'cidr' } });
+    pick(getSelector('Matcher 4 kind'), 'CIDR range');
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 4 CIDR range' }), { target: { value: '192.168.5.0/33' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Members' }));
     expect(await screen.findByText('Matcher 4: IPv4 prefix length is at most 32')).toBeInTheDocument();
@@ -77,9 +86,9 @@ describe('GroupDetailPage', () => {
   });
 });
 
-describe('GroupWizardPage', () => {
+describe('GroupWizardDialog', () => {
   it('creates a group from typed matchers and seen clients and adds it to a policy', async () => {
-    renderWithApp(<GroupWizardPage />, { route: '/groups/new' });
+    renderWithApp(<GroupWizardDialog isOpen onClose={() => {}} />, { route: '/groups?new=1' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'kids' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('A group named kids already exists.')).toBeInTheDocument();
@@ -89,7 +98,7 @@ describe('GroupWizardPage', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 IP address' }), { target: { value: 'not-an-ip' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Matcher 1: Not an IPv4 or IPv6 address')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Matcher 1 kind' }), { target: { value: 'cidr' } });
+    pick(getSelector('Matcher 1 kind'), 'CIDR range');
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 CIDR range' }), { target: { value: '192.168.50.0/24' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Add guest-phone' }));
     await goTo('Policies');
@@ -124,11 +133,11 @@ describe('ClientDetailPage', () => {
 
   it('adds the client to a group with the typed picker and removes it again', async () => {
     renderWithApp(<ClientDetailPage params={{ key: '192.168.1.10' }} />, { route: '/clients/192.168.1.10' });
-    const picker = await screen.findByRole('combobox', { name: 'Add to group' });
+    const picker = await findSelector('Add to group');
     await waitFor(() => expect(picker).not.toBeDisabled());
     // Only groups the API may write and the client is not in yet.
-    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a group…', 'kids', 'servers']);
-    fireEvent.change(picker, { target: { value: 'kids' } });
+    expect(optionLabels(picker)).toEqual(['Choose a group…', 'kids', 'servers']);
+    pick(picker, 'kids');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(group('kids')?.spec.clients?.at(-1)).toEqual({ ip: '192.168.1.10', name: 'robert-laptop' }));
     const groups = screen.getByTestId('client-groups');

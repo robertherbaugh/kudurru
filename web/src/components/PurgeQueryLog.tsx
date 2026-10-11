@@ -5,7 +5,8 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { useMutation } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
+import { useState } from 'react';
 import { useApi, useCan } from '../api/context';
 import type { PurgeResult } from '../api/types';
 import { formatExact } from '../lib/format';
@@ -16,7 +17,6 @@ export function PurgeQueryLog({ onPurged }: { onPurged: (r: PurgeResult) => void
   const api = useApi();
   const can = useCan();
   const notify = useNotify();
-  const beforeId = useId();
   const [open, setOpen] = useState(false);
   const [what, setWhat] = useState<'all' | 'before'>('before');
   const [before, setBefore] = useState('');
@@ -55,10 +55,7 @@ export function PurgeQueryLog({ onPurged }: { onPurged: (r: PurgeResult) => void
           <SegmentedControlItem value="all" label="Every row" />
         </SegmentedControl>
         {what === 'before' ? (
-          <label className="k-label" htmlFor={beforeId}>
-            Delete rows before
-            <input id={beforeId} className="k-native-input" type="datetime-local" value={before} onChange={(e) => setBefore(e.target.value)} />
-          </label>
+          <DateTimeInput label="Delete rows before" value={(before || undefined) as ISODateTimeString | undefined} onChange={(v) => setBefore(v ?? '')} hasClear />
         ) : null}
         <p className="k-small">
           {what === 'all' ? 'Every logged query of this node is deleted.' : 'Queries logged before this time are deleted.'} The long-term rollups are

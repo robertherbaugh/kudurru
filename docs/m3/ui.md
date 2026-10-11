@@ -119,41 +119,75 @@ building blocks.
   counts), sections, and actions. List pages are tables whose rows link to
   the detail page. Routes: `/policies/:ns/:name`, `/lists/:ns/:name`,
   `/groups/:ns/:name`, `/clients/:key`, `/zones/:zone`, `/upstreams/:group`.
-- **Wizard on its own route** for creating anything with more than about
-  four fields or several concepts: `/policies/new`, `/lists/new`,
-  `/groups/new`, `/zones/new`, `/upstreams/new`. Editing an existing object
-  happens on its detail page, in inline sections with their own Save, or at
-  `/…/:name/edit` reusing the wizard steps with every step reachable. Wizard
-  step state may live in `?step=`. The word `new` is therefore not a usable
-  object name on those routes (the zone and upstream wizards refuse it).
+- **Creation wizard in a modal** over the page you are on, for creating
+  anything with more than about four fields or several concepts: policies,
+  lists, groups, zones and upstream groups (`web/src/components/wizards/`).
+  Dedicated pages are for objects, not for the flow that creates one. The
+  modal (`WizardDialog`, composed like Astryx's `form-wizard-dialog`
+  template) pins the title, ✕ and a compact Stepper above the step and
+  Cancel, the step's message, Back and Next (Create on the last step)
+  below it, so nothing scrolls out of reach; only the step body scrolls.
+  ✕, Escape and Cancel close it; once anything was entered they ask
+  "Discard the new …?" first, and the backdrop never closes it. Focus moves
+  to the step's heading on every step change. Create closes the modal and
+  opens the new object's page. List pages open their wizard with "New …"
+  and `?new=1` (closing drops it), and the old routes `/policies/new`,
+  `/lists/new`, `/groups/new`, `/zones/new` and `/upstreams/new` redirect
+  there, so bookmarks and links keep working; the word `new` is therefore
+  not a usable object name on those routes (the zone and upstream wizards
+  refuse it). A detail page opens a related wizard in place where that is
+  the natural next step, e.g. "New policy" on a group's page with the group
+  chosen. A wizard never opens another dialog (Astryx: no nested dialogs),
+  apart from the discard question. Editing an existing object happens on
+  its detail page, in inline sections with their own Save.
 - **Dialog (FormDialog)** only for short, single-purpose actions:
   confirmations, adding one source or entry, adding domains to allow/deny,
   cache flush, the blocking timer, password change, token creation,
   appearance, the record editor (a small typed form), zone file import and
   the block page preview. Nothing that scrolls more than one screen.
 - **Typed controls.** Never a free-text box for:
-  - a value from a closed set: `EnumSelect` (with the chosen option's help
-    under it) or, for a wizard's first choice, `ChoiceCards`;
+  - a value from a closed set: `SelectField`/`EnumSelect` (an Astryx
+    Selector, with the chosen option's help under it) or, for a wizard's
+    first choice, `ChoiceCards` (a RadioList);
   - a duration: `DurationField` (presets from the settings schema's
     `presets`, "Custom…" for anything else); TTLs and SOA timers in seconds:
     `SecondsField`;
   - a reference to another object: `ObjectRefPicker` or
     `UpstreamGroupSelect`;
-  - a boolean: `Switch`;
-  - a number with bounds: `NumberField` (native number input with min/max
-    and an inline range error); a size: `BytesField` (number and unit);
+  - a boolean: `Switch` / `SwitchField`, or `CheckboxField` in a form
+    that is saved as a whole;
+  - a number with bounds: `NumberField` (Astryx NumberInput, the range in
+    its help and an inline range error); a size: `BytesField` (number and
+    unit);
+  - a date and time: Astryx `DateTimeInput`; a time: `TimeInput`;
   - a list: `StringListField` (rows with add/remove, "Paste many", a
     per-row check); lists of objects and maps: the row editors of
     `ShapeField`.
 
   Free text stays for names, domains, URLs, addresses and CIDRs, each with
   format validation and an example (`fields/formats.ts`: ip, ipv4, ipv6,
-  cidr, hostport, url, domain, upstream, email).
+  cidr, hostport, url, domain, upstream, email), in `TextField` /
+  `TextAreaField`.
+- **Astryx controls only, help under the control.** Every control is an
+  Astryx component through the wrappers of `components/fields/`; no raw
+  `<select>`, `<input>` or `<textarea>` (an ESLint rule rejects them, and
+  `description` on the Astryx inputs, outside `components/fields/`).
+  A field reads label, control, helper text, then the status message:
+  Astryx's `description` renders between label and control, so the
+  wrappers take `help` instead, render it as supporting `Text` after the
+  control and link it with `aria-describedby` (`fields/FieldHelp.tsx`;
+  Switch and CheckboxInput keep their own description, which sits beside
+  the control). Labels stay on one line so a row of fields lines up on its
+  controls.
 - **Settings are rendered from the schema** (contract C1): GET
   `/settings/_schema` gives each key its control (enum, min/max, presets,
   format, ref, items/keys/values/fields shapes), its section (`group`, in
   the order of `config.Groups`) and its label (the path is shown small
-  underneath). Raw JSON is only the "Edit as JSON" escape hatch of list and
+  underneath). Each row is 60% explanation (label, path, help, badges)
+  and 40% value (the control, then the default or Save, Reset and Edit as
+  JSON), one column under 900px; every row has help, the server's or, when
+  it is missing or a few words, a sentence about the value's type from the
+  shape. Raw JSON is only the "Edit as JSON" escape hatch of list and
   map keys. A key that differs from its default shows "changed" and offers
   "Reset to default" (`null` in the merge patch). A 400 names the failing
   parts of a value inline (`error.fields`). Keys without metadata (servers

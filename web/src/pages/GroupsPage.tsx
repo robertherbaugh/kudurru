@@ -7,6 +7,7 @@
 import type { ClientGroup } from '../api/types';
 import { describeMatcher } from '../components/fields/MatchersField';
 import { ObjectsPage } from '../components/ObjectsPage';
+import { GroupWizardDialog } from '../components/wizards/GroupWizard';
 import { formatExact } from '../lib/format';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { objectHref, policiesOfGroup, refOfObject } from '../lib/policies';
@@ -21,7 +22,7 @@ export default function GroupsPage() {
       description='Client groups match devices by IP address, CIDR range, client ID or MAC address. Clients no other group claims fall into "default".'
       schema={SCHEMAS.clientgroups}
       detailPath={(g) => objectHref('groups', refOfObject(g))}
-      createPath="/groups/new"
+      wizard={GroupWizardDialog}
       columns={[
         {
           header: 'Members',
