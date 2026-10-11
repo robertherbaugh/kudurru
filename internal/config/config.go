@@ -26,6 +26,7 @@ type Config struct {
 	Node      Node      `koanf:"node" json:"node"`
 	Listeners Listeners `koanf:"listeners" json:"listeners"`
 	Upstreams Upstreams `koanf:"upstreams" json:"upstreams"`
+	Cache     Cache     `koanf:"cache" json:"cache"`
 	Log       Log       `koanf:"log" json:"log"`
 
 	// EnvLocked lists the key paths that came from the environment.
@@ -93,6 +94,49 @@ type Upstreams struct {
 	Groups      map[string]UpstreamGroup `koanf:"groups" json:"groups"`
 	Bootstrap   []string                 `koanf:"bootstrap" json:"bootstrap"`
 	Conditional map[string]string        `koanf:"conditional" json:"conditional"`
+	ECS         ECS                      `koanf:"ecs" json:"ecs"`
+}
+
+// ECS configures EDNS Client Subnet (RFC 7871) on upstream queries.
+type ECS struct {
+	// Mode is strip (default; never send a client subnet), forward (pass
+	// the client's own ECS option, truncated to the prefix limits) or add
+	// (forward the client's option, else derive one from a public client
+	// address).
+	Mode       string `koanf:"mode" json:"mode"`
+	IPv4Prefix int    `koanf:"ipv4Prefix" json:"ipv4Prefix"`
+	IPv6Prefix int    `koanf:"ipv6Prefix" json:"ipv6Prefix"`
+}
+
+// Cache configures the response cache (docs/architecture.md §3.3).
+type Cache struct {
+	// MaxEntries bounds the cache; 0 disables it.
+	MaxEntries  int             `koanf:"maxEntries" json:"maxEntries"`
+	MinTTL      Duration        `koanf:"minTTL" json:"minTTL"`
+	MaxTTL      Duration        `koanf:"maxTTL" json:"maxTTL"`
+	NegativeTTL Duration        `koanf:"negativeTTL" json:"negativeTTL"`
+	Prefetch    CachePrefetch   `koanf:"prefetch" json:"prefetch"`
+	ServeStale  CacheServeStale `koanf:"serveStale" json:"serveStale"`
+}
+
+// CachePrefetch refreshes hot entries before they expire.
+type CachePrefetch struct {
+	// Threshold is the number of hits within Window that makes an entry
+	// hot; 0 disables prefetching.
+	Threshold int      `koanf:"threshold" json:"threshold"`
+	Window    Duration `koanf:"window" json:"window"`
+}
+
+// CacheServeStale is RFC 8767 serve-stale.
+type CacheServeStale struct {
+	// TTL is how long past expiry an entry may still be served; 0 disables
+	// serve-stale.
+	TTL Duration `koanf:"ttl" json:"ttl"`
+	// AnswerTTL is the TTL put on stale answers.
+	AnswerTTL Duration `koanf:"answerTTL" json:"answerTTL"`
+	// MaxWait is how long a query for a stale entry waits for the refresh
+	// before the stale answer is sent.
+	MaxWait Duration `koanf:"maxWait" json:"maxWait"`
 }
 
 // UpstreamGroup is a named set of servers with a strategy.
@@ -201,6 +245,18 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("upstreams.groups.%s: unknown strategy %q", name, g.Strategy))
 		}
 	}
+	switch c.Upstreams.ECS.Mode {
+	case "", "strip", "forward", "add":
+	default:
+		errs = append(errs, fmt.Errorf("upstreams.ecs.mode: unknown mode %q (strip, forward, add)", c.Upstreams.ECS.Mode))
+	}
+	if p := c.Upstreams.ECS.IPv4Prefix; p < 0 || p > 32 {
+		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv4Prefix: %d is outside 0-32", p))
+	}
+	if p := c.Upstreams.ECS.IPv6Prefix; p < 0 || p > 128 {
+		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv6Prefix: %d is outside 0-128", p))
+	}
+	errs = append(errs, c.Cache.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
@@ -212,6 +268,33 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("log.level: unknown level %q", c.Log.Level))
 	}
 	return errors.Join(errs...)
+}
+
+// validate checks the cache bounds.
+func (c *Cache) validate() []error {
+	var errs []error
+	if c.MaxEntries < 0 {
+		errs = append(errs, fmt.Errorf("cache.maxEntries: %d is negative", c.MaxEntries))
+	}
+	for _, d := range []struct {
+		key string
+		v   Duration
+	}{
+		{"cache.minTTL", c.MinTTL}, {"cache.maxTTL", c.MaxTTL}, {"cache.negativeTTL", c.NegativeTTL},
+		{"cache.prefetch.window", c.Prefetch.Window}, {"cache.serveStale.ttl", c.ServeStale.TTL},
+		{"cache.serveStale.answerTTL", c.ServeStale.AnswerTTL}, {"cache.serveStale.maxWait", c.ServeStale.MaxWait},
+	} {
+		if d.v < 0 {
+			errs = append(errs, fmt.Errorf("%s: %s is negative", d.key, d.v))
+		}
+	}
+	if c.MaxTTL > 0 && c.MinTTL > c.MaxTTL {
+		errs = append(errs, fmt.Errorf("cache.minTTL (%s) exceeds cache.maxTTL (%s)", c.MinTTL, c.MaxTTL))
+	}
+	if c.Prefetch.Threshold < 0 {
+		errs = append(errs, fmt.Errorf("cache.prefetch.threshold: %d is negative", c.Prefetch.Threshold))
+	}
+	return errs
 }
 
 // validateTLS checks the dot, doh, doq and doh3 listener lists.

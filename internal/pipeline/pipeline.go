@@ -87,6 +87,8 @@ type Request struct {
 	// to this group when it is non-empty and to its default group
 	// otherwise. It is a group name from the Kudurru settings, never an
 	// address, and is recorded in Response.Upstream by the upstream stage.
+	// It takes precedence over the conditional-forwarding map, and answers
+	// forwarded on its behalf are never cached.
 	UpstreamGroup string
 }
 
