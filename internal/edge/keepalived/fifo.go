@@ -226,14 +226,16 @@ func (c *Consumer) Run(ctx context.Context, r io.Reader) error {
 	return sc.Err()
 }
 
-// ConsumeFIFO opens the FIFO at path and consumes it, re-opening after
-// every EOF (keepalived reopens the FIFO on reload), until ctx ends.
+// ConsumeFIFO opens the FIFO at path and consumes it until ctx ends. The
+// FIFO is opened read-write (Linux): the open never blocks waiting for
+// keepalived, and the reader never sees EOF when keepalived closes and
+// reopens its end on reload. Read errors re-open the FIFO.
 func (c *Consumer) ConsumeFIFO(ctx context.Context, path string) error {
 	if err := c.Reset(); err != nil {
 		return err
 	}
 	for ctx.Err() == nil {
-		f, err := os.Open(path) //nolint:gosec // keepalived passes the FIFO path
+		f, err := os.OpenFile(path, os.O_RDWR, 0) //nolint:gosec // keepalived passes the FIFO path
 		if err != nil {
 			c.Log.Warn("open notify FIFO", "path", path, "err", err)
 			select {
