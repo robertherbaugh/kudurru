@@ -1,6 +1,7 @@
 package zone
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strconv"
@@ -175,7 +176,10 @@ func ParseTarget(owner string, rrtype uint16, ttl uint32, target string) (dns.RR
 
 // checkRdata rejects records that parse but cannot be served: empty rdata
 // (miekg accepts "A" with nothing after it), root targets where the type
-// needs a host, and anything that does not pack.
+// needs a host, anything that does not pack, and anything whose
+// presentation form does not parse back (RFC 3597 `\# 2 0000` for LP
+// unpacks to an LP with no name, which prints as "0 " and breaks
+// ExportBIND).
 func checkRdata(rr dns.RR) error {
 	c := dns.Copy(rr)
 	buf := make([]byte, dns.Len(c)+64)
@@ -185,6 +189,9 @@ func checkRdata(rr dns.RR) error {
 	}
 	if _, _, err := dns.UnpackRR(buf[:off], 0); err != nil {
 		return fmt.Errorf("invalid rdata: %v", err)
+	}
+	if back, err := dns.NewRR(c.String()); err != nil || back == nil || !samePacked(back, buf[:off]) {
+		return fmt.Errorf("invalid rdata: no presentation form that parses back")
 	}
 	if c.Header().Rdlength == 0 {
 		if _, unknown := rr.(*dns.RFC3597); !unknown {
@@ -210,6 +217,13 @@ func checkRdata(rr dns.RR) error {
 		}
 	}
 	return nil
+}
+
+// samePacked reports whether rr packs to exactly wire (uncompressed).
+func samePacked(rr dns.RR, wire []byte) bool {
+	buf := make([]byte, dns.Len(rr)+64)
+	off, err := dns.PackRR(rr, buf, 0, nil, false)
+	return err == nil && bytes.Equal(buf[:off], wire)
 }
 
 // quoteTXT turns a raw string into one presentation-format character

@@ -87,6 +87,8 @@ func TestParseEndpoint(t *testing.T) {
 			errs: []string{"spec.endpoints[3].targets[0]"}},
 		{name: "rfc3597-wrong-length", ep: ep("a.home.example.com", "TYPE1", `\# 3 0a0000`),
 			errs: []string{"spec.endpoints[3].targets[0]"}},
+		{name: "rfc3597-no-presentation-form", ep: ep("a.home.example.com", "TYPE107", `\# 2 0000`),
+			errs: []string{"spec.endpoints[3].targets[0]: Invalid value: \"\\\\# 2 0000\": invalid rdata: no presentation form that parses back"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := tc.ep
