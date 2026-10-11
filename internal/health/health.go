@@ -125,7 +125,15 @@ func (c *Checker) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		ok, bad := c.Ready()
 		c.mu.RLock()
-		body := map[string]any{"status": map[bool]string{true: "ready", false: "not-ready"}[ok], "unready": bad, "components": c.components}
+		components := make(map[string]Component, len(c.components)+len(c.funcs))
+		for name, comp := range c.components {
+			components[name] = comp
+		}
+		for name, fn := range c.funcs {
+			fok, unready := fn()
+			components[name] = Component{Ready: fok, Message: join(unready), Since: c.lastLive}
+		}
+		body := map[string]any{"status": map[bool]string{true: "ready", false: "not-ready"}[ok], "unready": bad, "components": components}
 		for k, v := range c.info {
 			body[k] = v
 		}
