@@ -377,6 +377,12 @@ func (s *Server) upsertZoneRecord(ctx context.Context, in *upsertRecordInput) (*
 		return nil, errInvalid("body: dnsName and recordType are required")
 	}
 	ep.RecordType = strings.ToUpper(ep.RecordType)
+	// Endpoint names are absolute (external-dns style, no trailing dot);
+	// the API also accepts names relative to the zone and "@".
+	ep.DNSName = absName(ep.DNSName, z.Spec.ZoneName)
+	if ep.DNSName == "" {
+		ep.DNSName = "@"
+	}
 	name := in.RecordSet
 	if name == "" {
 		name = "api-" + z.Name

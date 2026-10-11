@@ -63,7 +63,7 @@ func TestZoneRecords(t *testing.T) {
 	for _, it := range list.Items {
 		got[it.RecordType+" "+it.DNSName] = strings.Join(it.Targets, ",") + "@" + it.RecordSet
 	}
-	if got["A www.example.com."] != "192.0.2.2@default/api-example" || got["A mail.example.com"] != "192.0.2.9@default/filed" {
+	if got["A www.example.com"] != "192.0.2.2@default/api-example" || got["A mail.example.com"] != "192.0.2.9@default/filed" {
 		t.Fatalf("records %v", got)
 	}
 
