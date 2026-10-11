@@ -279,6 +279,25 @@ func (s *SnapshotStore) Write(ctx context.Context, snap *Snapshot) error {
 	return nil
 }
 
+// Touch records that the stored snapshot is still current at writtenAt
+// without rewriting its objects: zonecache calls it while the live set is
+// unchanged, so Snapshot.Age measures time since the set was last known
+// current. It returns ErrNoSnapshot when nothing has been written yet.
+func (s *SnapshotStore) Touch(ctx context.Context, writtenAt time.Time) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE kube_snapshot SET written_at_ns = ? WHERE id = 1`, writtenAt.UnixNano())
+	if err != nil {
+		return fmt.Errorf("localdb: touch: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("localdb: touch: %w", err)
+	}
+	if n == 0 {
+		return ErrNoSnapshot
+	}
+	return nil
+}
+
 // Load reads the stored snapshot, or returns ErrNoSnapshot. Objects come
 // back sorted by kind, namespace and name.
 func (s *SnapshotStore) Load(ctx context.Context) (*Snapshot, error) {
