@@ -51,6 +51,9 @@ func ScopeString(s rbac.Scope) string {
 func Authorize(ctx context.Context, az rbac.Authorizer, a rbac.Attributes) (rbac.Decision, *Error) {
 	p, ok := PrincipalFrom(ctx)
 	if !ok {
+		if e := CSRFFailure(ctx); e != nil {
+			return rbac.Decision{Path: rbac.PathNone}, e
+		}
 		return rbac.Decision{Path: rbac.PathNone}, &Error{Status: http.StatusUnauthorized, Key: "unauthenticated", Message: "authentication required",
 			Hint: "log in, or send Authorization: Bearer <token>"}
 	}
@@ -94,6 +97,10 @@ func Require(az rbac.Authorizer, attrs func(*http.Request) rbac.Attributes, next
 func RequireAuthenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := PrincipalFrom(r.Context()); !ok {
+			if e := CSRFFailure(r.Context()); e != nil {
+				WriteError(w, r, e)
+				return
+			}
 			WriteError(w, r, &Error{Status: http.StatusUnauthorized, Key: "unauthenticated", Message: "authentication required"})
 			return
 		}

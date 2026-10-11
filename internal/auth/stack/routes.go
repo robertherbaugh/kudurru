@@ -234,6 +234,10 @@ func (s *Stack) issueSession(w http.ResponseWriter, r *http.Request, p auth.Prin
 }
 
 func (s *Stack) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if e := auth.CSRFFailure(r.Context()); e != nil {
+		writeErr(w, r, e) // no logout CSRF
+		return
+	}
 	s.cookie.Clear(w, r)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)

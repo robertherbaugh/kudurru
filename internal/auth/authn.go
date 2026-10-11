@@ -123,6 +123,8 @@ func TookMS(r *http.Request) int64 {
 // and otherwise the principal and the request to continue with (which may
 // carry extra context, such as the cookie session, and may have written
 // headers such as a re-sealed Set-Cookie on w). A nil request means r.
+// With ErrNoCredentials a step may still return a request whose context
+// carries a note for later steps and handlers (WithCSRFFailure).
 type Authenticator interface {
 	Authenticate(w http.ResponseWriter, r *http.Request) (Principal, *http.Request, error)
 }
@@ -180,6 +182,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			for _, step := range opts.Steps {
 				p, r2, err := step.Authenticate(w, r)
 				if errors.Is(err, ErrNoCredentials) {
+					if r2 != nil {
+						r = r2 // the step left a note in the context (CSRFFailure)
+					}
 					continue
 				}
 				if err != nil {
@@ -237,6 +242,25 @@ func IsSafeMethod(m string) bool {
 
 // defaultCOP is the cross-origin protection CSRF applies.
 var defaultCOP = http.NewCrossOriginProtection()
+
+type csrfCtxKey struct{}
+
+// WithCSRFFailure records that the request carried a valid session cookie
+// but failed the CSRF check of an unsafe method. The cookie step then
+// drops the session instead of failing the request, so a cross-site
+// request runs anonymous (public routes such as POST /auth/login keep
+// working while a stale session cookie is present) and every route that
+// needs a principal answers with this 403 instead of a bare 401
+// (Authorize, RequireAuthenticated).
+func WithCSRFFailure(ctx context.Context, e *Error) context.Context {
+	return context.WithValue(ctx, csrfCtxKey{}, e)
+}
+
+// CSRFFailure returns the error recorded by WithCSRFFailure, or nil.
+func CSRFFailure(ctx context.Context) *Error {
+	e, _ := ctx.Value(csrfCtxKey{}).(*Error)
+	return e
+}
 
 // CSRF checks a request authenticated by the session cookie (§8.2): unsafe
 // methods must pass Go's CrossOriginProtection (Sec-Fetch-Site / Origin)

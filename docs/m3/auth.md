@@ -55,7 +55,7 @@ Narrower rows replace them; see [Follow-ups](#follow-ups).
    - an exact issuer match goes to that OIDC provider (`VerifyJWT`);
    - the cluster's service-account issuer goes to `k8s.Authenticator` (JWKS);
    - any other issuer goes to `k8s.Fallback()`, which asks TokenReview only while discovery is failing and otherwise rejects.
-3. **session cookie** (`session.Authenticator`): CrossOriginProtection and `X-Kudurru-CSRF` on unsafe methods; the idle timeout slides; `Grants` = roles snapshot and `GrantsIssuedAt` = iat.
+3. **session cookie** (`session.Authenticator`): CrossOriginProtection and `X-Kudurru-CSRF` on unsafe methods; the idle timeout slides; `Grants` = roles snapshot and `GrantsIssuedAt` = iat. On a CSRF failure the session is **dropped, not failed**: the failure is recorded with `auth.WithCSRFFailure`, and the chain goes on. Routes that need a principal then answer 403 `csrf` (`Authorize`, `RequireAuthenticated`), logout refuses, and public routes such as login run anonymous.
 4. **unix peer** (`auth.UnixPeer`): connections that carry SO_PEERCRED from uid 0, the server uid or the configured gid become `LocalRoot`, the builtin admin.
 5. **internal token** (`auth.InternalToken`, `internalapi.Credentials.ValidToken`): a `Node` principal with the implicit grants viewer and auditor.
 
@@ -248,6 +248,7 @@ make test-auth-e2e
 - **`api/internal/v1alpha1` cannot work.** Go's internal-package rule makes it importable only from `api/...`, so `internal/rbac` and the auth packages could not use it. The kinds live in `api/internalkinds/v1alpha1` (same group version, still never CRDs).
 - **The kube driver's internal kinds failed with the production scheme.** `internalkinds.NewScheme()` holds only kudurru.io, and listing Secrets needs core/v1. The driver's own tests used a test scheme that already had core/v1. The new end-to-end test on the kube store caught it, and the driver now adds core/v1 itself (`TestEnvtestInternalKindsProductionScheme`).
 - **A session issued right after a password change was born revoked.** sessionsValidAfter and iat both have one-second resolution, and the rule is `iat > validAfter`. The login and password routes now place iat one second after the user's sessionsValidAfter.
+- **Failing a cookie request on CSRF made re-login impossible.** A POST /auth/login from a browser that still held a valid session cookie but sent no CSRF header (the login page) was a 403. The cookie step now drops the session and records the failure: protected routes still answer 403 csrf, logout refuses, and login works.
 - **objcache could regress.** A read-your-writes `Upsert` racing the watch event for a newer version replaced it, and nothing would ever correct it. Resource versions now compare numerically (every driver issues increasing integers) and an older version never replaces a newer one.
 - **The chart Role is missing `delete` on secrets.** It is needed for token revocation and user/RoleBinding deletion on the kube driver. §5.3 also lists only get/list/watch/create/update. Recorded as a follow-up for the chart owner.
 - **SubjectAccessReview for zone-scoped requests** names the zone as the resource name (`dnsrecordsets` with `resourceNames: [home]`), which is how a Kubernetes zone-admin is expressed. It works against a real apiserver (envtest).

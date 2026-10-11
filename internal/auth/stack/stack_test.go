@@ -325,6 +325,14 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 			t.Fatalf("scope escalation: %d %s", r.code, r.raw)
 		}
 
+		// A stale session cookie without CSRF does not block a new login,
+		// and a cross-site logout is refused.
+		if r := e.do(http.MethodPost, "/api/v1/auth/login", LoginRequest{Username: "admin", Password: "admin-password-1"}, withCookie(cookie)); r.code != 200 {
+			t.Fatalf("login while holding a session: %d %s", r.code, r.raw)
+		}
+		if r := e.do(http.MethodPost, "/api/v1/auth/logout", nil, withCookie(cookie)); r.code != 403 || r.errKey() != "csrf" {
+			t.Fatalf("logout without CSRF: %d %s", r.code, r.raw)
+		}
 		// Logout clears the cookie.
 		lo := e.do(http.MethodPost, "/api/v1/auth/logout", nil, withCookie(cookie), withHeader(auth.CSRFHeader, csrf))
 		if lo.code != 204 || lo.cookie == nil || lo.cookie.MaxAge >= 0 {

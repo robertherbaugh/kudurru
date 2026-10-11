@@ -46,12 +46,16 @@ func TestAuthenticateStep(t *testing.T) {
 		t.Fatalf("bearer request: %v", err)
 	}
 
-	// Unsafe method: CSRF header required (403, contract body via auth.Error).
+	// Unsafe method without the CSRF header: the session is not used and
+	// the failure is recorded for Authorize (403 csrf).
 	post := httptest.NewRequest(http.MethodPost, "/api/v1/zones", nil)
 	post.AddCookie(ck)
-	_, _, err = f.authn.Authenticate(httptest.NewRecorder(), post)
-	if ae := auth.AsError(err); ae.Status != http.StatusForbidden || ae.Key != "csrf" {
+	_, pr, err := f.authn.Authenticate(httptest.NewRecorder(), post)
+	if !errors.Is(err, auth.ErrNoCredentials) || pr == nil {
 		t.Fatalf("POST without CSRF: %v", err)
+	}
+	if ae := auth.CSRFFailure(pr.Context()); ae == nil || ae.Status != http.StatusForbidden || ae.Key != "csrf" {
+		t.Fatalf("CSRF failure not recorded: %+v", ae)
 	}
 	post.Header.Set(auth.CSRFHeader, s.CSRF)
 	if _, _, err := f.authn.Authenticate(httptest.NewRecorder(), post); err != nil {
