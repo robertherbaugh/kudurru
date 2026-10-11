@@ -1361,6 +1361,10 @@
           "csrf": {
             "type": "string"
           },
+          "mustChangePassword": {
+            "description": "The local user must change the password (POST /auth/password) before using the API.",
+            "type": "boolean"
+          },
           "permissions": {
             "additionalProperties": {
               "items": {
@@ -1375,6 +1379,7 @@
             "$ref": "#/components/schemas/MePrincipal"
           },
           "roles": {
+            "description": "Effective grants: role, or role@kind:name for scoped grants.",
             "items": {
               "type": "string"
             },

@@ -350,7 +350,8 @@ func TestMustChangePasswordFlow(t *testing.T) {
 	if r := e.do(http.MethodGet, "/api/v1/zones", nil, withCookie(old)); r.code != 403 || r.errKey() != "password_change_required" {
 		t.Fatalf("before change: %d %s", r.code, r.raw)
 	}
-	if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, withCookie(old)); r.code != 200 || r.body["mustChangePassword"] != true {
+	if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, withCookie(old)); r.code != 200 || r.body["mustChangePassword"] != true ||
+		len(r.body["permissions"].(map[string]any)) != 0 {
 		t.Fatalf("me before change: %d %s", r.code, r.raw)
 	}
 	if r := e.do(http.MethodPost, "/api/v1/auth/password", PasswordRequest{CurrentPassword: "wrong", NewPassword: "bob-password-2"}, withCookie(old), withHeader(auth.CSRFHeader, csrf)); r.code != 403 {

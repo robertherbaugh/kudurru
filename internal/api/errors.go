@@ -38,6 +38,9 @@ const (
 	KeyInternal        = "internal"
 	KeyNotAcceptable   = "not_acceptable"
 	KeyMethod          = "method_not_allowed"
+	// KeyPasswordChange is the 403 of a local user who must change the
+	// password first (auth.Authorize answers the same key).
+	KeyPasswordChange = "password_change_required"
 )
 
 // Missing names the permission a 403 lacked, so the UI can explain it.

@@ -327,6 +327,10 @@ func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResp
 		resp.Roles = append(resp.Roles, g.String())
 	}
 	slices.Sort(resp.Roles)
+	if p.MustChangePassword {
+		// Authorize answers 403 password_change_required everywhere else.
+		return resp
+	}
 	ctx := r.Context()
 	rp := auth.RBACPrincipal(p)
 	matrix := func(scope rbac.Scope) map[string][]string {

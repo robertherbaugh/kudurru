@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
@@ -287,6 +288,40 @@ func TestMeWithBearerRoles(t *testing.T) {
 	h.do(http.MethodGet, "/api/v1/auth/me", "admin", nil).want(http.StatusOK).json(&me)
 	if len(me.Permissions) != 22 {
 		t.Fatalf("admin permissions %d: %v", len(me.Permissions), me.Permissions)
+	}
+}
+
+// A local user's cookie session has no roles snapshot: /auth/me answers
+// the live grants of Options.Roles, as the login answer does.
+func TestMeCookieSessionLiveRoles(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Roles = func(_ context.Context, p auth.Principal) []string { return []string{"admin"} }
+	})
+	r := h.req(http.MethodGet, "/api/v1/auth/me", "", nil)
+	r.AddCookie(&http.Cookie{Name: apitest.CookieName, Value: "admin"})
+	var me Me
+	h.serve(r).want(http.StatusOK).json(&me)
+	if len(me.Roles) != 1 || me.Roles[0] != "admin" || me.CSRF != apitest.CSRFToken || me.MustChangePassword {
+		t.Fatalf("me %+v", me)
+	}
+}
+
+func TestMeMustChangePassword(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Authenticate = func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				p := auth.Principal{Kind: auth.KindUser, ID: "admin", Name: "admin", AuthMethod: "cookie", MustChangePassword: true}
+				next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), p)))
+			})
+		}
+	})
+	var me Me
+	h.do(http.MethodGet, "/api/v1/auth/me", "", nil).want(http.StatusOK).json(&me)
+	if !me.MustChangePassword || len(me.Permissions) != 0 {
+		t.Fatalf("me %+v", me)
+	}
+	if r := h.do(http.MethodGet, "/api/v1/zones", "", nil).want(http.StatusForbidden); r.errKey() != "password_change_required" {
+		t.Fatalf("zones: %s", r.Body.String())
 	}
 }
 

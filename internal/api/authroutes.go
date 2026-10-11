@@ -61,14 +61,19 @@ type (
 // Me is GET /auth/me.
 type Me struct {
 	Principal MePrincipal `json:"principal"`
-	// Roles are the principal's grants: role, or role@kind:name for
-	// scoped grants (the session's roles snapshot, or Options.Roles).
-	Roles []string `json:"roles" nullable:"false"`
+	// Roles are the principal's effective grants: role, or role@kind:name
+	// for scoped grants (Options.Roles; without it the session's roles
+	// snapshot).
+	Roles []string `json:"roles" nullable:"false" doc:"Effective grants: role, or role@kind:name for scoped grants."`
 	// CSRF is the X-Kudurru-CSRF value of a cookie session.
 	CSRF string `json:"csrf,omitempty"`
 	// Permissions maps every resource to the verbs granted at cluster
 	// scope.
 	Permissions map[string][]string `json:"permissions"`
+	// MustChangePassword is set for a local user whose password was
+	// generated or reset: every route but /auth/* answers 403
+	// password_change_required until POST /auth/password.
+	MustChangePassword bool `json:"mustChangePassword,omitempty" doc:"The local user must change the password (POST /auth/password) before using the API."`
 	Took
 }
 
@@ -233,18 +238,31 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		return nil, errUnauthenticated()
 	}
 	out := &Me{
-		Principal:   MePrincipal{Kind: string(p.Kind), ID: p.ID, Name: p.Name, Groups: p.Groups, Auth: p.AuthMethod},
-		Roles:       []string{},
-		Permissions: map[string][]string{},
+		Principal:          MePrincipal{Kind: string(p.Kind), ID: p.ID, Name: p.Name, Groups: p.Groups, Auth: p.AuthMethod},
+		Roles:              []string{},
+		Permissions:        map[string][]string{},
+		MustChangePassword: p.MustChangePassword,
 	}
 	if out.Principal.Groups == nil {
 		out.Principal.Groups = []string{}
 	}
-	if sess, ok := auth.SessionFrom(ctx); ok {
+	sess, hasSession := auth.SessionFrom(ctx)
+	if hasSession {
 		out.CSRF = sess.CSRF
-		out.Roles = append(out.Roles, sess.RolesSnapshot...)
-	} else if s.opts.Roles != nil {
+	}
+	// A local user's session carries no roles snapshot (only OIDC sessions
+	// freeze their grants, D48), so the live grants are the answer for
+	// every principal; Options.Roles honours a snapshot while its bindings
+	// still provide it.
+	switch {
+	case s.opts.Roles != nil:
 		out.Roles = append(out.Roles, s.opts.Roles(ctx, p)...)
+	case hasSession:
+		out.Roles = append(out.Roles, sess.RolesSnapshot...)
+	}
+	if p.MustChangePassword {
+		// Every permission route answers 403 password_change_required.
+		return &meOutput{Body: out}, nil
 	}
 	for _, res := range s.perms.ResourceNames() {
 		for _, verb := range s.perms.Resources[res] {
