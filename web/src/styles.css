@@ -1,23 +1,86 @@
 /*
- * Dashboard layout and the one colour code (§10 principle 4).
+ * Dashboard layout, the brand palette and the one colour code (§10
+ * principle 4).
  *
- * Components come from Astryx (prebuilt CSS, D69); this file only lays
- * pages out and defines the semantic query classes every table, badge and
- * chart reads. Charts read the --q-* custom properties at draw time
- * (lib/colors.ts), so switching theme or mode recolours them.
+ * Components come from Astryx (prebuilt CSS, D69); this file lays pages
+ * out, lays the kudurru brand over the Neutral theme (the default
+ * "Kudurru" theme) and defines the semantic query classes every table,
+ * badge and chart reads. Charts read the --q-* custom properties at draw
+ * time (lib/colors.ts), so switching mode or contrast recolours them.
+ *
+ * Colour rules: hover and selection are translucent overlays
+ * (--color-overlay-hover/-pressed) drawn over whatever background the
+ * element has, never --color-tint-hover (a solid black/white that Astryx
+ * only mixes into other colours). Text on a surface uses text tokens
+ * (--color-text-*), never fill tokens.
  */
 
 :root {
-  --q-permitted: var(--color-success, #0d8626);
-  --q-cached: var(--color-data-categorical-blue, #2f6fde);
-  --q-blocked: var(--color-error, #e3193b);
-  --q-error: var(--color-warning, #e9af08);
-  --q-forwarded: var(--color-data-categorical-teal, #13a08b);
-  --q-authoritative: var(--color-data-categorical-purple, #7b4cd8);
-  --q-other: var(--color-data-neutral, #8a96a3);
+  /*
+   * Query status colours: kudurru's own, the same in every theme. The
+   * themes' --color-success/-error are fills (pastels in Y2K, greys in
+   * Stone) and unreadable as text on a card; these keep 4.5:1 as text on
+   * the white or near-black cards of every theme and stay apart from the
+   * brand's Clay (docs/brand/README.md).
+   */
+  --q-permitted: light-dark(#1d7a35, #6fd08a);
+  --q-cached: light-dark(#2459c7, #86aeff);
+  --q-blocked: light-dark(#c42b3a, #ff8a8a);
+  --q-error: light-dark(#8a5a00, #f2c14e);
+  --q-forwarded: light-dark(#0b7566, #5ccfbf);
+  --q-authoritative: light-dark(#6e45c8, #b79cff);
+  --q-other: light-dark(#5f6b76, #9aa5b1);
+  --k-hover: var(--color-overlay-hover, rgb(128 128 128 / 8%));
+  --k-selected: var(--color-overlay-pressed, rgb(128 128 128 / 16%));
+  --k-focus: var(--focus-outline-color, var(--color-accent));
   --k-gap: var(--spacing-4, 16px);
   --k-gap-sm: var(--spacing-2, 8px);
   --k-mono: var(--font-family-code, ui-monospace, monospace);
+}
+
+/*
+ * The Kudurru theme: docs/brand/tokens.css on top of Neutral. Ink #182522,
+ * Clay #b65c3a, Paper #f7f3ea, Stone #d9d1c2. Clay fills the primary
+ * actions (white on Clay 4.6:1); as text it is darkened (#9c4a2b, 5.1:1
+ * on the muted surface) or lightened on Ink (#e08a66, 5.2:1). Input
+ * borders keep 3:1 against their surface. Theme CSS sits in Astryx's
+ * cascade layers, so these unlayered declarations win on the same
+ * elements (<html> and the Theme wrapper both carry data-astryx-theme).
+ */
+:root[data-k-theme='kudurru'],
+:root[data-k-theme='kudurru'] [data-astryx-theme] {
+  --color-background-body: light-dark(#f7f3ea, #182522);
+  --color-background-card: light-dark(#ffffff, #1d2b28);
+  --color-background-popover: light-dark(#ffffff, #22312e);
+  --color-background-surface: light-dark(#f7f3ea, #182522);
+  --color-background-muted: light-dark(#efe9dc, #263632);
+  --color-background-gray: light-dark(#e6dfd1, #2b3b37);
+  --color-neutral: light-dark(#1825220f, #f7f3ea1a);
+  --color-overlay: light-dark(#18252280, #0b1110cc);
+  --color-overlay-hover: light-dark(#1825220d, #f7f3ea12);
+  --color-overlay-pressed: light-dark(#1825221a, #f7f3ea21);
+  --color-tint-hover: light-dark(#182522, #f7f3ea);
+  --color-accent: #b65c3a;
+  --color-accent-muted: light-dark(#f4e4dc, #b65c3a40);
+  --color-on-accent: #ffffff;
+  --color-text-primary: light-dark(#182522, #f7f3ea);
+  --color-text-secondary: light-dark(#4f5b57, #b3ab9d);
+  --color-text-disabled: light-dark(#8a918e, #66736f);
+  --color-text-accent: light-dark(#9c4a2b, #e08a66);
+  --color-icon-primary: light-dark(#182522, #f7f3ea);
+  --color-icon-secondary: light-dark(#5f6a66, #a39c8f);
+  --color-icon-accent: light-dark(#9c4a2b, #e08a66);
+  --color-border: light-dark(#d9d1c2, #f7f3ea1f);
+  --color-border-emphasized: light-dark(#9a9182, #6e7b77);
+  --color-skeleton: light-dark(#efe9dc, #2b3b37);
+  --color-syntax-background: light-dark(#ffffff, #131e1c);
+  --shadow-inset-hover: inset 0 0 0 2px #b65c3a4d;
+  --shadow-inset-selected: inset 0 0 0 2px #b65c3a80;
+  --font-family-body: var(--kudurru-font-sans);
+  --font-family-heading: var(--kudurru-font-sans);
+  --font-family-code: var(--kudurru-font-mono);
+  --kudurru-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --kudurru-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
 }
 
 /* High contrast overlay (Appearance → contrast "more"). */
@@ -29,6 +92,7 @@
 }
 :root[data-contrast='more'] .k-app {
   --color-border: currentColor;
+  --color-text-secondary: var(--color-text-primary);
 }
 
 html,
@@ -40,7 +104,15 @@ body,
 
 body {
   font-family: var(--font-family-body, system-ui, sans-serif);
+  background-color: var(--color-background-surface, Canvas);
+  color: var(--color-text-primary, CanvasText);
 }
+
+/* Plain links (the router's <Link>) instead of the browser's blue and
+ * purple; Astryx components style their own, and k-* classes that set a
+ * colour win over this zero-specificity rule. */
+a:where(:not([class*='astryx-'])) { color: var(--color-text-accent, inherit); }
+a:where(:not([class*='astryx-'])):focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; border-radius: 2px; }
 
 .q-permitted { color: var(--q-permitted); }
 .q-cached { color: var(--q-cached); }
@@ -97,6 +169,10 @@ body {
 .k-break { overflow-wrap: anywhere; }
 .k-right { text-align: end; }
 .k-small { font-size: var(--font-size-sm, 0.875rem); }
+/* Inline code follows the size of the sentence it sits in (the Astryx
+ * reset gives every <code> the body size, too big in small print). */
+:not(pre) > code { font-size: 0.92em; }
+.k-panel summary { font-size: var(--text-body-size, 0.875rem); cursor: pointer; }
 
 /* Stat tiles ------------------------------------------------------------ */
 
@@ -114,8 +190,8 @@ body {
   min-block-size: 96px;
   box-sizing: border-box;
 }
-.k-tile:hover { background: var(--color-tint-hover, var(--color-background-muted)); }
-.k-tile:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover)); }
+.k-tile:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
 .k-tile-label { font-size: var(--font-size-sm, 0.875rem); color: var(--color-text-secondary); }
 .k-tile-value { font-size: var(--font-size-3xl, 2rem); font-weight: var(--font-weight-semibold, 600); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .k-tile-foot { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
@@ -148,7 +224,7 @@ body {
 .k-bar {
   block-size: 6px;
   border-radius: 3px;
-  background: var(--color-background-muted);
+  background: var(--k-selected);
   overflow: hidden;
 }
 .k-bar > span { display: block; block-size: 100%; background: var(--k-bar-color, var(--q-permitted)); }
@@ -157,10 +233,10 @@ body {
 /* Simple tables (top lists, settings) ------------------------------------ */
 
 .k-table { inline-size: 100%; border-collapse: collapse; font-size: var(--font-size-sm, 0.875rem); }
-.k-table th, .k-table td { padding: 6px 8px; border-block-end: 1px solid var(--color-border); text-align: start; vertical-align: top; }
+.k-table th, .k-table td { padding: 6px 8px; border-block-end: 1px solid var(--color-border); text-align: start; vertical-align: middle; }
 .k-table th { font-weight: var(--font-weight-semibold, 600); color: var(--color-text-secondary); white-space: nowrap; }
 .k-table td.num, .k-table th.num { text-align: end; font-variant-numeric: tabular-nums; }
-.k-table tbody tr:hover { background: var(--color-tint-hover, transparent); }
+.k-table tbody tr:hover { background: var(--k-hover); }
 .k-table a { color: inherit; }
 .k-table-wrap { overflow-x: auto; }
 
@@ -188,11 +264,12 @@ body {
 }
 .k-log td { padding: 6px 8px; border-block-end: 1px solid var(--color-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .k-log tr.k-log-row { cursor: pointer; }
-.k-log tr.k-log-row:hover, .k-log tr.k-log-row:focus-visible { background: var(--color-tint-hover, var(--color-background-muted)); outline: none; }
-.k-log tr.k-log-row[aria-expanded='true'] { background: var(--color-background-muted); }
+.k-log tr.k-log-row:hover { background: var(--k-hover); }
+.k-log tr.k-log-row:focus-visible { background: var(--k-hover); outline: 2px solid var(--k-focus); outline-offset: -2px; }
+.k-log tr.k-log-row[aria-expanded='true'] { background: var(--k-selected); }
 .k-log tr.k-log-row.k-new { animation: k-flash 1.2s ease-out; }
-.k-log td.k-why { white-space: normal; background: var(--color-background-muted); }
-@keyframes k-flash { from { background: var(--color-accent-muted, rgba(0, 100, 224, 0.15)); } to { background: transparent; } }
+.k-log td.k-why { white-space: normal; background: var(--k-hover); }
+@keyframes k-flash { from { background: var(--color-accent-muted, rgb(0 100 224 / 15%)); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .k-log tr.k-log-row.k-new { animation: none; } }
 
 .k-why-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; padding: 4px 0; }
@@ -200,6 +277,8 @@ body {
 .k-why-grid dd { margin: 0; overflow-wrap: anywhere; }
 
 .k-filters { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: flex-end; }
+/* A search box in a toolbar row: room for its placeholder, shrinks on phones. */
+.k-search { inline-size: min(400px, calc(100vw - 2 * var(--k-gap))); }
 .k-filters > * { min-inline-size: 140px; }
 
 .k-suggest { position: relative; }
@@ -219,7 +298,8 @@ body {
   overflow: auto;
 }
 .k-suggest li { padding: 6px 10px; cursor: pointer; font-family: var(--k-mono); font-size: var(--font-size-sm, 0.875rem); }
-.k-suggest li[aria-selected='true'], .k-suggest li:hover { background: var(--color-tint-hover, var(--color-background-muted)); }
+.k-suggest li:hover { background: var(--k-hover); }
+.k-suggest li[aria-selected='true'] { background: var(--k-selected); }
 
 /* Sidebar status block --------------------------------------------------- */
 
@@ -233,35 +313,47 @@ body {
 .k-status-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .k-node-dots { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.k-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; text-decoration: none; color: inherit; }
-.k-brand img { inline-size: 24px; block-size: 24px; }
+/* Brand logo (components/BrandLogo.tsx) ------------------------------------
+ * The Ink-wordmark artwork on light surfaces, the Paper one on dark; the
+ * resolved scheme is <html data-theme> when the mode is set, else the OS.
+ * Sizes keep the brand minimums (logo 180 px wide, tagline logo 360 px)
+ * and the clear space built into the artwork. */
+
+.k-brand { display: inline-flex; align-items: center; text-decoration: none; color: inherit; border-radius: var(--radius-element, 8px); }
+.k-brand:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
+.k-logo { display: block; inline-size: 180px; block-size: 60px; margin-block: -12px; }
+.k-logo-tagline { display: block; inline-size: 360px; max-inline-size: 100%; block-size: auto; aspect-ratio: 360 / 150; margin-inline: auto; }
+.k-logo-on-dark { display: none; }
+:root[data-theme='dark'] .k-logo-on-light { display: none; }
+:root[data-theme='dark'] .k-logo-on-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .k-logo-on-light { display: none; }
+  :root:not([data-theme='light']) .k-logo-on-dark { display: block; }
+}
 
 /* Shell ------------------------------------------------------------------ */
 
 .k-app { min-block-size: 100dvh; }
-.k-brand-mark {
-  display: inline-block;
-  inline-size: 22px;
-  block-size: 22px;
-  border-radius: 6px;
-  background:
-    linear-gradient(135deg, transparent 46%, var(--color-background-card, #fff) 46% 54%, transparent 54%),
-    var(--color-accent, #7a5c2e);
-}
-.k-brand-lg { font-size: var(--font-size-xl, 1.25rem); }
+/* Astryx sets the selected nav item's colour only under forced colours, so
+ * the <a> fell back to the browser's link blue. */
+.astryx-side-nav-item.selected { color: var(--color-text-primary); }
 .k-topnav-title { font-weight: var(--font-weight-semibold, 600); }
 .k-account { gap: 4px; }
 .k-account-name { color: inherit; text-decoration: none; font-size: var(--font-size-sm, 0.875rem); }
 .k-account-name:hover { text-decoration: underline; }
 .k-badge-link { text-decoration: none; }
-.k-dialog-title { margin: 0; font-size: var(--font-size-xl, 1.25rem); }
+
+/* Dialogs (components/FormDialog.tsx): the frame fills the dialog so the
+ * Layout's content scrolls and its footer stays in view. */
+.k-dialog-frame { display: flex; flex-direction: column; flex: 1 1 auto; min-block-size: 0; }
+.k-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); justify-content: flex-end; align-items: center; }
 .k-h3 { margin: 0; font-size: var(--font-size-lg, 1.125rem); }
 .k-login-title { margin: 0; font-size: var(--font-size-2xl, 1.5rem); }
 .k-divider-text { margin: 0; text-align: center; color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
 
 .k-linklike {
   font: inherit;
-  color: var(--color-text-link, var(--color-accent));
+  color: var(--color-text-accent, inherit);
   background: none;
   border: 0;
   padding: 0;
@@ -270,7 +362,7 @@ body {
   font-weight: var(--font-weight-medium, 500);
 }
 .k-linklike:hover { text-decoration: underline; }
-.k-linklike:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 2px; }
+.k-linklike:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; border-radius: 2px; }
 
 .k-col-check { inline-size: 36px; }
 .k-col-bar { inline-size: 30%; min-inline-size: 80px; }
@@ -298,7 +390,7 @@ body {
 .k-array-entry[open] > summary { margin-block-end: 8px; }
 .k-checks, .k-messages, .k-link-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .k-messages p { margin: 4px 0; }
-.k-link-list { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
+.k-link-list { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; font-size: var(--text-body-size, 0.875rem); }
 
 /* Forms ------------------------------------------------------------------ */
 
@@ -311,16 +403,20 @@ body {
 .k-error-text { color: var(--q-blocked); font-size: var(--font-size-sm, 0.875rem); }
 .k-native-select {
   font: inherit;
-  padding: 6px 8px;
+  font-size: var(--text-body-size, 0.875rem);
+  padding: 4px 8px;
   border-radius: var(--radius-element, 8px);
   border: 1px solid var(--color-border-emphasized, var(--color-border));
   background: var(--color-background-surface, transparent);
   color: inherit;
-  min-block-size: var(--size-element-md, 36px);
+  min-block-size: var(--size-element-md, 32px);
 }
-.k-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-md, 0.9375rem); }
+/* Native controls match the Astryx field label and input text sizes. */
+.k-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label-size, 0.875rem); font-weight: var(--text-label-weight, 500); }
+.k-label > select, .k-label > input { font-weight: normal; }
 .k-native-input {
   font: inherit;
+  font-size: var(--text-body-size, 0.875rem);
   font-weight: normal;
   padding: 6px 8px;
   border-radius: var(--radius-element, 8px);
@@ -331,7 +427,7 @@ body {
   box-sizing: border-box;
   inline-size: 100%;
 }
-.k-native-input:focus-visible, .k-native-select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.k-native-input:focus-visible, .k-native-select:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 1px; }
 .k-native-input[aria-invalid='true'] { border-color: var(--q-blocked); }
 .k-native-input[readonly] { background: var(--color-background-muted); }
 .k-setting-key { font-weight: var(--font-weight-semibold, 600); overflow-wrap: anywhere; }
@@ -354,6 +450,7 @@ body {
 
 .k-login {
   min-block-size: 100vh;
+  background-color: var(--color-background-body);
   display: grid;
   place-items: center;
   padding: var(--k-gap);

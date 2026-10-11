@@ -8,15 +8,18 @@
 // - No inline scripts or styles end up in index.html (strict CSP,
 //   `default-src 'self'`): the module preload polyfill is off and every
 //   style is an emitted .css file.
+// - public/ (favicon, app icons, web manifest) is copied to the dist root
+//   under stable names, which web.Handler serves like any other file.
 // - `--mode mock` (bun run dev:mock) serves the MSW worker from mock-public/
-//   and answers /api/v1 from src/mocks; production builds never contain it.
+//   instead and answers /api/v1 from src/mocks; production builds never
+//   contain it (the mock dev server just goes without the tab icon).
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [react()],
-  publicDir: mode === 'mock' ? 'mock-public' : false,
+  publicDir: mode === 'mock' ? 'mock-public' : 'public',
   define: {
     'import.meta.env.KUDURRU_MOCK': JSON.stringify(mode === 'mock'),
   },
