@@ -39,7 +39,10 @@ var (
 	ErrInvalidCredentials = errors.New("users: invalid username or password")
 	ErrDisabled           = errors.New("users: account disabled")
 	ErrNotFound           = errors.New("users: no such user")
-	ErrNoPassword         = errors.New("users: account has no password")
+	// ErrCredentialPredatesAccount rejects a session or token issued before
+	// the account it names was created (a deleted account of the same name).
+	ErrCredentialPredatesAccount = errors.New("users: credential issued before the account was created")
+	ErrNoPassword                = errors.New("users: account has no password")
 )
 
 // LockedError is returned while a client IP or a username is locked out.
@@ -199,8 +202,14 @@ func (u *Users) LoadPrincipal(_ context.Context, p auth.Principal) (auth.Princip
 	if usr.Spec.Disabled {
 		return auth.Principal{}, auth.Unauthenticated(ErrDisabled)
 	}
+	// A credential issued before this account existed belongs to a deleted
+	// account of the same name (one-second resolution: session iat and
+	// creation timestamps are whole seconds).
+	if iat, created := p.CredentialIssuedAt, usr.CreationTimestamp.Time; !iat.IsZero() && !created.IsZero() && iat.Unix() < created.Unix() {
+		return auth.Principal{}, auth.Unauthenticated(ErrCredentialPredatesAccount)
+	}
 	live := Principal(usr)
-	live.AuthMethod, live.TokenID, live.Scopes = p.AuthMethod, p.TokenID, p.Scopes
+	live.AuthMethod, live.TokenID, live.Scopes, live.CredentialIssuedAt = p.AuthMethod, p.TokenID, p.Scopes, p.CredentialIssuedAt
 	return live, nil
 }
 

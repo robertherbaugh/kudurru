@@ -396,7 +396,7 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	if tok.Spec.ExpiresAt != nil && !now.Before(tok.Spec.ExpiresAt.Time) {
 		return auth.Principal{}, auth.Unauthenticated(errors.New("token expired"))
 	}
-	p := auth.Principal{AuthMethod: auth.MethodToken, TokenID: id, Scopes: slices.Clone(tok.Spec.Scopes)}
+	p := auth.Principal{AuthMethod: auth.MethodToken, TokenID: id, Scopes: slices.Clone(tok.Spec.Scopes), CredentialIssuedAt: tok.CreationTimestamp.Time}
 	owner := tok.Spec.Owner
 	switch owner.Kind {
 	case internalv1.OwnerUser:
