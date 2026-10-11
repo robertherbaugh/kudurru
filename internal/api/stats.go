@@ -142,6 +142,7 @@ type QueryParams struct {
 	Upstream    string `query:"upstream"`
 	List        string `query:"list"`
 	Zone        string `query:"zone"`
+	Policy      string `query:"policy" doc:"Deciding policy, namespace/name."`
 	Since       string `query:"since" doc:"RFC 3339, inclusive."`
 	Until       string `query:"until" doc:"RFC 3339, exclusive."`
 	Cursor      string `query:"cursor"`
@@ -158,7 +159,7 @@ type streamInput struct {
 }
 
 type suggestionsInput struct {
-	Field  string `query:"field" required:"true" enum:"domain,client,upstream,list,zone"`
+	Field  string `query:"field" required:"true" enum:"domain,client,upstream,list,zone,policy"`
 	Prefix string `query:"prefix"`
 	N      int    `query:"n" minimum:"0" maximum:"100"`
 }
@@ -488,7 +489,7 @@ func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOut
 func queryFilter(in QueryParams) (sqlitelog.QueryFilter, error) {
 	f := sqlitelog.QueryFilter{
 		Client: in.Client, Domain: in.Domain, StatusClass: pipeline.Class(in.StatusClass),
-		Upstream: in.Upstream, List: in.List, Zone: in.Zone, Cursor: in.Cursor, Limit: in.Limit,
+		Upstream: in.Upstream, List: in.List, Zone: in.Zone, Policy: in.Policy, Cursor: in.Cursor, Limit: in.Limit,
 	}
 	if in.Status != "" {
 		for _, p := range strings.Split(in.Status, ",") {
@@ -618,6 +619,7 @@ type streamFilter struct {
 	upstream    string
 	list        string
 	zone        string
+	policy      string
 }
 
 func newStreamFilter(in QueryParams) (*streamFilter, error) {
@@ -626,7 +628,7 @@ func newStreamFilter(in QueryParams) (*streamFilter, error) {
 		return nil, err
 	}
 	sf := &streamFilter{client: strings.ToLower(f.Client), domain: strings.ToLower(f.Domain), statusClass: f.StatusClass,
-		qtype: f.QType, upstream: f.Upstream, list: f.List, zone: f.Zone}
+		qtype: f.QType, upstream: f.Upstream, list: f.List, zone: f.Zone, policy: f.Policy}
 	if p, err := netip.ParsePrefix(f.Client); err == nil {
 		sf.clientNet = p.Masked()
 	}
@@ -671,7 +673,8 @@ func (f *streamFilter) match(ev *querylog.Event) bool {
 	case f.qtype != 0 && ev.QType != f.qtype,
 		f.upstream != "" && ev.Upstream != f.upstream,
 		f.list != "" && ev.List != f.list,
-		f.zone != "" && ev.Zone != f.zone:
+		f.zone != "" && ev.Zone != f.zone,
+		f.policy != "" && ev.Policy != f.policy:
 		return false
 	}
 	return true
@@ -685,7 +688,7 @@ func eventRow(ev *querylog.Event) StreamRow {
 		Domain: strings.TrimSuffix(ev.Name, "."), CNAME: ev.CNAME, QType: querylog.QTypeName(ev.QType), QClass: int(ev.QClass),
 		Status: ev.Status.String(), StatusClass: string(ev.Status.Class()), Rcode: querylog.RcodeName(ev.Rcode),
 		Reply:    sqlitelog.QueryReply{Type: ev.ReplyType.String(), Answer: ev.Answer},
-		Upstream: ev.Upstream, Zone: ev.Zone, List: ev.List, Rule: ev.Rule, DNSSEC: ev.DNSSEC.String(), Flags: ev.Flags,
+		Upstream: ev.Upstream, Zone: ev.Zone, List: ev.List, Rule: ev.Rule, Policy: ev.Policy, DNSSEC: ev.DNSSEC.String(), Flags: ev.Flags,
 	}
 	ms := float64(ev.Latency.Microseconds()) / 1000
 	row.Reply.TimeMS = &ms

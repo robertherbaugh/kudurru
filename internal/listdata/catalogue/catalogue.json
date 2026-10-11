@@ -6,6 +6,7 @@
   "services": [
     {
       "id": "youtube",
+      "icon": "youtube",
       "name": "YouTube",
       "category": "video",
       "rules": [
@@ -24,6 +25,7 @@
     },
     {
       "id": "tiktok",
+      "icon": "tiktok",
       "name": "TikTok",
       "category": "social",
       "rules": [
@@ -42,6 +44,7 @@
     },
     {
       "id": "facebook",
+      "icon": "facebook",
       "name": "Facebook",
       "category": "social",
       "rules": [
@@ -58,6 +61,7 @@
     },
     {
       "id": "instagram",
+      "icon": "instagram",
       "name": "Instagram",
       "category": "social",
       "rules": [
@@ -70,6 +74,7 @@
     },
     {
       "id": "threads",
+      "icon": "threads",
       "name": "Threads",
       "category": "social",
       "rules": [
@@ -80,6 +85,7 @@
     },
     {
       "id": "whatsapp",
+      "icon": "whatsapp",
       "name": "WhatsApp",
       "category": "messaging",
       "rules": [
@@ -91,6 +97,7 @@
     },
     {
       "id": "snapchat",
+      "icon": "snapchat",
       "name": "Snapchat",
       "category": "social",
       "rules": [
@@ -105,6 +112,7 @@
     },
     {
       "id": "twitter",
+      "icon": "x",
       "name": "X (Twitter)",
       "category": "social",
       "rules": [
@@ -117,6 +125,7 @@
     },
     {
       "id": "reddit",
+      "icon": "reddit",
       "name": "Reddit",
       "category": "social",
       "rules": [
@@ -129,6 +138,7 @@
     },
     {
       "id": "pinterest",
+      "icon": "pinterest",
       "name": "Pinterest",
       "category": "social",
       "rules": [
@@ -145,6 +155,7 @@
     },
     {
       "id": "tumblr",
+      "icon": "tumblr",
       "name": "Tumblr",
       "category": "social",
       "rules": [
@@ -155,6 +166,7 @@
     },
     {
       "id": "linkedin",
+      "icon": "linkedin",
       "name": "LinkedIn",
       "category": "social",
       "rules": [
@@ -189,6 +201,7 @@
     },
     {
       "id": "discord",
+      "icon": "discord",
       "name": "Discord",
       "category": "messaging",
       "rules": [
@@ -202,6 +215,7 @@
     },
     {
       "id": "telegram",
+      "icon": "telegram",
       "name": "Telegram",
       "category": "messaging",
       "rules": [
@@ -215,6 +229,7 @@
     },
     {
       "id": "signal",
+      "icon": "signal",
       "name": "Signal",
       "category": "messaging",
       "rules": [
@@ -228,6 +243,7 @@
     },
     {
       "id": "twitch",
+      "icon": "twitch",
       "name": "Twitch",
       "category": "video",
       "rules": [
@@ -242,6 +258,7 @@
     },
     {
       "id": "netflix",
+      "icon": "netflix",
       "name": "Netflix",
       "category": "video",
       "rules": [
@@ -257,6 +274,7 @@
     },
     {
       "id": "primevideo",
+      "icon": "prime-video",
       "name": "Amazon Prime Video",
       "category": "video",
       "rules": [
@@ -270,6 +288,7 @@
     },
     {
       "id": "disneyplus",
+      "icon": "disney-plus",
       "name": "Disney+",
       "category": "video",
       "rules": [
@@ -283,6 +302,7 @@
     },
     {
       "id": "hulu",
+      "icon": "hulu",
       "name": "Hulu",
       "category": "video",
       "rules": [
@@ -304,6 +324,7 @@
     },
     {
       "id": "spotify",
+      "icon": "spotify",
       "name": "Spotify",
       "category": "music",
       "rules": [
@@ -317,6 +338,7 @@
     },
     {
       "id": "steam",
+      "icon": "steam",
       "name": "Steam",
       "category": "gaming",
       "rules": [
@@ -333,6 +355,7 @@
     },
     {
       "id": "epicgames",
+      "icon": "epic-games",
       "name": "Epic Games",
       "category": "gaming",
       "rules": [
@@ -377,6 +400,7 @@
     },
     {
       "id": "riotgames",
+      "icon": "riot",
       "name": "Riot Games (League of Legends, Valorant)",
       "category": "gaming",
       "rules": [
@@ -389,6 +413,7 @@
     },
     {
       "id": "chatgpt",
+      "icon": "chatgpt",
       "name": "ChatGPT",
       "category": "ai",
       "rules": [
@@ -413,6 +438,7 @@
   "safeSearch": [
     {
       "id": "google",
+      "icon": "google",
       "name": "Google Search",
       "target": "forcesafesearch.google.com",
       "domains": [
@@ -608,6 +634,7 @@
     },
     {
       "id": "youtube",
+      "icon": "youtube",
       "name": "YouTube",
       "target": "restrict.youtube.com",
       "moderateTarget": "restrictmoderate.youtube.com",
@@ -622,6 +649,7 @@
     },
     {
       "id": "bing",
+      "icon": "bing",
       "name": "Bing",
       "target": "strict.bing.com",
       "domains": [
@@ -632,6 +660,7 @@
     },
     {
       "id": "duckduckgo",
+      "icon": "duckduckgo",
       "name": "DuckDuckGo",
       "target": "safe.duckduckgo.com",
       "domains": [
@@ -641,6 +670,7 @@
     },
     {
       "id": "brave",
+      "icon": "brave",
       "name": "Brave Search",
       "target": "forcesafe.search.brave.com",
       "domains": [
@@ -650,6 +680,7 @@
     },
     {
       "id": "yandex",
+      "icon": "yandex",
       "name": "Yandex",
       "addresses": [
         "213.180.193.56"

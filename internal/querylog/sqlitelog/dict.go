@@ -77,7 +77,7 @@ type dict struct {
 
 // dictionaries are the writer's id caches, used only under Writer.mu.
 type dictionaries struct {
-	domain, client, upstream, zone, list *dict
+	domain, client, upstream, zone, list, policy *dict
 }
 
 func prepareDicts(ctx context.Context, db *sql.DB, size int) (*dictionaries, error) {
@@ -123,11 +123,14 @@ func prepareDicts(ctx context.Context, db *sql.DB, size int) (*dictionaries, err
 	if ds.list, err = mk("dict_list", small, name("dict_list", "name"), ""); err != nil {
 		return nil, err
 	}
+	if ds.policy, err = mk("dict_policy", small, name("dict_policy", "name"), ""); err != nil {
+		return nil, err
+	}
 	return &ds, nil
 }
 
 func (ds *dictionaries) all() []*dict {
-	return []*dict{ds.domain, ds.client, ds.upstream, ds.zone, ds.list}
+	return []*dict{ds.domain, ds.client, ds.upstream, ds.zone, ds.list, ds.policy}
 }
 
 // purge drops every cached id; called after a rolled-back transaction whose

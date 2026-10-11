@@ -8,8 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 | Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
 | Schema version | 1 |
 | Catalogue version | `2026.10.11` |
-| SHA-256 | `792e46ea74a46b954a1173aaf9df97d26b8cb3461695ba101601a9020de84faf` |
-| Size | 16,772 bytes, 32 services, 7 safe-search engines |
+| SHA-256 | `a0812c026b7ee9ed0aa1ff26e08396665f468d68ea0f5fd4866ede29622e52cf` |
+| Size | 17,544 bytes, 32 services, 7 safe-search engines (31 entries name a logo, `icon`: see `icons/PROVENANCE.md`) |
 | Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |

@@ -41,6 +41,7 @@ Validation: response customIP requires the customIP block (`!has(self.response) 
 | `spec.sources[].configMapRef` | `object` | ObjectRef points at another kudurru object. Namespace is omitted for cluster-scoped kinds and for same-namespace references. |
 | `spec.sources[].configMapRef.name` | `string` | **Required.**<br>Length: at least 1 |
 | `spec.sources[].configMapRef.namespace` | `string` |  |
+| `spec.sources[].enabled` | `boolean` | Enabled false switches this one source off without removing it, like Pi-hole's per-adlist switch: it is not fetched and not compiled, its cached body and status digest are kept, and status.sources\[\] reports it with enabled: false. Omitted means true. The kudurru.io/enabled annotation switches the whole list off. |
 | `spec.sources[].format` | `string` | ListFormat is the syntax of a blocklist source.<br>Default: `auto`<br>One of: `auto`, `hosts`, `domains`, `adblock`, `regex` |
 | `spec.sources[].inline` | `[]string` |  |
 | `spec.sources[].name` | `string` |  |
@@ -61,6 +62,7 @@ BlockListStatus is the observed state of a block list.
 | `status.ruleCount` | `integer` |  |
 | `status.sources` | `[]object` |  |
 | `status.sources[].digest` | `string` | Digest is the sha256 of the fetched body; replicas pull by digest from the leader (decision D15). |
+| `status.sources[].enabled` | `boolean` | Enabled is false for a source switched off with spec.sources\[\].enabled and absent otherwise. A disabled source keeps the digest, etag, lastFetched and counts of its last fetch and reports no error; status.entries leaves it out. |
 | `status.sources[].entries` | `integer` |  |
 | `status.sources[].error` | `string` |  |
 | `status.sources[].etag` | `string` |  |

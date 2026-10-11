@@ -106,6 +106,9 @@ type Service struct {
 	// Source is where the entry comes from: a vendor documentation URL or
 	// "first-party domains of the service".
 	Source string `json:"source"`
+	// Icon optionally names the embedded logo (icons/<slug>.svg) when its
+	// slug differs from ID; IconSlug resolves it.
+	Icon string `json:"icon,omitempty"`
 }
 
 // Engine is one safe-search rewrite: the engine's host names are answered
@@ -125,6 +128,8 @@ type Engine struct {
 	// Domains are the exact host names that are rewritten.
 	Domains []string `json:"domains"`
 	Source  string   `json:"source"`
+	// Icon optionally names the embedded logo, as for Service.
+	Icon string `json:"icon,omitempty"`
 
 	addrs []netip.Addr
 }
@@ -224,6 +229,9 @@ func (c *Catalogue) validate() error {
 		if !idPattern.MatchString(s.Category) {
 			add("%s: category %q must match %s", where, s.Category, IDPattern)
 		}
+		if s.Icon != "" && !idPattern.MatchString(s.Icon) {
+			add("%s: icon %q must match %s", where, s.Icon, IDPattern)
+		}
 		if len(s.Rules) == 0 || len(s.Rules) > maxRules {
 			add("%s: %d rules; a service needs 1 to %d", where, len(s.Rules), maxRules)
 			continue
@@ -248,6 +256,9 @@ func (c *Catalogue) validate() error {
 			if err := checkText(f.name, f.v); err != nil {
 				add("%s: %v", where, err)
 			}
+		}
+		if e.Icon != "" && !idPattern.MatchString(e.Icon) {
+			add("%s: icon %q must match %s", where, e.Icon, IDPattern)
 		}
 		switch {
 		case e.Target == "" && len(e.Addresses) == 0:

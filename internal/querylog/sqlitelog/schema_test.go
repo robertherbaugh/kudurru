@@ -103,7 +103,7 @@ func TestMetaAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range map[string]string{metaSchemaVersion: "1", metaNodeID: "node-a", metaPrivacy: "full", metaFirstTS: strconv.FormatInt(t0.UnixMicro(), 10)} {
+	for k, v := range map[string]string{metaSchemaVersion: strconv.Itoa(SchemaVersion), metaNodeID: "node-a", metaPrivacy: "full", metaFirstTS: strconv.FormatInt(t0.UnixMicro(), 10)} {
 		if meta[k] != v {
 			t.Errorf("meta %s = %q, want %q", k, meta[k], v)
 		}

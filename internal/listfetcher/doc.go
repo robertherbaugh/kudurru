@@ -27,6 +27,14 @@
 //     hands the snapshot to zonecache.Cache.SetLists. Init strategies fast,
 //     blocking and failOnError follow blocky.
 //
+// A source with spec.sources[].enabled: false is skipped by both halves:
+// not downloaded, not compiled, and its cache entry is kept (still
+// referenced) so switching it back on needs no download. Its status entry
+// keeps the digest, etag, lastFetched and counts of its last fetch, carries
+// enabled: false and no error, and status.entries leaves it out. A list
+// whose every source is disabled compiles empty (loaded, 0 entries). The
+// kudurru.io/enabled annotation switches the whole list off instead.
+//
 // The list pipeline (conditional GET, sha256(url) disk cache, tee-to-temp
 // with atomic rename, retry and cooldown, maxErrorsPerSource,
 // keep-old-on-failure, bounded concurrency, init strategies) follows the

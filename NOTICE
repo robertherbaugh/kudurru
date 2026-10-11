@@ -173,6 +173,15 @@ Embedded data (compiled into the binary):
   from Google's published list of its search domains
   (https://www.google.com/supported_domains), a list of facts. Nothing is
   taken from AdGuard Home's GPL-3.0 blocked-services or safe-search tables.
+- Dashboard Icons (https://github.com/homarr-labs/dashboard-icons),
+  Apache-2.0, Copyright (c) 2024 Bjorn Lammers, Meier Lukas, Thomas Camlong
+  and Homarr Labs: the 40 SVG logos in internal/listdata/catalogue/icons
+  are svg/<slug>.svg at commit 104a791794ef, some optimised with svgo; the
+  licence text and a provenance file naming every file and its checksum are
+  in the same directory. The logos are trademarks of their respective
+  owners, used only to identify the service, search engine or DNS provider
+  they name; no endorsement is implied and the licence grants no trademark
+  rights.
 
 Test data (not compiled into the binary):
 

@@ -17,6 +17,11 @@ async function waitBlocked(api: Api, name: string, client: string, blocked: bool
     .toBe(blocked);
 }
 
+/** A toast: the text also lands in the polite live region, so scope it. */
+function toast(page: Page, text: string) {
+  return page.getByRole('region', { name: 'Notifications' }).getByText(text);
+}
+
 /** Tools → Query (dig) as client; returns the result region. */
 async function dig(page: Page, name: string, client: string) {
   await page.goto('/tools');
@@ -82,7 +87,7 @@ test('turning a source off stops it blocking (Tools → Query)', async ({ page }
     const sw = page.getByTestId('source-toggle').getByRole('switch', { name: 'Source toggle enabled' });
     await expect(sw).toBeChecked();
     await sw.click({ force: true });
-    await expect(page.getByText('toggle disabled')).toBeVisible();
+    await expect(toast(page, 'toggle disabled')).toBeVisible();
     await expect(sw).not.toBeChecked();
     await expect(page.getByText('1 of 2 enabled')).toBeVisible();
 
@@ -118,14 +123,14 @@ test('the entries browser pages, adds and removes inline entries', async ({ page
 
     await browser.getByRole('textbox', { name: /^Add entries/ }).fill(added);
     await browser.getByRole('button', { name: 'Add', exact: true }).click();
-    await expect(page.getByText('Added 1 entry to mine')).toBeVisible();
+    await expect(toast(page, 'Added 1 entry to mine')).toBeVisible();
     await browser.getByRole('textbox', { name: /^Search entries/ }).fill(`added-${id}`);
     const row = browser.getByRole('row').filter({ hasText: added });
     await expect(row).toBeVisible();
     await row.getByRole('checkbox').check({ force: true });
     await browser.getByRole('button', { name: 'Remove 1 selected' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByText('Removed 1 entry from mine')).toBeVisible();
+    await expect(toast(page, 'Removed 1 entry from mine')).toBeVisible();
     await expect(browser.getByText(`No entry contains "added-${id}"`)).toBeVisible();
 
     const stored = await api.get<{ spec: { sources: { inline: string[] }[] } }>(`/objects/blocklists/default/${name}`);
