@@ -400,6 +400,58 @@ func TestUpdateStatusPreconditionAndNoop(t *testing.T) {
 	}
 }
 
+// TestObjectSizeCap: an object that encodes past store.MaxObjectBytes (the
+// etcd request cap) is refused with store.ErrTooLarge on Apply and on
+// UpdateStatus, and nothing is written.
+func TestObjectSizeCap(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	inline := func(bytes int) []string {
+		entry := strings.Repeat("a", 60) + ".example.com"
+		out := make([]string, 0, bytes/len(entry)+1)
+		for n := 0; n < bytes; n += len(entry) + 3 {
+			out = append(out, entry)
+		}
+		return out
+	}
+	list := func(bytes int) *v1alpha1.BlockList {
+		return &v1alpha1.BlockList{
+			ObjectMeta: metav1.ObjectMeta{Name: "big", Namespace: "default"},
+			Spec:       v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{{Inline: inline(bytes)}}},
+		}
+	}
+
+	rv := s.ResourceVersion()
+	if _, err := s.Apply(ctx, list(store.MaxObjectBytes), store.ApplyOptions{Manager: store.ManagerAPI}); !errors.Is(err, store.ErrTooLarge) {
+		t.Fatalf("Apply past the cap: got %v, want ErrTooLarge", err)
+	}
+	if s.ResourceVersion() != rv {
+		t.Fatal("a refused Apply moved the resourceVersion")
+	}
+	if err := s.Get(ctx, store.Key{Kind: store.KindOf(&v1alpha1.BlockList{}), Namespace: "default", Name: "big"}, &v1alpha1.BlockList{}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a refused create was stored: %v", err)
+	}
+
+	stored := mustApply(t, s, list(store.MaxObjectBytes-64<<10), store.ManagerAPI).(*v1alpha1.BlockList)
+	if _, err := s.Apply(ctx, list(store.MaxObjectBytes), store.ApplyOptions{Manager: store.ManagerAPI}); !errors.Is(err, store.ErrTooLarge) {
+		t.Fatalf("Apply growing past the cap: got %v, want ErrTooLarge", err)
+	}
+	stored.ResourceVersion = ""
+	for i := range 2_000 {
+		stored.Status.Sources = append(stored.Status.Sources, v1alpha1.SourceStatus{Name: "source-" + strconv.Itoa(i), Error: strings.Repeat("e", 64)})
+	}
+	if err := s.UpdateStatus(ctx, stored); !errors.Is(err, store.ErrTooLarge) {
+		t.Fatalf("UpdateStatus past the cap: got %v, want ErrTooLarge", err)
+	}
+	var got v1alpha1.BlockList
+	if err := s.Get(ctx, store.KeyOf(stored), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Status.Sources) != 0 || len(got.Spec.Sources[0].Inline) != len(stored.Spec.Sources[0].Inline) {
+		t.Fatal("a refused write changed the stored object")
+	}
+}
+
 func TestFinalizers(t *testing.T) {
 	ctx := context.Background()
 	s := openTemp(t)

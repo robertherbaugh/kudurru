@@ -231,6 +231,12 @@ func FuzzImportBIND(f *testing.F) {
 	f.Add("c IN CAA 0 issue \"ca.example\"\n")
 	f.Add("n IN NAPTR 100 10 \"u\" \"E2U+sip\" \"!^.*$!sip:x@example.com!\" .\n")
 	f.Add("$GENERATE 1-2 h$ A 192.0.2.$\n")
+	f.Add("$GENERATE 0-1000000 h$ A 192.0.2.1\n")
+	// $GENERATE inputs near the 1,000,000-record cap stall single inputs
+	// for 20-30 s; the cap's own behaviour is TestImportLimit's. A low cap
+	// keeps the budget on parsing and the round trip.
+	importLimit = 2000
+	f.Cleanup(func() { importLimit = MaxImportRecords })
 	f.Fuzz(func(t *testing.T, file string) {
 		im, err := ImportBIND(strings.NewReader(file), "example.com.")
 		if err != nil {

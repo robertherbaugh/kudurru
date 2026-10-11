@@ -314,6 +314,10 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 	if err != nil {
 		return nil, fmt.Errorf("store/sqlite: encode %s: %w", m.key, err)
 	}
+	if m.typ != store.Deleted && len(data) > store.MaxObjectBytes {
+		return nil, fmt.Errorf("%w: %s encodes to %d bytes; the limit is %d (the etcd request cap)",
+			store.ErrTooLarge, m.key, len(data), store.MaxObjectBytes)
+	}
 	now := s.opts.Now()
 
 	var tombstone any

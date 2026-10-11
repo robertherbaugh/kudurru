@@ -15,10 +15,10 @@
 //     then the source cools down; the previous body always stays in
 //     service. Downloads run with bounded concurrency. The fetcher then
 //     writes only status.sources[].{name,digest,etag,entries,invalid,
-//     lastFetched,error}, status.entries, status.ruleCount, status.invalid
-//     and status.lastFetched through Store.UpdateStatus, re-reading the
-//     object and retrying on conflicts so the controller keeps
-//     observedGeneration and the conditions.
+//     lastFetched,error}, status.entries, status.ruleCount, status.invalid,
+//     status.unsupported and status.lastFetched through Store.UpdateStatus,
+//     re-reading the object and retrying on conflicts so the controller
+//     keeps observedGeneration and the conditions.
 //   - Resolver, every node: turns the BlockLists and their published
 //     digests into bodies (the local cache by digest, else
 //     GET /internal/lists/{digest} from the leader with the sha256

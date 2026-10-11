@@ -378,7 +378,7 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 				return decodeSecret(ki, created)
 			}
 			if !apierrors.IsAlreadyExists(err) {
-				return nil, fmt.Errorf("store/kube: create %s: %w", key, err)
+				return nil, writeError("create", key, err)
 			}
 		} else {
 			if old, err := encodeObject(ki, prev); err == nil && bytes.Equal(old, data) {
@@ -391,7 +391,7 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 				return decodeSecret(ki, updated)
 			}
 			if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
-				return nil, fmt.Errorf("store/kube: update %s: %w", key, err)
+				return nil, writeError("update", key, err)
 			}
 		}
 		if opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
@@ -483,7 +483,7 @@ func (s *Store) updateStatusInternal(ctx context.Context, ki *kindInfo, obj stor
 		case apierrors.IsNotFound(err):
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
 		case !apierrors.IsConflict(err):
-			return fmt.Errorf("store/kube: update status %s: %w", key, err)
+			return writeError("update status", key, err)
 		}
 		if attempt >= applyRetries {
 			return fmt.Errorf("%w: %s changed during status update", store.ErrConflict, key)

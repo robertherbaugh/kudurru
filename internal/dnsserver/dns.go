@@ -124,6 +124,9 @@ func (l *dnsListener) Bind() error {
 		srvs := make([]*dns.Server, len(lns))
 		for i, ln := range lns {
 			lis := ln
+			if lim.StreamWriteTimeout > 0 {
+				lis = writeDeadlineListener{Listener: lis, timeout: lim.StreamWriteTimeout}
+			}
 			if proxied {
 				lis = &proxyproto.Listener{Listener: ln, Policy: l.env.proxy, HeaderTimeout: lim.ProxyHeaderTimeout}
 			}
@@ -139,6 +142,39 @@ func (l *dnsListener) Bind() error {
 		return errors.New("dnsserver: unsupported protocol " + string(l.spec.Protocol))
 	}
 	return nil
+}
+
+// writeDeadlineListener arms a write deadline of timeout
+// (Limits.StreamWriteTimeout) before every Write on the connections it
+// accepts. miekg/dns documents Server.WriteTimeout but never sets a write
+// deadline, so a client that stops reading would hold a connection, and a
+// zone transfer stream with it, until the kernel gives up (zero-window
+// probes never do). Each DNS message is one Write (TLS records go through
+// the same Write below the TLS layer), so the deadline bounds each
+// message, not the whole transfer.
+type writeDeadlineListener struct {
+	net.Listener
+	timeout time.Duration
+}
+
+func (l writeDeadlineListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &writeDeadlineConn{Conn: c, timeout: l.timeout}, nil
+}
+
+type writeDeadlineConn struct {
+	net.Conn
+	timeout time.Duration
+}
+
+func (c *writeDeadlineConn) Write(b []byte) (int, error) {
+	if err := c.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
 }
 
 // socketServer returns a fresh miekg server for one socket with the

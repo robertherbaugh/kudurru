@@ -31,6 +31,11 @@ type ListSource struct {
 	Format ListFormat `json:"format,omitempty"`
 	// +optional
 	Name string `json:"name,omitempty"`
+	// Subdomains makes the hosts and plain-domain entries of this source
+	// match their subdomains too, for lists published as "domains with
+	// subdomains". Adblock and wildcard rules are not affected.
+	// +optional
+	Subdomains bool `json:"subdomains,omitempty"`
 }
 
 // CustomIP is the answer for BlockResponse customIP.
@@ -88,6 +93,11 @@ type BlockListStatus struct {
 	RuleCount int `json:"ruleCount,omitempty"`
 	// +optional
 	Invalid int `json:"invalid,omitempty"`
+	// Unsupported counts valid rules this version parses but does not
+	// apply: modifiers such as $important and $badfilter, mid-pattern
+	// wildcards, hosts rewrites.
+	// +optional
+	Unsupported int `json:"unsupported,omitempty"`
 	// +optional
 	LastFetched *metav1.Time `json:"lastFetched,omitempty"`
 	// +optional

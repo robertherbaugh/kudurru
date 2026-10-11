@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -350,9 +351,11 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			ps := &pl.sources[i]
 			if ps.key == "" {
 				d := inlineDigest(ps.inline)
-				spec.Sources = append(spec.Sources, blocking.LinesSource(ps.name, ps.format, ps.inline))
+				src := blocking.LinesSource(ps.name, ps.format, ps.inline)
+				src.HostsSubdomains = ps.subdomains
+				spec.Sources = append(spec.Sources, src)
 				ls.Digests = append(ls.Digests, d)
-				fp.add(ps.name, string(ps.format), d)
+				fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), d)
 				continue
 			}
 			referenced[ps.key] = true
@@ -380,7 +383,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 					res.Waiting++
 					waiting = append(waiting, fmt.Sprintf("%s source %q: %s", pl.name, ps.name, r.waitReason(wanted, &leader)))
 				}
-				fp.add(ps.name, string(ps.format), "missing")
+				fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), "missing")
 				continue
 			}
 			f, fe, err := r.opts.Cache.Open(ps.key)
@@ -394,7 +397,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			}
 			spec.Sources = append(spec.Sources, opened.fileSource(ps.name, ps, f, fe.Size))
 			ls.Digests = append(ls.Digests, fe.Digest)
-			fp.add(ps.name, string(ps.format), fe.Digest)
+			fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), fe.Digest)
 		}
 		if len(spec.Sources) > 0 {
 			specs = append(specs, spec)

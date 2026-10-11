@@ -578,3 +578,51 @@ func TestInfo(t *testing.T) {
 		t.Fatalf("info = %+v", info)
 	}
 }
+
+// TestApplyTooLarge: an object past store.MaxObjectBytes is refused by the
+// apiserver (etcd's request cap) and surfaces as store.ErrTooLarge, the
+// error the sqlite driver returns for the same object.
+func TestApplyTooLarge(t *testing.T) {
+	requireEnv(t)
+	s := newTestStore(t, Options{})
+	entry := strings.Repeat("a", 60) + ".example.com"
+	inline := make([]string, 0, store.MaxObjectBytes/len(entry)+1)
+	for n := 0; n < store.MaxObjectBytes+64<<10; n += len(entry) + 3 {
+		inline = append(inline, entry)
+	}
+	big := &v1alpha1.BlockList{
+		ObjectMeta: metav1.ObjectMeta{Name: "big", Namespace: "apps"},
+		Spec:       v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{{Inline: inline}}},
+	}
+	_, err := s.Apply(context.Background(), big, store.ApplyOptions{Manager: store.ManagerAPI})
+	if !errors.Is(err, store.ErrTooLarge) {
+		t.Fatalf("Apply past the cap: got %v, want ErrTooLarge", err)
+	}
+}
+
+// TestWriteErrorTooLarge: the apiserver's 413 and etcd's "request is too
+// large" (passed through as a 500) both wrap store.ErrTooLarge, as the
+// sqlite driver reports objects past store.MaxObjectBytes.
+func TestWriteErrorTooLarge(t *testing.T) {
+	key := store.Key{Kind: "DNSZone", Name: "home"}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"413", apierrors.NewRequestEntityTooLargeError("limit is 3145728"), true},
+		{"etcd", apierrors.NewInternalError(errors.New("etcdserver: request is too large")), true},
+		{"other", apierrors.NewBadRequest("invalid"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := writeError("apply", key, tt.err)
+			if got := errors.Is(err, store.ErrTooLarge); got != tt.want {
+				t.Fatalf("errors.Is(%v, ErrTooLarge) = %v, want %v", err, got, tt.want)
+			}
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("%v does not wrap the apiserver error", err)
+			}
+		})
+	}
+}
