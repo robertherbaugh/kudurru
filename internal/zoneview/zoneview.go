@@ -1,6 +1,7 @@
 // Package zoneview connects zonecache to the zone model: a zonecache.Builder
 // that compiles every DNSZone and its DNSRecordSets into a *zone.Snapshot,
-// and an authoritative.Source that reads it per query.
+// and an authoritative.Source that reads it per query, gated by the cache
+// state (decision D80).
 package zoneview
 
 import (
@@ -16,10 +17,12 @@ import (
 // ViewName is the zonecache view the builder publishes.
 const ViewName = "zones"
 
-// Builder returns the zonecache.Builder that compiles zones. A zone whose
-// spec does not build is skipped and logged (its reconciler reports the
-// condition); record-set errors drop only the offending records, which is
-// what zone.Build already does.
+// Builder returns the zonecache.Builder that compiles zones. Each zone is
+// built from zone.ServedRecordSets (recordSetSelector, whole-object
+// validity, oldest first), the same selection the controller hashes, so
+// status.contentHash is the hash of the zone served here. A zone whose
+// spec does not build is skipped and logged (the controller reports the
+// condition); record-set errors drop only the offending endpoints.
 func Builder(logger *slog.Logger) zonecache.Builder {
 	if logger == nil {
 		logger = slog.Default()
@@ -28,7 +31,8 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 	return zonecache.NewBuilder(ViewName, func(objects zonecache.ObjectSet) (any, error) {
 		var zones []*zone.Zone
 		for _, dz := range objects.Zones() {
-			z, errs := zone.Build(dz, objects.RecordSetsForZone(dz.Name), zone.BuildOptions{Now: objects.Now()})
+			sets := zone.ServedRecordSets(dz, objects.RecordSetsForZone(dz.Name))
+			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now()})
 			if z == nil {
 				logger.Warn("zone skipped", "zone", dz.Name, "errors", errs.Zone.ToAggregate())
 				continue
@@ -46,16 +50,22 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 	})
 }
 
-// Source adapts a zonecache.Cache to authoritative.Source. Synced is false
-// while the cache is unsynced or serving a snapshot older than MaxAge, so
-// the stage answers SERVFAIL rather than NXDOMAIN (§4.4).
+// Source adapts a zonecache.Cache to authoritative.Source. The gate follows
+// the cache state (D80, §4.4):
+//
+//   - Unsynced (nothing loaded, no usable local.db): zone.GateUnsynced, every
+//     query SERVFAIL;
+//   - FromSnapshot older than MaxAge: zone.GateStale, SERVFAIL for names in
+//     primary zones while forward zones and other names are forwarded;
+//   - Live, or FromSnapshot within MaxAge: zone.GateOpen.
 type Source struct {
 	Cache *zonecache.Cache
 }
 
 var _ authoritative.Source = Source{}
 
-// Zones implements authoritative.Source.
+// Zones implements authoritative.Source. On the live path it returns the
+// built snapshot itself and does not allocate.
 func (s Source) Zones() zone.Set {
 	snap := s.Cache.Snapshot()
 	if snap == nil {
@@ -65,19 +75,23 @@ func (s Source) Zones() zone.Set {
 	if !ok || zs == nil {
 		return unsynced{}
 	}
-	if !snap.Authoritative() {
-		return gated{Set: zs}
-	}
-	return zs
+	return zs.WithGate(Gate(snap))
 }
 
+// Gate maps a zonecache snapshot's state onto the authoritative gate.
+func Gate(snap *zonecache.Snapshot) zone.Gate {
+	switch {
+	case snap == nil || snap.State == zonecache.Unsynced:
+		return zone.GateUnsynced
+	case !snap.Authoritative():
+		return zone.GateStale
+	}
+	return zone.GateOpen
+}
+
+// unsynced is the set before the zone builder has produced anything.
 type unsynced struct{}
 
 func (unsynced) Synced() bool            { return false }
+func (unsynced) Gate() zone.Gate         { return zone.GateUnsynced }
 func (unsynced) Match(string) *zone.Zone { return nil }
-
-// gated wraps a built snapshot whose data must not be answered as
-// authoritative (stale local.db); Match still works so forward zones route.
-type gated struct{ zone.Set }
-
-func (gated) Synced() bool { return false }

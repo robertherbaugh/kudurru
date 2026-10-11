@@ -35,6 +35,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 // Kinds reconciled by the controller.
@@ -72,8 +73,10 @@ type Options struct {
 	// per window per zone. Zone spec changes, resyncs and retries are not
 	// delayed. Default DefaultZoneCoalesce; negative disables.
 	ZoneCoalesce time.Duration
-	// Validate checks endpoints; default ValidateEndpoint. internal/zone's
-	// parser plugs in here.
+	// Validate checks endpoints for the record-set conditions; default
+	// zone.ValidateEndpoint, the zone model's parser (the dataplane builds
+	// zones with the same one, so Invalid means "not served"). The
+	// miekg-free ValidateEndpoint remains for callers that want it.
 	Validate EndpointValidator
 	// RateLimiter overrides the per-kind retry limiter (default: client-
 	// go's controller limiter, 5 ms doubling to 1000 s per item, 10 qps
@@ -132,7 +135,7 @@ func New(st store.Store, opts Options) (*Controller, error) {
 		opts.ZoneCoalesce = 0
 	}
 	if opts.Validate == nil {
-		opts.Validate = ValidateEndpoint
+		opts.Validate = zonemodel.ValidateEndpoint
 	}
 	if opts.RateLimiter == nil {
 		opts.RateLimiter = workqueue.DefaultTypedControllerRateLimiter[store.Key]

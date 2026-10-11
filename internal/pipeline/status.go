@@ -34,6 +34,10 @@ const (
 	StatusServfailUpstream
 	StatusTimeoutUpstream
 	StatusDNSSECBogus
+	// StatusServfailUnsynced is the SERVFAIL the authoritative stage gives
+	// while the zone cache cannot vouch for local data (D80): nothing
+	// synced yet, or a stale local.db for names under primary zones.
+	StatusServfailUnsynced
 )
 
 var statusNames = map[Status]string{
@@ -60,6 +64,7 @@ var statusNames = map[Status]string{
 	StatusServfailUpstream:  "servfail_upstream",
 	StatusTimeoutUpstream:   "timeout_upstream",
 	StatusDNSSECBogus:       "dnssec_bogus",
+	StatusServfailUnsynced:  "servfail_unsynced",
 }
 
 // String returns the symbolic name used by the API and metrics.

@@ -25,6 +25,17 @@
 //     reads it without locks.
 //   - ImportBIND and ExportBIND convert between RFC 1035 master files and
 //     the object model; Journal and Diff are the IXFR seam (v0.2).
+//   - Transfers out (xfr.go): Zone.AXFR streams the zone in canonical
+//     order with the SOA first and last in chunks of at most 64 KiB, and
+//     Zone.TransferAllowed applies zoneTransfer, transferACL and
+//     transferTSIGKeyRefs. NOTIFY out (notify.go): NotifyMessage and
+//     SendNotify (RFC 1996), optionally TSIG-signed.
+//   - Set.Gate is the D80 gate the authoritative stage applies: open,
+//     unsynced (every query SERVFAIL) or stale (SERVFAIL for primary zones
+//     only).
+//   - ServedRecordSets (select.go) decides which DNSRecordSets a zone is
+//     built from; the zone cache and the controller both use it, so
+//     status.contentHash is the hash of the zone every replica serves.
 //
 // miekg/dns types appear in this package's API (RRset, Result) on purpose:
 // zone is one of the packages §2 allows to use them, and RRset is the

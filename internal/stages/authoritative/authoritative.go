@@ -2,8 +2,10 @@
 // own zones (docs/architecture.md §7.1 step 6): longest-suffix zone match
 // over a lock-free snapshot, queryAccess/queryACL enforcement, primary
 // zone answers with wildcards, CNAME and DNAME chasing, forward zones by
-// upstream-group hint, and SERVFAIL instead of denials while the zone
-// cache has not synced.
+// upstream-group hint, zone transfers out (AXFR, IXFR by AXFR fallback;
+// transfer.go), and SERVFAIL instead of answers the zone cache cannot
+// vouch for (the D80 gate: everything while unsynced, names under primary
+// zones while serving a stale local.db).
 //
 // Authoritative answers are final: they are not passed to the blocking,
 // cache or upstream stages (a zone cannot be blocked by a list). The one
@@ -13,7 +15,6 @@
 package authoritative
 
 import (
-	"errors"
 	"net/netip"
 
 	"github.com/miekg/dns"
@@ -30,14 +31,14 @@ const Name = "authoritative"
 // (the DNS Flag Day 2020 value).
 const UDPSize = 1232
 
-// UpstreamUnsynced is the Response.Upstream value of SERVFAIL answers given
-// while the zone cache has not synced, so the query log's "why" row shows
-// the reason.
-const UpstreamUnsynced = "zonecache:unsynced"
-
-// ErrTransferNotImplemented is returned by Stage.Transfer until AXFR out
-// lands in M2.
-var ErrTransferNotImplemented = errors.New("authoritative: zone transfer is not implemented yet")
+// UpstreamUnsynced and UpstreamStale are the Response.Upstream values of
+// the SERVFAIL answers (Status servfail_unsynced) given while the zone
+// cache has not synced, and while it serves a local.db snapshot older than
+// maxAge, so the query log's "why" row shows the reason.
+const (
+	UpstreamUnsynced = "zonecache:unsynced"
+	UpstreamStale    = "zonecache:stale"
+)
 
 // Source supplies the current zone set. The zone cache implements it
 // (zone.Holder is a ready-made implementation over an
@@ -48,9 +49,11 @@ type Source interface {
 	Zones() zone.Set
 }
 
-// TransferProvider is the optional capability (discovered by type assertion,
-// §3.3) through which the dnsserver streams AXFR/IXFR out. The stage
-// defines the slot now; transfers are implemented in M2.
+// TransferProvider is the optional capability (discovered by type
+// assertion, §3.3) that hands out a zone's records for a transfer: chunks
+// of at most 64 KiB, SOA first and last, or the single SOA when serial is
+// current. The stage implements it and uses the same chunking for its own
+// AXFR/IXFR answers.
 type TransferProvider interface {
 	Transfer(zone string, serial uint32) (<-chan []dns.RR, error)
 }
@@ -67,6 +70,12 @@ type Stage struct {
 	// NOTIMP, the v0.1 behaviour; secondary zones and RFC 2136 (v0.2)
 	// install handlers here.
 	Notify, Update pipeline.Next
+	// Metrics counts zone transfers; nil disables counting.
+	Metrics *Metrics
+	// ChunkBytes bounds the records per transfer message (uncompressed
+	// wire size); zero means zone.DefaultChunkBytes (64 KiB minus room for
+	// the header, OPT and TSIG).
+	ChunkBytes int
 }
 
 var (
@@ -84,12 +93,6 @@ func (s *Stage) Name() string { return Name }
 func (s *Stage) Ready() bool {
 	set := s.zones()
 	return set != nil && set.Synced()
-}
-
-// Transfer is the AXFR/IXFR capability slot; it is not implemented in v0.1
-// and AXFR/IXFR queries are answered NOTIMP.
-func (s *Stage) Transfer(string, uint32) (<-chan []dns.RR, error) {
-	return nil, ErrTransferNotImplemented
 }
 
 func (s *Stage) zones() zone.Set {
@@ -121,13 +124,14 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 
 	set := s.zones()
 	if set == nil {
-		return s.unsynced(req), nil
+		return s.unsynced(req, zone.GateUnsynced), nil
 	}
-	synced := set.Synced()
+	gate := set.Gate()
 	z := set.Match(q.Name)
 	if z == nil {
-		if !synced {
-			return s.unsynced(req), nil
+		if gate == zone.GateUnsynced {
+			// A zone that has not loaded yet may cover the name.
+			return s.unsynced(req, gate), nil
 		}
 		return next(req)
 	}
@@ -140,23 +144,23 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return r, nil
 	}
 	if q.Qtype == dns.TypeAXFR || q.Qtype == dns.TypeIXFR {
-		// AXFR/IXFR out lands in M2 behind Transfer and transferACL.
-		r := pipeline.Reply(req, dns.RcodeNotImplemented, pipeline.StatusAuthoritative)
-		r.Upstream = upstreamName(z)
-		s.finish(req, r.Msg)
-		return r, nil
+		return s.transfer(req, gate, z), nil
 	}
 	if z.Type() == v1alpha1.ZoneTypeForward {
-		if !synced {
-			return s.unsynced(req), nil
+		if gate == zone.GateUnsynced {
+			return s.unsynced(req, gate), nil
 		}
 		req.UpstreamGroup = z.UpstreamGroup()
 		return next(req)
 	}
+	if gate == zone.GateStale {
+		// Primary data older than maxAge is not served at all (§4.4).
+		return s.unsynced(req, gate), nil
+	}
 
 	res := z.Lookup(q.Name, q.Qtype)
-	if !synced && !res.Positive() {
-		return s.unsynced(req), nil
+	if gate == zone.GateUnsynced && !res.Positive() {
+		return s.unsynced(req, gate), nil
 	}
 	if res.Kind == zone.CNAME {
 		return s.chase(req, set, z, res, next)
@@ -283,10 +287,15 @@ func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, ans
 	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
 }
 
-// unsynced is the answer while the zone cache cannot vouch for denials.
-func (s *Stage) unsynced(req *pipeline.Request) *pipeline.Response {
-	r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUpstream)
+// unsynced is the answer while the zone cache cannot vouch for the data
+// (D80): SERVFAIL, never NXDOMAIN and never an upstream answer for a name
+// a local zone may own.
+func (s *Stage) unsynced(req *pipeline.Request, gate zone.Gate) *pipeline.Response {
+	r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUnsynced)
 	r.Upstream = UpstreamUnsynced
+	if gate == zone.GateStale {
+		r.Upstream = UpstreamStale
+	}
 	r.Msg.RecursionAvailable = s.RecursionAvailable
 	s.finish(req, r.Msg)
 	return r

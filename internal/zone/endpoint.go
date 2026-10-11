@@ -43,8 +43,10 @@ func forbiddenType(t uint16) bool {
 	return false
 }
 
-// parseType resolves an Endpoint recordType to a type code.
+// parseType resolves an Endpoint recordType to a type code. Mnemonics are
+// case-insensitive, as in master files.
 func parseType(s string) (uint16, error) {
+	s = strings.ToUpper(strings.TrimSpace(s))
 	if t, ok := supportedTypes[s]; ok {
 		return t, nil
 	}
@@ -143,7 +145,17 @@ func ParseTarget(owner string, rrtype uint16, ttl uint32, target string) (dns.RR
 	line := placeholderOwner + " " + strconv.FormatUint(uint64(ttl), 10) + " IN " + typeString(rrtype) + " " + t
 	rr, err := dns.NewRR(line)
 	if err != nil {
-		return nil, fmt.Errorf("does not parse as %s rdata: %s", typeString(rrtype), parseErrText(err))
+		msg := parseErrText(err)
+		if !strings.ContainsAny(t, " \t") {
+			// miekg's "bad A A" says little; name the expected form.
+			switch rrtype {
+			case dns.TypeA:
+				msg = "not an IPv4 address"
+			case dns.TypeAAAA:
+				msg = "not an IPv6 address"
+			}
+		}
+		return nil, fmt.Errorf("does not parse as %s rdata: %s", typeString(rrtype), msg)
 	}
 	if rr == nil {
 		return nil, fmt.Errorf("does not parse as %s rdata", typeString(rrtype))

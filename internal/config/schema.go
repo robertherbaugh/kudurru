@@ -113,6 +113,8 @@ var Schema = []Key{
 	{Path: "blocking.listsDir", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Blocklist body cache (sha256(url) files); empty means <node.dataDir>/lists.", HostOnly: true, RestartRequired: true},
 	{Path: "objects", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.", HostOnly: true, RestartRequired: true},
 	{Path: "objectsDir", Type: TypeString, Scope: ScopeNode, Default: "/etc/kudurru/objects.d", Help: "Directory of *.yaml object files, file-managed as file:<dir>/<name> and re-applied on change; deleting a document deletes the object.", HostOnly: true, RestartRequired: true},
+	{Path: "tsigKeys", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "TSIG keys (RFC 8945) for zone transfers and NOTIFY: name (referenced by DNSZone spec.policy.transferTSIGKeyRefs), algorithm (hmac-sha256, hmac-sha512) and secretFile holding the base64 secret (tsig-keygen format).", HostOnly: true, RestartRequired: true, WriteOnly: true},
+	{Path: "notify.source", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Local IP address outbound NOTIFY messages are sent from; empty lets the kernel choose. Secondaries must list it as a primary.", HostOnly: true, RestartRequired: true},
 	{Path: "log.level", Type: TypeString, Scope: ScopeNode, Default: "info", Help: "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug."},
 	{Path: "log.format", Type: TypeString, Scope: ScopeNode, Default: "json", Help: "Log format: json or text."},
 }

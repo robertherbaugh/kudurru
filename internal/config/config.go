@@ -34,6 +34,12 @@ type Config struct {
 	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
 	Log       Log         `koanf:"log" json:"log"`
 
+	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
+	// NOTIFY; secrets stay in files and never pass through the API.
+	TSIGKeys []TSIGKey `koanf:"tsigKeys" json:"tsigKeys,omitempty"`
+	// Notify configures outbound NOTIFY (RFC 1996).
+	Notify Notify `koanf:"notify" json:"notify"`
+
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
 	// of object files, both reconciled by internal/objects (§6.2).
 	Objects    []map[string]any `koanf:"objects" json:"objects,omitempty"`
@@ -350,6 +356,23 @@ func (c *Config) BlockingListsDir() string {
 	return filepath.Join(c.Node.DataDir, "lists")
 }
 
+// TSIGKey is one TSIG key: its name (a domain name the zones reference in
+// spec.policy.transferTSIGKeyRefs), algorithm and the file holding the
+// base64 secret (as written by tsig-keygen or BIND's key statement).
+type TSIGKey struct {
+	Name       string `koanf:"name" json:"name"`
+	Algorithm  string `koanf:"algorithm" json:"algorithm"`
+	SecretFile string `koanf:"secretFile" json:"secretFile"`
+}
+
+// Notify configures outbound NOTIFY messages.
+type Notify struct {
+	// Source is the local IP address NOTIFY messages are sent from; empty
+	// lets the kernel choose. Secondaries match NOTIFY senders against
+	// their primaries list (docs/architecture.md §4.6).
+	Source string `koanf:"source" json:"source"`
+}
+
 // Log configures logging.
 type Log struct {
 	Level  string `koanf:"level" json:"level"`
@@ -448,6 +471,12 @@ func (c *Config) Validate() error {
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}
+	errs = append(errs, validateTSIGKeys(c.TSIGKeys)...)
+	if src := c.Notify.Source; src != "" {
+		if a, err := netip.ParseAddr(src); err != nil || a.Zone() != "" {
+			errs = append(errs, fmt.Errorf("notify.source: %q is not an IP address", src))
+		}
+	}
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))
@@ -459,6 +488,32 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("log.level: unknown level %q", c.Log.Level))
 	}
 	return errors.Join(errs...)
+}
+
+// validateTSIGKeys checks the tsigKeys list: a name, a supported algorithm
+// and a secret file per key, names unique case-insensitively. The files
+// are read when the DNS server builds its keyring.
+func validateTSIGKeys(keys []TSIGKey) []error {
+	var errs []error
+	seen := map[string]bool{}
+	for i, k := range keys {
+		name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(k.Name), "."))
+		if name == "" {
+			errs = append(errs, fmt.Errorf("tsigKeys[%d].name is required", i))
+		} else if seen[name] {
+			errs = append(errs, fmt.Errorf("tsigKeys[%d]: key %q is defined twice", i, k.Name))
+		}
+		seen[name] = true
+		switch strings.ToLower(strings.TrimSuffix(strings.TrimSpace(k.Algorithm), ".")) {
+		case "hmac-sha256", "hmac-sha512":
+		default:
+			errs = append(errs, fmt.Errorf("tsigKeys[%d].algorithm: %q is not supported (hmac-sha256, hmac-sha512)", i, k.Algorithm))
+		}
+		if k.SecretFile == "" {
+			errs = append(errs, fmt.Errorf("tsigKeys[%d].secretFile is required", i))
+		}
+	}
+	return errs
 }
 
 // validate checks the cache bounds.

@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 // countingStore wraps a Store, counts UpdateStatus calls per kind, can
@@ -264,6 +265,23 @@ func cond(conds []metav1.Condition, t string) string {
 		return ""
 	}
 	return string(c.Status) + "/" + c.Reason
+}
+
+// zoneHash is the status.contentHash of a zone made by zoneObj(_, origin)
+// that serves exactly the records in tuples: zone.ContentHash of the zone
+// built from one record set holding them. Tests state the records they
+// expect and this turns them into the zone model's hash (D12 parity).
+func zoneHash(t testing.TB, origin string, tuples []RecordTuple) string {
+	t.Helper()
+	eps := make([]v1alpha1.Endpoint, 0, len(tuples))
+	for _, tu := range tuples {
+		eps = append(eps, v1alpha1.Endpoint{DNSName: tu.Name, RecordType: tu.Type, SetIdentifier: tu.SetIdentifier, RecordTTL: tu.TTL, Targets: tu.Targets})
+	}
+	z, errs := zonemodel.Build(zoneObj("expected", origin), []*v1alpha1.DNSRecordSet{rrsetObj("expected", "records", "expected", 0, eps...)}, zonemodel.BuildOptions{})
+	if z == nil || !errs.Empty() {
+		t.Fatalf("expected records do not build: %v %v", errs.Zone, errs.RecordSets)
+	}
+	return z.ContentHash()
 }
 
 func zoneObj(name, zoneName string) *v1alpha1.DNSZone {

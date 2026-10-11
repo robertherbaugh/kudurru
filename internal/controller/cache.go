@@ -33,6 +33,12 @@ type cache struct {
 	viewMu sync.Mutex
 	views  map[string]*zoneView
 	viewAt map[string]uint64
+	// builds holds the latest zone-model build per zone and buildAt the
+	// zone version it was built at. Builds parse every record, so they are
+	// made by the zone reconcile (one at a time per zone, coalesced) and
+	// record-set reconciles read the latest one instead of rebuilding.
+	builds  map[string]*zoneBuild
+	buildAt map[string]uint64
 }
 
 type pendingStatus struct {
@@ -49,6 +55,8 @@ func newCache() *cache {
 		pending:      map[store.Key]pendingStatus{},
 		views:        map[string]*zoneView{},
 		viewAt:       map[string]uint64{},
+		builds:       map[string]*zoneBuild{},
+		buildAt:      map[string]uint64{},
 	}
 }
 
@@ -281,5 +289,62 @@ func firstNonNil(a, b store.Object) store.Object {
 	if a != nil {
 		return a
 	}
+	return b
+}
+
+// snapshotZone returns the zone object, its record sets and the version
+// they were read at.
+func (c *cache) snapshotZone(zone string) (*v1alpha1.DNSZone, []*v1alpha1.DNSRecordSet, uint64) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var z *v1alpha1.DNSZone
+	if o, ok := c.objs[KindDNSZone][store.Key{Kind: KindDNSZone, Name: zone}].(*v1alpha1.DNSZone); ok {
+		z = o
+	}
+	rrsets := make([]*v1alpha1.DNSRecordSet, 0, len(c.rrsetsByZone[zone]))
+	for k := range c.rrsetsByZone[zone] {
+		if rs, ok := c.objs[KindDNSRecordSet][k].(*v1alpha1.DNSRecordSet); ok {
+			rrsets = append(rrsets, rs)
+		}
+	}
+	return z, rrsets, c.zoneVersion[zone]
+}
+
+// build returns the zone-model build of zone at the current version,
+// building it when the cached one is older, and the build it replaced (nil
+// when there was none or it is the same).
+func (c *cache) build(zone string) (cur, prev *zoneBuild) {
+	c.mu.RLock()
+	version := c.zoneVersion[zone]
+	c.mu.RUnlock()
+	c.viewMu.Lock()
+	if b, ok := c.builds[zone]; ok && c.buildAt[zone] == version {
+		c.viewMu.Unlock()
+		return b, nil
+	}
+	c.viewMu.Unlock()
+
+	z, rrsets, version := c.snapshotZone(zone)
+	b := buildZone(z, rrsets)
+	c.viewMu.Lock()
+	defer c.viewMu.Unlock()
+	prev = c.builds[zone]
+	if at, ok := c.buildAt[zone]; !ok || at <= version {
+		c.builds[zone] = b
+		c.buildAt[zone] = version
+	}
+	return b, prev
+}
+
+// latestBuild returns the most recent build of zone whatever its version,
+// building one when there is none yet (the start of a term).
+func (c *cache) latestBuild(zone string) *zoneBuild {
+	c.viewMu.Lock()
+	b, ok := c.builds[zone]
+	c.viewMu.Unlock()
+	if ok {
+		return b
+	}
+	b, _ = c.build(zone)
 	return b
 }

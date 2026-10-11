@@ -115,7 +115,7 @@ func TestKubeDriver(t *testing.T) {
 	second := rrsetObj("team-b", uniq("web"), zn, 0, ep("www."+origin, "A", "192.0.2.99"), ep("b."+origin, "A", "192.0.2.2"))
 	e.apply(second)
 
-	want := ContentHash([]RecordTuple{
+	want := zoneHash(t, origin, []RecordTuple{
 		{Name: "www." + origin, Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}},
 		{Name: "b." + origin, Type: "A", TTL: 300, Targets: []string{"192.0.2.2"}},
 	})

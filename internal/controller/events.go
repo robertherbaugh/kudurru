@@ -20,6 +20,7 @@ const (
 	EventDuplicated   = "Duplicated"
 	EventOutsideZone  = "OutsideZone"
 	EventInvalid      = "Invalid"
+	EventOccluded     = "Occluded"
 )
 
 // EventSink receives operational transitions. Implementations must be safe
