@@ -20,7 +20,7 @@
 
 And the things none of them had together: **Kubernetes CRDs as the source of truth in a cluster**, **OIDC login with real RBAC** (viewer, auditor, operator, zone-admin, admin; scoped per zone), and **a simple integration model** for writing records to Cloudflare (split-horizon) or pulling client inventory from UniFi.
 
-> **Status: pre-alpha, design complete, scaffold only.** The architecture is written and reviewed; the code is a compiling skeleton with the core interfaces in place. Nothing here is ready to serve DNS for you yet. See the [roadmap](#roadmap).
+> **Status: v0.1 release candidate in preparation (not tagged yet).** Milestones M1 to M5 are implemented: the resolver, zones and transfers, blocking with client groups, blocked services and safe search, the API, auth and dashboard, the Helm charts, compose profiles and the edge/VIP supervisors. The remaining release gates (2-VM keepalived failover, dnsdist through the edge, the signed tag) are listed in [docs/release-checklist.md](docs/release-checklist.md). See the [roadmap](#roadmap).
 
 ## How it fits together
 
@@ -99,8 +99,9 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 ## Documentation
 
-- [Architecture](docs/architecture.md): the complete design, decision log (D1 to D48) and glossary.
-- [Open questions](docs/open-questions.md): decisions that need a project owner's answer before v0.1 is scheduled.
+- [Architecture](docs/architecture.md): the complete design, decision log and glossary.
+- [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
+- [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.
 - [Research notes](docs/research/): point-in-time studies of the reference projects that the architecture cites.
 - [Contributing](CONTRIBUTING.md): licensing rules (no GPL or EUPL code is ever ported), layout, and how to build.
 - [Branding kit](docs/brand/README.md): logos, icons, color tokens, usage rules, and original artwork.
@@ -117,7 +118,8 @@ config/             kustomize tree, CRD bases, samples
 deploy/             docker compose profiles, Grafana dashboard, Prometheus rules
 images/             dnsdist and keepalived supervisor images (GPL binaries, digest-pinned)
 docs/               architecture, research, open questions
-web/                the React dashboard (not started)
+web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
+site/               the documentation site (Hugo), built from docs/
 ```
 
 ## License

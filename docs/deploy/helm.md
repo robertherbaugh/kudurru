@@ -39,7 +39,7 @@ release notes print the commands; in short:
 ```sh
 kubectl -n kudurru-system get secret kudurru-admin -o jsonpath='{.data.password}' | base64 -d; echo
 kubectl -n kudurru-system port-forward svc/kudurru-api 8080:8080
-# open http://localhost:8080/ and sign in as admin
+# open https://localhost:8080/ and sign in as admin
 ```
 
 The admin Secret is read only while no user exists; the UI asks for a new
