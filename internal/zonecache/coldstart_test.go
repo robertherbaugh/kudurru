@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -276,6 +277,47 @@ func TestRefreshKeepsSnapshotAgeHonest(t *testing.T) {
 	})
 	if loadCount(db) != 1 {
 		t.Fatal("refresh changed the objects")
+	}
+}
+
+// contactStore reports a settable Info().LastContact, as the kube driver
+// does.
+type contactStore struct {
+	*fakeStore
+	last atomic.Int64 // UnixNano
+}
+
+func (c *contactStore) Info() store.Info {
+	info := c.fakeStore.Info()
+	info.LastContact = time.Unix(0, c.last.Load())
+	return info
+}
+
+// TestRefreshUsesLastContact: with a driver that reports LastContact, the
+// local.db timestamp follows it rather than the wall clock, and stays put
+// while the contact is frozen (an apiserver outage).
+func TestRefreshUsesLastContact(t *testing.T) {
+	db, _ := openDB(t)
+	st := &contactStore{fakeStore: newFakeStore()}
+	contacted := time.Now().Add(-time.Minute).Truncate(time.Millisecond)
+	st.last.Store(contacted.UnixNano())
+	st.put(zone("home", "home.example."), true)
+	c := newCache(t, st, Options{LocalDB: db, PersistInterval: 10 * time.Millisecond, RefreshInterval: 30 * time.Millisecond, Debounce: time.Millisecond})
+	startCache(t, c)
+	waitState(t, c, Live)
+	eventually(t, 5*time.Second, "the first write", func() bool { return loadCount(db) == 1 })
+	if got := load(t, db).WrittenAt; !got.Equal(contacted) {
+		t.Fatalf("first write stamped %s, want the last contact %s", got, contacted)
+	}
+
+	later := contacted.Add(20 * time.Second)
+	st.last.Store(later.UnixNano())
+	eventually(t, 5*time.Second, "a refresh to the new contact", func() bool { return load(t, db).WrittenAt.Equal(later) })
+
+	// Contact frozen: several refresh intervals pass without a touch.
+	time.Sleep(10 * 30 * time.Millisecond)
+	if got := load(t, db).WrittenAt; !got.Equal(later) {
+		t.Fatalf("timestamp moved to %s while the contact was frozen at %s", got, later)
 	}
 }
 
