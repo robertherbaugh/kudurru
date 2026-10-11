@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ApplyResultResult.
@@ -36,6 +35,27 @@ func (e ApplyResultResult) Valid() bool {
 	case ApplyResultResultUnchanged:
 		return true
 	case ApplyResultResultUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthStatusLocalLoginMode.
+const (
+	AuthStatusLocalLoginModeAdminsOnly AuthStatusLocalLoginMode = "admins-only"
+	AuthStatusLocalLoginModeDisabled   AuthStatusLocalLoginMode = "disabled"
+	AuthStatusLocalLoginModeEnabled    AuthStatusLocalLoginMode = "enabled"
+)
+
+// Valid indicates whether the value is a known member of the AuthStatusLocalLoginMode enum.
+func (e AuthStatusLocalLoginMode) Valid() bool {
+	switch e {
+	case AuthStatusLocalLoginModeAdminsOnly:
+		return true
+	case AuthStatusLocalLoginModeDisabled:
+		return true
+	case AuthStatusLocalLoginModeEnabled:
 		return true
 	default:
 		return false
@@ -132,6 +152,24 @@ func (e DoctorCheckStatus) Valid() bool {
 	}
 }
 
+// Defines values for IdentityProviderInfoSource.
+const (
+	IdentityProviderInfoSourceConfig IdentityProviderInfoSource = "config"
+	IdentityProviderInfoSourceObject IdentityProviderInfoSource = "object"
+)
+
+// Valid indicates whether the value is a known member of the IdentityProviderInfoSource enum.
+func (e IdentityProviderInfoSource) Valid() bool {
+	switch e {
+	case IdentityProviderInfoSourceConfig:
+		return true
+	case IdentityProviderInfoSourceObject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryActionInputBodyAction.
 const (
 	QueryActionInputBodyActionAllow QueryActionInputBodyAction = "allow"
@@ -144,6 +182,24 @@ func (e QueryActionInputBodyAction) Valid() bool {
 	case QueryActionInputBodyActionAllow:
 		return true
 	case QueryActionInputBodyActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoleBindingInfoSource.
+const (
+	RoleBindingInfoSourceConfig RoleBindingInfoSource = "config"
+	RoleBindingInfoSourceObject RoleBindingInfoSource = "object"
+)
+
+// Valid indicates whether the value is a known member of the RoleBindingInfoSource enum.
+func (e RoleBindingInfoSource) Valid() bool {
+	switch e {
+	case RoleBindingInfoSourceConfig:
+		return true
+	case RoleBindingInfoSourceObject:
 		return true
 	default:
 		return false
@@ -180,6 +236,60 @@ func (e SettingsBodyScope) Valid() bool {
 	case SettingsBodyScopeCluster:
 		return true
 	case SettingsBodyScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TokenOwnerKind.
+const (
+	TokenOwnerKindServiceAccount TokenOwnerKind = "ServiceAccount"
+	TokenOwnerKindUser           TokenOwnerKind = "User"
+)
+
+// Valid indicates whether the value is a known member of the TokenOwnerKind enum.
+func (e TokenOwnerKind) Valid() bool {
+	switch e {
+	case TokenOwnerKindServiceAccount:
+		return true
+	case TokenOwnerKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAuditParamsOrder.
+const (
+	ListAuditParamsOrderAsc  ListAuditParamsOrder = "asc"
+	ListAuditParamsOrderDesc ListAuditParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListAuditParamsOrder enum.
+func (e ListAuditParamsOrder) Valid() bool {
+	switch e {
+	case ListAuditParamsOrderAsc:
+		return true
+	case ListAuditParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportAuditParamsOrder.
+const (
+	ExportAuditParamsOrderAsc  ExportAuditParamsOrder = "asc"
+	ExportAuditParamsOrderDesc ExportAuditParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ExportAuditParamsOrder enum.
+func (e ExportAuditParamsOrder) Valid() bool {
+	switch e {
+	case ExportAuditParamsOrderAsc:
+		return true
+	case ExportAuditParamsOrderDesc:
 		return true
 	default:
 		return false
@@ -491,23 +601,109 @@ type AuditPage struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// AuthListIAMUser defines model for AuthListIAMUser.
+type AuthListIAMUser struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string `json:"diagnoses,omitempty"`
+	Items     []IAMUser `json:"items"`
+	TookMs    int64     `json:"took_ms"`
+}
+
+// AuthListIdentityProviderInfo defines model for AuthListIdentityProviderInfo.
+type AuthListIdentityProviderInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string              `json:"diagnoses,omitempty"`
+	Items     []IdentityProviderInfo `json:"items"`
+	TookMs    int64                  `json:"took_ms"`
+}
+
+// AuthListRoleBindingInfo defines model for AuthListRoleBindingInfo.
+type AuthListRoleBindingInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string         `json:"diagnoses,omitempty"`
+	Items     []RoleBindingInfo `json:"items"`
+	TookMs    int64             `json:"took_ms"`
+}
+
+// AuthListServiceAccountInfo defines model for AuthListServiceAccountInfo.
+type AuthListServiceAccountInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string            `json:"diagnoses,omitempty"`
+	Items     []ServiceAccountInfo `json:"items"`
+	TookMs    int64                `json:"took_ms"`
+}
+
+// AuthListTokenInfo defines model for AuthListTokenInfo.
+type AuthListTokenInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string   `json:"diagnoses,omitempty"`
+	Items     []TokenInfo `json:"items"`
+	TookMs    int64       `json:"took_ms"`
+}
+
 // AuthProvider defines model for AuthProvider.
 type AuthProvider struct {
 	DisplayName string `json:"displayName"`
 	Id          string `json:"id"`
 }
 
+// AuthSessionLimits defines model for AuthSessionLimits.
+type AuthSessionLimits struct {
+	// IdleTimeout Go duration (auth.session.idleTimeout).
+	IdleTimeout string `json:"idleTimeout"`
+
+	// Lifetime Go duration (auth.session.lifetime).
+	Lifetime string `json:"lifetime"`
+}
+
 // AuthStatus defines model for AuthStatus.
 type AuthStatus struct {
-	HasDefaultCredentials bool            `json:"hasDefaultCredentials"`
-	LocalLogin            string          `json:"localLogin"`
-	Providers             *[]AuthProvider `json:"providers"`
+	// HasDefaultCredentials The bootstrap admin still has its generated password.
+	HasDefaultCredentials bool `json:"hasDefaultCredentials"`
+
+	// LocalLogin False only when auth.localLogin is disabled.
+	LocalLogin bool `json:"localLogin"`
+
+	// LocalLoginMode auth.localLogin.
+	LocalLoginMode AuthStatusLocalLoginMode `json:"localLoginMode"`
+
+	// Providers The OIDC login options.
+	Providers []AuthProvider     `json:"providers"`
+	Session   *AuthSessionLimits `json:"session,omitempty"`
 }
+
+// AuthStatusLocalLoginMode auth.localLogin.
+type AuthStatusLocalLoginMode string
 
 // BatchDeleteInputBody defines model for BatchDeleteInputBody.
 type BatchDeleteInputBody struct {
 	Names     *[]string `json:"names"`
 	Namespace *string   `json:"namespace,omitempty"`
+}
+
+// BindingScope defines model for BindingScope.
+type BindingScope struct {
+	// Kind cluster, zone, ...
+	Kind string  `json:"kind"`
+	Name *string `json:"name,omitempty"`
+}
+
+// BindingSubject defines model for BindingSubject.
+type BindingSubject struct {
+	// Kind User, Group, ServiceAccount, ...
+	Kind      string  `json:"kind"`
+	Name      string  `json:"name"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // BlockedItem defines model for BlockedItem.
@@ -543,7 +739,10 @@ type ClientItem struct {
 	Count   int64   `json:"count"`
 	Group   *string `json:"group,omitempty"`
 	Key     string  `json:"key"`
-	Name    *string `json:"name,omitempty"`
+
+	// LastSeen The newest query from the client on this node (hour precision once its query rows aged out).
+	LastSeen *time.Time `json:"last_seen,omitempty"`
+	Name     *string    `json:"name,omitempty"`
 }
 
 // ClientKey defines model for ClientKey.
@@ -586,6 +785,35 @@ type ClusterInfo struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// CreateTokenRequest defines model for CreateTokenRequest.
+type CreateTokenRequest struct {
+	// Description Free text shown in the token list.
+	Description *string `json:"description,omitempty"`
+
+	// ExpiresIn Go duration (720h); empty means auth.tokens.maxLifetime, or never.
+	ExpiresIn *string `json:"expiresIn,omitempty"`
+
+	// Scopes Narrow the token to these grants in wire form (viewer, zone-admin@zone:home-example-com); empty keeps the owner's grants.
+	Scopes *[]string `json:"scopes,omitempty"`
+}
+
+// CreatedToken defines model for CreatedToken.
+type CreatedToken struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Description *string   `json:"description,omitempty"`
+
+	// ExpiresAt null: the token never expires.
+	ExpiresAt  *time.Time `json:"expiresAt"`
+	Id         string     `json:"id"`
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	LastUsedIP *string    `json:"lastUsedIP,omitempty"`
+	Owner      TokenOwner `json:"owner"`
+	Scopes     *[]string  `json:"scopes,omitempty"`
+
+	// Token The kdr_ secret, shown only in this answer.
+	Token string `json:"token"`
 }
 
 // DNSFlags defines model for DNSFlags.
@@ -783,13 +1011,32 @@ type FlushResult struct {
 	TookMs float64 `json:"took_ms"`
 }
 
-// IAMList defines model for IAMList.
-type IAMList struct {
-	Items []map[string]interface{} `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
+// IAMUser defines model for IAMUser.
+type IAMUser struct {
+	BuiltinAdmin       bool       `json:"builtinAdmin"`
+	Disabled           bool       `json:"disabled"`
+	DisplayName        *string    `json:"displayName,omitempty"`
+	Groups             *[]string  `json:"groups,omitempty"`
+	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
+	MustChangePassword bool       `json:"mustChangePassword"`
+	Name               string     `json:"name"`
+	PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
 }
+
+// IdentityProviderInfo defines model for IdentityProviderInfo.
+type IdentityProviderInfo struct {
+	CliClientID *string                    `json:"cliClientID,omitempty"`
+	ClientID    string                     `json:"clientID"`
+	DisplayName string                     `json:"displayName"`
+	Id          string                     `json:"id"`
+	Issuer      string                     `json:"issuer"`
+	RedirectURL string                     `json:"redirectURL"`
+	Scopes      *[]string                  `json:"scopes"`
+	Source      IdentityProviderInfoSource `json:"source"`
+}
+
+// IdentityProviderInfoSource defines model for IdentityProviderInfo.Source.
+type IdentityProviderInfoSource string
 
 // ImportResult defines model for ImportResult.
 type ImportResult struct {
@@ -881,16 +1128,6 @@ type ListSettingKey struct {
 	TookMs float64 `json:"took_ms"`
 }
 
-// ListToken defines model for ListToken.
-type ListToken struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string `json:"continue,omitempty"`
-	Items    []Token `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
 // ListZoneRecord defines model for ListZoneRecord.
 type ListZoneRecord struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -911,12 +1148,23 @@ type ListZoneSummary struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
 // Me defines model for Me.
 type Me struct {
-	Csrf        *string              `json:"csrf,omitempty"`
-	Permissions map[string]*[]string `json:"permissions"`
-	Principal   MePrincipal          `json:"principal"`
-	Roles       []string             `json:"roles"`
+	Csrf *string `json:"csrf,omitempty"`
+
+	// MustChangePassword The local user must change the password (POST /auth/password) before using the API.
+	MustChangePassword *bool                `json:"mustChangePassword,omitempty"`
+	Permissions        map[string]*[]string `json:"permissions"`
+	Principal          MePrincipal          `json:"principal"`
+
+	// Roles Effective grants: role, or role@kind:name for scoped grants.
+	Roles []string `json:"roles"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -990,6 +1238,15 @@ type ObjectList struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// PasswordChangeRequest defines model for PasswordChangeRequest.
+type PasswordChangeRequest struct {
+	// CurrentPassword The current password.
+	CurrentPassword string `json:"currentPassword"`
+
+	// NewPassword The new password (at least 12 characters, different from the current one).
+	NewPassword string `json:"newPassword"`
 }
 
 // Point defines model for Point.
@@ -1181,6 +1438,73 @@ type Retention struct {
 	Rollup1m   string `json:"rollup_1m"`
 }
 
+// RoleBindingInfo defines model for RoleBindingInfo.
+type RoleBindingInfo struct {
+	ManagedBy *string `json:"managedBy,omitempty"`
+
+	// Name The object name, or rbac.bindings[i] for config bindings.
+	Name      string                `json:"name"`
+	Namespace *string               `json:"namespace,omitempty"`
+	Role      string                `json:"role"`
+	Scope     BindingScope          `json:"scope"`
+	Source    RoleBindingInfoSource `json:"source"`
+	Subjects  *[]BindingSubject     `json:"subjects"`
+}
+
+// RoleBindingInfoSource defines model for RoleBindingInfo.Source.
+type RoleBindingInfoSource string
+
+// ServiceAccountInfo defines model for ServiceAccountInfo.
+type ServiceAccountInfo struct {
+	BuiltinAdmin bool    `json:"builtinAdmin"`
+	Description  *string `json:"description,omitempty"`
+	Disabled     bool    `json:"disabled"`
+	Name         string  `json:"name"`
+	Namespace    string  `json:"namespace"`
+
+	// Tokens Number of API tokens the account owns.
+	Tokens int64 `json:"tokens"`
+}
+
+// SessionInfo defines model for SessionInfo.
+type SessionInfo struct {
+	// Csrf The X-Kudurru-CSRF value of the session.
+	Csrf *string `json:"csrf,omitempty"`
+
+	// ExpiresAt End of the session lifetime.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// IdleExpiresAt End of the session if idle.
+	IdleExpiresAt *time.Time `json:"idleExpiresAt,omitempty"`
+
+	// MustChangePassword Every route but the self-service ones answers 403 password_change_required until POST /auth/password.
+	MustChangePassword *bool                `json:"mustChangePassword,omitempty"`
+	Permissions        map[string]*[]string `json:"permissions"`
+	Principal          SessionPrincipal     `json:"principal"`
+
+	// Roles Effective grants: role, or role@kind:name for scoped grants.
+	Roles []string `json:"roles"`
+
+	// ScopedPermissions Verbs per resource for each scoped grant, keyed by scope (zone:home-example-com).
+	ScopedPermissions *map[string]map[string]*[]string `json:"scopedPermissions,omitempty"`
+}
+
+// SessionPrincipal defines model for SessionPrincipal.
+type SessionPrincipal struct {
+	// AuthMethod cookie, token, jwt, k8s, ...
+	AuthMethod *string  `json:"authMethod,omitempty"`
+	Groups     []string `json:"groups"`
+	Id         string   `json:"id"`
+
+	// Kind User, ServiceAccount, KubernetesServiceAccount, LocalRoot or Node.
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+
+	// Provider local, or the identity provider id.
+	Provider *string `json:"provider,omitempty"`
+	TokenID  *string `json:"tokenID,omitempty"`
+}
+
 // SetBlockingInputBody defines model for SetBlockingInputBody.
 type SetBlockingInputBody struct {
 	Blocking bool       `json:"blocking"`
@@ -1296,15 +1620,36 @@ type TimeseriesBody struct {
 	Until  time.Time `json:"until"`
 }
 
-// Token defines model for Token.
-type Token struct {
-	CreatedAt  *time.Time `json:"createdAt,omitempty"`
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+// TokenInfo defines model for TokenInfo.
+type TokenInfo struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Description *string   `json:"description,omitempty"`
+
+	// ExpiresAt null: the token never expires.
+	ExpiresAt  *time.Time `json:"expiresAt"`
 	Id         string     `json:"id"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
-	Name       string     `json:"name"`
-	Token      *string    `json:"token,omitempty"`
+	LastUsedIP *string    `json:"lastUsedIP,omitempty"`
+	Owner      TokenOwner `json:"owner"`
+	Scopes     *[]string  `json:"scopes,omitempty"`
 }
+
+// TokenOwner defines model for TokenOwner.
+type TokenOwner struct {
+	// Id The owner's principal id (local:alice, oidc:...).
+	Id   *string        `json:"id,omitempty"`
+	Kind TokenOwnerKind `json:"kind"`
+	Name string         `json:"name"`
+
+	// Namespace The service account's namespace.
+	Namespace *string `json:"namespace,omitempty"`
+
+	// Provider local, or the identity provider id.
+	Provider *string `json:"provider,omitempty"`
+}
+
+// TokenOwnerKind defines model for TokenOwner.Kind.
+type TokenOwnerKind string
 
 // TopBody defines model for TopBody.
 type TopBody struct {
@@ -1331,9 +1676,12 @@ type TopItem struct {
 	Count   int64   `json:"count"`
 	Group   *string `json:"group,omitempty"`
 	Key     string  `json:"key"`
-	Name    *string `json:"name,omitempty"`
-	Percent float64 `json:"percent"`
-	Total   int64   `json:"total"`
+
+	// LastSeen Clients only: the newest query from the client on this node (hour precision once its query rows aged out).
+	LastSeen *time.Time `json:"last_seen,omitempty"`
+	Name     *string    `json:"name,omitempty"`
+	Percent  float64    `json:"percent"`
+	Total    int64      `json:"total"`
 }
 
 // UpstreamItem defines model for UpstreamItem.
@@ -1454,10 +1802,21 @@ type ListAuditParams struct {
 	Actor *string `form:"actor,omitempty" json:"actor,omitempty"`
 
 	// Since RFC 3339.
-	Since  *string `form:"since,omitempty" json:"since,omitempty"`
-	Limit  *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Since *string `form:"since,omitempty" json:"since,omitempty"`
+	Limit *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor cursor_next (or continue) of the previous page, read with the same order.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Continue Same as cursor.
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+
+	// Order asc: oldest first (the default); desc: newest first.
+	Order *ListAuditParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 }
+
+// ListAuditParamsOrder defines parameters for ListAudit.
+type ListAuditParamsOrder string
 
 // ExportAuditParams defines parameters for ExportAudit.
 type ExportAuditParams struct {
@@ -1469,16 +1828,33 @@ type ExportAuditParams struct {
 	Actor *string `form:"actor,omitempty" json:"actor,omitempty"`
 
 	// Since RFC 3339.
-	Since  *string `form:"since,omitempty" json:"since,omitempty"`
-	Limit  *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Since *string `form:"since,omitempty" json:"since,omitempty"`
+	Limit *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor cursor_next (or continue) of the previous page, read with the same order.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Continue Same as cursor.
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+
+	// Order asc: oldest first (the default); desc: newest first.
+	Order *ExportAuditParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 }
 
-// LoginJSONBody defines parameters for Login.
-type LoginJSONBody = openapi_types.File
+// ExportAuditParamsOrder defines parameters for ExportAudit.
+type ExportAuditParamsOrder string
 
-// CreateTokenJSONBody defines parameters for CreateToken.
-type CreateTokenJSONBody = openapi_types.File
+// OidcStartParams defines parameters for OidcStart.
+type OidcStartParams struct {
+	// Next Same-origin path to return to after the login.
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+}
+
+// ListTokensParams defines parameters for ListTokens.
+type ListTokensParams struct {
+	// All true lists every owner's tokens (needs tokens.read).
+	All *bool `form:"all,omitempty" json:"all,omitempty"`
+}
 
 // ListBlocklistsParams defines parameters for ListBlocklists.
 type ListBlocklistsParams struct {
@@ -1872,10 +2248,13 @@ type DeleteZoneRecordParams struct {
 type ApplyJSONRequestBody = ApplyJSONBody
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = LoginJSONBody
+type LoginJSONRequestBody = LoginRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = PasswordChangeRequest
 
 // CreateTokenJSONRequestBody defines body for CreateToken for application/json ContentType.
-type CreateTokenJSONRequestBody = CreateTokenJSONBody
+type CreateTokenJSONRequestBody = CreateTokenRequest
 
 // CreateBlocklistsJSONRequestBody defines body for CreateBlocklists for application/json ContentType.
 type CreateBlocklistsJSONRequestBody CreateBlocklistsJSONBody
@@ -2035,7 +2414,7 @@ type ClientInterface interface {
 	// Corresponds with POST /apply (the `Apply` operationId).
 	Apply(ctx context.Context, params *ApplyParams, body ApplyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListAudit Audit events of this node (oldest first)
+	// ListAudit Audit events of this node (oldest first; order=desc for newest first)
 	//
 	// Corresponds with GET /audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2081,7 +2460,21 @@ type ClientInterface interface {
 	// OidcStart Start an OIDC login (302 to the IdP)
 	//
 	// Corresponds with GET /auth/oidc/{idp}/start (the `OidcStart` operationId).
-	OidcStart(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	OidcStart(ctx context.Context, idp string, params *OidcStartParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangePasswordWithBody Change the local user's own password (a cookie session gets a new cookie)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+	ChangePasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangePassword Change the local user's own password (a cookie session gets a new cookie)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+	ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AuthStatus Login options
 	//
@@ -2091,7 +2484,7 @@ type ClientInterface interface {
 	// ListTokens List own API tokens
 	//
 	// Corresponds with GET /auth/tokens (the `ListTokens` operationId).
-	ListTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListTokens(ctx context.Context, params *ListTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateTokenWithBody Create a personal API token (the secret is returned once)
 	//
@@ -2107,12 +2500,12 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/tokens (the `CreateToken` operationId).
 	CreateToken(ctx context.Context, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteToken Revoke one own API token
+	// DeleteToken Revoke one API token (someone else's needs tokens.delete)
 	//
 	// Corresponds with DELETE /auth/tokens/{id} (the `DeleteToken` operationId).
 	DeleteToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetToken Get one own API token
+	// GetToken Get one API token (someone else's needs tokens.read)
 	//
 	// Corresponds with GET /auth/tokens/{id} (the `GetToken` operationId).
 	GetToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2718,7 +3111,7 @@ func (c *Client) Apply(ctx context.Context, params *ApplyParams, body ApplyJSONR
 	return c.Client.Do(req)
 }
 
-// ListAudit Audit events of this node (oldest first)
+// ListAudit Audit events of this node (oldest first; order=desc for newest first)
 //
 // Corresponds with GET /audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2834,8 +3227,42 @@ func (c *Client) OidcCallback(ctx context.Context, idp string, reqEditors ...Req
 // OidcStart Start an OIDC login (302 to the IdP)
 //
 // Corresponds with GET /auth/oidc/{idp}/start (the `OidcStart` operationId).
-func (c *Client) OidcStart(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewOidcStartRequest(c.Server, idp)
+func (c *Client) OidcStart(ctx context.Context, idp string, params *OidcStartParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcStartRequest(c.Server, idp, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangePasswordWithBody Change the local user's own password (a cookie session gets a new cookie)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangePasswordRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangePassword Change the local user's own password (a cookie session gets a new cookie)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangePasswordRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2864,8 +3291,8 @@ func (c *Client) AuthStatus(ctx context.Context, reqEditors ...RequestEditorFn) 
 // ListTokens List own API tokens
 //
 // Corresponds with GET /auth/tokens (the `ListTokens` operationId).
-func (c *Client) ListTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListTokensRequest(c.Server)
+func (c *Client) ListTokens(ctx context.Context, params *ListTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTokensRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2910,7 +3337,7 @@ func (c *Client) CreateToken(ctx context.Context, body CreateTokenJSONRequestBod
 	return c.Client.Do(req)
 }
 
-// DeleteToken Revoke one own API token
+// DeleteToken Revoke one API token (someone else's needs tokens.delete)
 //
 // Corresponds with DELETE /auth/tokens/{id} (the `DeleteToken` operationId).
 func (c *Client) DeleteToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2925,7 +3352,7 @@ func (c *Client) DeleteToken(ctx context.Context, id string, reqEditors ...Reque
 	return c.Client.Do(req)
 }
 
-// GetToken Get one own API token
+// GetToken Get one API token (someone else's needs tokens.read)
 //
 // Corresponds with GET /auth/tokens/{id} (the `GetToken` operationId).
 func (c *Client) GetToken(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4597,6 +5024,30 @@ func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request,
 
 		}
 
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Order != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "order", *params.Order, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -4702,6 +5153,30 @@ func NewExportAuditRequest(server string, params *ExportAuditParams) (*http.Requ
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Order != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "order", *params.Order, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -4854,7 +5329,7 @@ func NewOidcCallbackRequest(server string, idp string) (*http.Request, error) {
 }
 
 // NewOidcStartRequest constructs an http.Request for the OidcStart method
-func NewOidcStartRequest(server string, idp string) (*http.Request, error) {
+func NewOidcStartRequest(server string, idp string, params *OidcStartParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -4879,10 +5354,77 @@ func NewOidcStartRequest(server string, idp string) (*http.Request, error) {
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Next != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "next", *params.Next, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewChangePasswordRequest calls the generic ChangePassword builder with application/json body
+func NewChangePasswordRequest(server string, body ChangePasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewChangePasswordRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewChangePasswordRequestWithBody constructs an http.Request for the ChangePassword method, with any body, and a specified content type
+func NewChangePasswordRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/password")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4915,7 +5457,7 @@ func NewAuthStatusRequest(server string) (*http.Request, error) {
 }
 
 // NewListTokensRequest constructs an http.Request for the ListTokens method
-func NewListTokensRequest(server string) (*http.Request, error) {
+func NewListTokensRequest(server string, params *ListTokensParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -4931,6 +5473,33 @@ func NewListTokensRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.All != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "all", *params.All, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9298,7 +9867,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /apply (the `Apply` operationId).
 	ApplyWithResponse(ctx context.Context, params *ApplyParams, body ApplyJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyResponse, error)
 
-	// ListAuditWithResponse Audit events of this node (oldest first)
+	// ListAuditWithResponse Audit events of this node (oldest first; order=desc for newest first)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9356,7 +9925,21 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /auth/oidc/{idp}/start (the `OidcStart` operationId).
-	OidcStartWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcStartResponse, error)
+	OidcStartWithResponse(ctx context.Context, idp string, params *OidcStartParams, reqEditors ...RequestEditorFn) (*OidcStartResponse, error)
+
+	// ChangePasswordWithBodyWithResponse Change the local user's own password (a cookie session gets a new cookie)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+	ChangePasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error)
+
+	// ChangePasswordWithResponse Change the local user's own password (a cookie session gets a new cookie)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+	ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error)
 
 	// AuthStatusWithResponse Login options
 	//
@@ -9370,7 +9953,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /auth/tokens (the `ListTokens` operationId).
-	ListTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTokensResponse, error)
+	ListTokensWithResponse(ctx context.Context, params *ListTokensParams, reqEditors ...RequestEditorFn) (*ListTokensResponse, error)
 
 	// CreateTokenWithBodyWithResponse Create a personal API token (the secret is returned once)
 	//
@@ -9386,14 +9969,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/tokens (the `CreateToken` operationId).
 	CreateTokenWithResponse(ctx context.Context, body CreateTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTokenResponse, error)
 
-	// DeleteTokenWithResponse Revoke one own API token
+	// DeleteTokenWithResponse Revoke one API token (someone else's needs tokens.delete)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /auth/tokens/{id} (the `DeleteToken` operationId).
 	DeleteTokenWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteTokenResponse, error)
 
-	// GetTokenWithResponse Get one own API token
+	// GetTokenWithResponse Get one API token (someone else's needs tokens.read)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10335,7 +10918,7 @@ type LoginResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Me
+	JSON200 *SessionInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -10353,7 +10936,7 @@ type LoginResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r LoginResponse) GetJSON200() *Me {
+func (r LoginResponse) GetJSON200() *SessionInfo {
 	return r.JSON200
 }
 
@@ -10711,6 +11294,103 @@ func (r OidcStartResponse) ContentType() string {
 	return ""
 }
 
+type ChangePasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SessionInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ChangePasswordResponse) GetJSON200() *SessionInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ChangePasswordResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ChangePasswordResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ChangePasswordResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ChangePasswordResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ChangePasswordResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ChangePasswordResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ChangePasswordResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ChangePasswordResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ChangePasswordResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ChangePasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ChangePasswordResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ChangePasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type AuthStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10784,7 +11464,7 @@ type ListTokensResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListToken
+	JSON200 *AuthListTokenInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -10800,7 +11480,7 @@ type ListTokensResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListTokensResponse) GetJSON200() *ListToken {
+func (r ListTokensResponse) GetJSON200() *AuthListTokenInfo {
 	return r.JSON200
 }
 
@@ -10867,7 +11547,7 @@ type CreateTokenResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *Token
+	JSON201 *CreatedToken
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -10887,7 +11567,7 @@ type CreateTokenResponse struct {
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateTokenResponse) GetJSON201() *Token {
+func (r CreateTokenResponse) GetJSON201() *CreatedToken {
 	return r.JSON201
 }
 
@@ -11054,7 +11734,7 @@ type GetTokenResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Token
+	JSON200 *TokenInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -11070,7 +11750,7 @@ type GetTokenResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetTokenResponse) GetJSON200() *Token {
+func (r GetTokenResponse) GetJSON200() *TokenInfo {
 	return r.JSON200
 }
 
@@ -13556,7 +14236,7 @@ type ListIdentityProvidersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *IAMList
+	JSON200 *AuthListIdentityProviderInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -13572,7 +14252,7 @@ type ListIdentityProvidersResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListIdentityProvidersResponse) GetJSON200() *IAMList {
+func (r ListIdentityProvidersResponse) GetJSON200() *AuthListIdentityProviderInfo {
 	return r.JSON200
 }
 
@@ -13639,7 +14319,7 @@ type ListRoleBindingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *IAMList
+	JSON200 *AuthListRoleBindingInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -13655,7 +14335,7 @@ type ListRoleBindingsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListRoleBindingsResponse) GetJSON200() *IAMList {
+func (r ListRoleBindingsResponse) GetJSON200() *AuthListRoleBindingInfo {
 	return r.JSON200
 }
 
@@ -13722,7 +14402,7 @@ type ListServiceAccountsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *IAMList
+	JSON200 *AuthListServiceAccountInfo
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -13738,7 +14418,7 @@ type ListServiceAccountsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListServiceAccountsResponse) GetJSON200() *IAMList {
+func (r ListServiceAccountsResponse) GetJSON200() *AuthListServiceAccountInfo {
 	return r.JSON200
 }
 
@@ -13805,7 +14485,7 @@ type ListUsersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *IAMList
+	JSON200 *AuthListIAMUser
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -13821,7 +14501,7 @@ type ListUsersResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListUsersResponse) GetJSON200() *IAMList {
+func (r ListUsersResponse) GetJSON200() *AuthListIAMUser {
 	return r.JSON200
 }
 
@@ -17978,7 +18658,7 @@ func (c *ClientWithResponses) ApplyWithResponse(ctx context.Context, params *App
 	return ParseApplyResponse(rsp)
 }
 
-// ListAuditWithResponse Audit events of this node (oldest first)
+// ListAuditWithResponse Audit events of this node (oldest first; order=desc for newest first)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -18078,12 +18758,38 @@ func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, idp 
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /auth/oidc/{idp}/start (the `OidcStart` operationId).
-func (c *ClientWithResponses) OidcStartWithResponse(ctx context.Context, idp string, reqEditors ...RequestEditorFn) (*OidcStartResponse, error) {
-	rsp, err := c.OidcStart(ctx, idp, reqEditors...)
+func (c *ClientWithResponses) OidcStartWithResponse(ctx context.Context, idp string, params *OidcStartParams, reqEditors ...RequestEditorFn) (*OidcStartResponse, error) {
+	rsp, err := c.OidcStart(ctx, idp, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseOidcStartResponse(rsp)
+}
+
+// ChangePasswordWithBodyWithResponse Change the local user's own password (a cookie session gets a new cookie)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+func (c *ClientWithResponses) ChangePasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error) {
+	rsp, err := c.ChangePasswordWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangePasswordResponse(rsp)
+}
+
+// ChangePasswordWithResponse Change the local user's own password (a cookie session gets a new cookie)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /auth/password (the `ChangePassword` operationId).
+func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error) {
+	rsp, err := c.ChangePassword(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangePasswordResponse(rsp)
 }
 
 // AuthStatusWithResponse Login options
@@ -18104,8 +18810,8 @@ func (c *ClientWithResponses) AuthStatusWithResponse(ctx context.Context, reqEdi
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /auth/tokens (the `ListTokens` operationId).
-func (c *ClientWithResponses) ListTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTokensResponse, error) {
-	rsp, err := c.ListTokens(ctx, reqEditors...)
+func (c *ClientWithResponses) ListTokensWithResponse(ctx context.Context, params *ListTokensParams, reqEditors ...RequestEditorFn) (*ListTokensResponse, error) {
+	rsp, err := c.ListTokens(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -18138,7 +18844,7 @@ func (c *ClientWithResponses) CreateTokenWithResponse(ctx context.Context, body 
 	return ParseCreateTokenResponse(rsp)
 }
 
-// DeleteTokenWithResponse Revoke one own API token
+// DeleteTokenWithResponse Revoke one API token (someone else's needs tokens.delete)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -18151,7 +18857,7 @@ func (c *ClientWithResponses) DeleteTokenWithResponse(ctx context.Context, id st
 	return ParseDeleteTokenResponse(rsp)
 }
 
-// GetTokenWithResponse Get one own API token
+// GetTokenWithResponse Get one API token (someone else's needs tokens.read)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19628,7 +20334,7 @@ func ParseLoginResponse(rsp *http.Response) (*LoginResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Me
+		var dest SessionInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -19927,6 +20633,88 @@ func ParseOidcStartResponse(rsp *http.Response) (*OidcStartResponse, error) {
 	return response, nil
 }
 
+// ParseChangePasswordResponse parses an HTTP response from a ChangePasswordWithResponse call
+func ParseChangePasswordResponse(rsp *http.Response) (*ChangePasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ChangePasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAuthStatusResponse parses an HTTP response from a AuthStatusWithResponse call
 func ParseAuthStatusResponse(rsp *http.Response) (*AuthStatusResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19996,7 +20784,7 @@ func ParseListTokensResponse(rsp *http.Response) (*ListTokensResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListToken
+		var dest AuthListTokenInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -20064,7 +20852,7 @@ func ParseCreateTokenResponse(rsp *http.Response) (*CreateTokenResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Token
+		var dest CreatedToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -20224,7 +21012,7 @@ func ParseGetTokenResponse(rsp *http.Response) (*GetTokenResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Token
+		var dest TokenInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22432,7 +23220,7 @@ func ParseListIdentityProvidersResponse(rsp *http.Response) (*ListIdentityProvid
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest IAMList
+		var dest AuthListIdentityProviderInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22500,7 +23288,7 @@ func ParseListRoleBindingsResponse(rsp *http.Response) (*ListRoleBindingsRespons
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest IAMList
+		var dest AuthListRoleBindingInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22568,7 +23356,7 @@ func ParseListServiceAccountsResponse(rsp *http.Response) (*ListServiceAccountsR
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest IAMList
+		var dest AuthListServiceAccountInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22636,7 +23424,7 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest IAMList
+		var dest AuthListIAMUser
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

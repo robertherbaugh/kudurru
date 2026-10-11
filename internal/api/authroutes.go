@@ -19,45 +19,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 )
 
-// The request and response shapes of the auth routes the auth package
-// serves (Options.AuthHandler). They are documented here so the OpenAPI
-// document and the generated clients cover them.
-type (
-	// AuthStatus is GET /auth/status.
-	AuthStatus struct {
-		// LocalLogin is enabled, admins-only or disabled.
-		LocalLogin            string         `json:"localLogin"`
-		Providers             []AuthProvider `json:"providers"`
-		HasDefaultCredentials bool           `json:"hasDefaultCredentials"`
-	}
-	// AuthProvider is one OIDC login option.
-	AuthProvider struct {
-		ID          string `json:"id"`
-		DisplayName string `json:"displayName"`
-	}
-	// LoginRequest is the body of POST /auth/login.
-	LoginRequest struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	// TokenRequest is the body of POST /auth/tokens.
-	TokenRequest struct {
-		Name string `json:"name"`
-		// ExpiresIn is a Go duration ("720h"); empty is the server default.
-		ExpiresIn string `json:"expiresIn,omitempty"`
-	}
-	// Token is one personal API token; its token field (the kdr_ secret)
-	// is only in the POST response, once.
-	Token struct {
-		ID         string     `json:"id"`
-		Name       string     `json:"name"`
-		Token      string     `json:"token,omitempty"`
-		CreatedAt  *time.Time `json:"createdAt,omitempty"`
-		ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
-		LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
-	}
-)
-
 // Me is GET /auth/me.
 type Me struct {
 	Principal MePrincipal `json:"principal"`
@@ -88,17 +49,6 @@ type MePrincipal struct {
 }
 
 type meOutput struct{ Body *Me }
-
-// IAMItem is one identity or binding of the read-only IAM routes.
-type IAMItem = map[string]any
-
-// IAMList is the list envelope of the IAM routes.
-type IAMList struct {
-	Items []IAMItem `json:"items" nullable:"false"`
-	Took
-}
-
-type iamOutput struct{ Body *IAMList }
 
 // AuditEvent is one row of GET /audit.
 type AuditEvent = audit.Event
@@ -137,29 +87,30 @@ func (s *Server) registerAuth() {
 	// its owner's bindings (§8.6).
 	tokens := authed
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
-	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, Me{})
-	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth"), public, nil, nil)
+	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, SessionInfo{})
+	start := operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth")
+	start.Parameters = append(start.Parameters, &huma.Param{Name: "next", In: "query", Description: "Same-origin path to return to after the login.", Schema: &huma.Schema{Type: "string"}})
+	s.forward(start, public, nil, nil)
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
-	s.forward(withStatus(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password", "auth"), http.StatusNoContent), authed, PasswordChangeRequest{}, nil)
-	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, TokenRequest{}, Token{})
-	s.forward(operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth"), tokens, nil, List[Token]{})
-	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one own API token", "auth"), tokens, nil, Token{})
-	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one own API token", "auth"), http.StatusNoContent), tokens, nil, nil)
+	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
+	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
+	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
+	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})
+	s.forward(list, tokens, nil, AuthList[TokenInfo]{})
+	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one API token (someone else's needs tokens.read)", "auth"), tokens, nil, TokenInfo{})
+	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one API token (someone else's needs tokens.delete)", "auth"), http.StatusNoContent), tokens, nil, nil)
 	register(s, operation(http.MethodGet, "/auth/me", "me", "The authenticated principal, roles, permissions and CSRF token", "auth"), authed, s.me)
 
-	for _, r := range []struct{ path, resource, id string }{
-		{"/iam/users", "users", "listUsers"},
-		{"/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts"},
-		{"/iam/rolebindings", "rolebindings", "listRoleBindings"},
-		{"/iam/identityproviders", "identityproviders", "listIdentityProviders"},
-	} {
-		r := r
-		register(s, operation(http.MethodGet, r.path, r.id, "List "+r.resource+" (read-only; the write API is v0.2)", "iam"),
-			perm{resource: r.resource, verb: "read"}, func(ctx context.Context, _ *struct{}) (*iamOutput, error) {
-				return s.iamList(ctx, r.resource)
-			})
+	// IAM, read-only (the write API is v0.2): served by the auth stack.
+	iam := func(path, resource, id string, resp any) {
+		s.forward(operation(http.MethodGet, path, id, "List "+resource+" (read-only; the write API is v0.2)", "iam"),
+			perm{resource: resource, verb: "read"}, nil, resp)
 	}
+	iam("/iam/users", "users", "listUsers", AuthList[IAMUser]{})
+	iam("/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts", AuthList[ServiceAccountInfo]{})
+	iam("/iam/rolebindings", "rolebindings", "listRoleBindings", AuthList[RoleBindingInfo]{})
+	iam("/iam/identityproviders", "identityproviders", "listIdentityProviders", AuthList[IdentityProviderInfo]{})
 }
 
 func withRateLimit(op huma.Operation) huma.Operation {
@@ -169,7 +120,8 @@ func withRateLimit(op huma.Operation) huma.Operation {
 }
 
 // forward registers a route served by Options.AuthHandler: the operation
-// is documented (request and response schemas from the given examples)
+// is documented (request and response schemas from the given examples,
+// the mirrors of authtypes.go)
 // and authorized like any other, then the original request is handed to
 // the auth handler untouched.
 func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any) {
@@ -218,9 +170,35 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 			}
 			return serve(in.RawBody)
 		})
+		// huma documents a RawBody as a binary string: put the schema of
+		// the body the auth handler decodes back.
+		if doc := documented(s.api.OpenAPI(), op.Method, op.Path); doc != nil {
+			doc.RequestBody.Content["application/json"] = &huma.MediaType{Schema: reg.Schema(reflect.TypeOf(reqExample), true, "")}
+		}
 		return
 	}
 	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) { return serve(nil) })
+}
+
+// documented returns the OpenAPI operation registered for method and path.
+func documented(oapi *huma.OpenAPI, method, path string) *huma.Operation {
+	item := oapi.Paths[path]
+	if item == nil {
+		return nil
+	}
+	switch method {
+	case http.MethodGet:
+		return item.Get
+	case http.MethodPost:
+		return item.Post
+	case http.MethodPut:
+		return item.Put
+	case http.MethodPatch:
+		return item.Patch
+	case http.MethodDelete:
+		return item.Delete
+	}
+	return nil
 }
 
 // maxAuthBodyBytes caps the bodies of the forwarded auth routes (the auth
@@ -277,30 +255,6 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		}
 	}
 	return &meOutput{Body: out}, nil
-}
-
-func (s *Server) iamList(ctx context.Context, resource string) (*iamOutput, error) {
-	var items []IAMItem
-	var err error
-	if s.opts.IAM != nil {
-		switch resource {
-		case "users":
-			items, err = s.opts.IAM.Users(ctx)
-		case "serviceaccounts":
-			items, err = s.opts.IAM.ServiceAccounts(ctx)
-		case "rolebindings":
-			items, err = s.opts.IAM.RoleBindings(ctx)
-		case "identityproviders":
-			items, err = s.opts.IAM.IdentityProviders(ctx)
-		}
-	}
-	if err != nil {
-		return nil, storeError(err)
-	}
-	if items == nil {
-		items = []IAMItem{}
-	}
-	return &iamOutput{Body: &IAMList{Items: items}}, nil
 }
 
 func (s *Server) registerAudit() {
@@ -412,11 +366,4 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 			advance(&q, evs[len(evs)-1].ID)
 		}
 	}}, nil
-}
-
-// PasswordChangeRequest is the POST /auth/password body served by the auth
-// stack (local users; clears mustChangePassword).
-type PasswordChangeRequest struct {
-	Current string `json:"current" doc:"The current password"`
-	Next    string `json:"next" doc:"The new password (at least 12 characters)"`
 }

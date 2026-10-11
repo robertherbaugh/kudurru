@@ -219,7 +219,7 @@ func TestAuthForwarding(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/auth/status":
-			_, _ = io.WriteString(w, `{"localLogin":"enabled","providers":[],"hasDefaultCredentials":true}`)
+			_, _ = io.WriteString(w, `{"localLogin":true,"localLoginMode":"enabled","providers":[],"hasDefaultCredentials":true}`)
 		case "/api/v1/auth/login":
 			body, _ := io.ReadAll(r.Body)
 			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "x", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
@@ -247,7 +247,7 @@ func TestAuthForwarding(t *testing.T) {
 	})
 	var st AuthStatus
 	h.do(http.MethodGet, "/api/v1/auth/status", "", nil).want(http.StatusOK).json(&st)
-	if st.LocalLogin != "enabled" || !st.HasDefaultCredentials {
+	if !st.LocalLogin || st.LocalLoginMode != "enabled" || !st.HasDefaultCredentials {
 		t.Fatalf("status %+v", st)
 	}
 	r := h.do(http.MethodPost, "/api/v1/auth/login", "", map[string]string{"username": "admin", "password": "pw"}).want(http.StatusOK)
