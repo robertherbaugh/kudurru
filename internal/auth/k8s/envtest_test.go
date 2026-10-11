@@ -182,10 +182,23 @@ func TestServiceAccountTokens(t *testing.T) {
 			if !mode.jwks {
 				verify = a.Fallback().VerifyJWT
 			}
+			start := time.Now()
 			p, err := verify(ctx, good)
 			if err != nil {
 				t.Fatal(err)
 			}
+			first := time.Since(start)
+			fresh := token(t, testSA, audience) // not cached: keys (jwks) or a TokenReview round trip
+			start = time.Now()
+			if _, err := verify(ctx, fresh); err != nil {
+				t.Fatal(err)
+			}
+			second := time.Since(start)
+			start = time.Now()
+			if _, err := verify(ctx, fresh); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%s: first token %s (with discovery), new token %s, cached %s", mode.name, first, second, time.Since(start))
 			if p.Kind != auth.KindKubernetesServiceAccount || p.Name != "system:serviceaccount:dns:external-dns" || p.ServiceAccount != "dns/external-dns" ||
 				p.UID != saUID || p.AuthMethod != auth.MethodK8s {
 				t.Fatalf("principal %+v", p)
