@@ -22,6 +22,7 @@ const NAV = [
   ['/tools', 'Tools'],
   ['/messages', 'Diagnosis'],
   ['/access', 'Access & audit'],
+  ['/requests', 'Requests'],
 ] as const;
 
 /** Views that are not navigation entries of their own. */
@@ -39,6 +40,7 @@ const MORE = [
   '/groups/new',
   '/clients/127.0.0.1',
   '/policies/new',
+  '/requests?state=all',
 ];
 
 test('the sidebar links exactly the pages this suite covers', async ({ page }) => {
