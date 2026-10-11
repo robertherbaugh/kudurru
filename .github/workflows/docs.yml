@@ -1,0 +1,39 @@
+name: docs
+# Builds the docs site (site/, Hugo) on every change: the generated
+# references must be current, the Hugo build fails on any unresolved link in
+# the markdown (--panicOnWarning), and htmltest checks the HTML below the
+# GitHub Pages sub-path. Publishing is docs-pages.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # The pinned Hugo release (HUGO_VERSION and its SHA-256 in the Makefile).
+      - name: Cache Hugo
+        uses: actions/cache@v4
+        with:
+          path: bin/hugo-*
+          key: hugo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+      - name: Generated references are current
+        run: |
+          make docs-gen
+          git diff --exit-code -- site/content/reference
+          test -z "$(git status --porcelain -- site/content/reference)" || { git status --porcelain -- site/content/reference; echo "run make docs-gen and commit the result"; exit 1; }
+      - name: Build (fails on broken links)
+        run: make docs-site
+      - name: Check the HTML below a sub-path
+        run: make docs-check-links
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: site/public
+          retention-days: 7
