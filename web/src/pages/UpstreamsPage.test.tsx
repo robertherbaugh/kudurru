@@ -1,9 +1,12 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { PROVIDERS, serversFor, transportsOf } from '../lib/upstreamPresets';
 import { bootstrapError, conditionalKeyError, mapPatch, serverError, serverLabel } from '../lib/upstreams';
 import { mockDB } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
+import UpstreamGroupPage from './UpstreamGroupPage';
 import UpstreamsPage from './UpstreamsPage';
+import UpstreamWizardPage from './UpstreamWizardPage';
 
 function groups(): Record<string, { servers: string[]; strategy: string; timeout: string }> {
   return (mockDB().settings.upstreams as { groups: Record<string, { servers: string[]; strategy: string; timeout: string }> }).groups;
@@ -51,68 +54,131 @@ describe('upstream helpers', () => {
   });
 });
 
+describe('provider presets', () => {
+  it('turns a preset into valid, named server entries', () => {
+    const quad9 = PROVIDERS.find((p) => p.id === 'quad9')!;
+    const v = quad9.variants[0]!;
+    expect(transportsOf(v)).toEqual(['doh', 'dot', 'plain']);
+    expect(serversFor(quad9, v, 'dot')).toEqual(['quad9-dot=tls://dns.quad9.net']);
+    expect(serversFor(quad9, v, 'plain', { ipv6: true })).toEqual(['quad9-1=9.9.9.9:53', 'quad9-2=149.112.112.112:53', 'quad9-3=[2620:fe::fe]:53', 'quad9-4=[2620:fe::9]:53']);
+    const next = PROVIDERS.find((p) => p.id === 'nextdns')!;
+    expect(serversFor(next, next.variants[0]!, 'doq', { id: 'abc123' })).toEqual(['nextdns-doq=quic://abc123.dns.nextdns.io']);
+    // Mullvad is encrypted only.
+    expect(transportsOf(PROVIDERS.find((p) => p.id === 'mullvad')!.variants[0]!)).toEqual(['doh', 'dot']);
+    for (const p of PROVIDERS)
+      for (const variant of p.variants)
+        for (const t of transportsOf(variant)) for (const e of serversFor(p, variant, t, { id: 'abc123', ipv6: true })) expect([e, serverError(e)]).toEqual([e, null]);
+  });
+});
+
 describe('UpstreamsPage', () => {
-  it('shows every group with per-server health, RTT and traffic', async () => {
+  it('lists the groups with strategy, health and traffic, linking to their pages', async () => {
     renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
     const def = await screen.findByTestId('group-default');
     expect(within(def).getByText('Parallel best')).toBeInTheDocument();
-    const cf = within(def).getByText('cloudflare').closest('tr')!;
-    expect(within(cf).getByText('tls://1.1.1.1:853')).toBeInTheDocument();
-    expect(await within(cf).findByText('healthy')).toBeInTheDocument();
-    expect(within(cf).getByText('8.4 ms')).toBeInTheDocument();
+    expect(within(def).getByRole('link', { name: 'default' })).toHaveAttribute('href', '/upstreams/default');
+    expect(await within(def).findByText('2 of 2 healthy')).toBeInTheDocument();
     const filtered = screen.getByTestId('group-filtered');
-    expect(await within(filtered).findByText(/^backoff/)).toBeInTheDocument();
     expect(within(filtered).getByText('Strict order')).toBeInTheDocument();
+    expect(await within(filtered).findByText('0 of 1 healthy')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/undefined|NaN/);
-  });
-
-  it('creates a group from the structured form after validating the servers', async () => {
-    renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
-    await screen.findByTestId('group-default');
-    const newGroup = screen.getByRole('button', { name: 'New group' });
-    await waitFor(() => expect(newGroup).not.toHaveAttribute('aria-disabled', 'true'));
-    fireEvent.click(newGroup);
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), { target: { value: 'corp' } });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Servers/ }), { target: { value: '10.0.0.53\nftp://nope' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create group' }));
-    expect(await within(dialog).findByText(/Line 2 \(ftp:\/\/nope\): Unknown scheme/)).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Servers/ }), { target: { value: '10.0.0.53\ncorp-dot=tls://dns.corp.example' } });
-    fireEvent.change(within(dialog).getByRole('combobox', { name: /^Strategy/ }), { target: { value: 'strict' } });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Timeout/ }), { target: { value: '500ms' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create group' }));
-    await waitFor(() => expect(groups().corp).toEqual({ servers: ['10.0.0.53', 'corp-dot=tls://dns.corp.example'], strategy: 'strict', timeout: '500ms' }));
-    expect(await screen.findByTestId('group-corp')).toBeInTheDocument();
-  });
-
-  it('deletes a group with a null in the merge patch', async () => {
-    mockDB().settings = { ...mockDB().settings, upstreams: { ...(mockDB().settings.upstreams as object), conditional: {} } };
-    renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
-    const filtered = await screen.findByTestId('group-filtered');
-    const del = within(filtered).getByRole('button', { name: 'Delete' });
-    await waitFor(() => expect(del).not.toHaveAttribute('aria-disabled', 'true'));
-    fireEvent.click(del);
-    const dialog = await screen.findByRole('dialog');
-    // The iot-strict policy still routes to "filtered".
-    expect(await within(dialog).findByText(/policy iot-strict/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
-    await waitFor(() => expect(groups().filtered).toBeUndefined());
-    expect(groups().default).toBeDefined();
   });
 
   it('turns read-only with the explanation when the settings are managed elsewhere', async () => {
     mockDB().settingsManagedBy = 'Kubernetes (the kudurru-settings ConfigMap)';
     renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
-    const def = await screen.findByTestId('group-default');
-    const edit = within(def).getByRole('button', { name: 'Edit' });
-    await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
-    fireEvent.click(edit);
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(await within(dialog).findByText(/managed by Kubernetes/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await screen.findByTestId('group-default');
+    fireEvent.click(await screen.findByRole('button', { name: 'Add resolver' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Resolvers 2' }), { target: { value: '9.9.9.9:53' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect((await screen.findAllByText(/managed by Kubernetes/)).length).toBeGreaterThan(0);
     expect(await screen.findByText('Read-only here')).toBeInTheDocument();
-    const after = within(screen.getByTestId('group-default')).getByRole('button', { name: 'Edit' });
-    await waitFor(() => expect(after.getAttribute('aria-disabled') === 'true' || after.hasAttribute('disabled')).toBe(true));
+    const btn = screen.getByRole('button', { name: 'New group' });
+    await waitFor(() => expect(btn.getAttribute('aria-disabled') === 'true' || btn.hasAttribute('disabled')).toBe(true));
+  });
+});
+
+describe('UpstreamGroupPage', () => {
+  it('shows the servers with health and RTT, saves typed settings and lists the users', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'default' }} />, { route: '/upstreams/default' });
+    const cf = (await screen.findByText('cloudflare')).closest('tr')!;
+    expect(within(cf).getByText('tls://1.1.1.1:853')).toBeInTheDocument();
+    expect(await within(cf).findByText('healthy')).toBeInTheDocument();
+    expect(within(cf).getByText('8.4 ms')).toBeInTheDocument();
+    const strategy = screen.getByRole('combobox', { name: 'Strategy' });
+    fireEvent.change(strategy, { target: { value: 'strict' } });
+    expect(screen.getByText('Ask the servers in order, moving on only on failure.')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Timeout' }), { target: { value: '5s' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add server' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Servers 3' }), { target: { value: 'ftp://nope' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/Line 3 \(ftp:\/\/nope\): Unknown scheme/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Servers 3' }), { target: { value: 'google=https://dns.google/dns-query' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(groups().default).toEqual({ servers: ['cloudflare=tls://1.1.1.1:853', 'quad9=tls://9.9.9.9:853', 'google=https://dns.google/dns-query'], strategy: 'strict', timeout: '5s' }),
+    );
+    expect(screen.getByText(/Every query no policy/)).toBeInTheDocument();
+  });
+
+  it('deletes a group with a null in the merge patch after naming its users', async () => {
+    mockDB().settings = { ...mockDB().settings, upstreams: { ...(mockDB().settings.upstreams as object), conditional: {} } };
+    renderWithApp(<UpstreamGroupPage params={{ group: 'filtered' }} />, { route: '/upstreams/filtered' });
+    const used = await screen.findByTestId('used-by');
+    expect(await within(used).findByRole('link', { name: 'default/iot-strict' })).toHaveAttribute('href', '/policies/default/iot-strict');
+    const del = screen.getByRole('button', { name: 'Delete' });
+    await waitFor(() => expect(del).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(del);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/policy default\/iot-strict/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(groups().filtered).toBeUndefined());
+    expect(groups().default).toBeDefined();
+  });
+
+  it('says so for a group that does not exist', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'nope' }} />, { route: '/upstreams/nope' });
+    expect(await screen.findByText('No such upstream group')).toBeInTheDocument();
+  });
+});
+
+describe('UpstreamWizardPage', () => {
+  it('creates a group from a provider preset', async () => {
+    renderWithApp(<UpstreamWizardPage />, { route: '/upstreams/new' });
+    const quad9 = await screen.findByRole('radio', { name: /^Quad9/ });
+    await waitFor(() => expect(quad9).toBeEnabled());
+    fireEvent.click(quad9);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Transport' }), { target: { value: 'dot' } });
+    expect(within(screen.getByTestId('preset-servers')).getByText('tls://dns.quad9.net')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('textbox', { name: /^Name/ })).toHaveValue('quad9');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByTestId('upstream-review')).toHaveTextContent('quad9-dot=tls://dns.quad9.net');
+    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    await waitFor(() => expect(groups().quad9).toEqual({ servers: ['quad9-dot=tls://dns.quad9.net'], strategy: 'parallel_best', timeout: '2s' }));
+  });
+
+  it('needs the NextDNS profile ID and validates custom servers and the name', async () => {
+    renderWithApp(<UpstreamWizardPage />, { route: '/upstreams/new' });
+    fireEvent.click(await screen.findByRole('radio', { name: /^NextDNS/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('textbox', { name: /^Profile ID/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText(/Profile ID: The six-character ID/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Custom/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add server' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Servers 1' }), { target: { value: '10.0.0.53' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    fireEvent.change(name, { target: { value: 'default' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('A group with this name exists')).toBeInTheDocument();
+    fireEvent.change(name, { target: { value: 'corp' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create group' }));
+    await waitFor(() => expect(groups().corp?.servers).toEqual(['10.0.0.53']));
   });
 });

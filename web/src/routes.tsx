@@ -56,6 +56,9 @@ const Policies = lazy(() => import('./pages/PoliciesPage'));
 const Zones = lazy(() => import('./pages/ZonesPage'));
 const ZoneDetail = lazy(() => import('./pages/ZoneDetailPage'));
 const Upstreams = lazy(() => import('./pages/UpstreamsPage'));
+const ZoneWizard = lazy(() => import('./pages/ZoneWizardPage'));
+const UpstreamWizard = lazy(() => import('./pages/UpstreamWizardPage'));
+const UpstreamGroup = lazy(() => import('./pages/UpstreamGroupPage'));
 const Nodes = lazy(() => import('./pages/NodesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
@@ -71,8 +74,11 @@ export const ROUTES: RouteDef[] = [
   { path: '/clients', navKey: 'clients', label: 'Clients', section: 'Filtering', icon: Monitor, page: Clients, scoped: true },
   { path: '/policies', navKey: 'policies', label: 'Policies', section: 'Filtering', icon: Scale, page: Policies },
   { path: '/zones', navKey: 'zones', label: 'Zones', section: 'DNS', icon: Globe, page: Zones },
+  { path: '/zones/new', navKey: 'zones', label: 'New zone', section: 'DNS', icon: Globe, page: ZoneWizard, hidden: true },
   { path: '/zones/:zone', navKey: 'zones', label: 'Zone', section: 'DNS', icon: Globe, page: ZoneDetail, hidden: true },
   { path: '/upstreams', navKey: 'upstreams', label: 'Upstreams', section: 'DNS', icon: Network, page: Upstreams },
+  { path: '/upstreams/new', navKey: 'upstreams', label: 'New upstream group', section: 'DNS', icon: Network, page: UpstreamWizard, hidden: true },
+  { path: '/upstreams/:group', navKey: 'upstreams', label: 'Upstream group', section: 'DNS', icon: Network, page: UpstreamGroup, hidden: true },
   { path: '/nodes', navKey: 'nodes', label: 'Nodes', section: 'System', icon: Server, page: Nodes },
   { path: '/settings', navKey: 'settings', label: 'Settings', section: 'System', icon: Settings, page: SettingsPage },
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
