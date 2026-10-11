@@ -64,10 +64,19 @@ func TestDockerGeneratesOnce(t *testing.T) {
 		wg.Go(func() { got[i], errs[i] = Load(Options{Getenv: envOf(nil), Driver: "sqlite", DataDir: dir}) })
 	}
 	wg.Wait()
+	generated := 0
 	for i := range got {
-		if errs[i] != nil || len(got[i].Current) != 32 || !got[i].Generated || !bytes.Equal(got[i].Current, got[0].Current) {
+		if errs[i] != nil || len(got[i].Current) != 32 || !bytes.Equal(got[i].Current, got[0].Current) {
 			t.Fatalf("load %d: %+v, %v", i, got[i], errs[i])
 		}
+		if got[i].Generated {
+			generated++
+		}
+	}
+	// Exactly one caller wrote the file; the others read it back and must
+	// not claim to have generated it (E2E-4).
+	if generated != 1 {
+		t.Fatalf("%d of %d concurrent loads report Generated, want 1", generated, len(got))
 	}
 	path := filepath.Join(dir, Dir, FileName)
 	fi, err := os.Stat(path)

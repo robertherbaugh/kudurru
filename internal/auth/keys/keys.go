@@ -51,7 +51,8 @@ type Keys struct {
 	Current []byte
 	// Previous opens what the previous key sealed (rotation window, D57).
 	Previous []byte
-	// Generated is true when Current was generated or read from Path
+	// Generated is true when Current was generated and written to Path by
+	// this call (a key read back from Path is not generated)
 	// rather than configured.
 	Generated bool
 	// Path is the generated key's file ("" when configured).
@@ -91,7 +92,7 @@ func Load(opts Options) (Keys, error) {
 		if err != nil {
 			return Keys{}, fmt.Errorf("keys: %s: %w", path, err)
 		}
-		return Keys{Current: k, Generated: true, Path: path}, nil
+		return Keys{Current: k, Generated: false, Path: path}, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Keys{}, fmt.Errorf("keys: %w", err)
 	}
