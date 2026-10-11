@@ -62,6 +62,7 @@ type Key struct {
 // entry; TestSchemaMatchesConfig enforces it.
 var Schema = []Key{
 	{Path: "node.name", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Node identity; defaults to the hostname.", HostOnly: true, RestartRequired: true},
+	{Path: "node.lameduck", Type: TypeDuration, Scope: ScopeNode, Default: "2s", Help: "Drain window after SIGTERM: readiness answers 503 and the health name SERVFAIL for this long before the listeners close (0 disables). The Helm chart also runs kudurru lameduck in preStop.", HostOnly: true, RestartRequired: true},
 	{Path: "node.dataDir", Type: TypeString, Scope: ScopeNode, Default: "/var/lib/kudurru", Help: "Directory for state.db, querylog.db, local.db, lists and keys.", HostOnly: true, RestartRequired: true},
 	{Path: "listeners.dns", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{{"address": "0.0.0.0:53", "protocols": []string{"udp", "tcp"}}}, Help: "DNS listeners: address and protocols (udp, tcp).", HostOnly: true, RestartRequired: true},
 	{Path: "listeners.dot", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "DNS-over-TLS listeners (RFC 7858, ALPN dot): address and tls {certFile, keyFile}.", HostOnly: true, RestartRequired: true},

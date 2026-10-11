@@ -577,9 +577,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Runner: always-on runnables on every replica, leader-only ones under
 	// the election (D44, D78). Leadership loss never ends Run.
 	runner, err := cluster.New(cluster.Options{
-		Elector:    st.Elector(cluster.ElectionController),
-		Lameduck:   func(context.Context) { checker.Lameduck() },
-		Registerer: reg, Logger: logger,
+		Elector:          st.Elector(cluster.ElectionController),
+		Lameduck:         func(context.Context) { checker.Lameduck() },
+		LameduckDuration: cfg.Node.Lameduck.Std(),
+		Registerer:       reg, Logger: logger,
 	})
 	if err != nil {
 		return err

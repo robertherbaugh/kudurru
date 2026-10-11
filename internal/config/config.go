@@ -65,6 +65,9 @@ type Config struct {
 type Node struct {
 	Name    string `koanf:"name" json:"name"`
 	DataDir string `koanf:"dataDir" json:"dataDir"`
+	// Lameduck is how long readiness stays 503 after SIGTERM before the
+	// listeners close, so load balancers and dnsdist drain the node.
+	Lameduck Duration `koanf:"lameduck" json:"lameduck"`
 }
 
 // Listeners are the bound addresses.
