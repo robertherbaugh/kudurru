@@ -174,8 +174,9 @@ and first install). Generated secrets are reused on upgrade through this.
 The node file (/etc/kudurru/node/kudurru.yaml). Every key here exists in
 internal/config/schema.go; the deploy tests load the rendered file through
 config.Load for every values permutation. The chart's listener layout comes
-first, config.node is merged over it, and config.settings is merged in until
-the binary reads the settings file (D25, docs/followups.md).
+first and config.node is merged over it. config.settings is not merged here:
+the binary reads it from the mounted settings file (KUDURRU_SETTINGS_FILE,
+D106) and hot-reloads it, so settings changes do not roll the pods.
 */}}
 {{- define "kudurru.nodeConfig" -}}
 {{- $standalone := include "kudurru.standalone" . -}}
@@ -221,7 +222,6 @@ the binary reads the settings file (D25, docs/followups.md).
 {{- $_ := set $base "auth" (dict "identityProviders" .) -}}
 {{- end -}}
 {{- $cfg := mergeOverwrite $base (deepCopy (.Values.config.node | default dict)) -}}
-{{- $cfg = mergeOverwrite $cfg (deepCopy (.Values.config.settings | default dict)) -}}
 {{- toYaml $cfg -}}
 {{- end -}}
 

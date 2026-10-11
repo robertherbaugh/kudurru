@@ -267,11 +267,24 @@ var chartCases = []chartCase{
 	}},
 	{name: "settings", values: "config:\n  node: {log: {level: debug}, listeners: {sockets: 2}}\n  settings:\n    cache: {maxEntries: 50000}\n    blocking: {defaultResponse: nxdomain}\n    upstreams: {groups: {default: {servers: ['tls://1.1.1.1'], strategy: strict}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		cfg := r.config(t)
-		if cfg.Cache.MaxEntries != 50000 || cfg.Log.Level != "debug" || cfg.Listeners.Sockets != 2 || cfg.Blocking.DefaultResponse != "nxdomain" {
-			t.Errorf("config.node/config.settings not applied: %+v", cfg)
+		if cfg.Log.Level != "debug" || cfg.Listeners.Sockets != 2 {
+			t.Errorf("config.node not applied: %+v", cfg)
 		}
-		if !strings.Contains(str(dig(r.object(t, "ConfigMap", "kudurru-settings"), "data", "settings.yaml")), "maxEntries: 50000") {
+		if cfg.Cache.MaxEntries == 50000 || cfg.Blocking.DefaultResponse == "nxdomain" {
+			t.Errorf("config.settings leaked into the node file; the binary reads the settings file (D106)")
+		}
+		settings := str(dig(r.object(t, "ConfigMap", "kudurru-settings"), "data", "settings.yaml"))
+		if !strings.Contains(settings, "maxEntries: 50000") {
 			t.Errorf("settings ConfigMap lacks the cluster keys")
+		}
+		// The binary layers the mounted settings file over the node file.
+		sf := filepath.Join(t.TempDir(), "settings.yaml")
+		if err := os.WriteFile(sf, []byte(settings), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		merged := checkConfig(t, "node file + settings ConfigMap", []byte(r.nodeFile(t)), []string{"KUDURRU_SETTINGS_FILE=" + sf})
+		if merged.Cache.MaxEntries != 50000 || merged.Blocking.DefaultResponse != "nxdomain" || merged.Upstreams.Groups["default"].Strategy != "strict" {
+			t.Errorf("settings file not applied over the node file: %+v", merged)
 		}
 	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
@@ -376,9 +389,9 @@ func TestChartRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-// TestChartChecksumCoversNodeFileOnly pins D25: a change to the node file
-// (including, until the binary reads the settings file, the cluster keys
-// merged into it) rolls the pods; anything else leaves the template alone.
+// TestChartChecksumCoversNodeFileOnly pins D25/D106: a change to the node
+// file rolls the pods; settings keys (the hot-reloaded settings ConfigMap)
+// and anything else leave the template alone.
 func TestChartChecksumCoversNodeFileOnly(t *testing.T) {
 	checksum := func(values string) string {
 		out, err := renderChart(t, values)
@@ -397,6 +410,9 @@ func TestChartChecksumCoversNodeFileOnly(t *testing.T) {
 	}
 	if got := checksum("serviceMonitor: {enabled: true}\nresources: {requests: {cpu: 200m}}"); got != base {
 		t.Errorf("changes outside the node file must not change the checksum")
+	}
+	if got := checksum("config: {settings: {cache: {maxEntries: 1}}}"); got != base {
+		t.Errorf("a settings change must not roll the pods (D106)")
 	}
 }
 

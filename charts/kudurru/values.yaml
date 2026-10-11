@@ -311,9 +311,8 @@ config:
       format: json
   # -- Cluster-scoped keys (upstreams, cache, blocking, querylog, ratelimit):
   # the Kudurru singleton. Rendered into the <fullname>-settings ConfigMap,
-  # mounted at /etc/kudurru/settings for hot reload (D25). Until the binary
-  # reads that file (docs/followups.md) the same keys are merged into the node
-  # file too, so changing them still rolls the pods.
+  # mounted at /etc/kudurru/settings and read through KUDURRU_SETTINGS_FILE
+  # with hot reload (D106): changing them does not roll the pods.
   settings:
     upstreams:
       groups:

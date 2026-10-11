@@ -39,14 +39,6 @@ data:
       dataDir: /var/lib/kudurru
     store:
       driver: sqlite
-    upstreams:
-      groups:
-        default:
-          servers:
-          - 1.1.1.1:53
-          - 9.9.9.9:53
-          strategy: parallel_best
-          timeout: 2s
 kind: ConfigMap
 metadata:
   labels:
@@ -200,7 +192,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/node-config: 804658be8589be19fa4fa52d9242d6dbffa8f18ecf59d96fe92516c500045a61
+        checksum/node-config: 7280c037f6f9486bac0b5f5c6f03ec58c01ae89633a843c1587df303e41327bf
         kubectl.kubernetes.io/default-container: kudurru
       labels:
         app.kubernetes.io/component: dns

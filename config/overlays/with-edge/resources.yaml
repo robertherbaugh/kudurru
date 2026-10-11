@@ -86,14 +86,6 @@ data:
     objectsDir: ""
     store:
       driver: kube
-    upstreams:
-      groups:
-        default:
-          servers:
-          - 1.1.1.1:53
-          - 9.9.9.9:53
-          strategy: parallel_best
-          timeout: 2s
 kind: ConfigMap
 metadata:
   labels:
@@ -439,7 +431,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/node-config: 896c0d13fc965c2bcb743e2c26c1286e1fefdaafc029d088fe25e19d61d3bc77
+        checksum/node-config: 79372e592250668190028ca6f22ce1f642fa59cf1c44c6a4ca35f3a822834a8b
         kubectl.kubernetes.io/default-container: kudurru
       labels:
         app.kubernetes.io/component: dns
