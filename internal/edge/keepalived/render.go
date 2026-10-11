@@ -190,6 +190,30 @@ func (c *Config) FIFOPath() string { return filepath.Join(c.RunDir, "vrrp.fifo")
 // TrackFile is the track_file of a VIP.
 func (c *Config) TrackFile(vip string) string { return TrackFilePath(c.RunDir, vip) }
 
+// unicastAddr refuses addresses a VRRP advert cannot be sent from or to:
+// unspecified, "this network" (0.0.0.0/8), broadcast, multicast,
+// loopback, IPv4-mapped IPv6 (use the IPv4 form) and zoned addresses
+// (keepalived.conf has no place for the zone).
+func unicastAddr(a netip.Addr) error {
+	switch {
+	case a.IsUnspecified():
+		return errors.New("the unspecified address")
+	case a.Is4() && a.As4()[0] == 0:
+		return errors.New("an address in 0.0.0.0/8 (this network)")
+	case a == netip.AddrFrom4([4]byte{255, 255, 255, 255}):
+		return errors.New("the broadcast address")
+	case a.IsMulticast():
+		return errors.New("a multicast address")
+	case a.IsLoopback():
+		return errors.New("a loopback address")
+	case a.Is4In6():
+		return fmt.Errorf("an IPv4-mapped IPv6 address (use %s)", a.Unmap())
+	case a.Zone() != "":
+		return errors.New("a zoned address")
+	}
+	return nil
+}
+
 // Validate reports every problem with the configuration.
 func (c *Config) Validate() error {
 	c.defaults()
@@ -216,14 +240,21 @@ func (c *Config) Validate() error {
 		vrids[v.VRID] = v.Name
 	}
 	src, err := netip.ParseAddr(c.UnicastSrc)
+	if err == nil {
+		err = unicastAddr(src)
+	}
 	if err != nil {
 		add("unicast source %q: %v", c.UnicastSrc, err)
+		src = netip.Addr{}
 	}
 	if len(c.Peers) == 0 {
 		add("no unicast peers: keepalived needs the other nodes' addresses (--peers)")
 	}
 	for _, p := range c.Peers {
 		a, err := netip.ParseAddr(p)
+		if err == nil {
+			err = unicastAddr(a)
+		}
 		switch {
 		case err != nil:
 			add("peer %q: %v", p, err)

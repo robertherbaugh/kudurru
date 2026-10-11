@@ -3,6 +3,7 @@ package keepalived
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -151,6 +152,29 @@ func TestValidate(t *testing.T) {
 		if _, err := Render(c); err == nil {
 			t.Errorf("%s: rendered", name)
 		}
+	}
+}
+
+// TestValidateUnicastAddresses: addresses a VRRP advert cannot be sent
+// from or to are refused as the unicast source or as a peer.
+func TestValidateUnicastAddresses(t *testing.T) {
+	base := goldenConfig(t, 0, false)
+	for _, bad := range []string{"0.0.0.0", "0.0.0.1", "255.255.255.255", "224.0.0.18", "127.0.0.2", "::", "::1", "ff02::12", "::ffff:10.0.0.12", "fe80::2%eth0", "fe80::2%eth0}"} {
+		c := base
+		c.Peers = []string{"10.0.0.12", bad}
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("peer %q", bad)) {
+			t.Errorf("peer %s: %v", bad, err)
+		}
+		c = base
+		c.UnicastSrc = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("unicast source %q", bad)) {
+			t.Errorf("unicast source %s: %v", bad, err)
+		}
+	}
+	c := base
+	c.Peers = []string{"10.0.0.12", "192.0.2.1"}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("valid peers refused: %v", err)
 	}
 }
 
