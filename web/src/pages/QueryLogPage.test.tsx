@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
@@ -69,6 +69,8 @@ describe('QueryLogPage', () => {
     renderWithApp(<QueryLogPage />, { route: '/queries?status_class=blocked' });
     await screen.findByTestId('log-totals');
     const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
+    // Enabled once GET /auth/me has loaded the permissions.
+    await waitFor(() => expect(allow).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(allow!);
     expect(await screen.findByText(/^Allowed .* \(list ui-allow\)$/)).toBeInTheDocument();
     const list = mockDB().lists.find((l) => l.metadata.name === 'ui-allow');

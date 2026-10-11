@@ -59,6 +59,12 @@ function scopeQuery(s: ScopeParams | undefined): Query {
 
 const enc = encodeURIComponent;
 
+/** A copy of an object without its server-owned status. */
+export function withoutStatus<T extends AnyObject>(obj: T): Omit<T, 'status'> {
+  const { status: _status, ...rest } = obj;
+  return rest;
+}
+
 /** /objects path of one object; cluster-scoped kinds omit the namespace. */
 export function objectPath(kind: ObjectKind, name: string, namespace?: string): string {
   return namespace ? `/objects/${kind}/${enc(namespace)}/${enc(name)}` : `/objects/${kind}/${enc(name)}`;
@@ -85,10 +91,11 @@ export function endpoints(c: ApiClient) {
         c.get<ListEnvelope<T>>(`/objects/${kind}`, q),
       get: <T extends AnyObject>(kind: ObjectKind, name: string, namespace?: string) =>
         c.get<T>(objectPath(kind, name, namespace)),
+      /** Whole-object PUT; status is server-owned and never sent. */
       put: <T extends AnyObject>(kind: ObjectKind, obj: T) =>
         c.put<T>(
           objectPath(kind, obj.metadata.name, obj.metadata.namespace),
-          obj,
+          withoutStatus(obj),
           obj.metadata.resourceVersion ? { 'If-Match': obj.metadata.resourceVersion } : undefined,
         ),
       delete: (kind: ObjectKind, name: string, namespace?: string) => c.delete(objectPath(kind, name, namespace)),
