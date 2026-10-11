@@ -23,7 +23,14 @@ licences. Attributions are added to this file as the dependencies land:
   secondary-transfer flow, test helpers; the DoQ and DoH3 listeners in
   internal/dnsserver follow core/dnsserver/server_quic.go and
   server_https3.go (stream worker pool, per-connection stream cap, RFC 9250
-  error handling, HTTP/3 connection limit).
+  error handling, HTTP/3 connection limit). internal/zone adapts the design
+  of plugin/file/tree (a left-leaning red-black tree with one node per
+  owner name holding every RRset of that name, names ordered label by
+  label from the right; CoreDNS's tree is itself derived from the biogo
+  LLRB, BSD-3-Clause) and the lookup order of plugin/file/lookup.go (zone
+  cuts, exact match, CNAME chase, closest-encloser wildcard); the zone and
+  authoritative-stage golden tests follow the plugin/test.Case style. No
+  CoreDNS source file is copied verbatim.
 - quic-go (https://github.com/quic-go/quic-go), MIT: QUIC and HTTP/3
   transport for the DoQ and DoH3 listeners.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
