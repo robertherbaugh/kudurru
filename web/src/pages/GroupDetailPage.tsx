@@ -53,8 +53,9 @@ export default function GroupDetailPage({ params }: PageProps) {
     mutationFn: () => api.objects.delete('clientgroups', name, ns),
     onSuccess: () => {
       notify.success(`Deleted group ${name}`);
-      void qc.invalidateQueries({ queryKey: qk.objects('clientgroups') });
+      // Only the list: refetching this page's object would answer 404.
       navigate('/groups');
+      void qc.invalidateQueries({ queryKey: qk.objects('clientgroups'), exact: true });
     },
     onError: (err) => notify.error(err, 'Delete failed'),
   });

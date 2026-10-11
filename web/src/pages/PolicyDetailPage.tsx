@@ -64,8 +64,9 @@ export default function PolicyDetailPage({ params }: PageProps) {
     mutationFn: () => api.objects.delete('policies', name, ns),
     onSuccess: () => {
       notify.success(`Deleted policy ${name}`);
-      void qc.invalidateQueries({ queryKey: qk.objects('policies') });
+      // Only the list: refetching this page's object would answer 404.
       navigate('/policies');
+      void qc.invalidateQueries({ queryKey: qk.objects('policies'), exact: true });
     },
     onError: (err) => notify.error(err, 'Delete failed'),
   });
