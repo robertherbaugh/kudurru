@@ -454,6 +454,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	checker.Register("blocking", bs.Ready)
 	bs.Toggle().SetOnChange(edgeFlush.BlockingChanged)
 
+	// Block page (docs/deploy/blocking-page.md): the renderer always exists
+	// for the API preview; its listener runs when blockPage.enabled.
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, reg, logger)
+	if err != nil {
+		return err
+	}
+
 	auth := authoritative.New(zoneview.Source{Cache: zc})
 	auth.Metrics = authoritative.NewMetrics(reg)
 
@@ -513,6 +520,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	checker.Register("dns", registry.Ready)
+	if cfg.BlockPage.Enabled {
+		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
+			return err
+		}
+	}
 
 	// NOTIFY out (RFC 1996): leader-only, triggered by every published snapshot.
 	var notifySrc netip.Addr
@@ -580,6 +592,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: bootstrap.DefaultNamespace,
 		Catalogue:        catalogueAPI(catalogues, catRefresher),
+		BlockPage:        blockPage,
 	})
 	if err != nil {
 		return err
@@ -668,7 +681,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	subscribeReload(ctx, reload, reloadTargets{
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		blocking: bs, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
+		blocking: bs, blockPage: blockPage, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
 	})
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {
@@ -704,6 +717,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	if edns != nil {
 		if err := add("externaldns", false, edns.Run); err != nil {
+			return err
+		}
+	}
+	if cfg.BlockPage.Enabled {
+		if err := add("blockpage", false, blockPage.Run); err != nil {
 			return err
 		}
 	}

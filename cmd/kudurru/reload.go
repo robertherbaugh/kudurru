@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
@@ -34,6 +35,7 @@ type reloadTargets struct {
 	cache     *cache.Cache
 	cacheStg  *cachestage.Stage
 	blocking  *blockingstage.Stage
+	blockPage *blockpage.Server
 	limiter   *ingress.RateLimiter
 	qlAsync   *querylog.Async
 	qlWriter  *sqlitelog.Writer
@@ -87,6 +89,9 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 		}
 		if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
 			t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))
+		}
+		if config.ChangedUnder(changed, "blockPage", "listeners.api") && t.blockPage != nil {
+			t.blockPage.Reconfigure(blockpage.SettingsFrom(next))
 		}
 		if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {
 			rlc, err := ingress.RateLimitFromConfig(next.RateLimit)

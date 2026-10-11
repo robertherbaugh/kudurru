@@ -6584,6 +6584,139 @@
         }
       }
     },
+    "/blockpage/preview": {
+      "get": {
+        "description": "The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.",
+        "operationId": "previewBlockPage",
+        "parameters": [
+          {
+            "description": "Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.",
+            "explode": false,
+            "in": "query",
+            "name": "domain",
+            "schema": {
+              "description": "Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.",
+              "maxLength": 253,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Render the block page (text/html) with the current blockPage settings",
+        "tags": [
+          "settings"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/cache/flush": {
       "post": {
         "operationId": "flushCache",

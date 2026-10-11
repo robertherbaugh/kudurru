@@ -102,25 +102,34 @@ func (r *reloadingCert) get() (*tls.Certificate, error) {
 // restarts.
 func EnsureSelfSigned(dir, nodeName string) (certFile, keyFile string, err error) {
 	certFile, keyFile = filepath.Join(dir, SelfSignedCertFile), filepath.Join(dir, SelfSignedKeyFile)
+	if err := EnsureSelfSignedPair(certFile, keyFile, nodeName); err != nil {
+		return "", "", err
+	}
+	return certFile, keyFile, nil
+}
+
+// EnsureSelfSignedPair is EnsureSelfSigned for any file pair, with extra
+// IP SANs (the block page uses it for <node.dataDir>/keys/blockpage.crt).
+func EnsureSelfSignedPair(certFile, keyFile, nodeName string, extraIPs ...net.IP) error {
 	if c, err := tls.LoadX509KeyPair(certFile, keyFile); err == nil {
 		if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil && time.Now().Before(leaf.NotAfter) {
-			return certFile, keyFile, nil
+			return nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		if _, statErr := os.Stat(certFile); statErr == nil {
-			return "", "", fmt.Errorf("api: tls: %s exists but does not load: %w", certFile, err)
+			return fmt.Errorf("tls: %s exists but does not load: %w", certFile, err)
 		}
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", "", fmt.Errorf("api: tls: %w", err)
+	if err := os.MkdirAll(filepath.Dir(certFile), 0o700); err != nil {
+		return fmt.Errorf("tls: %w", err)
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127))
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	names := []string{"localhost"}
 	if nodeName != "" && nodeName != "localhost" {
@@ -139,23 +148,20 @@ func EnsureSelfSigned(dir, nodeName string) (certFile, keyFile string, err error
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		DNSNames:              names,
-		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		IPAddresses:           append([]net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback}, extraIPs...),
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	kb, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	if err := writeFileAtomic(keyFile, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}), 0o600); err != nil {
-		return "", "", err
+		return err
 	}
-	if err := writeFileAtomic(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644); err != nil {
-		return "", "", err
-	}
-	return certFile, keyFile, nil
+	return writeFileAtomic(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
 }
 
 func writeFileAtomic(name string, data []byte, mode os.FileMode) error {
