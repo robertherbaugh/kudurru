@@ -132,6 +132,7 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth"), public, nil, nil)
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
+	s.forward(withStatus(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password", "auth"), http.StatusNoContent), authed, PasswordChangeRequest{}, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, TokenRequest{}, Token{})
 	s.forward(operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth"), tokens, nil, List[Token]{})
 	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one own API token", "auth"), tokens, nil, Token{})
@@ -376,4 +377,11 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 			q.AfterID = evs[len(evs)-1].ID
 		}
 	}}, nil
+}
+
+// PasswordChangeRequest is the POST /auth/password body served by the auth
+// stack (local users; clears mustChangePassword).
+type PasswordChangeRequest struct {
+	Current string `json:"current" doc:"The current password"`
+	Next    string `json:"next" doc:"The new password (at least 12 characters)"`
 }
