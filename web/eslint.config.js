@@ -6,7 +6,22 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'mock-public/**', 'node_modules/**', 'src/api/generated.ts', 'playwright-report/**', 'test-results/**'] },
+  {
+    // Generated: the API types and the `astryx theme build` outputs (plus
+    // the themes' static descriptors, read by the Astryx CLI only).
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'mock-public/**',
+      'node_modules/**',
+      'src/api/generated.ts',
+      'src/themes/*/*.js',
+      'src/themes/*/*.d.ts',
+      'src/themes/*/*.doc.mjs',
+      'playwright-report/**',
+      'test-results/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

@@ -11,12 +11,14 @@
     "build": "vite build && bun scripts/licenses.ts && bun scripts/budget.ts",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint --max-warnings 0 .",
+    "lint": "eslint --max-warnings 0 . && bun run themes:check",
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:api": "bunx openapi-typescript@7.13.0 ../api/openapi.json -o src/api/generated.ts",
     "e2e": "playwright test",
-    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs"
+    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
+    "themes:build": "astryx theme build src/themes/kudurru/kudurruTheme.ts src/themes/neutral/neutralTheme.ts src/themes/stone/stoneTheme.ts src/themes/y2k/y2kTheme.ts",
+    "themes:check": "astryx theme build --check src/themes/kudurru/kudurruTheme.ts src/themes/neutral/neutralTheme.ts src/themes/stone/stoneTheme.ts src/themes/y2k/y2kTheme.ts"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.8",

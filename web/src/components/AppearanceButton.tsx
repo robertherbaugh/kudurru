@@ -1,5 +1,5 @@
-// Appearance: auto/light/dark mode, the Astryx theme (neutral, stone and
-// the fun Y2K theme) and the high-contrast overlay (§10 principle 4).
+// Appearance: auto/light/dark mode, the theme (Kudurru, Neutral, Stone and
+// the fun Y2K; src/themes) and high contrast (§10 principle 4).
 import { Button } from '@astryxdesign/core/Button';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Switch } from '@astryxdesign/core/Switch';

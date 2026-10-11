@@ -18,7 +18,31 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies"}
+var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests"}
+
+// TestKudurruResourcesCoverEveryKind keeps the least-privilege rules in step
+// with the kinds the driver informs: a kind missing here has informers that
+// cannot list, so TestLeastPrivilegeRole fails with "informers did not
+// sync" instead of naming the kind.
+func TestKudurruResourcesCoverEveryKind(t *testing.T) {
+	r, err := newRegistry(testScheme())
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, res := range kudurruResources {
+		have[res] = true
+	}
+	for _, k := range r.kinds {
+		plural := strings.ToLower(string(k)) + "s"
+		if strings.HasSuffix(plural, "ys") {
+			plural = strings.TrimSuffix(plural, "ys") + "ies"
+		}
+		if !have[plural] {
+			t.Errorf("kudurruResources lacks %q (kind %s); add it here and to the chart's ClusterRole", plural, k)
+		}
+	}
+}
 
 // driverClusterRules is the cluster role the kube driver needs for
 // kudurru.io objects (proposed for §5.3; see the spike report). Server-side

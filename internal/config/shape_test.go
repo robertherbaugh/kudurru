@@ -111,6 +111,41 @@ func TestSchemaMetadataComplete(t *testing.T) {
 	}
 }
 
+// TestSchemaHelpComplete: every key, every enum option and every nested
+// field (inside items, keys, values and fields alike) has a label and a
+// help text, so the Settings page, `kudurru config schema` and the
+// settings reference never show a bare control.
+func TestSchemaHelpComplete(t *testing.T) {
+	blank := func(s string) bool { return strings.TrimSpace(s) == "" }
+	for _, k := range Schema {
+		if blank(k.Label) {
+			t.Errorf("%s: no label", k.Path)
+		}
+		if blank(k.Help) {
+			t.Errorf("%s: no help", k.Path)
+		}
+		s := k.Shape()
+		walkShapes(k.Path, &s, func(p string, s *Shape) {
+			for _, o := range s.Enum {
+				if blank(o.Label) {
+					t.Errorf("%s: enum option %q has no label", p, o.Value)
+				}
+				if blank(o.Help) {
+					t.Errorf("%s: enum option %q has no help", p, o.Value)
+				}
+			}
+			for _, f := range s.Fields {
+				if blank(f.Label) {
+					t.Errorf("%s.%s: no label", p, f.Name)
+				}
+				if blank(f.Help) {
+					t.Errorf("%s.%s: no help", p, f.Name)
+				}
+			}
+		})
+	}
+}
+
 // TestSchemaDefaultsValidate: every key's default passes its own
 // metadata, and the defaults together pass Validate.
 func TestSchemaDefaultsValidate(t *testing.T) {
