@@ -18,6 +18,7 @@ const (
 	TypeInt        Type = "int"
 	TypeBool       Type = "bool"
 	TypeDuration   Type = "duration"
+	TypeBytes      Type = "bytes"
 	TypeStringList Type = "string[]"
 	TypeList       Type = "list"
 	TypeMap        Type = "map"
@@ -86,6 +87,15 @@ var Schema = []Key{
 	{Path: "cache.serveStale.ttl", Type: TypeDuration, Scope: ScopeCluster, Default: "72h", Help: "How long past expiry an answer may be served stale when every upstream fails (RFC 8767); 0 disables serve-stale."},
 	{Path: "cache.serveStale.answerTTL", Type: TypeDuration, Scope: ScopeCluster, Default: "30s", Help: "TTL of stale answers (RFC 8767)."},
 	{Path: "cache.serveStale.maxWait", Type: TypeDuration, Scope: ScopeCluster, Default: "1800ms", Help: "How long a query for an expired entry waits for the upstream refresh before the stale answer is sent (RFC 8767 client response timer)."},
+	{Path: "querylog.enabled", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Collect the per-node query log (querylog.db, rollups and the stats API)."},
+	{Path: "querylog.sink", Type: TypeString, Scope: ScopeCluster, Default: "sqlite", Help: "Built-in query-log sink: sqlite (querylog.db with rollups; required for the dashboard) or slog (one JSON log line per query, nothing stored)."},
+	{Path: "querylog.privacy", Type: TypeString, Scope: ScopeCluster, Default: "full", Help: "Privacy applied once at ingest, irreversibly: full, anonymize_client, hide_domains, hide_domains_clients or nothing (per-minute totals only). The answer summary is stored only in full."},
+	{Path: "querylog.anonymize", Type: TypeString, Scope: ScopeCluster, Default: "prefix", Help: "How anonymize_client hides clients: prefix (IPv4 /24, IPv6 /48) or pseudonym (HMAC with a random in-memory key rotated daily; stable for a day, not reversible)."},
+	{Path: "querylog.retention.raw", Type: TypeDuration, Scope: ScopeCluster, Default: "720h", Help: "How long per-query rows are kept (rollups: 35 d per minute, 400 d per hour, daily forever); 0 keeps rows until maxDBBytes is reached."},
+	{Path: "querylog.retention.maxDBBytes", Type: TypeBytes, Scope: ScopeCluster, Default: "10GiB", Help: "Upper bound for querylog.db; the oldest rows are deleted first when it is exceeded. 0 disables the cap."},
+	{Path: "querylog.exclude.domains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Names never logged: exact names, *.suffix wildcards (the suffix and everything below it) or /regex/."},
+	{Path: "querylog.exclude.clients", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Clients never logged: IP addresses, CIDR prefixes or client names."},
+	{Path: "querylog.exclude.sudn", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Do not log special-use names (localhost, .local, .home.arpa, private and link-local reverse zones)."},
 	{Path: "objects", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.", HostOnly: true, RestartRequired: true},
 	{Path: "objectsDir", Type: TypeString, Scope: ScopeNode, Default: "/etc/kudurru/objects.d", Help: "Directory of *.yaml object files, file-managed as file:<dir>/<name> and re-applied on change; deleting a document deletes the object.", HostOnly: true, RestartRequired: true},
 	{Path: "log.level", Type: TypeString, Scope: ScopeNode, Default: "info", Help: "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug."},
