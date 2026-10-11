@@ -59,3 +59,8 @@ func kindResources() []string {
 	}
 	return out
 }
+
+// zoneScoped reports whether objects of the kind are authorized at the
+// scope of their zone (zone-admin bindings), so list routes filter instead
+// of refusing.
+func (k kindInfo) zoneScoped() bool { return k.plural == "dnszones" || k.plural == "dnsrecordsets" }

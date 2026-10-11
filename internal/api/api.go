@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -174,10 +175,18 @@ type Options struct {
 	// AuthHandler serves /api/v1/auth/{status,login,logout,oidc/...,
 	// tokens...}; GET /auth/me is served by the API itself.
 	AuthHandler http.Handler
+	// Roles lists the grants of a bearer-authenticated principal for GET
+	// /auth/me (role or role@kind:name); cookie sessions report their roles
+	// snapshot instead. nil reports none.
+	Roles func(ctx context.Context, p auth.Principal) []string
 	// IAM backs the read-only /iam routes.
 	IAM IAMReader
-	// UI is the single-page app (web.FS); nil serves a placeholder.
-	UI fs.FS
+	// UI is the single-page app bundle (web.FS); nil serves a built-in
+	// placeholder page. UIHandler, when set, replaces the built-in SPA
+	// handler (web.Handler with the same path prefix); it receives paths
+	// with the prefix stripped.
+	UI        fs.FS
+	UIHandler http.Handler
 	// Logger, Registerer: logging and metrics (nil Registerer skips
 	// registration).
 	Logger     *slog.Logger
@@ -270,7 +279,10 @@ func New(opts Options) (*Server, error) {
 		cfg:     opts.Config,
 	}
 	s.api = newHumaAPI(s.mux, s.prefix)
-	s.ui = newUIHandler(opts.UI, s.prefix)
+	s.ui = opts.UIHandler
+	if s.ui == nil {
+		s.ui = newUIHandler(opts.UI, s.prefix)
+	}
 	s.registerRoutes()
 	s.mux.Handle(BasePath+"/", http.HandlerFunc(s.apiNotFound))
 	s.mux.Handle("/", s.ui)
