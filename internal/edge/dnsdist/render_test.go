@@ -278,11 +278,13 @@ func TestRenderRejectsInvalidTopology(t *testing.T) {
 		t.Fatal(err)
 	}
 	mutations := map[string]func(*edge.Topology){
-		"public console":    func(t *edge.Topology) { t.Console.Address = "0.0.0.0:5199" },
-		"public api":        func(t *edge.Topology) { t.Webserver.Address = "10.0.0.1:8083" },
-		"short secret":      func(t *edge.Topology) { t.ProxyProtocolSecret = "short" },
-		"binary secret":     func(t *edge.Topology) { t.ProxyProtocolSecret = strings.Repeat("\x01", 40) },
-		"tls without cert":  func(t *edge.Topology) { t.Binds = append(t.Binds, edge.Bind{Address: "0.0.0.0:853", Protocol: edge.DoT}) },
+		"public console": func(t *edge.Topology) { t.Console.Address = "0.0.0.0:5199" },
+		"public api":     func(t *edge.Topology) { t.Webserver.Address = "10.0.0.1:8083" },
+		"short secret":   func(t *edge.Topology) { t.ProxyProtocolSecret = "short" },
+		"binary secret":  func(t *edge.Topology) { t.ProxyProtocolSecret = strings.Repeat("\x01", 40) },
+		"tls without cert": func(t *edge.Topology) {
+			t.Binds = append(t.Binds, edge.Bind{Address: "0.0.0.0:853", Protocol: edge.DoT})
+		},
 		"bad policy":        func(t *edge.Topology) { t.Pools[0].Policy = "orderedWhashed" },
 		"quote in name":     func(t *edge.Topology) { t.Backends[0].Name = `x") os.exit(1) --` },
 		"bad console key":   func(t *edge.Topology) { t.Console.Key = "not-base64" },

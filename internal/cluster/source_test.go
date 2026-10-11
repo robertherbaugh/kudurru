@@ -56,8 +56,8 @@ func equalEndpoints(a, b []Endpoint) bool {
 
 func TestParseSourceSpec(t *testing.T) {
 	for in, want := range map[string]SourceSpec{
-		"":                               {Kind: "static"},
-		"static":                         {Kind: "static"},
+		"":                                  {Kind: "static"},
+		"static":                            {Kind: "static"},
 		"endpointslice:kudurru/kudurru-dns": {Kind: "endpointslice", Namespace: "kudurru", Service: "kudurru-dns"},
 	} {
 		got, err := ParseSourceSpec(in)
