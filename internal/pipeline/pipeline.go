@@ -77,8 +77,17 @@ type Request struct {
 	Received time.Time
 	Deadline time.Time
 	// Zone is set by the authoritative stage when a zone matched. It is an
-	// opaque handle here to keep miekg types out of the zone model.
+	// opaque handle here to keep miekg types out of the zone model; the
+	// authoritative stage stores a *zone.Zone.
 	Zone any
+	// UpstreamGroup is the upstream group an earlier stage chose for this
+	// query: the authoritative stage sets it for names in a forward zone
+	// (DNSZone spec.forward.upstreamGroup, default "default"), and a
+	// Policy's upstreamGroup may set it later. The upstream stage forwards
+	// to this group when it is non-empty and to its default group
+	// otherwise. It is a group name from the Kudurru settings, never an
+	// address, and is recorded in Response.Upstream by the upstream stage.
+	UpstreamGroup string
 }
 
 // Question returns the first question or a zero value.
