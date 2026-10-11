@@ -70,15 +70,75 @@ jobs:
           name: web-dist
           path: web/dist
           retention-days: 7
-  auth-e2e:
+  # End to end (docs/m5/e2e.md): `kudurru serve` processes on loopback
+  # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
+  # secondary and as a forwarding target, and the OIDC login against dex.
+  e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Install BIND 9
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bind9 bind9-utils
+          # The packaged service is not needed; the tests start their own
+          # named as the runner user with configuration under $TMPDIR, which
+          # the usr.sbin.named AppArmor profile would deny.
+          sudo systemctl stop named || true
+          sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.named || true
+          /usr/sbin/named -v
+      - name: Cache dex
+        uses: actions/cache@v4
+        with:
+          path: bin/dex-*
+          key: dex-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: kudurru end to end and BIND interop
+        env:
+          KUDURRU_NAMED: /usr/sbin/named
+        run: make e2e
       - name: OIDC login end to end against dex
         run: make test-auth-e2e
+  # Fuzzing: every target of hack/fuzz.sh for 60 s, one matrix job each.
+  fuzz-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: list
+        run: echo "targets=$(hack/fuzz.sh --list | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+  fuzz:
+    needs: fuzz-targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
+    name: fuzz ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Fuzz for 60 s
+        env:
+          FUZZTIME: 60s
+          FUZZ_PARALLEL: 2
+        run: hack/fuzz.sh --one ${{ matrix.target }}
+      - name: Upload the crasher
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crasher-${{ strategy.job-index }}
+          path: |
+            **/testdata/fuzz/
+            bin/fuzz/
+          retention-days: 14
   lint:
     runs-on: ubuntu-latest
     steps:

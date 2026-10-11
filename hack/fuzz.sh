@@ -3,7 +3,8 @@
 #
 #   hack/fuzz.sh                 every target for FUZZTIME (default 60s)
 #   hack/fuzz.sh --list          print "package target" pairs (CI matrix)
-#   hack/fuzz.sh FuzzDoHRequest  only targets whose name matches the regex
+#   hack/fuzz.sh FuzzDoHRequest  only entries ("<package> <target>") matching the regex
+#   hack/fuzz.sh --one ./internal/zone FuzzImportBIND   exactly one target (CI)
 #
 # FUZZTIME     per-target budget (go test -fuzztime), default 60s
 # FUZZ_JOBS    targets fuzzed at the same time, default 1
@@ -42,7 +43,6 @@ if [[ "${1:-}" == "--list" ]]; then
 	exit 0
 fi
 
-filter="${1:-.}"
 fuzztime="${FUZZTIME:-60s}"
 jobs="${FUZZ_JOBS:-1}"
 parallel="${FUZZ_PARALLEL:-2}"
@@ -60,11 +60,17 @@ run_one() {
 	fi
 }
 
+if [[ "${1:-}" == "--one" ]]; then
+	run_one "$2" "$3"
+	exit $?
+fi
+
+filter="${1:-.}"
 failed=0
 pids=()
 for entry in "${TARGETS[@]}"; do
 	read -r pkg target <<<"$entry"
-	[[ "$target" =~ $filter ]] || continue
+	[[ "$entry" =~ $filter ]] || continue
 	run_one "$pkg" "$target" &
 	pids+=($!)
 	if ((${#pids[@]} >= jobs)); then

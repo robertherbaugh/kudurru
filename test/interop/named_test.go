@@ -81,7 +81,11 @@ func startNamed(t *testing.T, bin, dir, conf string, port int) *named {
 	if err := os.WriteFile(path, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if check, err := exec.LookPath(filepath.Join(filepath.Dir(bin), "named-checkconf")); err == nil {
+	check, err := exec.LookPath(filepath.Join(filepath.Dir(bin), "named-checkconf"))
+	if err != nil {
+		check, err = exec.LookPath("named-checkconf") // /usr/bin on Debian and Ubuntu
+	}
+	if err == nil {
 		if out, err := exec.Command(check, path).CombinedOutput(); err != nil { //nolint:gosec // test binary
 			t.Fatalf("named-checkconf: %v\n%s\n%s", err, out, conf)
 		}
