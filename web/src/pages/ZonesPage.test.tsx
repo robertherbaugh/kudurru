@@ -5,7 +5,7 @@ import { mockDB } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
 import ZoneDetailPage from './ZoneDetailPage';
 import ZonesPage from './ZonesPage';
-import ZoneWizardPage from './ZoneWizardPage';
+import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 
 const FILE = '$ORIGIN lab.example.\n@ 3600 IN SOA ns1 hostmaster 42 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10\nmail 300 IN A 192.0.2.25\n';
 
@@ -49,13 +49,14 @@ describe('zone import', () => {
     const btn = await screen.findByRole('button', { name: 'New zone' });
     await waitFor(() => expect(btn.getAttribute('aria-disabled') !== 'true' && !btn.hasAttribute('disabled')).toBe(true));
     fireEvent.click(btn);
-    await waitFor(() => expect(window.location.pathname).toBe('/zones/new'));
+    expect(await screen.findByRole('dialog', { name: 'New zone' })).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search).toBe('/zones?new=1');
   });
 });
 
-describe('ZoneWizardPage', () => {
+describe('ZoneWizardDialog', () => {
   it('creates a forward zone with an upstream group picked from the configured ones', async () => {
-    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^Forward/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
@@ -75,7 +76,7 @@ describe('ZoneWizardPage', () => {
   });
 
   it('creates a primary zone with typed SOA timers and a query ACL', async () => {
-    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
     const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
     fireEvent.change(apex, { target: { value: 'example.internal' } });

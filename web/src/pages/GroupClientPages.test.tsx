@@ -5,7 +5,7 @@ import { renderWithApp } from '../test/utils';
 import ClientDetailPage from './ClientDetailPage';
 import GroupDetailPage from './GroupDetailPage';
 import GroupsPage from './GroupsPage';
-import GroupWizardPage from './GroupWizardPage';
+import { GroupWizardDialog } from '../components/wizards/GroupWizard';
 
 async function clickWhenEnabled(name: string | RegExp): Promise<void> {
   const btn = await screen.findByRole('button', { name });
@@ -15,7 +15,7 @@ async function clickWhenEnabled(name: string | RegExp): Promise<void> {
 
 async function goTo(step: string): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByRole('heading', { level: 2, name: step });
+  await screen.findByRole('heading', { level: 3, name: step });
 }
 
 const group = (name: string) => mockDB().groups.find((g) => g.metadata.name === name);
@@ -43,6 +43,14 @@ describe('GroupDetailPage', () => {
     const order = await screen.findByRole('list', { name: 'Policies of kids' });
     expect(within(order).getAllByRole('link').map((a) => a.textContent)).toEqual(['streaming-off', 'kids-bedtime']);
     expect(within(order).getByText('Disabled')).toBeInTheDocument();
+  });
+
+  it('opens the policy wizard over the page with the group chosen', async () => {
+    renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
+    await clickWhenEnabled('New policy');
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    expect(await within(dialog).findByRole('checkbox', { name: /^kids·/ })).toBeChecked();
+    expect(window.location.pathname).toBe('/groups/default/kids');
   });
 
   it('edits the matchers with validation before the save', async () => {
@@ -77,9 +85,9 @@ describe('GroupDetailPage', () => {
   });
 });
 
-describe('GroupWizardPage', () => {
+describe('GroupWizardDialog', () => {
   it('creates a group from typed matchers and seen clients and adds it to a policy', async () => {
-    renderWithApp(<GroupWizardPage />, { route: '/groups/new' });
+    renderWithApp(<GroupWizardDialog isOpen onClose={() => {}} />, { route: '/groups?new=1' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'kids' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('A group named kids already exists.')).toBeInTheDocument();
