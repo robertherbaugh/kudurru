@@ -167,9 +167,17 @@ func TestKubeDriver(t *testing.T) {
 		}
 	}
 	// One event per stamped serial (the zone was stamped as its record
-	// sets arrived), the last one for the change above.
-	if len(stamps) == 0 || !strings.Contains(stamps[len(stamps)-1], fmt.Sprintf("%d -> %d:", serial, serial+1)) ||
-		len(stamps) != int(serial+1-unix32(t0))+1 {
+	// sets arrived), the last one for the change above. The exact count
+	// depends on wall-clock seconds elapsed (serials are max(prev+1, now)),
+	// so only require distinct stamps and the final transition.
+	if len(stamps) == 0 || !strings.Contains(stamps[len(stamps)-1], fmt.Sprintf("%d -> %d:", serial, serial+1)) {
 		t.Fatalf("SerialBumped events %q", stamps)
+	}
+	seen := map[string]bool{}
+	for _, st := range stamps {
+		if seen[st] {
+			t.Fatalf("duplicate SerialBumped event %q", st)
+		}
+		seen[st] = true
 	}
 }
