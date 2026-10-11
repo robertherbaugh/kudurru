@@ -203,6 +203,9 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 // CountStaleHit records that a stale lookup was answered from the cache.
 func (c *Cache) CountStaleHit(kind Kind) { c.m.hit(kind, true) }
 
+// CountPrefetch records that a prefetch was started.
+func (c *Cache) CountPrefetch() { c.m.Prefetched() }
+
 // Peek returns the entry for k without any side effect: no request or hit
 // accounting, no LRU movement, no prefetch claim and no expiry removal.
 // Entries past their stale window are reported absent. It is meant for

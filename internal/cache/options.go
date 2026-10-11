@@ -2,9 +2,6 @@ package cache
 
 import "github.com/robertherbaugh/kudurru/internal/config"
 
-// CountPrefetch records that a prefetch was started.
-func (c *Cache) CountPrefetch() { c.m.Prefetched() }
-
 // OptionsFrom maps the cache settings onto Options (the stage-level TTL
 // clamps are read by the cache stage). maxEntries 0 means the cache is
 // disabled; callers should then leave the cache stage out of the chain.
