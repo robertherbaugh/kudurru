@@ -105,7 +105,7 @@ func FuzzDNSDistRender(f *testing.F) {
 			AuthoritativeZones: []string{zone}, TransferSources: []string{xfrSource},
 			ProxyProtocolSecret: secret,
 		}
-		creds := edge.Credentials{ConsoleKey: "a3VkdXJydS1mdXp6LWNvbnNvbGUta2V5LTMyYnl0ZXM=", APIKey: "fuzz-api-key", Password: "fuzz-password"}
+		creds := edge.Credentials{ConsoleKey: "a3VkdXJydS1mdXp6LWNvbnNvbGUta2V5LTMyYnl0ZXM=", APIKey: "fuzz-api-key", Password: "fuzz-password"} //nolint:gosec // fixed test credentials
 		topo, err := edge.Build(o, []edge.Backend{{Name: backendName, Address: backendAddr}}, creds)
 		if err != nil {
 			return
