@@ -10,12 +10,24 @@ licences. Attributions are added to this file as the dependencies land:
 
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
   pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
+  internal/blocking/matcher adapts the design of blocky v0.35.0
+  cache/stringcache: the length-bucketed sorted concatenated-string exact
+  set searched by binary search, the cheapest-first matcher chain with
+  per-list matched-rule reporting, and the regex-count warning threshold.
+  No blocky source file is copied verbatim.
 - dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: upstream
   client library.
 - CoreDNS (https://github.com/coredns/coredns), Apache-2.0: zone tree,
   secondary-transfer flow, test helpers.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
+
+Test data (not compiled into the binary):
+
+- StevenBlack/hosts (https://github.com/StevenBlack/hosts), MIT, Copyright
+  (c) 2023 Steven Black: internal/blocking/testdata/corpus/stevenblack/hosts
+  is data/StevenBlack/hosts at commit 2025dea10a1d, unmodified; licence and
+  provenance are in the same directory.
 
 dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
 They are distributed unmodified as separate programs in their own container
