@@ -9,8 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// SlogSink writes one structured log line per event. It is the built-in
-// sink of the scaffold; the SQLite writer replaces it as the default in M1.
+// SlogSink writes one structured log line per event. The SQLite writer
+// (internal/querylog/sqlitelog) is the default sink; SlogSink stays
+// available as querylog.sink: slog for deployments that ship logs instead
+// of storing them.
 type SlogSink struct {
 	Logger *slog.Logger
 	Level  slog.Level
