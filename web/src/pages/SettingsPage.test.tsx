@@ -2,14 +2,14 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { SettingKey } from '../api/types';
 import { mockDB } from '../mocks/handlers';
-import { renderWithApp } from '../test/utils';
+import { renderWithApp, settingKey } from '../test/utils';
 import SettingsPage, { SettingsList } from './SettingsPage';
 
 const keys: SettingKey[] = [
-  { path: 'node.dataDir', type: 'string', scope: 'node', default: '/var/lib/kudurru', help: 'Data directory.', hostOnly: true, restartRequired: true },
-  { path: 'log.level', type: 'string', scope: 'node', default: 'info', help: 'Log level.', envLocked: true },
-  { path: 'cache.maxEntries', type: 'int', scope: 'cluster', default: 100000, help: 'Cache size.' },
-  { path: 'querylog.enabled', type: 'bool', scope: 'cluster', default: true, help: 'Log queries.' },
+  settingKey({ path: 'node.dataDir', type: 'string', scope: 'node', default: '/var/lib/kudurru', help: 'Data directory.', hostOnly: true, restartRequired: true }),
+  settingKey({ path: 'log.level', type: 'string', scope: 'node', default: 'info', help: 'Log level.', envLocked: true }),
+  settingKey({ path: 'cache.maxEntries', type: 'int', scope: 'cluster', default: 100000, help: 'Cache size.' }),
+  settingKey({ path: 'querylog.enabled', type: 'bool', scope: 'cluster', default: true, help: 'Log queries.' }),
 ];
 
 function row(path: string): HTMLElement {
@@ -79,6 +79,37 @@ describe('SettingsPage', () => {
     fireEvent.change(within(r).getByRole('textbox'), { target: { value: '123456' } });
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect((mockDB().settings.cache as Record<string, unknown>).maxEntries).toBe(123456));
+  });
+
+  it('shows the real values from the settings envelope, booleans included', async () => {
+    renderWithApp(<SettingsPage />, { route: '/settings' });
+    // Values live under GET /settings .settings; the switches reflect them.
+    const upstreams = await waitFor(() => within(row('upstreams.groups')).getByRole('textbox'));
+    expect((upstreams as HTMLTextAreaElement).value).toContain('cloudflare=tls://1.1.1.1:853');
+    expect(within(row('blocking.enabled')).getByRole('switch')).toBeChecked();
+    expect(within(row('querylog.enabled')).getByRole('switch')).toBeChecked();
+    expect(within(row('cache.maxEntries')).getByRole('textbox')).toHaveValue('100000');
+    expect(within(row('upstreams.groups')).getByRole('link', { name: 'Edit on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
+  });
+
+  it('turns a switch off, keeps it off after the save and warns when nothing was persisted', async () => {
+    mockDB().settingsPersisted = false;
+    renderWithApp(<SettingsPage />, { route: '/settings' });
+    const sw = await waitFor(() => within(row('querylog.enabled')).getByRole('switch'));
+    await waitFor(() => expect(sw).toBeChecked());
+    fireEvent.click(sw);
+    await waitFor(() => expect((mockDB().settings.querylog as Record<string, unknown>).enabled).toBe(false));
+    expect(await screen.findByText('Kept in memory only')).toBeInTheDocument();
+    expect(within(row('querylog.enabled')).getByRole('switch')).not.toBeChecked();
+  });
+
+  it('deletes map keys removed in the editor with null in the merge patch', async () => {
+    renderWithApp(<SettingsPage />, { route: '/settings?view=expert&q=conditional' });
+    const ta = await waitFor(() => within(row('upstreams.conditional')).getByRole('textbox'));
+    expect((ta as HTMLTextAreaElement).value).toContain('corp.example');
+    fireEvent.change(ta, { target: { value: '{}' } });
+    fireEvent.click(within(row('upstreams.conditional')).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect((mockDB().settings.upstreams as Record<string, unknown>).conditional).toEqual({}));
   });
 
   it('shows only the basic keys and appearance in Basic view', async () => {

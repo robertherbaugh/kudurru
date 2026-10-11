@@ -13,7 +13,7 @@ import { ErrorBanner, Loading } from '../components/Feedback';
 import { ScopeNote } from '../components/ScopeSelector';
 import { StatTiles } from '../components/StatTiles';
 import { TopList } from '../components/TopList';
-import { useNavigate } from '../lib/router';
+import { Link, useNavigate } from '../lib/router';
 import { Badge } from '@astryxdesign/core/Badge';
 
 /** The query-log route for a chart bucket: its start ±5 minutes. */
@@ -149,6 +149,14 @@ export default function DashboardPage() {
           <div className="k-panel-title">
             <h2 id="pie-upstreams">Upstreams</h2>
             {upstreams.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
+            {upstreams.data?.servers?.length ? (
+              <span className="k-small k-muted" data-testid="upstream-health">
+                {upstreams.data.servers.filter((s) => s.healthy).length} of {upstreams.data.servers.length} servers healthy
+              </span>
+            ) : null}
+            <Link href="/upstreams" className="k-small">
+              Health and configuration
+            </Link>
           </div>
           {upstreams.error ? <ErrorBanner error={upstreams.error} /> : null}
           {upstreams.data ? (

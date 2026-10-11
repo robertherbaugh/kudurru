@@ -5,7 +5,8 @@
 // relative to a fixed clock (`now`), so tests see the same data each run.
 import type {
   AnyObject,
-  AuditEntry,
+  ApiToken,
+  AuditEvent,
   BlockList,
   ClientGroup,
   DNSRecordSet,
@@ -30,6 +31,7 @@ export interface MockUser {
   password: string;
   name: string;
   roles: string[];
+  mustChangePassword?: boolean;
 }
 
 export interface MockDB {
@@ -43,12 +45,19 @@ export interface MockDB {
   series: TimeseriesPoint[];
   nodes: NodeInfo[];
   messages: DiagnosisMessage[];
-  audit: AuditEntry[];
+  audit: AuditEvent[];
+  /** The `settings` documents of GET /settings (cluster) and GET /node/config (node). */
   settings: Record<string, unknown>;
   nodeConfig: Record<string, unknown>;
+  /** PATCH /settings answers persisted:false when there is no settings file. */
+  settingsPersisted: boolean;
+  /** Set to an owner to answer PATCH /settings with 409 managed_by (Kubernetes). */
+  settingsManagedBy?: string;
   schema: SettingKey[];
   blocking: { blocking: boolean; until?: number };
-  tokens: { id: string; name: string; createdAt: string; expiresAt?: string; lastUsedAt?: string }[];
+  /** blocking.enabled; false makes GET /dns/blocking answer configured:false. */
+  blockingConfigured?: boolean;
+  tokens: ApiToken[];
   users: MockUser[];
   session: { user: MockUser } | null;
   nextQueryID: number;
@@ -92,7 +101,8 @@ const BLOCKED_DOMAINS: { domain: string; list: string; rule: string; status: str
   { domain: 'tiktokv.com', list: 'default/starter', rule: 'tiktokv.com', status: 'blocked_list' },
 ];
 const LOCAL_NAMES = ['nas.home.arpa', 'homeassistant.home.arpa', 'printer.home.arpa', 'grafana.example.internal', 'git.example.internal'];
-const UPSTREAMS = ['tls://1.1.1.1:853', 'tls://9.9.9.9:853', 'https://dns.google/dns-query'];
+/** Upstream labels as the query log writes them: group/server (the display name when set). */
+export const UPSTREAMS = ['default/cloudflare', 'default/quad9', 'filtered/https://dns.google/dns-query'];
 const QTYPES = ['A', 'A', 'A', 'AAAA', 'AAAA', 'HTTPS', 'PTR', 'TXT', 'SRV', 'MX'];
 const PROTOS = ['udp', 'udp', 'udp', 'tcp', 'dot', 'doh'];
 
@@ -236,7 +246,8 @@ function buildLists(now: number): BlockList[] {
       kind: 'BlockList',
       metadata: meta('starter', 'bootstrap', { annotations: { 'kudurru.io/comment': 'Embedded starter list (Steven Black, MIT), 2,852 names' } }),
       spec: { mode: 'block', sources: [{ name: 'embedded', inline: ['ads.google.com', 'tiktokv.com', '…'], format: 'domains' }] },
-      status: { entries: 2852, ruleCount: 2852, invalid: 0, lastFetched: iso(3_600_000 * 20), sources: [{ name: 'embedded', entries: 2852, digest: 'sha256:9a1b', lastFetched: iso(3_600_000 * 20) }], conditions: ready() },
+      // Inline sources are compiled, never fetched: no lastFetched (listfetcher).
+      status: { entries: 2852, ruleCount: 2852, invalid: 0, sources: [{ name: 'embedded', entries: 2852, digest: 'sha256:9a1b' }], conditions: ready() },
     },
     {
       apiVersion: API,
@@ -473,113 +484,111 @@ function buildQueries(now: number, r: () => number, n = 500): QueryRow[] {
   return rows;
 }
 
-function buildNodes(now: number): NodeInfo[] {
+function buildNodes(): NodeInfo[] {
+  // Only this node reports readiness; peers wait for scatter-gather.
   return [
-    {
-      name: 'kudurru-0',
-      version: 'v0.1.0-rc.1',
-      roles: ['dns', 'api', 'controller'],
-      ready: true,
-      leader: true,
-      vipMaster: true,
-      qps: 14.2,
-      snapshotAge: '2s',
-      address: '192.168.1.2',
-      storeDriver: 'sqlite',
-      startedAt: new Date(now - 86_400_000 * 3).toISOString(),
-    },
-    {
-      name: 'kudurru-1',
-      version: 'v0.1.0-rc.1',
-      roles: ['dns', 'api'],
-      ready: true,
-      leader: false,
-      vipMaster: false,
-      qps: 5.9,
-      snapshotAge: '4s',
-      address: '192.168.1.3',
-      storeDriver: 'sqlite',
-      startedAt: new Date(now - 86_400_000 * 1.2).toISOString(),
-    },
+    { name: 'kudurru-0', address: '192.168.1.2', self: true, leader: true, ready: true, version: 'v0.1.0-rc.1', state: 'Live' },
+    { name: 'kudurru-1', address: '192.168.1.3', self: false, leader: false },
   ];
 }
 
-function buildMessages(now: number): DiagnosisMessage[] {
+function buildMessages(): DiagnosisMessage[] {
   return [
     {
-      id: 'list-unreachable/default/oisd-small',
       severity: 'warning',
+      source: 'blocklists',
       reason: 'ListUnreachable',
+      object: `BlockList/${NS}/oisd-small`,
       message: 'BlockList default/oisd-small: last fetch failed, serving the cached body from 30 hours ago',
-      object: { kind: 'BlockList', namespace: NS, name: 'oisd-small' },
       hint: 'Check egress to small.oisd.nl or raise blocking.refreshInterval.',
-      since: new Date(now - 3_600_000 * 6).toISOString(),
+      node: 'kudurru-0',
     },
     {
-      id: 'list-invalid/default/ui-deny',
       severity: 'error',
+      source: 'objects',
       reason: 'InvalidEntries',
+      object: `BlockList/${NS}/ui-deny`,
       message: 'BlockList default/ui-deny has 1 invalid entry: line 2: "bad..domain" is not a domain name',
-      object: { kind: 'BlockList', namespace: NS, name: 'ui-deny' },
-      since: new Date(now - 600_000).toISOString(),
+      node: 'kudurru-0',
     },
     {
-      id: 'policy-tie/default/iot-strict',
       severity: 'info',
+      source: 'policy',
       reason: 'PriorityTie',
+      object: `Policy/${NS}/iot-strict`,
       message: 'Policies default/iot-strict and default/default both match 192.168.1.20/30 at priority 10; the name decides.',
-      object: { kind: 'Policy', namespace: NS, name: 'iot-strict' },
       hint: 'Give one of them a higher priority.',
-      since: new Date(now - 86_400_000).toISOString(),
+      node: 'kudurru-0',
     },
   ];
 }
 
-function buildAudit(now: number): AuditEntry[] {
-  const actions: [string, string, string, string][] = [
-    ['admin', 'update', 'BlockList', 'stevenblack'],
-    ['admin', 'create', 'DNSRecordSet', 'api-home-arpa'],
-    ['robert@example.com', 'update', 'Policy', 'kids-bedtime'],
-    ['system:serviceaccount:kudurru:external-dns', 'apply', 'DNSRecordSet', 'external-dns-ingress'],
-    ['admin', 'blocking.disable', 'Runtime', 'blocking'],
-    ['robert@example.com', 'delete', 'ClientGroup', 'guests'],
-    ['viewer@example.com', 'update', 'Policy', 'default'],
+function buildAudit(now: number): AuditEvent[] {
+  const actions: [AuditEvent['actor'], string, AuditEvent['resource'], string][] = [
+    [{ kind: 'User', id: 'local:admin', name: 'admin' }, 'blocklist.update', { kind: 'BlockList', namespace: NS, name: 'stevenblack' }, 'success'],
+    [{ kind: 'User', id: 'local:admin', name: 'admin' }, 'dnsrecordset.create', { kind: 'DNSRecordSet', namespace: NS, name: 'api-home-arpa' }, 'success'],
+    [{ kind: 'User', id: 'oidc:robert', name: 'robert@example.com' }, 'policy.update', { kind: 'Policy', namespace: NS, name: 'kids-bedtime' }, 'success'],
+    [{ kind: 'KubernetesServiceAccount', name: 'system:serviceaccount:kudurru:external-dns' }, 'dnsrecordset.apply', { kind: 'DNSRecordSet', namespace: NS, name: 'external-dns-ingress' }, 'success'],
+    [{ kind: 'User', id: 'local:admin', name: 'admin' }, 'blocking.toggle', { kind: 'blocking' }, 'success'],
+    [{ kind: 'User', id: 'oidc:robert', name: 'robert@example.com' }, 'clientgroup.delete', { kind: 'ClientGroup', namespace: NS, name: 'guests' }, 'success'],
+    [{ kind: 'User', id: 'local:viewer', name: 'viewer' }, 'policy.update', { kind: 'Policy', namespace: NS, name: 'default' }, 'denied'],
+    [{ name: 'bootstrap' }, 'blocklist.create', { kind: 'BlockList', namespace: NS, name: 'starter' }, 'success'],
   ];
-  return actions.map(([actor, action, kind, name], i) => ({
-    id: `a${1000 - i}`,
+  // Kept newest first; ids grow with time like the sqlite recorder's.
+  return actions.map(([actor, action, resource, result], i) => ({
+    id: 1000 - i,
     ts: new Date(now - i * 3_100_000).toISOString(),
+    node: 'kudurru-0',
     actor,
     action,
-    kind,
-    ...(kind === 'Runtime' ? {} : { namespace: NS }),
-    name,
-    outcome: actor.startsWith('viewer') ? 'denied' : 'success',
-    authzPath: actor.startsWith('system:') ? 'kubernetes-sar' : 'rolebinding/admins',
+    resource,
+    result,
+    ...(result === 'denied' ? { reason: 'needs policies.write at cluster scope' } : {}),
+    ...(actor.kind === 'KubernetesServiceAccount' ? { authz: 'sar' } : actor.kind ? { authz: 'binding' } : {}),
+    request: actor.kind ? { ip: '192.168.1.10', method: 'PUT', path: '/api/v1/objects' } : {},
   }));
 }
 
-function buildSettings(): Record<string, unknown> {
-  return {
-    upstreams: {
-      groups: [
-        { name: 'default', strategy: 'parallel_best', upstreams: ['tls://1.1.1.1:853', 'tls://9.9.9.9:853'] },
-        { name: 'filtered', strategy: 'strict', upstreams: ['https://dns.google/dns-query'] },
-      ],
-    },
-    cache: { maxEntries: 100000, minTTL: '0s', maxTTL: '24h', prefetch: true },
-    blocking: { enabled: true, defaultResponse: 'zeroIP', blockTTL: '1m', refreshInterval: '24h' },
-    querylog: { enabled: true, privacy: 'full', retention: { raw: '168h', maxDBBytes: '10GiB' } },
-    ratelimit: { qpm: 6000 },
-  };
+/** Sets a dotted path in a nested document. */
+function setPath(tree: Record<string, unknown>, path: string, v: unknown): void {
+  const segs = path.split('.');
+  let cur = tree;
+  for (const seg of segs.slice(0, -1)) {
+    const next = cur[seg];
+    if (!next || typeof next !== 'object' || Array.isArray(next)) cur[seg] = {};
+    cur = cur[seg] as Record<string, unknown>;
+  }
+  cur[segs[segs.length - 1] as string] = v;
 }
 
-function buildNodeConfig(): Record<string, unknown> {
-  return {
-    node: { name: 'kudurru-0', dataDir: '/var/lib/kudurru' },
-    listeners: { api: { address: '0.0.0.0:8080' }, ops: { address: '0.0.0.0:8081' }, metrics: { address: '0.0.0.0:9153' } },
-    log: { level: 'info', format: 'json' },
-  };
+/** The settings document of one scope: every schema key at its default (writeOnly redacted), then the overrides. */
+export function settingsDoc(schema: SettingKey[], scope: 'cluster' | 'node', overrides: Record<string, unknown>): Record<string, unknown> {
+  const tree: Record<string, unknown> = {};
+  for (const k of schema) {
+    if (k.scope !== scope) continue;
+    setPath(tree, k.path, k.writeOnly ? '<redacted>' : k.path in overrides ? overrides[k.path] : structuredClone(k.default));
+  }
+  return tree;
 }
+
+/** Cluster values that differ from the defaults (upstreams.groups is a map keyed by group name). */
+const CLUSTER_VALUES: Record<string, unknown> = {
+  'upstreams.groups': {
+    default: { servers: ['cloudflare=tls://1.1.1.1:853', 'quad9=tls://9.9.9.9:853'], strategy: 'parallel_best', timeout: '2s' },
+    filtered: { servers: ['https://dns.google/dns-query'], strategy: 'strict', timeout: '3s' },
+  },
+  'upstreams.conditional': { 'corp.example': 'filtered' },
+  'blocking.defaultResponse': 'zeroIP',
+  'blocking.blockTTL': '1m0s',
+  'cache.maxEntries': 100000,
+  'querylog.privacy': 'full',
+};
+
+const NODE_VALUES: Record<string, unknown> = {
+  'node.name': 'kudurru-0',
+  'log.level': 'info',
+  'log.format': 'json',
+};
 
 function withEnvLocks(schema: SettingKey[]): SettingKey[] {
   // Mirrors config_test.go: these keys come from the environment in the
@@ -602,6 +611,7 @@ export function createDB(now = FIXED_NOW): MockDB {
     }
   }
   const queries = buildQueries(now, r);
+  const schema = withEnvLocks((schemaJSON as { items: SettingKey[] }).items);
   return {
     now,
     zones,
@@ -611,14 +621,25 @@ export function createDB(now = FIXED_NOW): MockDB {
     policies: buildPolicies(),
     queries,
     series: buildSeries(now, r),
-    nodes: buildNodes(now),
-    messages: buildMessages(now),
+    nodes: buildNodes(),
+    messages: buildMessages(),
     audit: buildAudit(now),
-    settings: buildSettings(),
-    nodeConfig: buildNodeConfig(),
-    schema: withEnvLocks((schemaJSON as { items: SettingKey[] }).items),
+    settings: settingsDoc(schema, 'cluster', CLUSTER_VALUES),
+    nodeConfig: settingsDoc(schema, 'node', NODE_VALUES),
+    settingsPersisted: true,
+    schema,
     blocking: { blocking: true },
-    tokens: [{ id: 'tk1a2b3c', name: 'grafana', createdAt: '2026-09-20T10:00:00Z', lastUsedAt: new Date(now - 120_000).toISOString() }],
+    tokens: [
+      {
+        id: 'tk1a2b3c',
+        description: 'grafana',
+        owner: { kind: 'User', name: 'admin', id: 'local:admin', provider: 'local' },
+        createdAt: '2026-09-20T10:00:00Z',
+        expiresAt: null,
+        lastUsedAt: new Date(now - 120_000).toISOString(),
+        lastUsedIP: '192.168.1.40',
+      },
+    ],
     users: [
       { username: 'admin', password: 'admin', name: 'admin', roles: ['admin'] },
       { username: 'viewer', password: 'viewer', name: 'viewer', roles: ['viewer'] },

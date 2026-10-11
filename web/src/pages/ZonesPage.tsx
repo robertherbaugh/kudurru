@@ -12,6 +12,8 @@ import { qk, useApi, useCan } from '../api/context';
 import type { DNSZone, ZoneSummary, ZoneType } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { ManagedBadge } from '../components/ManagedBadge';
+import { UpstreamGroupSelect } from '../components/UpstreamGroupSelect';
+import { ZoneImportDialog } from '../components/ZoneImportDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { nameError } from '../lib/objectSchemas';
 import { Link, useNavigate } from '../lib/router';
@@ -117,7 +119,7 @@ function NewZoneDialog({ open, onClose }: { open: boolean; onClose: () => void }
         {type === 'primary' ? (
           <TextArea label="Name servers" description="One per line; defaults to this server" value={nameservers} onChange={setNameservers} rows={2} status={err.nameservers ? { type: 'error', message: err.nameservers } : undefined} />
         ) : (
-          <TextInput label="Upstream group" placeholder="default" value={upstream} onChange={setUpstream} />
+          <UpstreamGroupSelect value={upstream} onChange={setUpstream} />
         )}
         <p className="k-muted k-small">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</p>
         {serverError ? <ErrorBanner error={new Error(serverError)} title="The zone could not be created" /> : null}
@@ -135,6 +137,7 @@ export default function ZonesPage() {
   const api = useApi();
   const can = useCan();
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const q = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list(), refetchInterval: 30_000 });
   return (
     <div className="k-page">
@@ -144,6 +147,13 @@ export default function ZonesPage() {
           <p className="k-muted k-small">Authoritative and forward zones. Zones managed by a file or Kubernetes are read-only here.</p>
         </div>
         <div className="k-actions">
+          <Button
+            label="Import zone file"
+            variant="secondary"
+            isDisabled={!can('zones', 'write')}
+            tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'}
+            onClick={() => setImporting(true)}
+          />
           <Button label="New zone" variant="primary" isDisabled={!can('zones', 'write')} tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'} onClick={() => setCreating(true)} />
         </div>
       </div>
@@ -201,6 +211,7 @@ export default function ZonesPage() {
         </div>
       ) : null}
       <NewZoneDialog open={creating} onClose={() => setCreating(false)} />
+      <ZoneImportDialog isOpen={importing} onClose={() => setImporting(false)} />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { Link } from '../lib/router';
 import { dnsNameToOwner } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { TransferCell } from './ZonesPage';
+import { importSummary } from '../components/ZoneImportDialog';
 
 function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; onClose: () => void }) {
   const api = useApi();
@@ -31,7 +32,7 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
     mutationFn: () => api.zones.importBind(zone, text),
     onSuccess: (r) => {
       setResult(r);
-      notify.success(`Imported ${r.imported} records into ${zone}`);
+      notify.success(importSummary(r));
       void qc.invalidateQueries({ queryKey: qk.zone(zone) });
       void qc.invalidateQueries({ queryKey: qk.zones });
     },
@@ -60,11 +61,7 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
         <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN example.internal.\nwww 300 IN A 192.0.2.10'} />
         <p className="k-muted k-small">Records land in one record set managed by the API; SOA and apex NS are taken from the zone object.</p>
         {result ? (
-          <Banner
-            status={result.skipped?.length ? 'warning' : 'success'}
-            title={`${result.imported} records imported${result.recordSet ? ` into ${result.recordSet}` : ''}`}
-            description={result.skipped?.length ? result.skipped.map((s) => `line ${s.line}: ${s.error}`).join('; ') : undefined}
-          />
+          <Banner status={result.warnings.length ? 'warning' : 'success'} title={importSummary(result)} description={result.warnings.length ? result.warnings.join('; ') : undefined} />
         ) : null}
         <div className="k-row">
           <span className="k-spacer" />
@@ -130,7 +127,7 @@ export default function ZoneDetailPage({ params }: PageProps) {
   };
 
   const del = useMutation({
-    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet),
+    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier),
     onSuccess: (_x, r) => {
       notify.success(`Deleted ${r.dnsName} ${r.recordType}`);
       invalidate();

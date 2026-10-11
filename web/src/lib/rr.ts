@@ -391,3 +391,26 @@ export function dnsNameToOwner(dnsName: string, zone: string): string {
   if (n.toLowerCase().endsWith(`.${z}`)) return n.slice(0, n.length - z.length - 1);
   return `${n}.`;
 }
+
+/** One resource record in presentation form, split into its columns. */
+export interface PresentationRR {
+  name: string;
+  ttl: string;
+  class: string;
+  type: string;
+  data: string;
+}
+
+/**
+ * Splits a presentation line ("name\tttl\tclass\ttype\trdata", the form
+ * miekg/dns prints and POST /dns/query answers) into columns. Lines that
+ * are not records (the OPT pseudo-section, comments) return null and are
+ * shown as written.
+ */
+export function splitPresentation(line: string): PresentationRR | null {
+  const parts = line.split('\t');
+  if (parts.length < 5 || line.startsWith(';')) return null;
+  const [name, ttl, cls, type, ...rest] = parts as [string, string, string, string, ...string[]];
+  if (!/^\d+$/.test(ttl)) return null;
+  return { name, ttl, class: cls, type, data: rest.join(' ') };
+}

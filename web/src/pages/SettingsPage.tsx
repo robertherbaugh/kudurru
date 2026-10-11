@@ -3,27 +3,50 @@
 // grouped by section with search. Cluster keys are patched with
 // PATCH /settings, node keys with PATCH /node/config (JSON merge patch);
 // host-only and environment-locked keys are read-only with the reason.
+// Both answer the envelope {scope, node, settings, changed, restartRequired,
+// persisted}; the values are under `settings`.
+import { Banner } from '@astryxdesign/core/Banner';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
-import type { SettingKey } from '../api/types';
+import type { SettingKey, SettingsBody } from '../api/types';
 import { AppearanceControls } from '../components/AppearanceButton';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { SettingRow } from '../components/SettingRow';
-import { useSearchParams } from '../lib/router';
+import { Link, useSearchParams } from '../lib/router';
 import { BASIC_KEYS, getPath, mergePatchFor, sectionOf } from '../lib/settings';
+import { mapPatch } from '../lib/upstreams';
 
 export interface SettingsListProps {
   keys: SettingKey[];
+  /** The `settings` documents of GET /settings and GET /node/config. */
   cluster: Record<string, unknown> | undefined;
   node: Record<string, unknown> | undefined;
   canWriteCluster: boolean;
   canWriteNode: boolean;
   onSave: (k: SettingKey, value: unknown) => Promise<void>;
   grouped?: boolean;
+}
+
+/** The value of a key: from its scope's settings document, else the schema's effective value. */
+export function valueOf(k: SettingKey, cluster: Record<string, unknown> | undefined, node: Record<string, unknown> | undefined): unknown {
+  const v = getPath(k.scope === 'node' ? node : cluster, k.path);
+  return v === undefined ? k.value : v;
+}
+
+/** The warnings a PATCH answer calls for: not persisted, or a restart needed. */
+export interface SaveNotice {
+  persisted: boolean;
+  restartRequired: string[];
+}
+
+export function noticeFor(body: SettingsBody): SaveNotice | null {
+  const restart = body.restartRequired ?? [];
+  if (body.persisted !== false && restart.length === 0) return null;
+  return { persisted: body.persisted !== false, restartRequired: restart };
 }
 
 /** The generated settings list (exported for tests). */
@@ -49,9 +72,16 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
             <SettingRow
               key={k.path}
               k={k}
-              value={getPath(k.scope === 'node' ? node : cluster, k.path)}
+              value={valueOf(k, cluster, node)}
               canWrite={k.scope === 'node' ? canWriteNode : canWriteCluster}
               onSave={onSave}
+              extra={
+                k.path.startsWith('upstreams.') ? (
+                  <Link href="/upstreams" className="k-small">
+                    Edit on the Upstreams page
+                  </Link>
+                ) : undefined
+              }
             />
           ))}
         </section>
@@ -80,15 +110,22 @@ export default function SettingsPage() {
     return s ? all.filter((k) => k.path.toLowerCase().includes(s) || k.help.toLowerCase().includes(s)) : all;
   }, [schema.data, view, search]);
 
+  const [notice, setNotice] = useState<SaveNotice | null>(null);
+
   const onSave = async (k: SettingKey, value: unknown) => {
-    const patch = mergePatchFor(k.path, value);
+    // A merge patch merges maps: keys removed in the editor must be sent as null.
+    const before = valueOf(k, cluster.data?.settings, node.data?.settings);
+    const v =
+      k.type === 'map' && value && typeof value === 'object' && before && typeof before === 'object'
+        ? mapPatch(before as Record<string, unknown>, value as Record<string, unknown>)
+        : value;
+    const patch = mergePatchFor(k.path, v);
     try {
-      if (k.scope === 'node') {
-        qc.setQueryData(qk.nodeConfig, await api.settings.patchNodeConfig(patch));
-      } else {
-        qc.setQueryData(qk.settings, await api.settings.patch(patch));
-      }
-      notify.success(`${k.path} saved${k.restartRequired ? '; takes effect after a restart' : ''}`);
+      const body = k.scope === 'node' ? await api.settings.patchNodeConfig(patch) : await api.settings.patch(patch);
+      qc.setQueryData(k.scope === 'node' ? qk.nodeConfig : qk.settings, body);
+      void qc.invalidateQueries({ queryKey: qk.schema });
+      setNotice(noticeFor(body));
+      notify.success(`${k.path} saved${k.restartRequired || body.restartRequired?.length ? '; takes effect after a restart' : ''}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.describe() : (err as Error).message;
       throw new Error(msg, { cause: err });
@@ -123,14 +160,32 @@ export default function SettingsPage() {
       ) : (
         <TextInput label="Search settings" isLabelHidden placeholder="Search all settings" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       )}
+      {notice && !notice.persisted ? (
+        <Banner
+          status="warning"
+          title="Kept in memory only"
+          description="This server has no settings file, so the change is lost on restart. Set KUDURRU_SETTINGS_FILE (the packages and the container image do) to persist changes made here."
+          isDismissable
+          onDismiss={() => setNotice(null)}
+        />
+      ) : null}
+      {notice?.restartRequired.length ? (
+        <Banner
+          status="info"
+          title="Restart required"
+          description={`${notice.restartRequired.join(', ')} take${notice.restartRequired.length === 1 ? 's' : ''} effect after kudurru restarts.`}
+          isDismissable
+          onDismiss={() => setNotice(null)}
+        />
+      ) : null}
       {schema.error ? <ErrorBanner error={schema.error} /> : null}
       {cluster.error ? <ErrorBanner error={cluster.error} /> : null}
       {schema.isLoading || cluster.isLoading ? <Loading /> : null}
       {schema.data && cluster.data ? (
         <SettingsList
           keys={keys}
-          cluster={cluster.data}
-          node={node.data}
+          cluster={cluster.data.settings}
+          node={node.data?.settings}
           canWriteCluster={can('settings', 'write')}
           canWriteNode={can('node', 'config')}
           onSave={onSave}

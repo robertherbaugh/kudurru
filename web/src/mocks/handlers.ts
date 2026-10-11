@@ -1,14 +1,20 @@
 // MSW request handlers implementing the /api/v1 contract over the fixture
-// database. They are deliberately close to the real server: the error
-// envelope, 401/403 with missing{resource,verb,scope}, 409 managed_by with
-// the owner, 412 on If-Match mismatch, keyset cursors and took_ms.
+// database. They are deliberately close to the real server and answer its
+// shapes (internal/api, internal/auth/stack): the error envelope, 401/403
+// with missing{resource,verb,scope}, 409 managed_by with the owner, 412 on
+// If-Match mismatch, keyset cursors, took_ms, the settings envelope and
+// the presentation-form dig answer.
 import { http, HttpResponse, sse, type JsonBodyType } from 'msw';
 import type {
   AnyObject,
+  ApiToken,
   ApplyResult,
+  AuditEvent,
   BlockList,
   ClientGroup,
+  ClientItem,
   DNSZone,
+  DnsQueryRequest,
   DnsQueryResult,
   Endpoint,
   Me,
@@ -22,6 +28,7 @@ import type {
   ZoneSummary,
 } from '../api/types';
 import { createDB, CLIENTS, makeQueryRow, type MockDB } from './fixtures';
+import { getPath } from '../lib/settings';
 import { rng } from './rand';
 
 let db: MockDB = createDB();
@@ -109,10 +116,11 @@ function me(): Me {
   const u = db.session?.user;
   if (!u) throw new Error('no session');
   return {
-    principal: { kind: 'User', id: `local:${u.username}`, name: u.name, groups: u.roles.includes('admin') ? ['kudurru-admins'] : [] },
+    principal: { kind: 'User', id: `local:${u.username}`, name: u.name, groups: u.roles.includes('admin') ? ['kudurru-admins'] : [], auth: 'cookie', provider: 'local' },
     roles: u.roles,
     csrf: CSRF,
     permissions: permissions(u.roles),
+    ...(u.mustChangePassword ? { mustChangePassword: true } : {}),
   };
 }
 
@@ -241,8 +249,25 @@ function writeObject(kind: ObjectKind, obj: AnyObject, ifMatch: string | null): 
   } as AnyObject;
   if (existing) list.splice(list.indexOf(existing), 1, next);
   else list.push(next);
-  db.audit.unshift({ id: `a${db.rv}`, ts: new Date().toISOString(), actor: db.session?.user.name ?? 'anonymous', action: existing ? 'update' : 'create', kind: KIND_NAMES[kind], ...(ns ? { namespace: ns } : {}), name: obj.metadata.name, outcome: 'success' });
+  audit(`${KIND_NAMES[kind].toLowerCase()}.${existing ? 'update' : 'create'}`, { kind: KIND_NAMES[kind], ...(ns ? { namespace: ns } : {}), name: obj.metadata.name });
   return { status: existing ? 200 : 201, body: next, result: existing ? 'updated' : 'created' };
+}
+
+/** Records an audit event of the signed-in user (newest first, like GET /audit?order=desc). */
+function audit(action: string, resource: AuditEvent['resource'], result = 'success'): void {
+  const u = db.session?.user;
+  const id = (db.audit[0]?.id ?? 1000) + 1;
+  db.audit.unshift({
+    id,
+    ts: new Date().toISOString(),
+    node: 'kudurru-0',
+    actor: u ? { kind: 'User', id: `local:${u.username}`, name: u.name } : { name: 'anonymous' },
+    action,
+    resource,
+    result,
+    authz: 'binding',
+    request: { ip: '192.168.1.10' },
+  });
 }
 
 function deleteObject(kind: ObjectKind, name: string, namespace?: string): { status: number; body?: unknown } {
@@ -272,26 +297,20 @@ function listEnvelope<T>(items: T[], url: URL) {
 // Zones
 
 function zoneSummary(z: DNSZone): ZoneSummary {
+  const ready = (z.status?.conditions ?? []).find((c) => c.type === 'Ready');
   return {
     name: z.metadata.name,
     zoneName: z.spec.zoneName,
     type: z.spec.type,
     serial: z.status?.serial ?? 0,
     recordCount: z.status?.recordCount ?? 0,
-    ready: (z.status?.conditions ?? []).some((c) => c.type === 'Ready' && c.status === 'True'),
+    recordSets: db.recordSets.filter((rs) => rs.spec.zoneRef.name === z.metadata.name).length,
+    ready: ready?.status === 'True',
+    ...(ready?.reason ? { reason: ready.reason } : {}),
+    ...(ready?.message ? { message: ready.message } : {}),
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
-    transfer: {
-      zoneTransfer: z.spec.policy?.zoneTransfer ?? 'deny',
-      notify: z.spec.policy?.notify ?? 'none',
-      ...(z.spec.type === 'primary'
-        ? {
-            lastNotify: { at: new Date(db.now - 1_800_000).toISOString(), targets: z.spec.policy?.notifyTargets ?? z.spec.nameservers ?? [], ok: true },
-            ...(z.spec.policy?.zoneTransfer && z.spec.policy.zoneTransfer !== 'deny'
-              ? { lastTransfer: { at: new Date(db.now - 1_700_000).toISOString(), peer: '192.168.1.2', kind: 'IXFR' as const, ok: true } }
-              : {}),
-          }
-        : {}),
-    },
+    ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
+    ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
   };
 }
 
@@ -441,59 +460,89 @@ function topFrom(dim: TopDim, blocked: boolean, n: number, scale: number): TopIt
   }));
 }
 
-function digAnswer(name: string, type: string, client?: string): DnsQueryResult {
-  const n = name.replace(/\.$/, '').toLowerCase();
+/** One presentation line, as miekg/dns prints it (tab-separated). */
+function rrLine(name: string, ttl: number, type: string, data: string): string {
+  return `${name}\t${ttl}\tIN\t${type}\t${data}`;
+}
+
+const DIG_FLAGS = { aa: false, tc: false, rd: true, ra: true, ad: false, cd: false };
+
+function digAnswer(req: DnsQueryRequest): DnsQueryResult {
+  const type = (req.type ?? 'A').toUpperCase();
+  const n = req.name.replace(/\.$/, '').toLowerCase();
+  const base = { name: `${n}.`, type, client: req.client || '127.0.0.1', node: 'kudurru-0', took_ms: 0.3, authority: [] as string[], additional: [] as string[], flags: { ...DIG_FLAGS } };
   const blockedList = db.lists.find((l) => l.spec.mode !== 'allow' && l.spec.sources.some((s) => s.inline?.includes(n)));
   const knownBlocked = [...db.queries].find((q) => q.domain === n && q.status_class === 'blocked');
-  if (blockedList || knownBlocked) {
+  if (db.blocking.blocking && (blockedList || knownBlocked)) {
     return {
+      ...base,
       rcode: 'NOERROR',
       status: knownBlocked?.status ?? 'blocked_exact',
       status_class: 'blocked',
-      answer: [{ name: `${n}.`, type, ttl: 60, class: 'IN', data: type === 'AAAA' ? '::' : '0.0.0.0' }],
-      authority: [],
-      additional: [],
+      answer: [rrLine(`${n}.`, 600, type, type === 'AAAA' ? '::' : '0.0.0.0')],
       list: knownBlocked?.list ?? `default/${blockedList?.metadata.name ?? ''}`,
       rule: knownBlocked?.rule ?? n,
-      took_ms: 0.12,
-      node: 'kudurru-0',
-      ...(client ? {} : {}),
+      latency_ms: 0.034,
     };
   }
   const local = recordsOf('home-arpa').concat(recordsOf('example-internal')).filter((r) => r.dnsName.toLowerCase() === n);
   if (local.length) {
     const rr = local.filter((r) => r.recordType === type || r.recordType === 'CNAME');
+    const apex = n.endsWith('home.arpa') ? 'home.arpa.' : 'example.internal.';
     return {
-      rcode: rr.length ? 'NOERROR' : 'NOERROR',
+      ...base,
+      rcode: 'NOERROR',
       status: 'authoritative',
       status_class: 'permitted',
-      answer: rr.flatMap((r) => r.targets.map((t) => ({ name: `${r.dnsName}.`, type: r.recordType, ttl: r.recordTTL ?? 300, class: 'IN', data: t }))),
-      authority: rr.length ? [] : [{ name: n.endsWith('home.arpa') ? 'home.arpa.' : 'example.internal.', type: 'SOA', ttl: 300, class: 'IN', data: 'ns1. hostmaster. 1 3600 600 604800 300' }],
-      additional: [],
-      zone: n.endsWith('home.arpa') ? 'home.arpa.' : 'example.internal.',
-      took_ms: 0.08,
-      node: 'kudurru-0',
+      answer: rr.flatMap((r) => r.targets.map((t) => rrLine(`${r.dnsName}.`, r.recordTTL ?? 300, r.recordType, t))),
+      authority: rr.length ? [] : [rrLine(apex, 300, 'SOA', `ns1.${apex} hostmaster.${apex} 1 3600 600 604800 300`)],
+      flags: { ...DIG_FLAGS, aa: true, ra: false },
+      latency_ms: 0.08,
     };
   }
-  if (n.endsWith('.invalid') || n.startsWith('nx')) {
-    return { rcode: 'NXDOMAIN', status: 'forwarded', status_class: 'permitted', answer: [], authority: [{ name: '.', type: 'SOA', ttl: 86400, class: 'IN', data: 'a.root-servers.net. nstld.verisign-grs.com. 2026101000 1800 900 604800 86400' }], additional: [], upstream: 'tls://1.1.1.1:853', took_ms: 14.2, node: 'kudurru-0' };
+  if (n.startsWith('servfail')) {
+    return { ...base, rcode: 'SERVFAIL', status: 'servfail_upstream', status_class: 'error', answer: [], upstream: 'default/cloudflare', error: 'every upstream of group default failed: i/o timeout', latency_ms: 2003.1 };
   }
-  const cname = n === 'www.youtube.com' ? ['youtube-ui.l.google.com.'] : undefined;
+  if (n.endsWith('.invalid') || n.startsWith('nx')) {
+    return {
+      ...base,
+      rcode: 'NXDOMAIN',
+      status: 'forwarded',
+      status_class: 'permitted',
+      answer: [],
+      authority: [rrLine('.', 86400, 'SOA', 'a.root-servers.net. nstld.verisign-grs.com. 2026101000 1800 900 604800 86400')],
+      upstream: 'default/cloudflare',
+      latency_ms: 14.2,
+    };
+  }
+  const cname = n === 'www.youtube.com' ? 'youtube-ui.l.google.com.' : undefined;
+  const data = type === 'AAAA' ? '2606:4700::6810:84e5' : type === 'TXT' ? '"v=spf1 -all"' : '104.16.132.229';
   return {
+    ...base,
     rcode: 'NOERROR',
     status: 'forwarded',
     status_class: 'permitted',
     answer: [
-      ...(cname ? [{ name: `${n}.`, type: 'CNAME', ttl: 300, class: 'IN', data: cname[0] as string }] : []),
-      { name: cname ? (cname[0] as string) : `${n}.`, type, ttl: 300, class: 'IN', data: type === 'AAAA' ? '2606:4700::6810:84e5' : type === 'TXT' ? '"v=spf1 -all"' : '104.16.132.229' },
+      ...(cname ? [rrLine(`${n}.`, 300, 'CNAME', cname)] : []),
+      rrLine(cname ?? `${n}.`, 300, type, data),
+      ...(req.dnssec ? [rrLine(cname ?? `${n}.`, 300, 'RRSIG', `${type} 13 2 300 20261012192501 20261010172501 34505 ${n}. fWoOfIKKt2xfi8w3SxvNe62Zszspk9KT61IliWVje6p9KcqVMYHVEXfl9rV1aFYbRJ2h+1oWuH95FLEXxwaFpw==`)] : []),
     ],
-    authority: [],
-    additional: [],
-    upstream: 'tls://1.1.1.1:853',
-    ...(cname ? { cname_chain: [`${n}.`, ...cname] } : {}),
-    took_ms: 18.6,
-    node: 'kudurru-0',
+    additional: req.dnssec ? ['\n;; OPT PSEUDOSECTION:\n; EDNS: version 0; flags: do; udp: 1232'] : [],
+    flags: { ...DIG_FLAGS, ad: !!req.dnssec },
+    upstream: 'default/cloudflare',
+    latency_ms: 18.6,
   };
+}
+
+/** The upstream groups of the cluster settings (a map keyed by group name). */
+function upstreamGroups(): Record<string, { servers?: string[]; strategy?: string; timeout?: string }> {
+  return (getPath(db.settings, 'upstreams.groups') as Record<string, { servers?: string[] }> | undefined) ?? {};
+}
+
+/** The display label of a server entry ("name=addr" → name). */
+function serverLabel(entry: string): string {
+  const i = entry.indexOf('=');
+  return i > 0 && !/[:/[\]]/.test(entry.slice(0, i)) ? entry.slice(0, i) : entry;
 }
 
 function appendInline(listName: string, mode: 'allow' | 'block', namespace: string, domains: string[], regex: boolean) {
@@ -585,12 +634,19 @@ let tailTimer = 0;
 export const handlers = [
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
-    ok({ localLogin: 'enabled', providers: [{ id: 'dex', displayName: 'Dex (corporate SSO)' }, { id: 'github', displayName: 'GitHub' }], hasDefaultCredentials: db.users.some((u) => u.username === 'admin' && u.password === 'admin') }),
+    ok({
+      localLogin: true,
+      localLoginMode: 'enabled',
+      providers: [{ id: 'dex', displayName: 'Dex (corporate SSO)' }, { id: 'github', displayName: 'GitHub' }],
+      hasDefaultCredentials: db.users.some((u) => u.username === 'admin' && u.password === 'admin'),
+      session: { idleTimeout: '30m0s', lifetime: '12h0m0s' },
+    }),
   ),
   http.post(`${B}/auth/login`, async ({ request }) => {
     const body = (await request.json()) as { username?: string; password?: string };
+    if (!body.username || !body.password) return fail(400, 'invalid', 'username and password are required');
     const user = db.users.find((u) => u.username === body.username && u.password === body.password);
-    if (!user) return fail(401, 'unauthenticated', 'Wrong username or password');
+    if (!user) return fail(401, 'unauthenticated', 'invalid username or password');
     db.session = { user };
     return ok({ ...me() });
   }),
@@ -599,15 +655,42 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
+  http.post(`${B}/auth/password`, async ({ request }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'Sign in to continue');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'Missing or wrong X-Kudurru-CSRF header');
+    const body = (await request.json()) as Record<string, unknown>;
+    const unknown = Object.keys(body).find((k) => k !== 'currentPassword' && k !== 'newPassword');
+    if (unknown) return fail(400, 'invalid', `body: json: unknown field "${unknown}"`);
+    const next = typeof body.newPassword === 'string' ? body.newPassword : '';
+    if ([...next].length < 8) return fail(400, 'invalid', 'newPassword: users: password is shorter than 8 characters');
+    if (next === body.currentPassword) return fail(400, 'invalid', 'newPassword: must differ from the current password');
+    const u = db.session.user;
+    if (body.currentPassword !== u.password) return fail(403, 'forbidden', 'the current password is wrong');
+    u.password = next;
+    u.mustChangePassword = false;
+    return ok({ ...me() });
+  }),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
-  http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens })),
+  http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens, continue: '' })),
   http.post(`${B}/auth/tokens`, async ({ request }) => {
     const g = guard(request, 'tokens', 'own');
     if (g) return g;
-    const body = (await request.json()) as { name?: string; expiresIn?: string };
-    if (!body.name) return fail(400, 'invalid', 'name: required');
+    // The real handler decodes with DisallowUnknownFields.
+    const body = (await request.json()) as Record<string, unknown>;
+    const unknown = Object.keys(body).find((k) => !['description', 'expiresIn', 'scopes'].includes(k));
+    if (unknown) return fail(400, 'invalid', `body: json: unknown field "${unknown}"`);
+    const expiresIn = typeof body.expiresIn === 'string' ? body.expiresIn : '';
+    if (expiresIn && !/^\d+(h|m|s)$/.test(expiresIn)) return fail(400, 'invalid', 'expiresIn: not a positive Go duration');
+    const u = db.session?.user;
     const id = Math.random().toString(36).slice(2, 10);
-    const t = { id, name: body.name, createdAt: new Date().toISOString(), ...(body.expiresIn ? { expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString() } : {}) };
+    const t: ApiToken = {
+      id,
+      ...(typeof body.description === 'string' && body.description ? { description: body.description } : {}),
+      owner: { kind: 'User', name: u?.username ?? '', id: `local:${u?.username ?? ''}`, provider: 'local' },
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresIn ? new Date(Date.now() + 30 * 86_400_000).toISOString() : null,
+      ...(Array.isArray(body.scopes) && body.scopes.length ? { scopes: body.scopes as string[] } : {}),
+    };
     db.tokens.push(t);
     return ok({ ...t, token: `kdr_${id}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}` }, { status: 201 });
   }),
@@ -716,12 +799,14 @@ export const handlers = [
     const g = guard(request, 'records', 'delete');
     if (g) return g;
     const zone = String(params.zone);
-    const rsName = new URL(request.url).searchParams.get('recordSet');
+    const q = new URL(request.url).searchParams;
+    const rsName = q.get('recordSet');
+    const setID = q.get('setIdentifier');
     let found = false;
     for (const rs of db.recordSets) {
       if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName)) continue;
       const before = rs.spec.endpoints.length;
-      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type));
+      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID)));
       if (keep.length !== before) {
         const owner = rs.metadata.annotations?.[MANAGED] ?? '';
         if (owner !== 'api') return fail(409, 'managed_by', `DNSRecordSet ${rs.metadata.name} is managed by ${owner}`, owner);
@@ -737,30 +822,42 @@ export const handlers = [
     const g = guard(request, 'records', 'write');
     if (g) return g;
     const zone = String(params.zone);
-    const z = db.zones.find((x) => x.metadata.name === zone);
-    if (!z) return fail(404, 'not_found', `zone ${zone} not found`);
+    const originParam = new URL(request.url).searchParams.get('origin');
+    let z = db.zones.find((x) => x.metadata.name === zone);
+    const created = !z && !!originParam;
+    if (!z && !originParam) return fail(404, 'not_found', `DNSZone ${zone} not found`, 'pass ?origin=<zone apex> to create the zone from the file');
     const text = await request.text();
-    const origin = z.spec.zoneName.replace(/\.$/, '');
-    const skipped: { line: number; error: string }[] = [];
+    const apex = (z?.spec.zoneName ?? originParam ?? '').replace(/\.$/, '');
     const eps: Endpoint[] = [];
+    let serial = 0;
+    let bad: string | undefined;
     text.split('\n').forEach((line, i) => {
       const l = line.replace(/;.*$/, '').trim();
-      if (!l || l.startsWith('$')) return;
+      if (bad || !l || l.startsWith('$')) return;
       const m = /^(\S+)\s+(?:(\d+)\s+)?(?:IN\s+)?([A-Z0-9]+)\s+(.+)$/.exec(l);
       if (!m) {
-        skipped.push({ line: i + 1, error: 'cannot parse' });
+        bad = `line ${i + 1}: cannot parse "${l}"`;
         return;
       }
       const [, owner, ttl, type, data] = m as unknown as [string, string, string | undefined, string, string];
-      if (type === 'SOA') return;
-      const name = owner === '@' ? origin : owner.endsWith('.') ? owner.slice(0, -1) : `${owner}.${origin}`;
+      if (type === 'SOA') {
+        serial = Number(data.trim().split(/\s+/)[2] ?? '0') || 0;
+        return;
+      }
+      const name = owner === '@' ? apex : owner.endsWith('.') ? owner.slice(0, -1) : `${owner}.${apex}`;
       eps.push({ dnsName: name, recordType: type, targets: [data.trim()], ...(ttl ? { recordTTL: Number(ttl) } : {}) });
     });
-    const rsName = `import-${zone}`;
+    if (bad) return fail(400, 'invalid', `zone: ${bad}`, `the body must be an RFC 1035 master file for ${apex}.`);
+    if (!z) {
+      db.rv += 1;
+      z = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name: zone, resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneName: `${apex}.`, type: 'primary' }, status: { serial, recordCount: 0, conditions: [{ type: 'Ready', status: 'True', reason: 'Serving' }] } };
+      db.zones.push(z);
+    }
+    const rsName = `import-${zone}-1`;
     db.recordSets = db.recordSets.filter((x) => x.metadata.name !== rsName);
     db.recordSets.push({ apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: 'default', annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: eps } });
     bumpZone(zone);
-    return ok({ imported: eps.length, recordSet: rsName, skipped });
+    return ok({ zone, zoneName: `${apex}.`, created, recordSets: [`default/${rsName}`], endpoints: eps.length, serial, warnings: serial ? [] : ['no SOA record; defaults apply'] });
   }),
   http.get(`${B}/zones/:zone/export`, ({ request, params }) => {
     const g = guard(request, 'zones', 'read');
@@ -795,13 +892,12 @@ export const handlers = [
       l.spec.sources.flatMap((s) =>
         (s.inline ?? [])
           .filter((rule) => rule === domain || (rule.startsWith('/') && new RegExp(rule.slice(1, -1)).test(domain)))
-          .map((rule) => ({ list: l.metadata.name, namespace: l.metadata.namespace ?? 'default', rule, mode: l.spec.mode ?? 'block' })),
+          .map((rule) => ({ list: `${l.metadata.namespace ?? 'default'}/${l.metadata.name}`, rule, mode: l.spec.mode ?? 'block' })),
       ),
     );
     const fromLog = db.queries.find((q) => q.domain === domain && q.list);
-    if (fromLog?.list && !items.some((i) => `${i.namespace}/${i.list}` === fromLog.list)) {
-      const [ns, name] = fromLog.list.split('/') as [string, string];
-      items.push({ list: name, namespace: ns, rule: fromLog.rule ?? domain, mode: 'block' });
+    if (fromLog?.list && !items.some((i) => i.list === fromLog.list)) {
+      items.push({ list: fromLog.list, rule: fromLog.rule ?? domain, mode: 'block' });
     }
     return ok({ items });
   }),
@@ -818,18 +914,21 @@ export const handlers = [
   http.get(`${B}/clients`, ({ request }) => {
     const g = guard(request, 'clients', 'read');
     if (g) return g;
-    const items = CLIENTS.map((c) => {
+    // The top-clients ranking of the window; clients without queries are absent.
+    const items: ClientItem[] = CLIENTS.flatMap((c) => {
       const rows = db.queries.filter((q) => q.client.ip === c.ip);
-      return {
-        ip: c.ip,
-        name: c.name,
-        groups: c.group === 'default' ? ['default'] : [c.group, 'default'],
-        lastSeen: rows[0]?.ts,
-        queries24h: rows.length * 20,
-        blocked24h: rows.filter((q) => q.status_class === 'blocked').length * 20,
-        ...(c.ip.startsWith('192.168.1.3') ? { mac: `aa:bb:cc:dd:ee:${c.ip.slice(-2)}` } : {}),
-      };
-    });
+      if (!rows.length) return [];
+      return [
+        {
+          key: c.ip,
+          name: c.name,
+          group: `default/${c.group}`,
+          count: rows.length * 20,
+          blocked: rows.filter((q) => q.status_class === 'blocked').length * 20,
+          ...(rows[0] ? { last_seen: rows[0].ts } : {}),
+        },
+      ];
+    }).sort((a, b) => b.count - a.count);
     return ok({ items });
   }),
 
@@ -858,9 +957,10 @@ export const handlers = [
   http.post(`${B}/dns/query`, async ({ request }) => {
     const g = guard(request, 'querylog', 'read');
     if (g) return g;
-    const body = (await request.json()) as { name?: string; type?: string; client?: string };
-    if (!body.name) return fail(400, 'invalid', 'name: required');
-    return ok({ ...digAnswer(body.name, (body.type ?? 'A').toUpperCase(), body.client) });
+    const body = (await request.json()) as Partial<DnsQueryRequest>;
+    if (!body.name) return fail(422, 'invalid', 'validation failed: body.name: expected length >= 1');
+    if (body.proto && !['udp', 'tcp', 'dot', 'doh', 'doq', 'doh3'].includes(body.proto)) return fail(422, 'invalid', 'body.proto: expected value to be one of "udp, tcp, dot, doh, doq, doh3"');
+    return ok({ ...digAnswer({ ...body, name: body.name }) });
   }),
 
   // stats -----------------------------------------------------------------
@@ -948,11 +1048,26 @@ export const handlers = [
     if (g) return g;
     const url = new URL(request.url);
     const top = topFrom('upstreams', false, 10, seriesTotals().total / db.queries.length);
+    // servers[]: the live health of every configured server (not windowed).
+    const servers = Object.entries(upstreamGroups()).flatMap(([group, g], gi) =>
+      (g.servers ?? []).map((entry, i) => {
+        const down = gi === 1 && i === 0 && group !== 'default';
+        return {
+          group,
+          server: serverLabel(entry),
+          healthy: !down,
+          consecutive_failures: down ? 4 : 0,
+          rtt_ms: down ? 0 : 8.4 + i * 5.1,
+          ...(down ? { backoff_until: new Date(Date.now() + 40_000).toISOString() } : {}),
+        };
+      }),
+    );
     return ok({
       ...scopeInfo(url),
       from: new Date(db.now - 86_400_000).toISOString(),
       until: new Date(db.now).toISOString(),
       upstreams: top.map((x, i) => ({ addr: x.key, total: x.total, errors: 3 + i, timeouts: i, percent: x.percent, avg_ms: 12 + i * 6, p95_ms: 40 + i * 15 })),
+      servers,
       approximate: false,
     });
   }),
@@ -1025,7 +1140,7 @@ export const handlers = [
   ...(typeof EventSource === 'function'
     ? [
         sse<{ query: QueryRow }>(`${B}/queries/stream`, ({ client, request }) => {
-          const last = Number(request.headers.get('Last-Event-ID') ?? new URL(request.url).searchParams.get('lastEventId') ?? '0');
+          const last = Number(request.headers.get('Last-Event-ID') ?? new URL(request.url).searchParams.get('last_event_id') ?? '0');
           if (last) {
             for (const q of db.queries.filter((x) => x.id > last).reverse()) client.send({ id: String(q.id), event: 'query', data: q });
           }
@@ -1052,8 +1167,9 @@ export const handlers = [
     const g = guard(request, 'querylog', 'purge');
     if (g) return g;
     const before = new URL(request.url).searchParams.get('before');
+    const n = db.queries.length;
     db.queries = before ? db.queries.filter((q) => q.ts >= new Date(before).toISOString()) : [];
-    return new HttpResponse(null, { status: 204 });
+    return ok({ deleted: n - db.queries.length, node: 'kudurru-0' });
   }),
   http.get(`${B}/querylog/status`, ({ request }) => {
     const g = guard(request, 'querylog', 'read');
@@ -1071,26 +1187,40 @@ export const handlers = [
   }),
 
   // settings ----------------------------------------------------------------
-  http.get(`${B}/settings/_schema`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.schema })),
-  http.get(`${B}/settings`, ({ request }) => guard(request, 'settings', 'read') ?? ok(db.settings)),
+  http.get(`${B}/settings/_schema`, ({ request }) =>
+    guard(request, 'settings', 'read') ??
+    ok({ items: db.schema.map((k) => ({ ...k, value: k.writeOnly ? '<redacted>' : getPath(k.scope === 'node' ? db.nodeConfig : db.settings, k.path) })) }),
+  ),
+  http.get(`${B}/settings`, ({ request }) => guard(request, 'settings', 'read') ?? ok(settingsBody('cluster'))),
   http.patch(`${B}/settings`, async ({ request }) => {
     const g = guard(request, 'settings', 'write');
     if (g) return g;
+    if (db.settingsManagedBy) {
+      return fail(409, 'managed_by', `cluster settings are managed by ${db.settingsManagedBy}; change them there`, 'set config.settings in the Helm values (or edit the ConfigMap); every pod reloads it without a restart');
+    }
     const patch = (await request.json()) as Record<string, unknown>;
-    const bad = leafPaths(patch).find((p) => db.schema.find((k) => k.path === p)?.hostOnly || db.schema.find((k) => k.path === p)?.scope === 'node');
+    const changed = changedKeys(patch);
+    const bad = changed.find((p) => db.schema.find((k) => k.path === p)?.hostOnly || db.schema.find((k) => k.path === p)?.scope === 'node');
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
-    db.settings = mergePatch(db.settings, patch);
-    return ok(db.settings);
+    const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
+    if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
+    const next = mergePatch(db.settings, patch);
+    const invalid = validateUpstreams(next);
+    if (invalid) return fail(400, 'invalid', invalid);
+    db.settings = next;
+    return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
   }),
-  http.get(`${B}/node/config`, ({ request }) => guard(request, 'node', 'config') ?? ok(db.nodeConfig)),
+  http.get(`${B}/node/config`, ({ request }) => guard(request, 'node', 'config') ?? ok(settingsBody('node'))),
   http.patch(`${B}/node/config`, async ({ request }) => {
     const g = guard(request, 'node', 'config');
     if (g) return g;
     const patch = (await request.json()) as Record<string, unknown>;
-    const bad = leafPaths(patch).find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
+    const changed = changedKeys(patch);
+    const bad = changed.find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     db.nodeConfig = mergePatch(db.nodeConfig, patch);
-    return ok(db.nodeConfig);
+    // Node-scope changes live in memory only.
+    return ok({ ...settingsBody('node', changed), persisted: false });
   }),
 
   // nodes and cluster -------------------------------------------------------
@@ -1100,24 +1230,36 @@ export const handlers = [
     if (g) return g;
     const n = db.nodes.find((x) => x.name === params.name);
     if (!n) return fail(404, 'not_found', `node ${String(params.name)} not found`);
+    if (!n.self) return fail(501, 'not_implemented', "health of other nodes needs scatter-gather over the internal listener", `ask ${n.name} directly`);
+    const since = new Date(db.now - 3 * 86_400_000).toISOString();
     return ok({
-      name: n.name,
-      checks: [
-        { name: 'dns', ok: true },
-        { name: 'zonecache', ok: true, message: `synced, snapshot ${n.snapshotAge ?? '?'} old` },
-        { name: 'listresolver', ok: true },
-        { name: 'store', ok: true, message: n.storeDriver ?? 'sqlite' },
-        { name: 'querylog', ok: n.name === 'kudurru-0', ...(n.name === 'kudurru-0' ? {} : { message: 'WAL 812 MiB, checkpoint lagging' }) },
-      ],
+      node: n.name,
+      ready: true,
+      health: {
+        status: 'ready',
+        node: n.name,
+        version: n.version,
+        unready: null,
+        components: {
+          blocking: { ready: true, since },
+          blocklists: { ready: true, since },
+          dns: { ready: true, since },
+          objects: { ready: true, since },
+          zonecache: { ready: true, since },
+        },
+      },
     });
   }),
-  http.get(`${B}/cluster`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ mode: 'ha-static', leader: 'kudurru-0', nodes: db.nodes.map((n) => n.name), epoch: 7, readOnly: false })),
+  http.get(`${B}/cluster`, ({ request }) =>
+    guard(request, 'cluster', 'read') ??
+    ok({ clusterID: 'dc493171-2dd3-4282-b0ab-c1a0a31ea26f', driver: 'sqlite', epoch: 7, leader: 'kudurru-0', nodes: db.nodes.length, readOnly: false, node: 'kudurru-0' }),
+  ),
   http.get(`${B}/edge`, ({ request }) =>
     guard(request, 'edge', 'read') ??
-    ok({ backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true, qps: 14.2 }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true, qps: 5.9 }], vip: [{ address: '192.168.1.53', owner: 'kudurru-0' }] }),
+    ok({ edge: { enabled: true, state: 'running' }, vip: { enabled: true, state: 'MASTER' }, backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true }], node: 'kudurru-0' }),
   ),
   http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.messages })),
-  http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2' })),
+  http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
   // iam and audit -------------------------------------------------------------
   http.get(`${B}/iam/:what`, ({ request, params }) => {
@@ -1125,14 +1267,29 @@ export const handlers = [
     const g = guard(request, what === 'rolebindings' ? 'rolebindings' : what === 'identityproviders' ? 'identityproviders' : what === 'serviceaccounts' ? 'serviceaccounts' : 'users', 'read');
     if (g) return g;
     const items: Record<string, unknown[]> = {
-      users: db.users.map((u) => ({ name: u.username, displayName: u.name, local: true, roles: u.roles, disabled: false })),
-      serviceaccounts: [{ name: 'grafana', namespace: 'default', tokens: 1 }, { name: 'external-dns', namespace: 'kudurru', tokens: 0 }],
-      rolebindings: [
-        { name: 'admins', role: 'admin', subjects: [{ kind: 'Group', name: 'kudurru-admins' }, { kind: 'User', name: 'local:admin' }] },
-        { name: 'viewers', role: 'viewer', subjects: [{ kind: 'Group', name: 'everyone' }] },
-        { name: 'external-dns', role: 'integration:external-dns', subjects: [{ kind: 'ServiceAccount', name: 'kudurru/external-dns' }] },
+      users: db.users.map((u) => ({
+        name: u.username,
+        ...(u.name !== u.username ? { displayName: u.name } : {}),
+        builtinAdmin: u.username === 'admin',
+        disabled: false,
+        mustChangePassword: !!u.mustChangePassword,
+        ...(u.roles.includes('admin') ? { groups: ['kudurru-admins'] } : {}),
+        lastLoginAt: new Date(db.now - 3_600_000).toISOString(),
+      })),
+      serviceaccounts: [
+        { namespace: 'default', name: 'grafana', description: 'dashboards', disabled: false, builtinAdmin: false, tokens: 1 },
+        { namespace: 'kudurru', name: 'external-dns', disabled: false, builtinAdmin: false, tokens: 0 },
       ],
-      identityproviders: [{ name: 'dex', issuer: 'https://dex.example.com', clientID: 'kudurru' }, { name: 'github', issuer: 'https://token.actions.githubusercontent.com', clientID: 'kudurru-gh' }],
+      rolebindings: [
+        { source: 'config', name: 'rbac.bindings[0]', role: 'admin', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'kudurru-admins' }] },
+        { source: 'object', namespace: 'default', name: 'viewers', role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'everyone' }], managedBy: 'file:objects.d/rbac.yaml' },
+        { source: 'object', namespace: 'default', name: 'home-admin', role: 'zone-admin', scope: { kind: 'zone', name: 'home-arpa' }, subjects: [{ kind: 'User', name: 'robert@example.com' }] },
+        { source: 'object', namespace: 'kudurru', name: 'external-dns', role: 'integration:external-dns', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', namespace: 'kudurru', name: 'external-dns' }] },
+      ],
+      identityproviders: [
+        { id: 'dex', displayName: 'Dex (corporate SSO)', issuer: 'https://dex.example.com', clientID: 'kudurru', scopes: ['openid', 'email', 'groups'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/dex/callback', source: 'config' },
+        { id: 'github', displayName: 'GitHub', issuer: 'https://token.actions.githubusercontent.com', clientID: 'kudurru-gh', scopes: ['openid'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/github/callback', source: 'object' },
+      ],
     };
     return items[what] ? ok({ items: items[what] }) : fail(404, 'not_found', `no IAM collection ${what}`);
   }),
@@ -1140,11 +1297,23 @@ export const handlers = [
     const g = guard(request, 'audit', 'read');
     if (g) return g;
     const url = new URL(request.url);
-    const kind = url.searchParams.get('kind');
-    const actor = url.searchParams.get('actor');
-    const name = url.searchParams.get('name');
-    const items = db.audit.filter((a) => (!kind || a.kind === kind) && (!actor || a.actor.includes(actor)) && (!name || a.name.includes(name)));
-    return ok({ items });
+    const p = url.searchParams;
+    const kind = p.get('kind');
+    const actor = p.get('actor');
+    const name = p.get('name');
+    const desc = p.get('order') === 'desc';
+    const limit = Math.min(1000, Number(p.get('limit') || '100'));
+    const cursor = Number(p.get('cursor') || '0');
+    // db.audit is newest first; the server default is oldest first.
+    let items = db.audit.filter(
+      (a) => (!kind || a.resource.kind === kind) && (!actor || (a.actor.name ?? '').includes(actor) || `${a.actor.kind}:${a.actor.name}` === actor) && (!name || (a.resource.name ?? '').includes(name)),
+    );
+    if (!desc) items = [...items].reverse();
+    if (cursor) items = items.filter((a) => (desc ? (a.id ?? 0) < cursor : (a.id ?? 0) > cursor));
+    const page = items.slice(0, limit);
+    const last = page[page.length - 1];
+    const next = page.length === limit && last?.id ? String(last.id) : undefined;
+    return ok({ items: page, node: 'kudurru-0', ...(next ? { cursor_next: next, continue: next } : {}) });
   }),
 
   // blocked-services and safe-search catalogue (D60) ----------------------
@@ -1167,7 +1336,58 @@ export const handlers = [
 function blockingState() {
   if (db.blocking.until && db.blocking.until <= Date.now()) db.blocking = { blocking: true };
   const until = db.blocking.until;
-  return { blocking: db.blocking.blocking, ...(until ? { until: new Date(until).toISOString(), timer: Math.max(0, Math.round((until - Date.now()) / 1000)) } : {}) };
+  return {
+    blocking: db.blocking.blocking,
+    ...(until ? { until: new Date(until).toISOString(), timer: Math.max(0, Math.round((until - Date.now()) / 1000)) } : {}),
+    configured: db.blockingConfigured ?? (getPath(db.settings, 'blocking.enabled') !== false),
+    scope: 'node',
+    node: 'kudurru-0',
+  };
+}
+
+/** GET|PATCH /settings and /node/config: the envelope around one scope's document. */
+function settingsBody(scope: 'cluster' | 'node', changed?: string[]) {
+  const restart = (changed ?? []).filter((p) => db.schema.find((k) => k.path === p)?.restartRequired);
+  return {
+    scope,
+    node: 'kudurru-0',
+    settings: scope === 'node' ? db.nodeConfig : db.settings,
+    ...(changed?.length ? { changed } : {}),
+    ...(restart.length ? { restartRequired: restart } : {}),
+  };
+}
+
+/** The schema keys a merge patch touches (map-typed keys stop at the key). */
+function changedKeys(patch: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  for (const leaf of leafPaths(patch)) {
+    const segs = leaf.split('.');
+    let hit = leaf;
+    for (let i = segs.length; i > 0; i--) {
+      const p = segs.slice(0, i).join('.');
+      if (db.schema.some((k) => k.path === p)) {
+        hit = p;
+        break;
+      }
+    }
+    out.add(hit);
+  }
+  return [...out];
+}
+
+const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
+
+/** What internal/upstream Config.Validate refuses, in its words. */
+function validateUpstreams(settings: Record<string, unknown>): string | null {
+  const groups = (getPath(settings, 'upstreams.groups') as Record<string, { servers?: string[]; strategy?: string }> | undefined) ?? {};
+  if (!groups.default) return 'upstreams: upstream: group "default" is required';
+  for (const [n, g] of Object.entries(groups)) {
+    if (!g.servers?.length) return `upstreams: upstream: group "${n}" has no servers`;
+    if (!STRATEGIES.includes(g.strategy ?? '')) return `upstreams: upstream: group "${n}": unknown strategy "${g.strategy}"`;
+  }
+  const cond = (getPath(settings, 'upstreams.conditional') as Record<string, string> | undefined) ?? {};
+  for (const [suffix, g] of Object.entries(cond)) if (!groups[g]) return `upstreams: conditional ${suffix}: unknown group "${g}"`;
+  return null;
 }
 
 function leafPaths(obj: Record<string, unknown>, prefix = ''): string[] {

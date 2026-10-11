@@ -17,7 +17,8 @@ export type FieldDef =
   | { type: 'objects'; key: string; label: string; help?: string; itemLabel: string; fields: FieldDef[]; summary?: (item: Record<string, unknown>) => string }
   | { type: 'object'; key: string; label: string; help?: string; fields: FieldDef[] }
   /** Service IDs of the blocked-services catalogue (GET /catalogue/services). */
-  | { type: 'services'; key: string; label: string; help?: string };
+  | { type: 'services'; key: string; label: string; help?: string }
+  | { type: 'upstreamGroup'; key: string; label: string; help?: string };
 
 export interface KindSchema {
   kind: ObjectKind;
@@ -202,7 +203,7 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
       { type: 'refs', key: 'allowListRefs', label: 'Allow lists', refKind: 'blocklists', filter: (o) => (o.spec as { mode?: string } | undefined)?.mode === 'allow' },
       { type: 'bool', key: 'allowOnly', label: 'Allow only', help: 'Block everything that is not on an allow list.' },
       { type: 'number', key: 'priority', label: 'Priority', min: 0, max: 100000, help: 'Higher wins when several policies match a client.' },
-      { type: 'text', key: 'upstreamGroup', label: 'Upstream group', placeholder: 'default' },
+      { type: 'upstreamGroup', key: 'upstreamGroup', label: 'Upstream group' },
       { type: 'enum', key: 'blockMode', label: 'Block response', options: RESPONSES },
       { type: 'duration', key: 'blockTTL', label: 'Block TTL', placeholder: '1m' },
       { type: 'bool', key: 'queryLog', label: 'Log queries' },

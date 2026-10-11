@@ -25,7 +25,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | undefined>();
   const oidcError = loc.search.get('error');
 
-  const localEnabled = status.data ? status.data.localLogin !== false && status.data.localLogin !== 'disabled' : true;
+  const localEnabled = status.data ? status.data.localLogin && status.data.localLoginMode !== 'disabled' : true;
   const providers = status.data?.providers ?? [];
 
   const submit = async () => {

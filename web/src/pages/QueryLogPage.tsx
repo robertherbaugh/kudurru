@@ -8,6 +8,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { QueryFilter, QueryRow, StatusClass } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
+import { PurgeQueryLog } from '../components/PurgeQueryLog';
 import { QueryLogTable } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
 import { SuggestInput } from '../components/SuggestInput';
@@ -133,6 +134,12 @@ export default function QueryLogPage() {
             value={live}
             isDisabled={tail === 'unsupported'}
             onChange={setLive}
+          />
+          <PurgeQueryLog
+            onPurged={() => {
+              setLiveRows([]);
+              void qc.invalidateQueries({ queryKey: qk.queries() });
+            }}
           />
         </div>
       </div>

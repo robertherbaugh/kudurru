@@ -9,9 +9,9 @@ import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/Segme
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
-import type { BlockList, Processed } from '../api/types';
+import type { BlockList, ListSource, Processed } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { formatExact, formatRelative } from '../lib/format';
@@ -138,7 +138,7 @@ function ListSearch() {
         ) : (
           <ul>
             {q.data.items.map((h) => (
-              <li key={`${h.namespace}/${h.list}/${h.rule}`}>
+              <li key={`${h.list}/${h.mode}/${h.rule}`}>
                 <Badge variant={h.mode === 'allow' ? 'success' : 'error'} label={h.mode} /> <strong>{h.list}</strong> matches with <code>{h.rule}</code>
               </li>
             ))}
@@ -149,17 +149,41 @@ function ListSearch() {
   );
 }
 
+/** Whether every source is inline, so there is nothing to fetch and no "last fetched". */
+export function inlineOnly(sources: ListSource[] | undefined): boolean {
+  return !!sources?.length && sources.every((s) => !s.url && !s.configMapRef);
+}
+
+/** How long the page polls list status after a create or refresh. */
+export const STATUS_POLL_MS = 20_000;
+
 export default function ListsPage() {
   const api = useApi();
   const can = useCan();
   const notify = useNotify();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  // The leader compiles a new or refreshed list in the background; poll its
+  // status for a short while so Entries and Updated fill in without a reload.
+  const [polling, setPolling] = useState(0);
+  const pollStatus = () => setPolling((n) => n + 1);
+  useEffect(() => {
+    if (!polling) return undefined;
+    const t = window.setTimeout(() => setPolling(0), STATUS_POLL_MS);
+    return () => window.clearTimeout(t);
+  }, [polling]);
+  useQuery({
+    queryKey: qk.objects('blocklists'),
+    queryFn: () => api.objects.list<BlockList>('blocklists'),
+    enabled: polling > 0,
+    refetchInterval: polling > 0 ? 2_000 : false,
+  });
   const refresh = useMutation({
     mutationFn: (l: BlockList) => api.lists.refresh(l.metadata.namespace ?? 'default', l.metadata.name),
     onSuccess: (_r, l) => {
       notify.success(`Refreshing ${l.metadata.name}`);
       void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      pollStatus();
     },
     onError: (err, l) => notify.error(err, `Could not refresh ${l.metadata.name}`),
   });
@@ -168,6 +192,7 @@ export default function ListsPage() {
       title="Lists"
       description="Block and allow lists from URLs, inline entries or ConfigMaps. Policies decide which client groups use them."
       schema={SCHEMAS.blocklists}
+      onSaved={pollStatus}
       headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} onClick={() => setAdding(true)} />}
       rowActions={(l) =>
         l.spec.sources.some((s) => s.url) ? (
@@ -196,7 +221,19 @@ export default function ListsPage() {
             );
           },
         },
-        { header: 'Updated', cell: (l) => <span title={l.status?.lastFetched}>{l.status?.lastFetched ? formatRelative(l.status.lastFetched) : '–'}</span> },
+        {
+          header: 'Updated',
+          cell: (l) =>
+            l.status?.lastFetched ? (
+              <span title={l.status.lastFetched}>{formatRelative(l.status.lastFetched)}</span>
+            ) : inlineOnly(l.spec.sources) ? (
+              <span className="k-muted" title="Inline entries are compiled from the object; there is nothing to fetch">
+                inline
+              </span>
+            ) : (
+              '–'
+            ),
+        },
       ]}
     >
       <ListSearch />

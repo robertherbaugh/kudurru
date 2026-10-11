@@ -6,45 +6,99 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
-import type { ApplyResult, DnsQueryResult, DnsRR } from '../api/types';
+import type { ApplyResult, DnsProto, DnsQueryResult } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
-import { edeText } from '../lib/ede';
 import { formatBytes, formatDateTime, formatExact, formatMS } from '../lib/format';
 import { Link } from '../lib/router';
-import { hostError } from '../lib/rr';
+import { hostError, splitPresentation } from '../lib/rr';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
+const DIG_PROTOS: { value: DnsProto; label: string }[] = [
+  { value: 'udp', label: 'UDP' },
+  { value: 'tcp', label: 'TCP' },
+  { value: 'dot', label: 'DoT' },
+  { value: 'doh', label: 'DoH' },
+  { value: 'doq', label: 'DoQ' },
+  { value: 'doh3', label: 'DoH3' },
+];
 
-function Section({ rows, title }: { rows: DnsRR[]; title: string }) {
-  if (!rows.length) return null;
+/** One answer section: each presentation line split into its columns. */
+export function DigSection({ rows, title }: { rows: string[] | null | undefined; title: string }) {
+  if (!rows?.length) return null;
   return (
-    <>
+    <div className="k-stack">
       <p className="k-small k-muted">;; {title} SECTION:</p>
-      <pre className="k-pre">{rows.map((r) => `${r.name}\t${r.ttl}\t${r.class ?? 'IN'}\t${r.type}\t${r.data}`).join('\n')}</pre>
-    </>
+      <div className="k-table-wrap">
+        <table className="k-table k-mono k-small" aria-label={`${title.toLowerCase()} section`}>
+          <tbody>
+            {rows.map((line, i) => {
+              const rr = splitPresentation(line);
+              return rr ? (
+                <tr key={i}>
+                  <td className="k-break">{rr.name}</td>
+                  <td className="num">{rr.ttl}</td>
+                  <td>{rr.class}</td>
+                  <td>{rr.type}</td>
+                  <td className="k-break">{rr.data}</td>
+                </tr>
+              ) : (
+                <tr key={i}>
+                  <td colSpan={5} className="k-break">
+                    {line}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
+}
+
+/** The header flags of an answer that are set, in dig's order. */
+export function setFlags(r: DnsQueryResult): string[] {
+  const f = r.flags;
+  return (['aa', 'tc', 'rd', 'ra', 'ad', 'cd'] as const).filter((k) => f?.[k]);
 }
 
 function Dig() {
   const api = useApi();
   const typeId = useId();
+  const protoId = useId();
   const [name, setName] = useState('');
   const [type, setType] = useState('A');
+  const [proto, setProto] = useState<DnsProto>('udp');
+  const [dnssec, setDnssec] = useState(false);
   const [client, setClient] = useState('');
   const [err, setErr] = useState<string>();
-  const m = useMutation({ mutationFn: () => api.runtime.dig({ name: name.trim(), type, ...(client.trim() ? { client: client.trim() } : {}) }) });
+  const m = useMutation({
+    mutationFn: () =>
+      api.runtime.dig({
+        name: name.trim(),
+        type,
+        ...(proto !== 'udp' ? { proto } : {}),
+        ...(dnssec ? { dnssec } : {}),
+        ...(client.trim() ? { client: client.trim() } : {}),
+      }),
+  });
   const r: DnsQueryResult | undefined = m.data;
+  const flags = r ? setFlags(r) : [];
   return (
     <section className="k-panel" aria-labelledby="dig-title">
       <h2 id="dig-title" className="k-h3">
         Query (dig)
       </h2>
-      <p className="k-muted k-small">Runs the query through the full pipeline (policy, blocking, zones, cache, upstreams) as the given client, without touching the network listener.</p>
+      <p className="k-muted k-small">
+        Runs the query through the full pipeline (policy, blocking, zones, cache, upstreams) as the given client and transport, without touching the network
+        listener.
+      </p>
       <form
         className="k-row-end"
         onSubmit={(e) => {
@@ -63,18 +117,36 @@ function Dig() {
             ))}
           </select>
         </label>
+        <label className="k-label" htmlFor={protoId}>
+          Transport
+          <select id={protoId} className="k-native-select" value={proto} onChange={(e) => setProto(e.target.value as DnsProto)}>
+            {DIG_PROTOS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <TextInput label="As client" value={client} onChange={setClient} placeholder="192.168.1.30" isOptional />
+        <CheckboxInput label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
         <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
       </form>
       {m.error ? <ErrorBanner error={m.error} /> : null}
       {r ? (
-        <div className="k-stack" aria-live="polite">
+        <div className="k-stack" aria-live="polite" data-testid="dig-result">
           <p className="k-row">
             <Badge variant={r.status_class === 'blocked' ? 'error' : r.status_class === 'error' ? 'warning' : 'success'} label={r.status.replace(/_/g, ' ')} />
             <span className="k-mono">{r.rcode}</span>
-            <span className="k-muted k-small">{formatMS(r.took_ms)}</span>
+            <span className="k-mono k-small">
+              {r.name} {r.type}
+            </span>
+            <span className="k-muted k-small">{formatMS(r.latency_ms)} in the pipeline</span>
+            {flags.length ? <span className="k-mono k-small">flags: {flags.join(' ')}</span> : null}
+            {r.client ? <span className="k-muted k-small">as {r.client}</span> : null}
             {r.node ? <span className="k-muted k-small">node {r.node}</span> : null}
           </p>
+          {r.error ? <Banner status="warning" title="The pipeline reported an error" description={r.error} /> : null}
+          {r.list || r.rule || r.upstream ? (
           <dl className="k-why-grid">
             {r.list ? (
               <div>
@@ -94,32 +166,12 @@ function Dig() {
                 <dd>{r.upstream}</dd>
               </div>
             ) : null}
-            {r.zone ? (
-              <div>
-                <dt>Zone</dt>
-                <dd>{r.zone}</dd>
-              </div>
-            ) : null}
-            {r.cname_chain?.length ? (
-              <div>
-                <dt>CNAME chain</dt>
-                <dd className="k-mono">{r.cname_chain.join(' → ')}</dd>
-              </div>
-            ) : null}
-            {r.ede ? (
-              <div>
-                <dt>Extended DNS error</dt>
-                <dd>
-                  {edeText(r.ede.code)}
-                  {r.ede.text ? `: ${r.ede.text}` : ''}
-                </dd>
-              </div>
-            ) : null}
           </dl>
-          <Section title="ANSWER" rows={r.answer} />
-          <Section title="AUTHORITY" rows={r.authority} />
-          <Section title="ADDITIONAL" rows={r.additional} />
-          {!r.answer.length && !r.authority.length ? <p className="k-muted">No records in the answer.</p> : null}
+          ) : null}
+          <DigSection title="ANSWER" rows={r.answer} />
+          <DigSection title="AUTHORITY" rows={r.authority} />
+          <DigSection title="ADDITIONAL" rows={r.additional} />
+          {!r.answer?.length && !r.authority?.length ? <p className="k-muted">No records in the answer.</p> : null}
         </div>
       ) : null}
     </section>
@@ -276,9 +328,15 @@ function Doctor() {
       // inside (config, api, token, diagnoses, dataDir, ready).
       await settle('doctor', api.cluster.doctor(), (d) => [
         { ok: true, text: `kudurru ${d.version} on ${d.node}` },
-        ...d.checks.map((c) => ({ ok: c.status === 'ok' ? true : c.status === 'warn' ? ('warn' as const) : false, text: `${c.check}: ${c.message}` })),
+        ...(d.checks ?? []).map((c) => ({ ok: c.status === 'ok' ? true : c.status === 'warn' ? ('warn' as const) : false, text: `${c.check}: ${c.message}` })),
       ]);
-      await settle('nodes', api.cluster.nodes(), (n) => n.items.map((x) => ({ ok: x.ready, text: `node ${x.name}: ${x.ready ? 'ready' : 'NOT READY'}${x.leader ? ', leader' : ''}, ${x.version}` })));
+      await settle('nodes', api.cluster.nodes(), (n) =>
+        n.items.map((x) => ({
+          // Peers report no readiness until scatter-gather lands.
+          ok: x.ready ?? ('warn' as const),
+          text: `node ${x.name}: ${x.ready === undefined ? 'readiness unknown' : x.ready ? 'ready' : 'NOT READY'}${x.leader ? ', leader' : ''}${x.version ? `, ${x.version}` : ''}`,
+        })),
+      );
       await settle('query log', api.queries.status(), (s) => [
         { ok: s.wal_bytes < 256 * 1024 * 1024 ? true : 'warn', text: `query log: ${formatExact(s.rows)} rows, db ${formatBytes(s.db_bytes)}, WAL ${formatBytes(s.wal_bytes)}, oldest ${formatDateTime(s.oldest_ts)}` },
       ]);

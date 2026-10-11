@@ -1,7 +1,8 @@
-// Clients seen by the query log or named in a group (GET /clients), with
-// the groups the identify stage resolves them to. Selected clients can be
-// added to a group in one step (a PUT of the ClientGroup with the new
-// matchers, each with a display name and comment).
+// Clients seen by the query log in the last 24 hours (GET /clients: the
+// top-clients ranking, keyed by IP or client ID), with the client group
+// the identify stage resolved them to. Selected clients can be added to a
+// group in one step (a PUT of the ClientGroup with the new matchers, each
+// with a display name and comment).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
@@ -10,11 +11,26 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { ClientGroup, ClientInventoryItem } from '../api/types';
+import type { ClientGroup, ClientItem, ClientMatcher } from '../api/types';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { formatExact, formatRelative } from '../lib/format';
+import { isIPv4, isIPv6 } from '../lib/rr';
 import { objectOwnership } from '../lib/managedBy';
 import { Link, useSearchParams } from '../lib/router';
+
+/** The matcher that selects a client by its key (an IP address or a client ID). */
+export function matcherFor(c: ClientItem, comment: string): ClientMatcher {
+  const m: ClientMatcher = isIPv4(c.key) || isIPv6(c.key) ? { ip: c.key } : { clientID: c.key };
+  if (c.name) m.name = c.name;
+  if (comment) m.comment = comment;
+  return m;
+}
+
+/** The ClientGroup name of a "namespace/name" group reference. */
+function groupName(ref: string): string {
+  const i = ref.indexOf('/');
+  return i >= 0 ? ref.slice(i + 1) : ref;
+}
 
 export default function ClientsPage() {
   const api = useApi();
@@ -31,25 +47,23 @@ export default function ClientsPage() {
   const titleId = useId();
   const groupId = useId();
 
-  const inv = useQuery({ queryKey: ['clients', scope], queryFn: () => api.clients.inventory({ window: '24h' }), refetchInterval: 60_000 });
+  const inv = useQuery({ queryKey: ['clients', scope], queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups') });
   const writable = (groups.data?.items ?? []).filter((g) => objectOwnership(g).editable);
 
   const items = useMemo(() => {
     const s = search.trim().toLowerCase();
     const all = inv.data?.items ?? [];
-    return s ? all.filter((c) => c.ip.includes(s) || (c.name ?? '').toLowerCase().includes(s) || (c.mac ?? '').toLowerCase().includes(s)) : all;
+    return s ? all.filter((c) => c.key.toLowerCase().includes(s) || (c.name ?? '').toLowerCase().includes(s) || (c.group ?? '').toLowerCase().includes(s)) : all;
   }, [inv.data, search]);
 
   const assign = useMutation({
     mutationFn: async () => {
       const g = writable.find((x) => x.metadata.name === group);
       if (!g) throw new Error('Pick a group');
-      const chosen = (inv.data?.items ?? []).filter((c) => selected.has(c.ip));
-      const existing = new Set((g.spec.clients ?? []).map((m) => m.ip).filter(Boolean));
-      const add = chosen
-        .filter((c) => !existing.has(c.ip))
-        .map((c) => ({ ip: c.ip, ...(c.name ? { name: c.name } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) }));
+      const chosen = (inv.data?.items ?? []).filter((c) => selected.has(c.key));
+      const existing = new Set((g.spec.clients ?? []).flatMap((m) => [m.ip, m.clientID]).filter(Boolean));
+      const add = chosen.filter((c) => !existing.has(c.key)).map((c) => matcherFor(c, comment.trim()));
       await api.objects.put('clientgroups', { ...g, spec: { ...g.spec, clients: [...(g.spec.clients ?? []), ...add] } });
       return add.length;
     },
@@ -64,11 +78,11 @@ export default function ClientsPage() {
     onError: (err) => notify.error(err, 'Could not update the group'),
   });
 
-  const toggle = (c: ClientInventoryItem, on: boolean) =>
+  const toggle = (c: ClientItem, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (on) next.add(c.ip);
-      else next.delete(c.ip);
+      if (on) next.add(c.key);
+      else next.delete(c.key);
       return next;
     });
 
@@ -77,7 +91,7 @@ export default function ClientsPage() {
       <div className="k-page-header">
         <div className="k-stack">
           <h1>Clients</h1>
-          <p className="k-muted k-small">Every client seen in the last 24 hours or named in a group, and the groups it resolves to.</p>
+          <p className="k-muted k-small">Every client seen in the last 24 hours, the client group it resolved to, and its query counts.</p>
         </div>
         <div className="k-actions">
           <Button
@@ -91,7 +105,7 @@ export default function ClientsPage() {
           />
         </div>
       </div>
-      <TextInput label="Search clients" isLabelHidden placeholder="Search by IP, name or MAC" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
+      <TextInput label="Search clients" isLabelHidden placeholder="Search by address, name or group" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       {inv.error ? <ErrorBanner error={inv.error} /> : null}
       {inv.isLoading ? <Loading /> : null}
       {inv.data ? (
@@ -103,8 +117,7 @@ export default function ClientsPage() {
                   <span className="k-visually-hidden">Select</span>
                 </th>
                 <th scope="col">Client</th>
-                <th scope="col">MAC</th>
-                <th scope="col">Groups</th>
+                <th scope="col">Group</th>
                 <th scope="col">Last seen</th>
                 <th scope="col" className="num">
                   Queries (24 h)
@@ -115,29 +128,37 @@ export default function ClientsPage() {
               </tr>
             </thead>
             <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="k-muted">
+                    {search ? `No client matches "${search}".` : 'No queries in the last 24 hours.'}
+                  </td>
+                </tr>
+              ) : null}
               {items.map((c) => (
-                <tr key={c.ip}>
+                <tr key={c.key}>
                   <td className="k-col-check">
-                    <CheckboxInput label={`Select ${c.name ?? c.ip}`} isLabelHidden value={selected.has(c.ip)} onChange={(on) => toggle(c, on)} />
+                    <CheckboxInput label={`Select ${c.name ?? c.key}`} isLabelHidden value={selected.has(c.key)} onChange={(on) => toggle(c, on)} />
                   </td>
                   <td>
-                    <Link href={`/queries?client=${encodeURIComponent(c.ip)}`}>{c.name ?? c.ip}</Link>
-                    {c.name ? <span className="k-muted k-small k-mono"> {c.ip}</span> : null}
+                    <Link href={`/queries?client=${encodeURIComponent(c.key)}`}>{c.name ?? c.key}</Link>
+                    {c.name ? <span className="k-muted k-small k-mono"> {c.key}</span> : null}
                   </td>
-                  <td className="k-mono k-small">{c.mac ?? '–'}</td>
                   <td>
-                    <span className="k-row">
-                      {c.groups.map((g) => (
-                        <Badge key={g} variant={g === 'default' ? 'neutral' : 'blue'} label={g} />
-                      ))}
-                    </span>
+                    {c.group ? (
+                      <Link href={`/groups?q=${encodeURIComponent(groupName(c.group))}`}>
+                        <Badge variant={groupName(c.group) === 'default' ? 'neutral' : 'blue'} label={c.group.replace(/^default\//, '')} />
+                      </Link>
+                    ) : (
+                      <span className="k-muted">–</span>
+                    )}
                   </td>
-                  <td>{c.lastSeen ? formatRelative(c.lastSeen) : 'never'}</td>
+                  <td>{c.last_seen ? <span title={c.last_seen}>{formatRelative(c.last_seen)}</span> : <span className="k-muted">–</span>}</td>
                   <td className="num">
-                    <Link href={`/queries?client=${encodeURIComponent(c.ip)}`}>{formatExact(c.queries24h)}</Link>
+                    <Link href={`/queries?client=${encodeURIComponent(c.key)}`}>{formatExact(c.count)}</Link>
                   </td>
                   <td className="num">
-                    <Link href={`/queries?client=${encodeURIComponent(c.ip)}&status_class=blocked`}>{formatExact(c.blocked24h)}</Link>
+                    <Link href={`/queries?client=${encodeURIComponent(c.key)}&status_class=blocked`}>{formatExact(c.blocked)}</Link>
                   </td>
                 </tr>
               ))}

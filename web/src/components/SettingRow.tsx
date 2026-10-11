@@ -5,7 +5,7 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import type { SettingKey } from '../api/types';
 import { displayValue, lockFor, parseValue } from '../lib/settings';
 
@@ -15,9 +15,11 @@ export interface SettingRowProps {
   canWrite: boolean;
   /** Saves a parsed value; rejects with a user-facing error. */
   onSave: (k: SettingKey, value: unknown) => Promise<void>;
+  /** Shown under the help text (e.g. a link to a dedicated editor). */
+  extra?: ReactNode;
 }
 
-export function SettingRow({ k, value, canWrite, onSave }: SettingRowProps) {
+export function SettingRow({ k, value, canWrite, onSave, extra }: SettingRowProps) {
   const id = useId();
   const lock = lockFor(k, canWrite);
   const shown = k.writeOnly ? '' : displayValue(k, value);
@@ -54,6 +56,7 @@ export function SettingRow({ k, value, canWrite, onSave }: SettingRowProps) {
           {k.path}
         </label>
         <span className="k-small">{k.help}</span>
+        {extra}
         <span className="k-row">
           <Badge variant="neutral" label={k.scope} />
           <Badge variant="neutral" label={k.type} />

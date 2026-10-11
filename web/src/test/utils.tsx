@@ -3,6 +3,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { render, type RenderResult } from '@testing-library/react';
 import type { ReactElement } from 'react';
+import type { SettingKey } from '../api/types';
 import { AppProviders } from '../App';
 import { signIn } from '../mocks/handlers';
 
@@ -34,4 +35,9 @@ export function renderWithApp(ui: ReactElement, opts: RenderOptions = {}): Rende
     </AppProviders>,
   );
   return { ...result, client };
+}
+
+/** A settings schema row with the flags the server always sends (all false by default). */
+export function settingKey(k: Pick<SettingKey, 'path' | 'type' | 'scope'> & Partial<SettingKey>): SettingKey {
+  return { default: '', help: '', hostOnly: false, envLocked: false, restartRequired: false, writeOnly: false, ...k };
 }
