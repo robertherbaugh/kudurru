@@ -111,6 +111,27 @@ func (e DiagnosisMessageSeverity) Valid() bool {
 	}
 }
 
+// Defines values for DoctorCheckStatus.
+const (
+	DoctorCheckStatusFail DoctorCheckStatus = "fail"
+	DoctorCheckStatusOk   DoctorCheckStatus = "ok"
+	DoctorCheckStatusWarn DoctorCheckStatus = "warn"
+)
+
+// Valid indicates whether the value is a known member of the DoctorCheckStatus enum.
+func (e DoctorCheckStatus) Valid() bool {
+	switch e {
+	case DoctorCheckStatusFail:
+		return true
+	case DoctorCheckStatusOk:
+		return true
+	case DoctorCheckStatusWarn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryActionInputBodyAction.
 const (
 	QueryActionInputBodyActionAllow QueryActionInputBodyAction = "allow"
@@ -625,6 +646,28 @@ type DiagnosisMessage struct {
 
 // DiagnosisMessageSeverity defines model for DiagnosisMessage.Severity.
 type DiagnosisMessageSeverity string
+
+// DoctorCheck defines model for DoctorCheck.
+type DoctorCheck struct {
+	Check   string            `json:"check"`
+	Message string            `json:"message"`
+	Status  DoctorCheckStatus `json:"status"`
+}
+
+// DoctorCheckStatus defines model for DoctorCheck.Status.
+type DoctorCheckStatus string
+
+// DoctorReport defines model for DoctorReport.
+type DoctorReport struct {
+	Checks   *[]DoctorCheck `json:"checks"`
+	Failures int64          `json:"failures"`
+	Node     string         `json:"node"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs   float64 `json:"took_ms"`
+	Version  string  `json:"version"`
+	Warnings int64   `json:"warnings"`
+}
 
 // DomainsRequest defines model for DomainsRequest.
 type DomainsRequest struct {
@@ -2283,6 +2326,11 @@ type ClientInterface interface {
 	// Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
 	BatchDeleteDnszones(ctx context.Context, body BatchDeleteDnszonesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// Doctor The checks of `kudurru doctor` as this node sees them
+	//
+	// Corresponds with GET /doctor (the `Doctor` operationId).
+	Doctor(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AddDomainsWithBody Allow or deny domains through the UI lists
 	//
 	// Takes any type of body and a specified content type.
@@ -3421,6 +3469,21 @@ func (c *Client) BatchDeleteDnszonesWithBody(ctx context.Context, contentType st
 // Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
 func (c *Client) BatchDeleteDnszones(ctx context.Context, body BatchDeleteDnszonesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBatchDeleteDnszonesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Doctor The checks of `kudurru doctor` as this node sees them
+//
+// Corresponds with GET /doctor (the `Doctor` operationId).
+func (c *Client) Doctor(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDoctorRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6128,6 +6191,33 @@ func NewBatchDeleteDnszonesRequestWithBody(server string, contentType string, bo
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDoctorRequest constructs an http.Request for the Doctor method
+func NewDoctorRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/doctor")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -9540,6 +9630,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
 	BatchDeleteDnszonesWithResponse(ctx context.Context, body BatchDeleteDnszonesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteDnszonesResponse, error)
+
+	// DoctorWithResponse The checks of `kudurru doctor` as this node sees them
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /doctor (the `Doctor` operationId).
+	DoctorWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DoctorResponse, error)
 
 	// AddDomainsWithBodyWithResponse Allow or deny domains through the UI lists
 	//
@@ -13186,6 +13283,89 @@ func (r BatchDeleteDnszonesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r BatchDeleteDnszonesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DoctorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DoctorReport
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DoctorResponse) GetJSON200() *DoctorReport {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DoctorResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DoctorResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DoctorResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DoctorResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DoctorResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DoctorResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DoctorResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DoctorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DoctorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DoctorResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -18413,6 +18593,19 @@ func (c *ClientWithResponses) BatchDeleteDnszonesWithResponse(ctx context.Contex
 	return ParseBatchDeleteDnszonesResponse(rsp)
 }
 
+// DoctorWithResponse The checks of `kudurru doctor` as this node sees them
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /doctor (the `Doctor` operationId).
+func (c *ClientWithResponses) DoctorWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DoctorResponse, error) {
+	rsp, err := c.Doctor(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDoctorResponse(rsp)
+}
+
 // AddDomainsWithBodyWithResponse Allow or deny domains through the UI lists
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -21986,6 +22179,74 @@ func ParseBatchDeleteDnszonesResponse(rsp *http.Response) (*BatchDeleteDnszonesR
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDoctorResponse parses an HTTP response from a DoctorWithResponse call
+func ParseDoctorResponse(rsp *http.Response) (*DoctorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DoctorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DoctorReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

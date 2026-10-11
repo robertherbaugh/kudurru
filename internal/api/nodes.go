@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -212,7 +213,11 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 	if s.opts.Policy != nil {
 		if ix := s.opts.Policy.Index(); ix != nil {
 			for _, d := range ix.Diagnoses() {
-				add(DiagnosisMessage{Severity: "warning", Source: "policy", Reason: d.Reason, Object: d.Kind + "/" + d.Object, Message: d.Message})
+				sev := "warning"
+				if d.Reason == policy.ReasonDisabled {
+					sev = "info" // a reference to an object switched off on purpose
+				}
+				add(DiagnosisMessage{Severity: sev, Source: "policy", Reason: d.Reason, Object: d.Kind + "/" + d.Object, Message: d.Message})
 			}
 		}
 	}
