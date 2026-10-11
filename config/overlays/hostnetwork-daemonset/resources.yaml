@@ -223,6 +223,8 @@ spec:
                   fieldPath: metadata.name
             - name: KUDURRU_HEADLESS_SERVICE
               value: kudurru-headless.kudurru-system.svc.cluster.local
+            - name: KUDURRU_SETTINGS_FILE
+              value: /etc/kudurru/settings/settings.yaml
             - name: KUDURRU_ENCRYPTION_KEY_FILE
               value: /etc/kudurru/secrets/encryption/key
             - name: KUDURRU_ADMIN_PASSWORD_FILE
@@ -236,8 +238,11 @@ spec:
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
-              sleep:
-                seconds: 5
+              exec:
+                command:
+                  - kudurru
+                  - lameduck
+                  - 5s
           livenessProbe:
             failureThreshold: 3
             httpGet:
