@@ -21,7 +21,12 @@ import (
 	"github.com/spf13/cobra"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
+	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
@@ -32,6 +37,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/notifier"
@@ -57,6 +63,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 	"github.com/robertherbaugh/kudurru/internal/zoneview"
+	"github.com/robertherbaugh/kudurru/web"
+
+	"k8s.io/client-go/rest"
 )
 
 func newServeCmd(configPath *string) *cobra.Command {
@@ -98,52 +107,56 @@ func newLogger(cfg config.Log) *slog.Logger {
 
 // openStore opens the configured driver (docs/architecture.md §4.3, §4.4).
 // The returned snapshot store is non-nil only for the kube driver.
-func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, error) {
+// openStore opens the configured driver (docs/architecture.md §4.3, §4.4)
+// with the public and internal kudurru.io kinds. The rest config is non-nil
+// only for the kube driver.
+func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, *rest.Config, error) {
+	scheme, err := internalkinds.NewScheme()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var st store.Store
+	var restCfg *rest.Config
 	switch cfg.Store.Driver {
 	case "sqlite":
-		st, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
-			Validator: v, Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
+		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
+			Validator: v, Scheme: scheme, InternalKinds: stack.InternalKinds(),
+			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
-			return nil, nil, fmt.Errorf("state.db was written by a newer kudurru: %w", err)
+			return nil, nil, nil, fmt.Errorf("state.db was written by a newer kudurru: %w", err)
 		case errors.Is(err, sqlite.ErrLocked):
-			return nil, nil, fmt.Errorf("another kudurru process owns state.db: %w", err)
+			return nil, nil, nil, fmt.Errorf("another kudurru process owns state.db: %w", err)
 		case err != nil:
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
-		if err != nil {
-			_ = st.Close()
-			if errors.Is(err, localdb.ErrSchemaTooNew) {
-				return nil, nil, fmt.Errorf("local.db was written by a newer kudurru: %w", err)
-			}
-			return nil, nil, err
-		}
-		return st, db, nil
+		st = s
 	case "kube":
-		restCfg, err := ctrlconfig.GetConfig()
+		restCfg, err = ctrlconfig.GetConfig()
 		if err != nil {
-			return nil, nil, fmt.Errorf("store.driver kube: %w", err)
+			return nil, nil, nil, fmt.Errorf("store.driver kube: %w", err)
 		}
-		st, err := kube.New(restCfg, kube.Options{
+		s, err := kube.New(restCfg, kube.Options{
+			Scheme: scheme, InternalKinds: stack.InternalKinds(),
 			Identity: cfg.Node.Name, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
-		if err != nil {
-			_ = st.Close()
-			if errors.Is(err, localdb.ErrSchemaTooNew) {
-				return nil, nil, fmt.Errorf("local.db was written by a newer kudurru: %w", err)
-			}
-			return nil, nil, err
-		}
-		return st, db, nil
+		st = s
 	default:
-		return nil, nil, fmt.Errorf("store.driver %q is not supported", cfg.Store.Driver)
+		return nil, nil, nil, fmt.Errorf("store.driver %q is not supported", cfg.Store.Driver)
 	}
+	db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
+	if err != nil {
+		_ = st.Close()
+		if errors.Is(err, localdb.ErrSchemaTooNew) {
+			return nil, nil, nil, fmt.Errorf("local.db was written by a newer kudurru: %w", err)
+		}
+		return nil, nil, nil, err
+	}
+	return st, db, restCfg, nil
 }
 
 func runServe(ctx context.Context, cfg *config.Config) error {
@@ -171,7 +184,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	st, snapDB, err := openStore(ctx, cfg, v, reg, logger)
+	st, snapDB, restCfg, err := openStore(ctx, cfg, v, reg, logger)
 	if err != nil {
 		return err
 	}
@@ -263,13 +276,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			},
 		}
 	}
-	encKey, encPrev, err := readEncryptionKeys()
+	encKeys, err := keys.Load(keys.Options{Driver: cfg.Store.Driver, DataDir: cfg.Node.DataDir})
 	if err != nil {
 		return err
+	}
+	encKey, encPrev := encKeys.Current, encKeys.Previous
+	if encKeys.Generated {
+		logger.Info("generated the encryption key", "path", encKeys.Path)
 	}
 	var (
 		internalClient *internalapi.Client
 		internalSrv    *internalapi.Server
+		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
 	)
 	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
@@ -282,6 +300,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		if err != nil {
 			return err
 		}
+		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
 			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists,
@@ -317,6 +336,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		collector querylog.Collector // nil interface when disabled
 		qlAsync   *querylog.Async
 		qlWriter  *sqlitelog.Writer
+		qlTail    *querylog.Tail
+		qlReader  *sqlitelog.Reader
 	)
 	if cfg.Querylog.Enabled {
 		qlMetrics := querylog.NewMetrics(reg)
@@ -325,6 +346,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return err
 		}
 		tail := querylog.NewTail(0, 0, qlMetrics)
+		qlTail = tail
 		var sink querylog.Sink
 		var firstID uint64
 		switch cfg.Querylog.Sink {
@@ -341,6 +363,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return err
 			}
 			sink, firstID = qlWriter, qlWriter.NextID()
+			qlReader = qlWriter.Reader()
 		default:
 			s := &querylog.SlogSink{Logger: logger, Level: slog.LevelInfo}
 			if err := s.Open(ctx, nil, reg); err != nil {
@@ -471,6 +494,61 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 
+	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
+	// the RBAC engine and the admin socket.
+	stackOpts := stack.Options{
+		Config: cfg, Store: st, Keys: encKeys, Kube: restCfg,
+		TrustForwardedProto: len(cfg.Listeners.API.TrustedProxies) > 0,
+		APIPrefix:           strings.TrimSuffix(cfg.Listeners.API.PathPrefix, "/") + "/api/v1",
+		Logger:              logger,
+	}
+	if cfg.Store.Driver == "kube" {
+		stackOpts.Namespace = kube.PodNamespace()
+	}
+	if internalCreds != nil {
+		stackOpts.InternalToken = internalCreds.ValidToken
+	}
+	ids, err := stack.New(ctx, stackOpts)
+	if err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+	authMux := http.NewServeMux()
+	ids.Register(authMux)
+
+	// REST API, dashboard and the external-dns webhook (§10, §5.6).
+	recorders := audit.Multi{audit.Log{Logger: logger}}
+	if ss, ok := st.(*sqlite.Store); ok {
+		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
+	}
+	if !web.Built() {
+		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
+	}
+	apiSrv, err := api.New(api.Options{
+		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
+		Querylog: qlReader, Tail: qlTail,
+		Upstreams: upSet, ResponseCache: rc, Chain: chain,
+		Config: cfg, Objects: loader, Health: checker, Membership: membership,
+		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
+		Audit:        recorders,
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
+		AuthHandler: authMux,
+		Roles:       ids.Roles,
+		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
+		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
+		DefaultNamespace: bootstrap.DefaultNamespace,
+	})
+	if err != nil {
+		return err
+	}
+	var edns *externaldns.Server
+	if cfg.ExternalDNS.Webhook.Enabled {
+		eo := externaldns.OptionsFrom(cfg.ExternalDNS.Webhook)
+		eo.Store, eo.Validator, eo.Cache, eo.Registerer, eo.Logger = st, v, zc, reg, logger
+		if edns, err = externaldns.New(eo); err != nil {
+			return err
+		}
+	}
+
 	// Controller: leader-only reconcilers (status, serials, Events).
 	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger})
 	if err != nil {
@@ -528,6 +606,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		{"notifier", true, nt.Run},
 		{"listfetcher", true, fetcher.Run},
 		{"listresolver", false, listResolver.Run},
+		{"identity", false, ids.Run},
+		{"api", false, apiSrv.Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
 			return err
@@ -547,6 +627,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	if internalSrv != nil {
 		if err := add("internal", false, internalSrv.Run); err != nil {
+			return err
+		}
+	}
+	if p := cfg.Auth.AdminSocket.Path; p != "" {
+		if err := add("adminsock", false, func(ctx context.Context) error { return ids.AdminSocket().ListenAndServe(ctx, p) }); err != nil {
+			return err
+		}
+	}
+	if edns != nil {
+		if err := add("externaldns", false, edns.Run); err != nil {
 			return err
 		}
 	}
@@ -595,7 +685,8 @@ func serveHTTP(ctx context.Context, addr string, h http.Handler, logger *slog.Lo
 }
 
 // readEncryptionKeys reads KUDURRU_ENCRYPTION_KEY[_FILE] and the _PREVIOUS
-// variants (D57). Both may be nil in single-instance Docker mode.
+// variants from the environment only, never generating one: the edge and
+// VIP supervisors run in their own images and must share the node's key.
 func readEncryptionKeys() (key, previous []byte, err error) {
 	read := func(name string) ([]byte, error) {
 		v := os.Getenv(name)
@@ -615,10 +706,10 @@ func readEncryptionKeys() (key, previous []byte, err error) {
 		}
 		return k, nil
 	}
-	if key, err = read("KUDURRU_ENCRYPTION_KEY"); err != nil {
+	if key, err = read(keys.EnvKey); err != nil {
 		return nil, nil, err
 	}
-	if previous, err = read("KUDURRU_ENCRYPTION_KEY_PREVIOUS"); err != nil {
+	if previous, err = read(keys.EnvPreviousKey); err != nil {
 		return nil, nil, err
 	}
 	return key, previous, nil
