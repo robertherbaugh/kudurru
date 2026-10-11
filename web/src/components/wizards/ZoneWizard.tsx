@@ -7,6 +7,7 @@
 // CRD defaults and are left out of the object.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -198,15 +199,19 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
       validate: () => apexError(d.apex, existing),
       content: (
         <>
-          <TextInput
-            label="Zone name"
-            placeholder={d.type === 'primary' ? 'home.arpa' : 'corp.example'}
-            description="A domain name such as home.arpa or lab.example.com; a trailing dot is optional"
-            value={d.apex}
-            onChange={(v) => set('apex', v)}
-            isRequired
-            status={d.apex.trim() && apexError(d.apex, existing) ? { type: 'error', message: apexError(d.apex, existing) ?? '' } : undefined}
-          />
+          <VStack gap={1}>
+            <TextInput
+              label="Zone name"
+              placeholder={d.type === 'primary' ? 'home.arpa' : 'corp.example'}
+              value={d.apex}
+              onChange={(v) => set('apex', v)}
+              isRequired
+              status={d.apex.trim() && apexError(d.apex, existing) ? { type: 'error', message: apexError(d.apex, existing) ?? '' } : undefined}
+            />
+            <Text type="supporting" display="block">
+              A domain name such as home.arpa or lab.example.com; a trailing dot is optional
+            </Text>
+          </VStack>
           {name && !apexError(d.apex, existing) ? (
             <p className="k-small k-muted">
               Object <code>dnszones/{name}</code>, zone <code>{name}.</code>
@@ -250,14 +255,12 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
                     onChange={(v) => set('mname', v)}
                     status={d.mname.trim() && hostError(d.mname) ? { type: 'error', message: hostError(d.mname) ?? '' } : undefined}
                   />
-                  <TextInput
-                    label="Responsible mailbox"
-                    isOptional
-                    placeholder="hostmaster@example.com"
-                    description="An e-mail address; stored in SOA form"
-                    value={d.rname}
-                    onChange={(v) => set('rname', v)}
-                  />
+                  <VStack gap={1}>
+                    <TextInput label="Responsible mailbox" isOptional placeholder="hostmaster@example.com" value={d.rname} onChange={(v) => set('rname', v)} />
+                    <Text type="supporting" display="block">
+                      An e-mail address; stored in SOA form
+                    </Text>
+                  </VStack>
                   {secs('refresh', 'Refresh', 'How often secondaries check the serial')}
                   {secs('retry', 'Retry', 'After a failed refresh')}
                   {secs('expire', 'Expire', 'Secondaries stop answering after this without the primary')}

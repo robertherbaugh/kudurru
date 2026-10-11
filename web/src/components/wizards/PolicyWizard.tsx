@@ -7,6 +7,8 @@
 // prop) creates it in another namespace; `groups` preselects client groups.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -105,7 +107,12 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
       content: (
         <div className="k-stack-lg">
           <div className="k-form-grid">
-            <TextInput label="Name" value={name} onChange={setName} isRequired description='Lower-case letters, digits and "-", e.g. kids-school-nights' status={showErrors && nameError(name.trim()) ? { type: 'error', message: nameError(name.trim()) ?? '' } : undefined} />
+            <VStack gap={1}>
+              <TextInput label="Name" value={name} onChange={setName} isRequired status={showErrors && nameError(name.trim()) ? { type: 'error', message: nameError(name.trim()) ?? '' } : undefined} />
+              <Text type="supporting" display="block">
+                Lower-case letters, digits and "-", e.g. kids-school-nights
+              </Text>
+            </VStack>
             <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
           </div>
           <WhoFields {...props} />

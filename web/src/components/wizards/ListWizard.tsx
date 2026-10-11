@@ -8,6 +8,8 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
@@ -300,16 +302,21 @@ function ListWizard({ onClose }: ListWizardProps) {
 
       <fieldset className="k-fieldset">
         <legend>Your own entries</legend>
-        <TextArea
-          label="Paste entries"
-          description="Optional. One per line; they become an inline source you can browse and edit on the list page."
-          placeholder={s.mode === 'allow' ? 's.youtube.com\n*.cdn.example.com' : 'ads.example.com\n||tracker.example^'}
-          rows={4}
-          hasSpellCheck={false}
-          value={s.paste}
-          onChange={(v) => set({ paste: v })}
-          status={pasteProblem ? { type: 'error', message: `"${pasteProblem.first}": ${pasteProblem.error}` } : undefined}
-        />
+        <VStack gap={1}>
+          <TextArea
+            label="Paste entries"
+            isOptional
+            placeholder={s.mode === 'allow' ? 's.youtube.com\n*.cdn.example.com' : 'ads.example.com\n||tracker.example^'}
+            rows={4}
+            hasSpellCheck={false}
+            value={s.paste}
+            onChange={(v) => set({ paste: v })}
+            status={pasteProblem ? { type: 'error', message: `"${pasteProblem.first}": ${pasteProblem.error}` } : undefined}
+          />
+          <Text type="supporting" display="block">
+            One per line; they become an inline source you can browse and edit on the list page.
+          </Text>
+        </VStack>
         {pasteEntries.length ? <EnumSelect label="Format of the pasted entries" value={s.pasteFormat} options={FORMAT_OPTIONS} onChange={(v) => set({ pasteFormat: v as ListFormat })} /> : null}
       </fieldset>
       <p className="k-muted k-small" role="status">
@@ -321,13 +328,12 @@ function ListWizard({ onClose }: ListWizardProps) {
   const optionsStep = (
     <div className="k-form">
       <div className="k-form-grid">
-        <TextInput
-          label="Name"
-          description="Lower-case letters, digits and dashes; policies refer to the list by it."
-          value={name}
-          onChange={(v) => set({ name: v, nameTouched: true })}
-          status={optErr('name') ? { type: 'error', message: optErr('name') ?? '' } : undefined}
-        />
+        <VStack gap={1}>
+          <TextInput label="Name" value={name} onChange={(v) => set({ name: v, nameTouched: true })} status={optErr('name') ? { type: 'error', message: optErr('name') ?? '' } : undefined} />
+          <Text type="supporting" display="block">
+            Lower-case letters, digits and dashes; policies refer to the list by it.
+          </Text>
+        </VStack>
         <TextInput label="Comment" placeholder="What the list is for" value={s.comment} onChange={(v) => set({ comment: v })} isOptional />
       </div>
       <div className="k-form-grid">

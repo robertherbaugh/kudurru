@@ -8,6 +8,8 @@
 // against.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMemo, useState } from 'react';
@@ -133,15 +135,19 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
                 </p>
               )}
               {provider.needsID ? (
-                <TextInput
-                  label={provider.needsID.label}
-                  description={provider.needsID.help}
-                  placeholder={provider.needsID.placeholder}
-                  value={profile}
-                  onChange={setProfile}
-                  isRequired
-                  status={profile.trim() && !provider.needsID.pattern.test(profile.trim()) ? { type: 'error', message: 'Six letters or digits' } : undefined}
-                />
+                <VStack gap={1}>
+                  <TextInput
+                    label={provider.needsID.label}
+                    placeholder={provider.needsID.placeholder}
+                    value={profile}
+                    onChange={setProfile}
+                    isRequired
+                    status={profile.trim() && !provider.needsID.pattern.test(profile.trim()) ? { type: 'error', message: 'Six letters or digits' } : undefined}
+                  />
+                  <Text type="supporting" display="block">
+                    {provider.needsID.help}
+                  </Text>
+                </VStack>
               ) : null}
               <EnumSelect
                 label="Transport"
@@ -200,18 +206,22 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
       validate: () => newGroupNameError(groupName, existing) ?? groupFieldErrors({ ...group, servers }).timeout ?? null,
       content: (
         <>
-          <TextInput
-            label="Name"
-            description="Letters, digits, - _ and ."
-            value={groupName}
-            onChange={(v) => {
-              setNameTouched(true);
-              setName(v);
-            }}
-            placeholder="corp"
-            isRequired
-            status={groupName && newGroupNameError(groupName, existing) ? { type: 'error', message: newGroupNameError(groupName, existing) ?? '' } : undefined}
-          />
+          <VStack gap={1}>
+            <TextInput
+              label="Name"
+              value={groupName}
+              onChange={(v) => {
+                setNameTouched(true);
+                setName(v);
+              }}
+              placeholder="corp"
+              isRequired
+              status={groupName && newGroupNameError(groupName, existing) ? { type: 'error', message: newGroupNameError(groupName, existing) ?? '' } : undefined}
+            />
+            <Text type="supporting" display="block">
+              Letters, digits, - _ and .
+            </Text>
+          </VStack>
           <GroupFields value={{ ...group, servers }} onChange={(g) => setGroup({ ...g, servers: group.servers })} serversHidden />
         </>
       ),
