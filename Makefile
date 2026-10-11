@@ -14,6 +14,7 @@ SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
 
 all: build
 
@@ -60,7 +61,7 @@ lint: vet
 	$(GOLANGCI_LINT) run ./...
 
 fmt:
-	gofmt -s -w ./cmd ./api ./internal
+	gofmt -s -w ./cmd ./api ./internal ./web/*.go
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;
@@ -160,6 +161,31 @@ bench-baseline:
 	go run ./internal/blocking/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
 	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
+## web-*: the dashboard SPA in web/ (Bun + Vite, docs/architecture.md §10,
+## D69). `make build` never needs Bun: it embeds whatever web/dist holds,
+## which on a plain checkout is the committed placeholder index.html. Run
+## `make web-build` first for a binary with the real dashboard (CI and
+## release images do). web-build overwrites the tracked placeholder
+## web/dist/index.html; do not commit the built one (TestIndexAssetsPresent
+## in ./web fails if you do).
+BUN ?= bun
+
+web-install:
+	cd web && $(BUN) install --frozen-lockfile
+
+web-build: web-install
+	cd web && $(BUN) run build
+
+web-test: web-install
+	cd web && $(BUN) run test
+
+web-lint: web-install
+	cd web && $(BUN) run lint && $(BUN) run typecheck
+
+## web-dev: the dashboard against the MSW mock API (no server needed)
+web-dev: web-install
+	cd web && $(BUN) run dev:mock
+
 helm-lint:
 	helm lint charts/kudurru charts/kudurru-crds
 
@@ -167,4 +193,4 @@ docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) .
 
 clean:
-	rm -rf bin dist
+	rm -rf bin dist web/dist/assets

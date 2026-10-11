@@ -1,0 +1,37 @@
+// Test helpers: render inside the real providers against the MSW handlers
+// (src/mocks), signed in or not, at a given route.
+import { QueryClient } from '@tanstack/react-query';
+import { render, type RenderResult } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { AppProviders } from '../App';
+import { signIn } from '../mocks/handlers';
+
+/** The absolute API base the tests use (Node's fetch needs absolute URLs). */
+export const API = `${window.location.origin}/api/v1`;
+
+export function testQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchInterval: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
+  });
+}
+
+export interface RenderOptions {
+  /** App route, e.g. "/queries?status_class=blocked". */
+  route?: string;
+  /** Sign in as this mock user first (default admin); null stays signed out. */
+  user?: string | null;
+  client?: QueryClient;
+}
+
+/** Renders ui inside AppProviders; returns the RTL result and the query client. */
+export function renderWithApp(ui: ReactElement, opts: RenderOptions = {}): RenderResult & { client: QueryClient } {
+  window.history.replaceState(null, '', opts.route ?? '/');
+  if (opts.user !== null) signIn(opts.user ?? 'admin');
+  const client = opts.client ?? testQueryClient();
+  const result = render(
+    <AppProviders basePath="/" client={client} apiBase={API}>
+      {ui}
+    </AppProviders>,
+  );
+  return { ...result, client };
+}

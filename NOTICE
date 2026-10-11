@@ -123,6 +123,35 @@ licences. Attributions are added to this file as the dependencies land:
   runs an unmodified dex release as a separate process; dex is not linked
   into or distributed with kudurru.
 
+Dashboard bundle (web/, compiled into the binary when built with
+`make web-build`; web/dist/third-party-licenses.txt, generated at build
+time and embedded with the bundle, carries every licence text):
+
+- Astryx (https://github.com/facebook/astryx), MIT, Copyright (c) Meta
+  Platforms, Inc. and affiliates: @astryxdesign/core and the neutral,
+  stone and y2k themes 0.6.8, consumed as published (prebuilt CSS and
+  JS), with their dependencies @stylexjs/stylex and styleq (MIT),
+  intl-messageformat and @formatjs/* (MIT/BSD-3-Clause) and
+  css-mediaquery (BSD).
+- React and React DOM (https://react.dev), MIT, Copyright (c) Meta
+  Platforms, Inc. and affiliates.
+- TanStack Query, Table and Virtual (https://tanstack.com), MIT,
+  Copyright (c) Tanner Linsley.
+- uPlot (https://github.com/leeoniya/uPlot), MIT, Copyright (c) Leon
+  Sorokin.
+- Apache ECharts (https://echarts.apache.org), Apache-2.0: "Apache ECharts,
+  Copyright 2017-2026 The Apache Software Foundation. This product includes
+  software developed at The Apache Software Foundation
+  (https://www.apache.org/)." Its renderer ZRender is BSD-3-Clause,
+  Copyright (c) Baidu Inc., and tslib is 0BSD (Microsoft).
+- Lucide icons (https://lucide.dev), ISC, Copyright (c) Lucide Icons and
+  Contributors.
+
+The dashboard's information architecture is re-derived from
+docs/architecture.md §10; no Pi-hole (EUPL-1.2) markup, styles or
+JavaScript is used. Development-only tools (Vite, Vitest, ESLint, MSW,
+Testing Library, TypeScript) are not part of the bundle.
+
 Embedded data (compiled into the binary):
 
 - StevenBlack/hosts (https://github.com/StevenBlack/hosts), MIT, Copyright
