@@ -66,12 +66,12 @@ tidy:
 	go mod tidy
 
 ## generate: deepcopy functions, CRD manifests and the CRD chart copies.
-## Deepcopy covers api/v1alpha1 and the internal kinds of api/internal/v1alpha1
+## Deepcopy covers api/v1alpha1 and the internal kinds of api/internalkinds/v1alpha1
 ## (LocalUser, APIToken, ServiceAccount, RoleBinding, IdentityProvider); the
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
-	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internal/v1alpha1/...
+	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/...
 
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases

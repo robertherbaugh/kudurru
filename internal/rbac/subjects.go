@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	internalv1alpha1 "github.com/robertherbaugh/kudurru/api/internal/v1alpha1"
+	internalv1alpha1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 )
 
 // Grant is one resolved (role, scope) pair: the unit of a session's roles

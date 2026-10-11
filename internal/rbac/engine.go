@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"errors"
+	"sort"
 )
 
 // Decision paths recorded in audit rows (§8.5).
@@ -105,7 +106,7 @@ func (p *Permissions) PermissionMatrix(grants []Grant, builtinAdmin bool) map[st
 		for perm := range set {
 			list = append(list, perm)
 		}
-		sortStrings(list)
+		sort.Strings(list)
 		out[scope] = list
 	}
 	return out
