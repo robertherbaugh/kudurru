@@ -25,8 +25,9 @@
 // label boundaries wins) and accepts dnsmasq-style "[/a/b/]" keys;
 // ImportDnsmasq reads whole dnsmasq/dnsproxy rule files. pipeline.Request's
 // UpstreamGroup hint, set by the authoritative stage for forward zones,
-// takes precedence over the map. Answers from any group other than the
-// fallback default are conditional and must not be cached.
+// takes precedence over the map. Answers routed by a hint, or by a suffix
+// that maps to a group other than "default", are conditional and must not
+// be cached (Set.Route reports which).
 //
 // ECS (RFC 7871) is stripped by default; forward and add modes are opt-in
 // and truncate subnets to /24 and /56.

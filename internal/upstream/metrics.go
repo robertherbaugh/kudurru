@@ -27,8 +27,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"upstream"}),
 		Errors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_upstream_errors_total",
-			Help: "Failed exchanges with an upstream server, by reason (timeout, network, refused, servfail).",
-		}, []string{"upstream", "reason"}),
+			Help: "Failed exchanges with an upstream server, by error class (timeout, network, refused, servfail).",
+		}, []string{"upstream", "error"}),
 		Duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "kudurru_upstream_request_duration_seconds",
 			Help:    "Round-trip time of exchanges with an upstream server that returned a response.",

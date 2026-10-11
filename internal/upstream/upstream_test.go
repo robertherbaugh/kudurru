@@ -500,6 +500,7 @@ func TestRoute(t *testing.T) {
 			"corp.example.":    "ad",
 			"Lab.Corp.Example": "lab",
 			"[/10.in-addr.arpa/168.192.in-addr.arpa/]": "ad",
+			"public.corp.example":                      DefaultGroup, // dnsmasq "#" exception
 		},
 	}, Options{})
 	for _, tc := range []struct {
@@ -516,6 +517,8 @@ func TestRoute(t *testing.T) {
 		{"www.example.com.", "lab", "lab", true},
 		{"corp.example.", "lab", "lab", true},
 		{"corp.example", "", "ad", true},
+		{"www.public.corp.example.", "", DefaultGroup, false},
+		{"www.public.corp.example.", DefaultGroup, DefaultGroup, true},
 	} {
 		g, c, err := s.Route(tc.qname, tc.hint)
 		if err != nil || g != tc.group || c != tc.conditional {

@@ -24,9 +24,8 @@ type Stage struct {
 	set atomic.Pointer[upstream.Set]
 
 	// Group, Servers and Timeout describe the group built by the
-	// compatibility constructor New; they are empty for NewStage.
-	//
-	// Deprecated: read Set().Status() instead.
+	// convenience constructor New, for startup logging; they are empty for
+	// NewStage. Set().Status() reports every group of either kind.
 	Group   string
 	Servers []string
 	Timeout time.Duration
@@ -40,14 +39,13 @@ func NewStage(set *upstream.Set) *Stage {
 }
 
 // New builds a stage with a single default group of servers using the
-// default strategy (parallel_best). It predates the group configuration and
-// is kept for callers that only have a server list; group must be
-// "default".
-//
-// Deprecated: build an upstream.Set with upstream.New and use NewStage.
+// default strategy (parallel_best), for callers and tests that only have a
+// server list; group must be "default". Production wiring builds the full
+// configuration with upstream.New(upstream.ConfigFrom(cfg.Upstreams), ...)
+// and passes it to NewStage.
 func New(group string, servers []string, timeout time.Duration) (*Stage, error) {
 	if group != upstream.DefaultGroup {
-		return nil, fmt.Errorf("upstream: the compatibility constructor builds the %q group, not %q", upstream.DefaultGroup, group)
+		return nil, fmt.Errorf("upstream: the convenience constructor builds the %q group, not %q", upstream.DefaultGroup, group)
 	}
 	if len(servers) == 0 {
 		return nil, errors.New("upstream: at least one server is required")

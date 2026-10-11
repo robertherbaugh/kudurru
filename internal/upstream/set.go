@@ -144,9 +144,12 @@ func (s *Set) Group(name string) (*Group, bool) {
 
 // Route chooses the group for qname: the hint (pipeline.Request's
 // UpstreamGroup) when set, else the longest conditional suffix, else
-// DefaultGroup. conditional is true unless DefaultGroup was reached by
-// fallback; such answers must not be cached. An unknown hint is an error so
-// that a forward zone never leaks to the public resolvers.
+// DefaultGroup. conditional is true for a hint and for a suffix that maps
+// to a group other than DefaultGroup; such answers must not be cached. A
+// suffix mapped to DefaultGroup itself (dnsmasq's "#": use the normal
+// servers, an exception carved out of a wider conditional suffix) is
+// ordinary forwarding. An unknown hint is an error so that a forward zone
+// never leaks to the public resolvers.
 func (s *Set) Route(qname, hint string) (group string, conditional bool, err error) {
 	if hint != "" {
 		if _, ok := s.groups[hint]; !ok {
@@ -155,7 +158,7 @@ func (s *Set) Route(qname, hint string) (group string, conditional bool, err err
 		return hint, true, nil
 	}
 	if g, ok := s.conditional.lookup(qname); ok {
-		return g, true, nil
+		return g, g != DefaultGroup, nil
 	}
 	return DefaultGroup, false, nil
 }

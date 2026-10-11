@@ -226,7 +226,7 @@ func dnsmasqServer(s string) string {
 
 // Merge adds the import to c: groups (an existing group of the same name is
 // an error), conditional entries and, when c has no default group yet, a
-// strict default group from Default.
+// parallel_best default group from Default.
 func (imp *Import) Merge(c *Config) error {
 	if c.Groups == nil {
 		c.Groups = map[string]GroupConfig{}

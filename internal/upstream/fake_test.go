@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
+	mrand "math/rand/v2"
 	"net"
 	"strconv"
 	"sync"
@@ -40,8 +41,9 @@ type fake struct {
 	mu       sync.Mutex
 	mode     behaviour
 	delay    time.Duration
-	answerIP net.IP   // what A answers carry; ip unless changed
-	last     *dns.Msg // last query received
+	jitter   time.Duration // extra random delay in [0, jitter) per query
+	answerIP net.IP        // what A answers carry; ip unless changed
+	last     *dns.Msg      // last query received
 }
 
 func (f *fake) set(mode behaviour, delay time.Duration) {
@@ -64,6 +66,9 @@ func (f *fake) handler(proto string) dns.HandlerFunc {
 		}
 		f.mu.Lock()
 		mode, delay, ip := f.mode, f.delay, f.answerIP
+		if f.jitter > 0 {
+			delay += mrand.N(f.jitter) //nolint:gosec // test jitter
+		}
 		f.last = r.Copy()
 		f.mu.Unlock()
 		if delay > 0 {
