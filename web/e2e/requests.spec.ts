@@ -3,7 +3,7 @@
 // request shows up on /requests, the admin approves it, and dig shows the
 // name permitted; denying it afterwards blocks the name again.
 import type { Page } from '@playwright/test';
-import { env, expect, settle, test } from './fixtures';
+import { env, expect, pick, selector, settle, test } from './fixtures';
 import { suffix } from './support/api';
 import { BLOCKLIST } from './support/kudurru';
 
@@ -52,9 +52,9 @@ test('a request from the block page is approved on /requests and the name resolv
   await row.getByRole('button', { name: 'Approve' }).click();
   const dialog = page.getByRole('dialog', { name: `Allow ${domain}?` });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('combobox', { name: 'Scope' }).selectOption('everyone');
-  await dialog.getByRole('combobox', { name: 'Match' }).selectOption('exact');
-  await dialog.getByRole('combobox', { name: 'Duration' }).selectOption('1h');
+  await pick(selector(dialog, 'Scope'), 'Everyone');
+  await pick(selector(dialog, 'Match'), 'This name only');
+  await pick(selector(dialog, 'Duration'), '1 hour');
   await dialog.getByRole('textbox', { name: /^Note/ }).fill('for the e2e run');
   await dialog.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByText(`Allowed ${domain} for everyone`).first()).toBeVisible();

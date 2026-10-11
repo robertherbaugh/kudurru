@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BlockList } from '../api/types';
 import { domainError, splitDomains } from '../components/lists/AddDomainsDialog';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, pick, valueOf } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import DomainsPage, { domainRows } from './DomainsPage';
 
@@ -25,11 +26,11 @@ describe('DomainsPage', () => {
   it('filters by type and text', async () => {
     renderWithApp(<DomainsPage />, { route: '/domains' });
     await screen.findByTestId('domain-s.youtube.com');
-    fireEvent.change(screen.getByRole('combobox', { name: /^Type/ }), { target: { value: 'deny:exact' } });
+    pick(getSelector(/^Type/), 'Deny: exact domain');
     await waitFor(() => expect(screen.queryByTestId('domain-s.youtube.com')).toBeNull());
     expect(screen.getByTestId('domain-tracking.example-shop.com')).toBeInTheDocument();
     expect(window.location.search).toBe('?type=deny%3Aexact');
-    fireEvent.change(screen.getByRole('combobox', { name: /^Type/ }), { target: { value: '' } });
+    pick(getSelector(/^Type/), 'All types');
     fireEvent.change(screen.getByRole('textbox', { name: 'Search domains' }), { target: { value: 'dartsearch' } });
     await waitFor(() => expect(screen.queryByTestId('domain-s.youtube.com')).toBeNull());
     expect(screen.getByTestId('domain-clickserve.dartsearch.net')).toBeInTheDocument();
@@ -50,7 +51,7 @@ describe('DomainsPage', () => {
     await waitFor(() => expect(add).not.toBeDisabled());
     fireEvent.click(add);
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('combobox', { name: /^Type/ })).toHaveValue('deny:regex');
+    expect(valueOf(getSelector(/^Type/, dialog))).toBe('deny:regex');
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Expressions/ }), { target: { value: '^ads?[0-9]*\\.' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add 1' }));
     await waitFor(() => expect(uiDeny()?.spec.sources[0]?.inline).toContain('/^ads?[0-9]*\\./'));

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, optionLabels, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import ListDetailPage, { policiesUsing } from './ListDetailPage';
@@ -82,7 +83,7 @@ describe('ListDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add source' }));
     const url = await screen.findByRole('textbox', { name: /^URL/ });
     fireEvent.change(url, { target: { value: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt' } });
-    expect(screen.getByRole('combobox', { name: /^Format/ })).toHaveValue('adblock');
+    expect(valueOf(getSelector(/^Format/))).toBe('adblock');
     expect(screen.getByRole('textbox', { name: /^Name/ })).toHaveValue('hagezi-tif');
     fireEvent.click(screen.getByRole('switch', { name: /Include subdomains/ }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add source' }));
@@ -108,9 +109,9 @@ describe('ListDetailPage', () => {
   it('edits a source in a small dialog and deletes one after confirmation', async () => {
     renderList('family');
     fireEvent.click(within(await screen.findByTestId('source-oisd-nsfw')).getByRole('button', { name: 'Edit' }));
-    const format = await screen.findByRole('combobox', { name: /^Format/ });
-    expect(format).toHaveValue('adblock');
-    fireEvent.change(format, { target: { value: 'domains' } });
+    const format = await findSelector(/^Format/, await screen.findByRole('dialog'));
+    expect(valueOf(format)).toBe('adblock');
+    pick(format, 'One domain per line');
     fireEvent.click(screen.getByRole('button', { name: 'Save source' }));
     await waitFor(() => expect(family()?.spec.sources[1]?.format).toBe('domains'));
     expect(family()?.spec.sources[1]?.subdomains).toBe(true);
@@ -163,13 +164,13 @@ describe('ListDetailPage', () => {
 
   it('saves the list settings with typed fields', async () => {
     renderList('family');
-    const response = await screen.findByRole('combobox', { name: /^Block response/ });
-    expect(response).toHaveValue('nxdomain');
-    fireEvent.change(response, { target: { value: 'customIP' } });
+    const response = await findSelector(/^Block response/);
+    expect(valueOf(response)).toBe('nxdomain');
+    pick(response, 'Custom IP');
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(await screen.findByText('Give an IPv4 or IPv6 address')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Custom IPv4/ }), { target: { value: '192.0.2.80' } });
-    fireEvent.change(screen.getByRole('combobox', { name: /^Refresh interval/ }), { target: { value: '168h' } });
+    pick(getSelector(/^Refresh interval/), 'Every week');
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(family()?.spec.response).toBe('customIP'));
     expect(family()?.spec.customIP).toEqual({ v4: '192.0.2.80' });
@@ -179,8 +180,8 @@ describe('ListDetailPage', () => {
 
   it('offers the block page response and shows the list as YAML', async () => {
     renderList('family');
-    const response = await screen.findByRole('combobox', { name: /^Block response/ });
-    expect(within(response).getByRole('option', { name: 'Block page' })).toBeInTheDocument();
+    const response = await findSelector(/^Block response/);
+    expect(optionLabels(response)).toContain('Block page');
     fireEvent.click(screen.getByRole('button', { name: 'View as YAML' }));
     const yaml = await screen.findByLabelText('YAML');
     expect(yaml).toHaveTextContent('kind: BlockList');

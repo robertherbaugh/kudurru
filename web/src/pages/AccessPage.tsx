@@ -5,8 +5,9 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { HStack } from '@astryxdesign/core/HStack';
 import { Tab, TabList } from '@astryxdesign/core/TabList';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { qk, useApi, useCan, useSession } from '../api/context';
@@ -16,6 +17,7 @@ import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
 import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
+import { TextField } from '../components/fields/TextField';
 import { formatDateTime, formatRelative } from '../lib/format';
 import { useSearchParams } from '../lib/router';
 
@@ -132,20 +134,25 @@ function Tokens() {
         <code>kudurru login --token</code>.
       </p>
       <form
-        className="k-row-end"
         onSubmit={(e) => {
           e.preventDefault();
           if (description.trim()) create.mutate();
         }}
       >
-        <TextInput label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
-        <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
-        <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
-        {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
-        {role && scopeKind === 'zone' ? (
-          <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
-        ) : null}
-        <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
+        <VStack gap={2}>
+          <HStack gap={2} wrap="wrap" align="start">
+            <TextField label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
+            <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
+            <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
+            {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
+            {role && scopeKind === 'zone' ? (
+              <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
+            ) : null}
+          </HStack>
+          <HStack gap={2}>
+            <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
+          </HStack>
+        </VStack>
       </form>
       {created ? (
         <Banner
@@ -422,10 +429,10 @@ function Audit() {
           Export
         </a>
       </div>
-      <div className="k-row-end">
-        <TextInput label="Actor" value={actor} onChange={setActor} hasClear />
+      <HStack gap={2} wrap="wrap" align="start">
+        <TextField label="Actor" startIcon="search" value={actor} onChange={setActor} hasClear />
         <EnumSelect label="Kind" value={kind} options={AUDIT_KINDS} onChange={setKind} emptyLabel="Any kind" />
-      </div>
+      </HStack>
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
       {q.data ? (

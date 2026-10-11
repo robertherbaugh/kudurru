@@ -3,7 +3,6 @@
 // while a request is chosen (keyed by it), so every opening starts from a
 // fresh draft.
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
 import { useState } from 'react';
 import { useApproveUnblock, useDenyUnblock } from '../../api/hooks';
 import type { UnblockDecisionResult, UnblockMatch, UnblockRequest, UnblockScope } from '../../api/types';
@@ -23,6 +22,7 @@ import {
 import { useNotify } from '../Feedback';
 import { DurationField } from '../fields/DurationField';
 import { EnumSelect } from '../fields/EnumSelect';
+import { TextAreaField } from '../fields/TextField';
 import { FormDialog } from '../FormDialog';
 
 /** The success toast of an approval: where the entry went, and the policies left alone. */
@@ -40,10 +40,10 @@ export function approvalMessage(res: UnblockDecisionResult): string {
 
 function NoteField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <TextArea
+    <TextAreaField
       label="Note"
       isOptional
-      description={`Shown to the user on the block page (at most ${NOTE_MAX} characters).`}
+      help={`Shown to the user on the block page (at most ${NOTE_MAX} characters).`}
       value={value}
       onChange={(v) => onChange(v.slice(0, NOTE_MAX))}
       maxLength={NOTE_MAX}

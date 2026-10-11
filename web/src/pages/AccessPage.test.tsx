@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, optionsOf, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
 import AccessPage, { actorText, resourceText, scopeString, scopeText } from './AccessPage';
@@ -22,9 +23,9 @@ describe('AccessPage', () => {
     expect(within(table).getByText('grafana')).toBeInTheDocument();
     expect(within(table).getByText('never')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Description/ }), { target: { value: 'ci-deploy' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Limit to role' }), { target: { value: 'viewer' } });
+    pick(getSelector('Limit to role'), 'Viewer');
     expect(screen.getByText('Read zones, records, lists, policies, stats and settings.')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Expires in' })).toHaveValue('720h');
+    expect(valueOf(getSelector('Expires in'))).toBe('720h');
     const create = screen.getByRole('button', { name: 'Create token' });
     await waitFor(() => expect(create).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(create);
@@ -37,12 +38,12 @@ describe('AccessPage', () => {
   it('scopes a token to one zone', async () => {
     renderWithApp(<AccessPage />, { route: '/access' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Description/ }), { target: { value: 'dns-edit' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Limit to role' }), { target: { value: 'zone-admin' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'For' }), { target: { value: 'zone' } });
-    const zone = await screen.findByRole('combobox', { name: 'Zone' });
-    await waitFor(() => expect(within(zone).getAllByRole('option').length).toBeGreaterThan(1));
-    fireEvent.change(zone, { target: { value: 'example-internal' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Expires in' }), { target: { value: '' } });
+    pick(getSelector('Limit to role'), 'Zone admin');
+    pick(getSelector('For'), 'One zone');
+    const zone = await findSelector('Zone');
+    await waitFor(() => expect(optionsOf(zone).length).toBeGreaterThan(1));
+    pick(zone, 'example-internal');
+    pick(getSelector('Expires in'), 'Server maximum');
     const create = screen.getByRole('button', { name: 'Create token' });
     await waitFor(() => expect(create).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(create);

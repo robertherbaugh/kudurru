@@ -4,15 +4,17 @@
 // the entries browser adds and removes them without a giant text box.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { FileInput } from '@astryxdesign/core/FileInput';
+import { Grid } from '@astryxdesign/core/Grid';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useState, type ChangeEvent } from 'react';
+import { Text } from '@astryxdesign/core/Text';
+import { useState } from 'react';
 import type { ListFormat, ListSource } from '../../api/types';
 import { formatExact } from '../../lib/format';
 import { entriesProblem, FORMAT_OPTIONS, guessFormat, isHTTPURL, parseEntries, sourceKind } from '../../lib/lists';
 import { EnumSelect } from '../fields/EnumSelect';
+import { FieldShell } from '../fields/FieldHelp';
+import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
 import { errorText } from '../Feedback';
 import { FormDialog } from '../FormDialog';
 
@@ -76,7 +78,6 @@ export interface SourceDialogProps {
 
 /** Keeps its fields in state: give it a new `key` per opening so each one starts fresh. */
 export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDialogProps) {
-  const fileId = useId();
   const editing = !!initial;
   const initialKind = initial ? sourceKind(initial) : 'url';
   const [choice, setChoice] = useState<SourceChoice>(initialKind === 'inline' ? 'paste' : initialKind);
@@ -87,7 +88,7 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
   const [formatTouched, setFormatTouched] = useState(editing);
   const [subdomains, setSubdomains] = useState(initial?.subdomains === true);
   const [text, setText] = useState('');
-  const [fileName, setFileName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [cmName, setCmName] = useState(initial?.configMapRef?.name ?? '');
   const [cmNamespace, setCmNamespace] = useState(initial?.configMapRef?.namespace ?? '');
   const [showErrors, setShowErrors] = useState(false);
@@ -151,10 +152,13 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
     if (!nameTouched && isHTTPURL(v)) setName(suggestName(v, taken));
   };
 
-  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFileName(f.name);
+  const onFile = (picked: File | File[] | null) => {
+    const f = Array.isArray(picked) ? (picked[0] ?? null) : picked;
+    setFile(f);
+    if (!f) {
+      setText('');
+      return;
+    }
     if (!nameTouched) setName(slugName(f.name.replace(/\.[a-z0-9]+$/i, ''), taken));
     void f.text().then(setText);
   };
@@ -186,43 +190,45 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
       ) : null}
 
       {choice === 'url' ? (
-        <TextInput
+        <TextField
           label="URL"
-          description="Fetched by the leader on every refresh interval; replicas pull the body from it."
+          help="Fetched by the leader on every refresh interval; replicas pull the body from it."
           placeholder="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
           value={url}
           onChange={onUrl}
-          status={err('url') ? { type: 'error', message: err('url') ?? '' } : undefined}
+          error={err('url')}
         />
       ) : null}
 
       {choice === 'paste' && !editing ? (
-        <TextArea
+        <TextAreaField
           label="Entries"
-          description="One per line in the format below; # and ! lines are comments."
+          help="One per line in the format below; # and ! lines are comments."
           placeholder={'ads.example.com\n||tracker.example^\n0.0.0.0 telemetry.example'}
           rows={6}
           hasSpellCheck={false}
           value={text}
           onChange={setText}
-          status={err('entries') ? { type: 'error', message: err('entries') ?? '' } : undefined}
+          error={err('entries')}
         />
       ) : null}
 
       {choice === 'file' && !editing ? (
-        <div className="k-stack-sm">
-          <label className="k-label" htmlFor={fileId}>
-            Text file
-            <span className="k-muted k-small">Read in the browser and stored as inline entries of the list object.</span>
-            <input id={fileId} type="file" accept=".txt,.list,.hosts,.conf,text/plain" onChange={onFile} />
-          </label>
-          {fileName && entries.length ? (
-            <span className="k-small" role="status">
-              {formatExact(entries.length)} entries read from {fileName}.
-            </span>
-          ) : null}
-          {err('entries') ? <span className="k-error-text">{err('entries')}</span> : null}
-        </div>
+        <FieldShell
+          help={
+            <>
+              Read in the browser and stored as inline entries of the list object.
+              {file && entries.length ? (
+                <Text type="inherit" color="inherit" display="block" role="status">
+                  {formatExact(entries.length)} entries read from {file.name}.
+                </Text>
+              ) : null}
+            </>
+          }
+          error={err('entries')}
+        >
+          {(status) => <FileInput label="Text file" value={file} onChange={onFile} accept=".txt,.list,.hosts,.conf,text/plain" status={status} />}
+        </FieldShell>
       ) : null}
 
       {inlineChoice && !editing && entries.length > LARGE_INLINE ? (
@@ -234,23 +240,23 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
       ) : null}
 
       {choice === 'configMap' ? (
-        <div className="k-form-grid">
-          <TextInput label="ConfigMap" placeholder="family-lists" value={cmName} onChange={setCmName} status={err('cm') ? { type: 'error', message: err('cm') ?? '' } : undefined} description="Kubernetes deployments only; every data key is read." />
-          <TextInput label="Namespace" placeholder="the list's namespace" value={cmNamespace} onChange={setCmNamespace} isOptional />
-        </div>
+        <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
+          <TextField label="ConfigMap" placeholder="family-lists" value={cmName} onChange={setCmName} error={err('cm')} help="Kubernetes deployments only; every data key is read." />
+          <TextField label="Namespace" placeholder="the list's namespace" value={cmNamespace} onChange={setCmNamespace} isOptional />
+        </Grid>
       ) : null}
 
-      <div className="k-form-grid">
-        <TextInput
+      <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
+        <TextField
           label="Name"
-          description="Shown in the status and the query log."
+          help="Shown in the status and the query log."
           placeholder="main"
           value={name}
           onChange={(v) => {
             setName(v);
             setNameTouched(true);
           }}
-          status={err('name') ? { type: 'error', message: err('name') ?? '' } : undefined}
+          error={err('name')}
         />
         <EnumSelect
           label="Format"
@@ -262,10 +268,10 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
             setFormatTouched(true);
           }}
         />
-      </div>
-      <Switch
+      </Grid>
+      <SwitchField
         label="Include subdomains"
-        description='Hosts and plain-domain entries also match their subdomains, for lists published as "domains with subdomains". Adblock and wildcard rules are not affected.'
+        help='Hosts and plain-domain entries also match their subdomains, for lists published as "domains with subdomains". Adblock and wildcard rules are not affected.'
         value={subdomains}
         onChange={setSubdomains}
       />

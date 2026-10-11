@@ -7,14 +7,15 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Grid } from '@astryxdesign/core/Grid';
 import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { BlockList, BlockResponse, Condition, ListSource, Policy } from '../api/types';
 import { DurationField } from '../components/fields/DurationField';
 import { EnumSelect } from '../components/fields/EnumSelect';
+import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
@@ -432,7 +433,7 @@ function ListSettings({ list, editable, onSave }: { list: BlockList; editable: b
         <h2 id="list-settings" className="k-h3">
           Settings
         </h2>
-        <div className="k-form-grid">
+        <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
           <EnumSelect label="Mode" value={form.mode} options={MODE_OPTIONS} isDisabled={!editable} onChange={(v) => set({ mode: v as 'block' | 'allow' })} />
           {form.mode !== 'allow' ? (
             <EnumSelect label="Block response" value={form.response} options={RESPONSE_OPTIONS} emptyLabel="Default (the policy's, else the server's)" isDisabled={!editable} onChange={(v) => set({ response: v })} />
@@ -447,14 +448,14 @@ function ListSettings({ list, editable, onSave }: { list: BlockList; editable: b
             error={errors.refreshInterval ?? undefined}
             onChange={(v) => set({ refreshInterval: v })}
           />
-        </div>
+        </Grid>
         {customIP ? (
-          <div className="k-form-grid">
-            <TextInput label="Custom IPv4" placeholder="192.0.2.1" value={form.v4} onChange={(v) => set({ v4: v })} isDisabled={!editable} status={errors.v4 ? { type: 'error', message: errors.v4 } : undefined} />
-            <TextInput label="Custom IPv6" placeholder="2001:db8::1" value={form.v6} onChange={(v) => set({ v6: v })} isDisabled={!editable} status={errors.v6 ? { type: 'error', message: errors.v6 } : undefined} isOptional />
-          </div>
+          <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
+            <TextField label="Custom IPv4" placeholder="192.0.2.1" value={form.v4} onChange={(v) => set({ v4: v })} isDisabled={!editable} error={errors.v4 ?? undefined} />
+            <TextField label="Custom IPv6" placeholder="2001:db8::1" value={form.v6} onChange={(v) => set({ v6: v })} isDisabled={!editable} error={errors.v6 ?? undefined} isOptional />
+          </Grid>
         ) : null}
-        <TextInput label="Comment" value={form.comment} onChange={(v) => set({ comment: v })} isDisabled={!editable} isOptional />
+        <TextField label="Comment" value={form.comment} onChange={(v) => set({ comment: v })} isDisabled={!editable} isOptional />
         {form.mode !== initial.mode ? (
           <Banner status="info" title={`Switching to ${form.mode === 'allow' ? 'an allow' : 'a block'} list`} description="Policies keep the reference under the old field; the list is applied by its new mode and the policy reports the mismatch." />
         ) : null}

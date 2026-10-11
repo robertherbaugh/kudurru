@@ -5,8 +5,9 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { HStack } from '@astryxdesign/core/HStack';
+import { StackItem } from '@astryxdesign/core/Stack';
+import { VStack } from '@astryxdesign/core/VStack';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk, useApi } from '../../api/context';
@@ -14,6 +15,7 @@ import type { BlockList, ListEntriesPatch } from '../../api/types';
 import { formatExact } from '../../lib/format';
 import { entriesProblem, listKey, listNamespace, parseEntries, sourceName } from '../../lib/lists';
 import { EnumSelect } from '../fields/EnumSelect';
+import { TextAreaField, TextField } from '../fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
 
@@ -121,16 +123,15 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
 
       {editable ? (
         <form
-          className="k-row-end"
           onSubmit={(e) => {
             e.preventDefault();
             if (toAdd.length && !addProblem) patch.mutate({ add: toAdd });
           }}
         >
-          <div className="k-grow">
-            <TextArea
+          <VStack gap={2}>
+            <TextAreaField
               label="Add entries"
-              description="One or many, one per line."
+              help="One or many, one per line."
               placeholder="ads.example.com"
               rows={2}
               hasSpellCheck={false}
@@ -139,10 +140,12 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                 setAdding(v);
                 setRejected([]);
               }}
-              status={addProblem ? { type: 'error', message: `"${addProblem.first}": ${addProblem.error}` } : undefined}
+              error={addProblem ? `"${addProblem.first}": ${addProblem.error}` : undefined}
             />
-          </div>
-          <Button type="submit" label={toAdd.length > 1 ? `Add ${toAdd.length}` : 'Add'} variant="secondary" isDisabled={!toAdd.length || !!addProblem} isLoading={patch.isPending && !!patch.variables?.add} />
+            <HStack gap={2}>
+              <Button type="submit" label={toAdd.length > 1 ? `Add ${toAdd.length}` : 'Add'} variant="secondary" isDisabled={!toAdd.length || !!addProblem} isLoading={patch.isPending && !!patch.variables?.add} />
+            </HStack>
+          </VStack>
         </form>
       ) : null}
       {rejected.length ? (
@@ -156,8 +159,8 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
         />
       ) : null}
 
-      <div className="k-row-end">
-        <TextInput className="k-search" label="Search entries" placeholder="Part of a domain or rule" value={search} onChange={setSearch} hasClear />
+      <HStack gap={2} wrap="wrap" align="end">
+        <TextField className="k-search" label="Search entries" startIcon="search" placeholder="Part of a domain or rule" value={search} onChange={setSearch} hasClear />
         <EnumSelect
           label="Page size"
           value={String(pageSize)}
@@ -167,9 +170,9 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
             setCursors(['']);
           }}
         />
-        <span className="k-spacer" />
+        <StackItem size="fill" />
         {editable && selected.size > 0 ? <Button label={`Remove ${selected.size} selected`} variant="destructive" onClick={() => setConfirm(true)} /> : null}
-      </div>
+      </HStack>
 
       {q.error ? <ErrorBanner error={q.error} title="Could not read the entries" /> : null}
       {q.isLoading ? <Loading label="Loading entries" /> : null}

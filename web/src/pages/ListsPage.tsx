@@ -5,12 +5,12 @@
 // lists and "which lists contain this domain" (GET /blocklists/_search).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { BlockList, ListSource } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
+import { TextField } from '../components/fields/TextField';
 import { AddDomainsDialog } from '../components/lists/AddDomainsDialog';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { formatExact, formatRelative } from '../lib/format';
@@ -35,7 +35,7 @@ function ListSearch() {
           setSubmitted(domain.trim());
         }}
       >
-        <TextInput label="Domain" value={domain} onChange={setDomain} placeholder="ads.example.com" />
+        <TextField label="Domain" startIcon="search" value={domain} onChange={setDomain} placeholder="ads.example.com" hasClear />
         <Button type="submit" label="Search" variant="secondary" />
       </form>
       {q.error ? <ErrorBanner error={q.error} /> : null}

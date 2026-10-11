@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cleanSpec, validateFields } from '../components/ObjectForm';
 import { mockDB } from '../mocks/handlers';
 import { SCHEMAS } from '../lib/objectSchemas';
+import { findSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import ListsPage, { inlineOnly } from './ListsPage';
 
@@ -78,7 +79,7 @@ describe('ListsPage', () => {
   it('adds an allow regex through the Type select', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
     await clickWhenEnabled('Add domains');
-    fireEvent.change(await screen.findByRole('combobox', { name: /^Type/ }), { target: { value: 'allow:regex' } });
+    pick(await findSelector(/^Type/, await screen.findByRole('dialog')), 'Allow: regular expression');
     const box = screen.getByRole('textbox', { name: /^Expressions/ });
     fireEvent.change(box, { target: { value: '(' } });
     expect(await screen.findByText(/Not a valid expression/)).toBeInTheDocument();
