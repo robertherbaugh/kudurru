@@ -120,6 +120,8 @@ export interface Server {
   dir: string;
   /** https://127.0.0.1:<api port> (self-signed certificate). */
   url: string;
+  /** http://127.0.0.1:<port> of the block page listener. */
+  blockPage: string;
   dns: string;
   ops: string;
   /** The admin password: the configured one, or the generated one from stderr. */
@@ -153,7 +155,7 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
   }
 
   const addr = async () => `127.0.0.1:${await freePort()}`;
-  const ports = { dns: await addr(), api: await addr(), ops: await addr(), metrics: await addr(), internal: await addr() };
+  const ports = { dns: await addr(), api: await addr(), ops: await addr(), metrics: await addr(), internal: await addr(), blockPage: await addr() };
   // JSON is YAML: no YAML dependency needed for the configuration.
   const config = {
     node: { name: node, dataDir },
@@ -166,7 +168,11 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
       metrics: { address: ports.metrics },
       internal: { address: ports.internal },
       sockets: 1,
+      // The block page listener (requests.spec.ts posts its form); the
+      // block response stays zeroIP, so the other specs see 0.0.0.0.
+      blockPage: { http: ports.blockPage },
     },
+    blockPage: { enabled: true, ipv4: '127.0.0.1' },
     upstreams: { groups: { default: { servers: [opts.upstream], strategy: 'parallel_best', timeout: '1s' } } },
     // Ready only once every referenced block list is compiled.
     blocking: { initStrategy: 'blocking' },
@@ -231,7 +237,7 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
     }
     adminPassword = m[1];
   }
-  return { node, dir, url: `https://${ports.api}`, dns: ports.dns, ops: ports.ops, adminPassword, log: () => out, stop };
+  return { node, dir, url: `https://${ports.api}`, blockPage: `http://${ports.blockPage}`, dns: ports.dns, ops: ports.ops, adminPassword, log: () => out, stop };
 }
 
 export function sleep(ms: number): Promise<void> {
