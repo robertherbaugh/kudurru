@@ -26,6 +26,16 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
+// writeError wraps a failed apiserver write. A refusal for size (413, or
+// etcd's "request is too large" passed through by the apiserver) wraps
+// store.ErrTooLarge, as the sqlite driver reports past MaxObjectBytes.
+func writeError(op string, key store.Key, err error) error {
+	if apierrors.IsRequestEntityTooLargeError(err) || strings.Contains(err.Error(), "request is too large") {
+		return fmt.Errorf("%w: store/kube: %s %s: %w", store.ErrTooLarge, op, key, err)
+	}
+	return fmt.Errorf("store/kube: %s %s: %w", op, key, err)
+}
+
 // statusFieldManager owns status writes (leader-only callers, §4.3).
 const statusFieldManager = "kudurru-controller"
 
@@ -207,7 +217,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		}
 		raced := apierrors.IsConflict(err) || (precondition != "" && apierrors.IsNotFound(err))
 		if !raced {
-			return nil, fmt.Errorf("store/kube: apply %s: %w", key, err)
+			return nil, writeError("apply", key, err)
 		}
 		if opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
 			return nil, fmt.Errorf("%w: %s changed during apply", store.ErrConflict, key)
@@ -316,7 +326,7 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 		case apierrors.IsConflict(err):
 			return fmt.Errorf("%w: %s", store.ErrConflict, key)
 		default:
-			return fmt.Errorf("store/kube: update status %s: %w", key, err)
+			return writeError("update status", key, err)
 		}
 	}
 }

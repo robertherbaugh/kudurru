@@ -210,11 +210,19 @@ type Store interface {
 	Close() error
 }
 
+// MaxObjectBytes is the largest encoded object a driver stores: the 1.5 MiB
+// request cap of etcd, so an object that fits the sqlite driver also fits a
+// Kubernetes apiserver. The API refuses larger request bodies with 413.
+const MaxObjectBytes = 1536 << 10
+
 // Sentinel errors every driver returns.
 var (
 	ErrNotFound = errors.New("store: not found")
 	ErrConflict = errors.New("store: resource version conflict")
 	ErrClosed   = errors.New("store: closed")
+	// ErrTooLarge: the encoded object exceeds MaxObjectBytes (sqlite) or
+	// the apiserver refused it as too large (kube). HTTP maps it to 413.
+	ErrTooLarge = errors.New("store: object too large")
 )
 
 // ErrManagedBy is returned when a writer other than the recorded manager
