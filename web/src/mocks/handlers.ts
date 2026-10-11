@@ -1021,19 +1021,24 @@ export const handlers = [
     }
     return ok({ field, values: [...values] });
   }),
-  sse<{ query: QueryRow }>(`${B}/queries/stream`, ({ client, request }) => {
-    const last = Number(request.headers.get('Last-Event-ID') ?? new URL(request.url).searchParams.get('lastEventId') ?? '0');
-    if (last) {
-      for (const q of db.queries.filter((x) => x.id > last).reverse()) client.send({ id: String(q.id), event: 'query', data: q });
-    }
-    const r = rng(Date.now() % 100000);
-    window.clearInterval(tailTimer);
-    tailTimer = window.setInterval(() => {
-      const row = makeQueryRow(db.nextQueryID++, Date.now(), r, r() < 0.7 ? 'kudurru-0' : 'kudurru-1');
-      db.queries.unshift(row);
-      client.send({ id: String(row.id), event: 'query', data: row });
-    }, 1200);
-  }),
+  // msw refuses to build an SSE handler where EventSource is missing (jsdom).
+  ...(typeof EventSource === 'function'
+    ? [
+        sse<{ query: QueryRow }>(`${B}/queries/stream`, ({ client, request }) => {
+          const last = Number(request.headers.get('Last-Event-ID') ?? new URL(request.url).searchParams.get('lastEventId') ?? '0');
+          if (last) {
+            for (const q of db.queries.filter((x) => x.id > last).reverse()) client.send({ id: String(q.id), event: 'query', data: q });
+          }
+          const r = rng(Date.now() % 100000);
+          window.clearInterval(tailTimer);
+          tailTimer = window.setInterval(() => {
+            const row = makeQueryRow(db.nextQueryID++, Date.now(), r, r() < 0.7 ? 'kudurru-0' : 'kudurru-1');
+            db.queries.unshift(row);
+            client.send({ id: String(row.id), event: 'query', data: row });
+          }, 1200);
+        }),
+      ]
+    : []),
   http.post(`${B}/queries/:id/actions`, async ({ request, params }) => {
     const g = guard(request, 'blocklists', 'write');
     if (g) return g;

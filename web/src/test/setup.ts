@@ -1,7 +1,20 @@
 // Vitest setup: jest-dom matchers and the browser APIs jsdom lacks.
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { setupServer } from 'msw/node';
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
+import { handlers, resetDB } from '../mocks/handlers';
+
+/** The MSW server answering /api/v1 from the fixtures in every test. */
+export const server = setupServer(...handlers);
+
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
+beforeEach(() => {
+  resetDB();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+});
+afterAll(() => server.close());
 
 class ResizeObserverStub {
   observe(): void {}
@@ -29,6 +42,11 @@ if (!window.matchMedia) {
   });
 }
 
+// jsdom logs "Not implemented" for scrolling; the app only scrolls to top.
+window.scrollTo = (() => undefined) as typeof window.scrollTo;
+Element.prototype.scrollTo = function scrollTo() {} as typeof Element.prototype.scrollTo;
+Element.prototype.scrollIntoView = function scrollIntoView() {};
+
 // jsdom has HTMLDialogElement but not its modal methods.
 const dialogProto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
 if (typeof dialogProto.showModal !== 'function') {
@@ -46,4 +64,5 @@ if (typeof dialogProto.showModal !== 'function') {
 
 afterEach(() => {
   cleanup();
+  server.resetHandlers();
 });

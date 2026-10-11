@@ -35,15 +35,18 @@ export function makeQueryClient(): QueryClient {
 export function AppProviders({
   basePath,
   client,
+  apiBase,
   children,
 }: {
   basePath: string;
   client: QueryClient;
+  /** Overrides the API base derived from basePath (tests use an absolute URL). */
+  apiBase?: string;
   children: ReactNode;
 }) {
   return (
     <QueryClientProvider client={client}>
-      <ApiProvider baseUrl={apiBaseFor(basePath)} onUnauthenticated={() => client.setQueryData(qk.me, null)}>
+      <ApiProvider baseUrl={apiBase ?? apiBaseFor(basePath)} onUnauthenticated={() => client.setQueryData(qk.me, null)}>
         <RouterProvider basePath={basePath}>
           <AppearanceProvider>
             <LinkProvider component={Link}>
@@ -65,10 +68,10 @@ function Gate() {
   return <Shell />;
 }
 
-export function App({ basePath }: { basePath: string }) {
+export function App({ basePath, apiBase }: { basePath: string; apiBase?: string }) {
   const [client] = useState(makeQueryClient);
   return (
-    <AppProviders basePath={basePath} client={client}>
+    <AppProviders basePath={basePath} client={client} {...(apiBase ? { apiBase } : {})}>
       <Gate />
     </AppProviders>
   );
