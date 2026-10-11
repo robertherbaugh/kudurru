@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -86,8 +87,9 @@ type UpstreamServer struct {
 	RTTMS               float64    `json:"rtt_ms"`
 }
 
-// windowInput is the common time window of the stats routes.
-type windowInput struct {
+// WindowParams are the time-window query parameters of the stats
+// routes (exported so huma can fill them through embedding).
+type WindowParams struct {
 	Window string `query:"window" doc:"Window ending now, as a Go duration (24h, 7d is 168h); default 24h."`
 	From   string `query:"from" doc:"Window start (RFC 3339); overrides window."`
 	To     string `query:"to" doc:"Window end (RFC 3339); default now."`
@@ -106,19 +108,19 @@ type suggestionsOutput struct{ Body *SuggestionsBody }
 type querylogStatusOutput struct{ Body *QuerylogStatusBody }
 
 type timeseriesInput struct {
-	windowInput
+	WindowParams
 	Step string `query:"step" doc:"Bucket width (Go duration) or auto (default)."`
 }
 
 type topInput struct {
-	windowInput
+	WindowParams
 	Dim     string `query:"dim" required:"true" enum:"domains,clients,upstreams,lists,zones"`
 	N       int    `query:"n" minimum:"0" maximum:"100"`
 	Blocked bool   `query:"blocked"`
 }
 
 type clientTimeseriesInput struct {
-	windowInput
+	WindowParams
 	Step string `query:"step"`
 	N    int    `query:"n" minimum:"0" maximum:"100"`
 }
@@ -129,8 +131,9 @@ type recentBlockedInput struct {
 	Node  string `query:"node"`
 }
 
-// queriesInput are the filters of GET /queries and /queries/stream.
-type queriesInput struct {
+// QueryParams are the filters of GET /queries and /queries/stream
+// (exported so huma can fill them through embedding).
+type QueryParams struct {
 	Client      string `query:"client" doc:"IP, CIDR or client name (* wildcards)."`
 	Domain      string `query:"domain" doc:"Exact name or * wildcard."`
 	Status      string `query:"status" doc:"Comma-separated statuses (blocked_list,forwarded)."`
@@ -148,7 +151,7 @@ type queriesInput struct {
 }
 
 type streamInput struct {
-	queriesInput
+	QueryParams
 	LastEventID string `header:"Last-Event-ID" doc:"Resume after this event id (EventSource reconnects send it)."`
 	// LastEventIDQuery is the same for clients that cannot set headers.
 	LastEventIDQuery string `query:"last_event_id"`
@@ -227,7 +230,7 @@ func (s *Server) reader() (*sqlitelog.Reader, error) {
 }
 
 // window parses window/from/to.
-func (s *Server) window(in windowInput) (sqlitelog.Window, error) {
+func (s *Server) window(in WindowParams) (sqlitelog.Window, error) {
 	now := s.opts.Now()
 	w := sqlitelog.Window{Until: now}
 	if in.To != "" {
@@ -296,7 +299,7 @@ func readerError(err error) error {
 	return storeError(err)
 }
 
-func (s *Server) statsSummary(ctx context.Context, in *windowInput) (*summaryOutput, error) {
+func (s *Server) statsSummary(ctx context.Context, in *WindowParams) (*summaryOutput, error) {
 	r, err := s.reader()
 	if err != nil {
 		return nil, err
@@ -317,7 +320,7 @@ func (s *Server) statsTimeseries(ctx context.Context, in *timeseriesInput) (*tim
 	if err != nil {
 		return nil, err
 	}
-	w, err := s.window(in.windowInput)
+	w, err := s.window(in.WindowParams)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +340,7 @@ func (s *Server) statsTop(ctx context.Context, in *topInput) (*topOutput, error)
 	if err != nil {
 		return nil, err
 	}
-	w, err := s.window(in.windowInput)
+	w, err := s.window(in.WindowParams)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +390,7 @@ func (s *Server) upstreamServers() []UpstreamServer {
 	return out
 }
 
-func (s *Server) statsUpstreams(ctx context.Context, in *windowInput) (*upstreamsOutput, error) {
+func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstreamsOutput, error) {
 	body := &UpstreamsBody{Servers: s.upstreamServers()}
 	body.Scope = sqlitelog.Scope{Scope: sqlitelog.ScopeNode, Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}
 	body.Items = []sqlitelog.UpstreamItem{}
@@ -410,7 +413,7 @@ func (s *Server) statsClientTimeseries(ctx context.Context, in *clientTimeseries
 	if err != nil {
 		return nil, err
 	}
-	w, err := s.window(in.windowInput)
+	w, err := s.window(in.WindowParams)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +444,7 @@ func (s *Server) statsRecentBlocked(ctx context.Context, in *recentBlockedInput)
 	return &recentBlockedOutput{Body: &RecentBlockedBody{RecentBlocked: *res}}, nil
 }
 
-func (s *Server) listClients(ctx context.Context, in *windowInput) (*clientsOutput, error) {
+func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOutput, error) {
 	r, err := s.reader()
 	if err != nil {
 		return nil, err
@@ -450,19 +453,34 @@ func (s *Server) listClients(ctx context.Context, in *windowInput) (*clientsOutp
 	if err != nil {
 		return nil, err
 	}
-	res, err := r.TopClients(ctx, sqlitelog.TopQuery{Window: w, N: sqlitelog.MaxTopN})
-	if err != nil {
-		return nil, readerError(err)
+	// The top list ranks by permitted or by blocked queries; a client
+	// that only had blocked queries is in the second list only.
+	byKey := map[string]*ClientItem{}
+	var order []string
+	for _, blocked := range []bool{false, true} {
+		res, err := r.TopClients(ctx, sqlitelog.TopQuery{Window: w, N: sqlitelog.MaxTopN, Blocked: blocked})
+		if err != nil {
+			return nil, readerError(err)
+		}
+		for _, it := range res.Items {
+			if _, ok := byKey[it.Key]; !ok {
+				order = append(order, it.Key)
+				byKey[it.Key] = &ClientItem{Key: it.Key, Name: it.Name, Group: it.Group}
+			}
+			c := byKey[it.Key]
+			c.Count, c.Blocked = max(c.Count, it.Total), max(c.Blocked, it.Blocked)
+		}
 	}
-	items := make([]ClientItem, 0, len(res.Items))
-	for _, it := range res.Items {
-		items = append(items, ClientItem{Key: it.Key, Name: it.Name, Group: it.Group, Count: it.Total, Blocked: it.Blocked})
+	items := make([]ClientItem, 0, len(order))
+	for _, k := range order {
+		items = append(items, *byKey[k])
 	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Count > items[j].Count })
 	return &clientsOutput{Body: newList(items, "")}, nil
 }
 
 // queryFilter converts the query parameters.
-func queryFilter(in queriesInput) (sqlitelog.QueryFilter, error) {
+func queryFilter(in QueryParams) (sqlitelog.QueryFilter, error) {
 	f := sqlitelog.QueryFilter{
 		Client: in.Client, Domain: in.Domain, StatusClass: pipeline.Class(in.StatusClass),
 		Upstream: in.Upstream, List: in.List, Zone: in.Zone, Cursor: in.Cursor, Limit: in.Limit,
@@ -505,7 +523,7 @@ func queryFilter(in queriesInput) (sqlitelog.QueryFilter, error) {
 	return f, nil
 }
 
-func (s *Server) listQueries(ctx context.Context, in *queriesInput) (*queriesOutput, error) {
+func (s *Server) listQueries(ctx context.Context, in *QueryParams) (*queriesOutput, error) {
 	r, err := s.reader()
 	if err != nil {
 		return nil, err
@@ -597,7 +615,7 @@ type streamFilter struct {
 	zone        string
 }
 
-func newStreamFilter(in queriesInput) (*streamFilter, error) {
+func newStreamFilter(in QueryParams) (*streamFilter, error) {
 	f, err := queryFilter(in)
 	if err != nil {
 		return nil, err
@@ -686,7 +704,7 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 	if s.opts.Tail == nil && s.opts.Querylog == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
 	}
-	filter, err := newStreamFilter(in.queriesInput)
+	filter, err := newStreamFilter(in.QueryParams)
 	if err != nil {
 		return nil, err
 	}

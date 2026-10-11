@@ -8184,6 +8184,138 @@
         "operationId": "queryStream",
         "parameters": [
           {
+            "description": "IP, CIDR or client name (* wildcards).",
+            "explode": false,
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "description": "IP, CIDR or client name (* wildcards).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact name or * wildcard.",
+            "explode": false,
+            "in": "query",
+            "name": "domain",
+            "schema": {
+              "description": "Exact name or * wildcard.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated statuses (blocked_list,forwarded).",
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Comma-separated statuses (blocked_list,forwarded).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "status_class",
+            "schema": {
+              "enum": [
+                "permitted",
+                "cached",
+                "blocked",
+                "error",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "qtype",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "upstream",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "list",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "zone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, inclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "RFC 3339, inclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339, exclusive.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "RFC 3339, exclusive.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Resume after this event id (EventSource reconnects send it).",
             "in": "header",
             "name": "Last-Event-ID",
@@ -8781,6 +8913,61 @@
         "operationId": "statsClientTimeseries",
         "parameters": [
           {
+            "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+            "explode": false,
+            "in": "query",
+            "name": "window",
+            "schema": {
+              "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (RFC 3339); overrides window.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Window start (RFC 3339); overrides window.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (RFC 3339); default now.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "Window end (RFC 3339); default now.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "enum": [
+                "node",
+                "cluster",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Node to answer for (scope=node); only this node is served today.",
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "description": "Node to answer for (scope=node); only this node is served today.",
+              "type": "string"
+            }
+          },
+          {
             "explode": false,
             "in": "query",
             "name": "step",
@@ -9086,6 +9273,61 @@
         "operationId": "statsTimeseries",
         "parameters": [
           {
+            "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+            "explode": false,
+            "in": "query",
+            "name": "window",
+            "schema": {
+              "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (RFC 3339); overrides window.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Window start (RFC 3339); overrides window.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (RFC 3339); default now.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "Window end (RFC 3339); default now.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "enum": [
+                "node",
+                "cluster",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Node to answer for (scope=node); only this node is served today.",
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "description": "Node to answer for (scope=node); only this node is served today.",
+              "type": "string"
+            }
+          },
+          {
             "description": "Bucket width (Go duration) or auto (default).",
             "explode": false,
             "in": "query",
@@ -9163,6 +9405,61 @@
       "get": {
         "operationId": "statsTop",
         "parameters": [
+          {
+            "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+            "explode": false,
+            "in": "query",
+            "name": "window",
+            "schema": {
+              "description": "Window ending now, as a Go duration (24h, 7d is 168h); default 24h.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window start (RFC 3339); overrides window.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Window start (RFC 3339); overrides window.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Window end (RFC 3339); default now.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "Window end (RFC 3339); default now.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "enum": [
+                "node",
+                "cluster",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Node to answer for (scope=node); only this node is served today.",
+            "explode": false,
+            "in": "query",
+            "name": "node",
+            "schema": {
+              "description": "Node to answer for (scope=node); only this node is served today.",
+              "type": "string"
+            }
+          },
           {
             "explode": false,
             "in": "query",

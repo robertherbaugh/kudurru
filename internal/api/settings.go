@@ -238,9 +238,15 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 	}
 	flat := flatSettings(cur)
 	for p, v := range changes {
-		if v == nil {
-			k, _ := config.Lookup(p)
+		k, _ := config.Lookup(p)
+		switch {
+		case v == nil:
 			v = k.Default
+		case k.Type == config.TypeMap:
+			// JSON merge patch (RFC 7386) inside map-valued keys.
+			if pm, ok := v.(map[string]any); ok {
+				v = mergePatch(flat[p], pm)
+			}
 		}
 		flat[p] = v
 	}
@@ -302,4 +308,35 @@ type SettingsFunc func(ctx context.Context, next *config.Config, changed []strin
 // WriteSettings implements SettingsWriter.
 func (f SettingsFunc) WriteSettings(ctx context.Context, next *config.Config, changed []string) error {
 	return f(ctx, next, changed)
+}
+
+// mergePatch applies an RFC 7386 merge patch to cur.
+func mergePatch(cur any, patch map[string]any) any {
+	base, ok := cur.(map[string]any)
+	out := map[string]any{}
+	if ok {
+		for k, v := range base {
+			out[k] = v
+		}
+	}
+	for k, v := range patch {
+		switch pv := v.(type) {
+		case nil:
+			delete(out, k)
+		case map[string]any:
+			out[k] = mergePatch(out[k], pv)
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// toJSON renders v for comparisons and logs.
+func toJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
