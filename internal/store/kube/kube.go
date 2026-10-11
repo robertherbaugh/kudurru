@@ -8,11 +8,13 @@
 //     apiserver through an uncached controller-runtime client. API callers
 //     need read-your-writes and keyset pagination (Continue tokens), and an
 //     informer cache offers neither.
-//   - Watch and MaterializedSnapshot are served from a controller-runtime
-//     informer cache (one informer per kudurru.io kind, managedFields
-//     stripped). This is the high-volume path: zonecache and the reconcilers
-//     consume it, and it keeps working from memory while the apiserver is
-//     away (§4.4).
+//   - Watch is served from a controller-runtime informer cache (one
+//     informer per kudurru.io kind, managedFields stripped). This is the
+//     high-volume path: zonecache and the reconcilers consume it, and it
+//     keeps working from memory while the apiserver is away (§4.4).
+//
+// Info().LastContact reports the last successful apiserver round trip so
+// consumers can tell a quiet cluster from an outage.
 //
 // Apply is server-side apply with FieldOwner(opts.Manager) and
 // ForceOwnership only when opts.Force; the single writer is mirrored into the
@@ -23,7 +25,7 @@
 // term, never the caller.
 //
 // The local.db snapshot used for cold start without the apiserver (D7,
-// D33) lives in internal/store/localdb; internal/zonecache writes it.
+// D33) lives in internal/store/localdb; internal/zonecache writes it (D79).
 package kube
 
 import (
@@ -154,13 +156,14 @@ func podNamespace() string {
 
 // Store implements store.Store over the Kubernetes apiserver.
 type Store struct {
-	opts   Options
-	kinds  *registry
-	mapper meta.RESTMapper
-	c      client.Client // uncached: reads and writes go to the apiserver
-	cache  cache.Cache   // informers for Watch and MaterializedSnapshot
-	leases coordinationv1client.LeasesGetter
-	log    *slog.Logger
+	opts    Options
+	kinds   *registry
+	mapper  meta.RESTMapper
+	c       client.Client // uncached: reads and writes go to the apiserver
+	cache   cache.Cache   // informers for Watch
+	leases  coordinationv1client.LeasesGetter
+	log     *slog.Logger
+	contact *contact // last successful apiserver round trip
 
 	cancel         context.CancelFunc // stops the cache and background work
 	cacheDone      chan struct{}      // closed when cache.Start returns
@@ -195,6 +198,8 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		// apiserver's priority and fairness is the real limiter.
 		cfg.QPS, cfg.Burst = DefaultQPS, DefaultBurst
 	}
+	ct := &contact{now: time.Now}
+	cfg.Wrap(ct.wrap)
 	kinds, err := newRegistry(opts.Scheme)
 	if err != nil {
 		return nil, err
@@ -234,6 +239,7 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 		cache:          ca,
 		leases:         leases,
 		log:            opts.Logger.With("component", "store/kube"),
+		contact:        ct,
 		cancel:         cancel,
 		cacheDone:      make(chan struct{}),
 		informersReady: make(chan struct{}),
@@ -311,9 +317,12 @@ func (s *Store) WaitForSync(ctx context.Context) bool {
 	return s.cache.WaitForCacheSync(ctx)
 }
 
-// Info implements store.Store.
+// Info implements store.Store. LastContact is the time of the last
+// successful apiserver round trip (any request of the driver, including
+// informer watch traffic and Lease renewals; see contact.go), zero before
+// the first one.
 func (s *Store) Info() store.Info {
-	info := store.Info{Driver: DriverName, SchemaVersion: store.SchemaVersion}
+	info := store.Info{Driver: DriverName, SchemaVersion: store.SchemaVersion, LastContact: s.contact.Last()}
 	if id := s.clusterID.Load(); id != nil {
 		info.ClusterID = *id
 	}

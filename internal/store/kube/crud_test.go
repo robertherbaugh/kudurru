@@ -495,7 +495,7 @@ func TestClosedStoreReturnsErrClosed(t *testing.T) {
 	}
 	_, checks["List"] = s.List(ctx, "DNSZone", store.ListOptions{})
 	_, checks["Apply"] = s.Apply(ctx, zone("x", "x."), store.ApplyOptions{Manager: store.ManagerAPI})
-	_, checks["MaterializedSnapshot"] = s.MaterializedSnapshot(ctx)
+	_, checks["Watch"] = s.Watch(ctx, "DNSZone", store.WatchOptions{})
 	for op, err := range checks {
 		if !errors.Is(err, store.ErrClosed) {
 			t.Errorf("%s after Close: want ErrClosed, got %v", op, err)

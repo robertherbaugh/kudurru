@@ -208,17 +208,35 @@ func TestMeasureStore(t *testing.T) {
 	rcancel()
 	runtime.KeepAlive(raw)
 
-	// local.db: materialise, write, load.
+	// local.db: list every kind (zonecache writes the set it holds; here
+	// the paged apiserver list stands in for it), write, load.
 	dbPath := filepath.Join(t.TempDir(), localdb.FileName)
 	db, err := localdb.OpenSnapshotStore(ctx, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
+	listAll := func() (*localdb.Snapshot, error) {
+		snap := &localdb.Snapshot{ResourceVersions: map[store.Kind]string{}}
+		for _, k := range reader.kinds.kinds {
+			cont := ""
+			for {
+				page, err := reader.List(ctx, k, store.ListOptions{Limit: snapshotPageSize, Continue: cont})
+				if err != nil {
+					return nil, err
+				}
+				snap.Objects = append(snap.Objects, page.Items...)
+				if cont = page.Continue; cont == "" {
+					break
+				}
+			}
+		}
+		return snap, nil
+	}
 	var mat, wr, ld []time.Duration
 	for range 5 {
 		t0 := time.Now()
-		snap, err := reader.MaterializedSnapshot(ctx)
+		snap, err := listAll()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,7 +262,7 @@ func TestMeasureStore(t *testing.T) {
 			sizes[suffix] = st.Size()
 		}
 	}
-	t.Logf("MaterializedSnapshot (%d objects): %s", measureObjects+1, durations(mat))
+	t.Logf("paged List of every kind (%d objects): %s", measureObjects+1, durations(mat))
 	t.Logf("local.db Write: %s; Load: %s; main file %d KiB, WAL %d KiB (after 5 rewrites)", durations(wr), durations(ld), sizes[""]/1024, sizes["-wal"]/1024)
 
 	var buf bytes.Buffer

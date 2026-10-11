@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -186,6 +187,12 @@ type Info struct {
 	ClusterID     string
 	Epoch         uint64
 	Leader        string
+	// LastContact is when the driver last completed a round trip with the
+	// service behind it (the apiserver for kube). Zero means never, or a
+	// local driver that is always in contact (sqlite, memory). zonecache
+	// uses it so an outage does not keep the local.db snapshot looking
+	// current.
+	LastContact time.Time
 }
 
 // Store is the single persistence interface.

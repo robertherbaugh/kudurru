@@ -39,6 +39,11 @@ func (c *Cache) startupFallback(ctx context.Context) {
 		c.log.Error("store not synced within the startup timeout and local.db could not be read", "err", err)
 		return
 	}
+	if err := c.checkSnapshotCluster(snap); err != nil {
+		c.setNoSnapshot("local.db snapshot rejected: " + err.Error())
+		c.log.Error("store not synced within the startup timeout and the local.db snapshot is from another cluster; not ready until it syncs", "err", err)
+		return
+	}
 	if !c.serveSnapshot(snap) {
 		return
 	}

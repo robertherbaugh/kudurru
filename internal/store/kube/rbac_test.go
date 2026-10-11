@@ -119,8 +119,20 @@ func TestLeastPrivilegeRole(t *testing.T) {
 	if !s.WaitForSync(ctx) {
 		t.Fatal("informers did not sync")
 	}
-	if _, err := s.MaterializedSnapshot(ctx); err != nil {
-		t.Fatalf("MaterializedSnapshot: %v", err)
+	// A Watch (consistency list plus the informer) reaches its Bookmark
+	// under the restricted ServiceAccount.
+	bw, err := s.Watch(ctx, "DNSRecordSet", store.WatchOptions{})
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	for ev := range bw.ResultChan() {
+		if ev.Type == store.Bookmark {
+			break
+		}
+	}
+	bw.Stop()
+	if s.Info().LastContact.IsZero() {
+		t.Fatal("Info().LastContact not set after apiserver round trips")
 	}
 	var buf bytes.Buffer
 	if err := s.Snapshot(ctx, &buf, store.SnapshotOptions{}); err != nil {
