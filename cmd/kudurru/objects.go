@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -379,7 +380,7 @@ func newDescribeCmd(o *cliOpts) *cobra.Command {
 				return err
 			}
 			var diags []diagnosis
-			if msgs, err := diagnoses(cmd, c); err == nil {
+			if msgs, err := diagnoses(cmd.Context(), c); err == nil {
 				for _, d := range msgs {
 					dk, dns, dn := d.ref()
 					if dn == args[1] && (dk == "" || strings.EqualFold(dk, k.Kind) || strings.EqualFold(dk, k.Resource)) && (dns == "" || dns == ns) {
@@ -393,9 +394,9 @@ func newDescribeCmd(o *cliOpts) *cobra.Command {
 }
 
 // diagnoses fetches GET /info/messages (list envelope or bare array).
-func diagnoses(cmd *cobra.Command, c *apiclient.Client) ([]diagnosis, error) {
+func diagnoses(ctx context.Context, c *apiclient.Client) ([]diagnosis, error) {
 	var raw json.RawMessage
-	if err := c.Get(cmd.Context(), "/info/messages", nil, &raw); err != nil {
+	if err := c.Get(ctx, "/info/messages", nil, &raw); err != nil {
 		return nil, err
 	}
 	items, err := rawItems(raw)
