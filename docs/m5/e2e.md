@@ -99,8 +99,6 @@ Gaps recorded as follow-ups rather than bugs:
   first two-node run failed.
 - **keepalived validation.** It accepts `0.0.0.0` as the unicast source.
 - **edge.Build.** It accepts listen hosts and backend hosts that are not
-  addresses; they are quoted, and dnsdist refuses them at check time.
-- **edge.Build.** It accepts listen hosts and backend hosts that are not
   addresses. They render quoted, and `dnsdist --check-config` refuses
   them.
 - **Fuzz budget.** `FuzzImportBIND` spends its budget on `$GENERATE`
