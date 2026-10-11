@@ -29,11 +29,28 @@ import type {
   ZoneSummary,
 } from '../api/types';
 import { createDB, CLIENTS, makeQueryRow, setPath, type MockDB } from './fixtures';
+import {
+  approveEntry,
+  batchEntries,
+  collectEntries,
+  createEntries,
+  deleteEntry,
+  filterEntries,
+  listInfos,
+  patchEntry,
+  releaseEntry,
+  sourceItems,
+  sourceKindOf,
+  switchEntries,
+  unattachedOf,
+  WriteError,
+} from './domains';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
+import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
 let db: MockDB = createDB();
 
@@ -274,8 +291,10 @@ function compileList(l: BlockList): void {
     const name = sourceName(i, src);
     const { enabled: _e, error, ...old }: SourceStatus = prev.sources?.find((s) => s.name === name) ?? { name };
     const on = src.enabled !== false;
-    const entries = src.inline ? src.inline.length : (old.entries ?? 0);
-    return { ...old, name, entries, ...(on ? (error ? { error } : {}) : { enabled: false }) };
+    const excluded = src.entries ? src.entries.filter((x) => x.enabled === false).length : src.inline ? (src.exclude ?? []).filter((x) => src.inline?.includes(x)).length : (old.excluded ?? 0);
+    const entries = src.entries ? src.entries.length - excluded : src.inline ? src.inline.length - excluded : (old.entries ?? 0);
+    const { excluded: _x, ...rest } = old;
+    return { ...rest, name, entries, ...(excluded ? { excluded } : {}), ...(on ? (error ? { error } : {}) : { enabled: false }) };
   });
   const live = sources.filter((s) => s.enabled !== false);
   const entries = live.reduce((n, s) => n + (s.entries ?? 0), 0);
@@ -582,58 +601,39 @@ function serverLabel(entry: string): string {
   return i > 0 && !/[:/[\]]/.test(entry.slice(0, i)) ? entry.slice(0, i) : entry;
 }
 
-function appendInline(listName: string, mode: 'allow' | 'block', namespace: string, domains: string[], regex: boolean) {
-  let list = db.lists.find((l) => l.metadata.name === listName && (l.metadata.namespace ?? 'default') === namespace);
-  if (!list) {
-    db.rv += 1;
-    list = {
-      apiVersion: 'kudurru.io/v1alpha1',
-      kind: 'BlockList',
-      metadata: { name: listName, namespace, resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } },
-      spec: { mode, sources: [{ name: 'inline', inline: [], format: regex ? 'regex' : 'domains' }] },
-      status: { entries: 0 },
-    };
-    db.lists.push(list);
-  }
-  const src = list.spec.sources[0];
-  if (!src) throw new Error('list without a source');
-  src.inline = src.inline ?? [];
+/**
+ * The compatibility routes (POST /domains/{allow|deny}/{exact|regex}, the
+ * query-log row action) write structured entries for everyone like the
+ * Allowlist routes; an exact "*.x" becomes a wildcard entry.
+ */
+function compatAdd(action: DomainAction, kind: 'exact' | 'regex', namespace: string, domains: string[], origin: 'api' | 'querylog') {
   const success: { item: string }[] = [];
   const errors: { item: string; error: string }[] = [];
   for (const d of domains) {
-    const v = d.trim().toLowerCase();
+    const v = d.trim();
     if (!v) continue;
-    if (regex) {
-      try {
-        new RegExp(v.replace(/^\/|\/$/g, ''));
-        success.push({ item: v });
-        src.inline.push(v.startsWith('/') ? v : `/${v}/`);
-      } catch {
-        errors.push({ item: d, error: 'not a valid regular expression' });
-      }
-    } else if (!/^(\*\.)?([a-z0-9_]([a-z0-9_-]*[a-z0-9_])?\.)+[a-z0-9-]{2,}$/.test(v)) {
-      errors.push({ item: d, error: 'not a domain name' });
-    } else if (src.inline.includes(v)) {
-      errors.push({ item: d, error: `already on ${namespace}/${listName}` });
-    } else {
-      success.push({ item: v });
-      src.inline.push(v);
-    }
+    const type = kind === 'regex' ? 'regex' : v.startsWith('*.') || v.startsWith('||') ? 'wildcard' : 'exact';
+    const r = createEntries(db, action, { values: [v], type, namespace, origin }, actorOf());
+    success.push(...r.processed.success);
+    errors.push(...r.processed.errors);
   }
-  list.status = { ...(list.status ?? {}), entries: src.inline.length, ruleCount: src.inline.length };
   return { processed: { success, errors } };
 }
 
+/** The signed-in user as an entry's createdBy. */
+function actorOf(): string {
+  return db.session ? `User:${db.session.user.username}` : 'system';
+}
 
-/** The inline source named source of BlockList ns/name, or the error answer. */
-function inlineSource(ns: string, name: string, source: string): { list: BlockList; src: BlockList['spec']['sources'][number]; name: string } | Response {
+/** Source `source` (its status name or index) of BlockList ns/name, or the error answer. */
+function anySource(ns: string, name: string, source: string): { list: BlockList; src: BlockList['spec']['sources'][number]; source: string; name: string } | Response {
   const list = db.lists.find((l) => l.metadata.name === name && (l.metadata.namespace ?? 'default') === ns);
   if (!list) return fail(404, 'not_found', `BlockList ${ns}/${name} not found`);
-  const i = list.spec.sources.findIndex((s, j) => sourceName(j, s) === source);
+  let i = list.spec.sources.findIndex((s, j) => sourceName(j, s) === source);
+  if (i < 0 && /^\d+$/.test(source)) i = Number(source);
   const src = list.spec.sources[i];
   if (!src) return fail(404, 'not_found', `BlockList ${ns}/${name} has no source ${source}`);
-  if (src.url || src.configMapRef) return fail(400, 'invalid', `source ${source} is not inline; only inline entries can be listed and edited`);
-  return { list, src, name: `${ns}/${name}` };
+  return { list, src, source: sourceName(i, src), name: `${ns}/${name}` };
 }
 
 type ObjParams = { kind?: string | readonly string[]; a?: string | readonly string[]; b?: string | readonly string[] };
@@ -796,7 +796,8 @@ export const handlers = [
   }),
   http.post(`${B}/:kindBatch`, async ({ request, params }) => {
     const raw = String(params.kindBatch);
-    if (!raw.endsWith(':batchDelete')) return fail(404, 'not_found', `no route POST /${raw}`);
+    // Other one-segment POST routes (/allowlist, /denylist:batch, …) are matched further down.
+    if (!raw.endsWith(':batchDelete')) return undefined;
     const kind = raw.slice(0, -':batchDelete'.length);
     if (!isKind(kind)) return fail(404, 'not_found', `unknown kind ${kind}`);
     const g = guard(request, RESOURCE_OF[kind], 'delete');
@@ -961,33 +962,64 @@ export const handlers = [
     }
     return ok({ items });
   }),
-  // Inline entries of one source (ux-plan C2): a page with ?q=&limit=&continue=, and {add, remove}.
+  // The entries of one source, any kind (allowlist contract B): a page with
+  // ?q=&enabled=&limit=&continue=; PATCH {add, remove} for inline sources and
+  // {enable, disable} for every kind (exclude[], or entries[].enabled).
   http.get(`${B}/blocklists/:ns/:name/sources/:source/entries`, ({ request, params }) => {
     const g = guard(request, 'blocklists', 'read');
     if (g) return g;
-    const t = inlineSource(String(params.ns), String(params.name), String(params.source));
+    const t = anySource(String(params.ns), String(params.name), String(params.source));
     if (t instanceof Response) return t;
+    const all = sourceItems(t.list, t.src, t.source);
+    if (!all) {
+      return fail(503, 'unavailable', `the fetched body of source "${t.source}" is not on this node yet`, 'the list is fetched at startup and every refresh interval; try again shortly or press Refresh now');
+    }
     const url = new URL(request.url);
     const q = (url.searchParams.get('q') ?? '').toLowerCase();
+    const enabled = url.searchParams.get('enabled');
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? '100') || 100, 1), 1000);
     const start = Number(url.searchParams.get('continue') ?? '0') || 0;
-    const all = (t.src.inline ?? []).map((value, i) => ({ value, line: i + 1 })).filter((e) => !q || e.value.toLowerCase().includes(q));
-    const next = start + limit < all.length ? String(start + limit) : undefined;
-    return ok({ items: all.slice(start, start + limit), ...(next ? { continue: next } : {}) });
+    const matching = all.filter((e) => (!q || e.value.toLowerCase().includes(q)) && (!enabled || String(e.enabled) === enabled));
+    const next = start + limit < matching.length ? String(start + limit) : undefined;
+    const kind = sourceKindOf(t.src);
+    const known = new Set(all.map((e) => e.value));
+    const st = t.list.status?.sources?.find((x) => x.name === t.source);
+    return ok(
+      {
+        items: matching.slice(start, start + limit),
+        ...(next ? { continue: next } : {}),
+        total: all.length,
+        matched: matching.length,
+        excluded: all.filter((e) => !e.enabled).length,
+        staleExcludes: kind === 'entries' ? [] : (t.src.exclude ?? []).filter((x) => !known.has(x)).slice(0, 50),
+        kind,
+        ...(kind === 'url' || kind === 'configMap' ? { ...(st?.digest ? { digest: st.digest } : {}), ...(st?.lastFetched ? { fetched: st.lastFetched } : {}) } : {}),
+        stale: false,
+      },
+      { headers: { ETag: t.list.metadata.resourceVersion ?? '' } },
+    );
   }),
   http.patch(`${B}/blocklists/:ns/:name/sources/:source/entries`, async ({ request, params }) => {
     const g = guard(request, 'blocklists', 'write');
     if (g) return g;
-    const t = inlineSource(String(params.ns), String(params.name), String(params.source));
+    const t = anySource(String(params.ns), String(params.name), String(params.source));
     if (t instanceof Response) return t;
     const owner = t.list.metadata.annotations?.[MANAGED] ?? '';
     if (owner && owner !== 'api' && owner !== 'bootstrap') return fail(409, 'managed_by', `BlockList ${t.list.metadata.name} is managed by ${owner}`, owner);
     const ifMatch = request.headers.get('If-Match');
     if (ifMatch && ifMatch !== t.list.metadata.resourceVersion) return fail(412, 'precondition_failed', `resourceVersion ${ifMatch} is stale`);
-    const body = (await request.json()) as { add?: string[]; remove?: string[] };
+    const body = (await request.json()) as ListEntriesPatch;
+    const kind = sourceKindOf(t.src);
+    if ((body.add?.length || body.remove?.length) && kind !== 'inline') {
+      return fail(422, 'unprocessable', `source ${t.source} is a ${kind} source: only inline sources take add and remove; switch entries off with disable`);
+    }
+    const items = sourceItems(t.list, t.src, t.source);
+    if (!items) return fail(503, 'unavailable', `the fetched body of source "${t.source}" is not on this node yet`);
     const inline = [...(t.src.inline ?? [])];
     const success: { item: string }[] = [];
     const errors: { item: string; error: string }[] = [];
+    const added: string[] = [];
+    const removed: string[] = [];
     for (const raw of body.add ?? []) {
       const e = raw.trim();
       const err = e ? entryError(t.src.format, e) : 'empty entry';
@@ -995,6 +1027,7 @@ export const handlers = [
       else if (inline.includes(e)) errors.push({ item: e, error: `already on ${t.name}` });
       else {
         inline.push(e);
+        added.push(e);
         success.push({ item: e });
       }
     }
@@ -1003,19 +1036,50 @@ export const handlers = [
       if (i < 0) errors.push({ item: e, error: `not on ${t.name}` });
       else {
         inline.splice(i, 1);
+        removed.push(e);
         success.push({ item: e });
       }
     }
-    if (success.length) {
-      t.src.inline = inline;
+    if (kind === 'inline' && (added.length || removed.length)) t.src.inline = inline;
+    const current = kind === 'inline' ? inline.map((value, i) => ({ value, line: i + 1, enabled: true })) : items;
+    const sw = switchEntries(t.src, current, body.enable ?? [], body.disable ?? []);
+    const changed = success.length + sw.enabled.length + sw.disabled.length;
+    if (changed) {
       db.rv += 1;
       t.list.metadata.resourceVersion = String(db.rv);
       t.list.metadata.generation = (t.list.metadata.generation ?? 0) + 1;
       t.list.metadata.annotations = { ...(t.list.metadata.annotations ?? {}), [MANAGED]: 'api' };
       compileList(t.list);
+      if (kind === 'url' || kind === 'configMap') {
+        const inBody = new Set(items.map((e) => e.value));
+        const off = (t.src.exclude ?? []).filter((x) => inBody.has(x)).length;
+        const stale = (t.src.exclude ?? []).filter((x) => !inBody.has(x));
+        t.list.status = {
+          ...(t.list.status ?? {}),
+          sources: (t.list.status?.sources ?? []).map((x) => {
+            if (x.name !== t.source) return x;
+            const { staleExcludes: _s, excluded: _e, ...rest } = x;
+            return { ...rest, entries: items.length - off, ...(off ? { excluded: off } : {}), ...(stale.length ? { staleExcludes: stale } : {}) };
+          }),
+        };
+        const live = (t.list.status.sources ?? []).filter((x) => x.enabled !== false);
+        t.list.status.entries = live.reduce((n, x) => n + (x.entries ?? 0), 0);
+        t.list.status.ruleCount = t.list.status.entries;
+      }
       audit('blocklist.update', { kind: 'BlockList', namespace: String(params.ns), name: t.list.metadata.name });
     }
-    return ok({ processed: { success, errors } });
+    const after = sourceItems(t.list, t.src, t.source) ?? [];
+    return ok({
+      added,
+      removed,
+      enabled: sw.enabled,
+      disabled: sw.disabled,
+      total: after.length,
+      excluded: after.filter((e) => !e.enabled).length,
+      resourceVersion: t.list.metadata.resourceVersion ?? '',
+      // Per-item results of add and remove (rejected entries keep the batch going).
+      processed: { success, errors },
+    });
   }),
   http.post(`${B}/domains/:action/:kind`, async ({ request, params }) => {
     const g = guard(request, 'blocklists', 'write');
@@ -1024,9 +1088,9 @@ export const handlers = [
     const kind = String(params.kind);
     if (!['allow', 'deny'].includes(action) || !['exact', 'regex'].includes(kind)) return fail(404, 'not_found', 'no such route');
     const body = (await request.json()) as { domains: string[]; namespace?: string; list?: string };
-    const listName = body.list ?? (action === 'allow' ? 'ui-allow' : 'ui-deny');
-    return ok(appendInline(listName, action === 'allow' ? 'allow' : 'block', body.namespace ?? 'default', body.domains ?? [], kind === 'regex'));
+    return ok(compatAdd(action as DomainAction, kind as 'exact' | 'regex', body.namespace ?? 'default', body.domains ?? [], 'api'));
   }),
+  ...domainEntryHandlers(),
   http.get(`${B}/clients`, ({ request }) => {
     const g = guard(request, 'clients', 'read');
     if (g) return g;
@@ -1277,7 +1341,7 @@ export const handlers = [
     if (!row) return fail(404, 'not_found', `query ${String(params.id)} is not in the log`);
     const body = (await request.json()) as { action: 'allow' | 'deny' };
     if (body.action !== 'allow' && body.action !== 'deny') return fail(400, 'invalid', 'action: allow or deny');
-    return ok(appendInline(body.action === 'allow' ? 'ui-allow' : 'ui-deny', body.action === 'allow' ? 'allow' : 'block', 'default', [row.domain], false));
+    return ok(compatAdd(body.action, 'exact', 'default', [row.domain], 'querylog'));
   }),
   http.delete(`${B}/querylog`, ({ request }) => {
     const g = guard(request, 'querylog', 'purge');
@@ -1698,6 +1762,103 @@ function policyState(p: Policy) {
 }
 
 // ---------------------------------------------------------------------------
+// Allowlist / Denylist (allowlist contract C)
+
+function writeFailed(e: unknown): Response {
+  if (e instanceof WriteError) return fail(e.status, e.key, e.message, e.hint);
+  throw e;
+}
+
+function entriesPage(request: Request, action: DomainAction | undefined) {
+  const sp = new URL(request.url).searchParams;
+  const ns = sp.get('namespace') || undefined;
+  const all = collectEntries(db, action, ns);
+  const matching = filterEntries(all, { type: sp.get('type'), enabled: sp.get('enabled'), scope: sp.get('scope'), q: sp.get('q') });
+  const limit = Math.min(Math.max(Number(sp.get('limit') ?? '100') || 100, 1), 1000);
+  const start = Number(sp.get('continue') ?? '0') || 0;
+  const next = start + limit < matching.length ? String(start + limit) : undefined;
+  return ok({
+    items: matching.slice(start, start + limit),
+    ...(next ? { continue: next } : {}),
+    total: all.length,
+    matched: matching.length,
+    lists: listInfos(db, action, ns),
+    unattached: unattachedOf(db, action, ns),
+  });
+}
+
+function domainEntryHandlers() {
+  const routes = (['allow', 'deny'] as const).flatMap((action) => {
+    const base = `${B}/${action}list`;
+    return [
+      http.get(base, ({ request }) => guard(request, 'blocklists', 'read') ?? entriesPage(request, action)),
+      http.post(base, async ({ request }) => {
+        const g = guard(request, 'blocklists', 'write');
+        if (g) return g;
+        try {
+          const body = (await request.json()) as DomainEntriesCreate;
+          const r = createEntries(db, action, body, actorOf());
+          if (r.processed.success.length) audit('blocklist.update', { kind: 'BlockList', namespace: body.namespace || 'default', name: `ui-${action}` });
+          return ok({ ...r });
+        } catch (e) {
+          return writeFailed(e);
+        }
+      }),
+      http.get(`${base}/:id`, ({ request, params }) => {
+        const g = guard(request, 'blocklists', 'read');
+        if (g) return g;
+        const e = collectEntries(db, action).find((x) => x.id === String(params.id));
+        return e ? ok({ ...e }) : fail(404, 'not_found', `no ${action} entry ${String(params.id)}`);
+      }),
+      http.patch(`${base}/:id`, async ({ request, params }) => {
+        const g = guard(request, 'blocklists', 'write');
+        if (g) return g;
+        try {
+          return ok({ ...patchEntry(db, action, String(params.id), (await request.json()) as DomainEntryPatch) });
+        } catch (e) {
+          return writeFailed(e);
+        }
+      }),
+      http.delete(`${base}/:id`, ({ request, params }) => {
+        const g = guard(request, 'blocklists', 'write');
+        if (g) return g;
+        try {
+          deleteEntry(db, action, String(params.id));
+          return new HttpResponse(null, { status: 204 });
+        } catch (e) {
+          return writeFailed(e);
+        }
+      }),
+    ];
+  });
+  return [
+    http.get(`${B}/domains`, ({ request }) => {
+      const g = guard(request, 'blocklists', 'read');
+      if (g) return g;
+      const a = new URL(request.url).searchParams.get('action');
+      return entriesPage(request, a === 'allow' || a === 'deny' ? a : undefined);
+    }),
+    // POST /allowlist:batch (a colon inside the segment, so matched by hand).
+    http.post(`${B}/:batch`, async ({ request, params }) => {
+      const m = /^(allow|deny)list:batch$/.exec(String(params.batch));
+      if (!m) return undefined;
+      const action = m[1] as DomainAction;
+      const g = guard(request, 'blocklists', 'write');
+      if (g) return g;
+      try {
+        const body = (await request.json()) as DomainBatch;
+        const r = batchEntries(db, action, body.ids ?? [], body.op);
+        audit('blocklist.update', { kind: 'BlockList', namespace: 'default', name: `ui-${action}` });
+        return ok({ ...r });
+      } catch (e) {
+        return writeFailed(e);
+      }
+    }),
+    ...routes,
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Unblock requests (internal/api/unblock.go, internal/unblock/decide.go)
 
 function findUnblock(ns: unknown, name: unknown): UnblockRequest | undefined {
@@ -1739,11 +1900,7 @@ function stamp(ms = Date.now()): string {
 function endApproval(r: UnblockRequest): void {
   if (!unblockActive(r) || !r.allow) return;
   const allow = r.allow;
-  if (allow.added) {
-    const list = db.lists.find((l) => `${l.metadata.namespace ?? 'default'}/${l.metadata.name}` === allow.list);
-    const src = list?.spec.sources.find((s) => s.inline);
-    if (src?.inline) src.inline = src.inline.filter((e) => e !== allow.entry);
-  }
+  if (allow.added) releaseEntry(db, allow.list, allow.entry);
   r.allow = { ...allow, removed: stamp() };
 }
 
@@ -1800,12 +1957,8 @@ function unblockHandlers() {
         wanted = [...new Set(['default', ...r.policies.filter((p) => p.startsWith(`${r.namespace}/`)).map((p) => p.split('/')[1] ?? '')])];
       }
       const entry = match === 'subdomains' ? `||${r.domain}^` : r.domain;
-      let added = true;
-      const src = db.lists.find((l) => l.metadata.name === list)?.spec.sources.find((s) => s.inline);
-      if (src?.inline) {
-        added = !src.inline.includes(entry);
-        if (added) src.inline = [...src.inline, entry];
-      }
+      // The backend writes a structured entry (origin unblock, the request's name).
+      const added = approveEntry(db, r.namespace, group || undefined, r.domain, match === 'subdomains', `${r.namespace}/${r.name}`, actorOf());
       const attached: string[] = [];
       const skipped: string[] = [];
       for (const name of wanted) {

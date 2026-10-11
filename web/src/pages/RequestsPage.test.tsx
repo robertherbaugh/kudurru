@@ -8,7 +8,7 @@ import { HOSTILE } from '../mocks/fixtures';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, optionLabels, optionsOf, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
-import { API, renderWithApp } from '../test/utils';
+import { API, renderWithApp, uiEntryValues } from '../test/utils';
 import { approvalBody, approvalDurationError, blockSource, scopeOptions } from '../lib/unblock';
 import RequestDetailPage, { recentFilter } from './RequestDetailPage';
 import RequestsPage from './RequestsPage';
@@ -137,7 +137,7 @@ describe('RequestsPage', () => {
     expect(bodies).toEqual([{ scope: 'everyone', match: 'exact' }]);
     expect(req('graph.facebook.com').allow).toMatchObject({ scope: 'everyone', list: 'default/ui-allow', entry: 'graph.facebook.com' });
     expect(req('graph.facebook.com').allow?.expiresAt).toBeUndefined();
-    expect(mockDB().lists.find((l) => l.metadata.name === 'ui-allow')?.spec.sources[0]?.inline).toContain('graph.facebook.com');
+    expect(uiEntryValues('ui-allow')).toContain('graph.facebook.com');
   });
 
   it('offers the group scope only when the request names a group', async () => {
