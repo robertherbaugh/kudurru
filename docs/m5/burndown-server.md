@@ -202,11 +202,19 @@ Both now send nothing:
 Both fixes address root causes and keep the exact assertions.
 
 - **`TestKubeDriver`:** the controller emits the SerialBumped Event after the status write the test polls for. The test now waits for the Event that carries the final transition.
-- **`TestMeasureRecordSetChanges/paced`:**
-  - **Cause:** the loop waited only for the zone's write. The record set's `observedGeneration` write runs on another worker. Under `-cpu 1` it could slip past the next change of the same object, so two generations shared one write.
-  - **Before:** reproduced 1,871 and 1,982 writes out of 2,000.
-  - **Fix:** the loop now also waits for the record set's write, through a `rsWrote` hook channel.
-  - **After:** 15 runs passed with `-cpu 1,2,4 -count 5`, plus 6 with `-race -cpu 1,2`.
+- **`TestMeasureRecordSetChanges/paced`** had two causes:
+  1. **Too few writes (1,871 and 1,982 out of 2,000 under `-cpu 1`).** The loop waited only for the zone's write. The record set's `observedGeneration` write runs on another worker and could slip past the next change of the same object, so two generations shared one write. The loop now also waits for the record set's write, through an `rsWrote` hook channel.
+  2. **Too many writes (2,001 to 2,004 under `-race`; the original report).** I traced this with a temporary log of writes and cache upserts:
+     1. A zone reconcile writes status A on base RV r, and the cache marks A as pending.
+     2. The next reconcile builds B on top of the pending A and writes it, still with base RV r, because the echo of A has not arrived yet.
+     3. The echo of A then clears the pending entry, and B is written a second time.
+
+     The sqlite and kube drivers reject step 2 with ErrConflict (the controller requeues). **The memory driver accepted it, because its `UpdateStatus` ignored the caller's resourceVersion.**
+
+     **Fix:** `memory.Store.UpdateStatus` now enforces optimistic concurrency like the other drivers. A new conformance case, `UpdateStatusOptimisticConcurrency` (`internal/store/conformance/status_conflict.go`), pins this for memory, sqlite and kube.
+
+     This is a small edit outside the named packages: the memory driver is the test reference driver, and the fix is parity, not new behaviour.
+- **Result after both fixes:** 23 runs passed in total: `-cpu 1,2,4 -count 5` (15) and `-race -cpu 1,2 -count 4` (8).
 
 ## 10. sqlite audit
 

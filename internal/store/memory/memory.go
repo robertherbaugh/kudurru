@@ -191,6 +191,11 @@ func (s *Store) UpdateStatus(_ context.Context, obj store.Object) error {
 	if !ok {
 		return store.ErrNotFound
 	}
+	// Optimistic concurrency like the sqlite and kube drivers: a caller
+	// that names a resourceVersion writes only on top of it.
+	if rv := obj.GetResourceVersion(); rv != "" && rv != prev.GetResourceVersion() {
+		return fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.GetResourceVersion(), rv)
+	}
 	prevMap, err := sections(prev)
 	if err != nil {
 		return err
