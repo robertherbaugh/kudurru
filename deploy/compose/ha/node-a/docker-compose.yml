@@ -24,6 +24,9 @@ services:
       KUDURRU_LISTENERS__PROXYPROTOCOLSECRETFILE: /run/secrets/proxy_secret
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      # Cluster settings edited in the UI or with `kudurru settings set` are
+      # written here (on the data volume; kudurru.yaml stays read-only).
+      KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
       # v0.2 follower mode (nodes b and c) and v1.0 raft add cluster.* keys
       # here; they do not exist in v0.1.
     volumes:

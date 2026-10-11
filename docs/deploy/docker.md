@@ -52,15 +52,17 @@ first start (`docker compose logs kudurru | grep -i password`). The file is
 read only while no user exists; to recover a lost password use
 `docker compose exec kudurru kudurru admin reset-password admin`.
 
-(The API, the UI and the `admin` subcommands land with milestone M3; until
-then the instance is configured through `kudurru.yaml` and `objects.d/`.)
-
 ### Configuration
 
 - `kudurru.yaml`: node keys (listeners, data directory, store, log) and the
-  cluster settings (upstreams, cache, blocking, query log, rate limiting).
-  `kudurru config schema` prints every key with its scope and flags; changes
-  to keys flagged `R` need `docker compose restart kudurru`.
+  initial cluster settings (upstreams, cache, blocking, query log, rate
+  limiting). `kudurru config schema` prints every key with its scope and
+  flags; changes to keys flagged `R` need `docker compose restart kudurru`.
+- `KUDURRU_SETTINGS_FILE` (`/var/lib/kudurru/settings.yaml` in the compose
+  files): cluster settings changed in the UI, with `kudurru settings set` or
+  `PATCH /api/v1/settings` are written here and layered over `kudurru.yaml`;
+  the file is watched and hot keys apply without a restart. Without the
+  variable such changes live in memory only (`persisted: false`).
 - `objects.d/*.yaml`: zones, record sets, block lists, client groups and
   policies in the CRD format (`kubectl apply` YAML; examples in
   `config/samples/`). They are file-managed (`managedBy: file:<path>`),

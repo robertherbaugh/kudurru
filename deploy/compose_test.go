@@ -145,7 +145,9 @@ func checkComposeService(t *testing.T, dir, name string, s, services, volumes, s
 		if err := checkEnvName(k); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
-		if strings.HasSuffix(k, "_FILE") && !strings.HasPrefix(str(v), "/run/secrets/") {
+		// Every *_FILE variable names a secret, except the settings file the
+		// binary writes (KUDURRU_SETTINGS_FILE, checked below).
+		if strings.HasSuffix(k, "_FILE") && k != "KUDURRU_SETTINGS_FILE" && !strings.HasPrefix(str(v), "/run/secrets/") {
 			t.Errorf("%s: %s should point at a Compose secret under /run/secrets", name, k)
 		}
 	}
@@ -161,6 +163,11 @@ func checkComposeService(t *testing.T, dir, name string, s, services, volumes, s
 			if strings.Contains(k, "__") {
 				settingsEnv = append(settingsEnv, k+"="+v)
 			}
+		}
+		// UI settings edits persist only through the settings file (D106);
+		// it must live on the data volume because the root fs is read-only.
+		if sf := env["KUDURRU_SETTINGS_FILE"]; !strings.HasPrefix(sf, "/var/lib/kudurru/") {
+			t.Errorf("kudurru: KUDURRU_SETTINGS_FILE = %q, want a path under /var/lib/kudurru", sf)
 		}
 		sort.Strings(settingsEnv)
 		body, err := os.ReadFile(configFile) //nolint:gosec // repository file

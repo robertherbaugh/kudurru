@@ -51,6 +51,9 @@ services:
     environment:
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      # Cluster settings edited in the UI or with `kudurru settings set` are
+      # written here (on the data volume; kudurru.yaml stays read-only).
+      KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
       TZ: UTC
     volumes:
       - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro
