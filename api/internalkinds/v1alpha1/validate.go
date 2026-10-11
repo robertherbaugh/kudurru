@@ -42,6 +42,8 @@ var (
 
 // FieldError is one rejected field: Field is the JSON path
 // ("spec.subjects[0].name"), Message the reason without the path.
+//
+// +kubebuilder:object:generate=false
 type FieldError struct {
 	Field   string
 	Message string

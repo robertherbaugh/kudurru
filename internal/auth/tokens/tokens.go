@@ -378,7 +378,7 @@ func clientIP(r *http.Request) string {
 // failure is the same auth.Unauthenticated error (unknown id, wrong
 // secret, malformed, expired, owner gone or disabled); the cause is only
 // logged.
-func (t *Tokens) Verify(ctx context.Context, wire, ip string) (auth.Principal, error) {
+func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, error) {
 	id, ok := Parse(wire)
 	want := dummyHash
 	tok, known := (*internalv1.APIToken)(nil), false

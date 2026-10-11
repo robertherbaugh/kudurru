@@ -270,7 +270,7 @@ type IdentityProviderInfo struct {
 func (s *Stack) handleIAMIdentityProviders(w http.ResponseWriter, r *http.Request) {
 	items := []IdentityProviderInfo{}
 	fromConfig := map[string]bool{}
-	for _, c := range s.configIdPs {
+	for _, c := range s.configIDPs {
 		fromConfig[c.Name] = true
 	}
 	if reg := s.registry.Load(); reg != nil {

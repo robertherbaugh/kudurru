@@ -20,7 +20,7 @@ func TestAuthenticateStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ck := &http.Cookie{Name: DefaultCookieName, Value: v}
+	ck := &http.Cookie{Name: DefaultCookieName, Value: v} //nolint:gosec // G124: a request cookie in a test
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/zones", nil)
 	if _, _, err := f.authn.Authenticate(httptest.NewRecorder(), req); !errors.Is(err, auth.ErrNoCredentials) {
@@ -60,7 +60,7 @@ func TestAuthenticateStep(t *testing.T) {
 
 	// A broken cookie is cleared and the request continues anonymous.
 	bad := httptest.NewRequest(http.MethodGet, "/api/v1/zones", nil)
-	bad.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: v[:len(v)-3] + "AAA"})
+	bad.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: v[:len(v)-3] + "AAA"}) //nolint:gosec // G124: a request cookie in a test
 	rec := httptest.NewRecorder()
 	if _, _, err := f.authn.Authenticate(rec, bad); !errors.Is(err, auth.ErrNoCredentials) {
 		t.Fatalf("broken cookie: %v", err)

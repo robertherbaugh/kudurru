@@ -126,7 +126,7 @@ type Stack struct {
 
 	roleBindings *objcache.Cache[*internalv1.RoleBinding]
 	idps         *objcache.Cache[*internalv1.IdentityProvider]
-	configIdPs   []*internalv1.IdentityProvider
+	configIDPs   []*internalv1.IdentityProvider
 
 	registry atomic.Pointer[oidc.Registry]
 	regMu    sync.Mutex
@@ -260,7 +260,7 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		if err != nil {
 			return nil, fmt.Errorf("auth.identityProviders[%d]: %w", i, err)
 		}
-		s.configIdPs = append(s.configIdPs, idp)
+		s.configIDPs = append(s.configIDPs, idp)
 	}
 	if err := s.rebuildRegistry(ctx); err != nil {
 		return nil, err
@@ -393,7 +393,7 @@ func (s *Stack) rebuildRegistry(ctx context.Context) error {
 		origin string
 	}
 	var all []src
-	for _, idp := range s.configIdPs {
+	for _, idp := range s.configIDPs {
 		all = append(all, src{idp, "auth.identityProviders"})
 	}
 	for _, idp := range objs {
@@ -472,7 +472,9 @@ func (v registryVerifier) provider(iss string) *oidc.Provider {
 	return reg.ByIssuer(iss)
 }
 
-func (v registryVerifier) AcceptsIssuer(_ context.Context, iss string) bool { return v.provider(iss) != nil }
+func (v registryVerifier) AcceptsIssuer(_ context.Context, iss string) bool {
+	return v.provider(iss) != nil
+}
 
 func (v registryVerifier) VerifyJWT(ctx context.Context, raw string) (auth.Principal, error) {
 	iss, _ := auth.UnverifiedIssuer(raw)

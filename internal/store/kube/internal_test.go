@@ -100,7 +100,7 @@ func TestEnvtestInternalKinds(t *testing.T) {
 	}
 
 	t.Run("create, get and the backing Secret", func(t *testing.T) {
-		u := &internalkinds.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "admin", Labels: map[string]string{"tier": "builtin"}}, Spec: internalkinds.LocalUserSpec{
+		u := &internalkinds.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "admin", Labels: map[string]string{"tier": "builtin"}}, Spec: internalkinds.LocalUserSpec{ //nolint:gosec // G101: a dummy hash
 			PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA", MustChangePassword: true, BuiltinAdmin: true,
 		}, Status: internalkinds.LocalUserStatus{LastLoginAt: &metav1.Time{Time: time.Unix(1, 0)}}}
 		got, err := s.Apply(ctx, u, store.ApplyOptions{Manager: store.ManagerSystem})

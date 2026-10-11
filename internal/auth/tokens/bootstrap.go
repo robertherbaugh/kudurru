@@ -15,8 +15,8 @@ import (
 
 // Environment variables of the bootstrap token (§8.7).
 const (
-	EnvBootstrapToken     = "KUDURRU_BOOTSTRAP_TOKEN"
-	EnvBootstrapTokenFile = "KUDURRU_BOOTSTRAP_TOKEN_FILE"
+	EnvBootstrapToken     = "KUDURRU_BOOTSTRAP_TOKEN"      //nolint:gosec // G101: a variable name, not a credential
+	EnvBootstrapTokenFile = "KUDURRU_BOOTSTRAP_TOKEN_FILE" //nolint:gosec // G101: a variable name, not a credential
 )
 
 // BootstrapAccount is the service account that owns the bootstrap token.

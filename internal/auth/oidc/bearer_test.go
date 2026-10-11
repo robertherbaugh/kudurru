@@ -8,8 +8,8 @@ import (
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
-	jose "github.com/go-jose/go-jose/v4"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
+	jose "github.com/go-jose/go-jose/v4"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"

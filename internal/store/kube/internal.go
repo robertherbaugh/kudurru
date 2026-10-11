@@ -63,7 +63,7 @@ const (
 	// InternalNameAnnotation records the object's name for humans.
 	InternalNameAnnotation = "kudurru.io/name"
 	// InternalSecretType is the Secret type of internal objects.
-	InternalSecretType corev1.SecretType = "kudurru.io/internal-object"
+	InternalSecretType corev1.SecretType = "kudurru.io/internal-object" //nolint:gosec // G101: a Secret type, not a credential
 	// InternalObjectKey is the data key holding the object JSON.
 	InternalObjectKey = "object"
 )

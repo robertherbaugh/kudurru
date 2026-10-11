@@ -308,7 +308,7 @@ func TestAuthorizeHelper(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	h := Require(eng, ClusterAttrs("zones", "read"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Require(eng, ClusterAttrs("zones", "read"), http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		if d, ok := DecisionFrom(r.Context()); !ok || d.Path != rbac.PathBinding {
 			t.Errorf("decision %+v", d)
 		}

@@ -31,7 +31,7 @@ func TestInternalKindsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	s := openTemp(t, internalOptions)
 
-	u := &internalkinds.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "admin"}, Spec: internalkinds.LocalUserSpec{
+	u := &internalkinds.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "admin"}, Spec: internalkinds.LocalUserSpec{ //nolint:gosec // G101: a dummy hash
 		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA", MustChangePassword: true, BuiltinAdmin: true,
 	}}
 	got, err := s.Apply(ctx, u, store.ApplyOptions{Manager: store.ManagerSystem})

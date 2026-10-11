@@ -231,7 +231,7 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		adminToken, _ := tr.body["token"].(string)
 
 		// Bearer kdr_ token: CSRF-exempt, wins over a cookie.
-		r = e.do(http.MethodGet, "/api/v1/zones", nil, bearer(adminToken), withCookie(&http.Cookie{Name: "kudurru_session", Value: "garbage"}))
+		r = e.do(http.MethodGet, "/api/v1/zones", nil, bearer(adminToken), withCookie(&http.Cookie{Name: "kudurru_session", Value: "garbage"})) //nolint:gosec // G124: a request cookie in a test
 		if r.code != 200 || r.body["method"] != "token" {
 			t.Fatalf("token GET: %d %s", r.code, r.raw)
 		}

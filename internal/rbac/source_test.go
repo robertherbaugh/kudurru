@@ -74,7 +74,7 @@ func TestParseBindings(t *testing.T) {
 		t.Fatalf("parsed %+v", got)
 	}
 	_, err = ParseBindings([]map[string]any{
-		{"role": "admin", "subjects": []any{map[string]any{"kind": "Group", "name": "x", "nmae": "typo"}}},
+		{"role": "admin", "subjects": []any{map[string]any{"kind": "Group", "name": "x", "namespacee": "typo"}}},
 		{"role": "admin", "subjects": []any{}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "rbac.bindings[0]") || !strings.Contains(err.Error(), "rbac.bindings[1]") {

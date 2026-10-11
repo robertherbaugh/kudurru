@@ -40,10 +40,10 @@ func TestWireFormat(t *testing.T) {
 	good, _ := Generate()
 	for _, bad := range []string{
 		"", "kdr_", good[:len(good)-1], good + "x", "kdx_" + good[4:],
-		"kdr_ABCDEFGHIJKL_" + good[17:],             // upper-case id
-		"kdr_abcdefghijk__" + good[17:],             // '_' inside the id
-		good[:16] + "-" + good[17:],                 // no separator
-		good[:20] + "!" + good[21:],                 // not base64url
+		"kdr_ABCDEFGHIJKL_" + good[17:], // upper-case id
+		"kdr_abcdefghijk__" + good[17:], // '_' inside the id
+		good[:16] + "-" + good[17:],     // no separator
+		good[:20] + "!" + good[21:],     // not base64url
 		"Bearer " + good,
 	} {
 		if _, ok := Parse(bad); ok {

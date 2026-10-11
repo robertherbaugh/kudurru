@@ -14,8 +14,8 @@ import (
 
 // Environment variables of the first-boot admin (§8.7).
 const (
-	EnvAdminPassword     = "KUDURRU_ADMIN_PASSWORD"
-	EnvAdminPasswordFile = "KUDURRU_ADMIN_PASSWORD_FILE"
+	EnvAdminPassword     = "KUDURRU_ADMIN_PASSWORD"      //nolint:gosec // G101: a variable name, not a credential
+	EnvAdminPasswordFile = "KUDURRU_ADMIN_PASSWORD_FILE" //nolint:gosec // G101: a variable name, not a credential
 )
 
 // DefaultAdminName is the first-boot admin's username.
