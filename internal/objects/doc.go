@@ -7,8 +7,8 @@
 //
 //   - every document is decoded as strict YAML, validated with
 //     validator.ValidateUnstructured (unknown fields rejected, schema
-//     defaults applied, CEL rules run) and converted to its
-//     api/v1alpha1 type;
+//     defaults applied, CEL rules run), converted to its api/v1alpha1
+//     type and validated once more as the typed write the driver sees;
 //   - it is applied with Manager "file:<source>", where source is
 //     "kudurru.yaml" for inline objects and "<base(objectsDir)>/<file>"
 //     (e.g. "objects.d/zones.yaml") for files, so the UI can say "managed
