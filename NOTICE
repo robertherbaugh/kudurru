@@ -59,6 +59,10 @@ licences. Attributions are added to this file as the dependencies land:
   Go Authors: authorization code + PKCE client; bcrypt in tests only.
   golang.org/x/sync, BSD-3-Clause, Copyright The Go Authors: singleflight
   coalescing of identical cache misses in internal/cache.
+  golang.org/x/net/publicsuffix, BSD-3-Clause, Copyright The Go Authors:
+  the registrable domain (eTLD+1) recorded for query-log names in
+  internal/querylog/sqlitelog, which also stores querylog.db on
+  modernc.org/sqlite.
 - Kubernetes (https://github.com/kubernetes/kubernetes), Apache-2.0: the
   shape of claimValidationRules and claimMappings follows the apiserver's
   structured authentication configuration.
