@@ -78,8 +78,8 @@ const applyRetries = 5
 
 // Options configures the driver. The zero value is usable in a pod.
 type Options struct {
-	// Namespace holds the driver's Leases (and, later, the Secrets of
-	// internal kinds). Default: the pod's namespace, else "default".
+	// Namespace holds the driver's Leases and the Secrets of internal
+	// kinds. Default: the pod's namespace (PodNamespace), else "default".
 	Namespace string
 	// Identity is this replica's Lease holder identity. Default: the
 	// hostname, which is the pod name in Kubernetes (§5.3). Outside a pod
@@ -151,6 +151,12 @@ func (o *Options) setDefaults() error {
 	}
 	return nil
 }
+
+// PodNamespace returns the namespace of the pod the process runs in (the
+// release namespace), or "default" outside a pod: the default of
+// Options.Namespace, and where the identity layer keeps kudurru's own
+// service accounts and reads clientSecretRef Secrets.
+func PodNamespace() string { return podNamespace() }
 
 func podNamespace() string {
 	if b, err := os.ReadFile(serviceAccountNamespaceFile); err == nil {
