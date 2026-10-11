@@ -150,7 +150,7 @@ export type DNSRecordSet = KObject<
 >;
 
 export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
-export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP';
+export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
 export interface ListSource {
   url?: string;

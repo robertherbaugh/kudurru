@@ -99,6 +99,7 @@ const RESPONSES = [
   { value: 'zeroIP', label: '0.0.0.0 / ::' },
   { value: 'refused', label: 'REFUSED' },
   { value: 'customIP', label: 'Custom IP' },
+  { value: 'blockPage', label: 'Block page' },
 ];
 
 export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSchema> = {

@@ -215,6 +215,12 @@ export function endpoints(c: ApiClient) {
       services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
       safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
     },
+
+    // Block page (C5): the preview is text/html, framed by the Settings page
+    // (its CSP allows frame-ancestors 'self').
+    blockPage: {
+      previewURL: (domain?: string) => c.url('/blockpage/preview', domain ? { domain } : undefined),
+    },
   };
 }
 
