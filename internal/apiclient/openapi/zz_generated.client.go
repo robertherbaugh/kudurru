@@ -2338,6 +2338,12 @@ type PutBlocklistsParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 
+// PreviewBlockPageParams defines parameters for PreviewBlockPage.
+type PreviewBlockPageParams struct {
+	// Domain Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.
+	Domain *string `form:"domain,omitempty" json:"domain,omitempty"`
+}
+
 // FlushCacheParams defines parameters for FlushCache.
 type FlushCacheParams struct {
 	// Name Same as the body field.
@@ -3035,6 +3041,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 	BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewBlockPage Render the block page (text/html) with the current blockPage settings
+	//
+	// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+	//
+	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+	PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// FlushCacheWithBody Flush the response cache (or one name)
 	//
@@ -4008,6 +4021,23 @@ func (c *Client) BatchDeleteBlocklistsWithBody(ctx context.Context, contentType 
 // Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 func (c *Client) BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBatchDeleteBlocklistsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewBlockPage Render the block page (text/html) with the current blockPage settings
+//
+// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+//
+// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+func (c *Client) PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewBlockPageRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6560,6 +6590,60 @@ func NewBatchDeleteBlocklistsRequestWithBody(server string, contentType string, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewBlockPageRequest constructs an http.Request for the PreviewBlockPage method
+func NewPreviewBlockPageRequest(server string, params *PreviewBlockPageParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blockpage/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Domain != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "domain", *params.Domain, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -10687,6 +10771,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 	BatchDeleteBlocklistsWithResponse(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteBlocklistsResponse, error)
 
+	// PreviewBlockPageWithResponse Render the block page (text/html) with the current blockPage settings
+	//
+	// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+	PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error)
+
 	// FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -13256,6 +13349,106 @@ func (r BatchDeleteBlocklistsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r BatchDeleteBlocklistsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PreviewBlockPageResponse200Headers the declared response headers of an HTTP 200 response for PreviewBlockPage
+type PreviewBlockPageResponse200Headers struct {
+	CacheControl          *string
+	ContentSecurityPolicy *string
+	ContentType           *string
+	XFrameOptions         *string
+}
+
+type PreviewBlockPageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *string
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PreviewBlockPageResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON200() *string {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewBlockPageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewBlockPageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewBlockPageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewBlockPageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19917,6 +20110,21 @@ func (c *ClientWithResponses) BatchDeleteBlocklistsWithResponse(ctx context.Cont
 	return ParseBatchDeleteBlocklistsResponse(rsp)
 }
 
+// PreviewBlockPageWithResponse Render the block page (text/html) with the current blockPage settings
+//
+// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+func (c *ClientWithResponses) PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error) {
+	rsp, err := c.PreviewBlockPage(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewBlockPageResponse(rsp)
+}
+
 // FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -22732,6 +22940,115 @@ func ParseBatchDeleteBlocklistsResponse(rsp *http.Response) (*BatchDeleteBlockli
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParsePreviewBlockPageResponse parses an HTTP response from a PreviewBlockPageWithResponse call
+func ParsePreviewBlockPageResponse(rsp *http.Response) (*PreviewBlockPageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewBlockPageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest string
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PreviewBlockPageResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		if values := rsp.Header.Values("Content-Security-Policy"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Security-Policy", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentSecurityPolicy = &value
+		}
+		if values := rsp.Header.Values("Content-Type"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Type", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentType = &value
+		}
+		if values := rsp.Header.Values("X-Frame-Options"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Frame-Options", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XFrameOptions = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

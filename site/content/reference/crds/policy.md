@@ -31,7 +31,7 @@ PolicySpec binds client groups to lists and resolver behaviour.
 | `spec.allowListRefs` | `[]string` |  |
 | `spec.allowOnly` | `boolean` | AllowOnly answers only names present in the allow lists. |
 | `spec.blockListRefs` | `[]string` |  |
-| `spec.blockMode` | `string` | BlockResponse is how a blocked query is answered.<br>One of: `nxdomain`, `zeroIP`, `refused`, `customIP` |
+| `spec.blockMode` | `string` | BlockResponse is how a blocked query is answered: nxdomain, zeroIP (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage (the addresses of the block page listener, blockPage.ipv4/ipv6, so browsers show why the name is blocked).<br>One of: `nxdomain`, `zeroIP`, `refused`, `customIP`, `blockPage` |
 | `spec.blockTTL` | `string` | Default: `10m` |
 | `spec.blockedServices` | `[]string` | BlockedServices names services of the blocked-services catalogue (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains this policy blocks like a block list; the query log names the service as the list, "service:&lt;id&gt;". IDs are checked against the catalogue in service, which can change at runtime, so an unknown ID is reported as Degraded{UnknownService} rather than refused.<br>Items: at most 256<br>List type: `set` |
 | `spec.clientGroupRefs` | `[]string` |  |

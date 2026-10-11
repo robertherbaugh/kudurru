@@ -191,6 +191,9 @@ type Options struct {
 	Roles func(ctx context.Context, p auth.Principal) []string
 	// Catalogue backs /catalogue; a nil Holder serves the embedded one.
 	Catalogue CatalogueSource
+	// BlockPage renders GET /blockpage/preview (internal/blockpage); nil
+	// answers 503.
+	BlockPage BlockPagePreviewer
 	// UI is the single-page app bundle (web.FS); nil serves a built-in
 	// placeholder page. UIHandler, when set, replaces the built-in SPA
 	// handler (web.Handler with the same path prefix); it receives paths

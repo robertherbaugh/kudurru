@@ -31,6 +31,7 @@ type Config struct {
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
+	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
 	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
 	RateLimit RateLimit   `koanf:"ratelimit" json:"ratelimit"`
 	Log       Log         `koanf:"log" json:"log"`
@@ -90,6 +91,8 @@ type Listeners struct {
 	Sockets int `koanf:"sockets" json:"sockets"`
 	// Internal is the node-to-node listener (§3.1, D47).
 	Internal InternalListener `koanf:"internal" json:"internal"`
+	// BlockPage is the block page listener (blockPage.enabled).
+	BlockPage BlockPageListener `koanf:"blockPage" json:"blockPage"`
 }
 
 // InternalListener is the node-to-node listener (:8082). It is always
@@ -462,6 +465,7 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Cache.validate()...)
 	errs = append(errs, c.Blocking.validate()...)
+	errs = append(errs, c.validateBlockPage()...)
 	errs = append(errs, c.Querylog.validate()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
