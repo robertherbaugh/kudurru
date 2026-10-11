@@ -9,13 +9,13 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { UpstreamItem, UpstreamServer } from '../api/types';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { EnumSelect } from '../components/fields/EnumSelect';
 import { NumberField, numberError } from '../components/fields/NumberField';
 import { cleanList, StringListField } from '../components/fields/StringListField';
+import { TextField } from '../components/fields/TextField';
 import { healthSummary, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { formatExact } from '../lib/format';
 import { Link, useNavigate } from '../lib/router';
@@ -140,14 +140,14 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
       {rules.length === 0 ? <p className="k-muted">No rules; everything not matched by a policy or zone uses the default group.</p> : null}
       {rules.map((r, i) => (
         <div key={i} className="k-row-end">
-          <TextInput
+          <TextField
             label="Domain suffix"
             isLabelHidden={i > 0}
             value={r.suffix}
             onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, suffix: v } : x)))}
             placeholder="corp.example"
             isDisabled={!canWrite}
-            status={errors[i] ? { type: 'error', message: errors[i] } : undefined}
+            error={errors[i]}
           />
           <EnumSelect
             label="Group"
@@ -260,8 +260,8 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
       <EnumSelect label="Mode" value={mode} options={ECS_OPTIONS} isDisabled={!canWrite} onChange={setMode} />
       {mode !== 'strip' ? (
         <div className="k-row-end">
-          <NumberField label="IPv4 prefix" value={v4} onChange={setV4} min={0} max={32} isDisabled={!canWrite} description="Longest prefix sent" />
-          <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} description="Longest prefix sent" />
+          <NumberField label="IPv4 prefix" value={v4} onChange={setV4} min={0} max={32} isDisabled={!canWrite} help="Longest prefix sent" />
+          <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} help="Longest prefix sent" />
         </div>
       ) : null}
       {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}

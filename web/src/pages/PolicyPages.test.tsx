@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
+import { findSelector, getSelector, pick, typeNumber } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import PoliciesPage from './PoliciesPage';
@@ -75,17 +76,17 @@ describe('PolicyDetailPage', () => {
     renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'social-media' }} />, { route: '/policies/default/social-media' });
     await clickWhenEnabled('Edit Who');
     const who = screen.getByTestId('section-who');
-    fireEvent.click(await within(who).findByRole('checkbox', { name: /^kids·/ }));
-    fireEvent.change(within(who).getByRole('spinbutton', { name: /Priority/ }), { target: { value: '7' } });
+    fireEvent.click(await within(who).findByRole('checkbox', { name: 'kids' }));
+    typeNumber(within(who).getByRole('spinbutton', { name: /Priority/ }), '7');
     fireEvent.click(within(who).getByRole('button', { name: 'Save Who' }));
     await waitFor(() => expect(policy('social-media')?.spec.clientGroupRefs).toEqual(['default', 'kids']));
     expect(policy('social-media')?.spec).toMatchObject({ priority: 7, blockedServices: ['tiktok', 'facebook', 'instagram', '9gag'], safeSearch: true });
 
     await clickWhenEnabled('Edit How');
     const how = screen.getByTestId('section-how');
-    fireEvent.change(within(how).getByRole('combobox', { name: 'Block response' }), { target: { value: 'blockPage' } });
+    pick(getSelector('Block response', how), 'Block page');
     expect(within(how).getByText('Answer with the block page address (Settings → Block page)')).toBeInTheDocument();
-    fireEvent.change(within(how).getByRole('combobox', { name: 'Block TTL' }), { target: { value: '5m' } });
+    pick(getSelector('Block TTL', how), '5 minutes');
     fireEvent.click(within(how).getByRole('button', { name: 'Save How' }));
     await waitFor(() => expect(policy('social-media')?.spec).toMatchObject({ blockMode: 'blockPage', blockTTL: '5m' }));
   });
@@ -170,7 +171,7 @@ describe('PolicyWizardPage', () => {
     const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     // Who: the name and at least one group are required.
-    await screen.findByRole('checkbox', { name: /^kids·/ });
+    await screen.findByRole('checkbox', { name: 'kids' });
     next();
     expect(await screen.findByText(/^Name: Required/)).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'default' } });
@@ -179,30 +180,36 @@ describe('PolicyWizardPage', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'kids-games' } });
     next();
     expect(await screen.findByText(/Pick at least one client group/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'kids' }));
     expect(screen.getByTestId('priority-hint')).toHaveTextContent('streaming-off (30), kids-bedtime (20)');
     await goTo('What');
 
     // What: lists and services.
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^starter·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'starter' }));
     fireEvent.click(await screen.findByRole('button', { name: /Roblox/ }));
     fireEvent.click(screen.getByRole('button', { name: /Fortnite/ }));
     await goTo('Safe search');
 
     // Safe search.
     fireEvent.click(await screen.findByRole('switch', { name: /Enforce safe search/ }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Level' }), { target: { value: 'moderate' } });
+    pick(getSelector('Level'), 'Moderate (YouTube)');
     await goTo('How');
 
     // How.
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Block response' }), { target: { value: 'nxdomain' } });
+    pick(await findSelector('Block response'), 'NXDOMAIN');
     await goTo('When');
 
     // When: a window.
     fireEvent.click(await screen.findByRole('radio', { name: 'Only during a time window' }));
-    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '15:00' } });
-    fireEvent.change(screen.getByLabelText('End'), { target: { value: '18:30' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Time zone' }), { target: { value: 'Europe/Berlin' } });
+    const setTime = (label: RegExp, v: string) => {
+      const el = screen.getByLabelText(label);
+      fireEvent.focus(el);
+      fireEvent.change(el, { target: { value: v } });
+      fireEvent.blur(el);
+    };
+    setTime(/^Start/, '15:00');
+    setTime(/^End/, '18:30');
+    pick(getSelector('Time zone'), 'Europe/Berlin');
     await goTo('Review');
 
     // Review, with a way back to a step.
@@ -235,7 +242,7 @@ describe('PolicyWizardPage', () => {
     server.use(http.put(`${API}/objects/policies/:ns/:name`, () => HttpResponse.json({ error: { key: 'invalid', message: 'spec.blockedServices: too many' } }, { status: 400 })));
     renderWithApp(<PolicyWizardPage />, { route: '/policies/new' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'x' } });
-    fireEvent.click(await screen.findByRole('checkbox', { name: /^kids·/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'kids' }));
     for (const step of ['What', 'Safe search', 'How', 'When', 'Review']) await goTo(step);
     fireEvent.click(screen.getByRole('button', { name: 'Create policy' }));
     expect(await screen.findByText('spec.blockedServices: too many')).toBeInTheDocument();

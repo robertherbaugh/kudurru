@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ZoneRecord } from '../api/types';
+import { getSelector, pick } from '../test/controls';
 import { renderWithApp } from '../test/utils';
 import { draftFrom, hasErrors, RecordEditor, validateRecord } from './RecordEditor';
 
@@ -28,7 +29,7 @@ describe('RecordEditor', () => {
   it('rejects an owner outside the zone and a bad TTL', async () => {
     const onSubmit = setup();
     fireEvent.change(field(/^Name/), { target: { value: 'www.other.com.' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'TTL' }), { target: { value: '__custom__' } });
+    pick(getSelector('TTL'), 'Custom…');
     fireEvent.change(field('TTL (custom)'), { target: { value: '-5' } });
     fireEvent.change(field(/IPv4 address/), { target: { value: '192.0.2.1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
@@ -39,9 +40,9 @@ describe('RecordEditor', () => {
 
   it('composes a typed MX record with two targets into an Endpoint', async () => {
     const onSubmit = setup();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Type' }), { target: { value: 'MX' } });
+    pick(getSelector('Type'), 'MX (mail exchanger)');
     fireEvent.change(field(/^Name/), { target: { value: '@' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'TTL' }), { target: { value: '3600' } });
+    pick(getSelector('TTL'), /\(3600\)$/);
     fireEvent.change(field(/Preference/), { target: { value: '10' } });
     fireEvent.change(field(/Mail server/), { target: { value: 'mx1.example.internal' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add target' }));
@@ -69,7 +70,7 @@ describe('RecordEditor', () => {
     expect(field(/^Name/)).toHaveValue('_sip._udp');
     expect(field(/Port/)).toHaveValue('5060');
     expect(field(/Target host/)).toHaveValue('sip.example.internal.');
-    expect(screen.getByRole('combobox', { name: 'Type' })).toBeDisabled();
+    expect(getSelector('Type')).toBeDisabled();
   });
 
   it('shows the server error verbatim', async () => {

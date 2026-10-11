@@ -7,7 +7,6 @@
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
@@ -16,6 +15,7 @@ import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, withMeta } f
 import type { KindSchema } from '../lib/objectSchemas';
 import { Link, useSearchParams } from '../lib/router';
 import { ErrorBanner, Loading, useNotify } from './Feedback';
+import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
 import { ManagedBadge } from './ManagedBadge';
 import { ObjectForm } from './ObjectForm';
@@ -138,7 +138,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
       </div>
       {children}
       <div className="k-row">
-        <TextInput className="k-search" label={`Search ${schema.plural}`} isLabelHidden placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
+        <TextField className="k-search" label={`Search ${schema.plural}`} isLabelHidden startIcon="search" placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
         <span className="k-spacer" />
         {selected.size > 0 ? (
           <Button label={`Delete ${selected.size} selected`} variant="destructive" isDisabled={!canDelete} onClick={() => setConfirm(true)} />

@@ -3,16 +3,17 @@
 // become the zone's) and writes its records into API-managed record sets.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { FileInput } from '@astryxdesign/core/FileInput';
+import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useId, useState, type ChangeEvent } from 'react';
+import { useState } from 'react';
 import { qk, useApi } from '../api/context';
 import type { ZoneImportResult } from '../api/types';
 import { nameError } from '../lib/objectSchemas';
 import { useNavigate } from '../lib/router';
 import { hostError } from '../lib/rr';
 import { errorText, useNotify } from './Feedback';
+import { TextAreaField, TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
 
 /** One sentence for an import result. */
@@ -38,7 +39,7 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
-  const fileId = useId();
+  const [file, setFile] = useState<File | null>(null);
   const [apex, setApex] = useState('');
   const [text, setText] = useState('');
   const [err, setErr] = useState<string>();
@@ -53,6 +54,7 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
     },
   });
   const close = () => {
+    setFile(null);
     setApex('');
     setText('');
     setErr(undefined);
@@ -60,8 +62,9 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
     m.reset();
     onClose();
   };
-  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
+  const onFile = (files: File | File[] | null) => {
+    const f = Array.isArray(files) ? (files[0] ?? null) : files;
+    setFile(f);
     if (!f) return;
     void f.text().then((t) => {
       setText(t);
@@ -103,24 +106,13 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
         </>
       }
     >
-      <label className="k-label" htmlFor={fileId}>
-        Zone file
-        <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
-      </label>
-      <TextInput
-        label="Zone apex"
-        placeholder="home.arpa"
-        description="Taken from $ORIGIN when the file has one"
-        value={apex}
-        onChange={setApex}
-        isRequired
-        status={err ? { type: 'error', message: err } : undefined}
-      />
-      <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN home.arpa.\n@ 3600 IN SOA ns1 hostmaster 1 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10'} />
-      <p className="k-muted k-small">
+      <FileInput label="Zone file" value={file} onChange={onFile} accept=".zone,.db,.txt,text/plain,text/dns" />
+      <TextField label="Zone apex" placeholder="home.arpa" help="Taken from $ORIGIN when the file has one" value={apex} onChange={setApex} isRequired error={err} />
+      <TextAreaField label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN home.arpa.\n@ 3600 IN SOA ns1 hostmaster 1 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10'} />
+      <Text type="supporting" display="block">
         The import is all or nothing: a line that does not parse rejects the file. Importing into an existing zone replaces its earlier import; use Import BIND
         on the zone page for that.
-      </p>
+      </Text>
       {m.error ? <Banner status="error" title="Import failed" description={errorText(m.error)} /> : null}
       {result ? (
         <Banner status={result.warnings.length ? 'warning' : 'success'} title={importSummary(result)} description={result.warnings.length ? result.warnings.join('; ') : undefined} />

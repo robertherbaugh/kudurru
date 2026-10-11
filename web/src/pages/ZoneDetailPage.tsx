@@ -3,13 +3,14 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { FileInput } from '@astryxdesign/core/FileInput';
+import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
+import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { RecordEditor } from '../components/RecordEditor';
@@ -24,7 +25,7 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
   const api = useApi();
   const qc = useQueryClient();
   const notify = useNotify();
-  const fileId = useId();
+  const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [result, setResult] = useState<ZoneImportResult | null>(null);
   const m = useMutation({
@@ -37,8 +38,9 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
     },
     onError: (err) => notify.error(err, 'Import failed'),
   });
-  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
+  const onFile = (files: File | File[] | null) => {
+    const f = Array.isArray(files) ? (files[0] ?? null) : files;
+    setFile(f);
     if (f) void f.text().then(setText);
   };
   return (
@@ -57,12 +59,11 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
         </>
       }
     >
-      <label className="k-label" htmlFor={fileId}>
-        Zone file
-        <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
-      </label>
-      <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN example.internal.\nwww 300 IN A 192.0.2.10'} />
-      <p className="k-muted k-small">Records land in one record set managed by the API; SOA and apex NS are taken from the zone object.</p>
+      <FileInput label="Zone file" value={file} onChange={onFile} accept=".zone,.db,.txt,text/plain,text/dns" />
+      <TextAreaField label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN example.internal.\nwww 300 IN A 192.0.2.10'} />
+      <Text type="supporting" display="block">
+        Records land in one record set managed by the API; SOA and apex NS are taken from the zone object.
+      </Text>
       {result ? (
         <Banner status={result.warnings.length ? 'warning' : 'success'} title={importSummary(result)} description={result.warnings.length ? result.warnings.join('; ') : undefined} />
       ) : null}
@@ -219,7 +220,7 @@ function ZoneDetail({ zone }: { zone: string }) {
         </section>
       ) : null}
 
-      <TextInput label="Filter records" isLabelHidden placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear />
+      <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear />
       {recs.error ? <ErrorBanner error={recs.error} /> : null}
       {recs.isLoading ? <Loading /> : null}
       {recs.data ? (
