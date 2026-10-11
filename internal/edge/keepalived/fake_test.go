@@ -125,6 +125,11 @@ func fakeKeepalived(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	// Install the handlers before announcing the start: a test that reacts
+	// to "start pid=" may signal right away, and an unhandled SIGHUP kills
+	// the process (real keepalived installs its handlers before it runs).
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGHUP)
 	fakeLog(dir, "start pid=%d instances=%s", os.Getpid(), strings.Join(fc.instances, ","))
 	for i, inst := range fc.instances {
 		_, _ = fmt.Fprintf(fifo, "INSTANCE %q BACKUP %s\n", inst, fc.priorities[i])
@@ -132,8 +137,6 @@ func fakeKeepalived(args []string) int {
 	time.Sleep(50 * time.Millisecond)
 	_, _ = fmt.Fprintf(fifo, "INSTANCE %q MASTER %s\n", fc.instances[0], fc.priorities[0])
 	_, _ = fmt.Fprintf(fifo, "garbage line\n")
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGHUP)
 	for s := range sig {
 		if s == syscall.SIGHUP {
 			if _, err := parseFakeConf(path); err != nil {

@@ -37,10 +37,9 @@ func (f *vrrpProbeFlags) run(cmd *cobra.Command, timeout time.Duration) error {
 	return err
 }
 
-// newVIPProbeCmd is `kudurru vip probe`, the command keepalived.conf
-// renders by default. It is the §3.6 `kudurru health --vrrp` under the vip
-// command: the health command lives in health.go (CLI package), which can
-// alias it with installVRRPHealth.
+// newVIPProbeCmd is `kudurru vip probe`, the same probe as the §3.6
+// `kudurru health --vrrp` (which keepalived.conf renders by default) under
+// the vip command. It stays for configurations rendered before v0.1.0.
 func newVIPProbeCmd() *cobra.Command {
 	var (
 		f       vrrpProbeFlags
@@ -62,8 +61,8 @@ func newVIPProbeCmd() *cobra.Command {
 // `kudurru health` command (health.go) and dispatches to the probe when
 // --vrrp is set, otherwise to the command's own RunE. The health
 // command's --timeout, when present, bounds the probe (capped at 900 ms
-// unless set explicitly, below keepalived's 1 s script timeout). Wiring:
-// call installVRRPHealth(cmd) at the end of newHealthCmd.
+// unless set explicitly, below keepalived's 1 s script timeout).
+// newHealthCmd calls it.
 func installVRRPHealth(cmd *cobra.Command) {
 	var (
 		f    vrrpProbeFlags
