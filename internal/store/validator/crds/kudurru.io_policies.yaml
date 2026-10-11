@@ -64,12 +64,17 @@ spec:
                   type: string
                 type: array
               blockMode:
-                description: BlockResponse is how a blocked query is answered.
+                description: |-
+                  BlockResponse is how a blocked query is answered: nxdomain, zeroIP
+                  (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage
+                  (the addresses of the block page listener, blockPage.ipv4/ipv6, so
+                  browsers show why the name is blocked).
                 enum:
                 - nxdomain
                 - zeroIP
                 - refused
                 - customIP
+                - blockPage
                 type: string
               blockTTL:
                 default: 10m

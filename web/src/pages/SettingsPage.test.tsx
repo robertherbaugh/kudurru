@@ -248,17 +248,30 @@ describe('SettingsPage', () => {
   it('shows the block page section with the HTTPS caveat and a sandboxed preview', async () => {
     renderWithApp(<SettingsPage />, { route: '/settings' });
     const section = await screen.findByRole('region', { name: 'Block page' });
-    expect(within(section).getByText(/certificate warning/)).toBeInTheDocument();
+    expect(within(within(section).getByTestId('blockpage-intro')).getByText(/certificate warning/)).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: 'Block page deployment notes' })).toHaveAttribute('href', expect.stringContaining('docs/deploy/blocking-page.md'));
     expect(within(section).getByText('blockPage.enabled')).toBeInTheDocument();
     expect(row('listeners.blockPage.http')).toHaveAttribute('data-locked', 'true');
     fireEvent.click(within(section).getByRole('button', { name: 'Preview' }));
     const dialog = await screen.findByRole('dialog');
     const frame = await within(dialog).findByTitle('Block page for ads.example.com');
     expect(frame).toHaveAttribute('sandbox', '');
-    expect(frame.getAttribute('srcdoc')).toContain('ads.example.com');
-    expect(within(dialog).getByRole('link', { name: 'Open in a new tab' }).getAttribute('href')).toContain('/blockpage/preview?domain=ads.example.com');
+    expect(frame.getAttribute('src')).toContain('/blockpage/preview?domain=ads.example.com');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Blocked domain/ }), { target: { value: 'tracker.example.net' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Show' }));
+    expect(await within(dialog).findByTitle('Block page for tracker.example.net')).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Open in a new tab' }).getAttribute('href')).toContain('/blockpage/preview?domain=tracker.example.net');
     // The server metadata offers the blockPage response.
     expect(within(row('blocking.defaultResponse')).getByRole('option', { name: 'Block page' })).toBeInTheDocument();
+  });
+
+  it('shows the server refusing the block page response without the block page inline', async () => {
+    renderWithApp(<SettingsPage />, { route: '/settings' });
+    const r = await waitFor(() => row('blocking.defaultResponse'));
+    fireEvent.change(within(r).getByRole('combobox', { name: 'Default block response' }), { target: { value: 'blockPage' } });
+    fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
+    expect(await within(r).findByRole('alert')).toHaveTextContent('blocking.defaultResponse blockPage needs blockPage.enabled: true');
+    expect((mockDB().settings.blocking as Record<string, unknown>).defaultResponse).toBe('zeroIP');
   });
 
   it('shows only the basic keys and appearance in Basic view', async () => {

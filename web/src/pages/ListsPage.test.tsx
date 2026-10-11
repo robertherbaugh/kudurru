@@ -32,13 +32,22 @@ describe('ListsPage', () => {
     expect(inlineOnly([{ inline: ['a.example'] }, { url: 'https://x/y' }])).toBe(false);
   });
 
-  it('opens a file-managed list read-only with its owner', async () => {
+  it('counts enabled sources and links each row to the list page', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
-    const row = await screen.findByTestId('row-regex-trackers');
-    fireEvent.click(within(row).getByRole('button', { name: 'View' }));
-    expect(await screen.findByText('Read-only: managed by file:objects.d/lists.yaml')).toBeInTheDocument();
-    expect(screen.getByText('Managed by objects.d/lists.yaml; edit the file on the host.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    const family = await screen.findByTestId('row-family');
+    expect(within(family).getByText('3 of 4 enabled')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-stevenblack')).getByText('1 source')).toBeInTheDocument();
+    expect(within(family).getByRole('link', { name: 'family' })).toHaveAttribute('href', '/lists/default/family');
+    // File-managed lists open the same page (read-only there).
+    expect(within(screen.getByTestId('row-regex-trackers')).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/lists/default/regex-trackers');
+  });
+
+  it('opens the wizard for a new list', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const link = await screen.findByRole('link', { name: 'New list' });
+    expect(link).toHaveAttribute('href', '/lists/new');
+    fireEvent.click(link);
+    expect(window.location.pathname).toBe('/lists/new');
   });
 
   it('batch-deletes the selected lists after confirmation', async () => {
@@ -53,31 +62,30 @@ describe('ListsPage', () => {
     expect(await screen.findByText('Deleted 2 lists')).toBeInTheDocument();
   });
 
-  it('creates a list from the generated form, with validation first', async () => {
-    renderWithApp(<ListsPage />, { route: '/lists' });
-    await clickWhenEnabled('New list');
-    const objectName = (await screen.findAllByRole('textbox', { name: /^Name/ }))[0]!;
-    fireEvent.change(objectName, { target: { value: 'Bad Name' } });
-    fireEvent.change(screen.getByRole('textbox', { name: /^URL/ }), { target: { value: 'ftp://x' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create list' }));
-    expect((await screen.findAllByText('An http(s) URL')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/must start and end with a letter/).length).toBeGreaterThan(0);
-    fireEvent.change(objectName, { target: { value: 'hagezi' } });
-    fireEvent.change(screen.getByRole('textbox', { name: /^URL/ }), { target: { value: 'https://example.com/hagezi.txt' } });
-    fireEvent.change(screen.getByRole('textbox', { name: /^Comment/ }), { target: { value: 'multi pro' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create list' }));
-    await waitFor(() => expect(mockDB().lists.find((l) => l.metadata.name === 'hagezi')).toBeDefined());
-    const created = mockDB().lists.find((l) => l.metadata.name === 'hagezi');
-    expect(created?.spec.sources).toEqual([{ name: 'main', url: 'https://example.com/hagezi.txt', format: 'auto' }]);
-    expect(created?.metadata.annotations?.['kudurru.io/comment']).toBe('multi pro');
-  });
-
-  it('adds domains to ui-deny and reports per-item results', async () => {
+  it('adds domains to ui-deny with a typed choice and reports per-item results', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
     await clickWhenEnabled('Add domains');
-    fireEvent.change(await screen.findByRole('textbox', { name: /^Domains/ }), { target: { value: 'ads.example.com\ntracking.example-shop.com' } });
+    const domains = await screen.findByRole('textbox', { name: /^Domains/ });
+    fireEvent.change(domains, { target: { value: 'not_a..domain' } });
+    expect(await screen.findByText(/is not a domain name/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add 1' })).toBeDisabled();
+    fireEvent.change(domains, { target: { value: 'ads.example.com\ntracking.example-shop.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add 2' }));
     expect(await screen.findByText('1 added, 1 rejected.')).toBeInTheDocument();
+    expect(mockDB().lists.find((l) => l.metadata.name === 'ui-deny')?.spec.sources[0]?.inline).toContain('ads.example.com');
+  });
+
+  it('adds an allow regex through the Type select', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    await clickWhenEnabled('Add domains');
+    fireEvent.change(await screen.findByRole('combobox', { name: /^Type/ }), { target: { value: 'allow:regex' } });
+    const box = screen.getByRole('textbox', { name: /^Expressions/ });
+    fireEvent.change(box, { target: { value: '(' } });
+    expect(await screen.findByText(/Not a valid expression/)).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: '^cdn[0-9]+\\.example\\.com$' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1' }));
+    expect(await screen.findByText('1 added, 0 rejected.')).toBeInTheDocument();
+    expect(mockDB().lists.find((l) => l.metadata.name === 'ui-allow')?.spec.sources[0]?.inline).toContain('/^cdn[0-9]+\\.example\\.com$/');
   });
 });
 

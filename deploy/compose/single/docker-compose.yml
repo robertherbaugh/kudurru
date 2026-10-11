@@ -12,6 +12,10 @@ services:
       - "53:53/udp"
       - "53:53/tcp"
       - "8080:8080"           # API and UI
+      # Block page (blockPage in kudurru.yaml; docs/deploy/blocking-page.md):
+      # browsers sent to a blocked name land here. Host port 80 must be free.
+      # - "80:8090"
+      # - "443:8493"          # optional HTTPS: browsers always warn
       # - "127.0.0.1:9153:9153"  # Prometheus metrics
     environment:
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password

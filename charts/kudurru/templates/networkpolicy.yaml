@@ -85,6 +85,16 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- if .Values.blockPage.enabled }}
+    # Block page: every client a blocked name was sent to.
+    - ports:
+        - port: {{ .Values.blockPage.httpPort }}
+          protocol: TCP
+        {{- if .Values.blockPage.https.enabled }}
+        - port: {{ .Values.blockPage.https.port }}
+          protocol: TCP
+        {{- end }}
+    {{- end }}
     # Probes (kubelet) on the unauthenticated ops listener.
     - ports:
         - port: 8081

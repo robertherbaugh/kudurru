@@ -16,6 +16,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  ShieldBan,
   Siren,
   Users,
   Wrench,
@@ -50,6 +51,9 @@ const Dashboard = lazy(() => import('./pages/DashboardPage'));
 const QueryLog = lazy(() => import('./pages/QueryLogPage'));
 const LongTerm = lazy(() => import('./pages/LongTermPage'));
 const Lists = lazy(() => import('./pages/ListsPage'));
+const ListDetail = lazy(() => import('./pages/ListDetailPage'));
+const ListWizard = lazy(() => import('./pages/ListWizardPage'));
+const Domains = lazy(() => import('./pages/DomainsPage'));
 const Groups = lazy(() => import('./pages/GroupsPage'));
 const Clients = lazy(() => import('./pages/ClientsPage'));
 const Policies = lazy(() => import('./pages/PoliciesPage'));
@@ -70,6 +74,9 @@ export const ROUTES: RouteDef[] = [
   { path: '/queries', navKey: 'queries', label: 'Query log', section: 'Overview', icon: Activity, page: QueryLog, scoped: true },
   { path: '/history', navKey: 'history', label: 'Long-term', section: 'Overview', icon: History, page: LongTerm, scoped: true },
   { path: '/lists', navKey: 'lists', label: 'Lists', section: 'Filtering', icon: ListChecks, page: Lists },
+  { path: '/lists/new', navKey: 'lists', label: 'New list', section: 'Filtering', icon: ListChecks, page: ListWizard, hidden: true },
+  { path: '/lists/:ns/:name', navKey: 'lists', label: 'List', section: 'Filtering', icon: ListChecks, page: ListDetail, hidden: true },
+  { path: '/domains', navKey: 'domains', label: 'Domains', section: 'Filtering', icon: ShieldBan, page: Domains },
   { path: '/groups', navKey: 'groups', label: 'Groups', section: 'Filtering', icon: Users, page: Groups },
   { path: '/clients', navKey: 'clients', label: 'Clients', section: 'Filtering', icon: Monitor, page: Clients, scoped: true },
   { path: '/policies', navKey: 'policies', label: 'Policies', section: 'Filtering', icon: Scale, page: Policies },

@@ -108,6 +108,7 @@ func (s *Server) registerRoutes() {
 	s.registerRuntime()
 	s.registerStats()
 	s.registerSettings()
+	s.registerBlockPage()
 	s.registerNodes()
 	s.registerDoctor()
 	s.registerAudit()

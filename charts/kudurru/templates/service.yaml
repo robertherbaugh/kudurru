@@ -116,6 +116,55 @@ spec:
       targetPort: webhook
       protocol: TCP
     {{- end }}
+{{- with .Values.blockPage }}
+{{- if .enabled }}
+---
+# Block page (docs/deploy/blocking-page.md): blocked names resolve to its
+# address (blockPage.ipv4/ipv6). It selects the kudurru pods, which serve
+# the page, also when an edge answers DNS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" $ }}-blockpage
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" $ | nindent 4 }}
+    kudurru.io/service: blockpage
+  {{- with .service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .service.type }}
+  {{- if eq .service.type "LoadBalancer" }}
+  {{- if .ipv4 }}
+  loadBalancerIP: {{ .ipv4 }}
+  {{- end }}
+  {{- with .service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- end }}
+  {{- if or (eq .service.type "LoadBalancer") (eq .service.type "NodePort") }}
+  externalTrafficPolicy: {{ .service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if and .ipv4 .ipv6 }}
+  ipFamilyPolicy: PreferDualStack
+  {{- end }}
+  selector:
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .service.httpPort }}
+      targetPort: blockpage-http
+      protocol: TCP
+    {{- if .https.enabled }}
+    - name: https
+      port: {{ .service.httpsPort }}
+      targetPort: blockpage-tls
+      protocol: TCP
+    {{- end }}
+{{- end }}
+{{- end }}
 ---
 # Headless: edge backends (EndpointSlice), <pod>.<headless> for list pulls
 # from the leader over :8082, NOTIFY source. Not-ready pods are published so

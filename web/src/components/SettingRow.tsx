@@ -35,8 +35,8 @@ export interface SettingRowProps {
 export function failedParts(k: SettingKey, err: unknown): string[] {
   const api = err instanceof ApiError ? err : err instanceof Error && err.cause instanceof ApiError ? err.cause : undefined;
   return (api?.fields ?? [])
-    .filter((f) => f.startsWith(`${k.path}.`))
-    .map((f) => f.slice(k.path.length + 1).split('.').join(' › '));
+    .filter((f) => f !== k.path)
+    .map((f) => (f.startsWith(`${k.path}.`) ? f.slice(k.path.length + 1).split('.').join(' › ') : f));
 }
 
 /** A value in words for the "Default:" line: enum labels, durations, lists. */
@@ -88,7 +88,8 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
       await onSave(k, v);
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      // The key is on screen already; "settings: " says nothing here.
+      setError((e as Error).message.replace(/^settings: /, ''));
       setParts(failedParts(k, e));
       return false;
     } finally {

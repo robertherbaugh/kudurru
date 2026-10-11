@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
@@ -34,6 +36,10 @@ type reloadTargets struct {
 	cache     *cache.Cache
 	cacheStg  *cachestage.Stage
 	blocking  *blockingstage.Stage
+	blockPage *blockpage.Server
+	// edgeFlush empties the local edge's resolver cache when the block
+	// answers change; nil skips it.
+	edgeFlush *dnsdist.CacheFlusher
 	limiter   *ingress.RateLimiter
 	qlAsync   *querylog.Async
 	qlWriter  *sqlitelog.Writer
@@ -85,8 +91,14 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 			}
 			t.cacheStg.SetDisabled(off)
 		}
-		if config.ChangedUnder(changed, "blocking") && t.blocking != nil {
-			t.blocking.Reconfigure(blockingstage.OptionsFrom(next.Blocking))
+		if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
+			t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))
+			if t.edgeFlush != nil && config.ChangedUnder(changed, "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP", "blockPage.ipv4", "blockPage.ipv6") {
+				t.edgeFlush.BlockResponsesChanged()
+			}
+		}
+		if config.ChangedUnder(changed, "blockPage", "listeners.api") && t.blockPage != nil {
+			t.blockPage.Reconfigure(blockpage.SettingsFrom(next))
 		}
 		if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {
 			rlc, err := ingress.RateLimitFromConfig(next.RateLimit)
