@@ -261,6 +261,11 @@
           "key": {
             "type": "string"
           },
+          "last_seen": {
+            "description": "The newest query from the client on this node (hour precision once its query rows aged out).",
+            "format": "date-time",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           }
@@ -2776,6 +2781,11 @@
             "type": "string"
           },
           "key": {
+            "type": "string"
+          },
+          "last_seen": {
+            "description": "Clients only: the newest query from the client on this node (hour precision once its query rows aged out).",
+            "format": "date-time",
             "type": "string"
           },
           "name": {

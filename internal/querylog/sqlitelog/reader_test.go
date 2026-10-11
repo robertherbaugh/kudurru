@@ -209,6 +209,13 @@ func TestReaderTopLists(t *testing.T) {
 	if cl.Items[2].Name != "phone" {
 		t.Errorf("client name not resolved: %+v", cl.Items[2])
 	}
+	// last_seen from the newest fact row: 10.0.0.1 queried last at 12:00:10.
+	if ls := cl.Items[0].LastSeen; cl.Items[0].Key != "10.0.0.1" || ls == nil || !ls.Equal(time.Date(2026, 10, 11, 12, 0, 10, 0, time.UTC)) {
+		t.Errorf("client last_seen: %+v", cl.Items[0])
+	}
+	if dom, _ := r.TopDomains(ctx, TopQuery{Window: allTime}); dom.Items[0].LastSeen != nil {
+		t.Errorf("domain items carry last_seen: %+v", dom.Items[0])
+	}
 
 	// The same answers once hour 11 is derived and the minute flushed.
 	fc.SetTime(t0.Add(2 * time.Minute))
