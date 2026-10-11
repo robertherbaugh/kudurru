@@ -161,17 +161,27 @@ func TestKubeDriver(t *testing.T) {
 		t.Fatalf("Duplicated events %d", n)
 	}
 	var stamps []string
-	for _, ev := range e.events.Events() {
-		if ev.Reason == EventSerialBumped && ev.Key.Name == zn {
-			stamps = append(stamps, ev.Message)
+	collect := func() {
+		stamps = stamps[:0]
+		for _, ev := range e.events.Events() {
+			if ev.Reason == EventSerialBumped && ev.Key.Name == zn {
+				stamps = append(stamps, ev.Message)
+			}
 		}
 	}
 	// One event per stamped serial (the zone was stamped as its record
 	// sets arrived), the last one for the change above. The exact count
 	// depends on wall-clock seconds elapsed (serials are max(prev+1, now)),
-	// so only require distinct stamps and the final transition.
-	if len(stamps) == 0 || !strings.Contains(stamps[len(stamps)-1], fmt.Sprintf("%d -> %d:", serial, serial+1)) {
-		t.Fatalf("SerialBumped events %q", stamps)
+	// so only require distinct stamps and the final transition. The Event
+	// is emitted after the status write the poll above observed, so under
+	// load it can trail it: wait for it.
+	last := fmt.Sprintf("%d -> %d:", serial, serial+1)
+	deadline := time.Now().Add(10 * time.Second)
+	for collect(); len(stamps) == 0 || !strings.Contains(stamps[len(stamps)-1], last); collect() {
+		if time.Now().After(deadline) {
+			t.Fatalf("SerialBumped events %q", stamps)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	seen := map[string]bool{}
 	for _, st := range stamps {
