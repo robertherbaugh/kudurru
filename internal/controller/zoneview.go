@@ -123,9 +123,12 @@ type zoneBuild struct {
 	// RecordCount is the number of RRs the zone serves besides the SOA
 	// (zone.Zone.RecordCount, apex NS included).
 	RecordCount int
-	// ZoneErr is set when the DNSZone itself does not build (a bad ACL,
-	// notify target or nameserver): no replica serves it.
+	// ZoneErr is set when the DNSZone itself does not build (a bad zone
+	// name, query ACL or nameserver): no replica serves it.
 	ZoneErr error
+	// PolicyErr reports transfer/notify policy errors: the zone is served
+	// with transfers denied and bad notify targets dropped.
+	PolicyErr error
 	// Conflicts holds, per record set, the endpoints the zone model
 	// refused that the controller's own rules do not report.
 	Conflicts map[store.Key][]conflict
@@ -143,6 +146,9 @@ func buildZone(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet) *zoneBui
 		b.Hash, b.RecordCount = z.ContentHash(), z.RecordCount()
 	} else {
 		b.ZoneErr = errs.Zone.ToAggregate()
+	}
+	if len(errs.Policy) > 0 {
+		b.PolicyErr = errs.Policy.ToAggregate()
 	}
 	byKey := make(map[string]*v1alpha1.DNSRecordSet, len(rrsets))
 	for _, rs := range rrsets {

@@ -224,6 +224,8 @@ type Builder struct {
 	// dnames counts the DNAME RRsets added so far; zero skips the
 	// occlusion checks.
 	dnames int
+	// policyErrs are the non-fatal spec.policy errors (PolicyErrors).
+	policyErrs field.ErrorList
 }
 
 // identity is the duplicate-detection key of an endpoint within a zone:
@@ -242,6 +244,11 @@ type identity struct {
 // spec.policy.queryACL[2], ...); when there are any the zone cannot be
 // built and the Builder is nil. Zone types other than primary and forward
 // are rejected until their release (secondary, stub and external in v0.2).
+//
+// Errors in the transfer and notify parts of spec.policy do not stop the
+// zone from being served; they fail closed instead (transfers denied, a
+// bad notify mode is none, bad notify targets are dropped) and are
+// reported by Builder.PolicyErrors and Errors.Policy.
 func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorList) {
 	spec := dz.Spec
 	specPath := field.NewPath("spec")
@@ -262,11 +269,16 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	access, aerrs := compileAccess(spec.Policy, policyPath)
 	errs = append(errs, aerrs...)
 	transfer, terrs := compileTransfer(spec.Policy, policyPath)
-	errs = append(errs, terrs...)
 	keys, kerrs := compileKeyRefs(spec.Policy.TransferTSIGKeyRefs, policyPath.Child("transferTSIGKeyRefs"))
-	errs = append(errs, kerrs...)
 	notify, targets, nerrs := compileNotify(spec.Policy, policyPath)
-	errs = append(errs, nerrs...)
+	var policyErrs field.ErrorList
+	if len(terrs) > 0 || len(kerrs) > 0 {
+		// Fail closed: a transfer policy that does not compile allows
+		// nothing.
+		transfer = accessPolicy{mode: v1alpha1.AccessDeny}
+		policyErrs = append(append(policyErrs, terrs...), kerrs...)
+	}
+	policyErrs = append(policyErrs, nerrs...)
 
 	var nsNames []string
 	for i, ns := range spec.Nameservers {
@@ -315,8 +327,13 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		z.apex = z.tree.upsert(key, z.name)
 	}
 	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
-		owners: map[identity]string{}, nameSource: map[string]string{}}, nil
+		owners: map[identity]string{}, nameSource: map[string]string{}, policyErrs: policyErrs}, nil
 }
+
+// PolicyErrors returns the errors in the transfer and notify parts of
+// spec.policy. The zone is still built and served; the parts in error are
+// disabled (see NewBuilder).
+func (b *Builder) PolicyErrors() field.ErrorList { return b.policyErrs }
 
 // hostName validates a host name used in the zone spec (nameservers, SOA
 // mname/rname). Names are absolute with or without a trailing dot.
@@ -662,10 +679,15 @@ func addrOf(rr dns.RR) (netip.Addr, bool) {
 type Errors struct {
 	Zone       field.ErrorList
 	RecordSets map[string]field.ErrorList
+	// Policy holds errors in the transfer and notify parts of spec.policy.
+	// They do not stop the zone from being served (Builder.PolicyErrors).
+	Policy field.ErrorList
 }
 
 // Empty reports whether there are no errors at all.
-func (e Errors) Empty() bool { return len(e.Zone) == 0 && len(e.RecordSets) == 0 }
+func (e Errors) Empty() bool {
+	return len(e.Zone) == 0 && len(e.RecordSets) == 0 && len(e.Policy) == 0
+}
 
 // Build is the one-shot form of NewBuilder, AddRecordSet and Build. It
 // returns a nil Zone only when the DNSZone itself is invalid; endpoint
@@ -678,6 +700,7 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 		out.Zone = errs
 		return nil, out
 	}
+	out.Policy = b.PolicyErrors()
 	for _, rs := range sets {
 		src := rs.Namespace + "/" + rs.Name
 		if errs := b.AddRecordSet(src, rs.Spec.Endpoints); len(errs) > 0 {

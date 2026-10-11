@@ -47,7 +47,7 @@ func compileKeyRefs(refs []string, path *field.Path) ([]string, field.ErrorList)
 var notifyModes = []v1alpha1.NotifyMode{v1alpha1.NotifyNone, v1alpha1.NotifyZoneNameServers, v1alpha1.NotifySpecified, v1alpha1.NotifyBoth}
 
 // compileNotify validates spec.policy.notify and notifyTargets. An empty
-// mode is none.
+// or invalid mode is none; invalid targets are dropped.
 func compileNotify(p v1alpha1.ZonePolicy, path *field.Path) (v1alpha1.NotifyMode, []netip.AddrPort, field.ErrorList) {
 	mode := p.Notify
 	if mode == "" {
@@ -58,6 +58,7 @@ func compileNotify(p v1alpha1.ZonePolicy, path *field.Path) (v1alpha1.NotifyMode
 	case v1alpha1.NotifyNone, v1alpha1.NotifyZoneNameServers, v1alpha1.NotifySpecified, v1alpha1.NotifyBoth:
 	default:
 		errs = append(errs, field.NotSupported(path.Child("notify"), p.Notify, notifyModes))
+		mode = v1alpha1.NotifyNone
 	}
 	var targets []netip.AddrPort
 	for i, t := range p.NotifyTargets {

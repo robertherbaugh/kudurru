@@ -75,22 +75,34 @@ func TestZoneModelConflicts(t *testing.T) {
 	}
 }
 
-// TestZoneSpecInvalid: a DNSZone the zone model cannot build (here a bad
-// notify target) is reported, since no replica serves it.
+// TestZoneSpecInvalid: a DNSZone the zone model cannot build (a bad query
+// ACL) is not Ready, since no replica serves it; a bad notify target only
+// degrades it (served, transfers fail closed, the target is ignored).
 func TestZoneSpecInvalid(t *testing.T) {
 	e := newEnv(t)
 	z := zoneObj("example", "example.com.")
-	z.Spec.Policy.NotifyTargets = []string{"not-an-address"}
+	z.Spec.Policy.QueryAccess = v1alpha1.AccessUseNetworkACL
+	z.Spec.Policy.QueryACL = []string{"not-an-address"}
 	e.apply(z)
+	n := zoneObj("notify", "notify.example.")
+	n.Spec.Policy.NotifyTargets = []string{"not-an-address"}
+	e.apply(n)
 	e.start()
 	e.eventually("zone invalid", func() bool {
 		return cond(e.zone("example").Status.Conditions, v1alpha1.ConditionReady) == "False/Invalid"
 	})
-	if msg := conditionText(e.zone("example").Status.Conditions); !strings.Contains(msg, "notifyTargets") {
+	if msg := conditionText(e.zone("example").Status.Conditions); !strings.Contains(msg, "queryACL") {
 		t.Fatalf("message %q", msg)
 	}
 	if e.zone("example").Status.ContentHash != "" {
 		t.Fatal("an unservable zone has no content hash")
+	}
+	e.eventually("policy degraded", func() bool {
+		c := e.zone("notify").Status.Conditions
+		return cond(c, v1alpha1.ConditionReady) == "True/Serving" && cond(c, v1alpha1.ConditionDegraded) == "True/Invalid"
+	})
+	if msg := conditionText(e.zone("notify").Status.Conditions); !strings.Contains(msg, "notifyTargets") || e.zone("notify").Status.ContentHash == "" {
+		t.Fatalf("message %q, hash %q", msg, e.zone("notify").Status.ContentHash)
 	}
 }
 

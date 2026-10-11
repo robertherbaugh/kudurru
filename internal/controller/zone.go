@@ -94,6 +94,10 @@ func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView, build *zoneBuild) verdict 
 			issues = append(issues, issue{k.Namespace + "/" + k.Name, p})
 		}
 	}
+	if build.PolicyErr != nil {
+		v.Degraded, v.DegradedRsn = true, v1alpha1.ReasonInvalid
+		v.DegradedMsg = "spec.policy (transfers denied, bad notify targets ignored): " + build.PolicyErr.Error()
+	}
 	if len(issues) == 0 {
 		return v
 	}
@@ -111,7 +115,11 @@ func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView, build *zoneBuild) verdict 
 			break
 		}
 	}
+	msg := fmt.Sprintf("%d record sets are not fully served: %s", len(issues), joinLimited(items, 10))
+	if v.Degraded {
+		msg = v.DegradedMsg + "; " + msg
+	}
 	v.Degraded = true
-	v.DegradedMsg = fmt.Sprintf("%d record sets are not fully served: %s", len(issues), joinLimited(items, 10))
+	v.DegradedMsg = msg
 	return v
 }

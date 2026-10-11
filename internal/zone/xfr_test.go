@@ -220,24 +220,42 @@ func TestNotifyPolicy(t *testing.T) {
 		t.Fatal("notify defaults to none")
 	}
 
+	// Transfer and notify policy errors do not take the zone off the air:
+	// they fail closed and are reported as policy errors.
+	lan := netip.MustParseAddr("10.0.0.1")
 	for _, tc := range []struct {
-		name   string
-		policy v1alpha1.ZonePolicy
-		field  string
+		name    string
+		policy  v1alpha1.ZonePolicy
+		field   string
+		targets int
 	}{
-		{"bad-target", v1alpha1.ZonePolicy{NotifyTargets: []string{"192.0.2.1", "ns1.example.org"}}, "spec.policy.notifyTargets[1]"},
-		{"port-zero", v1alpha1.ZonePolicy{NotifyTargets: []string{"192.0.2.1:0"}}, "spec.policy.notifyTargets[0]"},
-		{"bad-mode", v1alpha1.ZonePolicy{Notify: "loudly"}, "spec.policy.notify"},
-		{"bad-transfer-mode", v1alpha1.ZonePolicy{ZoneTransfer: "maybe"}, "spec.policy.zoneTransfer"},
-		{"bad-transfer-acl", v1alpha1.ZonePolicy{TransferACL: []string{"10.0.0.0/33"}}, "spec.policy.transferACL[0]"},
-		{"bad-key-ref", v1alpha1.ZonePolicy{TransferTSIGKeyRefs: []string{"good.", "a..b"}}, "spec.policy.transferTSIGKeyRefs[1]"},
+		{"bad-target", v1alpha1.ZonePolicy{Notify: v1alpha1.NotifySpecified, NotifyTargets: []string{"192.0.2.1", "ns1.example.org"}}, "spec.policy.notifyTargets[1]", 1},
+		{"port-zero", v1alpha1.ZonePolicy{NotifyTargets: []string{"192.0.2.1:0"}}, "spec.policy.notifyTargets[0]", 0},
+		{"bad-mode", v1alpha1.ZonePolicy{Notify: "loudly"}, "spec.policy.notify", 0},
+		{"bad-transfer-mode", v1alpha1.ZonePolicy{ZoneTransfer: "maybe"}, "spec.policy.zoneTransfer", 0},
+		{"bad-transfer-acl", v1alpha1.ZonePolicy{ZoneTransfer: v1alpha1.AccessUseNetworkACL, TransferACL: []string{"10.0.0.0/8", "10.0.0.0/33"}}, "spec.policy.transferACL[1]", 0},
+		{"bad-key-ref", v1alpha1.ZonePolicy{ZoneTransfer: v1alpha1.AccessAllow, TransferTSIGKeyRefs: []string{"good.", "a..b"}}, "spec.policy.transferTSIGKeyRefs[1]", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b, errs := NewBuilder(dnsZone("example.org.", func(dz *v1alpha1.DNSZone) { dz.Spec.Policy = tc.policy }), BuildOptions{})
-			if b != nil || len(errs) != 1 || errs[0].Field != tc.field {
-				t.Fatalf("errors %v, want one at %s", errs, tc.field)
+			z, errs := Build(dnsZone("example.org.", func(dz *v1alpha1.DNSZone) { dz.Spec.Policy = tc.policy }), nil, BuildOptions{Now: testNow})
+			if z == nil || len(errs.Zone) != 0 || len(errs.Policy) != 1 || errs.Policy[0].Field != tc.field || errs.Empty() {
+				t.Fatalf("zone %v, errors %+v; want a served zone and one policy error at %s", z, errs, tc.field)
+			}
+			if z.TransferAllowed(lan, "good.") {
+				t.Fatal("transfers must be denied while their policy is in error")
+			}
+			if len(z.NotifyTargets()) != tc.targets {
+				t.Fatalf("targets %v", z.NotifyTargets())
+			}
+			if tc.name == "bad-mode" && z.NotifyMode() != v1alpha1.NotifyNone {
+				t.Fatalf("an invalid notify mode is none, got %s", z.NotifyMode())
 			}
 		})
+	}
+	if _, errs := Build(dnsZone("example.org.", func(dz *v1alpha1.DNSZone) {
+		dz.Spec.Policy.QueryACL = []string{"bogus"}
+	}), nil, BuildOptions{}); len(errs.Zone) != 1 {
+		t.Fatal("queryACL errors still stop the zone (failing open would leak it)")
 	}
 }
 
