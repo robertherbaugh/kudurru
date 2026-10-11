@@ -2,10 +2,6 @@ module github.com/robertherbaugh/kudurru
 
 go 1.27
 
-// Bun installs the dashboard dependencies into web/node_modules; some npm
-// packages ship .go files that must not join ./... (see web/README.md).
-ignore ./web/node_modules
-
 require (
 	github.com/AdguardTeam/dnsproxy v0.86.0
 	github.com/coreos/go-oidc/v3 v3.21.0
@@ -25,6 +21,7 @@ require (
 	github.com/quic-go/quic-go v0.63.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.37.0
@@ -112,7 +109,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
@@ -130,3 +126,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 )
+
+// Bun installs the dashboard dependencies into web/node_modules; some npm
+// packages ship .go files that must not join ./... (see web/README.md).
+ignore ./web/node_modules

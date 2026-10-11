@@ -15,6 +15,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
 
 all: build
 
@@ -188,6 +189,38 @@ web-dev: web-install
 
 helm-lint:
 	helm lint charts/kudurru charts/kudurru-crds
+
+## edge-check: validate the golden dnsdist and keepalived configurations
+## (internal/edge/*/testdata) with the real programs inside the pinned images:
+## `dnsdist --check-config` in the upstream dnsdist image (digest from
+## images/dnsdist/Dockerfile) and `keepalived -t` in the kudurru-keepalived
+## image built from source. Needs Docker and network; CI runs it in the
+## optional edge workflow. The unit tests only check the files structurally.
+EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
+EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
+EDGE_KUDURRU_IMAGE    ?= ghcr.io/robertherbaugh/kudurru:$(VERSION)
+EDGE_CHECK_DIR        ?= bin/edge-check
+
+edge-images: docker
+	docker build -t $(EDGE_KEEPALIVED_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/keepalived
+	docker build -t kudurru-dnsdist:edge-check --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
+
+edge-check: edge-images
+	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./internal/edge/...
+	rm -rf $(EDGE_CHECK_DIR) && mkdir -p $(EDGE_CHECK_DIR)/certs
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=edge-check \
+	  -keyout $(EDGE_CHECK_DIR)/certs/tls.key -out $(EDGE_CHECK_DIR)/certs/tls.crt 2>/dev/null
+	chmod 0644 $(EDGE_CHECK_DIR)/certs/tls.key
+	docker run --rm --entrypoint /bin/sh \
+	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; dnsdist --version | head -1; for d in /golden/*/; do \
+	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
+	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
+	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/internal/edge/keepalived/testdata:/golden:ro \
+	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; \
+	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
+	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
+	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version
 
 docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) .
