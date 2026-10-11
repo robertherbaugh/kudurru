@@ -115,7 +115,9 @@ record what changed on the way.
 - `kudurru token generate` prints a fresh token for
   `KUDURRU_BOOTSTRAP_TOKEN`.
 - `kudurru lameduck [duration]` drains a node before shutdown (client of
-  `POST /lameduck` on the ops listener).
+  `POST /lameduck` on the ops listener). SIGTERM drains for `node.lameduck`
+  (default 2s): readiness answers 503 while the listeners keep serving, so
+  dnsdist and plain load balancers see the node leave before it closes.
 - `kudurru doctor` checks config, data directory, ports, the API, the token
   and server diagnoses, and warns when keepalived runs without `auth_hmac`
   (`vip run --legacy`).

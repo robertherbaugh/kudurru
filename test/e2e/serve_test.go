@@ -146,13 +146,11 @@ func TestSIGTERMLameduck(t *testing.T) {
 			t.Errorf("ops listener answered %v after it had closed", after)
 		}
 		if first503.IsZero() {
-			kudurrutest.KnownBug(t, "E2E-3", fmt.Sprintf("no lameduck window: readiness never answered 503 after SIGTERM in %d probes (serve.go sets no cluster.Options.LameduckDuration and no config key exists)", len(probes)))
 			t.Fatal("readiness never answered 503 after SIGTERM")
 		}
 		window := firstDown.Sub(first503)
 		t.Logf("timing: 503 after %s, ops closed after %s (lameduck window %s)", first503.Sub(sigAt).Round(time.Microsecond), firstDown.Sub(sigAt).Round(time.Microsecond), window.Round(time.Microsecond))
 		if window < time.Second {
-			kudurrutest.KnownBug(t, "E2E-3", fmt.Sprintf("lameduck window is %s: serve.go sets no cluster.Options.LameduckDuration, so load balancers cannot observe the 503 before the listeners close", window))
 			t.Errorf("lameduck window %s, want at least 1 s", window)
 		}
 	})
@@ -294,7 +292,6 @@ func TestRestartKeepsState(t *testing.T) {
 			t.Errorf("encryption key changed across the restart (%v)", err)
 		}
 		if strings.Contains(log, "generated the encryption key") {
-			kudurrutest.KnownBug(t, "E2E-4", "serve.go logs \"generated the encryption key\" on every start: keys.Load sets Generated for a key read back from <dataDir>/keys/encryption.key")
 			t.Error("run 2 logged \"generated the encryption key\" although it reused the key file")
 		}
 	})
@@ -528,7 +525,6 @@ func TestReadyMeansServing(t *testing.T) {
 		n.Stop(20 * time.Second)
 	}
 	if len(failures) > 0 {
-		kudurrutest.KnownBug(t, "E2E-5", fmt.Sprintf("readiness turns 200 when zonecache is Live, before the first live snapshot is published; queries in that window (~50 ms) answer SERVFAIL servfail_unsynced (%s)", strings.Join(failures, "; ")))
 		t.Errorf("first query after readiness failed: %v", failures)
 	}
 }

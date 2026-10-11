@@ -80,6 +80,9 @@ func TestTwoNodes(t *testing.T) {
 	for _, name := range []string{"node-a", "node-b"} {
 		spec, cfg := kudurrutest.NewNodeSpec(t, dir, name)
 		cfg["objects"] = objects
+		// The list source is an httptest server on loopback, which the SSRF
+		// guard refuses by default.
+		cfg["blocking"] = map[string]any{"allowLocalListURLs": true}
 		kudurrutest.WriteConfig(t, spec.Config, cfg)
 		start := time.Now()
 		nodes = append(nodes, kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env}))
