@@ -17,12 +17,23 @@ jobs:
         run: make check-generated
       - name: Vet
         run: make vet
+      - name: Install envtest control-plane binaries
+        run: make envtest
       - name: Test
         run: make test
       - name: Build
         run: make build
       - name: Smoke test the binary
         run: ./bin/kudurru version
+  auth-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: OIDC login end to end against dex
+        run: make test-auth-e2e
   lint:
     runs-on: ubuntu-latest
     steps:

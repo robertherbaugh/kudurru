@@ -13,10 +13,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds
-.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated dex test-auth-e2e
-.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated bench bench-baseline
-.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated envtest
+.PHONY: all build run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -26,8 +23,16 @@ build:
 run: build
 	$(BIN) serve --config hack/dev/kudurru.yaml
 
+## test: the race detector needs cgo, so the test run re-enables it; shipped
+## binaries stay CGO_ENABLED=0 (`make build`). The kube store driver tests run
+## when `make envtest` has installed the control-plane binaries and skip
+## otherwise.
 test:
-	go test -race -count=1 ./...
+	CGO_ENABLED=1 go test -race -count=1 ./...
+
+## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
+test-short:
+	go test -count=1 ./...
 
 ## envtest: download kube-apiserver and etcd into bin/k8s/<version>-<os>-<arch>;
 ## the kube store driver tests find them there (or via KUBEBUILDER_ASSETS)
