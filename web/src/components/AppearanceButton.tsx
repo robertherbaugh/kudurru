@@ -1,11 +1,11 @@
 // Appearance: auto/light/dark mode, the Astryx theme (neutral, stone and
 // the fun Y2K theme) and the high-contrast overlay (§10 principle 4).
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Switch } from '@astryxdesign/core/Switch';
 import { Palette } from 'lucide-react';
 import { useId, useState } from 'react';
+import { FormDialog } from './FormDialog';
 import { THEMES, useAppearance, type Mode, type ThemeName } from '../lib/theme';
 
 export function AppearanceControls() {
@@ -40,7 +40,6 @@ export function AppearanceControls() {
 
 export function AppearanceButton() {
   const [open, setOpen] = useState(false);
-  const titleId = useId();
   return (
     <>
       <Button
@@ -52,18 +51,9 @@ export function AppearanceButton() {
         tooltip="Appearance"
         onClick={() => setOpen(true)}
       />
-      <Dialog isOpen={open} onOpenChange={setOpen} purpose="info" width={380} aria-labelledby={titleId}>
-        <div className="k-stack-lg">
-          <h2 id={titleId} className="k-dialog-title">
-            Appearance
-          </h2>
-          <AppearanceControls />
-          <div className="k-row">
-            <span className="k-spacer" />
-            <Button label="Done" variant="primary" onClick={() => setOpen(false)} />
-          </div>
-        </div>
-      </Dialog>
+      <FormDialog isOpen={open} onClose={() => setOpen(false)} title="Appearance" width={380} footer={<Button label="Done" variant="primary" onClick={() => setOpen(false)} />}>
+        <AppearanceControls />
+      </FormDialog>
     </>
   );
 }

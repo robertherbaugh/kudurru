@@ -61,7 +61,9 @@ function measure(root: Element): Sample[] {
     if (!text || !el) continue;
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
-    if (r.width === 0 || r.height === 0 || st.visibility === 'hidden' || st.display === 'none') continue;
+    // Skips text nobody sees: zero-size or hidden boxes and visually hidden
+    // labels (the 1 px clip pattern, e.g. the label of a row checkbox).
+    if (r.width <= 1 || r.height <= 1 || st.visibility === 'hidden' || st.display === 'none') continue;
     const bg = background(el);
     const fg = over(rgba(st.color), bg);
     const [l1, l2] = [lum(fg), lum(bg)].sort((a, b) => b - a) as [number, number];

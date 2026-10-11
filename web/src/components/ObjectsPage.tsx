@@ -5,17 +5,17 @@
 // read-only.
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { AnyObject } from '../api/types';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, withMeta } from '../lib/managedBy';
 import type { KindSchema } from '../lib/objectSchemas';
 import { useSearchParams } from '../lib/router';
 import { ErrorBanner, Loading, useNotify } from './Feedback';
+import { FormDialog } from './FormDialog';
 import { ManagedBadge } from './ManagedBadge';
 import { ObjectForm } from './ObjectForm';
 
@@ -54,8 +54,6 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
   const [editing, setEditing] = useState<T | 'new' | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
-  const titleId = useId();
-  const confirmId = useId();
   const canWrite = can(schema.resource, 'write');
   const canDelete = can(schema.resource, 'delete');
 
@@ -127,7 +125,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
       </div>
       {children}
       <div className="k-row">
-        <TextInput label={`Search ${schema.plural}`} isLabelHidden placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
+        <TextInput className="k-search" label={`Search ${schema.plural}`} isLabelHidden placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
         <span className="k-spacer" />
         {selected.size > 0 ? (
           <Button label={`Delete ${selected.size} selected`} variant="destructive" isDisabled={!canDelete} onClick={() => setConfirm(true)} />
@@ -229,46 +227,47 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
         </div>
       ) : null}
 
-      <Dialog isOpen={editing !== null} onOpenChange={(open) => !open && setEditing(null)} purpose="form" width={760} maxHeight="90dvh" aria-labelledby={titleId}>
+      <FormDialog
+        isOpen={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing === null ? '' : editing === 'new' ? `New ${schema.singular}` : `${objectOwnership(editing).editable ? 'Edit' : 'View'} ${schema.singular} ${editing.metadata.name}`}
+        width={760}
+      >
         {editing !== null ? (
-          <div className="k-stack-lg">
-            <h2 id={titleId} className="k-dialog-title">
-              {editing === 'new' ? `New ${schema.singular}` : `${objectOwnership(editing).editable ? 'Edit' : 'View'} ${schema.singular} ${editing.metadata.name}`}
-            </h2>
-            <ObjectForm
-              schema={schema}
-              initial={editing === 'new' ? undefined : editing}
-              onCancel={() => setEditing(null)}
-              onSubmit={async (obj) => {
-                await save.mutateAsync(obj);
-                notify.success(`${editing === 'new' ? 'Created' : 'Saved'} ${obj.metadata.name}`);
-                setEditing(null);
-              }}
-            />
-          </div>
+          <ObjectForm
+            schema={schema}
+            initial={editing === 'new' ? undefined : editing}
+            onCancel={() => setEditing(null)}
+            onSubmit={async (obj) => {
+              await save.mutateAsync(obj);
+              notify.success(`${editing === 'new' ? 'Created' : 'Saved'} ${obj.metadata.name}`);
+              setEditing(null);
+            }}
+          />
         ) : null}
-      </Dialog>
+      </FormDialog>
 
-      <Dialog isOpen={confirm} onOpenChange={setConfirm} purpose="required" width={460} aria-labelledby={confirmId}>
-        <div className="k-stack-lg">
-          <h2 id={confirmId} className="k-dialog-title">
-            Delete {selected.size} {selected.size === 1 ? schema.singular : schema.plural}?
-          </h2>
-          <ul className="k-small">
-            {[...selected].map((k) => (
-              <li key={k} className="k-mono">
-                {k.replace(/^default\//, '').replace(/^\//, '')}
-              </li>
-            ))}
-          </ul>
-          <p className="k-muted k-small">Policies that reference them stop using them. This cannot be undone.</p>
-          <div className="k-row">
-            <span className="k-spacer" />
+      <FormDialog
+        isOpen={confirm}
+        onClose={() => setConfirm(false)}
+        title={`Delete ${selected.size} ${selected.size === 1 ? schema.singular : schema.plural}?`}
+        width={460}
+        footer={
+          <>
             <Button label="Cancel" variant="ghost" onClick={() => setConfirm(false)} />
             <Button label="Delete" variant="destructive" isLoading={batchDelete.isPending} onClick={() => batchDelete.mutate([...selected])} />
-          </div>
-        </div>
-      </Dialog>
+          </>
+        }
+      >
+        <ul className="k-small">
+          {[...selected].map((k) => (
+            <li key={k} className="k-mono">
+              {k.replace(/^default\//, '').replace(/^\//, '')}
+            </li>
+          ))}
+        </ul>
+        <p className="k-muted k-small">Policies that reference them stop using them. This cannot be undone.</p>
+      </FormDialog>
     </div>
   );
 }

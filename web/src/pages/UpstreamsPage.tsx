@@ -8,8 +8,6 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
-import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
@@ -19,6 +17,7 @@ import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { Policy, SettingsBody, UpstreamItem, UpstreamServer } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
+import { FormDialog } from '../components/FormDialog';
 import { formatExact, formatMS, formatRelative } from '../lib/format';
 import { Link } from '../lib/router';
 import {
@@ -106,7 +105,6 @@ export function groupErrors(name: string, isNew: boolean, existing: string[], se
 }
 
 function GroupDialog({ open, name, initial, existing, onClose, onSave }: GroupDialogProps) {
-  const formId = useId();
   const strategyId = useId();
   const isNew = name === undefined;
   const [groupName, setGroupName] = useState('');
@@ -144,75 +142,62 @@ function GroupDialog({ open, name, initial, existing, onClose, onSave }: GroupDi
   };
   const help = STRATEGIES.find((s) => s.value === strategy)?.help;
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={600} maxHeight="90dvh">
-      <Layout
-        header={<DialogHeader title={isNew ? 'New upstream group' : `Edit upstream group ${name}`} onOpenChange={(o) => !o && onClose()} />}
-        content={
-          <LayoutContent>
-            <form
-              id={formId}
-              className="k-stack-lg"
-              noValidate
-              onSubmit={(e) => {
-                e.preventDefault();
-                void submit();
-              }}
-            >
-              {isNew ? (
-                <TextInput
-                  label="Name"
-                  value={groupName}
-                  onChange={setGroupName}
-                  placeholder="corp"
-                  description="Policies and forward zones refer to the group by this name"
-                  isRequired
-                  status={errors.name ? { type: 'error', message: errors.name } : undefined}
-                />
-              ) : null}
-              <TextArea
-                label="Servers"
-                description="One per line: 192.0.2.53, 192.0.2.53:5353, tls://dns.quad9.net, https://dns.google/dns-query, quic://dns.adguard-dns.com, h3://…, sdns://…; a display name may go first, as in cloudflare=tls://1.1.1.1"
-                value={servers}
-                onChange={setServers}
-                rows={6}
-                hasSpellCheck={false}
-                placeholder={'1.1.1.1:53\nquad9=tls://dns.quad9.net'}
-                status={errors.servers ? { type: 'error', message: errors.servers } : undefined}
-              />
-              <label className="k-label" htmlFor={strategyId}>
-                Strategy
-                <select id={strategyId} className="k-native-select" value={strategy} onChange={(e) => setStrategy(e.target.value)}>
-                  {STRATEGIES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                {help ? <span className="k-muted k-small">{help}</span> : null}
-              </label>
-              <TextInput
-                label="Timeout"
-                value={timeout}
-                onChange={setTimeoutValue}
-                placeholder="2s"
-                description="Per server and query; empty is 2s"
-                status={errors.timeout ? { type: 'error', message: errors.timeout } : undefined}
-              />
-              {serverErr ? <Banner status="error" title="The server rejected the change" description={serverErr} /> : null}
-            </form>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter hasDivider>
-            <div className="k-row">
-              <span className="k-spacer" />
-              <Button label="Cancel" variant="ghost" onClick={onClose} />
-              <Button type="submit" form={formId} label={isNew ? 'Create group' : 'Save'} variant="primary" isLoading={busy} />
-            </div>
-          </LayoutFooter>
-        }
+    <FormDialog
+      isOpen={open}
+      onClose={onClose}
+      title={isNew ? 'New upstream group' : `Edit upstream group ${name}`}
+      width={600}
+      noValidate
+      onSubmit={() => void submit()}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" onClick={onClose} />
+          <Button type="submit" label={isNew ? 'Create group' : 'Save'} variant="primary" isLoading={busy} />
+        </>
+      }
+    >
+      {isNew ? (
+        <TextInput
+          label="Name"
+          value={groupName}
+          onChange={setGroupName}
+          placeholder="corp"
+          description="Policies and forward zones refer to the group by this name"
+          isRequired
+          status={errors.name ? { type: 'error', message: errors.name } : undefined}
+        />
+      ) : null}
+      <TextArea
+        label="Servers"
+        description="One per line: 192.0.2.53, 192.0.2.53:5353, tls://dns.quad9.net, https://dns.google/dns-query, quic://dns.adguard-dns.com, h3://…, sdns://…; a display name may go first, as in cloudflare=tls://1.1.1.1"
+        value={servers}
+        onChange={setServers}
+        rows={6}
+        hasSpellCheck={false}
+        placeholder={'1.1.1.1:53\nquad9=tls://dns.quad9.net'}
+        status={errors.servers ? { type: 'error', message: errors.servers } : undefined}
       />
-    </Dialog>
+      <label className="k-label" htmlFor={strategyId}>
+        Strategy
+        <select id={strategyId} className="k-native-select" value={strategy} onChange={(e) => setStrategy(e.target.value)}>
+          {STRATEGIES.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        {help ? <span className="k-muted k-small">{help}</span> : null}
+      </label>
+      <TextInput
+        label="Timeout"
+        value={timeout}
+        onChange={setTimeoutValue}
+        placeholder="2s"
+        description="Per server and query; empty is 2s"
+        status={errors.timeout ? { type: 'error', message: errors.timeout } : undefined}
+      />
+      {serverErr ? <Banner status="error" title="The server rejected the change" description={serverErr} /> : null}
+    </FormDialog>
   );
 }
 
@@ -645,33 +630,26 @@ export default function UpstreamsPage() {
         onClose={() => setEditing(null)}
         onSave={(name, g) => save({ groups: { [name]: g } }, `Group ${name}`)}
       />
-      <Dialog isOpen={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)} purpose="form" width={460}>
-        <Layout
-          header={<DialogHeader title={`Delete upstream group ${deleting ?? ''}?`} onOpenChange={(o) => !o && setDeleting(null)} />}
-          content={
-            <LayoutContent>
-              <div className="k-stack">
-                <p>Queries routed to a group that does not exist fail with SERVFAIL, so change the policies and forward zones that name it first.</p>
-                {users.length ? (
-                  <Banner status="warning" title="Still in use" description={`Named by ${users.join(', ')}.`} />
-                ) : policies.isLoading || zones.isLoading ? null : (
-                  <p className="k-muted k-small">No policy or forward zone names this group.</p>
-                )}
-                {deleteErr ? <Banner status="error" title="The group was not deleted" description={deleteErr} /> : null}
-              </div>
-            </LayoutContent>
-          }
-          footer={
-            <LayoutFooter hasDivider>
-              <div className="k-row">
-                <span className="k-spacer" />
-                <Button label="Cancel" variant="ghost" onClick={() => setDeleting(null)} />
-                <Button label="Delete" variant="destructive" isLoading={deleteBusy} onClick={() => deleting && void remove(deleting)} />
-              </div>
-            </LayoutFooter>
-          }
-        />
-      </Dialog>
+      <FormDialog
+        isOpen={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={`Delete upstream group ${deleting ?? ''}?`}
+        width={460}
+        footer={
+          <>
+            <Button label="Cancel" variant="ghost" onClick={() => setDeleting(null)} />
+            <Button label="Delete" variant="destructive" isLoading={deleteBusy} onClick={() => deleting && void remove(deleting)} />
+          </>
+        }
+      >
+        <p>Queries routed to a group that does not exist fail with SERVFAIL, so change the policies and forward zones that name it first.</p>
+        {users.length ? (
+          <Banner status="warning" title="Still in use" description={`Named by ${users.join(', ')}.`} />
+        ) : policies.isLoading || zones.isLoading ? null : (
+          <p className="k-muted k-small">No policy or forward zone names this group.</p>
+        )}
+        {deleteErr ? <Banner status="error" title="The group was not deleted" description={deleteErr} /> : null}
+      </FormDialog>
     </div>
   );
 }

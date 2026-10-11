@@ -3,7 +3,6 @@
 // primary or forward zones (PUT /objects/dnszones/{name}).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +10,7 @@ import { useId, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { DNSZone, ZoneSummary, ZoneType } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
+import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { UpstreamGroupSelect } from '../components/UpstreamGroupSelect';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
@@ -51,7 +51,6 @@ function NewZoneDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
-  const titleId = useId();
   const typeId = useId();
   const [zoneName, setZoneName] = useState('');
   const [type, setType] = useState<ZoneType>('primary');
@@ -96,40 +95,36 @@ function NewZoneDialog({ open, onClose }: { open: boolean; onClose: () => void }
     if (!Object.keys(e).length) m.mutate();
   };
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={520} maxHeight="90dvh" aria-labelledby={titleId}>
-      <form
-        className="k-stack-lg"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <h2 id={titleId} className="k-dialog-title">
-          New zone
-        </h2>
-        <TextInput label="Zone name" placeholder="home.arpa" value={zoneName} onChange={setZoneName} isRequired status={err.zoneName ? { type: 'error', message: err.zoneName } : undefined} />
-        <label className="k-label" htmlFor={typeId}>
-          Type
-          <select id={typeId} className="k-native-select" value={type} onChange={(e) => setType(e.target.value as ZoneType)}>
-            <option value="primary">Primary (records served here)</option>
-            <option value="forward">Forward (to an upstream group)</option>
-          </select>
-        </label>
-        {type === 'primary' ? (
-          <TextArea label="Name servers" description="One per line; defaults to this server" value={nameservers} onChange={setNameservers} rows={2} status={err.nameservers ? { type: 'error', message: err.nameservers } : undefined} />
-        ) : (
-          <UpstreamGroupSelect value={upstream} onChange={setUpstream} />
-        )}
-        <p className="k-muted k-small">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</p>
-        {serverError ? <ErrorBanner error={new Error(serverError)} title="The zone could not be created" /> : null}
-        <div className="k-row">
-          <span className="k-spacer" />
+    <FormDialog
+      isOpen={open}
+      onClose={onClose}
+      title="New zone"
+      width={520}
+      noValidate
+      onSubmit={submit}
+      footer={
+        <>
           <Button label="Cancel" variant="ghost" onClick={onClose} />
           <Button type="submit" label="Create zone" variant="primary" isLoading={m.isPending} />
-        </div>
-      </form>
-    </Dialog>
+        </>
+      }
+    >
+      <TextInput label="Zone name" placeholder="home.arpa" value={zoneName} onChange={setZoneName} isRequired status={err.zoneName ? { type: 'error', message: err.zoneName } : undefined} />
+      <label className="k-label" htmlFor={typeId}>
+        Type
+        <select id={typeId} className="k-native-select" value={type} onChange={(e) => setType(e.target.value as ZoneType)}>
+          <option value="primary">Primary (records served here)</option>
+          <option value="forward">Forward (to an upstream group)</option>
+        </select>
+      </label>
+      {type === 'primary' ? (
+        <TextArea label="Name servers" description="One per line; defaults to this server" value={nameservers} onChange={setNameservers} rows={2} status={err.nameservers ? { type: 'error', message: err.nameservers } : undefined} />
+      ) : (
+        <UpstreamGroupSelect value={upstream} onChange={setUpstream} />
+      )}
+      <p className="k-muted k-small">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</p>
+      {serverError ? <ErrorBanner error={new Error(serverError)} title="The zone could not be created" /> : null}
+    </FormDialog>
   );
 }
 

@@ -14,14 +14,14 @@ import { ScopeSelector } from './ScopeSelector';
 import { MessagesBadge } from './MessagesBadge';
 import { AppearanceButton } from './AppearanceButton';
 import { AccountMenu } from './AccountMenu';
+import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
 
 function Brand() {
   return (
     <Link href="/" className="k-brand" aria-label="kudurru dashboard home">
-      <span className="k-brand-mark" aria-hidden="true" />
-      <span>kudurru</span>
+      <BrandLogo alt="" />
     </Link>
   );
 }

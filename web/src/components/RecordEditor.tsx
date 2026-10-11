@@ -12,6 +12,7 @@ import { useId, useState } from 'react';
 import type { Endpoint, ZoneRecord } from '../api/types';
 import { compose, dnsNameToOwner, ownerError, ownerToDNSName, parse, RECORD_TYPES, typeSpec, validate, type Errors, type Values } from '../lib/rr';
 import { errorText } from './Feedback';
+import { DialogForm } from './FormDialog';
 
 export interface RecordEditorProps {
   /** The zone's DNS name ("example.internal" or "example.internal."). */
@@ -105,14 +106,17 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
   };
 
   return (
-    <form
+    <DialogForm
       className="k-form"
       noValidate
       aria-label="Record"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
+      onSubmit={() => void submit()}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" onClick={onCancel} />
+          <Button type="submit" label={initial ? 'Save record' : 'Add record'} variant="primary" isLoading={busy} />
+        </>
+      }
     >
       <div className="k-form-grid">
         <TextInput
@@ -199,12 +203,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
           Fix the highlighted fields before saving.
         </p>
       ) : null}
-      <div className="k-row">
-        <span className="k-spacer" />
-        <Button label="Cancel" variant="ghost" onClick={onCancel} />
-        <Button type="submit" label={initial ? 'Save record' : 'Add record'} variant="primary" isLoading={busy} />
-      </div>
-    </form>
+    </DialogForm>
   );
 }
 

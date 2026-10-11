@@ -8,9 +8,10 @@ coverage.*
 
 # generated at build time (committed generated files live under api/ and config/crd/bases)
 # web/dist/index.html is a committed placeholder so Go builds without Bun;
-# `make web-build` overwrites it and writes the hashed bundle into assets/.
-/web/dist/assets/
-/web/dist/third-party-licenses.txt
+# `make web-build` overwrites it, writes the hashed bundle into assets/ and
+# copies web/public/ (icons, manifest) next to it.
+/web/dist/*
+!/web/dist/index.html
 /web/node_modules/
 /web/coverage/
 /web/e2e/.auth/

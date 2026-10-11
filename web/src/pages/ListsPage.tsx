@@ -4,15 +4,15 @@
 // and "which lists contain this domain" (GET /blocklists/_search).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { BlockList, ListSource, Processed } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
+import { FormDialog } from '../components/FormDialog';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
@@ -22,7 +22,6 @@ function AddDomainsDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const api = useApi();
   const qc = useQueryClient();
   const notify = useNotify();
-  const titleId = useId();
   const [action, setAction] = useState<'deny' | 'allow'>('deny');
   const [kind, setKind] = useState<'exact' | 'regex'>('exact');
   const [text, setText] = useState('');
@@ -41,73 +40,63 @@ function AddDomainsDialog({ open, onClose }: { open: boolean; onClose: () => voi
     onError: (err) => notify.error(err, 'Could not add domains'),
   });
   return (
-    <Dialog
+    <FormDialog
       isOpen={open}
-      onOpenChange={(o) => {
-        if (!o) {
-          setResult(null);
-          onClose();
-        }
+      onClose={() => {
+        setResult(null);
+        onClose();
       }}
-      purpose="form"
+      title="Add domains"
       width={560}
-      aria-labelledby={titleId}
-    >
-      <form
-        className="k-stack-lg"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (domains.length && localErrors.length === 0) m.mutate();
-        }}
-      >
-        <h2 id={titleId} className="k-dialog-title">
-          Add domains
-        </h2>
-        <div className="k-row">
-          <SegmentedControl label="List" value={action} onChange={(v) => setAction(v as 'allow' | 'deny')}>
-            <SegmentedControlItem value="deny" label="Deny (block)" />
-            <SegmentedControlItem value="allow" label="Allow" />
-          </SegmentedControl>
-          <SegmentedControl label="Match" value={kind} onChange={(v) => setKind(v as 'exact' | 'regex')}>
-            <SegmentedControlItem value="exact" label="Exact" />
-            <SegmentedControlItem value="regex" label="Regex" />
-          </SegmentedControl>
-        </div>
-        <TextArea
-          label="Domains"
-          description={`One per line or separated by spaces; they go into the "ui-${action}" list (created on demand).`}
-          value={text}
-          onChange={(v) => {
-            setText(v);
-            setResult(null);
-          }}
-          rows={6}
-          hasSpellCheck={false}
-          status={localErrors.length ? { type: 'error', message: `${localErrors[0]?.[0]}: ${localErrors[0]?.[1]}` } : undefined}
-        />
-        {result ? (
-          <div className="k-stack" role="status">
-            <p>
-              {result.success.length} added, {result.errors.length} rejected.
-            </p>
-            {result.errors.length ? (
-              <ul className="k-small">
-                {result.errors.map((e) => (
-                  <li key={e.item}>
-                    <code>{e.item}</code>: {e.error}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="k-row">
-          <span className="k-spacer" />
+      onSubmit={() => {
+        if (domains.length && localErrors.length === 0) m.mutate();
+      }}
+      footer={
+        <>
           <Button label="Close" variant="ghost" onClick={onClose} />
           <Button type="submit" label={`Add ${domains.length || ''}`.trim()} variant="primary" isDisabled={!domains.length || localErrors.length > 0} isLoading={m.isPending} />
+        </>
+      }
+    >
+      <div className="k-row">
+        <SegmentedControl label="List" value={action} onChange={(v) => setAction(v as 'allow' | 'deny')}>
+          <SegmentedControlItem value="deny" label="Deny (block)" />
+          <SegmentedControlItem value="allow" label="Allow" />
+        </SegmentedControl>
+        <SegmentedControl label="Match" value={kind} onChange={(v) => setKind(v as 'exact' | 'regex')}>
+          <SegmentedControlItem value="exact" label="Exact" />
+          <SegmentedControlItem value="regex" label="Regex" />
+        </SegmentedControl>
+      </div>
+      <TextArea
+        label="Domains"
+        description={`One per line or separated by spaces; they go into the "ui-${action}" list (created on demand).`}
+        value={text}
+        onChange={(v) => {
+          setText(v);
+          setResult(null);
+        }}
+        rows={6}
+        hasSpellCheck={false}
+        status={localErrors.length ? { type: 'error', message: `${localErrors[0]?.[0]}: ${localErrors[0]?.[1]}` } : undefined}
+      />
+      {result ? (
+        <div className="k-stack" role="status">
+          <p>
+            {result.success.length} added, {result.errors.length} rejected.
+          </p>
+          {result.errors.length ? (
+            <ul className="k-small">
+              {result.errors.map((e) => (
+                <li key={e.item}>
+                  <code>{e.item}</code>: {e.error}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-      </form>
-    </Dialog>
+      ) : null}
+    </FormDialog>
   );
 }
 

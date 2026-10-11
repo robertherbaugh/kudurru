@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useApiContext } from '../api/context';
+import { BrandLogo } from '../components/BrandLogo';
 import { errorText } from '../components/Feedback';
 import { useLocation } from '../lib/router';
 
@@ -52,10 +53,7 @@ export function LoginPage() {
       <Card className="k-login-card">
         <div className="k-stack-lg">
           <div className="k-stack">
-            <span className="k-brand k-brand-lg">
-              <span className="k-brand-mark" aria-hidden="true" />
-              kudurru
-            </span>
+            <BrandLogo tagline alt="kudurru: authority over every zone." />
             <h1 className="k-login-title">Sign in</h1>
           </div>
           {status.data?.hasDefaultCredentials ? (

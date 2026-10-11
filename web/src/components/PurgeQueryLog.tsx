@@ -3,8 +3,6 @@
 // Rollups (the long-term charts) are kept.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
-import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { useMutation } from '@tanstack/react-query';
 import { useId, useState } from 'react';
@@ -12,6 +10,7 @@ import { useApi, useCan } from '../api/context';
 import type { PurgeResult } from '../api/types';
 import { formatExact } from '../lib/format';
 import { errorText, useNotify } from './Feedback';
+import { FormDialog } from './FormDialog';
 
 export function PurgeQueryLog({ onPurged }: { onPurged: (r: PurgeResult) => void }) {
   const api = useApi();
@@ -39,41 +38,34 @@ export function PurgeQueryLog({ onPurged }: { onPurged: (r: PurgeResult) => void
   return (
     <>
       <Button label="Purge…" variant="ghost" isDisabled={!allowed} tooltip={allowed ? 'Delete query-log rows' : 'Needs querylog.purge'} onClick={() => setOpen(true)} />
-      <Dialog isOpen={open} onOpenChange={(o) => !o && close()} purpose="form" width={480} maxHeight="90dvh">
-        <Layout
-          header={<DialogHeader title="Purge the query log" onOpenChange={(o) => !o && close()} />}
-          content={
-            <LayoutContent>
-              <div className="k-stack-lg">
-                <SegmentedControl label="Rows" value={what} onChange={(v) => setWhat(v === 'all' ? 'all' : 'before')}>
-                  <SegmentedControlItem value="before" label="Older than" />
-                  <SegmentedControlItem value="all" label="Every row" />
-                </SegmentedControl>
-                {what === 'before' ? (
-                  <label className="k-label" htmlFor={beforeId}>
-                    Delete rows before
-                    <input id={beforeId} className="k-native-input" type="datetime-local" value={before} onChange={(e) => setBefore(e.target.value)} />
-                  </label>
-                ) : null}
-                <p className="k-small">
-                  {what === 'all' ? 'Every logged query of this node is deleted.' : 'Queries logged before this time are deleted.'} The long-term rollups are
-                  kept. This cannot be undone.
-                </p>
-                {m.error ? <Banner status="error" title="Nothing was deleted" description={errorText(m.error)} /> : null}
-              </div>
-            </LayoutContent>
-          }
-          footer={
-            <LayoutFooter hasDivider>
-              <div className="k-row">
-                <span className="k-spacer" />
-                <Button label="Cancel" variant="ghost" onClick={close} />
-                <Button label={what === 'all' ? 'Delete every row' : 'Delete older rows'} variant="destructive" isDisabled={!ready} isLoading={m.isPending} onClick={() => m.mutate()} />
-              </div>
-            </LayoutFooter>
-          }
-        />
-      </Dialog>
+      <FormDialog
+        isOpen={open}
+        onClose={close}
+        title="Purge the query log"
+        width={480}
+        footer={
+          <>
+            <Button label="Cancel" variant="ghost" onClick={close} />
+            <Button label={what === 'all' ? 'Delete every row' : 'Delete older rows'} variant="destructive" isDisabled={!ready} isLoading={m.isPending} onClick={() => m.mutate()} />
+          </>
+        }
+      >
+        <SegmentedControl label="Rows" value={what} onChange={(v) => setWhat(v === 'all' ? 'all' : 'before')}>
+          <SegmentedControlItem value="before" label="Older than" />
+          <SegmentedControlItem value="all" label="Every row" />
+        </SegmentedControl>
+        {what === 'before' ? (
+          <label className="k-label" htmlFor={beforeId}>
+            Delete rows before
+            <input id={beforeId} className="k-native-input" type="datetime-local" value={before} onChange={(e) => setBefore(e.target.value)} />
+          </label>
+        ) : null}
+        <p className="k-small">
+          {what === 'all' ? 'Every logged query of this node is deleted.' : 'Queries logged before this time are deleted.'} The long-term rollups are
+          kept. This cannot be undone.
+        </p>
+        {m.error ? <Banner status="error" title="Nothing was deleted" description={errorText(m.error)} /> : null}
+      </FormDialog>
     </>
   );
 }

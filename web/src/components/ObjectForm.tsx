@@ -16,6 +16,7 @@ import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
+import { DialogForm } from './FormDialog';
 import { ServicesField } from './ServicesField';
 import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
@@ -166,13 +167,18 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
   };
 
   return (
-    <form
+    <DialogForm
       className="k-form"
       noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
+      onSubmit={() => {
         if (!readOnly) void submit();
       }}
+      footer={
+        <>
+          <Button label={readOnly ? 'Close' : 'Cancel'} variant="ghost" onClick={onCancel} />
+          {readOnly ? null : <Button type="submit" label={initial ? 'Save' : `Create ${schema.singular}`} variant="primary" isLoading={busy} />}
+        </>
+      }
     >
       {readOnly && own ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       <div className="k-form-grid">
@@ -198,12 +204,7 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
           Fix the {Object.keys(errors).length} highlighted field{Object.keys(errors).length === 1 ? '' : 's'}.
         </p>
       ) : null}
-      <div className="k-row">
-        <span className="k-spacer" />
-        <Button label={readOnly ? 'Close' : 'Cancel'} variant="ghost" onClick={onCancel} />
-        {readOnly ? null : <Button type="submit" label={initial ? 'Save' : `Create ${schema.singular}`} variant="primary" isLoading={busy} />}
-      </div>
-    </form>
+    </DialogForm>
   );
 }
 

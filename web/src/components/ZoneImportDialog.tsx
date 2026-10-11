@@ -3,8 +3,6 @@
 // become the zone's) and writes its records into API-managed record sets.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
-import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +13,7 @@ import { nameError } from '../lib/objectSchemas';
 import { useNavigate } from '../lib/router';
 import { hostError } from '../lib/rr';
 import { errorText, useNotify } from './Feedback';
+import { FormDialog } from './FormDialog';
 
 /** One sentence for an import result. */
 export function importSummary(r: ZoneImportResult): string {
@@ -39,7 +38,6 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
-  const formId = useId();
   const fileId = useId();
   const [apex, setApex] = useState('');
   const [text, setText] = useState('');
@@ -78,67 +76,55 @@ export function ZoneImportDialog({ isOpen, onClose }: { isOpen: boolean; onClose
     if (!e && text.trim()) m.mutate();
   };
   return (
-    <Dialog isOpen={isOpen} onOpenChange={(o) => !o && close()} purpose="form" width={720} maxHeight="90dvh">
-      <Layout
-        header={<DialogHeader title="Import a zone file" subtitle="Creates the zone from a BIND master file" onOpenChange={(o) => !o && close()} />}
-        content={
-          <LayoutContent>
-            <form
-              id={formId}
-              className="k-stack-lg"
-              noValidate
-              onSubmit={(e) => {
-                e.preventDefault();
-                submit();
+    <FormDialog
+      isOpen={isOpen}
+      onClose={close}
+      title="Import a zone file"
+      subtitle="Creates the zone from a BIND master file"
+      width={720}
+      noValidate
+      onSubmit={submit}
+      footer={
+        <>
+          <Button label="Close" variant="ghost" onClick={close} />
+          {result ? (
+            <Button
+              label="Open the zone"
+              variant="primary"
+              onClick={() => {
+                const z = result.zone;
+                close();
+                navigate(`/zones/${encodeURIComponent(z)}`);
               }}
-            >
-              <label className="k-label" htmlFor={fileId}>
-                Zone file
-                <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
-              </label>
-              <TextInput
-                label="Zone apex"
-                placeholder="home.arpa"
-                description="Taken from $ORIGIN when the file has one"
-                value={apex}
-                onChange={setApex}
-                isRequired
-                status={err ? { type: 'error', message: err } : undefined}
-              />
-              <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN home.arpa.\n@ 3600 IN SOA ns1 hostmaster 1 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10'} />
-              <p className="k-muted k-small">
-                The import is all or nothing: a line that does not parse rejects the file. Importing into an existing zone replaces its earlier import; use Import BIND
-                on the zone page for that.
-              </p>
-              {m.error ? <Banner status="error" title="Import failed" description={errorText(m.error)} /> : null}
-              {result ? (
-                <Banner status={result.warnings.length ? 'warning' : 'success'} title={importSummary(result)} description={result.warnings.length ? result.warnings.join('; ') : undefined} />
-              ) : null}
-            </form>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter hasDivider>
-            <div className="k-row">
-              <span className="k-spacer" />
-              <Button label="Close" variant="ghost" onClick={close} />
-              {result ? (
-                <Button
-                  label="Open the zone"
-                  variant="primary"
-                  onClick={() => {
-                    const z = result.zone;
-                    close();
-                    navigate(`/zones/${encodeURIComponent(z)}`);
-                  }}
-                />
-              ) : (
-                <Button type="submit" form={formId} label="Import" variant="primary" isDisabled={!text.trim()} isLoading={m.isPending} />
-              )}
-            </div>
-          </LayoutFooter>
-        }
+            />
+          ) : (
+            <Button type="submit" label="Import" variant="primary" isDisabled={!text.trim()} isLoading={m.isPending} />
+          )}
+        </>
+      }
+    >
+      <label className="k-label" htmlFor={fileId}>
+        Zone file
+        <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
+      </label>
+      <TextInput
+        label="Zone apex"
+        placeholder="home.arpa"
+        description="Taken from $ORIGIN when the file has one"
+        value={apex}
+        onChange={setApex}
+        isRequired
+        status={err ? { type: 'error', message: err } : undefined}
       />
-    </Dialog>
+      <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN home.arpa.\n@ 3600 IN SOA ns1 hostmaster 1 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10'} />
+      <p className="k-muted k-small">
+        The import is all or nothing: a line that does not parse rejects the file. Importing into an existing zone replaces its earlier import; use Import BIND
+        on the zone page for that.
+      </p>
+      {m.error ? <Banner status="error" title="Import failed" description={errorText(m.error)} /> : null}
+      {result ? (
+        <Banner status={result.warnings.length ? 'warning' : 'success'} title={importSummary(result)} description={result.warnings.length ? result.warnings.join('; ') : undefined} />
+      ) : null}
+    </FormDialog>
   );
 }

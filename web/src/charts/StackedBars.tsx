@@ -3,7 +3,8 @@
 // per-client chart. uPlot has no stacking, so each series is drawn at its
 // cumulative height from the top of the stack down; the front bars hide
 // the lower part of the ones behind. Legend and tooltip values show the
-// raw (non-cumulative) counts.
+// raw (non-cumulative) counts: the hovered bucket's, or the totals over the
+// whole range while the pointer is elsewhere.
 //
 // Clicking a bucket calls onBucketClick with the bucket's start time; a
 // keyboard-reachable data table under the chart offers the same drill-down.
@@ -87,10 +88,11 @@ export function StackedBars({ x, series, step, height = 240, label, onBucketClic
         { stroke: text, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid }, size: 56 },
       ],
       series: [
-        { label: 'Time', value: (_u, v) => (v == null ? '–' : formatTime(v * 1000)) },
+        { label: 'Time', value: (_u, v) => (v == null ? 'total' : formatTime(v * 1000)) },
         ...order.map((i) => {
           const s = series[i] as StackSeries;
           const color = resolveCSSColor(s.color, el) || '#888';
+          const total = s.values.reduce((a, b) => a + b, 0);
           return {
             label: s.label,
             stroke: color,
@@ -99,7 +101,7 @@ export function StackedBars({ x, series, step, height = 240, label, onBucketClic
             paths: bars,
             points: { show: false },
             value: (_u: uPlot, _v: number | null, _si: number, idx: number | null) =>
-              idx == null ? '–' : formatExact(s.values[idx]),
+              formatExact(idx == null ? total : s.values[idx]),
           } satisfies uPlot.Series;
         }),
       ],
