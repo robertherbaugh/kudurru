@@ -8,7 +8,7 @@ export async function startMockWorker(basePath: string): Promise<void> {
   const worker = setupWorker(...handlers);
   await worker.start({
     serviceWorker: { url: `${basePath}mockServiceWorker.js`, options: { scope: basePath } },
-    onUnhandledRequest: 'bypass',
+    onUnhandledFrame: 'bypass',
     quiet: true,
   });
 }

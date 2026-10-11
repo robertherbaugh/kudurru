@@ -16,7 +16,6 @@ import type {
   Policy,
   QueryRow,
   SettingKey,
-  StatusClass,
   TimeseriesPoint,
 } from '../api/types';
 import schemaJSON from './data/settings-schema.json';
@@ -376,12 +375,6 @@ function buildSeries(now: number, r: () => number): TimeseriesPoint[] {
   return out;
 }
 
-function classOf(status: string): StatusClass {
-  if (status.startsWith('blocked') || status === 'refused_acl') return 'blocked';
-  if (status.startsWith('cached')) return 'cached';
-  if (status.startsWith('servfail') || status.startsWith('timeout') || status === 'dnssec_bogus' || status === 'dropped') return 'error';
-  return 'permitted';
-}
 
 export function makeQueryRow(id: number, ts: number, r: () => number, node = 'kudurru-0'): QueryRow {
   const client = pickSkewed(r, CLIENTS);

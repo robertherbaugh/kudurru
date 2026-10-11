@@ -85,3 +85,8 @@ export function withAlpha(color: string, alpha: number): string {
   }
   return color;
 }
+
+/** Resolves any CSS colour expression (var(), light-dark()) to rgb(). */
+export function resolveCSSColor(value: string, el?: Element | null): string {
+  return resolveColor(value, el);
+}

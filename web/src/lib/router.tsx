@@ -57,7 +57,15 @@ export function RouterProvider({ basePath, children }: { basePath: string; child
 
 /** App routes start with a single "/"; anything else is left alone. */
 export function isAppRoute(to: string): boolean {
-  return to.startsWith('/') && !to.startsWith('//');
+  return to.startsWith('/') && !to.startsWith('//') && !isApiURL(to);
+}
+
+/**
+ * API URLs (exports, the OIDC start, downloads) come from ApiClient.url
+ * and already carry the base path; they are full page loads, never routes.
+ */
+export function isApiURL(to: string): boolean {
+  return /^\/(?:[^?#]*\/)?api\/v\d+(?:[/?#]|$)/.test(to);
 }
 
 export interface AppLocation {

@@ -60,18 +60,49 @@ function fail(status: number, key: string, message: string, hint?: unknown, head
   );
 }
 
-const ALL_RESOURCES = [
-  'zones', 'records', 'blocklists', 'policies', 'clientgroups', 'clients', 'querylog', 'stats', 'cache', 'blocking',
-  'settings', 'node', 'users', 'groups', 'serviceaccounts', 'tokens', 'identityproviders', 'rolebindings', 'integrations',
-  'cluster', 'edge', 'audit',
+/** internal/rbac/permissions.yaml: resource -> verbs. */
+export const RESOURCE_VERBS: Record<string, string[]> = {
+  zones: ['read', 'write', 'delete', 'transfer', 'sign', 'share'],
+  records: ['read', 'write', 'delete'],
+  blocklists: ['read', 'write', 'delete', 'refresh'],
+  policies: ['read', 'write', 'delete'],
+  clientgroups: ['read', 'write', 'delete'],
+  clients: ['read', 'write'],
+  querylog: ['read', 'export', 'purge'],
+  stats: ['read'],
+  cache: ['read', 'flush'],
+  blocking: ['read', 'toggle'],
+  settings: ['read', 'write'],
+  node: ['config'],
+  users: ['read', 'write', 'delete'],
+  groups: ['read', 'write', 'delete'],
+  serviceaccounts: ['read', 'write', 'delete'],
+  tokens: ['read', 'write', 'delete', 'own'],
+  identityproviders: ['read', 'write', 'delete'],
+  rolebindings: ['read', 'write', 'delete'],
+  integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act'],
+  cluster: ['read', 'join', 'promote', 'drain'],
+  edge: ['read', 'write'],
+  audit: ['read', 'export'],
+};
+
+/** The viewer role of permissions.yaml plus querylog.read (the mock "viewer"). */
+const VIEWER = [
+  'zones.read', 'records.read', 'stats.read', 'cache.read', 'blocklists.read', 'policies.read', 'clientgroups.read',
+  'clients.read', 'blocking.read', 'settings.read', 'tokens.own', 'querylog.read', 'cluster.read',
 ];
 
-function permissions(roles: string[]): Record<string, string[]> {
+/** The permission matrix GET /auth/me returns for a set of roles. */
+export function permissions(roles: string[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const r of ALL_RESOURCES) {
-    out[r] = roles.includes('admin') ? ['get', 'list', 'create', 'update', 'delete', 'patch', 'action'] : ['get', 'list'];
+  if (roles.includes('admin')) {
+    for (const [r, verbs] of Object.entries(RESOURCE_VERBS)) out[r] = [...verbs];
+    return out;
   }
-  if (!roles.includes('admin')) out.tokens = ['get', 'list', 'create', 'delete'];
+  for (const p of VIEWER) {
+    const [r, v] = p.split('.') as [string, string];
+    (out[r] ??= []).push(v);
+  }
   return out;
 }
 
@@ -522,7 +553,7 @@ function objectRoutes(pattern: string) {
     http.get(pattern, ({ request, params }) => {
       const t = target(params);
       if (t instanceof Response) return t;
-      const g = guard(request, RESOURCE_OF[t.kind], 'get');
+      const g = guard(request, RESOURCE_OF[t.kind], 'read');
       if (g) return g;
       const obj = find(t.kind, t.name, t.ns);
       return obj ? ok(obj as unknown as Record<string, unknown>) : fail(404, 'not_found', `${KIND_NAMES[t.kind]} ${t.name} not found`);
@@ -530,7 +561,7 @@ function objectRoutes(pattern: string) {
     http.put(pattern, async ({ request, params }) => {
       const t = target(params);
       if (t instanceof Response) return t;
-      const g = guard(request, RESOURCE_OF[t.kind], 'update');
+      const g = guard(request, RESOURCE_OF[t.kind], 'write');
       if (g) return g;
       const obj = (await request.json()) as AnyObject;
       if (obj.metadata?.name !== t.name) return fail(400, 'invalid', `metadata.name: must be ${t.name}, the name in the path`);
@@ -570,9 +601,9 @@ export const handlers = [
   }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
-  http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'list') ?? ok({ items: db.tokens })),
+  http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens })),
   http.post(`${B}/auth/tokens`, async ({ request }) => {
-    const g = guard(request, 'tokens', 'create');
+    const g = guard(request, 'tokens', 'own');
     if (g) return g;
     const body = (await request.json()) as { name?: string; expiresIn?: string };
     if (!body.name) return fail(400, 'invalid', 'name: required');
@@ -582,7 +613,7 @@ export const handlers = [
     return ok({ ...t, token: `kdr_${id}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}` }, { status: 201 });
   }),
   http.delete(`${B}/auth/tokens/:id`, ({ request, params }) => {
-    const g = guard(request, 'tokens', 'delete');
+    const g = guard(request, 'tokens', 'own');
     if (g) return g;
     db.tokens = db.tokens.filter((t) => t.id !== params.id);
     return new HttpResponse(null, { status: 204 });
@@ -592,7 +623,7 @@ export const handlers = [
   http.get(`${B}/objects/:kind`, ({ request, params }) => {
     const kind = String(params.kind);
     if (!isKind(kind)) return fail(404, 'not_found', `unknown kind ${kind}`);
-    const g = guard(request, RESOURCE_OF[kind], 'list');
+    const g = guard(request, RESOURCE_OF[kind], 'read');
     if (g) return g;
     const url = new URL(request.url);
     const ns = url.searchParams.get('namespace');
@@ -602,7 +633,7 @@ export const handlers = [
   ...objectRoutes(`${B}/objects/:kind/:a`),
   ...objectRoutes(`${B}/objects/:kind/:a/:b`),
   http.post(`${B}/apply`, async ({ request }) => {
-    const g = guard(request, 'zones', 'update');
+    const g = guard(request, 'zones', 'write');
     if (g) return g;
     const text = await request.text();
     let docs: AnyObject[];
@@ -640,21 +671,21 @@ export const handlers = [
   }),
 
   // zones -----------------------------------------------------------------
-  http.get(`${B}/zones`, ({ request }) => guard(request, 'zones', 'list') ?? ok({ items: db.zones.map(zoneSummary) })),
+  http.get(`${B}/zones`, ({ request }) => guard(request, 'zones', 'read') ?? ok({ items: db.zones.map(zoneSummary) })),
   http.get(`${B}/zones/:zone`, ({ request, params }) => {
-    const g = guard(request, 'zones', 'get');
+    const g = guard(request, 'zones', 'read');
     if (g) return g;
     const z = db.zones.find((x) => x.metadata.name === params.zone);
     return z ? ok({ ...zoneSummary(z) }) : fail(404, 'not_found', `zone ${String(params.zone)} not found`);
   }),
   http.get(`${B}/zones/:zone/records`, ({ request, params }) => {
-    const g = guard(request, 'records', 'list');
+    const g = guard(request, 'records', 'read');
     if (g) return g;
     if (!db.zones.some((z) => z.metadata.name === params.zone)) return fail(404, 'not_found', `zone ${String(params.zone)} not found`);
     return ok({ items: recordsOf(String(params.zone)) });
   }),
   http.post(`${B}/zones/:zone/records`, async ({ request, params }) => {
-    const g = guard(request, 'records', 'create');
+    const g = guard(request, 'records', 'write');
     if (g) return g;
     const zone = String(params.zone);
     const z = db.zones.find((x) => x.metadata.name === zone);
@@ -704,7 +735,7 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.post(`${B}/zones/:zone/import`, async ({ request, params }) => {
-    const g = guard(request, 'records', 'create');
+    const g = guard(request, 'records', 'write');
     if (g) return g;
     const zone = String(params.zone);
     const z = db.zones.find((x) => x.metadata.name === zone);
@@ -733,14 +764,14 @@ export const handlers = [
     return ok({ imported: eps.length, recordSet: rsName, skipped });
   }),
   http.get(`${B}/zones/:zone/export`, ({ request, params }) => {
-    const g = guard(request, 'zones', 'get');
+    const g = guard(request, 'zones', 'read');
     if (g) return g;
     const z = db.zones.find((x) => x.metadata.name === params.zone);
     if (!z) return fail(404, 'not_found', `zone ${String(params.zone)} not found`);
     return new HttpResponse(exportZone(z), { headers: { 'Content-Type': 'text/dns; charset=utf-8', 'Content-Disposition': `attachment; filename="${z.metadata.name}.zone"` } });
   }),
   http.post(`${B}/zones/:zone/notify`, ({ request, params }) => {
-    const g = guard(request, 'zones', 'action');
+    const g = guard(request, 'zones', 'transfer');
     if (g) return g;
     const z = db.zones.find((x) => x.metadata.name === params.zone);
     if (!z) return fail(404, 'not_found', `zone ${String(params.zone)} not found`);
@@ -750,7 +781,7 @@ export const handlers = [
 
   // lists and policy -------------------------------------------------------
   http.post(`${B}/blocklists/:ns/:name/refresh`, ({ request, params }) => {
-    const g = guard(request, 'blocklists', 'action');
+    const g = guard(request, 'blocklists', 'refresh');
     if (g) return g;
     const l = db.lists.find((x) => x.metadata.name === params.name && x.metadata.namespace === params.ns);
     if (!l) return fail(404, 'not_found', `BlockList ${String(params.ns)}/${String(params.name)} not found`);
@@ -758,7 +789,7 @@ export const handlers = [
     return new HttpResponse(null, { status: 202 });
   }),
   http.get(`${B}/blocklists/_search`, ({ request }) => {
-    const g = guard(request, 'blocklists', 'get');
+    const g = guard(request, 'blocklists', 'read');
     if (g) return g;
     const domain = (new URL(request.url).searchParams.get('domain') ?? '').toLowerCase();
     const items = db.lists.flatMap((l) =>
@@ -776,7 +807,7 @@ export const handlers = [
     return ok({ items });
   }),
   http.post(`${B}/domains/:action/:kind`, async ({ request, params }) => {
-    const g = guard(request, 'blocklists', 'update');
+    const g = guard(request, 'blocklists', 'write');
     if (g) return g;
     const action = String(params.action);
     const kind = String(params.kind);
@@ -786,7 +817,7 @@ export const handlers = [
     return ok(appendInline(listName, action === 'allow' ? 'allow' : 'block', body.namespace ?? 'default', body.domains ?? [], kind === 'regex'));
   }),
   http.get(`${B}/clients`, ({ request }) => {
-    const g = guard(request, 'clients', 'list');
+    const g = guard(request, 'clients', 'read');
     if (g) return g;
     const items = CLIENTS.map((c) => {
       const rows = db.queries.filter((q) => q.client.ip === c.ip);
@@ -805,12 +836,12 @@ export const handlers = [
 
   // runtime ---------------------------------------------------------------
   http.get(`${B}/dns/blocking`, ({ request }) => {
-    const g = guard(request, 'blocking', 'get');
+    const g = guard(request, 'blocking', 'read');
     if (g) return g;
     return ok(blockingState());
   }),
   http.post(`${B}/dns/blocking`, async ({ request }) => {
-    const g = guard(request, 'blocking', 'update');
+    const g = guard(request, 'blocking', 'toggle');
     if (g) return g;
     const body = (await request.json()) as { blocking: boolean; timer?: number; until?: string };
     if (typeof body.blocking !== 'boolean') return fail(400, 'invalid', 'blocking: must be a boolean');
@@ -820,13 +851,13 @@ export const handlers = [
     return ok(blockingState());
   }),
   http.post(`${B}/cache/flush`, async ({ request }) => {
-    const g = guard(request, 'cache', 'action');
+    const g = guard(request, 'cache', 'flush');
     if (g) return g;
     const body = (await request.json().catch(() => ({}))) as { name?: string };
     return ok({ flushed: body.name ? 1 : 48213 });
   }),
   http.post(`${B}/dns/query`, async ({ request }) => {
-    const g = guard(request, 'querylog', 'get');
+    const g = guard(request, 'querylog', 'read');
     if (g) return g;
     const body = (await request.json()) as { name?: string; type?: string; client?: string };
     if (!body.name) return fail(400, 'invalid', 'name: required');
@@ -835,7 +866,7 @@ export const handlers = [
 
   // stats -----------------------------------------------------------------
   http.get(`${B}/stats/summary`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const t = seriesTotals();
@@ -870,7 +901,7 @@ export const handlers = [
     });
   }),
   http.get(`${B}/stats/timeseries`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const from = url.searchParams.get('from');
@@ -902,7 +933,7 @@ export const handlers = [
     return ok({ ...scopeInfo(url), from: points[0]?.ts ?? '', until: points[points.length - 1]?.ts ?? '', step: 300, points, approximate: false });
   }),
   http.get(`${B}/stats/top`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const dim = (url.searchParams.get('dim') ?? 'domains') as TopDim;
@@ -914,7 +945,7 @@ export const handlers = [
     return ok({ ...scopeInfo(url), from: new Date(db.now - windowMs(url)).toISOString(), until: new Date(db.now).toISOString(), dim, blocked, items, total_in_window: blocked ? t.blocked : t.total - t.blocked, approximate: longTerm, ...(longTerm ? { cutoff_rank: n * 4 } : {}) });
   }),
   http.get(`${B}/stats/upstreams`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const top = topFrom('upstreams', false, 10, seriesTotals().total / db.queries.length);
@@ -927,7 +958,7 @@ export const handlers = [
     });
   }),
   http.get(`${B}/stats/clients/timeseries`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const n = Number(url.searchParams.get('n') ?? '5');
@@ -945,7 +976,7 @@ export const handlers = [
     });
   }),
   http.get(`${B}/stats/recent_blocked`, ({ request }) => {
-    const g = guard(request, 'stats', 'get');
+    const g = guard(request, 'stats', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const n = Number(url.searchParams.get('n') ?? '10');
@@ -958,7 +989,7 @@ export const handlers = [
 
   // query log ---------------------------------------------------------------
   http.get(`${B}/queries`, ({ request }) => {
-    const g = guard(request, 'querylog', 'get');
+    const g = guard(request, 'querylog', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const all = filterQueries(url);
@@ -978,7 +1009,7 @@ export const handlers = [
     });
   }),
   http.get(`${B}/queries/suggestions`, ({ request }) => {
-    const g = guard(request, 'querylog', 'get');
+    const g = guard(request, 'querylog', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const field = url.searchParams.get('field') ?? 'domain';
@@ -991,7 +1022,7 @@ export const handlers = [
     }
     return ok({ field, values: [...values] });
   }),
-  sse(`${B}/queries/stream`, ({ client, request }) => {
+  sse<{ query: QueryRow }>(`${B}/queries/stream`, ({ client, request }) => {
     const last = Number(request.headers.get('Last-Event-ID') ?? new URL(request.url).searchParams.get('lastEventId') ?? '0');
     if (last) {
       for (const q of db.queries.filter((x) => x.id > last).reverse()) client.send({ id: String(q.id), event: 'query', data: q });
@@ -1005,7 +1036,7 @@ export const handlers = [
     }, 1200);
   }),
   http.post(`${B}/queries/:id/actions`, async ({ request, params }) => {
-    const g = guard(request, 'blocklists', 'update');
+    const g = guard(request, 'blocklists', 'write');
     if (g) return g;
     const row = db.queries.find((q) => q.id === Number(params.id));
     if (!row) return fail(404, 'not_found', `query ${String(params.id)} is not in the log`);
@@ -1014,14 +1045,14 @@ export const handlers = [
     return ok(appendInline(body.action === 'allow' ? 'ui-allow' : 'ui-deny', body.action === 'allow' ? 'allow' : 'block', 'default', [row.domain], false));
   }),
   http.delete(`${B}/querylog`, ({ request }) => {
-    const g = guard(request, 'querylog', 'delete');
+    const g = guard(request, 'querylog', 'purge');
     if (g) return g;
     const before = new URL(request.url).searchParams.get('before');
     db.queries = before ? db.queries.filter((q) => q.ts >= new Date(before).toISOString()) : [];
     return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/querylog/status`, ({ request }) => {
-    const g = guard(request, 'querylog', 'get');
+    const g = guard(request, 'querylog', 'read');
     if (g) return g;
     return ok({
       rows: 1_204_332,
@@ -1036,10 +1067,10 @@ export const handlers = [
   }),
 
   // settings ----------------------------------------------------------------
-  http.get(`${B}/settings/_schema`, ({ request }) => guard(request, 'settings', 'get') ?? ok({ items: db.schema })),
-  http.get(`${B}/settings`, ({ request }) => guard(request, 'settings', 'get') ?? ok(db.settings)),
+  http.get(`${B}/settings/_schema`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.schema })),
+  http.get(`${B}/settings`, ({ request }) => guard(request, 'settings', 'read') ?? ok(db.settings)),
   http.patch(`${B}/settings`, async ({ request }) => {
-    const g = guard(request, 'settings', 'update');
+    const g = guard(request, 'settings', 'write');
     if (g) return g;
     const patch = (await request.json()) as Record<string, unknown>;
     const bad = leafPaths(patch).find((p) => db.schema.find((k) => k.path === p)?.hostOnly || db.schema.find((k) => k.path === p)?.scope === 'node');
@@ -1047,9 +1078,9 @@ export const handlers = [
     db.settings = mergePatch(db.settings, patch);
     return ok(db.settings);
   }),
-  http.get(`${B}/node/config`, ({ request }) => guard(request, 'node', 'get') ?? ok(db.nodeConfig)),
+  http.get(`${B}/node/config`, ({ request }) => guard(request, 'node', 'config') ?? ok(db.nodeConfig)),
   http.patch(`${B}/node/config`, async ({ request }) => {
-    const g = guard(request, 'node', 'update');
+    const g = guard(request, 'node', 'config');
     if (g) return g;
     const patch = (await request.json()) as Record<string, unknown>;
     const bad = leafPaths(patch).find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
@@ -1059,9 +1090,9 @@ export const handlers = [
   }),
 
   // nodes and cluster -------------------------------------------------------
-  http.get(`${B}/nodes`, ({ request }) => guard(request, 'cluster', 'get') ?? ok({ items: db.nodes })),
+  http.get(`${B}/nodes`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.nodes })),
   http.get(`${B}/nodes/:name/health`, ({ request, params }) => {
-    const g = guard(request, 'cluster', 'get');
+    const g = guard(request, 'cluster', 'read');
     if (g) return g;
     const n = db.nodes.find((x) => x.name === params.name);
     if (!n) return fail(404, 'not_found', `node ${String(params.name)} not found`);
@@ -1076,18 +1107,18 @@ export const handlers = [
       ],
     });
   }),
-  http.get(`${B}/cluster`, ({ request }) => guard(request, 'cluster', 'get') ?? ok({ mode: 'ha-static', leader: 'kudurru-0', nodes: db.nodes.map((n) => n.name), epoch: 7, readOnly: false })),
+  http.get(`${B}/cluster`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ mode: 'ha-static', leader: 'kudurru-0', nodes: db.nodes.map((n) => n.name), epoch: 7, readOnly: false })),
   http.get(`${B}/edge`, ({ request }) =>
-    guard(request, 'edge', 'get') ??
+    guard(request, 'edge', 'read') ??
     ok({ backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true, qps: 14.2 }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true, qps: 5.9 }], vip: [{ address: '192.168.1.53', owner: 'kudurru-0' }] }),
   ),
-  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'get') ?? ok({ items: db.messages })),
+  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2' })),
 
   // iam and audit -------------------------------------------------------------
   http.get(`${B}/iam/:what`, ({ request, params }) => {
     const what = String(params.what);
-    const g = guard(request, what === 'rolebindings' ? 'rolebindings' : what === 'identityproviders' ? 'identityproviders' : what === 'serviceaccounts' ? 'serviceaccounts' : 'users', 'list');
+    const g = guard(request, what === 'rolebindings' ? 'rolebindings' : what === 'identityproviders' ? 'identityproviders' : what === 'serviceaccounts' ? 'serviceaccounts' : 'users', 'read');
     if (g) return g;
     const items: Record<string, unknown[]> = {
       users: db.users.map((u) => ({ name: u.username, displayName: u.name, local: true, roles: u.roles, disabled: false })),
@@ -1102,7 +1133,7 @@ export const handlers = [
     return items[what] ? ok({ items: items[what] }) : fail(404, 'not_found', `no IAM collection ${what}`);
   }),
   http.get(`${B}/audit`, ({ request }) => {
-    const g = guard(request, 'audit', 'list');
+    const g = guard(request, 'audit', 'read');
     if (g) return g;
     const url = new URL(request.url);
     const kind = url.searchParams.get('kind');
