@@ -244,7 +244,8 @@ func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones [
 	}
 	// Siblings first, the main file last: a crash in between leaves the
 	// old main file, which never references a function that is missing.
-	slices.SortStableFunc(files, func(a, b File) int {
+	order := slices.Clone(files)
+	slices.SortStableFunc(order, func(a, b File) int {
 		switch {
 		case a.Name == s.cfg.Renderer.Main():
 			return 1
@@ -253,7 +254,7 @@ func (s *Supervisor) render(ctx context.Context, eps []cluster.Endpoint, zones [
 		}
 		return 0
 	})
-	for _, f := range files {
+	for _, f := range order {
 		if err := edge.SwapFile(filepath.Join(s.cfg.ConfigDir, candidateName(f.Name)), filepath.Join(s.cfg.ConfigDir, f.Name)); err != nil {
 			return false, err
 		}
