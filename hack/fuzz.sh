@@ -5,6 +5,7 @@
 #   hack/fuzz.sh --list          print "package target" pairs (CI matrix)
 #   hack/fuzz.sh FuzzDoHRequest  only entries ("<package> <target>") matching the regex
 #   hack/fuzz.sh --one ./internal/zone FuzzImportBIND   exactly one target (CI)
+#   hack/fuzz.sh --save-corpus 12 ./test/fuzz FuzzDoHRequest   keep found inputs as seeds
 #
 # FUZZTIME     per-target budget (go test -fuzztime), default 60s
 # FUZZ_JOBS    targets fuzzed at the same time, default 1
@@ -59,6 +60,23 @@ run_one() {
 		return 1
 	fi
 }
+
+# --save-corpus N <package> <target>: copy the N smallest inputs the fuzzer
+# found (go's fuzz cache) into <package>/testdata/fuzz/<target>/ so they are
+# committed as seed corpus and replayed by every `go test`.
+if [[ "${1:-}" == "--save-corpus" ]]; then
+	n="$2" pkg="$3" target="$4"
+	mod="$(go list -m)"
+	src="$(go env GOCACHE)/fuzz/${mod}/${pkg#./}/${target}"
+	dst="${pkg}/testdata/fuzz/${target}"
+	[[ -d "$src" ]] || { echo "no fuzz cache for $pkg $target ($src)"; exit 1; }
+	mkdir -p "$dst"
+	find "$src" -type f -printf '%s %p\n' | sort -n | head -n "$n" | while read -r _ f; do
+		cp "$f" "$dst/"
+	done
+	echo "$dst: $(find "$dst" -type f | wc -l) files"
+	exit 0
+fi
 
 if [[ "${1:-}" == "--one" ]]; then
 	run_one "$2" "$3"
