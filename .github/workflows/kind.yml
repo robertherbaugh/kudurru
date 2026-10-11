@@ -1,0 +1,43 @@
+# kind + MetalLB + Helm smoke test (week-1 spike (f), docs/release-checklist.md
+# §3): hack/kind-e2e.sh builds the image, installs both charts with
+# vip.provider=metallb, digs through the LoadBalancer address over UDP and
+# TCP with service.dns.splitProtocols false and true, and counts unanswered
+# queries during a rolling restart. Not a required check until it has a
+# record of green runs; the sandbox that wrote it cannot run kind (no memory
+# cgroup controller), so the first run is on GitHub.
+name: kind
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - charts/**
+      - hack/kind-e2e.sh
+      - Dockerfile
+      - .github/workflows/kind.yml
+  push:
+    branches: [main]
+    paths:
+      - charts/**
+      - hack/kind-e2e.sh
+permissions:
+  contents: read
+jobs:
+  kind-metallb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KIND_VERSION: v0.33.0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v4
+      - name: Install kind and dig
+        run: |
+          curl -fsSLo kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          curl -fsSLo kind.sha256 "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256sum"
+          echo "$(cut -d' ' -f1 kind.sha256)  kind" | sha256sum -c -
+          sudo install -m 0755 kind /usr/local/bin/kind
+          rm kind kind.sha256
+          command -v dig || { sudo apt-get update && sudo apt-get install -y dnsutils; }
+          kind version; helm version --short; kubectl version --client
+      - name: kind + MetalLB + helm install + dig over UDP and TCP
+        run: hack/kind-e2e.sh

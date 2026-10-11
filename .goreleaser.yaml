@@ -60,13 +60,15 @@ sboms:
   - id: packages
     artifacts: package
 
-# Container images with ko (D68: linux/amd64 and linux/arm64 only).
+# Container images with ko (D68: linux/amd64 and linux/arm64 only). The
+# distroless bases are pinned as tag@digest (multi-arch index digest; the
+# Dockerfile carries the same digests, bump both together).
 kos:
   - id: kudurru
     build: kudurru
     main: ./cmd/kudurru
     working_dir: .
-    base_image: gcr.io/distroless/static:nonroot
+    base_image: gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
     repositories: [ghcr.io/robertherbaugh/kudurru]
     platforms: [linux/amd64, linux/arm64]
     tags:
@@ -98,7 +100,7 @@ kos:
     build: kudurru
     main: ./cmd/kudurru
     working_dir: .
-    base_image: gcr.io/distroless/static:debug-nonroot
+    base_image: gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51
     repositories: [ghcr.io/robertherbaugh/kudurru]
     platforms: [linux/amd64, linux/arm64]
     tags:
@@ -173,6 +175,15 @@ nfpms:
 
 # cosign keyless (GitHub OIDC): the checksum file covers every archive and
 # package; images are signed by digest.
+#
+# docker_signs with `artifacts: manifests` covers the ko images: the ko pipe
+# registers each pushed image (one per `kos` entry, the multi-arch index) as
+# a DockerManifest artifact with its digest, and the docker sign pipe runs
+# after ko in the publish phase and selects DockerManifest artifacts
+# (goreleaser v2.18 internal/pipe/ko/ko.go makeArtifact,
+# internal/pipe/sign/sign_docker.go; the ko docs' "Signing KO manifests").
+# The signature is on the index digest, which is what `cosign verify
+# <image>:<tag>` resolves; release.yml verifies both images after publishing.
 signs:
   - id: checksums
     cmd: cosign

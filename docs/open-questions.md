@@ -12,7 +12,7 @@ These were the decisions the architecture left to the project owner. Answers are
 | 2 | **Compose HA ladder.** v0.1 static twins, v0.2 follower mode with fenced promote, v1.0 raft. | 2026-10-10 | D50 |
 | 3 | **Sessions.** Sealed cookies in v0.1 for both modes; SQLite session store in v0.2 for Docker; optional external store for Kubernetes in v1.0. | 2026-10-10 | D54 |
 | 4 | **Kubernetes as a DNS data source.** `external` zones from Ingress, Gateway API routes and LoadBalancer Services in v0.2; `cluster.local` stays with CoreDNS before 1.x. | 2026-10-10 | D64 |
-| 5 | **Blocked-services and safe-search data.** A kudurru-owned, permissively licensed catalogue in a separate data repository, shipped in **v0.1** (M2). | 2026-10-10 | D60 |
+| 5 | **Blocked-services and safe-search data.** A kudurru-owned, permissively licensed catalogue in a separate data repository, shipped in **v0.1** (M2). | 2026-10-10 | D60; revised by D120 (embedded catalogue in v0.1, the data repository waits for the owner) |
 | 6 | **DHCP.** Out of scope for 1.0; candidate for 2.0. | 2026-10-10 | D52 |
 | 7 | **Default block response.** `zeroIP` with a 10 minute TTL and EDE 15. | 2026-10-10 | D58 |
 | 8 | **Query log defaults.** Privacy `full`, raw rows 30 days up to 10 GiB, answer summary only in `full`, rollups 35 d / 400 d / forever. | 2026-10-10 | D59 |
@@ -32,7 +32,7 @@ These were the decisions the architecture left to the project owner. Answers are
 
 ## Week-1 spikes before the schedule is committed
 
-Independent of the answers above, these must be measured before v0.1 milestones are dated. **Status 2026-10-11:** items 3, 4, 5, 7 and 9 are done (reports in [spikes/](spikes/)); items 1, 2, 6 and 8 need a dnsdist binary, Docker/kind and two VMs.
+Independent of the answers above, these must be measured before v0.1 milestones are dated. **Status 2026-10-11 (v0.1 fix round):** the schedule went ahead without all of them. Items 3, 4, 5 and 7 are done, as is the transports spike (i) (reports in [spikes/](spikes/)). Item 6 no longer needs the owner's hardware: GitHub's ubuntu-latest runners have Docker, and the `kind` workflow (`hack/kind-e2e.sh`, `make kind-e2e`) installs MetalLB and both charts on kind and digs through the LoadBalancer over UDP and TCP with split and mixed Services; it has not run yet (this sandbox cannot start kind), and the cloud half stays open. Items 1 and 2 need a real dnsdist driven with `kdig`; the pinned dnsdist image already runs in the `edge` workflow (`make edge-check`, a gate since the fix round), so they could become a CI job too, but none is written. Item 8 needs two VMs exchanging VRRP and stays on the owner's hardware (a GA gate in [release-checklist.md](release-checklist.md) §3).
 
 1. dnsdist 2.1 started from YAML plus console `newServer` and `reloadAllCertificates()`: does the console work under YAML config?
 2. PROXYv2 with the shared-secret TLV plus `chashed` backend selection plus health-check validation function smoke test.

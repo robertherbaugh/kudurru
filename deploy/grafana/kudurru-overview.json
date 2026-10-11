@@ -1721,19 +1721,92 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Highest minus lowest SOA serial served for each zone across the selected nodes. Non-zero for longer than a zone cache rebuild means a node serves an old copy (KudurruSerialDivergence).",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "gridPos": {
-        "h": 3,
-        "w": 24,
+        "h": 8,
+        "w": 12,
         "x": 0,
         "y": 99
       },
       "id": 45,
       "options": {
-        "content": "The serial-divergence panel (`max by (zone)(kudurru_zone_serial) - min by (zone)(kudurru_zone_serial)`) needs the per-zone serial gauge, which the binary does not export yet (docs/followups.md).",
-        "mode": "markdown"
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (zone) (kudurru_zone_serial{instance=~\"$instance\"}) - min by (zone) (kudurru_zone_serial{instance=~\"$instance\"})",
+          "legendFormat": "{{zone}}",
+          "refId": "A"
+        }
+      ],
       "title": "Serial divergence",
-      "type": "text"
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 99
+      },
+      "id": 46,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (zone, kind) (kudurru_zone_records{instance=~\"$instance\"})",
+          "legendFormat": "{{zone}} {{kind}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Zone size",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1741,9 +1814,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 102
+        "y": 107
       },
-      "id": 46,
+      "id": 47,
       "panels": [],
       "title": "Pipeline and query log",
       "type": "row"
@@ -1763,9 +1836,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 103
+        "y": 108
       },
-      "id": 47,
+      "id": 48,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -1806,9 +1879,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 103
+        "y": 108
       },
-      "id": 48,
+      "id": 49,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -1849,9 +1922,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 103
+        "y": 108
       },
-      "id": 49,
+      "id": 50,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -1901,9 +1974,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 111
+        "y": 116
       },
-      "id": 50,
+      "id": 51,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -1953,9 +2026,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 111
+        "y": 116
       },
-      "id": 51,
+      "id": 52,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -1996,9 +2069,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 111
+        "y": 116
       },
-      "id": 52,
+      "id": 53,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2030,9 +2103,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 119
+        "y": 124
       },
-      "id": 53,
+      "id": 54,
       "panels": [],
       "title": "Cluster and store",
       "type": "row"
@@ -2052,9 +2125,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 120
+        "y": 125
       },
-      "id": 54,
+      "id": 55,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2095,9 +2168,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 120
+        "y": 125
       },
-      "id": 55,
+      "id": 56,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2138,9 +2211,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 120
+        "y": 125
       },
-      "id": 56,
+      "id": 57,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2190,9 +2263,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 128
+        "y": 133
       },
-      "id": 57,
+      "id": 58,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2233,9 +2306,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 128
+        "y": 133
       },
-      "id": 58,
+      "id": 59,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2276,9 +2349,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 128
+        "y": 133
       },
-      "id": 59,
+      "id": 60,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2319,9 +2392,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 136
+        "y": 141
       },
-      "id": 60,
+      "id": 61,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2362,9 +2435,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 136
+        "y": 141
       },
-      "id": 61,
+      "id": 62,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2405,9 +2478,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 136
+        "y": 141
       },
-      "id": 62,
+      "id": 63,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2439,9 +2512,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 149
       },
-      "id": 63,
+      "id": 64,
       "panels": [],
       "title": "dnsdist edge",
       "type": "row"
@@ -2461,9 +2534,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 145
+        "y": 150
       },
-      "id": 64,
+      "id": 65,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2513,9 +2586,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 145
+        "y": 150
       },
-      "id": 65,
+      "id": 66,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2565,9 +2638,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 145
+        "y": 150
       },
-      "id": 66,
+      "id": 67,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -2594,31 +2667,259 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 158
+      },
+      "id": 68,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "min by (backend) (kudurru_edge_backend_up)",
+          "legendFormat": "{{backend}}",
+          "refId": "A"
+        }
+      ],
+      "title": "kudurru backends up (edge supervisor)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 158
+      },
+      "id": 69,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (result) (rate(kudurru_edge_renders_total[$__rate_interval]))",
+          "legendFormat": "render {{result}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (reason) (rate(kudurru_edge_dnsdist_restarts_total[$__rate_interval]))",
+          "legendFormat": "restart {{reason}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Edge renders and dnsdist restarts",
+      "type": "timeseries"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 153
+        "y": 166
       },
-      "id": 67,
+      "id": 70,
       "panels": [],
       "title": "VIP",
       "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Nodes holding each VIP as VRRP MASTER (kudurru_vip_master from `kudurru vip run`). Exactly 1 is healthy; 0 means nobody answers on the VIP, 2 or more is a split brain.",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 167
+      },
+      "id": 71,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (vip) (kudurru_vip_master)",
+          "legendFormat": "{{vip}}",
+          "refId": "A"
+        }
+      ],
+      "title": "VIP masters",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 167
+      },
+      "id": 72,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (instance, vip) (kudurru_vip_priority)",
+          "legendFormat": "{{instance}} {{vip}}",
+          "refId": "A"
+        }
+      ],
+      "title": "VRRP priority",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 167
+      },
+      "id": 73,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (result) (rate(kudurru_vip_reloads_total[$__rate_interval]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "keepalived renders",
+      "type": "timeseries"
     },
     {
       "gridPos": {
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 154
+        "y": 175
       },
-      "id": 68,
+      "id": 74,
       "options": {
-        "content": "VIP panels use `kudurru_vip_master{vip}`, emitted by the keepalived supervisor (`kudurru vip run`, milestone M4). With kube-vip or MetalLB, ownership is visible in the Service status and in those projects' own metrics.",
+        "content": "These panels come from the keepalived supervisor's metrics listener (:8085). With kube-vip or MetalLB, ownership is visible in the Service status and in those projects' own metrics.",
         "mode": "markdown"
       },
-      "title": "VIP ownership",
+      "title": "Other VIP providers",
       "type": "text"
     }
   ],

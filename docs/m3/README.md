@@ -13,4 +13,4 @@ Six work packages, wired in `cmd/kudurru/serve.go` (commit "feat(serve): wire mi
 
 Verified live from one config: local login, cookie and token sessions with the admin's roles, `kudurru get zones` / `get blocklists -A` / `query` / `blocking disable 1m` / `apply -f -` (the new record resolved immediately) / `stats summary` / `logs` / `audit`, the real dashboard bundle served with its assets, `/api/v1/openapi.json`.
 
-Not verifiable in this sandbox: `make edge-check` (needs Docker), the Helm chart on a cluster, kind + MetalLB, two-VM VRRP.
+Not verifiable in this sandbox: `make edge-check` (needs Docker), the Helm chart on a cluster, kind + MetalLB, two-VM VRRP. (v0.1 fix round: `make edge-check` failed on its first real run, because the keepalived image did not build; fixed, it passes and is a CI gate, see edge.md. kind + MetalLB is the `kind` workflow.)

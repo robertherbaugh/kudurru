@@ -125,11 +125,17 @@ Optional integrator wiring, all behind configuration that does not exist yet (`e
 - The target builds the kudurru image (`make docker`), then `images/keepalived` (from source, a few minutes) and `images/dnsdist` with `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION)`. Then:
   - It re-runs the golden tests.
   - It generates a throwaway P-256 certificate into `bin/edge-check/certs`, mode 0644 so uid 953 can read it, for the `tls` case.
-  - It runs `dnsdist --check-config -C <case>/dnsdist.yml` and `-C <case>/dnsdist.conf` for every golden case inside the pinned upstream image, with the testdata mounted read-only at `/golden` and the certificate at `/certs`.
-  - It runs `keepalived -t -f <golden>.conf` for every keepalived golden inside the built image, after writing 32-byte HMAC keys to `/run/secrets/vrrp_hmac_53` and `_54`.
+  - It runs `dnsdist --check-config -C <case>/dnsdist.yml` and `-C <case>/dnsdist.conf` for every golden case inside the pinned upstream image, with the testdata mounted read-only at `/golden` and the certificate at `/certs`. The `dynblocks-ebpf` case runs as root with `--cap-add SYS_ADMIN`, because `--check-config` creates the BPF maps.
+  - It runs `keepalived -t -f <golden>.conf` for every keepalived golden inside the built image, after writing 32-byte HMAC keys (mode 0600) to `/run/secrets/vrrp_hmac_53` and `_54`.
   - Finally it runs `kudurru version` from the built dnsdist image.
-- `.github/workflows/edge.yml` runs it on `ubuntu-latest` for PRs touching `internal/edge`, the two command files or `images/`, and on demand. The job is `continue-on-error: true` until the runner policy for Docker builds is settled.
-- Possible first-run findings to expect: the `dynblocks-ebpf` case may need `--cap-add SYS_ADMIN` if `--check-config` creates BPF maps, and the Lua validation helper (`newDNSPacketOverlay`, `getRecordsCountInSection`) only runs when a health check fires. That is covered by hardware spike (b), not by `--check-config`.
+- `.github/workflows/edge.yml` runs it on `ubuntu-latest` for PRs touching `internal/edge`, the two command files, `images/` or the Dockerfile, and on demand. Since the v0.1 fix round it is a real gate (no `continue-on-error`).
+- The Lua validation helper (`newDNSPacketOverlay`, `getRecordsCountInSection`) only runs when a health check fires. That is covered by hardware spike (b), not by `--check-config`.
+
+First real run (v0.1 fix round, Docker 25 in the sandbox): all 12 dnsdist files and all 4 keepalived files pass. It found three problems, all fixed:
+
+- The keepalived image did not build. `configure` rejects `--disable-libipset` next to `--disable-iptables` (ipsets are part of the iptables support), so the build stopped before compiling. The image now configures with `--disable-iptables --disable-nftables` and links only libcrypto and libmagic.
+- `dnsdist --check-config` on the `dynblocks-ebpf` Lua file fails as uid 953: creating a BPF map needs an effective CAP_SYS_ADMIN or CAP_BPF.
+- `keepalived -t` rejects an `auth_hmac` key file that is readable by group or others (a security config error, so the supervisor's pre-swap check would refuse every render). The chart mounts the Secret with mode 0400; the compose files now say `chmod 0600 secrets/vrrp_hmac`.
 
 ## Measurements
 
@@ -163,4 +169,4 @@ Optional integrator wiring, all behind configuration that does not exist yet (`e
 - kube-vip/MetalLB `Owner` from Service status.
 - `kudurru doctor` warning for `--legacy`.
 - v0.2 console diff-apply and `reloadAllCertificates()` (D17, spike (a)).
-- The first real `make edge-check` run.
+- The first real `make edge-check` run (done in the v0.1 fix round, see above).
