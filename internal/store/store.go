@@ -161,9 +161,21 @@ type SnapshotOptions struct {
 
 // Elector is the leader-election primitive each driver provides:
 // Lease (kube), always-leader (sqlite), never-leader (follower), raft.
+//
+// Run campaigns until ctx is cancelled and returns nil then; losing
+// leadership never returns from Run (D44, D78). Each leadership period is a
+// term: onStarted receives a term context that is cancelled when the term
+// ends (leadership lost or ctx done) and may block until then, which is the
+// shape of a leader-only runnable group. onStopped, if non-nil, runs after
+// onStarted has returned and the term context is done, and must stop all
+// leader-only work before returning, because a successor may start once it
+// returns. Terms never overlap within one elector. Either callback may be
+// nil.
 type Elector interface {
-	Run(ctx context.Context, onStarted, onStopped func()) error
+	Run(ctx context.Context, onStarted func(term context.Context), onStopped func()) error
+	// IsLeader reports whether a term is active.
 	IsLeader() bool
+	// Leader returns the identity of the last observed leader, or "".
 	Leader() string
 }
 

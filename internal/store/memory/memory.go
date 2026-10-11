@@ -261,9 +261,10 @@ func (s *Store) broadcast(kind store.Kind, ev store.Event) {
 
 type alwaysLeader struct{ name string }
 
-func (a alwaysLeader) Run(ctx context.Context, onStarted, onStopped func()) error {
+// Run implements store.Elector: one term that lasts as long as ctx.
+func (a alwaysLeader) Run(ctx context.Context, onStarted func(context.Context), onStopped func()) error {
 	if onStarted != nil {
-		onStarted()
+		onStarted(ctx)
 	}
 	<-ctx.Done()
 	if onStopped != nil {
