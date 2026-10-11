@@ -99,6 +99,7 @@ const RESPONSES = [
   { value: 'zeroIP', label: '0.0.0.0 / ::' },
   { value: 'refused', label: 'REFUSED' },
   { value: 'customIP', label: 'Custom IP' },
+  { value: 'blockPage', label: 'Block page' },
 ];
 
 export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSchema> = {
@@ -144,6 +145,7 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
             ],
           },
           { type: 'strings', key: 'inline', label: 'Inline entries', help: 'One per line; paste many at once.', placeholder: 'ads.example.com', validate: listEntryError },
+          { type: 'bool', key: 'subdomains', label: 'Include subdomains', help: 'Hosts and plain-domain entries also match their subdomains.' },
         ],
       },
       { type: 'duration', key: 'refreshInterval', label: 'Refresh interval', placeholder: '24h', help: 'How often URL sources are re-fetched.' },
