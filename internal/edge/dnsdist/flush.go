@@ -127,6 +127,17 @@ func (f *CacheFlusher) BlockingChanged(until time.Time) {
 	}
 }
 
+// ListsChanged reacts to a compiled list snapshot (a list refresh or an
+// edited BlockList): it flushes the resolver pool in the background so the
+// edge stops serving answers the old lists produced.
+func (f *CacheFlusher) ListsChanged() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.stopped {
+		f.flushAsync("lists changed")
+	}
+}
+
 // flushAsync runs FlushResolver on its own goroutine; f.mu is held.
 func (f *CacheFlusher) flushAsync(why string) {
 	f.wg.Go(func() {

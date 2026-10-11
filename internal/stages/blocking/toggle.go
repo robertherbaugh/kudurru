@@ -35,8 +35,9 @@ type Toggle struct {
 	until atomic.Int64 // unix nanoseconds; 0 = enabled
 	now   func() time.Time
 
-	mu  sync.Mutex
-	pub Publisher
+	mu       sync.Mutex
+	pub      Publisher
+	onChange func(until time.Time)
 }
 
 // NewToggle returns an enabled toggle. now is the clock; nil means
@@ -53,6 +54,17 @@ func (t *Toggle) SetPublisher(p Publisher) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.pub = p
+}
+
+// SetOnChange installs an observer Apply calls, on the caller's goroutine,
+// whenever the disabled-until value actually changes (a local Disable or
+// Enable as well as a replicated Apply). The observer must not block: the
+// edge cache flusher uses it to expunge dnsdist's resolver cache. nil
+// removes it.
+func (t *Toggle) SetOnChange(fn func(until time.Time)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.onChange = fn
 }
 
 // Disable turns blocking off for d (d <= 0: until Enable) and publishes the
@@ -77,13 +89,23 @@ func (t *Toggle) Enable() error {
 // other time disables until then (Forever: until Enable). Replication
 // watchers call it with the replicated value.
 func (t *Toggle) Apply(until time.Time) {
+	var v int64
 	switch {
 	case until.IsZero():
-		t.until.Store(0)
+		v = 0
 	case !until.Before(Forever):
-		t.until.Store(math.MaxInt64)
+		v = math.MaxInt64
 	default:
-		t.until.Store(until.UnixNano())
+		v = until.UnixNano()
+	}
+	if t.until.Swap(v) == v {
+		return
+	}
+	t.mu.Lock()
+	fn := t.onChange
+	t.mu.Unlock()
+	if fn != nil {
+		fn(until)
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
@@ -36,6 +37,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/controller"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
+	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
@@ -336,8 +338,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	} else if cfg.Store.Driver == "kube" {
 		return errors.New("KUDURRU_ENCRYPTION_KEY (or listeners.internal.tokenFile) is required for the internal listener in Kubernetes")
 	}
+	// A dnsdist next to this node (sidecar, compose single-edge, HA nodes)
+	// caches blocked and unblocked answers up to their TTL: flush its
+	// resolver pool on every compiled list snapshot and on blocking toggles
+	// (docs/m3/edge.md). Without a local edge the flusher is a no-op.
+	edgeFlush := dnsdist.NewLocalCacheFlusher("", "", logger.With("component", "edgeflush"))
+	defer edgeFlush.Stop()
 	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
-		Objects: listObjs, Cache: lists, Sink: zc, Membership: membership, Client: internalClient,
+		Objects: listObjs, Cache: lists, Sink: flushingListSink{next: zc, flush: edgeFlush}, Membership: membership, Client: internalClient,
 		Downloader: downloader, RefreshInterval: cfg.Blocking.RefreshInterval.Std(),
 		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded,
 		Registerer: reg, Logger: logger,
@@ -429,6 +437,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	checker.Register("blocking", bs.Ready)
+	bs.Toggle().SetOnChange(edgeFlush.BlockingChanged)
 
 	auth := authoritative.New(zoneview.Source{Cache: zc})
 	auth.Metrics = authoritative.NewMetrics(reg)
@@ -777,4 +786,16 @@ func apiClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// flushingListSink hands every compiled list snapshot to the zone cache and
+// then flushes the local edge's resolver cache.
+type flushingListSink struct {
+	next  listfetcher.ListSink
+	flush *dnsdist.CacheFlusher
+}
+
+func (s flushingListSink) SetLists(sn *blocking.Snapshot) {
+	s.next.SetLists(sn)
+	s.flush.ListsChanged()
 }
