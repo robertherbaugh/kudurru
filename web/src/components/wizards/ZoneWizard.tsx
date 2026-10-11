@@ -7,6 +7,7 @@
 // CRD defaults and are left out of the object.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
@@ -321,37 +322,33 @@ function Review({ d }: { d: Draft }) {
   const s = z.spec;
   const dflt = (v: number | undefined, def: number) => (v === undefined ? `default (${secondsLabel(def)})` : `${secondsLabel(v)} (${v})`);
   return (
-    <dl className="k-review" data-testid="zone-review">
-      <dt>Zone</dt>
-      <dd className="k-mono">{s.zoneName}</dd>
-      <dt>Type</dt>
-      <dd>{s.type === 'primary' ? 'Primary (records served here)' : 'Forward (to an upstream group)'}</dd>
+    <MetadataList data-testid="zone-review">
+      <MetadataListItem label="Zone">
+        <Text type="code">{s.zoneName}</Text>
+      </MetadataListItem>
+      <MetadataListItem label="Type">{s.type === 'primary' ? 'Primary (records served here)' : 'Forward (to an upstream group)'}</MetadataListItem>
       {s.type === 'primary' ? (
         <>
-          <dt>Name servers</dt>
-          <dd>{s.nameservers?.join(', ') ?? 'this server'}</dd>
-          <dt>Default TTL</dt>
-          <dd>{dflt(s.defaultTTL, SOA_DEFAULTS.defaultTTL)}</dd>
-          <dt>SOA</dt>
-          <dd>
+          <MetadataListItem label="Name servers">{s.nameservers?.join(', ') ?? 'this server'}</MetadataListItem>
+          <MetadataListItem label="Default TTL">{dflt(s.defaultTTL, SOA_DEFAULTS.defaultTTL)}</MetadataListItem>
+          <MetadataListItem label="SOA">
             refresh {dflt(s.soa?.refresh, SOA_DEFAULTS.refresh)}, retry {dflt(s.soa?.retry, SOA_DEFAULTS.retry)}, expire {dflt(s.soa?.expire, SOA_DEFAULTS.expire)},
             negative TTL {dflt(s.soa?.minimum, SOA_DEFAULTS.minimum)}
             {s.soa?.rname ? `, mailbox ${s.soa.rname}` : ''}
-          </dd>
-          <dt>Who may query</dt>
-          <dd>
+          </MetadataListItem>
+          <MetadataListItem label="Who may query">
             {QUERY_ACCESS.find((q) => q.value === (s.policy?.queryAccess ?? 'allow'))?.label}
             {s.policy?.queryACL?.length ? `: ${s.policy.queryACL.join(', ')}` : ''}
-          </dd>
+          </MetadataListItem>
         </>
       ) : (
         <>
-          <dt>Upstream group</dt>
-          <dd className="k-mono">{s.forward?.upstreamGroup ?? `${DEFAULT_GROUP} (not set)`}</dd>
-          <dt>DNSSEC validation</dt>
-          <dd>{DNSSEC.find((x) => x.value === d.dnssec)?.label}</dd>
+          <MetadataListItem label="Upstream group">
+            <Text type="code">{s.forward?.upstreamGroup ?? `${DEFAULT_GROUP} (not set)`}</Text>
+          </MetadataListItem>
+          <MetadataListItem label="DNSSEC validation">{DNSSEC.find((x) => x.value === d.dnssec)?.label}</MetadataListItem>
         </>
       )}
-    </dl>
+    </MetadataList>
   );
 }

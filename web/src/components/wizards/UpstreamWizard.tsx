@@ -8,6 +8,7 @@
 // against.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { Switch } from '@astryxdesign/core/Switch';
@@ -230,22 +231,25 @@ function UpstreamWizard({ onClose }: UpstreamWizardProps) {
       id: 'review',
       label: 'Review',
       content: (
-        <dl className="k-review" data-testid="upstream-review">
-          <dt>Name</dt>
-          <dd className="k-mono">{groupName}</dd>
-          <dt>Provider</dt>
-          <dd>{provider ? `${provider.name}${variant && provider.variants.length > 1 ? `, ${variant.label}` : ''}, ${TRANSPORTS.find((x) => x.value === t)?.label}` : 'Custom'}</dd>
-          <dt>Servers</dt>
-          <dd className="k-mono k-small">
-            {servers.map((s) => (
-              <div key={s}>{s}</div>
-            ))}
-          </dd>
-          <dt>Strategy</dt>
-          <dd>{strategyLabel(group.strategy)}</dd>
-          <dt>Timeout</dt>
-          <dd>{group.timeout}</dd>
-        </dl>
+        <MetadataList data-testid="upstream-review">
+          <MetadataListItem label="Name">
+            <Text type="code">{groupName}</Text>
+          </MetadataListItem>
+          <MetadataListItem label="Provider">
+            {provider ? `${provider.name}${variant && provider.variants.length > 1 ? `, ${variant.label}` : ''}, ${TRANSPORTS.find((x) => x.value === t)?.label}` : 'Custom'}
+          </MetadataListItem>
+          <MetadataListItem label="Servers">
+            <VStack gap={1}>
+              {servers.map((s) => (
+                <Text key={s} type="code">
+                  {s}
+                </Text>
+              ))}
+            </VStack>
+          </MetadataListItem>
+          <MetadataListItem label="Strategy">{strategyLabel(group.strategy)}</MetadataListItem>
+          <MetadataListItem label="Timeout">{group.timeout}</MetadataListItem>
+        </MetadataList>
       ),
     },
   ];
