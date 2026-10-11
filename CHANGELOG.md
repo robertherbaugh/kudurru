@@ -13,7 +13,7 @@ M5 of [docs/architecture.md §13.1](docs/architecture.md), with the gaps that
 section lists. The milestone reports in [docs/m1](docs/m1/README.md),
 [docs/m2](docs/m2/README.md), [docs/m3](docs/m3/README.md) (M3 and M4, D122)
 and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
-D123 record what changed on the way.
+D126 record what changed on the way.
 
 ### Dashboard and API fixes (v0.1 fix round)
 
@@ -25,7 +25,7 @@ below with its user-visible changes and remove this note.
 - TODO dashboard data: the SPA reads the real response shapes.
 - TODO dashboard visuals and branding (docs/brand).
 - TODO browser e2e: Playwright against a real `kudurru serve` (D123).
-- TODO blocked services and safe search catalogue (D60, D120).
+- TODO blocked services and safe search catalogue (D60, D120, D124-D126).
 - TODO docs site (D121).
 - TODO followup burndown (store, controller, zone cache, edge tests).
 - Release engineering: the `kudurru-keepalived` image builds again
