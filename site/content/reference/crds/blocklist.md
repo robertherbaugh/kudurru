@@ -44,6 +44,7 @@ Validation: response customIP requires the customIP block (`!has(self.response) 
 | `spec.sources[].format` | `string` | ListFormat is the syntax of a blocklist source.<br>Default: `auto`<br>One of: `auto`, `hosts`, `domains`, `adblock`, `regex` |
 | `spec.sources[].inline` | `[]string` |  |
 | `spec.sources[].name` | `string` |  |
+| `spec.sources[].subdomains` | `boolean` | Subdomains makes the hosts and plain-domain entries of this source match their subdomains too, for lists published as "domains with subdomains". Adblock and wildcard rules are not affected. |
 | `spec.sources[].url` | `string` |  |
 
 ## Status
@@ -66,6 +67,7 @@ BlockListStatus is the observed state of a block list.
 | `status.sources[].invalid` | `integer` |  |
 | `status.sources[].lastFetched` | `string` | Format: `date-time` |
 | `status.sources[].name` | `string` | **Required.** |
+| `status.unsupported` | `integer` | Unsupported counts valid rules this version parses but does not apply: modifiers such as $important and $badfilter, mid-pattern wildcards, hosts rewrites. |
 
 ## Example
 
