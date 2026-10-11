@@ -22,8 +22,8 @@
 // decoupled from the process (D44): losing the lease cancels only the leader
 // term, never the caller.
 //
-// Package localdb holds the local.db snapshot used for cold start without
-// the apiserver (D7, D33).
+// The local.db snapshot used for cold start without the apiserver (D7,
+// D33) lives in internal/store/localdb; internal/zonecache writes it.
 package kube
 
 import (

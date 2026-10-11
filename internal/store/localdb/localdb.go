@@ -1,5 +1,10 @@
-// Package localdb is the kube driver's last-good snapshot in local.db
-// (docs/architecture.md §4.4, decisions D7 and D33).
+// Package localdb is the last-good config snapshot in local.db
+// (docs/architecture.md §4.4, §4.5, decisions D7 and D33).
+//
+// It lives beside the drivers rather than inside the kube driver because
+// its writer and reader is internal/zonecache, which is driver-independent;
+// the kube driver also offers MaterializedSnapshot/PersistSnapshots for
+// tests and tools.
 //
 // zonecache writes the complete materialised object set (every kudurru.io
 // kind as JSON) together with the resourceVersion high-water mark after
