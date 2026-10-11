@@ -9,16 +9,3 @@
 // and testdata/fuzz/<target>/), so the corpus is a regression suite.
 package fuzz
 
-import (
-	"os"
-
-	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
-)
-
-// skipKnownBug reports whether inputs that trigger the recorded bug id
-// (docs/m5/e2e.md) should be skipped: true unless KUDURRU_E2E_KNOWN_BUGS
-// is set, in which case the target reproduces the bug.
-func skipKnownBug(id string) bool {
-	_ = id
-	return os.Getenv(kudurrutest.EnvKnownBugs) == ""
-}
