@@ -32,8 +32,16 @@ type listObjectsInput struct {
 	Continue      string `query:"continue" doc:"Token from the previous page."`
 }
 
+// ObjectList is the list envelope of the object routes.
+type ObjectList struct {
+	Items []Object `json:"items" nullable:"false"`
+	// Continue fetches the next page; empty on the last page.
+	Continue string `json:"continue,omitempty" doc:"Opaque keyset token for the next page; empty on the last page."`
+	Took
+}
+
 type objectListOutput struct {
-	Body *List[Object]
+	Body *ObjectList
 }
 
 type objectPathInput struct {
@@ -295,7 +303,7 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 		}
 		items = append(items, m)
 	}
-	return &objectListOutput{Body: newList(items, encodeCursor(page.Continue))}, nil
+	return &objectListOutput{Body: &ObjectList{Items: items, Continue: encodeCursor(page.Continue)}}, nil
 }
 
 func (s *Server) getObjectRoute(ctx context.Context, plural, namespace, name string, namespaced bool) (*objectOutput, error) {

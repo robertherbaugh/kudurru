@@ -92,7 +92,13 @@ type forwardIDInput struct {
 // IAMItem is one identity or binding of the read-only IAM routes.
 type IAMItem = map[string]any
 
-type iamOutput struct{ Body *List[IAMItem] }
+// IAMList is the list envelope of the IAM routes.
+type IAMList struct {
+	Items []IAMItem `json:"items" nullable:"false"`
+	Took
+}
+
+type iamOutput struct{ Body *IAMList }
 
 // AuditEvent is one row of GET /audit.
 type AuditEvent = audit.Event
@@ -232,7 +238,10 @@ func (s *Server) iamList(ctx context.Context, resource string) (*iamOutput, erro
 	if err != nil {
 		return nil, storeError(err)
 	}
-	return &iamOutput{Body: newList(items, "")}, nil
+	if items == nil {
+		items = []IAMItem{}
+	}
+	return &iamOutput{Body: &IAMList{Items: items}}, nil
 }
 
 func (s *Server) registerAudit() {
