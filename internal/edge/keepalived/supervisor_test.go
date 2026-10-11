@@ -152,6 +152,13 @@ func TestSupervisorFIFOAndReload(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(h.etc, "keepalived.conf.prev")); err != nil { //nolint:gosec // test-owned path
 		t.Errorf("previous config not kept: %v", err)
 	}
+	// A caller-built Config without defaults (RunDir, Binary) renders the
+	// same file: defaults are applied before comparing.
+	bare := Config{RouterID: c.RouterID, VIPs: c.VIPs, UnicastSrc: c.UnicastSrc, Peers: c.Peers,
+		HMACKeyFile: c.HMACKeyFile, RunDir: h.run, Binary: c.Binary}
+	if err := h.sup.Rerender(context.Background(), bare); err != nil {
+		t.Fatalf("re-render without defaults: %v", err)
+	}
 	// Unchanged re-render: no signal.
 	if err := h.sup.Rerender(context.Background(), c); err != nil {
 		t.Fatal(err)

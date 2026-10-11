@@ -148,6 +148,7 @@ func (s *Supervisor) candidatePath() string {
 // install renders c, validates it with `keepalived -t` and swaps it in.
 // It reports whether the file changed.
 func (s *Supervisor) install(ctx context.Context, c Config) (bool, error) {
+	c.defaults()
 	s.mu.Lock()
 	old, oldData := s.current, s.data
 	s.mu.Unlock()
