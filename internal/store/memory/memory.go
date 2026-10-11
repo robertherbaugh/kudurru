@@ -4,8 +4,10 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -97,8 +99,28 @@ func (s *Store) Apply(_ context.Context, obj store.Object, opts store.ApplyOptio
 		return nil, store.ErrClosed
 	}
 	key := store.KeyOf(obj)
-	next := obj.DeepCopyObject().(store.Object)
 	prev, exists := s.objects[key]
+
+	// Apply writes the main resource only: status comes from the stored
+	// object (or stays empty on create), and generation moves only when the
+	// spec changed, as the apiserver does (D70).
+	nextMap, err := sections(obj)
+	if err != nil {
+		return nil, err
+	}
+	var prevMap map[string]any
+	if exists {
+		if prevMap, err = sections(prev); err != nil {
+			return nil, err
+		}
+		nextMap["status"] = prevMap["status"]
+	} else {
+		delete(nextMap, "status")
+	}
+	next, err := rebuild(obj, nextMap)
+	if err != nil {
+		return nil, err
+	}
 
 	if exists {
 		if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != prev.GetResourceVersion() {
@@ -110,7 +132,10 @@ func (s *Store) Apply(_ context.Context, obj store.Object, opts store.ApplyOptio
 		// Caller-stamped identity is kept from the stored object (D10).
 		next.SetUID(prev.GetUID())
 		next.SetCreationTimestamp(prev.GetCreationTimestamp())
-		next.SetGeneration(prev.GetGeneration() + 1)
+		next.SetGeneration(prev.GetGeneration())
+		if !reflect.DeepEqual(prevMap["spec"], nextMap["spec"]) {
+			next.SetGeneration(prev.GetGeneration() + 1)
+		}
 	} else {
 		if next.GetUID() == "" {
 			next.SetUID(types.UID(fmt.Sprintf("mem-%d", s.rv+1)))
@@ -152,7 +177,8 @@ func (s *Store) Delete(_ context.Context, key store.Key, opts store.DeleteOption
 }
 
 // UpdateStatus implements store.Store. Status is whatever the caller set on
-// obj; metadata and spec are taken from the stored copy.
+// obj; metadata and spec are taken from the stored copy (the status
+// subresource contract).
 func (s *Store) UpdateStatus(_ context.Context, obj store.Object) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -164,11 +190,19 @@ func (s *Store) UpdateStatus(_ context.Context, obj store.Object) error {
 	if !ok {
 		return store.ErrNotFound
 	}
-	next := obj.DeepCopyObject().(store.Object)
-	next.SetUID(prev.GetUID())
-	next.SetGeneration(prev.GetGeneration())
-	next.SetCreationTimestamp(prev.GetCreationTimestamp())
-	next.SetAnnotations(prev.GetAnnotations())
+	prevMap, err := sections(prev)
+	if err != nil {
+		return err
+	}
+	objMap, err := sections(obj)
+	if err != nil {
+		return err
+	}
+	prevMap["status"] = objMap["status"]
+	next, err := rebuild(prev, prevMap)
+	if err != nil {
+		return err
+	}
 	next.SetResourceVersion(s.nextRV())
 	s.objects[key] = next
 	s.broadcast(key.Kind, store.Event{Type: store.Modified, Object: next.DeepCopyObject().(store.Object)})
@@ -288,6 +322,40 @@ func (s *Store) Close() error {
 		delete(s.watchers, kind)
 	}
 	return nil
+}
+
+// sections renders an object as a JSON map so spec and status can be
+// handled separately.
+func sections(obj store.Object) (map[string]any, error) {
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// rebuild decodes a JSON map into a fresh object of like's type.
+func rebuild(like store.Object, m map[string]any) (store.Object, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	t := reflect.TypeOf(like)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	out, ok := reflect.New(t).Interface().(store.Object)
+	if !ok {
+		return nil, fmt.Errorf("store/memory: %s is not a store.Object", t)
+	}
+	if err := json.Unmarshal(b, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func copyInto(src, dst store.Object) error {

@@ -24,6 +24,7 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 	t.Run("ListFiltersByKindNamespaceLabels", func(t *testing.T) { testList(t, factory(t)) })
 	t.Run("WatchDeliversInitialAndLive", func(t *testing.T) { testWatch(t, factory(t)) })
 	t.Run("UpdateStatusKeepsSpecAndManager", func(t *testing.T) { testStatus(t, factory(t)) })
+	t.Run("ApplyIgnoresStatusAndStatusIgnoresSpec", func(t *testing.T) { testStatusSeparation(t, factory(t)) })
 }
 
 func zone(name, zoneName string) *v1alpha1.DNSZone {
@@ -81,19 +82,69 @@ func testOptimistic(t *testing.T, s store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
+	changed := zone("home", "home.example.")
+	changed.Spec.DefaultTTL = 600
+	second, err := s.Apply(ctx, changed, store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.GetResourceVersion() == first.GetResourceVersion() {
-		t.Fatal("resourceVersion must change on every write")
+		t.Fatal("resourceVersion must change when the spec changes")
 	}
 	if second.GetGeneration() != 2 {
-		t.Fatalf("generation should be 2, got %d", second.GetGeneration())
+		t.Fatalf("generation should be 2 after a spec change, got %d", second.GetGeneration())
 	}
-	_, err = s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
+	// An identical re-apply is a no-op for the apiserver: generation must not
+	// move (resourceVersion may or may not).
+	same, err := s.Apply(ctx, changed, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same.GetGeneration() != 2 {
+		t.Fatalf("identical re-apply must not bump generation, got %d", same.GetGeneration())
+	}
+	_, err = s.Apply(ctx, changed, store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: first.GetResourceVersion()})
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("stale resourceVersion must be ErrConflict, got %v", err)
+	}
+}
+
+// testStatusSeparation pins the apiserver's split: Apply writes the main
+// resource and ignores status; UpdateStatus writes the status subresource
+// and ignores spec (docs/architecture.md §4.3, decision D70).
+func testStatusSeparation(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	z := zone("home", "home.example.")
+	z.Status.Serial = 99
+	out, err := s.Apply(ctx, z, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.(*v1alpha1.DNSZone).Status.Serial != 0 {
+		t.Fatalf("Apply must ignore status, got serial %d", out.(*v1alpha1.DNSZone).Status.Serial)
+	}
+	var got v1alpha1.DNSZone
+	if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Serial != 0 {
+		t.Fatalf("stored status must be empty after Apply, got serial %d", got.Status.Serial)
+	}
+	storedTTL := got.Spec.DefaultTTL // whatever the driver stored (a real apiserver defaults it)
+	got.Status.Serial = 7
+	got.Spec.DefaultTTL = storedTTL + 1234 // must be ignored
+	if err := s.UpdateStatus(ctx, &got); err != nil {
+		t.Fatal(err)
+	}
+	var after v1alpha1.DNSZone
+	if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Status.Serial != 7 || after.Spec.DefaultTTL != storedTTL {
+		t.Fatalf("UpdateStatus must write status only: serial=%d defaultTTL=%d (stored %d)", after.Status.Serial, after.Spec.DefaultTTL, storedTTL)
+	}
+	if after.GetGeneration() != 1 {
+		t.Fatalf("status writes must not bump generation: %d", after.GetGeneration())
 	}
 }
 
