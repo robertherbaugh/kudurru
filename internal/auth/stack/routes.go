@@ -311,6 +311,29 @@ func (s *Stack) effectiveGrants(p auth.Principal) []rbac.Grant {
 	return out
 }
 
+// shownGrants are the grants /auth/me reports: the effective grants, or
+// a scoped API token's scopes, to which every decision is narrowed (the
+// permission matrix shows what remains of the owner's grants).
+func (s *Stack) shownGrants(p auth.Principal) []rbac.Grant {
+	if len(p.Scopes) == 0 {
+		return s.effectiveGrants(p)
+	}
+	var out []rbac.Grant
+	for _, sc := range p.Scopes {
+		g, err := rbac.ParseGrant(sc)
+		if err != nil {
+			continue
+		}
+		if g.Scope.Kind == "" {
+			g.Scope.Kind = rbac.ScopeCluster
+		}
+		if !slices.Contains(out, g) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResponse {
 	resp := MeResponse{
 		Principal: MePrincipal{Kind: p.Kind, ID: p.ID, Name: p.Name, Groups: p.Groups, Provider: p.Provider, AuthMethod: p.AuthMethod, TokenID: p.TokenID},
@@ -324,7 +347,7 @@ func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResp
 		exp, idle := sess.ExpiresAt.UTC(), sess.IdleExpiresAt.UTC()
 		resp.ExpiresAt, resp.IdleExpiresAt = &exp, &idle
 	}
-	grants := s.effectiveGrants(p)
+	grants := s.shownGrants(p)
 	for _, g := range grants {
 		resp.Roles = append(resp.Roles, g.String())
 	}
@@ -481,9 +504,10 @@ func remoteHost(r *http.Request) string {
 }
 
 // Roles lists p's effective grants in their wire form (role or
-// role@kind:name), for api.Options.Roles.
+// role@kind:name), for api.Options.Roles; a scoped API token reports its
+// scopes.
 func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
-	grants := s.effectiveGrants(p)
+	grants := s.shownGrants(p)
 	out := make([]string, 0, len(grants))
 	for _, g := range grants {
 		out = append(out, g.String())

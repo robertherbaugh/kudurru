@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -325,6 +326,10 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		}
 		if r := e.do(http.MethodPost, "/api/v1/zones/home/records", nil, bearer(scoped)); r.code != 403 {
 			t.Fatalf("scoped write: %d %s", r.code, r.raw)
+		}
+		// /auth/me reports the scopes, not the owner's admin.
+		if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, bearer(scoped)); r.code != 200 || fmt.Sprint(r.body["roles"]) != "[viewer]" {
+			t.Fatalf("scoped me: %d %s", r.code, r.raw)
 		}
 		// A scoped token cannot mint a broader token.
 		if r := e.do(http.MethodPost, "/api/v1/auth/tokens", CreateTokenRequest{Scopes: []string{"operator"}}, bearer(scoped)); r.code != 403 {
