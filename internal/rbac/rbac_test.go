@@ -91,6 +91,10 @@ func TestBindingAuthorizer(t *testing.T) {
 	if _, err := NewBindingAuthorizer(p, []Binding{{Role: "zone-admin", Scope: Scope{Kind: ScopeCluster}}}); err == nil {
 		t.Error("zone-admin at cluster scope must be rejected")
 	}
+	empty, _ := NewBindingAuthorizer(p, []Binding{{Role: "admin", Scope: Scope{Kind: ScopeCluster}, Subjects: []Subject{{Kind: SubjectUser}}}})
+	if d, _ := empty.Authorize(ctx, Principal{}, Attributes{Resource: "zones", Verb: "read"}); d.Allowed {
+		t.Error("an empty User subject must never match an anonymous principal")
+	}
 	if _, err := NewBindingAuthorizer(p, []Binding{{Role: "root"}}); err == nil {
 		t.Error("unknown role must be rejected")
 	}

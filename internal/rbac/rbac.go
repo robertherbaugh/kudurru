@@ -213,11 +213,11 @@ func matchesSubject(subjects []Subject, p Principal) bool {
 	for _, s := range subjects {
 		switch s.Kind {
 		case SubjectUser:
-			if s.Name == p.Name {
+			if s.Name != "" && s.Name == p.Name {
 				return true
 			}
 		case SubjectGroup:
-			if contains(p.Groups, s.Name) {
+			if s.Name != "" && contains(p.Groups, s.Name) {
 				return true
 			}
 		case SubjectServiceAccount:
