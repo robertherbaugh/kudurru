@@ -19,7 +19,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
@@ -304,6 +304,12 @@ edge-check: edge-images
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
 	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version
+
+## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
+## UDP and TCP (split and mixed Services), rolling restart without unanswered
+## queries (hack/kind-e2e.sh; needs docker, kind, helm, kubectl, dig).
+kind-e2e:
+	hack/kind-e2e.sh
 
 docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
