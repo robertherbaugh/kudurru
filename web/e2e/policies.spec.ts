@@ -3,16 +3,9 @@
 // blocks, the policy page shows the state of the objects.d policy, the
 // group page its matchers, members and policies, the group wizard a new
 // group, and the client page which group and policy apply to 127.0.0.1.
-//
-// GET /policies/{ns}/{name}/state (ux-plan C3) comes with the
-// backend-lists-policies stream; until a server serves it the page falls
-// back to the state derived from the objects and the browser logs the 404
-// of that one request, which is the only console error these tests allow.
 import { badLines, env, expect, expectRendered, main, settle, test } from './fixtures';
 import { query } from './support/dns';
 import { BLOCKLIST } from './support/kudurru';
-
-test.use({ allowConsole: /status of 404.*\/api\/v1\/policies\/[^/]+\/[^/]+\/state/ });
 
 const unique = () => Math.random().toString(36).slice(2, 8);
 
@@ -87,6 +80,11 @@ test('the policies table links to a policy page that shows its state', async ({ 
   await expect(main(page).getByTestId('section-who').getByRole('link', { name: 'default' })).toHaveAttribute('href', '/groups/default/default');
   const lists = main(page).getByTestId('section-what').getByRole('table', { name: 'Lists of the policy' });
   await expect(lists.getByRole('row').filter({ hasText: BLOCKLIST.name })).toContainText('ready');
+
+  // The last 24 hours come from the query log rows this policy decided.
+  const activity = main(page).getByTestId('section-activity');
+  await expect(activity.getByText('Queries', { exact: true })).toBeVisible();
+  await expect(activity.getByRole('link', { name: 'Open in the query log' })).toHaveAttribute('href', '/queries?policy=default%2Fe2e-blocking');
 
   await main(page).getByRole('button', { name: 'View as YAML' }).click();
   await expect(page.getByLabel('YAML', { exact: true })).toContainText(`- ${BLOCKLIST.name}`);
