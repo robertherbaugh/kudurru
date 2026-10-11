@@ -253,7 +253,7 @@ export function WhyDetails({ row: r }: { row: QueryRow }) {
     [
       'Matched list',
       r.list ? (
-        <Link href={`/lists?q=${encodeURIComponent(r.list)}`}>{r.list}</Link>
+        <Link href={`/lists?q=${encodeURIComponent(r.list.split("/").pop() ?? r.list)}`}>{r.list}</Link>
       ) : (
         <span className="k-muted">none</span>
       ),

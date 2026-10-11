@@ -91,7 +91,7 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
           variant="secondary"
           isDisabled={!canToggle}
           isLoading={busy}
-          tooltip={canToggle ? undefined : 'Needs the blocking.update permission'}
+          tooltip={canToggle ? undefined : 'Needs the blocking.toggle permission'}
           onClick={() => setOpen(true)}
         />
       ) : (
@@ -154,7 +154,7 @@ export function BlockingControl({ compact }: { compact?: boolean }) {
     <BlockingPanel
       state={q.data}
       fetchedAt={q.dataUpdatedAt}
-      canToggle={can('blocking', 'update')}
+      canToggle={can('blocking', 'toggle')}
       busy={set.isPending}
       compact={compact}
       onExpire={() => void q.refetch()}

@@ -31,7 +31,7 @@ export function Shell() {
   const match = resolveRoute(loc.path);
 
   const nav = (
-    <SideNav header={<Brand />} footer={<SidebarStatus />}>
+    <SideNav footer={<SidebarStatus />}>
       {SECTIONS.map((section) => (
         <SideNavSection key={section} title={section}>
           {ROUTES.filter((r) => r.section === section && !r.hidden).map((r) => {
@@ -56,7 +56,7 @@ export function Shell() {
   const top = (
     <TopNav
       label="Toolbar"
-      heading={<span className="k-topnav-title">{match?.route.label ?? 'Not found'}</span>}
+      heading={<Brand />}
       endContent={
         <div className="k-row">
           {match?.route.scoped ? <ScopeSelector /> : null}
