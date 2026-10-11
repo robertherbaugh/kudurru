@@ -1146,6 +1146,22 @@ export const handlers = [
     const items = db.audit.filter((a) => (!kind || a.kind === kind) && (!actor || a.actor.includes(actor)) && (!name || a.name.includes(name)));
     return ok({ items });
   }),
+
+  // blocked-services and safe-search catalogue (D60) ----------------------
+  http.get(`${B}/catalogue`, ({ request }) =>
+    guard(request, 'policies', 'read') ??
+    ok({ schemaVersion: 1, version: '2026.10.11', license: 'Apache-2.0', origin: 'embedded', digest: '0'.repeat(64), services: MOCK_SERVICES.length, safeSearchEngines: 2 }),
+  ),
+  http.get(`${B}/catalogue/services`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: MOCK_SERVICES })),
+  http.get(`${B}/catalogue/safesearch`, ({ request }) =>
+    guard(request, 'policies', 'read') ??
+    ok({
+      items: [
+        { id: 'google', name: 'Google Search', list: 'safesearch:google', target: 'forcesafesearch.google.com', domains: 187, source: 'https://support.google.com/websearch/answer/186669' },
+        { id: 'youtube', name: 'YouTube', list: 'safesearch:youtube', target: 'restrict.youtube.com', moderateTarget: 'restrictmoderate.youtube.com', domains: 5, source: 'https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users' },
+      ],
+    }),
+  ),
 ];
 
 function blockingState() {
@@ -1173,3 +1189,11 @@ export function mergePatch(target: Record<string, unknown>, patch: Record<string
 }
 
 export type { Policy };
+
+/** A few entries of the embedded catalogue for GET /catalogue/services. */
+const MOCK_SERVICES = [
+  { id: 'youtube', name: 'YouTube', category: 'video', list: 'service:youtube', rules: 2, domains: ['||youtube.com^', '||ytimg.com^'], source: 'first-party domains of the service' },
+  { id: 'netflix', name: 'Netflix', category: 'video', list: 'service:netflix', rules: 1, domains: ['||netflix.com^'], source: 'first-party domains of the service' },
+  { id: 'tiktok', name: 'TikTok', category: 'social', list: 'service:tiktok', rules: 1, domains: ['||tiktok.com^'], source: 'first-party domains of the service' },
+  { id: 'roblox', name: 'Roblox', category: 'gaming', list: 'service:roblox', rules: 1, domains: ['||roblox.com^'], source: 'first-party domains of the service' },
+];

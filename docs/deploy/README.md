@@ -10,6 +10,7 @@
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 
 ## Release artifacts
 

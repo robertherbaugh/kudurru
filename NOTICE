@@ -165,6 +165,14 @@ Embedded data (compiled into the binary):
   the licence text and provenance file are in the same directory. Only
   this MIT-licensed source of the project is used, never the unified hosts
   file that aggregates sources under other licences.
+- The blocked-services and safe-search catalogue,
+  internal/listdata/catalogue/catalogue.json, is kudurru's own data
+  (Apache-2.0), written from each vendor's public documentation and the
+  services' first-party domains; PROVENANCE.md in the same directory names
+  the source of every entry. The Google safe-search domains are derived
+  from Google's published list of its search domains
+  (https://www.google.com/supported_domains), a list of facts. Nothing is
+  taken from AdGuard Home's GPL-3.0 blocked-services or safe-search tables.
 
 Test data (not compiled into the binary):
 

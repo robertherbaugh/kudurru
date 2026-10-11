@@ -15,7 +15,9 @@ export type FieldDef =
   | { type: 'strings'; key: string; label: string; help?: string; placeholder?: string; validate?: (v: string) => string | null }
   | { type: 'refs'; key: string; label: string; help?: string; refKind: ObjectKind; filter?: (o: { spec?: unknown }) => boolean }
   | { type: 'objects'; key: string; label: string; help?: string; itemLabel: string; fields: FieldDef[]; summary?: (item: Record<string, unknown>) => string }
-  | { type: 'object'; key: string; label: string; help?: string; fields: FieldDef[] };
+  | { type: 'object'; key: string; label: string; help?: string; fields: FieldDef[] }
+  /** Service IDs of the blocked-services catalogue (GET /catalogue/services). */
+  | { type: 'services'; key: string; label: string; help?: string };
 
 export interface KindSchema {
   kind: ObjectKind;
@@ -204,7 +206,28 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
       { type: 'enum', key: 'blockMode', label: 'Block response', options: RESPONSES },
       { type: 'duration', key: 'blockTTL', label: 'Block TTL', placeholder: '1m' },
       { type: 'bool', key: 'queryLog', label: 'Log queries' },
-      { type: 'bool', key: 'safeSearch', label: 'Enforce SafeSearch' },
+      {
+        type: 'services',
+        key: 'blockedServices',
+        label: 'Blocked services',
+        help: 'Block every domain of these services, like a block list. Allow lists still win; the query log names the service.',
+      },
+      {
+        type: 'bool',
+        key: 'safeSearch',
+        label: 'Enforce SafeSearch',
+        help: "Answer Google, Bing, DuckDuckGo, Brave, Yandex, Pixabay and YouTube with their vendor's safe-search address.",
+      },
+      {
+        type: 'enum',
+        key: 'safeSearchMode',
+        label: 'SafeSearch level',
+        help: 'Only YouTube has two levels (Restricted Mode strict or moderate); every other engine is always strict.',
+        options: [
+          { value: 'strict', label: 'Strict' },
+          { value: 'moderate', label: 'Moderate (YouTube)' },
+        ],
+      },
       {
         type: 'object',
         key: 'schedule',

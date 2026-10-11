@@ -46,6 +46,7 @@ import type {
   ZoneImportResult,
   ListSearchHit,
 } from './types';
+import type { CatalogueInfo, CatalogueService, SafeSearchEngine } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -196,6 +197,13 @@ export function endpoints(c: ApiClient) {
       list: (q: { kind?: string; name?: string; actor?: string; since?: string; limit?: number; cursor?: string }) =>
         c.get<ListEnvelope<AuditEntry> & { cursor_next?: string }>('/audit', q),
       exportURL: () => c.url('/audit/export'),
+    },
+
+    // Blocked-services and safe-search catalogue (D60).
+    catalogue: {
+      info: () => c.get<CatalogueInfo>('/catalogue'),
+      services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
+      safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
     },
   };
 }

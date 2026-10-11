@@ -96,6 +96,9 @@ type ServerOptions struct {
 	// this node serves with their serials); nil answers 404, which
 	// Client.Zones reports as ErrZonesUnsupported.
 	Zones func(ctx context.Context) ZoneList
+	// Catalogue serves GET /internal/catalogue (the blocked-services and
+	// safe-search catalogue in service); nil answers 404.
+	Catalogue func() CatalogueBody
 	// RateLimit and Burst bound requests per client address; defaults
 	// DefaultRateLimit and DefaultBurst.
 	RateLimit rate.Limit
@@ -170,6 +173,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil {
 		mux.HandleFunc("GET "+PathZones, s.handleZones)
+	}
+	if opts.Catalogue != nil {
+		mux.HandleFunc("GET "+PathCatalogue, s.handleCatalogue)
 	}
 	s.handler = s.guard(mux)
 	return s, nil
@@ -256,6 +262,8 @@ func routeOf(p string) string {
 		return "status"
 	case p == PathZones:
 		return "zones"
+	case p == PathCatalogue:
+		return "catalogue"
 	case len(p) > len(PathLists) && p[:len(PathLists)] == PathLists:
 		return "lists"
 	}

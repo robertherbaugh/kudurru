@@ -39,8 +39,8 @@ Within a tier every matching group is joined. A tie between equal entries in dif
 - **Candidates:** every Policy whose `clientGroupRefs` names one of the client's groups. Refs are resolved in the policy's own namespace, like the controller's refs.
 - **Schedules:** evaluated at query time against `Request.Received`. Weekdays accept `mon`..`sun` (and full names), start/end are `HH:MM` (`24:00` is allowed as an end), and tz is an IANA zone. When `end <= start` the window crosses midnight and belongs to the weekday it starts on. `start == end` means 24 h. Empty fields mean every day, 00:00 or 24:00. A schedule that does not parse is diagnosed, and the policy then applies at all times (fail closed).
 - **Merge:** policies are ordered by priority (highest first), then by `namespace/name`.
-  - Lists: allow lists of every active policy, then their block lists, de-duplicated. "Allow wins across groups" holds because `blocking.Selection` checks every allow list first.
-  - Per setting (`blockMode`, `blockTTL`, `upstreamGroup`, `queryLog`, `safeSearch`): the first policy in that order that sets it wins.
+  - Lists: allow lists of every active policy, then their block lists and blocked services (`service:<id>`), de-duplicated. "Allow wins across groups" holds because `blocking.Selection` checks every allow list first.
+  - Per setting (`blockMode`, `blockTTL`, `upstreamGroup`, `queryLog`, `safeSearch`, `safeSearchMode`): the first policy in that order that sets it wins.
   - `allowOnly` comes from the top policy.
 - **Fallback:** when no candidate is active, `Policy default` in `Options.DefaultNamespace` applies with `Decision.Fallback = true`. When that policy is absent or out of schedule too, a shared `Decision` with `Applies() == false` is returned. It is never nil.
 - **Cost:** decisions, including the `blocking.Selection` resolved against the snapshot's compiled lists, are precomputed per group set for every combination of its scheduled policies: eagerly up to 6 scheduled policies (64 decisions), lazily by bit mask up to 63, and per query beyond that. `SelectPolicy` does not allocate (`TestSelectPolicyDoesNotAllocate`).
@@ -48,6 +48,7 @@ Within a tier every matching group is joined. A tie between equal entries in dif
   - A ref to a BlockList that exists but is not compiled yet is reported by `NotLoaded()`, which feeds readiness.
   - Dangling refs are `MissingReference`.
   - A list referenced under the wrong field is `ModeMismatch`, and its own mode still applies.
+- **Blocked services (D60):** `blockedServices` IDs resolve to the catalogue's compiled lists `service:<id>` (internal/listdata/catalogue), which the list resolver compiles into the same snapshot as the BlockLists (`listfetcher.ResolverOptions.Extra`). An ID the catalogue does not have is `UnknownService` (and the controller sets `Degraded{UnknownService}` on the Policy); a known one not compiled yet is `NotLoaded`. See docs/deploy/blocked-services.md.
 
 ### Control stage
 
@@ -64,6 +65,7 @@ Within a tier every matching group is joined. A tie between equal entries in dif
   - allow list wins, then allow-only, then deny unless the same list's `@@` matches (D73 `ScopeList`)
   - after `next`, response-side checks run with `Selection.EvaluateResponse` over CNAME targets, SVCB/HTTPS target names, A/AAAA addresses and SVCB `ipv4hint`/`ipv6hint` (at most 64 items)
   - the response-side check is skipped after an allow-list match, as `internal/blocking` documents
+  - safe search (D60), when the decision has `safeSearch: true` and no allow list matched: a search-engine host name of the catalogue is answered with a CNAME to the vendor's safe target plus the target's records resolved through the rest of the chain (or the documented addresses, for Yandex), status `blocked_safesearch`, list `safesearch:<engine>`, EDE 4 (Forged Answer), TTL as for blocks
 - **Block response.**
   - Mode: the BlockList's `response` (with its own `customIP`), else the Policy's `blockMode`, else `blocking.defaultResponse`.
   - zeroIP (the default): A 0.0.0.0, AAAA ::, other types NODATA.
@@ -81,7 +83,7 @@ Within a tier every matching group is joined. A tie between equal entries in dif
   - `Response.List` and `Response.Rule` carry the compiled list name and the rule text (§7.3 "why")
 - **Temporary disable.** `Toggle` has `Disable(d)` (d ≤ 0 means until `Enable`), `Enable()`, `Enabled()` (one atomic load while on; it re-enables itself on expiry), `DisabledUntil()`, and `Apply(until)` for replicated state. `Publisher` is the documented replication seam: kube writes the `kudurru.io/blocking-disabled-until` annotation on `kudurru-runtime`, Docker writes state.db, and ha-static stays node-local. Every replica watches the field and calls `Apply`.
 - **Metrics** (§11.1). Group and list label values are capped at 64; the rest become `_other`.
-  - `kudurru_block_decisions_total{action,source,group}`: action is block, allow or pass; source is deny, response, allow_only, allowlist, exception, none or disabled; group is the first of the client's groups. All seven series of a group are resolved on its first query, through a copy-on-write map, so there are no label lookups per query.
+  - `kudurru_block_decisions_total{action,source,group}`: action is block, allow, pass or rewrite; source is deny, response, allow_only, allowlist, exception, none, disabled or safesearch (with rewrite); group is the first of the client's groups. All eight series of a group are resolved on its first query, through a copy-on-write map, so there are no label lookups per query.
   - `kudurru_block_list_hits_total{list}`.
   - `kudurru_blocking_enabled{group}`: computed at scrape time from the toggle, `blocking.enabled` and each group's current decision, so expiring disables need no timer.
 - **Readiness.** `Ready()` is not ready while `Index.NotLoaded()` is non-empty, unless `allowDegraded` (default true), matching §5.2.
@@ -195,4 +197,4 @@ Not added, for the integrator:
 
 - The log observer could record `GroupIDs`, `Decision.Policy`, and honour `Decision.QueryLog=false`.
 - Blocked-qtype answers could become configurable (REFUSED vs NODATA).
-- Safe-search (v0.2) reads `Decision.SafeSearch`.
+- ~~Safe-search (v0.2) reads `Decision.SafeSearch`.~~ Shipped in v0.1 (D60): the blocking stage rewrites the catalogue's search-engine host names when `Decision.SafeSearchOn()`, after the allow lists and the block lists, with status `blocked_safesearch` (docs/deploy/blocked-services.md).

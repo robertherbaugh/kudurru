@@ -165,6 +165,11 @@ func (s *Snapshot) Select(lists []string, opts SelectOptions) (*Selection, error
 	return sel, nil
 }
 
+// gcAfterBytes is the compiled size from which Rebuild collects the
+// compile's garbage before the next list; small lists (the catalogue's
+// services, users' own inline lists) leave too little to be worth a GC.
+const gcAfterBytes = 1 << 20
+
 // ListReport describes what Rebuild did with one list.
 type ListReport struct {
 	Name string
@@ -212,7 +217,7 @@ func Rebuild(prev *Snapshot, specs []Spec, opts CompileOptions) (*Snapshot, []Li
 		case err == nil && l == old:
 			r.Reused = true
 		}
-		if !r.Reused && len(specs) > 1 {
+		if !r.Reused && len(specs) > 1 && l != nil && l.stats.Bytes >= gcAfterBytes {
 			// A compile leaves its builders' garbage (about twice the list's
 			// final size) behind; collecting it before the next list keeps
 			// the peak near "compiled so far + one list in flight" instead of

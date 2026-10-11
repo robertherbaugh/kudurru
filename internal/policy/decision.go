@@ -37,8 +37,12 @@ type Decision struct {
 	// QueryLog false excludes the client from the query log; nil when
 	// unset.
 	QueryLog *bool
-	// SafeSearch is the v0.2 safe-search switch; nil when unset.
+	// SafeSearch true makes the blocking stage answer the catalogue's
+	// search-engine host names with their safe-search targets; nil when
+	// unset.
 	SafeSearch *bool
+	// SafeSearchMode is strict, moderate or empty (strict).
+	SafeSearchMode string
 
 	// Selection holds the policy's lists resolved against the compiled
 	// lists of the same snapshot; nil when no policy applies.
@@ -47,12 +51,16 @@ type Decision struct {
 	lists     map[string]*ListInfo
 }
 
+// SafeSearchOn reports whether safe search is enforced (d may be nil).
+func (d *Decision) SafeSearchOn() bool { return d != nil && d.SafeSearch != nil && *d.SafeSearch }
+
 // Applies reports whether a policy applies (d may be nil).
 func (d *Decision) Applies() bool { return d != nil && d.Policy != "" }
 
-// Filters reports whether the decision can block anything: a policy
-// applies and it names at least one list or is allow-only. The blocking
-// stage skips decisions that do not filter.
+// Filters reports whether the decision can block or rewrite anything: a
+// policy applies and it names at least one list or blocked service, is
+// allow-only, or enforces safe search. The blocking stage skips decisions
+// that do not filter.
 func (d *Decision) Filters() bool { return d != nil && d.filters }
 
 // List returns what the Index knows about the compiled list name (a name

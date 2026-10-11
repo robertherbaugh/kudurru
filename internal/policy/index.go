@@ -15,6 +15,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -46,6 +47,16 @@ type Options struct {
 	// ExceptionScope says which deny rules a @@ exception cancels; the
 	// default blocking.ScopeList matches list semantics D73.
 	ExceptionScope blocking.ExceptionScope
+	// Services tells a blockedServices ID the catalogue does not have
+	// (Diagnosis UnknownService) from one whose list is not compiled yet
+	// (NotLoaded); nil reports every uncompiled ID as unknown.
+	Services ServiceCatalogue
+}
+
+// ServiceCatalogue is the blocked-services catalogue in service
+// (catalogue.Holder).
+type ServiceCatalogue interface {
+	HasService(id string) bool
 }
 
 // Input is the object set an Index is built from.
@@ -132,6 +143,9 @@ const (
 	// ReasonDisabled: a policy references a ClientGroup or BlockList
 	// annotated kudurru.io/enabled: "false"; the reference is skipped.
 	ReasonDisabled = "Disabled"
+	// ReasonUnknownService: blockedServices names a service the catalogue
+	// does not have; the ID is skipped.
+	ReasonUnknownService = "UnknownService"
 )
 
 // Diagnosis is a configuration problem found while building the Index.
@@ -415,6 +429,23 @@ func (b *builder) resolveList(lists *blocking.Snapshot, polID, ns, ref, field st
 	return name, true
 }
 
+// resolveService finds the compiled list of a blockedServices ID: the
+// catalogue's "service:<id>", compiled by the list resolver next to the
+// BlockLists.
+func (b *builder) resolveService(lists *blocking.Snapshot, polID, svc string) (string, bool) {
+	name := catalogue.ListName(svc)
+	if lists.List(name) != nil {
+		return name, true
+	}
+	if b.opts.Services != nil && b.opts.Services.HasService(svc) {
+		b.ix.notLoaded = append(b.ix.notLoaded, name)
+		b.diag("Policy", polID, ReasonNotLoaded, "blockedServices %q is not compiled yet", svc)
+		return "", false
+	}
+	b.diag("Policy", polID, ReasonUnknownService, "blockedServices %q: no such service in the catalogue (GET /api/v1/catalogue/services)", svc)
+	return "", false
+}
+
 func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snapshot) {
 	ix := b.ix
 	ix.byGroup = make([][]*compiledPolicy, len(ix.groupIDs))
@@ -437,6 +468,11 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		}
 		for _, ref := range p.Spec.BlockListRefs {
 			if n, ok := b.resolveList(lists, id, p.Namespace, ref, "blockListRefs", v1alpha1.ListMode(blocking.ModeBlock)); ok {
+				cp.block = append(cp.block, n)
+			}
+		}
+		for _, svc := range p.Spec.BlockedServices {
+			if n, ok := b.resolveService(lists, id, svc); ok {
 				cp.block = append(cp.block, n)
 			}
 		}
@@ -505,6 +541,9 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 		if d.SafeSearch == nil {
 			d.SafeSearch = s.SafeSearch
 		}
+		if d.SafeSearchMode == "" {
+			d.SafeSearchMode = s.SafeSearchMode
+		}
 		allow = append(allow, p.allow...)
 		block = append(block, p.block...)
 	}
@@ -512,7 +551,7 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 	// Select keeps the first occurrence of each name and gives every list
 	// the role of its own mode; all names are known, so it cannot fail.
 	d.Selection, _ = lists.Select(refs, blocking.SelectOptions{AllowOnly: d.AllowOnly, ExceptionScope: scope})
-	d.filters = d.AllowOnly || len(refs) > 0
+	d.filters = d.AllowOnly || len(refs) > 0 || d.SafeSearchOn()
 	return d
 }
 
