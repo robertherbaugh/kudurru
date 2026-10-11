@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { Wizard, type WizardStep } from './Wizard';
+import { Wizard, useWizardNav, type WizardStep } from './Wizard';
 
 function steps(validate?: () => string | null): WizardStep[] {
   return [
@@ -36,5 +36,20 @@ describe('Wizard', () => {
     expect(screen.getByText('who fields')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('lets a step link back to a reached step', async () => {
+    function EditWho() {
+      const nav = useWizardNav();
+      return <button type="button" onClick={() => nav.goTo('who')}>Edit who</button>;
+    }
+    const s: WizardStep[] = [
+      { id: 'who', label: 'Who', content: <p>who fields</p> },
+      { id: 'review', label: 'Review', content: <EditWho /> },
+    ];
+    render(<Wizard label="New group" steps={s} finishLabel="Create" onFinish={() => {}} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit who' }));
+    expect(await screen.findByText('who fields')).toBeInTheDocument();
   });
 });

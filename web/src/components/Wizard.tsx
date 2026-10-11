@@ -5,11 +5,12 @@
 // shown. Next runs the step's `validate` and stays put with its message
 // when it returns one. Completed steps (and the current one) are clickable,
 // later ones only after every step before them validated, so the review
-// step can link back to the step that set a value.
+// step can link back to the step that set a value (useWizardNav inside a
+// step's content).
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Step, Stepper } from '@astryxdesign/core/Stepper';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 export interface WizardStep {
   /** Stable key (also the `data-step` attribute of the step body). */
@@ -36,6 +37,18 @@ export interface WizardProps {
   /** Start somewhere else than the first step (e.g. ?step= in the URL). */
   initialStep?: number;
   onStepChange?: (index: number) => void;
+}
+
+interface WizardNav {
+  /** Shows a step (by id or index) the user already reached. */
+  goTo: (step: string | number) => void;
+}
+
+const NavContext = createContext<WizardNav>({ goTo: () => undefined });
+
+/** Step navigation for a step's content, e.g. the review step's "Edit" links. */
+export function useWizardNav(): WizardNav {
+  return useContext(NavContext);
 }
 
 export function Wizard({ label, steps, finishLabel, onFinish, onCancel, error, isFinishing, initialStep = 0, onStepChange }: WizardProps) {
@@ -88,6 +101,13 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, error, i
     go(active + 1);
   };
 
+  const nav: WizardNav = {
+    goTo: (target) => {
+      const i = typeof target === 'number' ? target : steps.findIndex((s) => s.id === target);
+      if (i >= 0 && i <= reached && i !== active) go(i);
+    },
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     void next();
@@ -109,7 +129,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, error, i
       <div className="k-wizard-body k-panel" ref={bodyRef} tabIndex={-1} data-step={step.id} aria-label={`Step ${active + 1} of ${steps.length}: ${step.label}`}>
         <h2 className="k-h3">{step.label}</h2>
         {step.description ? <p className="k-muted k-small">{step.description}</p> : null}
-        {step.content}
+        <NavContext value={nav}>{step.content}</NavContext>
       </div>
       {message ? <Banner status="error" title="Check this step" description={message} /> : null}
       {error}

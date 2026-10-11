@@ -55,14 +55,19 @@ export function DurationField({ label, value, onChange, presets = DURATION_PRESE
   const selectValue = custom ? CUSTOM : value === '' ? '' : (preset?.value ?? CUSTOM);
   return (
     <div className="k-stack-sm">
-      <label className="k-label" htmlFor={id}>
-        {label}
-        {description ? <span className="k-muted k-small">{description}</span> : null}
+      <div className="k-label">
+        <label htmlFor={id}>{label}</label>
+        {description ? (
+          <span id={`${id}-d`} className="k-muted k-small">
+            {description}
+          </span>
+        ) : null}
         <select
           id={id}
           className="k-native-select"
           value={selectValue}
           disabled={isDisabled}
+          aria-describedby={description ? `${id}-d` : undefined}
           onChange={(e) => {
             const v = e.target.value;
             if (v === CUSTOM) {
@@ -81,7 +86,7 @@ export function DurationField({ label, value, onChange, presets = DURATION_PRESE
           ))}
           <option value={CUSTOM}>Custom…</option>
         </select>
-      </label>
+      </div>
       {selectValue === CUSTOM ? (
         <TextInput
           label={`${label} (custom)`}
