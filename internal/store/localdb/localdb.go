@@ -2,9 +2,12 @@
 // (docs/architecture.md §4.4, §4.5, decisions D7 and D33).
 //
 // It lives beside the drivers rather than inside the kube driver because
-// its writer and reader is internal/zonecache, which is driver-independent;
-// the kube driver also offers MaterializedSnapshot/PersistSnapshots for
-// tests and tools.
+// its writer and reader is internal/zonecache, which is driver-independent
+// (D79).
+//
+// local.db also holds named blobs (blob.go, BlobStore): opaque node-local
+// state that should survive a restart, such as the response cache dump
+// written by internal/cache/persist.
 //
 // zonecache writes the complete materialised object set (every kudurru.io
 // kind as JSON) together with the resourceVersion high-water mark after
@@ -200,9 +203,8 @@ func (s *SnapshotStore) migrate(ctx context.Context) error {
 	if version > store.SchemaVersion {
 		return fmt.Errorf("%w: local.db is at schema %d, binary supports %d", ErrSchemaTooNew, version, store.SchemaVersion)
 	}
-	// Version 1 is the first schema; later versions add steps here.
-	if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
-		return fmt.Errorf("localdb: apply schema v1: %w", err)
+	if err := migrateLayout(ctx, tx); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -210,6 +212,51 @@ func (s *SnapshotStore) migrate(ctx context.Context) error {
 		return fmt.Errorf("localdb: write schema_version: %w", err)
 	}
 	return tx.Commit()
+}
+
+// LayoutVersion is the version of local.db's own table layout, recorded
+// as meta.layout_version. It is separate from meta.schema_version, which
+// stays store.SchemaVersion: that one versions the API objects stored in
+// the snapshot, this one the tables (D11 applies to both: a newer on-disk
+// value refuses to open, an older one migrates in the same transaction).
+const LayoutVersion = 2
+
+// layoutSteps[i] migrates the layout from version i to i+1. Step 0 is
+// idempotent (CREATE ... IF NOT EXISTS) because databases written before
+// layout_version existed already hold its tables.
+var layoutSteps = []string{
+	schemaV1,
+	schemaV2Blobs,
+}
+
+// migrateLayout applies the layout steps after meta.layout_version.
+func migrateLayout(ctx context.Context, tx *sql.Tx) error {
+	layout := 0
+	var v string
+	switch err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'layout_version'`).Scan(&v); {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return fmt.Errorf("localdb: read layout_version: %w", err)
+	default:
+		var perr error
+		if layout, perr = strconv.Atoi(v); perr != nil {
+			return fmt.Errorf("localdb: bad layout_version %q: %w", v, perr)
+		}
+	}
+	if layout > LayoutVersion {
+		return fmt.Errorf("%w: local.db table layout is at version %d, binary supports %d", ErrSchemaTooNew, layout, LayoutVersion)
+	}
+	for i := layout; i < len(layoutSteps); i++ {
+		if _, err := tx.ExecContext(ctx, layoutSteps[i]); err != nil {
+			return fmt.Errorf("localdb: apply layout v%d: %w", i+1, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO meta(key, value) VALUES ('layout_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		strconv.Itoa(LayoutVersion)); err != nil {
+		return fmt.Errorf("localdb: write layout_version: %w", err)
+	}
+	return nil
 }
 
 // Write replaces the stored snapshot with snap in one transaction, so a

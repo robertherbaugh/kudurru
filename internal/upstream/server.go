@@ -19,16 +19,20 @@ import (
 type server struct {
 	name     string // display name or configured address
 	label    string // "<group>/<name>", the metrics and Response.Upstream value
+	proto    string // transport label: udp, tcp, dot, doh, doh3, doq, dnscrypt
 	u        proxy.Upstream
 	hc       HealthConfig
 	now      func() time.Time // backoff clock
 	onChange func(label string, healthy bool)
 
 	// Pre-resolved metric children; nil when metrics are off.
-	mHealthy  prometheus.Gauge
-	mRequests prometheus.Counter
-	mDuration prometheus.Observer
-	mErrors   map[string]prometheus.Counter
+	mHealthy   prometheus.Gauge
+	mRequests  prometheus.Counter
+	mInflight  prometheus.Gauge
+	mDuration  prometheus.Observer
+	mErrors    map[string]prometheus.Counter
+	mResponses *prometheus.CounterVec
+	mRcodes    map[int]prometheus.Counter // common rcodes, pre-resolved
 
 	mu        sync.Mutex
 	fails     int           // consecutive failures
@@ -65,8 +69,14 @@ func (s *server) setMetrics(m *Metrics) {
 		return
 	}
 	s.mHealthy = m.Healthy.WithLabelValues(s.label)
-	s.mRequests = m.Requests.WithLabelValues(s.label)
+	s.mRequests = m.Requests.WithLabelValues(s.label, s.proto)
+	s.mInflight = m.Inflight.WithLabelValues(s.label)
 	s.mDuration = m.Duration.WithLabelValues(s.label)
+	s.mResponses = m.Responses
+	s.mRcodes = map[int]prometheus.Counter{}
+	for _, rc := range []int{dns.RcodeSuccess, dns.RcodeNameError, dns.RcodeServerFailure, dns.RcodeRefused} {
+		s.mRcodes[rc] = m.Responses.WithLabelValues(s.label, rcodeLabel(rc))
+	}
 	s.mErrors = map[string]prometheus.Counter{}
 	for _, r := range []string{reasonTimeout, reasonNetwork, reasonRefused, reasonServfail} {
 		s.mErrors[r] = m.Errors.WithLabelValues(s.label, r)
@@ -123,10 +133,17 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 	defer cancel()
 	if s.mRequests != nil {
 		s.mRequests.Inc()
+		s.mInflight.Inc()
 	}
 	start := time.Now()
 	resp, err := s.do(ctx, m)
 	rtt := time.Since(start)
+	if s.mInflight != nil {
+		s.mInflight.Dec()
+		if err == nil && resp != nil {
+			s.countResponse(resp.Rcode)
+		}
+	}
 	a := attempt{srv: s, msg: resp, err: err, rtt: rtt}
 	if err == nil && resp == nil {
 		a.err = errors.New("upstream: empty response")
@@ -165,6 +182,15 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 	}
 	s.record(true, "", rtt)
 	return a
+}
+
+// countResponse counts one response by rcode; metrics are on.
+func (s *server) countResponse(rcode int) {
+	if c, ok := s.mRcodes[rcode]; ok {
+		c.Inc()
+		return
+	}
+	s.mResponses.WithLabelValues(s.label, rcodeLabel(rcode)).Inc()
 }
 
 // do runs the dnsproxy exchange and returns as soon as ctx is done: the

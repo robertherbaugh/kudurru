@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -143,7 +144,8 @@ func (w *watcher) Stop() {
 //     objects that disappeared).
 //
 // The watch ends on Stop, when ctx is done, or on Close.
-func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOptions) (store.Watcher, error) {
+func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOptions) (_ store.Watcher, err error) {
+	defer s.observe(opWatch, time.Now(), &err)
 	if s.isClosed() {
 		return nil, store.ErrClosed
 	}
@@ -180,6 +182,7 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 		cancel()
 		return nil, store.ErrClosed
 	}
+	s.watchersAdd(1)
 	go w.run(resume, from)
 	return w, nil
 }
@@ -187,6 +190,7 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 func (w *watcher) run(resume bool, from uint64) {
 	defer close(w.exited)
 	defer close(w.out)
+	defer w.s.watchersAdd(-1)
 	defer w.s.bus.unsubscribe(w)
 
 	if resume {
@@ -209,6 +213,7 @@ func (w *watcher) run(resume bool, from uint64) {
 				return
 			}
 			if w.lagged.Load() {
+				w.s.catchupObserved(w.ki.kind)
 				if !w.s.bus.subscribe(w) {
 					return
 				}

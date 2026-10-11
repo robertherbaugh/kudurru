@@ -1,14 +1,30 @@
 package upstream
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"net/url"
+	"strings"
+
+	proxy "github.com/AdguardTeam/dnsproxy/upstream"
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // Metrics are the upstream instruments. The upstream label is
 // "<group>/<server name>", the server name being the display name or the
 // address as configured, so cardinality is bounded by the configuration and
 // resolved IPs never appear (docs/architecture.md §11.1).
 type Metrics struct {
-	Healthy  *prometheus.GaugeVec
+	Healthy *prometheus.GaugeVec
+	// Requests is kudurru_upstream_requests_total{upstream,proto}; proto
+	// is the transport of the server (udp, tcp, dot, doh, doh3, doq,
+	// dnscrypt).
 	Requests *prometheus.CounterVec
+	// Responses is kudurru_upstream_responses_total{upstream,rcode}: every
+	// response received, whatever its rcode.
+	Responses *prometheus.CounterVec
+	// Inflight is kudurru_upstream_inflight{upstream}: exchanges waiting
+	// for this server now.
+	Inflight *prometheus.GaugeVec
 	Errors   *prometheus.CounterVec
 	Duration *prometheus.HistogramVec
 }
@@ -23,7 +39,15 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"upstream"}),
 		Requests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_upstream_requests_total",
-			Help: "Exchanges attempted with an upstream server.",
+			Help: "Exchanges attempted with an upstream server, by server and transport.",
+		}, []string{"upstream", "proto"}),
+		Responses: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_upstream_responses_total",
+			Help: "Responses received from an upstream server, by rcode.",
+		}, []string{"upstream", "rcode"}),
+		Inflight: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kudurru_upstream_inflight",
+			Help: "Exchanges currently waiting for an upstream server.",
 		}, []string{"upstream"}),
 		Errors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_upstream_errors_total",
@@ -36,7 +60,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}, []string{"upstream"}),
 	}
 	if reg != nil {
-		reg.MustRegister(m.Healthy, m.Requests, m.Errors, m.Duration)
+		reg.MustRegister(m.Healthy, m.Requests, m.Responses, m.Inflight, m.Errors, m.Duration)
 	}
 	return m
 }
@@ -47,7 +71,9 @@ func (m *Metrics) forget(label string) {
 		return
 	}
 	m.Healthy.DeleteLabelValues(label)
-	m.Requests.DeleteLabelValues(label)
+	m.Inflight.DeleteLabelValues(label)
+	m.Requests.DeletePartialMatch(prometheus.Labels{"upstream": label})
+	m.Responses.DeletePartialMatch(prometheus.Labels{"upstream": label})
 	m.Duration.DeleteLabelValues(label)
 	for _, r := range []string{reasonTimeout, reasonNetwork, reasonRefused, reasonServfail} {
 		m.Errors.DeleteLabelValues(label, r)
@@ -61,3 +87,57 @@ const (
 	reasonRefused  = "refused"
 	reasonServfail = "servfail"
 )
+
+// protoLabel is the transport of a server, from the scheme of its
+// configured address: a bare host:port is plain DNS (UDP, with TCP
+// fallback on truncation), the others name their transport. An sdns://
+// stamp is labelled by the upstream dnsproxy built from it (whose Address
+// keeps sdns:// for DNSCrypt and is an https:// URL for a DoH stamp).
+func protoLabel(configured string, u proxy.Upstream) string {
+	scheme := schemeOf(configured)
+	if scheme == "sdns" && u != nil {
+		if s := schemeOf(u.Address()); s != "" {
+			scheme = s
+		}
+	}
+	switch scheme {
+	case "":
+		return "udp"
+	case "udp":
+		return "udp"
+	case "tcp":
+		return "tcp"
+	case "tls":
+		return "dot"
+	case "https":
+		return "doh"
+	case "h3":
+		return "doh3"
+	case "quic":
+		return "doq"
+	case "sdns":
+		return "dnscrypt"
+	}
+	return "other"
+}
+
+// schemeOf returns the lower-cased URL scheme of addr, or "" for a bare
+// host[:port].
+func schemeOf(addr string) string {
+	i := strings.Index(addr, "://")
+	if i <= 0 {
+		return ""
+	}
+	if pu, err := url.Parse(addr); err == nil && pu.Scheme != "" {
+		return strings.ToLower(pu.Scheme)
+	}
+	return strings.ToLower(addr[:i])
+}
+
+// rcodeLabel maps an rcode onto its name or "other".
+func rcodeLabel(rc int) string {
+	if s, ok := dns.RcodeToString[rc]; ok {
+		return s
+	}
+	return "other"
+}

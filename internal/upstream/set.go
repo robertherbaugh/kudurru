@@ -105,7 +105,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 				_ = s.Close()
 				return nil, fmt.Errorf("upstream: group %q: server %q: %w", name, entry, err)
 			}
-			srv := &server{name: displayName(display, addr, u), u: u, hc: cfg.Health, now: now}
+			srv := &server{name: displayName(display, addr, u), proto: protoLabel(addr, u), u: u, hc: cfg.Health, now: now}
 			srv.label = name + "/" + srv.name
 			g.servers = append(g.servers, srv)
 			if seen[srv.name] {

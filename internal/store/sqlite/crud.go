@@ -96,7 +96,8 @@ func decodeInto(ki *kindInfo, data string, into store.Object) error {
 }
 
 // Get implements store.Store.
-func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error {
+func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) (err error) {
+	defer s.observe(opGet, time.Now(), &err)
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -153,7 +154,8 @@ func decodeContinue(kind store.Kind, s string) (continueToken, error) {
 // are not a consistent snapshot: objects written between pages appear or
 // not depending on their key. Label selectors are equality matches on all
 // given pairs.
-func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (_ store.ObjectList, err error) {
+	defer s.observe(opList, time.Now(), &err)
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
@@ -420,7 +422,8 @@ func compactFeed(ctx context.Context, tx txQueryer, seq uint64) error {
 //     apply clears is removed.
 //
 // obj is not modified.
-func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
+func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (_ store.Object, err error) {
+	defer s.observe(opApply, time.Now(), &err)
 	if opts.Manager == "" {
 		return nil, errors.New("store: ApplyOptions.Manager is required")
 	}
@@ -541,7 +544,8 @@ func identical(next store.Object, prev *stored) (bool, error) {
 // writes status only, like the apiserver's status subresource (and
 // validator.ValidateStatus takes metadata from the stored object). Deleting
 // an object that is already being deleted is a no-op.
-func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
+func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) (err error) {
+	defer s.observe(opDelete, time.Now(), &err)
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -593,7 +597,8 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 // are taken from the stored object, and generation does not move. If obj
 // carries a resourceVersion it is a precondition (mismatch:
 // store.ErrConflict). An unchanged status writes nothing.
-func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
+func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) (err error) {
+	defer s.observe(opUpdateStatus, time.Now(), &err)
 	if obj == nil || reflect.ValueOf(obj).IsNil() {
 		return errors.New("store/sqlite: UpdateStatus of a nil object")
 	}

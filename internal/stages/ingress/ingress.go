@@ -1,10 +1,12 @@
-// Package ingress is the first pipeline stage: message sanity checks and the
-// locally answered CHAOS and health names (docs/architecture.md §7.1 step 2).
+// Package ingress is the first pipeline stage: the per-prefix QPM rate
+// limiter (ratelimit.go), message sanity checks and the locally answered
+// CHAOS and health names (docs/architecture.md §7.1 step 2).
 package ingress
 
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -24,13 +26,48 @@ type Stage struct {
 	// Epoch is reported in the health TXT; the serial epoch of the zonecache
 	// once that exists.
 	Epoch func() uint64
+	// Limiter is the per-prefix QPM limiter (ratelimit.go); nil disables
+	// rate limiting.
+	Limiter *RateLimiter
 }
 
 // Name implements pipeline.Stage.
 func (s *Stage) Name() string { return "ingress" }
 
+// Check returns the limiter's verdict for req: UDP queries only, never for
+// exempt clients (loopback, ratelimit.exempt) or the health name. The
+// client is req.Client.Addr, the PROXYv2-attributed address when dnsdist
+// forwarded the query.
+func (l *RateLimiter) Check(req *pipeline.Request) Verdict {
+	if req.Client.Proto != pipeline.ProtoUDP || l.Exempt(req.Client.Addr.Addr()) {
+		return VerdictAllow
+	}
+	if m := req.Msg; m != nil && len(m.Question) == 1 && strings.EqualFold(m.Question[0].Name, HealthName) {
+		return VerdictAllow
+	}
+	now := req.Received
+	if l.now != nil {
+		now = l.now()
+	} else if now.IsZero() {
+		now = time.Now()
+	}
+	return l.Allow(req.Client.Addr.Addr(), now)
+}
+
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	if s.Limiter != nil {
+		switch s.Limiter.Check(req) {
+		case VerdictSlip:
+			r := pipeline.Reply(req, dns.RcodeSuccess, pipeline.StatusBlockedRateLimit)
+			r.Msg.Truncated = true
+			return r, nil
+		case VerdictDrop:
+			// A nil message asks the udp listener to send nothing
+			// (dnsserver.Handler).
+			return &pipeline.Response{Status: pipeline.StatusBlockedRateLimit}, nil
+		}
+	}
 	m := req.Msg
 	if m.Opcode != dns.OpcodeQuery {
 		return pipeline.Reply(req, dns.RcodeNotImplemented, pipeline.StatusDropped), nil

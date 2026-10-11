@@ -46,15 +46,36 @@ func (h *Handler) timeout() time.Duration {
 // chain fails or produces nothing the answer is SERVFAIL. The response ID
 // equals r.Id. ctx carries transport cancellation (an HTTP/2 or QUIC stream
 // reset); Resolve adds the query deadline.
+//
+// A stage may ask the transport to send nothing at all (the ingress rate
+// limiter's drop, docs/architecture.md §7.1 step 2) by answering with a
+// Response whose Msg is nil and whose Status is pipeline.StatusDropped or
+// pipeline.StatusBlockedRateLimit. The udp listener honours that by not
+// writing; every other transport, and Resolve itself, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
-	m, _ := h.resolve(ctx, r, client)
+	if m, _ := h.resolve(ctx, r, client); m != nil {
+		return m
+	}
+	return servfail(r)
+}
+
+// IsDrop reports whether resp asks the transport to send nothing.
+func IsDrop(resp *pipeline.Response) bool {
+	return resp != nil && resp.Msg == nil &&
+		(resp.Status == pipeline.StatusDropped || resp.Status == pipeline.StatusBlockedRateLimit)
+}
+
+func servfail(r *dns.Msg) *dns.Msg {
+	m := new(dns.Msg)
+	m.SetRcode(r, dns.RcodeServerFailure)
 	return m
 }
 
-// resolve is Resolve that also returns the rest of a multi-message answer
-// (pipeline.Response.Transfer, an AXFR/IXFR stream) for stream transports.
-// When the stream is non-nil it yields every message of the answer,
-// starting with the returned one, and the caller writes those instead.
+// resolve is Resolve that returns nil when the pipeline dropped the query
+// and, for stream transports, the rest of a multi-message answer
+// (pipeline.Response.Transfer, an AXFR/IXFR stream). When the stream is
+// non-nil it yields every message of the answer, starting with the
+// returned one, and the caller writes those instead.
 func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg]) {
 	timeout := h.timeout()
 	if ctx == nil {
@@ -67,13 +88,14 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 	req.Deadline = req.Received.Add(timeout)
 
 	resp, err := h.Chain.Serve(req)
+	if err == nil && IsDrop(resp) {
+		return nil, nil
+	}
 	if err != nil || resp == nil || resp.Msg == nil {
 		if err != nil && !errors.Is(err, pipeline.ErrNoAnswer) {
 			h.logger().Debug("pipeline error", "err", err, "q", req.Question().Name, "proto", client.Proto.String())
 		}
-		m := new(dns.Msg)
-		m.SetRcode(r, dns.RcodeServerFailure)
-		return m, nil
+		return servfail(r), nil
 	}
 	m := resp.Msg
 	m.Id = r.Id

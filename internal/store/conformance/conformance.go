@@ -25,6 +25,7 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 	t.Run("WatchDeliversInitialAndLive", func(t *testing.T) { testWatch(t, factory(t)) })
 	t.Run("UpdateStatusKeepsSpecAndManager", func(t *testing.T) { testStatus(t, factory(t)) })
 	t.Run("ApplyIgnoresStatusAndStatusIgnoresSpec", func(t *testing.T) { testStatusSeparation(t, factory(t)) })
+	t.Run("SlowWatcherGetsClosedOrResynced", func(t *testing.T) { testSlowWatcher(t, factory(t)) })
 }
 
 func zone(name, zoneName string) *v1alpha1.DNSZone {

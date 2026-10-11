@@ -32,6 +32,7 @@ type Config struct {
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
 	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
+	RateLimit RateLimit   `koanf:"ratelimit" json:"ratelimit"`
 	Log       Log         `koanf:"log" json:"log"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
@@ -72,6 +73,9 @@ type Listeners struct {
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
+	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
+	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
+	Sockets int `koanf:"sockets" json:"sockets"`
 	// Internal is the node-to-node listener (§3.1, D47).
 	Internal InternalListener `koanf:"internal" json:"internal"`
 }
@@ -476,6 +480,10 @@ func (c *Config) Validate() error {
 		if a, err := netip.ParseAddr(src); err != nil || a.Zone() != "" {
 			errs = append(errs, fmt.Errorf("notify.source: %q is not an IP address", src))
 		}
+	}
+	errs = append(errs, c.RateLimit.validate()...)
+	if c.Listeners.Sockets < 0 {
+		errs = append(errs, fmt.Errorf("listeners.sockets: %d is negative", c.Listeners.Sockets))
 	}
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {

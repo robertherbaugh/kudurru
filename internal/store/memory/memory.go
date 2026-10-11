@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -209,62 +210,142 @@ func (s *Store) UpdateStatus(_ context.Context, obj store.Object) error {
 	return nil
 }
 
+// WatchBuffer is how many live events a watcher queues while its consumer
+// is not reading. A watcher that falls further behind is closed, which
+// tells the consumer to watch again and re-list (the slow-watcher
+// contract of the conformance suite); events are never dropped silently.
+const WatchBuffer = 256
+
+// watcher is a store.Watcher. Its run goroutine is the only sender on out
+// and closes it on exit.
 type watcher struct {
-	ch   chan store.Event
-	stop func()
-	once sync.Once
+	s        *Store
+	kind     store.Kind
+	ns       string
+	out      chan store.Event
+	in       chan store.Event // live events, filled by broadcast
+	done     chan struct{}    // closed by Stop or Close
+	overflow chan struct{}    // closed when in was full
+	exited   chan struct{}    // closed when run returns
+
+	stopOnce, overflowOnce sync.Once
 }
 
-func (w *watcher) ResultChan() <-chan store.Event { return w.ch }
-func (w *watcher) Stop()                          { w.once.Do(w.stop) }
+func (w *watcher) ResultChan() <-chan store.Event { return w.out }
 
-// Watch implements store.Store: current objects are delivered as Added,
-// then live events follow.
+// Stop implements store.Watcher. It is idempotent and returns once the
+// result channel is closed.
+func (w *watcher) Stop() {
+	w.stopOnce.Do(func() { close(w.done) })
+	w.s.mu.Lock()
+	w.s.unregister(w)
+	w.s.mu.Unlock()
+	<-w.exited
+}
+
+// run delivers the initial events, a Bookmark, then live events, until the
+// watch is stopped or overflows.
+func (w *watcher) run(initial []store.Event) {
+	defer close(w.exited)
+	defer close(w.out)
+	send := func(ev store.Event) bool {
+		select {
+		case w.out <- ev:
+			return true
+		case <-w.done:
+		case <-w.overflow:
+		}
+		return false
+	}
+	for _, ev := range initial {
+		if !send(ev) {
+			return
+		}
+	}
+	if !send(store.Event{Type: store.Bookmark}) {
+		return
+	}
+	for {
+		select {
+		case ev := <-w.in:
+			if !send(ev) {
+				return
+			}
+		case <-w.done:
+			return
+		case <-w.overflow:
+			return
+		}
+	}
+}
+
+// Watch implements store.Store: current objects (filtered by
+// opts.Namespace) are delivered as Added from a goroutine, then a Bookmark,
+// then live events. The object set is read and the watcher registered
+// under one lock, so no write falls between the list and the live stream.
+// A consumer that lets more than WatchBuffer live events queue up has its
+// channel closed and must watch again. The watch also ends on Stop, when
+// ctx is done, or on Close.
 func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOptions) (store.Watcher, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, store.ErrClosed
 	}
-	// The initial events are queued under the lock before Watch returns,
-	// so the buffer must hold all of them (plus the bookmark) on top of
-	// the live-event headroom, or a kind with more than 256 objects would
-	// deadlock here.
-	initial := 0
+	keys := make([]store.Key, 0)
 	for k := range s.objects {
-		if k.Kind == kind {
-			initial++
-		}
-	}
-	w := &watcher{ch: make(chan store.Event, initial+257)}
-	w.stop = func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		ws := s.watchers[kind]
-		for i, x := range ws {
-			if x == w {
-				s.watchers[kind] = append(ws[:i], ws[i+1:]...)
-				break
-			}
-		}
-		close(w.ch)
-	}
-	for k, obj := range s.objects {
 		if k.Kind == kind && (opts.Namespace == "" || k.Namespace == opts.Namespace) {
-			w.ch <- store.Event{Type: store.Added, Object: obj.DeepCopyObject().(store.Object)}
+			keys = append(keys, k)
 		}
 	}
-	w.ch <- store.Event{Type: store.Bookmark}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+	initial := make([]store.Event, len(keys))
+	for i, k := range keys {
+		initial[i] = store.Event{Type: store.Added, Object: s.objects[k].DeepCopyObject().(store.Object)}
+	}
+	w := &watcher{
+		s: s, kind: kind, ns: opts.Namespace,
+		out:      make(chan store.Event),
+		in:       make(chan store.Event, WatchBuffer),
+		done:     make(chan struct{}),
+		overflow: make(chan struct{}),
+		exited:   make(chan struct{}),
+	}
 	s.watchers[kind] = append(s.watchers[kind], w)
-	go func() { <-ctx.Done(); w.Stop() }()
+	go w.run(initial)
+	go func() {
+		select {
+		case <-ctx.Done():
+			w.Stop()
+		case <-w.exited:
+		}
+	}()
 	return w, nil
 }
 
+// unregister removes w from the watcher list; s.mu is held.
+func (s *Store) unregister(w *watcher) {
+	ws := s.watchers[w.kind]
+	for i, x := range ws {
+		if x == w {
+			s.watchers[w.kind] = append(ws[:i], ws[i+1:]...)
+			return
+		}
+	}
+}
+
+// broadcast offers ev to every watcher of kind without blocking; s.mu is
+// held. A watcher whose buffer is full is unregistered and closed.
 func (s *Store) broadcast(kind store.Kind, ev store.Event) {
-	for _, w := range s.watchers[kind] {
+	for _, w := range slices.Clone(s.watchers[kind]) {
+		if w.ns != "" && ev.Object != nil && ev.Object.GetNamespace() != w.ns {
+			continue
+		}
 		select {
-		case w.ch <- ev:
-		default: // slow watcher: drop; real drivers resync
+		case w.in <- ev:
+		default:
+			s.unregister(w)
+			w.overflowOnce.Do(func() { close(w.overflow) })
 		}
 	}
 }
@@ -328,10 +409,7 @@ func (s *Store) Close() error {
 	s.closed = true
 	for kind, ws := range s.watchers {
 		for _, w := range ws {
-			// Mark stopped first so a later Stop (e.g. from a consumer's
-			// context cancellation) is a no-op instead of a double close.
-			w.once.Do(func() {})
-			close(w.ch)
+			w.stopOnce.Do(func() { close(w.done) })
 		}
 		delete(s.watchers, kind)
 	}

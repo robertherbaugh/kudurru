@@ -242,6 +242,11 @@ type Options struct {
 	// OnTSIGFailure, if set, is called with TSIGBadKey, TSIGBadSig or
 	// TSIGBadTime for every request rejected for its TSIG (metrics).
 	OnTSIGFailure func(reason string)
+	// Sockets is how many SO_REUSEPORT sockets every udp and tcp listener
+	// binds, each with its own read loop (listeners.sockets). Zero means
+	// runtime.GOMAXPROCS(0) and 1 a single plain socket; platforms other
+	// than Linux always bind one. See SocketCount.
+	Sockets int
 }
 
 // env is what every listener constructor receives.
@@ -255,6 +260,7 @@ type env struct {
 	// provider that knows no key.
 	tsig          dns.TsigProvider
 	onTSIGFailure func(reason string)
+	sockets       int // resolved Options.Sockets, at least 1
 }
 
 // tsigProvider returns the provider every miekg server uses, so TSIG is
@@ -311,6 +317,7 @@ func NewRegistry(opts Options) (*Registry, error) {
 
 		tsig:          TSIGProvider(opts.TSIG),
 		onTSIGFailure: opts.OnTSIGFailure,
+		sockets:       SocketCount(opts.Sockets),
 	}}, nil
 }
 

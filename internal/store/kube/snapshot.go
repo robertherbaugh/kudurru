@@ -6,26 +6,18 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"sync/atomic"
-	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
-	toolscache "k8s.io/client-go/tools/cache"
-	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
-	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 )
 
-// ErrNotSynced is returned by MaterializedSnapshot before every informer
-// has completed its initial list.
-var ErrNotSynced = errors.New("store/kube: informers have not synced")
+// The local.db snapshot is written by internal/zonecache for every driver
+// (D79); the driver's own MaterializedSnapshot/PersistSnapshots from the
+// store-kube spike were removed in M2.
 
 // snapshotPageSize is the page size Snapshot uses against the apiserver.
 const snapshotPageSize = 500
@@ -147,113 +139,4 @@ func typed(scheme *runtime.Scheme, u *unstructured.Unstructured) (store.Object, 
 	}
 	obj.GetObjectKind().SetGroupVersionKind(gvk)
 	return obj, nil
-}
-
-// MaterializedSnapshot returns the informer cache's current object set and
-// per-kind resourceVersions, ready for localdb.SnapshotStore.Write. Each
-// kind's resourceVersion is read before its objects, so the objects are at
-// least as fresh as the recorded high-water mark. It returns ErrNotSynced
-// until every informer has synced.
-func (s *Store) MaterializedSnapshot(ctx context.Context) (*localdb.Snapshot, error) {
-	if s.isClosed() {
-		return nil, store.ErrClosed
-	}
-	select {
-	case <-s.informersReady:
-	default:
-		return nil, ErrNotSynced
-	}
-	snap := &localdb.Snapshot{ResourceVersions: map[store.Kind]string{}, WrittenAt: time.Now()}
-	if id := s.clusterID.Load(); id != nil {
-		snap.ClusterID = *id
-	}
-	for _, k := range s.kinds.kinds {
-		ki := s.kinds.byKind[k]
-		inf, err := s.cache.GetInformer(ctx, ki.newObject(), cache.BlockUntilSynced(false))
-		if err != nil {
-			return nil, err
-		}
-		if !inf.HasSynced() {
-			return nil, ErrNotSynced
-		}
-		if lsr, ok := inf.(interface{ LastSyncResourceVersion() string }); ok {
-			snap.ResourceVersions[k] = lsr.LastSyncResourceVersion()
-		}
-		list := ki.newList().(client.ObjectList)
-		if err := s.cache.List(ctx, list); err != nil {
-			return nil, err
-		}
-		items, err := meta.ExtractList(list)
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range items {
-			o := it.(store.Object)
-			normalize(ki, o)
-			snap.Objects = append(snap.Objects, o)
-		}
-	}
-	return snap, nil
-}
-
-// PersistSnapshots keeps local.db current (§4.4): it writes once every
-// informer has synced and then, at most every interval, whenever an
-// informer reported a change. It returns when ctx ends. Write failures are
-// logged and retried on the next tick.
-func (s *Store) PersistSnapshots(ctx context.Context, db *localdb.SnapshotStore, interval time.Duration) error {
-	if interval <= 0 {
-		return fmt.Errorf("store/kube: snapshot interval must be positive, got %s", interval)
-	}
-	select {
-	case <-s.informersReady:
-	case <-ctx.Done():
-		return nil
-	}
-	var dirty atomic.Bool
-	mark := toolscache.ResourceEventHandlerFuncs{
-		AddFunc:    func(any) { dirty.Store(true) },
-		UpdateFunc: func(any, any) { dirty.Store(true) },
-		DeleteFunc: func(any) { dirty.Store(true) },
-	}
-	for _, k := range s.kinds.kinds {
-		inf, err := s.cache.GetInformer(ctx, s.kinds.byKind[k].newObject(), cache.BlockUntilSynced(false))
-		if err != nil {
-			return err
-		}
-		reg, err := inf.AddEventHandlerWithOptions(mark, toolscache.HandlerOptions{ResyncPeriod: ptr.To(time.Duration(0))})
-		if err != nil {
-			return err
-		}
-		defer func() { _ = inf.RemoveEventHandler(reg) }()
-	}
-	if !s.cache.WaitForCacheSync(ctx) {
-		return nil
-	}
-	dirty.Store(true)
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-	for {
-		if dirty.Swap(false) {
-			if err := s.persistOnce(ctx, db); err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-				s.log.Warn("local.db snapshot write failed; retrying", "err", err)
-				dirty.Store(true)
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tick.C:
-		}
-	}
-}
-
-func (s *Store) persistOnce(ctx context.Context, db *localdb.SnapshotStore) error {
-	snap, err := s.MaterializedSnapshot(ctx)
-	if err != nil {
-		return err
-	}
-	return db.Write(ctx, snap)
 }

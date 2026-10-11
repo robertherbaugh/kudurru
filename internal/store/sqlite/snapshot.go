@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,7 +21,8 @@ import (
 // object, read in one transaction (a consistent cut) and sorted by key. It
 // is the backup format and what `kudurru apply -f` and Restore accept.
 // opts.Safe omits Options.InternalKinds.
-func (s *Store) Snapshot(ctx context.Context, w io.Writer, opts store.SnapshotOptions) error {
+func (s *Store) Snapshot(ctx context.Context, w io.Writer, opts store.SnapshotOptions) (err error) {
+	defer s.observe(opSnapshot, time.Now(), &err)
 	if s.isClosed() {
 		return store.ErrClosed
 	}
@@ -77,7 +79,8 @@ func (s *Store) Snapshot(ctx context.Context, w io.Writer, opts store.SnapshotOp
 // ignored; uid and creationTimestamp are kept (D10); status is not
 // restored (the controller recomputes it). Every object is attempted and
 // the errors are joined.
-func (s *Store) Restore(ctx context.Context, r io.Reader) error {
+func (s *Store) Restore(ctx context.Context, r io.Reader) (err error) {
+	defer s.observe(opRestore, time.Now(), &err)
 	if s.isClosed() {
 		return store.ErrClosed
 	}
