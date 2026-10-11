@@ -239,7 +239,7 @@ func TestParseLine(t *testing.T) {
 			t.Errorf("%q: %+v %v", in, got, err)
 		}
 	}
-	for _, bad := range []string{"", "HELLO", `INSTANCE VI_dns MASTER 1`, `INSTANCE "VI_dns`, `INSTANCE "VI_dns"`, `INSTANCE "VI_dns" MASTER x`} {
+	for _, bad := range []string{"", "HELLO", `INSTANCE VI_dns MASTER 1`, `INSTANCE "VI_dns`, `INSTANCE "VI_dns"`, `INSTANCE "VI_dns" MASTER x`, "INSTANCE \"\r\" 0", "INSTANCE \"VI_\x00\" MASTER 1"} {
 		if _, err := ParseLine(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}

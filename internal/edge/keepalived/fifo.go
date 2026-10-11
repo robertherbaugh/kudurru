@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/robertherbaugh/kudurru/internal/edge"
 )
@@ -62,6 +63,9 @@ func ParseLine(line string) (Notification, error) {
 		return Notification{}, fmt.Errorf("keepalived: unterminated name in FIFO line %q", line)
 	}
 	n := Notification{Kind: kind, Name: rest[1 : end+1]}
+	if strings.ContainsFunc(n.Name, unicode.IsControl) {
+		return Notification{}, fmt.Errorf("keepalived: control character in name in FIFO line %q", line)
+	}
 	fields := strings.Fields(rest[end+2:])
 	if len(fields) == 0 {
 		return Notification{}, fmt.Errorf("keepalived: no state in FIFO line %q", line)
