@@ -1,11 +1,10 @@
-// One control per C1 shape, recursively: Switch for booleans, a bounded
-// number input, DurationField with the key's presets, a size with a unit,
+// One control per C1 shape, recursively (Astryx controls, help under
+// each control): Switch for booleans, a bounded NumberInput, DurationField with the key's presets, a size with a unit,
 // EnumSelect for closed sets, a picker for references, a format-checked
 // text input, a row editor for string lists, and rows of fieldsets for
 // lists of objects and maps. It edits drafts (lib/shapes.ts), never JSON.
 import { Button } from '@astryxdesign/core/Button';
-import { Switch } from '@astryxdesign/core/Switch';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { Text } from '@astryxdesign/core/Text';
 import type { ObjectKind, SettingRef } from '../../api/types';
 import { emptyDraft, isMapDraft, keyError, str, type MapDraft } from '../../lib/shapes';
 import type { UiShape } from '../../lib/settingsMeta';
@@ -17,6 +16,7 @@ import { FORMAT_EXAMPLES, formatError } from './formats';
 import { NumberField } from './NumberField';
 import { ObjectRefPicker } from './ObjectRefPicker';
 import { StringListField } from './StringListField';
+import { SwitchField, TextField } from './TextField';
 
 const REF_KINDS: Record<Exclude<SettingRef, 'upstreamGroup'>, Exclude<ObjectKind, 'dnsrecordsets'>> = {
   clientGroup: 'clientgroups',
@@ -37,16 +37,25 @@ export interface ShapeFieldProps {
   placeholder?: string | undefined;
 }
 
+/** Help under a group of fields. */
+function Help({ text }: { text?: string | undefined }) {
+  return text ? (
+    <Text type="supporting" display="block">
+      {text}
+    </Text>
+  ) : null;
+}
+
 export function ShapeField({ label, isLabelHidden, description, shape, value, onChange, isDisabled, placeholder }: ShapeFieldProps) {
   switch (shape.type) {
     case 'bool':
-      return <Switch label={label} isLabelHidden={isLabelHidden} description={description} value={value === true} isDisabled={isDisabled} onChange={onChange} />;
+      return <SwitchField label={label} isLabelHidden={isLabelHidden} help={description} value={value === true} isDisabled={isDisabled} onChange={onChange} />;
     case 'int':
       return (
         <NumberField
           label={label}
           isLabelHidden={isLabelHidden}
-          description={description}
+          help={description}
           value={str(value)}
           onChange={onChange}
           min={shape.min}
@@ -91,7 +100,6 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
       return (
         <fieldset className="k-fieldset" disabled={isDisabled}>
           <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-          {description ? <span className="k-muted k-small">{description}</span> : null}
           <div className="k-form-grid">
             {(shape.fields ?? []).map((f) => {
               const o = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
@@ -108,6 +116,7 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
               );
             })}
           </div>
+          <Help text={description} />
         </fieldset>
       );
     default:
@@ -137,15 +146,15 @@ function StringField({ label, isLabelHidden, description, shape, value, onChange
   }
   const err = formatError(shape.format, v);
   return (
-    <TextInput
+    <TextField
       label={label}
       isLabelHidden={isLabelHidden}
-      description={description}
+      help={description}
       value={v}
       onChange={onChange}
       isDisabled={isDisabled}
       placeholder={placeholder || (shape.format ? `e.g. ${FORMAT_EXAMPLES[shape.format]}` : undefined)}
-      status={err ? { type: 'error', message: err } : undefined}
+      error={err ?? undefined}
     />
   );
 }
@@ -156,8 +165,7 @@ function ListRows({ label, isLabelHidden, description, shape, value, onChange, i
   return (
     <fieldset className="k-fieldset" disabled={isDisabled}>
       <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-      {description ? <span className="k-muted k-small">{description}</span> : null}
-      {items.length === 0 ? <span className="k-muted k-small">None.</span> : null}
+      {items.length === 0 ? <Text type="supporting">None.</Text> : null}
       {items.map((x, i) => (
         <div key={i} className="k-array-item" data-testid="list-row">
           <ShapeField label={`${label} ${i + 1}`} shape={item} value={x} onChange={(v) => onChange(items.map((y, j) => (j === i ? v : y)))} isDisabled={isDisabled} />
@@ -167,6 +175,7 @@ function ListRows({ label, isLabelHidden, description, shape, value, onChange, i
       <span className="k-row">
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => onChange([...items, emptyDraft(item)])} />
       </span>
+      <Help text={description} />
     </fieldset>
   );
 }
@@ -182,8 +191,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
   return (
     <fieldset className="k-fieldset" disabled={isDisabled}>
       <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-      {description ? <span className="k-muted k-small">{description}</span> : null}
-      {rows.length === 0 ? <span className="k-muted k-small">None.</span> : null}
+      {rows.length === 0 ? <Text type="supporting">None.</Text> : null}
       {rows.map(([k, v], i) => {
         const dup = k.trim() && (counts.get(k.trim()) ?? 0) > 1;
         return (
@@ -201,14 +209,14 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
                 error={dup ? 'Listed twice' : undefined}
               />
             ) : (
-              <TextInput
+              <TextField
                 label={keyLabel}
                 isLabelHidden={i > 0}
                 value={k}
                 placeholder={shape.keyPlaceholder}
                 onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
                 isDisabled={isDisabled}
-                status={dup ? { type: 'error', message: 'Listed twice' } : keyErr(k) ? { type: 'error', message: keyErr(k) ?? '' } : undefined}
+                error={dup ? 'Listed twice' : (keyErr(k) ?? undefined)}
               />
             )}
             <ShapeField
@@ -226,6 +234,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
       <span className="k-row">
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => emit([...rows, ['', emptyDraft(vshape)]])} />
       </span>
+      <Help text={description} />
     </fieldset>
   );
 }

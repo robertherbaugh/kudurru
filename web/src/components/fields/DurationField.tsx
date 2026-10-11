@@ -79,6 +79,7 @@ export interface DurationFieldProps {
   presets?: DurationPreset[];
   /** A first option meaning "not set" (inherit the default). */
   emptyLabel?: string | undefined;
+  /** Help under the field. */
   description?: string | undefined;
   isDisabled?: boolean | undefined;
   error?: string | undefined;
@@ -94,7 +95,7 @@ export function DurationField({ label, isLabelHidden, value, onChange, presets =
       presets={presets}
       same={sameDuration}
       emptyLabel={emptyLabel}
-      description={description}
+      help={description}
       isDisabled={isDisabled}
       error={error}
       customPlaceholder="e.g. 90s, 45m, 36h"

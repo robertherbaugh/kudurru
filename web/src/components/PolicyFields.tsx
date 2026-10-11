@@ -5,9 +5,7 @@
 // TTL, upstream group, query log) and When (schedule). Each takes the spec
 // and returns a new one; references are bare names in the policy's
 // namespace, as the API stores them.
-import { Switch } from '@astryxdesign/core/Switch';
 import { useQuery } from '@tanstack/react-query';
-import { useId } from 'react';
 import { qk, useApi } from '../api/context';
 import type { AnyObject, BlockList, ClientGroup, Policy, PolicySpec } from '../api/types';
 import { formatExact } from '../lib/format';
@@ -15,8 +13,10 @@ import { BLOCK_RESPONSES, SAFE_SEARCH_MODES, scheduleError, sortByPriority } fro
 import { durationError } from '../lib/objectSchemas';
 import { DurationField, type DurationPreset } from './fields/DurationField';
 import { EnumSelect } from './fields/EnumSelect';
+import { NumberField } from './fields/NumberField';
 import { ObjectRefPicker } from './fields/ObjectRefPicker';
 import { ScheduleField } from './fields/ScheduleField';
+import { SwitchField } from './fields/TextField';
 import { EngineList, ServiceGrid, useSafeSearchEngines } from './ServiceGrid';
 import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
@@ -71,7 +71,6 @@ export function priorityError(p: number | undefined): string | null {
 
 export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, self }: PolicyFieldsProps) {
   const api = useApi();
-  const id = useId();
   const pols = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
   const groups = new Set(spec.clientGroupRefs ?? []);
   const others = sortByPriority(pols.data?.items ?? []).filter(
@@ -93,23 +92,17 @@ export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, s
         isDisabled={isDisabled}
         error={showErrors && !spec.clientGroupRefs?.length ? 'Pick at least one group' : undefined}
       />
-      <label className="k-label" htmlFor={`${id}-prio`}>
-        Priority
-        <span className="k-muted k-small">When several active policies match a client, the highest priority decides the settings; their lists are merged.</span>
-        <input
-          id={`${id}-prio`}
-          className="k-native-input k-num-input"
-          type="number"
-          min={PRIORITY_MIN}
-          max={PRIORITY_MAX}
-          step={1}
-          value={spec.priority ?? ''}
-          disabled={isDisabled}
-          aria-invalid={perr ? true : undefined}
-          onChange={(e) => onChange({ ...spec, priority: e.target.value === '' ? undefined : Number(e.target.value) })}
-        />
-        {perr ? <span className="k-error-text">{perr}</span> : null}
-      </label>
+      <NumberField
+        label="Priority"
+        value={spec.priority === undefined ? '' : String(spec.priority)}
+        min={PRIORITY_MIN}
+        max={PRIORITY_MAX}
+        isDisabled={isDisabled}
+        error={perr ?? undefined}
+        help="When several active policies match a client, the highest priority decides the settings; their lists are merged."
+        onChange={(v) => onChange({ ...spec, priority: v === '' ? undefined : Number(v) })}
+        width={260}
+      />
       {others.length ? (
         <p className="k-muted k-small" data-testid="priority-hint">
           Other policies of these groups:{' '}
@@ -157,9 +150,9 @@ export function WhatFields({ spec, onChange, namespace, isDisabled }: PolicyFiel
         onChange={(v) => onChange({ ...spec, allowListRefs: v })}
         isDisabled={isDisabled}
       />
-      <Switch
+      <SwitchField
         label="Allow only"
-        description="Block every name that is not on an allow list (a walled garden for young children)."
+        help="Block every name that is not on an allow list (a walled garden for young children)."
         value={spec.allowOnly === true}
         onChange={(on) => onChange({ ...spec, allowOnly: on || undefined })}
         isDisabled={isDisabled}
@@ -188,9 +181,9 @@ export function SafeSearchFields({ spec, onChange, isDisabled }: PolicyFieldsPro
   const on = spec.safeSearch === true;
   return (
     <div className="k-stack-lg">
-      <Switch
+      <SwitchField
         label="Enforce safe search"
-        description="Answer the search engines' and YouTube's host names with the vendor's safe-search address."
+        help="Answer the search engines' and YouTube's host names with the vendor's safe-search address."
         value={on}
         onChange={(v) => onChange({ ...spec, safeSearch: v || undefined, ...(v ? {} : { safeSearchMode: undefined }) })}
         isDisabled={isDisabled}
@@ -247,9 +240,9 @@ export function HowFields({ spec, onChange, isDisabled, showErrors }: PolicyFiel
         error={showErrors || spec.blockTTL ? (ttlErr ?? undefined) : undefined}
       />
       <UpstreamGroupSelect value={spec.upstreamGroup ?? ''} onChange={(v) => onChange({ ...spec, upstreamGroup: v || undefined })} isDisabled={isDisabled} help="Where these clients' allowed queries are forwarded." />
-      <Switch
+      <SwitchField
         label="Log these clients' queries"
-        description="Off keeps the clients of this policy out of the query log and its statistics."
+        help="Off keeps the clients of this policy out of the query log and its statistics."
         value={spec.queryLog !== false}
         onChange={(on) => onChange({ ...spec, queryLog: on ? undefined : false })}
         isDisabled={isDisabled}

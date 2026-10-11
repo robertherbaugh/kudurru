@@ -1,11 +1,18 @@
 // A list of strings edited row by row (settings string[] keys, server
 // lists, ACLs, name servers): one input per entry, add and remove buttons,
 // an inline error per row from `itemError`, and "Paste many" for a block of
-// lines. Empty rows are dropped by cleanList() before saving.
+// lines. Empty rows are dropped by cleanList() before saving. The help
+// sits under the rows and buttons.
 import { Button } from '@astryxdesign/core/Button';
-import { TextInput } from '@astryxdesign/core/TextInput';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { HStack } from '@astryxdesign/core/HStack';
+import { StackItem } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useId, useState } from 'react';
 import type { EnumOption } from './EnumSelect';
+import { SelectField } from './SelectField';
+import { TextAreaField, TextField } from './TextField';
 
 /** Trims entries and drops empty ones. */
 export function cleanList(v: string[]): string[] {
@@ -61,47 +68,27 @@ export function StringListField({
   return (
     <fieldset className="k-fieldset k-list-field" aria-describedby={description ? `${id}-d` : undefined} disabled={isDisabled}>
       <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-      {description ? (
-        <span id={`${id}-d`} className="k-muted k-small">
-          {description}
-        </span>
-      ) : null}
-      {value.length === 0 ? <span className="k-muted k-small">None.</span> : null}
+      {value.length === 0 ? <Text type="supporting">None.</Text> : null}
       {value.map((v, i) => {
         const e = v.trim() && itemError ? itemError(v.trim()) : null;
         const rowLabel = `${label} ${i + 1}`;
         return (
-          <div key={i} className="k-array-item" data-testid="list-row">
-            {options ? (
-              <select className="k-native-select" aria-label={rowLabel} value={v} disabled={isDisabled} onChange={(ev) => set(i, ev.target.value)}>
-                {(options.some((o) => o.value === v) ? options : [...options, { value: v, label: v || 'Choose…' }]).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <TextInput
-                label={rowLabel}
-                isLabelHidden
-                value={v}
-                onChange={(nv) => set(i, nv)}
-                placeholder={placeholder}
-                isDisabled={isDisabled}
-                status={e ? { type: 'error', message: e } : undefined}
-              />
-            )}
-            <Button label={`Remove ${rowLabel}`} size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} />
-          </div>
+          <HStack key={i} gap={2} vAlign="start" data-testid="list-row">
+            <StackItem size="fill">
+              {options ? (
+                <SelectField label={rowLabel} isLabelHidden value={v} options={options} placeholder="Choose…" isDisabled={isDisabled} onChange={(nv) => set(i, nv)} />
+              ) : (
+                <TextField label={rowLabel} isLabelHidden value={v} onChange={(nv) => set(i, nv)} placeholder={placeholder} isDisabled={isDisabled} error={e ?? undefined} />
+              )}
+            </StackItem>
+            <Button label={`Remove ${rowLabel}`} size="md" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+          </HStack>
         );
       })}
       {paste !== null ? (
-        <div className="k-stack-sm">
-          <label className="k-label" htmlFor={`${id}-paste`}>
-            Paste entries, one per line
-            <textarea id={`${id}-paste`} className="k-native-input k-mono" rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} spellCheck={false} />
-          </label>
-          <span className="k-row">
+        <VStack gap={2}>
+          <TextAreaField label="Paste entries, one per line" mono rows={5} value={paste} onChange={setPaste} hasSpellCheck={false} />
+          <HStack gap={2}>
             <Button
               label="Add these"
               size="sm"
@@ -112,14 +99,19 @@ export function StringListField({
               }}
             />
             <Button label="Cancel" size="sm" variant="ghost" onClick={() => setPaste(null)} />
-          </span>
-        </div>
+          </HStack>
+        </VStack>
       ) : null}
-      <span className="k-row">
+      <HStack gap={2}>
         <Button label={addLabel} size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => onChange([...value, options?.[0]?.value ?? ''])} />
         {allowPaste && paste === null ? <Button label="Paste many" size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => setPaste('')} /> : null}
-      </span>
-      {error ? <span className="k-error-text">{error}</span> : null}
+      </HStack>
+      {description ? (
+        <Text type="supporting" display="block" id={`${id}-d`}>
+          {description}
+        </Text>
+      ) : null}
+      {error ? <FieldStatus type="error" message={error} variant="detached" /> : null}
     </fieldset>
   );
 }
