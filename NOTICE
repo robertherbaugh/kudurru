@@ -54,7 +54,10 @@ Test data (not compiled into the binary):
 - Kubernetes client libraries (https://github.com/kubernetes/client-go,
   k8s.io/api, k8s.io/apimachinery, k8s.io/apiextensions-apiserver),
   Apache-2.0: dependencies of the kube store driver (informers, server-side
-  apply, coordination.k8s.io Lease leader election).
+  apply, coordination.k8s.io Lease leader election); internal/controller
+  uses the client-go rate-limited workqueue and follows the client-go
+  controller pattern (watch-fed cache, keyed queue, periodic resync), and
+  internal/controller/kubeevents uses its core/v1 Event recorder.
 - controller-runtime (https://github.com/kubernetes-sigs/controller-runtime),
   Apache-2.0: client, informer cache and envtest used by the kube store
   driver and its tests; the Watch catch-up barrier is informed by its
