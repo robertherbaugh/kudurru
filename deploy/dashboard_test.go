@@ -114,7 +114,10 @@ func dashboardRows() []row {
 				target{`sum by (builder) (rate(kudurru_zonecache_build_errors_total{` + sel + `}` + rate + `))`, "errors {{builder}}"}),
 			ts("Rebuild p95", "s", target{`histogram_quantile(0.95, sum by (le) (rate(kudurru_zonecache_rebuild_duration_seconds_bucket{` + sel + `}` + rate + `)))`, "p95"}),
 			ts("TSIG failures", "ops", target{`sum by (error) (rate(kudurru_dns_tsig_failures_total{` + sel + `}` + rate + `))`, "{{error}}"}),
-			note("Serial divergence", "The serial-divergence panel (`max by (zone)(kudurru_zone_serial) - min by (zone)(kudurru_zone_serial)`) needs the per-zone serial gauge, which the binary does not export yet (docs/followups.md)."),
+			{title: "Serial divergence", kind: "timeseries", unit: "short", w: 12, h: 8, min: f(0),
+				desc:    "Highest minus lowest SOA serial served for each zone across the selected nodes. Non-zero for longer than a zone cache rebuild means a node serves an old copy (KudurruSerialDivergence).",
+				targets: []target{{`max by (zone) (kudurru_zone_serial{` + sel + `}) - min by (zone) (kudurru_zone_serial{` + sel + `})`, "{{zone}}"}}},
+			{title: "Zone size", kind: "timeseries", unit: "short", w: 12, h: 8, targets: []target{{`max by (zone, kind) (kudurru_zone_records{` + sel + `})`, "{{zone}} {{kind}}"}}},
 		}},
 		{"Pipeline and query log", []panel{
 			ts("Dropped queries", "ops", target{`sum by (reason) (rate(kudurru_dns_dropped_total{` + sel + `}` + rate + `))`, "{{reason}}"}),
@@ -149,9 +152,18 @@ func dashboardRows() []row {
 				target{`sum(rate(dnsdist_cache_hits[$__rate_interval]))`, "hits"},
 				target{`sum(rate(dnsdist_cache_misses[$__rate_interval]))`, "misses"}),
 			ts("Queries per backend", "reqps", target{`sum by (server) (rate(dnsdist_server_queries[$__rate_interval]))`, "{{server}}"}),
+			{title: "kudurru backends up (edge supervisor)", kind: "timeseries", unit: "short", w: 8, h: 8, min: f(0), max: f(1), targets: []target{{`min by (backend) (kudurru_edge_backend_up)`, "{{backend}}"}}},
+			ts("Edge renders and dnsdist restarts", "ops",
+				target{`sum by (result) (rate(kudurru_edge_renders_total` + rate + `))`, "render {{result}}"},
+				target{`sum by (reason) (rate(kudurru_edge_dnsdist_restarts_total` + rate + `))`, "restart {{reason}}"}),
 		}},
 		{"VIP", []panel{
-			note("VIP ownership", "VIP panels use `kudurru_vip_master{vip}`, emitted by the keepalived supervisor (`kudurru vip run`, milestone M4). With kube-vip or MetalLB, ownership is visible in the Service status and in those projects' own metrics."),
+			{title: "VIP masters", kind: "timeseries", unit: "short", w: 8, h: 8, min: f(0),
+				desc:    "Nodes holding each VIP as VRRP MASTER (kudurru_vip_master from `kudurru vip run`). Exactly 1 is healthy; 0 means nobody answers on the VIP, 2 or more is a split brain.",
+				targets: []target{{`sum by (vip) (kudurru_vip_master)`, "{{vip}}"}}},
+			ts("VRRP priority", "short", target{`max by (instance, vip) (kudurru_vip_priority)`, "{{instance}} {{vip}}"}),
+			ts("keepalived renders", "ops", target{`sum by (result) (rate(kudurru_vip_reloads_total` + rate + `))`, "{{result}}"}),
+			note("Other VIP providers", "These panels come from the keepalived supervisor's metrics listener (:8085). With kube-vip or MetalLB, ownership is visible in the Service status and in those projects' own metrics."),
 		}},
 	}
 }
@@ -339,7 +351,7 @@ func TestPrometheusRules(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"KudurruNoLeader", "KudurruServfailRatio", "KudurruUpstreamUnhealthy", "KudurruQuerylogDrops", "KudurruQuerylogNearCap", "KudurruServingFromSnapshot", "KudurruSnapshotStale", "KudurruLatencyP95High", "KudurruBlocklistStale"} {
+	for _, want := range []string{"KudurruNoLeader", "KudurruServfailRatio", "KudurruUpstreamUnhealthy", "KudurruQuerylogDrops", "KudurruQuerylogNearCap", "KudurruSerialDivergence", "KudurruServingFromSnapshot", "KudurruSnapshotStale", "KudurruLatencyP95High", "KudurruEdgeBackendDown", "KudurruVIPNoMaster", "KudurruBlocklistStale"} {
 		if !seen[want] {
 			t.Errorf("§11.6 alert %s is missing", want)
 		}

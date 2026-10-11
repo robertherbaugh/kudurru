@@ -146,8 +146,11 @@ mode=kubernetes: created once, then owned by kubectl and the UI).
 The dashboard has the §11.6 rows (tiles, traffic, latency heatmap,
 blocking, cache, upstreams, zones, pipeline and query log, cluster and
 store, dnsdist, VIP); every query uses a metric the binary registers today
-(the deploy tests enforce it). The serial-divergence panel and the VIP and
-edge-backend alerts wait for their metrics (docs/followups.md).
+(the deploy tests enforce it), including the serial-divergence panel and
+`KudurruSerialDivergence`. The edge and VIP panels and the
+`KudurruEdgeBackendDown` and `KudurruVIPNoMaster` alerts read the
+supervisors' metrics listeners (:8084, :8085), which the chart's
+ServiceMonitor and PodMonitor do not scrape yet.
 
 ## Network policy
 

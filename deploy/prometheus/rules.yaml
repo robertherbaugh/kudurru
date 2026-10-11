@@ -3,10 +3,11 @@
 # expression names a metric the code does not register. The Helm chart ships
 # a copy (charts/kudurru/files/prometheus-rules.yaml, `make chart-assets`).
 #
+# The edge and VIP alerts read the supervisors' metrics (`kudurru edge run`
+# :8084, `kudurru vip run` :8085); they only fire when those are scraped too.
+#
 # §11.6 alerts not shipped yet, because their metric does not exist (see
-# docs/followups.md): KudurruSerialDivergence (kudurru_zone_serial),
-# KudurruEdgeBackendDown (kudurru_edge_backend_up), KudurruVIPNoMaster
-# (kudurru_vip_master), KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
+# docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
 # KudurruDNSSECKeyExpiring (kudurru_dnssec_key_expiry_timestamp_seconds, v1.0).
 #
 # Without the Prometheus Operator, load spec.groups as a plain rule file:
@@ -89,6 +90,34 @@ spec:
           annotations:
             summary: File-managed objects on {{ $labels.instance }} have errors.
             description: See the warnings logged by the objects loader or GET /api/v1/info/messages.
+    - name: kudurru.zones
+      rules:
+        - alert: KudurruSerialDivergence
+          expr: max by (zone) (kudurru_zone_serial) != min by (zone) (kudurru_zone_serial)
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Nodes have served different SOA serials for zone {{ $labels.zone }} for 10 minutes.
+            description: A node that lags keeps answering from an old copy of the zone. Compare GET /internal/zones on the nodes, then check that node's zone cache (kudurru_zonecache_build_errors_total, kudurru_store_snapshot_serving).
+    - name: kudurru.edge
+      rules:
+        - alert: KudurruEdgeBackendDown
+          expr: kudurru_edge_backend_up == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: dnsdist on {{ $labels.instance }} reports kudurru backend {{ $labels.backend }} down.
+            description: The edge stops sending queries to that node. Check its readiness (/healthz/ready) and the health.kudurru.internal. answer (lameduck drains on purpose, D51).
+        - alert: KudurruVIPNoMaster
+          expr: max by (vip) (kudurru_vip_master) == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: No keepalived node holds VIP {{ $labels.vip }}.
+            description: Clients of the VIP get no answers. Check the VRRP probe (kudurru health --vrrp) and the keepalived supervisors' logs.
     - name: kudurru.blocking
       rules:
         - alert: KudurruBlocklistStale

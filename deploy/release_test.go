@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -50,6 +51,9 @@ func TestGoreleaserConfig(t *testing.T) {
 		km := mapOf(k)
 		if !strings.HasPrefix(str(km["base_image"]), "gcr.io/distroless/static:") || !strings.Contains(str(km["base_image"]), "nonroot") {
 			t.Errorf("ko %v: base image %v is not distroless static nonroot", km["id"], km["base_image"])
+		}
+		if !digestRefRE.MatchString(str(km["base_image"])) {
+			t.Errorf("ko %v: base image %v is not pinned as tag@sha256:<digest>", km["id"], km["base_image"])
 		}
 		if !slices.Equal(list(km["platforms"]), []any{"linux/amd64", "linux/arm64"}) {
 			t.Errorf("ko %v: platforms %v, want linux/amd64 and linux/arm64 (D68)", km["id"], km["platforms"])
@@ -152,10 +156,30 @@ func TestSystemdUnit(t *testing.T) {
 	}
 }
 
-// TestDockerfile keeps the local image equivalent to the release image.
+// digestRefRE matches an image reference pinned as tag@digest.
+var digestRefRE = regexp.MustCompile(`^[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$`)
+
+// TestDockerfile keeps the local image equivalent to the release image,
+// including the digest-pinned distroless bases of the ko entries.
 func TestDockerfile(t *testing.T) {
 	s := string(readRepoFile(t, "Dockerfile"))
-	for _, want := range []string{"CGO_ENABLED=0", "FROM gcr.io/distroless/static:nonroot AS release", "FROM gcr.io/distroless/static:debug-nonroot AS debug", "USER 65532:65532", `"kudurru", "health", "--ready"`} {
+	var cfg struct {
+		Kos []struct {
+			ID        string `yaml:"id"`
+			BaseImage string `yaml:"base_image"`
+		} `yaml:"kos"`
+	}
+	if err := yamlv3.Unmarshal(readRepoFile(t, ".goreleaser.yaml"), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	base := map[string]string{}
+	for _, k := range cfg.Kos {
+		base[k.ID] = k.BaseImage
+	}
+	if base["kudurru"] == "" || base["kudurru-debug"] == "" {
+		t.Fatalf("ko entries kudurru and kudurru-debug not found: %v", base)
+	}
+	for _, want := range []string{"CGO_ENABLED=0", "FROM " + base["kudurru"] + " AS release", "FROM " + base["kudurru-debug"] + " AS debug", "USER 65532:65532", `"kudurru", "health", "--ready"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("Dockerfile lacks %q", want)
 		}
