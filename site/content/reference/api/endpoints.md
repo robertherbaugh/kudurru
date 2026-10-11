@@ -15,7 +15,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
-| GET | `/api/v1/audit` | Audit events of this node (oldest first) | `audit.read` (cluster) |
+| GET | `/api/v1/audit` | Audit events of this node (oldest first; order=desc for newest first) | `audit.read` (cluster) |
 | GET | `/api/v1/audit/export` | Audit events as JSON lines | `audit.export` (cluster) |
 
 ## auth
@@ -27,12 +27,12 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/auth/me` | The authenticated principal, roles, permissions and CSRF token | authenticated |
 | GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public |
 | GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public |
-| POST | `/api/v1/auth/password` | Change the local user's own password | authenticated |
+| POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated |
 | GET | `/api/v1/auth/status` | Login options | public |
 | GET | `/api/v1/auth/tokens` | List own API tokens | authenticated |
 | POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated |
-| GET | `/api/v1/auth/tokens/{id}` | Get one own API token | authenticated |
-| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one own API token | authenticated |
+| GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated |
+| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated |
 
 ## blocklists
 
@@ -47,6 +47,14 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) |
 | POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) |
 | POST | `/api/v1/domains/{action}/{kind}` | Allow or deny domains through the UI lists | `blocklists.write` (cluster) |
+
+## catalogue
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/catalogue` | The blocked-services and safe-search catalogue in service | `policies.read` (cluster) |
+| GET | `/api/v1/catalogue/safesearch` | Search engines Policy.spec.safeSearch rewrites | `policies.read` (cluster) |
+| GET | `/api/v1/catalogue/services` | Services Policy.spec.blockedServices can block | `policies.read` (cluster) |
 
 ## clientgroups
 

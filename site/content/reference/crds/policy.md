@@ -33,6 +33,7 @@ PolicySpec binds client groups to lists and resolver behaviour.
 | `spec.blockListRefs` | `[]string` |  |
 | `spec.blockMode` | `string` | BlockResponse is how a blocked query is answered.<br>One of: `nxdomain`, `zeroIP`, `refused`, `customIP` |
 | `spec.blockTTL` | `string` | Default: `10m` |
+| `spec.blockedServices` | `[]string` | BlockedServices names services of the blocked-services catalogue (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains this policy blocks like a block list; the query log names the service as the list, "service:&lt;id&gt;". IDs are checked against the catalogue in service, which can change at runtime, so an unknown ID is reported as Degraded{UnknownService} rather than refused.<br>Items: at most 256<br>List type: `set` |
 | `spec.clientGroupRefs` | `[]string` |  |
 | `spec.priority` | `integer` | Priority breaks ties when several policies match; highest wins. |
 | `spec.queryLog` | `boolean` | QueryLog false excludes matching clients from the query log. |
@@ -41,7 +42,8 @@ PolicySpec binds client groups to lists and resolver behaviour.
 | `spec.rewrites[].name` | `string` | **Required.** |
 | `spec.rewrites[].targets` | `[]string` |  |
 | `spec.rewrites[].type` | `string` |  |
-| `spec.safeSearch` | `boolean` |  |
+| `spec.safeSearch` | `boolean` | SafeSearch true answers the search engines' and YouTube's host names with their vendor's safe-search target (a CNAME to forcesafesearch.google.com, strict.bing.com, ...; see the catalogue). |
+| `spec.safeSearchMode` | `string` | SafeSearchMode is the level for engines that offer two: strict (the default) or moderate. Only YouTube has two levels (Strict or Moderate Restricted Mode); every other engine is always strict.<br>One of: `strict`, `moderate` |
 | `spec.schedule` | `object` | Schedule limits when a policy applies. |
 | `spec.schedule.end` | `string` | **Required.**<br>Pattern: `^([01][0-9]\|2[0-3]):[0-5][0-9]$` |
 | `spec.schedule.start` | `string` | **Required.** Start and End are "HH:MM" in TZ.<br>Pattern: `^([01][0-9]\|2[0-3]):[0-5][0-9]$` |
