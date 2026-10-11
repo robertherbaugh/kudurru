@@ -15,7 +15,7 @@ import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { cleanMatchers, kindLabel, matcherKind, matchersError, matcherValue, MatchersField } from '../components/fields/MatchersField';
 import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
-import { YamlButton } from '../components/YamlView';
+import { YamlDialog } from '../components/YamlDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { clientHref, DEFAULT_GROUP, derivePolicyState, identifyClient, objectHref, policiesOfGroup, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
@@ -34,6 +34,7 @@ export default function GroupDetailPage({ params }: PageProps) {
   const notify = useNotify();
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [yaml, setYaml] = useState(false);
 
   const q = useQuery({ queryKey: [...qk.objects('clientgroups'), ns, name], queryFn: () => api.objects.get<ClientGroup>('clientgroups', name, ns) });
   const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000, enabled: can('clients', 'read') });
@@ -111,7 +112,7 @@ export default function GroupDetailPage({ params }: PageProps) {
         </div>
         <div className="k-actions">
           <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
-          <YamlButton obj={group} />
+          <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
           <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('clientgroups', 'delete') || name === DEFAULT_GROUP} tooltip={name === DEFAULT_GROUP ? 'The default group is recreated at start-up' : roReason || undefined} onClick={() => setConfirmDelete(true)} />
         </div>
       </div>
@@ -207,6 +208,7 @@ export default function GroupDetailPage({ params }: PageProps) {
         )}
       </section>
 
+      <YamlDialog obj={group} open={yaml} onClose={() => setYaml(false)} />
       <FormDialog
         isOpen={confirmDelete}
         onClose={() => setConfirmDelete(false)}

@@ -19,7 +19,7 @@ import { ManagedBadge } from '../components/ManagedBadge';
 import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
 import { EngineList } from '../components/ServiceGrid';
 import { ServiceIcon } from '../components/ServiceIcon';
-import { YamlButton } from '../components/YamlView';
+import { YamlDialog } from '../components/YamlDialog';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { blockResponseLabel, clientHref, objectHref, policyBadge, shortRef } from '../lib/policies';
@@ -36,6 +36,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
   const notify = useNotify();
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [yaml, setYaml] = useState(false);
 
   const q = useQuery({ queryKey: [...qk.objects('policies'), ns, name], queryFn: () => api.objects.get<Policy>('policies', name, ns) });
   const policy = q.data;
@@ -112,7 +113,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
         </div>
         <div className="k-actions">
           <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
-          <YamlButton obj={policy} />
+          <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
           <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('policies', 'delete')} tooltip={roReason || undefined} onClick={() => setConfirmDelete(true)} />
         </div>
       </div>
@@ -169,7 +170,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
         readOnlyReason={roReason}
         testId="section-how"
         view={
-          <dl className="k-facts">
+          <dl className="k-kv">
             <dt>Block response</dt>
             <dd>{blockResponseLabel(state?.blockMode ?? spec.blockMode)}</dd>
             <dt>Block TTL</dt>
@@ -205,6 +206,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
       />
       <ActivitySection policyRef={`${ns}/${name}`} state={state} derived={st.derived} />
 
+      <YamlDialog obj={policy} open={yaml} onClose={() => setYaml(false)} />
       <FormDialog
         isOpen={confirmDelete}
         onClose={() => setConfirmDelete(false)}
@@ -236,7 +238,7 @@ function StatePanel({ state, derived, loading, error }: { state: PolicyState | u
         <h2 id="policy-now">Right now</h2>
         {derived ? <span className="k-muted k-small">derived from the objects; this server does not report policy state</span> : null}
       </div>
-      <dl className="k-facts">
+      <dl className="k-kv">
         <dt>State</dt>
         <dd>
           <Badge variant={badge.variant} label={badge.label} /> <span className="k-muted k-small">{badge.help}</span>

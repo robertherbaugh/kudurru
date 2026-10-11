@@ -138,6 +138,18 @@ func (f *CacheFlusher) ListsChanged() {
 	}
 }
 
+// BlockResponsesChanged reacts to a change of the synthesised block
+// answers (blocking.defaultResponse, blockTTL, customIP, the block page
+// addresses): it flushes the resolver pool in the background so the edge
+// stops serving the old answers before their block TTL ends.
+func (f *CacheFlusher) BlockResponsesChanged() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.stopped {
+		f.flushAsync("block responses changed")
+	}
+}
+
 // flushAsync runs FlushResolver on its own goroutine; f.mu is held.
 func (f *CacheFlusher) flushAsync(why string) {
 	f.wg.Go(func() {

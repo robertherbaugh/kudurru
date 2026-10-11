@@ -89,7 +89,7 @@ test('the policies table links to a policy page that shows its state', async ({ 
   await expect(lists.getByRole('row').filter({ hasText: BLOCKLIST.name })).toContainText('ready');
 
   await main(page).getByRole('button', { name: 'View as YAML' }).click();
-  await expect(page.getByTestId('object-yaml')).toContainText(`- ${BLOCKLIST.name}`);
+  await expect(page.getByLabel('YAML', { exact: true })).toContainText(`- ${BLOCKLIST.name}`);
   await expectRendered(page);
 });
 

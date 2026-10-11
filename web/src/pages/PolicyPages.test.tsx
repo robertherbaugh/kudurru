@@ -24,15 +24,17 @@ async function goTo(step: string): Promise<void> {
 const policy = (name: string) => mockDB().policies.find((p) => p.metadata.name === name);
 
 describe('PoliciesPage', () => {
+  const stateOf = (name: string) => screen.getByTestId(`row-${name}`).querySelector('[data-state]')?.getAttribute('data-state');
+
   it('lists policies by priority with state badges, links, lists and service logos', async () => {
     renderWithApp(<PoliciesPage />, { route: '/policies' });
     const table = await screen.findByRole('table', { name: 'Policies' });
     const names = within(table).getAllByRole('row').slice(1).map((r) => r.getAttribute('data-testid'));
     expect(names).toEqual(['row-streaming-off', 'row-kids-bedtime', 'row-iot-strict', 'row-social-media', 'row-default']);
-    expect(screen.getByTestId('row-streaming-off')).toHaveAttribute('data-state', 'disabled');
+    await waitFor(() => expect(stateOf('streaming-off')).toBe('disabled'));
     expect(within(screen.getByTestId('row-streaming-off')).getByText('Disabled')).toBeInTheDocument();
-    expect(screen.getByTestId('row-default')).toHaveAttribute('data-state', 'shadowed');
-    expect(screen.getByTestId('row-social-media')).toHaveAttribute('data-state', 'active');
+    expect(stateOf('default')).toBe('shadowed');
+    expect(stateOf('social-media')).toBe('active');
     const social = screen.getByTestId('row-social-media');
     expect(within(social).getByRole('link', { name: 'social-media' })).toHaveAttribute('href', '/policies/default/social-media');
     expect(within(social).getByRole('link', { name: 'default' })).toHaveAttribute('href', '/groups/default/default');
@@ -40,14 +42,16 @@ describe('PoliciesPage', () => {
     expect(within(social).getByTestId('monogram-9gag')).toHaveTextContent('9G');
     expect(within(screen.getByTestId('row-streaming-off')).getByText('+1')).toBeInTheDocument();
     expect(within(screen.getByTestId('row-iot-strict')).getByLabelText('Managed by file:objects.d/policies.yaml')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-kids-bedtime')).getByRole('link', { name: 'starter' })).toHaveAttribute('href', '/lists/default/starter');
     expect(table.textContent).not.toMatch(/undefined|NaN/);
   });
 
-  it('filters by name, comment or group', async () => {
+  it('searches and opens the wizard from "New policy"', async () => {
     renderWithApp(<PoliciesPage />, { route: '/policies?q=kids' });
     await screen.findByTestId('row-kids-bedtime');
-    expect(screen.getByTestId('row-streaming-off')).toBeInTheDocument();
     expect(screen.queryByTestId('row-default')).toBeNull();
+    const add = screen.getByRole('link', { name: 'New policy' });
+    expect(add).toHaveAttribute('href', '/policies/new');
   });
 });
 
@@ -80,7 +84,7 @@ describe('PolicyDetailPage', () => {
     await clickWhenEnabled('Edit How');
     const how = screen.getByTestId('section-how');
     fireEvent.change(within(how).getByRole('combobox', { name: 'Block response' }), { target: { value: 'blockPage' } });
-    expect(within(how).getByText(/kudurru block page/)).toBeInTheDocument();
+    expect(within(how).getByText('Answer with the block page address (Settings → Block page)')).toBeInTheDocument();
     fireEvent.change(within(how).getByRole('combobox', { name: 'Block TTL' }), { target: { value: '5m' } });
     fireEvent.click(within(how).getByRole('button', { name: 'Save How' }));
     await waitFor(() => expect(policy('social-media')?.spec).toMatchObject({ blockMode: 'blockPage', blockTTL: '5m' }));
@@ -105,7 +109,7 @@ describe('PolicyDetailPage', () => {
     expect(await screen.findByRole('button', { name: 'Enable' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'View as YAML' }));
-    const yaml = await screen.findByTestId('object-yaml');
+    const yaml = await screen.findByLabelText('YAML');
     expect(yaml.textContent).toContain('kind: Policy');
     expect(yaml.textContent).toContain('- tiktok');
     expect(yaml.textContent).not.toContain('resourceVersion');

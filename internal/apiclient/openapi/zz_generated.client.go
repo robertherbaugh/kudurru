@@ -206,6 +206,177 @@ func (e RoleBindingInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for SettingFieldFormat.
+const (
+	SettingFieldFormatCidr     SettingFieldFormat = "cidr"
+	SettingFieldFormatDomain   SettingFieldFormat = "domain"
+	SettingFieldFormatEmail    SettingFieldFormat = "email"
+	SettingFieldFormatHostport SettingFieldFormat = "hostport"
+	SettingFieldFormatIp       SettingFieldFormat = "ip"
+	SettingFieldFormatIpv4     SettingFieldFormat = "ipv4"
+	SettingFieldFormatIpv6     SettingFieldFormat = "ipv6"
+	SettingFieldFormatUpstream SettingFieldFormat = "upstream"
+	SettingFieldFormatUrl      SettingFieldFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldFormat enum.
+func (e SettingFieldFormat) Valid() bool {
+	switch e {
+	case SettingFieldFormatCidr:
+		return true
+	case SettingFieldFormatDomain:
+		return true
+	case SettingFieldFormatEmail:
+		return true
+	case SettingFieldFormatHostport:
+		return true
+	case SettingFieldFormatIp:
+		return true
+	case SettingFieldFormatIpv4:
+		return true
+	case SettingFieldFormatIpv6:
+		return true
+	case SettingFieldFormatUpstream:
+		return true
+	case SettingFieldFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingFieldRef.
+const (
+	SettingFieldRefBlockList     SettingFieldRef = "blockList"
+	SettingFieldRefClientGroup   SettingFieldRef = "clientGroup"
+	SettingFieldRefPolicy        SettingFieldRef = "policy"
+	SettingFieldRefUpstreamGroup SettingFieldRef = "upstreamGroup"
+	SettingFieldRefZone          SettingFieldRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldRef enum.
+func (e SettingFieldRef) Valid() bool {
+	switch e {
+	case SettingFieldRefBlockList:
+		return true
+	case SettingFieldRefClientGroup:
+		return true
+	case SettingFieldRefPolicy:
+		return true
+	case SettingFieldRefUpstreamGroup:
+		return true
+	case SettingFieldRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingFieldType.
+const (
+	SettingFieldTypeBool     SettingFieldType = "bool"
+	SettingFieldTypeBytes    SettingFieldType = "bytes"
+	SettingFieldTypeDuration SettingFieldType = "duration"
+	SettingFieldTypeInt      SettingFieldType = "int"
+	SettingFieldTypeList     SettingFieldType = "list"
+	SettingFieldTypeMap      SettingFieldType = "map"
+	SettingFieldTypeObject   SettingFieldType = "object"
+	SettingFieldTypeString   SettingFieldType = "string"
+	SettingFieldTypeString1  SettingFieldType = "string[]"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldType enum.
+func (e SettingFieldType) Valid() bool {
+	switch e {
+	case SettingFieldTypeBool:
+		return true
+	case SettingFieldTypeBytes:
+		return true
+	case SettingFieldTypeDuration:
+		return true
+	case SettingFieldTypeInt:
+		return true
+	case SettingFieldTypeList:
+		return true
+	case SettingFieldTypeMap:
+		return true
+	case SettingFieldTypeObject:
+		return true
+	case SettingFieldTypeString:
+		return true
+	case SettingFieldTypeString1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingKeyFormat.
+const (
+	SettingKeyFormatCidr     SettingKeyFormat = "cidr"
+	SettingKeyFormatDomain   SettingKeyFormat = "domain"
+	SettingKeyFormatEmail    SettingKeyFormat = "email"
+	SettingKeyFormatHostport SettingKeyFormat = "hostport"
+	SettingKeyFormatIp       SettingKeyFormat = "ip"
+	SettingKeyFormatIpv4     SettingKeyFormat = "ipv4"
+	SettingKeyFormatIpv6     SettingKeyFormat = "ipv6"
+	SettingKeyFormatUpstream SettingKeyFormat = "upstream"
+	SettingKeyFormatUrl      SettingKeyFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingKeyFormat enum.
+func (e SettingKeyFormat) Valid() bool {
+	switch e {
+	case SettingKeyFormatCidr:
+		return true
+	case SettingKeyFormatDomain:
+		return true
+	case SettingKeyFormatEmail:
+		return true
+	case SettingKeyFormatHostport:
+		return true
+	case SettingKeyFormatIp:
+		return true
+	case SettingKeyFormatIpv4:
+		return true
+	case SettingKeyFormatIpv6:
+		return true
+	case SettingKeyFormatUpstream:
+		return true
+	case SettingKeyFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingKeyRef.
+const (
+	SettingKeyRefBlockList     SettingKeyRef = "blockList"
+	SettingKeyRefClientGroup   SettingKeyRef = "clientGroup"
+	SettingKeyRefPolicy        SettingKeyRef = "policy"
+	SettingKeyRefUpstreamGroup SettingKeyRef = "upstreamGroup"
+	SettingKeyRefZone          SettingKeyRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingKeyRef enum.
+func (e SettingKeyRef) Valid() bool {
+	switch e {
+	case SettingKeyRefBlockList:
+		return true
+	case SettingKeyRefClientGroup:
+		return true
+	case SettingKeyRefPolicy:
+		return true
+	case SettingKeyRefUpstreamGroup:
+		return true
+	case SettingKeyRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SettingKeyScope.
 const (
 	SettingKeyScopeCluster SettingKeyScope = "cluster"
@@ -218,6 +389,111 @@ func (e SettingKeyScope) Valid() bool {
 	case SettingKeyScopeCluster:
 		return true
 	case SettingKeyScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeFormat.
+const (
+	SettingShapeFormatCidr     SettingShapeFormat = "cidr"
+	SettingShapeFormatDomain   SettingShapeFormat = "domain"
+	SettingShapeFormatEmail    SettingShapeFormat = "email"
+	SettingShapeFormatHostport SettingShapeFormat = "hostport"
+	SettingShapeFormatIp       SettingShapeFormat = "ip"
+	SettingShapeFormatIpv4     SettingShapeFormat = "ipv4"
+	SettingShapeFormatIpv6     SettingShapeFormat = "ipv6"
+	SettingShapeFormatUpstream SettingShapeFormat = "upstream"
+	SettingShapeFormatUrl      SettingShapeFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeFormat enum.
+func (e SettingShapeFormat) Valid() bool {
+	switch e {
+	case SettingShapeFormatCidr:
+		return true
+	case SettingShapeFormatDomain:
+		return true
+	case SettingShapeFormatEmail:
+		return true
+	case SettingShapeFormatHostport:
+		return true
+	case SettingShapeFormatIp:
+		return true
+	case SettingShapeFormatIpv4:
+		return true
+	case SettingShapeFormatIpv6:
+		return true
+	case SettingShapeFormatUpstream:
+		return true
+	case SettingShapeFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeRef.
+const (
+	SettingShapeRefBlockList     SettingShapeRef = "blockList"
+	SettingShapeRefClientGroup   SettingShapeRef = "clientGroup"
+	SettingShapeRefPolicy        SettingShapeRef = "policy"
+	SettingShapeRefUpstreamGroup SettingShapeRef = "upstreamGroup"
+	SettingShapeRefZone          SettingShapeRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeRef enum.
+func (e SettingShapeRef) Valid() bool {
+	switch e {
+	case SettingShapeRefBlockList:
+		return true
+	case SettingShapeRefClientGroup:
+		return true
+	case SettingShapeRefPolicy:
+		return true
+	case SettingShapeRefUpstreamGroup:
+		return true
+	case SettingShapeRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeType.
+const (
+	SettingShapeTypeBool     SettingShapeType = "bool"
+	SettingShapeTypeBytes    SettingShapeType = "bytes"
+	SettingShapeTypeDuration SettingShapeType = "duration"
+	SettingShapeTypeInt      SettingShapeType = "int"
+	SettingShapeTypeList     SettingShapeType = "list"
+	SettingShapeTypeMap      SettingShapeType = "map"
+	SettingShapeTypeObject   SettingShapeType = "object"
+	SettingShapeTypeString   SettingShapeType = "string"
+	SettingShapeTypeString1  SettingShapeType = "string[]"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeType enum.
+func (e SettingShapeType) Valid() bool {
+	switch e {
+	case SettingShapeTypeBool:
+		return true
+	case SettingShapeTypeBytes:
+		return true
+	case SettingShapeTypeDuration:
+		return true
+	case SettingShapeTypeInt:
+		return true
+	case SettingShapeTypeList:
+		return true
+	case SettingShapeTypeMap:
+		return true
+	case SettingShapeTypeObject:
+		return true
+	case SettingShapeTypeString:
+		return true
+	case SettingShapeTypeString1:
 		return true
 	default:
 		return false
@@ -1610,22 +1886,101 @@ type SetBlockingInputBody struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
+// SettingField defines model for SettingField.
+type SettingField struct {
+	Default  interface{}         `json:"default,omitempty"`
+	Enum     *[]SettingOption    `json:"enum,omitempty"`
+	Fields   *[]SettingField     `json:"fields,omitempty"`
+	Format   *SettingFieldFormat `json:"format,omitempty"`
+	Help     *string             `json:"help,omitempty"`
+	Items    *SettingShape       `json:"items,omitempty"`
+	Keys     *SettingShape       `json:"keys,omitempty"`
+	Label    *string             `json:"label,omitempty"`
+	Max      *int64              `json:"max,omitempty"`
+	Min      *int64              `json:"min,omitempty"`
+	Name     string              `json:"name"`
+	Presets  *[]string           `json:"presets,omitempty"`
+	Ref      *SettingFieldRef    `json:"ref,omitempty"`
+	Required *bool               `json:"required,omitempty"`
+	Type     SettingFieldType    `json:"type"`
+	Values   *SettingShape       `json:"values,omitempty"`
+}
+
+// SettingFieldFormat defines model for SettingField.Format.
+type SettingFieldFormat string
+
+// SettingFieldRef defines model for SettingField.Ref.
+type SettingFieldRef string
+
+// SettingFieldType defines model for SettingField.Type.
+type SettingFieldType string
+
 // SettingKey defines model for SettingKey.
 type SettingKey struct {
-	Default         interface{}     `json:"default"`
-	EnvLocked       bool            `json:"envLocked"`
-	Help            string          `json:"help"`
-	HostOnly        bool            `json:"hostOnly"`
-	Path            string          `json:"path"`
-	RestartRequired bool            `json:"restartRequired"`
-	Scope           SettingKeyScope `json:"scope"`
-	Type            string          `json:"type"`
-	Value           interface{}     `json:"value"`
-	WriteOnly       bool            `json:"writeOnly"`
+	Default         interface{}       `json:"default"`
+	Enum            *[]SettingOption  `json:"enum,omitempty"`
+	EnvLocked       bool              `json:"envLocked"`
+	Fields          *[]SettingField   `json:"fields,omitempty"`
+	Format          *SettingKeyFormat `json:"format,omitempty"`
+	Group           *string           `json:"group,omitempty"`
+	Help            string            `json:"help"`
+	HostOnly        bool              `json:"hostOnly"`
+	Items           *SettingShape     `json:"items,omitempty"`
+	Keys            *SettingShape     `json:"keys,omitempty"`
+	Label           *string           `json:"label,omitempty"`
+	Max             *int64            `json:"max,omitempty"`
+	Min             *int64            `json:"min,omitempty"`
+	Path            string            `json:"path"`
+	Presets         *[]string         `json:"presets,omitempty"`
+	Ref             *SettingKeyRef    `json:"ref,omitempty"`
+	RestartRequired bool              `json:"restartRequired"`
+	Scope           SettingKeyScope   `json:"scope"`
+	Type            string            `json:"type"`
+	Value           interface{}       `json:"value"`
+	Values          *SettingShape     `json:"values,omitempty"`
+	WriteOnly       bool              `json:"writeOnly"`
 }
+
+// SettingKeyFormat defines model for SettingKey.Format.
+type SettingKeyFormat string
+
+// SettingKeyRef defines model for SettingKey.Ref.
+type SettingKeyRef string
 
 // SettingKeyScope defines model for SettingKey.Scope.
 type SettingKeyScope string
+
+// SettingOption defines model for SettingOption.
+type SettingOption struct {
+	Help  *string `json:"help,omitempty"`
+	Label string  `json:"label"`
+	Value string  `json:"value"`
+}
+
+// SettingShape defines model for SettingShape.
+type SettingShape struct {
+	Default interface{}         `json:"default,omitempty"`
+	Enum    *[]SettingOption    `json:"enum,omitempty"`
+	Fields  *[]SettingField     `json:"fields,omitempty"`
+	Format  *SettingShapeFormat `json:"format,omitempty"`
+	Items   *SettingShape       `json:"items,omitempty"`
+	Keys    *SettingShape       `json:"keys,omitempty"`
+	Max     *int64              `json:"max,omitempty"`
+	Min     *int64              `json:"min,omitempty"`
+	Presets *[]string           `json:"presets,omitempty"`
+	Ref     *SettingShapeRef    `json:"ref,omitempty"`
+	Type    SettingShapeType    `json:"type"`
+	Values  *SettingShape       `json:"values,omitempty"`
+}
+
+// SettingShapeFormat defines model for SettingShape.Format.
+type SettingShapeFormat string
+
+// SettingShapeRef defines model for SettingShape.Ref.
+type SettingShapeRef string
+
+// SettingShapeType defines model for SettingShape.Type.
+type SettingShapeType string
 
 // SettingsBody defines model for SettingsBody.
 type SettingsBody struct {
@@ -1981,6 +2336,12 @@ type PutBlocklistsJSONBody map[string]interface{}
 // PutBlocklistsParams defines parameters for PutBlocklists.
 type PutBlocklistsParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
+}
+
+// PreviewBlockPageParams defines parameters for PreviewBlockPage.
+type PreviewBlockPageParams struct {
+	// Domain Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.
+	Domain *string `form:"domain,omitempty" json:"domain,omitempty"`
 }
 
 // FlushCacheParams defines parameters for FlushCache.
@@ -2680,6 +3041,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 	BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewBlockPage Render the block page (text/html) with the current blockPage settings
+	//
+	// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+	//
+	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+	PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// FlushCacheWithBody Flush the response cache (or one name)
 	//
@@ -3653,6 +4021,23 @@ func (c *Client) BatchDeleteBlocklistsWithBody(ctx context.Context, contentType 
 // Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 func (c *Client) BatchDeleteBlocklists(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBatchDeleteBlocklistsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewBlockPage Render the block page (text/html) with the current blockPage settings
+//
+// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+//
+// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+func (c *Client) PreviewBlockPage(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewBlockPageRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6205,6 +6590,60 @@ func NewBatchDeleteBlocklistsRequestWithBody(server string, contentType string, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewBlockPageRequest constructs an http.Request for the PreviewBlockPage method
+func NewPreviewBlockPageRequest(server string, params *PreviewBlockPageParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blockpage/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Domain != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "domain", *params.Domain, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -10332,6 +10771,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists:batchDelete (the `BatchDeleteBlocklists` operationId).
 	BatchDeleteBlocklistsWithResponse(ctx context.Context, body BatchDeleteBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteBlocklistsResponse, error)
 
+	// PreviewBlockPageWithResponse Render the block page (text/html) with the current blockPage settings
+	//
+	// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+	PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error)
+
 	// FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -12901,6 +13349,106 @@ func (r BatchDeleteBlocklistsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r BatchDeleteBlocklistsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PreviewBlockPageResponse200Headers the declared response headers of an HTTP 200 response for PreviewBlockPage
+type PreviewBlockPageResponse200Headers struct {
+	CacheControl          *string
+	ContentSecurityPolicy *string
+	ContentType           *string
+	XFrameOptions         *string
+}
+
+type PreviewBlockPageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *string
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *PreviewBlockPageResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON200() *string {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PreviewBlockPageResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewBlockPageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewBlockPageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewBlockPageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewBlockPageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19562,6 +20110,21 @@ func (c *ClientWithResponses) BatchDeleteBlocklistsWithResponse(ctx context.Cont
 	return ParseBatchDeleteBlocklistsResponse(rsp)
 }
 
+// PreviewBlockPageWithResponse Render the block page (text/html) with the current blockPage settings
+//
+// The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blockpage/preview (the `PreviewBlockPage` operationId).
+func (c *ClientWithResponses) PreviewBlockPageWithResponse(ctx context.Context, params *PreviewBlockPageParams, reqEditors ...RequestEditorFn) (*PreviewBlockPageResponse, error) {
+	rsp, err := c.PreviewBlockPage(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewBlockPageResponse(rsp)
+}
+
 // FlushCacheWithBodyWithResponse Flush the response cache (or one name)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -22377,6 +22940,115 @@ func ParseBatchDeleteBlocklistsResponse(rsp *http.Response) (*BatchDeleteBlockli
 		}
 		response.JSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParsePreviewBlockPageResponse parses an HTTP response from a PreviewBlockPageWithResponse call
+func ParsePreviewBlockPageResponse(rsp *http.Response) (*PreviewBlockPageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewBlockPageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest string
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers PreviewBlockPageResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		if values := rsp.Header.Values("Content-Security-Policy"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Security-Policy", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentSecurityPolicy = &value
+		}
+		if values := rsp.Header.Values("Content-Type"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Type", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentType = &value
+		}
+		if values := rsp.Header.Values("X-Frame-Options"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Frame-Options", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XFrameOptions = &value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

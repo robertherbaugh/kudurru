@@ -12,8 +12,11 @@ type ListFormat string
 // +kubebuilder:validation:Enum=block;allow
 type ListMode string
 
-// BlockResponse is how a blocked query is answered.
-// +kubebuilder:validation:Enum=nxdomain;zeroIP;refused;customIP
+// BlockResponse is how a blocked query is answered: nxdomain, zeroIP
+// (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage
+// (the addresses of the block page listener, blockPage.ipv4/ipv6, so
+// browsers show why the name is blocked).
+// +kubebuilder:validation:Enum=nxdomain;zeroIP;refused;customIP;blockPage
 type BlockResponse string
 
 // ListSource is one place a BlockList reads entries from. Exactly one of

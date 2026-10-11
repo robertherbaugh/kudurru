@@ -6,6 +6,7 @@
 // tiers, priority order, merge, fallback) for the client page's "why".
 import type { EnumOption } from '../components/fields/EnumSelect';
 import type { BlockList, CatalogueService, ClientGroup, ClientMatcher, Policy, PolicySpec, PolicyState, SafeSearchEngine } from '../api/types';
+import { listPath, RESPONSE_OPTIONS } from './lists';
 import { objectEnabled } from './managedBy';
 import { isIPv4, isIPv6 } from './rr';
 
@@ -37,6 +38,7 @@ export function shortRef(ref: string): string {
 /** The detail page of a policy, list or group ref ("ns/name"). */
 export function objectHref(kind: 'policies' | 'lists' | 'groups', ref: string): string {
   const { namespace, name } = splitRef(ref);
+  if (kind === 'lists') return listPath({ metadata: { name, namespace } });
   return `/${kind}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
 }
 
@@ -47,13 +49,14 @@ export function clientHref(key: string): string {
 // ---------------------------------------------------------------------------
 // Typed choices
 
-export const BLOCK_RESPONSES: EnumOption[] = [
-  { value: 'zeroIP', label: '0.0.0.0 / ::', help: 'Answer A with 0.0.0.0 and AAAA with ::; apps fail fast without retrying.' },
-  { value: 'nxdomain', label: 'NXDOMAIN', help: 'Say the name does not exist.' },
-  { value: 'refused', label: 'REFUSED', help: 'Refuse the query; some clients then try another resolver.' },
-  { value: 'customIP', label: 'Custom IP', help: 'Answer with the address of blocking.customIP (settings).' },
-  { value: 'blockPage', label: 'Block page', help: 'Send browsers to the kudurru block page that explains the block.' },
-];
+/** The block responses of a Policy: the list choices, worded for a policy (no customIP field of its own). */
+export const BLOCK_RESPONSES: EnumOption[] = RESPONSE_OPTIONS.map((o) =>
+  o.value === 'customIP'
+    ? { ...o, help: 'Answer with the address of blocking.customIP (Settings).' }
+    : o.value === 'blockPage'
+      ? { ...o, help: 'Answer with the block page address (Settings → Block page)' }
+      : o,
+);
 
 export function blockResponseLabel(v: string | undefined): string {
   return BLOCK_RESPONSES.find((o) => o.value === v)?.label ?? (v || 'Default (from settings)');

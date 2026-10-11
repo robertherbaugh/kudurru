@@ -27,7 +27,7 @@ describe('GroupsPage', () => {
     expect(within(kids).getByRole('link', { name: 'kids' })).toHaveAttribute('href', '/groups/default/kids');
     expect(kids).toHaveTextContent('kids-tablet (192.168.1.30)');
     await waitFor(() => expect(within(kids).getByRole('link', { name: 'streaming-off' })).toHaveAttribute('href', '/policies/default/streaming-off'));
-    expect(within(screen.getByTestId('row-servers')).getByText('disabled')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-servers')).getByRole('switch', { name: 'servers enabled' })).not.toBeChecked();
     expect(within(screen.getByTestId('row-servers')).getByText('default policy')).toBeInTheDocument();
   });
 });

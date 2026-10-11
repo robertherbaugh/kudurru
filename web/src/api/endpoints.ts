@@ -51,6 +51,8 @@ import type {
   IamIdentityProvider,
   ZoneImportResult,
   ListSearchHit,
+  ListEntry,
+  ListEntriesPatch,
 } from './types';
 import type { CatalogueIcon, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 
@@ -108,6 +110,8 @@ export function endpoints(c: ApiClient) {
           withoutStatus(obj),
           obj.metadata.resourceVersion ? { 'If-Match': obj.metadata.resourceVersion } : undefined,
         ),
+      /** Create-only (POST /objects/{kind}): 409 conflict when the object exists. */
+      create: <T extends AnyObject>(kind: ObjectKind, obj: T) => c.post<T>(`/objects/${kind}`, withoutStatus(obj)),
       delete: (kind: ObjectKind, name: string, namespace?: string) => c.delete(objectPath(kind, name, namespace)),
       apply: (yamlOrJson: string, contentType: 'application/yaml' | 'application/json' = 'application/yaml') =>
         c.request<{ items: ApplyResult[] }>('POST', '/apply', { text: yamlOrJson, contentType }),
@@ -140,6 +144,12 @@ export function endpoints(c: ApiClient) {
       search: (domain: string) => c.get<ListEnvelope<ListSearchHit>>('/blocklists/_search', { domain }),
       addDomains: (action: 'allow' | 'deny', kind: 'exact' | 'regex', domains: string[], namespace?: string, list?: string) =>
         c.post<Processed>(`/domains/${action}/${kind}`, { domains, namespace, list }),
+      /** A page of an inline source's entries; `q` filters by substring (ux-plan C2). */
+      entries: (namespace: string, name: string, source: string, q: { q?: string; limit?: number; continue?: string } = {}) =>
+        c.get<ListEnvelope<ListEntry>>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, q),
+      /** Adds and removes inline entries without sending the whole list. */
+      patchEntries: (namespace: string, name: string, source: string, body: ListEntriesPatch) =>
+        c.patch<Partial<Processed> | undefined>(`/blocklists/${enc(namespace)}/${enc(name)}/sources/${enc(source)}/entries`, body, 'application/json'),
     },
 
     policies: {
@@ -222,6 +232,12 @@ export function endpoints(c: ApiClient) {
       icons: () => c.get<ListEnvelope<CatalogueIcon>>('/catalogue/icons'),
       /** The URL of an `icon` API path (/api/v1/catalogue/icons/x.svg) under this client's base. */
       iconURL: (path: string) => c.url(path.replace(/^(?:.*\/)?api\/v1(?=\/)/, '')),
+    },
+
+    // Block page (C5): the preview is text/html, framed by the Settings page
+    // (its CSP allows frame-ancestors 'self').
+    blockPage: {
+      previewURL: (domain?: string) => c.url('/blockpage/preview', domain ? { domain } : undefined),
     },
   };
 }

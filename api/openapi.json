@@ -3056,12 +3056,152 @@
         ],
         "type": "object"
       },
+      "SettingField": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "help": {
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "int",
+              "bool",
+              "duration",
+              "bytes",
+              "string[]",
+              "list",
+              "map",
+              "object"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
       "SettingKey": {
         "additionalProperties": false,
         "properties": {
           "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "envLocked": {
             "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
           },
           "help": {
             "type": "string"
@@ -3069,7 +3209,43 @@
           "hostOnly": {
             "type": "boolean"
           },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
           "path": {
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
             "type": "string"
           },
           "restartRequired": {
@@ -3086,6 +3262,9 @@
             "type": "string"
           },
           "value": {},
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
           "writeOnly": {
             "type": "boolean"
           }
@@ -3101,6 +3280,117 @@
           "restartRequired",
           "writeOnly",
           "value"
+        ],
+        "type": "object"
+      },
+      "SettingOption": {
+        "additionalProperties": false,
+        "properties": {
+          "help": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "type": "object"
+      },
+      "SettingShape": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {},
+          "enum": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SettingField"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "format": {
+            "enum": [
+              "ip",
+              "ipv4",
+              "ipv6",
+              "cidr",
+              "hostport",
+              "url",
+              "domain",
+              "upstream",
+              "email"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SettingShape"
+          },
+          "max": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "presets": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "enum": [
+              "upstreamGroup",
+              "clientGroup",
+              "blockList",
+              "policy",
+              "zone"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "int",
+              "bool",
+              "duration",
+              "bytes",
+              "string[]",
+              "list",
+              "map",
+              "object"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SettingShape"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },
@@ -6581,6 +6871,139 @@
           "resource": "blocklists",
           "scope": "cluster",
           "verb": "delete"
+        }
+      }
+    },
+    "/blockpage/preview": {
+      "get": {
+        "description": "The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.",
+        "operationId": "previewBlockPage",
+        "parameters": [
+          {
+            "description": "Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.",
+            "explode": false,
+            "in": "query",
+            "name": "domain",
+            "schema": {
+              "description": "Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies.",
+              "maxLength": 253,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Frame-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Render the block page (text/html) with the current blockPage settings",
+        "tags": [
+          "settings"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

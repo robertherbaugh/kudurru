@@ -21,6 +21,7 @@ import type {
   ObjectKind,
   Policy,
   QueryRow,
+  SourceStatus,
   StatusClass,
   TopDim,
   TopItem,
@@ -29,6 +30,7 @@ import type {
 } from '../api/types';
 import { createDB, CLIENTS, makeQueryRow, type MockDB } from './fixtures';
 import { getPath } from '../lib/settings';
+import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 
@@ -248,10 +250,37 @@ function writeObject(kind: ObjectKind, obj: AnyObject, ifMatch: string | null): 
     },
     status: existing?.status ?? { conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Pending', message: 'waiting for the controller' }] },
   } as AnyObject;
+  if (kind === 'blocklists') compileList(next as BlockList);
   if (existing) list.splice(list.indexOf(existing), 1, next);
   else list.push(next);
   audit(`${KIND_NAMES[kind].toLowerCase()}.${existing ? 'update' : 'create'}`, { kind: KIND_NAMES[kind], ...(ns ? { namespace: ns } : {}), name: obj.metadata.name });
   return { status: existing ? 200 : 201, body: next, result: existing ? 'updated' : 'created' };
+}
+
+/**
+ * The status the list controller reports after a write, as far as the mock
+ * can tell without fetching: inline sources count their entries, URL and
+ * ConfigMap sources keep their last counts, disabled sources (ux-plan C2)
+ * carry enabled: false, no error and count nothing, and a list whose every
+ * source is off is Ready with "all sources disabled".
+ */
+function compileList(l: BlockList): void {
+  const prev = l.status ?? {};
+  const sources = l.spec.sources.map((src, i): SourceStatus => {
+    const name = sourceName(i, src);
+    const { enabled: _e, error, ...old }: SourceStatus = prev.sources?.find((s) => s.name === name) ?? { name };
+    const on = src.enabled !== false;
+    const entries = src.inline ? src.inline.length : (old.entries ?? 0);
+    return { ...old, name, entries, ...(on ? (error ? { error } : {}) : { enabled: false }) };
+  });
+  const live = sources.filter((s) => s.enabled !== false);
+  const entries = live.reduce((n, s) => n + (s.entries ?? 0), 0);
+  let conditions = prev.conditions;
+  if (!live.length) conditions = [{ type: 'Ready', status: 'True', reason: 'AllSourcesDisabled', message: 'all sources disabled', lastTransitionTime: new Date(db.now).toISOString() }];
+  else if (conditions?.[0]?.reason === 'AllSourcesDisabled' || (conditions?.[0]?.reason === 'Pending' && l.spec.sources.every((s) => s.inline))) {
+    conditions = [{ type: 'Ready', status: 'True', reason: 'AsExpected', message: '', lastTransitionTime: new Date(db.now).toISOString() }];
+  }
+  l.status = { ...prev, entries, ruleCount: entries, sources, ...(conditions ? { conditions } : {}) };
 }
 
 /** Records an audit event of the signed-in user (newest first, like GET /audit?order=desc). */
@@ -472,7 +501,10 @@ function digAnswer(req: DnsQueryRequest): DnsQueryResult {
   const type = (req.type ?? 'A').toUpperCase();
   const n = req.name.replace(/\.$/, '').toLowerCase();
   const base = { name: `${n}.`, type, client: req.client || '127.0.0.1', node: 'kudurru-0', took_ms: 0.3, authority: [] as string[], additional: [] as string[], flags: { ...DIG_FLAGS } };
-  const blockedList = db.lists.find((l) => l.spec.mode !== 'allow' && l.spec.sources.some((s) => s.inline?.includes(n)));
+  // Disabled lists and disabled sources (ux-plan C2) block nothing.
+  const blockedList = db.lists.find(
+    (l) => l.spec.mode !== 'allow' && l.metadata.annotations?.['kudurru.io/enabled'] !== 'false' && l.spec.sources.some((s) => s.enabled !== false && s.inline?.includes(n)),
+  );
   const knownBlocked = [...db.queries].find((q) => q.domain === n && q.status_class === 'blocked');
   if (db.blocking.blocking && (blockedList || knownBlocked)) {
     return {
@@ -588,6 +620,17 @@ function appendInline(listName: string, mode: 'allow' | 'block', namespace: stri
   return { processed: { success, errors } };
 }
 
+
+/** The inline source named source of BlockList ns/name, or the error answer. */
+function inlineSource(ns: string, name: string, source: string): { list: BlockList; src: BlockList['spec']['sources'][number]; name: string } | Response {
+  const list = db.lists.find((l) => l.metadata.name === name && (l.metadata.namespace ?? 'default') === ns);
+  if (!list) return fail(404, 'not_found', `BlockList ${ns}/${name} not found`);
+  const i = list.spec.sources.findIndex((s, j) => sourceName(j, s) === source);
+  const src = list.spec.sources[i];
+  if (!src) return fail(404, 'not_found', `BlockList ${ns}/${name} has no source ${source}`);
+  if (src.url || src.configMapRef) return fail(400, 'invalid', `source ${source} is not inline; only inline entries can be listed and edited`);
+  return { list, src, name: `${ns}/${name}` };
+}
 
 type ObjParams = { kind?: string | readonly string[]; a?: string | readonly string[]; b?: string | readonly string[] };
 
@@ -712,6 +755,18 @@ export const handlers = [
     const ns = url.searchParams.get('namespace');
     const items = collection(kind).filter((o) => !ns || o.metadata.namespace === ns);
     return listEnvelope(items, url);
+  }),
+  http.post(`${B}/objects/:kind`, async ({ request, params }) => {
+    const kind = String(params.kind);
+    if (!isKind(kind)) return fail(404, 'not_found', `unknown kind ${kind}`);
+    const g = guard(request, RESOURCE_OF[kind], 'write');
+    if (g) return g;
+    const obj = (await request.json()) as AnyObject;
+    if (obj.metadata?.name && find(kind, obj.metadata.name, obj.metadata.namespace)) {
+      return fail(409, 'conflict', `${KIND_NAMES[kind]} ${obj.metadata.namespace ?? 'default'}/${obj.metadata.name} already exists`, 'PUT it to replace it');
+    }
+    const res = writeObject(kind, obj, null);
+    return HttpResponse.json(res.body as JsonBodyType, { status: res.status });
   }),
   ...objectRoutes(`${B}/objects/:kind/:a`),
   ...objectRoutes(`${B}/objects/:kind/:a/:b`),
@@ -901,6 +956,62 @@ export const handlers = [
       items.push({ list: fromLog.list, rule: fromLog.rule ?? domain, mode: 'block' });
     }
     return ok({ items });
+  }),
+  // Inline entries of one source (ux-plan C2): a page with ?q=&limit=&continue=, and {add, remove}.
+  http.get(`${B}/blocklists/:ns/:name/sources/:source/entries`, ({ request, params }) => {
+    const g = guard(request, 'blocklists', 'read');
+    if (g) return g;
+    const t = inlineSource(String(params.ns), String(params.name), String(params.source));
+    if (t instanceof Response) return t;
+    const url = new URL(request.url);
+    const q = (url.searchParams.get('q') ?? '').toLowerCase();
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? '100') || 100, 1), 1000);
+    const start = Number(url.searchParams.get('continue') ?? '0') || 0;
+    const all = (t.src.inline ?? []).map((value, i) => ({ value, line: i + 1 })).filter((e) => !q || e.value.toLowerCase().includes(q));
+    const next = start + limit < all.length ? String(start + limit) : undefined;
+    return ok({ items: all.slice(start, start + limit), ...(next ? { continue: next } : {}) });
+  }),
+  http.patch(`${B}/blocklists/:ns/:name/sources/:source/entries`, async ({ request, params }) => {
+    const g = guard(request, 'blocklists', 'write');
+    if (g) return g;
+    const t = inlineSource(String(params.ns), String(params.name), String(params.source));
+    if (t instanceof Response) return t;
+    const owner = t.list.metadata.annotations?.[MANAGED] ?? '';
+    if (owner && owner !== 'api' && owner !== 'bootstrap') return fail(409, 'managed_by', `BlockList ${t.list.metadata.name} is managed by ${owner}`, owner);
+    const ifMatch = request.headers.get('If-Match');
+    if (ifMatch && ifMatch !== t.list.metadata.resourceVersion) return fail(412, 'precondition_failed', `resourceVersion ${ifMatch} is stale`);
+    const body = (await request.json()) as { add?: string[]; remove?: string[] };
+    const inline = [...(t.src.inline ?? [])];
+    const success: { item: string }[] = [];
+    const errors: { item: string; error: string }[] = [];
+    for (const raw of body.add ?? []) {
+      const e = raw.trim();
+      const err = e ? entryError(t.src.format, e) : 'empty entry';
+      if (err) errors.push({ item: raw, error: err });
+      else if (inline.includes(e)) errors.push({ item: e, error: `already on ${t.name}` });
+      else {
+        inline.push(e);
+        success.push({ item: e });
+      }
+    }
+    for (const e of body.remove ?? []) {
+      const i = inline.indexOf(e);
+      if (i < 0) errors.push({ item: e, error: `not on ${t.name}` });
+      else {
+        inline.splice(i, 1);
+        success.push({ item: e });
+      }
+    }
+    if (success.length) {
+      t.src.inline = inline;
+      db.rv += 1;
+      t.list.metadata.resourceVersion = String(db.rv);
+      t.list.metadata.generation = (t.list.metadata.generation ?? 0) + 1;
+      t.list.metadata.annotations = { ...(t.list.metadata.annotations ?? {}), [MANAGED]: 'api' };
+      compileList(t.list);
+      audit('blocklist.update', { kind: 'BlockList', namespace: String(params.ns), name: t.list.metadata.name });
+    }
+    return ok({ processed: { success, errors } });
   }),
   http.post(`${B}/domains/:action/:kind`, async ({ request, params }) => {
     const g = guard(request, 'blocklists', 'write');

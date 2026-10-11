@@ -138,6 +138,16 @@ spec:
           containerPort: {{ .Values.externalDNS.webhook.port }}
           protocol: TCP
         {{- end }}
+        {{- if .Values.blockPage.enabled }}
+        - name: blockpage-http
+          containerPort: {{ .Values.blockPage.httpPort }}
+          protocol: TCP
+        {{- if .Values.blockPage.https.enabled }}
+        - name: blockpage-tls
+          containerPort: {{ .Values.blockPage.https.port }}
+          protocol: TCP
+        {{- end }}
+        {{- end }}
       startupProbe:
         httpGet:
           path: /healthz/startup

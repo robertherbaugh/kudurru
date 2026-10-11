@@ -154,6 +154,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 
 | Method | Path | Summary | Permission |
 |---|---|---|---|
+| GET | `/api/v1/blockpage/preview` | Render the block page (text/html) with the current blockPage settings | `settings.read` (cluster) |
 | GET | `/api/v1/node/config` | This node's host-local settings (redacted) | `settings.read` (cluster) |
 | PATCH | `/api/v1/node/config` | Change this node's settings (hostOnly keys refused) | `node.config` (cluster) |
 | GET | `/api/v1/settings` | Cluster-scope settings (redacted) | `settings.read` (cluster) |

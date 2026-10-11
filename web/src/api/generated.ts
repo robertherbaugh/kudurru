@@ -304,6 +304,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/blockpage/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Render the block page (text/html) with the current blockPage settings
+         * @description The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set.
+         */
+        get: operations["previewBlockPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cache/flush": {
         parameters: {
             query?: never;
@@ -2180,18 +2200,81 @@ export interface components {
             /** Format: date-time */
             until?: string;
         };
+        SettingField: {
+            default?: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            help?: string;
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            label?: string;
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
+            name: string;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
+            required?: boolean;
+            /** @enum {string} */
+            type: "string" | "int" | "bool" | "duration" | "bytes" | "string[]" | "list" | "map" | "object";
+            values?: components["schemas"]["SettingShape"];
+        };
         SettingKey: {
             default: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
             envLocked: boolean;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            group?: string;
             help: string;
             hostOnly: boolean;
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            label?: string;
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
             path: string;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
             restartRequired: boolean;
             /** @enum {string} */
             scope: "node" | "cluster";
             type: string;
             value: unknown;
+            values?: components["schemas"]["SettingShape"];
             writeOnly: boolean;
+        };
+        SettingOption: {
+            help?: string;
+            label: string;
+            value: string;
+        };
+        SettingShape: {
+            default?: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
+            /** @enum {string} */
+            type: "string" | "int" | "bool" | "duration" | "bytes" | "string[]" | "list" | "map" | "object";
+            values?: components["schemas"]["SettingShape"];
         };
         SettingsBody: {
             changed?: string[] | null;
@@ -4397,6 +4480,96 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewBlockPage: {
+        parameters: {
+            query?: {
+                /** @description Blocked name to show; default blocked.example. The reason shown is an example: the preview reads neither the query log nor the policies. */
+                domain?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "Content-Security-Policy"?: string;
+                    "Content-Type"?: string;
+                    "X-Frame-Options"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

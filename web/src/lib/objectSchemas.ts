@@ -96,9 +96,14 @@ const RESPONSES = [
   { value: 'zeroIP', label: '0.0.0.0 / ::' },
   { value: 'refused', label: 'REFUSED' },
   { value: 'customIP', label: 'Custom IP' },
+  { value: 'blockPage', label: 'Block page' },
 ];
 
-export const SCHEMAS: Record<'blocklists', KindSchema> = {
+export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSchema> = {
+  // Groups and policies are created and edited on their own pages and
+  // wizards; the list page only needs their names and RBAC resource.
+  clientgroups: { kind: 'clientgroups', objectKind: 'ClientGroup', singular: 'group', plural: 'groups', namespaced: true, resource: 'clientgroups', fields: [], empty: () => ({ clients: [] }) },
+  policies: { kind: 'policies', objectKind: 'Policy', singular: 'policy', plural: 'policies', namespaced: true, resource: 'policies', fields: [], empty: () => ({ clientGroupRefs: [] }) },
   blocklists: {
     kind: 'blocklists',
     objectKind: 'BlockList',
@@ -141,6 +146,7 @@ export const SCHEMAS: Record<'blocklists', KindSchema> = {
             ],
           },
           { type: 'strings', key: 'inline', label: 'Inline entries', help: 'One per line; paste many at once.', placeholder: 'ads.example.com', validate: listEntryError },
+          { type: 'bool', key: 'subdomains', label: 'Include subdomains', help: 'Hosts and plain-domain entries also match their subdomains.' },
         ],
       },
       { type: 'duration', key: 'refreshInterval', label: 'Refresh interval', placeholder: '24h', help: 'How often URL sources are re-fetched.' },

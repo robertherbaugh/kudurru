@@ -287,6 +287,37 @@ var chartCases = []chartCase{
 			t.Errorf("settings file not applied over the node file: %+v", merged)
 		}
 	}},
+	{name: "block-page", values: "blockPage: {enabled: true, ipv4: 192.0.2.80, https: {enabled: true}, service: {annotations: {metallb.io/loadBalancerIPs: 192.0.2.80}}}\nnetworkPolicy: {enabled: true}\nedge: {enabled: true}\nconfig: {settings: {blocking: {defaultResponse: blockPage}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		svc := r.object(t, "Service", "kudurru-blockpage")
+		if dig(svc, "spec", "loadBalancerIP") != "192.0.2.80" || len(list(dig(svc, "spec", "ports"))) != 2 {
+			t.Errorf("block page Service: %v", dig(svc, "spec"))
+		}
+		if dig(svc, "spec", "selector", "app.kubernetes.io/component") == "edge" {
+			t.Errorf("the block page Service must select the kudurru pods, not the edge")
+		}
+		if cfg := r.config(t); cfg.Listeners.BlockPage.HTTP != ":8090" || cfg.Listeners.BlockPage.HTTPS != ":8493" {
+			t.Errorf("listeners.blockPage = %+v", cfg.Listeners.BlockPage)
+		}
+		settings := str(dig(r.object(t, "ConfigMap", "kudurru-settings"), "data", "settings.yaml"))
+		sf := filepath.Join(t.TempDir(), "settings.yaml")
+		if err := os.WriteFile(sf, []byte(settings), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		merged := checkConfig(t, "node file + settings ConfigMap", []byte(r.nodeFile(t)), []string{"KUDURRU_SETTINGS_FILE=" + sf})
+		if !merged.BlockPage.Enabled || merged.BlockPage.IPv4 != "192.0.2.80" || merged.Blocking.DefaultResponse != "blockPage" {
+			t.Errorf("block page settings: %+v %s", merged.BlockPage, merged.Blocking.DefaultResponse)
+		}
+		ports := []string{}
+		for _, p := range list(dig(r.container(t, r.pod(t), "kudurru"), "ports")) {
+			ports = append(ports, str(mapOf(p)["name"]))
+		}
+		if !slices.Contains(ports, "blockpage-http") || !slices.Contains(ports, "blockpage-tls") {
+			t.Errorf("container ports %v", ports)
+		}
+		if np := r.object(t, "NetworkPolicy", "kudurru"); !strings.Contains(fmt.Sprint(dig(np, "spec", "ingress")), "8090") {
+			t.Errorf("NetworkPolicy does not admit the block page port")
+		}
+	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
 }
 
@@ -318,6 +349,7 @@ var failCases = []struct{ name, values, want string }{
 	{"ingress-without-host", "ingress: {enabled: true}", "ingress.host"},
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},
 	{"edge-backend-53", "edge: {enabled: true, backendPort: 53}", "backendPort"},
+	{"block-page-without-address", "blockPage: {enabled: true}", "blockPage.ipv4 or blockPage.ipv6"},
 }
 
 // helmBin returns the helm binary or skips the test.

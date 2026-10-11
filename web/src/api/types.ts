@@ -150,7 +150,7 @@ export type DNSRecordSet = KObject<
 >;
 
 export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
-/** blockPage: A/AAAA answers point at the block page (ux-plan C5). */
+/** blockPage answers A/AAAA with the block-page address (ux-plan C5). */
 export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
 export interface ListSource {
@@ -159,6 +159,10 @@ export interface ListSource {
   configMapRef?: { name: string; namespace?: string };
   format?: ListFormat;
   name?: string;
+  /** Hosts and plain-domain entries also match their subdomains. */
+  subdomains?: boolean;
+  /** false: not fetched or compiled, cache kept (ux-plan C2); omitted = true. */
+  enabled?: boolean;
 }
 
 export interface BlockListSpec {
@@ -177,6 +181,8 @@ export interface SourceStatus {
   invalid?: number;
   lastFetched?: string;
   error?: string;
+  /** false for a disabled source (ux-plan C2). */
+  enabled?: boolean;
 }
 
 export interface BlockListStatus {
@@ -184,6 +190,8 @@ export interface BlockListStatus {
   entries?: number;
   ruleCount?: number;
   invalid?: number;
+  /** Valid rules parsed but not applied ($important, $badfilter, mid-pattern wildcards, hosts rewrites). */
+  unsupported?: number;
   lastFetched?: string;
   sources?: SourceStatus[];
   conditions?: Condition[];
@@ -250,6 +258,19 @@ export interface Processed {
     errors: { item: string; error: string }[];
   };
   took_ms?: number;
+}
+
+/** One line of an inline source (GET /blocklists/{ns}/{name}/sources/{source}/entries, ux-plan C2). */
+export interface ListEntry {
+  value: string;
+  /** Position in spec.sources[i].inline. */
+  line: number;
+}
+
+/** Body of PATCH …/sources/{source}/entries. */
+export interface ListEntriesPatch {
+  add?: string[];
+  remove?: string[];
 }
 
 // ---------------------------------------------------------------------------

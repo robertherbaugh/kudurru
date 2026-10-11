@@ -11,6 +11,7 @@
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
+The block page (blocked names open a page explaining the block): [blocking-page.md](blocking-page.md).
 
 ## Release artifacts
 
@@ -47,6 +48,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | 8081 | tcp | ops: `/healthz/startup`, `/healthz/ready`, `/healthz/live` (no auth) |
 | 8082 | tcp | internal node-to-node listener (always TLS) |
 | 8084 | tcp | edge supervisor readiness |
+| 80, 443 | tcp | block page (optional, `listeners.blockPage`; 8090/8493 in the chart and compose containers) |
 | 8888 | tcp | external-dns webhook provider (optional) |
 | 9153 | tcp | Prometheus `/metrics` |
 
