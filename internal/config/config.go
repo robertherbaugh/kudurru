@@ -34,6 +34,8 @@ type Config struct {
 	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
 	RateLimit RateLimit   `koanf:"ratelimit" json:"ratelimit"`
 	Log       Log         `koanf:"log" json:"log"`
+	Auth      Auth        `koanf:"auth" json:"auth"`
+	RBAC      RBAC        `koanf:"rbac" json:"rbac"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
 	// NOTIFY; secrets stay in files and never pass through the API.
@@ -482,6 +484,8 @@ func (c *Config) Validate() error {
 		}
 	}
 	errs = append(errs, c.RateLimit.validate()...)
+	errs = append(errs, c.Auth.validate()...)
+	errs = append(errs, c.RBAC.validate()...)
 	if c.Listeners.Sockets < 0 {
 		errs = append(errs, fmt.Errorf("listeners.sockets: %d is negative", c.Listeners.Sockets))
 	}
