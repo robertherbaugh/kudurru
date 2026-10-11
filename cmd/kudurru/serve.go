@@ -88,16 +88,14 @@ the ops and metrics listeners. The API and UI land in milestone M3.`,
 	}
 }
 
-func newLogger(cfg config.Log) *slog.Logger {
-	level := slog.LevelInfo
-	switch strings.SplitN(cfg.Level, ",", 2)[0] {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	}
+// logLevel is the level of the serve logger; log.level reloads set it.
+var logLevel = new(slog.LevelVar)
+
+func newLogger(cfg config.Log) *slog.Logger { return newLoggerAt(cfg, new(slog.LevelVar)) }
+
+// newLoggerAt builds the logger on level, set from cfg.Level.
+func newLoggerAt(cfg config.Log, level *slog.LevelVar) *slog.Logger {
+	level.Set(parseLevel(cfg.Level))
 	opts := &slog.HandlerOptions{Level: level}
 	if cfg.Format == "text" {
 		return slog.New(slog.NewTextHandler(os.Stdout, opts))
@@ -160,8 +158,11 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 }
 
 func runServe(ctx context.Context, cfg *config.Config) error {
-	logger := newLogger(cfg.Log)
+	logger := newLoggerAt(cfg.Log, logLevel)
 	slog.SetDefault(logger)
+	// Settings hot reload (D25): every consumer of a cluster-scope key that
+	// is not restartRequired subscribes to reload (reload.go).
+	reload := config.NewReloadable(cfg)
 	info := version.Get()
 	logger.Info("kudurru starting", "version", info.Version, "commit", info.Commit, "node", cfg.Node.Name, "config", cfg.Source, "store", cfg.Store.Driver)
 
@@ -376,7 +377,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
-	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg)})
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg)}
+	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err
 	}
@@ -384,20 +386,24 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	hostname, _ := os.Hostname()
 
 	// Ingress rate limiting (§7.1 step 2).
-	var limiter *ingress.RateLimiter
-	if rlc, err := ingress.RateLimitFromConfig(cfg.RateLimit); err != nil {
+	// The limiter always exists so ratelimit.enabled can change at runtime.
+	rlc, err := ingress.RateLimitFromConfig(cfg.RateLimit)
+	if err != nil {
 		return err
-	} else if rlc != nil {
-		if limiter, err = ingress.NewRateLimiter(*rlc); err != nil {
-			return err
-		}
-		limiter.SetHook(func(v ingress.Verdict) {
-			if v == ingress.VerdictDrop {
-				dnsMetrics.Dropped.WithLabelValues(ingress.DropReason).Inc()
-			}
-		})
-		reg.MustRegister(limiter.Collector())
 	}
+	limiter, err := ingress.NewRateLimiter(ingress.RateLimitConfig{})
+	if err != nil {
+		return err
+	}
+	if err := limiter.Reconfigure(rlc); err != nil {
+		return err
+	}
+	limiter.SetHook(func(v ingress.Verdict) {
+		if v == ingress.VerdictDrop {
+			dnsMetrics.Dropped.WithLabelValues(ingress.DropReason).Inc()
+		}
+	})
+	reg.MustRegister(limiter.Collector())
 
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
@@ -413,19 +419,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	auth.Metrics = authoritative.NewMetrics(reg)
 
 	stages := []pipeline.Stage{
-		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter},
+		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
 		identify.New(polSrc, nil),
 		control.New(control.Options{}),
 		auth,
 		bs,
 	}
-	var cs *cachestage.Stage
-	var rc *cache.Cache
-	if cfg.Cache.MaxEntries > 0 {
-		rc = cache.New(cache.OptionsFrom(cfg.Cache, cache.NewMetrics(reg)))
-		cs = cachestage.New(rc, cachestage.SettingsFrom(cfg.Cache), fwd)
-		stages = append(stages, cs)
-	}
+	// The cache stage always exists; cache.maxEntries 0 makes it pass
+	// queries through, so the key can change at runtime.
+	rc := cache.New(cache.OptionsFrom(cfg.Cache, cache.NewMetrics(reg)))
+	cs := cachestage.New(rc, cachestage.SettingsFrom(cfg.Cache), fwd)
+	cs.SetDisabled(cfg.Cache.MaxEntries == 0)
+	stages = append(stages, cs)
 	stages = append(stages, fwd)
 	chain, err := pipeline.New(stages...)
 	if err != nil {
@@ -483,7 +488,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// Response cache persistence across restarts (local.db blob).
 	var cachePersister *persist.Persister
-	if rc != nil && snapDB != nil {
+	if cfg.Cache.MaxEntries > 0 && snapDB != nil {
 		if cachePersister, err = persist.New(snapDB, persist.Options{}); err != nil {
 			return err
 		}
@@ -526,8 +531,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	apiSrv, err := api.New(api.Options{
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		Querylog: qlReader, Tail: qlTail,
-		Upstreams: upSet, ResponseCache: rc, Chain: chain,
-		Config: cfg, Objects: loader, Health: checker, Membership: membership,
+		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
+		ResponseCache: rc, Chain: chain,
+		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Audit:        recorders,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
@@ -574,6 +580,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		fn         func(context.Context) error
 	}{
 		{"zonecache", false, zc.Start},
+		{"settings", false, func(ctx context.Context) error {
+			return config.WatchSettings(ctx, reload, config.WatchOptions{Environ: os.Environ(), Logger: logger})
+		}},
 		{"objects", false, loader.Watch},
 		{"dns", false, registry.Run},
 		{"ops", false, func(ctx context.Context) error {
@@ -613,6 +622,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return err
 		}
 	}
+	subscribeReload(ctx, reload, reloadTargets{
+		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
+		blocking: bs, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
+	})
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {
 			return err
@@ -654,7 +667,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if cs != nil {
 		cs.Wait()
 	}
-	_ = upSet.Close()
+	_ = fwd.Set().Close()
 	shutdownCtx, c2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer c2()
 	if qlAsync != nil {

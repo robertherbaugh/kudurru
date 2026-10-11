@@ -5,4 +5,4 @@ cache.maxEntries   100000             cluster   -
 cache.minTTL       0s                 cluster   -
 blocking.enabled   true               cluster   -
 log.level          info               node      -
-log.format         json               node      -
+log.format         json               node      R

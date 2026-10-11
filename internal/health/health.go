@@ -6,6 +6,7 @@ package health
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"sort"
 	"sync"
 	"time"
@@ -64,10 +65,22 @@ func (c *Checker) SetStarted() {
 }
 
 // Lameduck makes readiness fail while the process drains.
-func (c *Checker) Lameduck() {
+func (c *Checker) Lameduck() { c.SetLameduck(true) }
+
+// SetLameduck enters or leaves lameduck (POST/DELETE /lameduck on the ops
+// listener; `kudurru lameduck`).
+func (c *Checker) SetLameduck(on bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lameduck = true
+	c.lameduck = on
+}
+
+// IsLameduck reports whether the node is draining; the ingress stage then
+// answers the health name SERVFAIL so dnsdist drains the node (D51).
+func (c *Checker) IsLameduck() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lameduck
 }
 
 // Tick records that the self-check loop ran; liveness fails if it stops.
@@ -99,9 +112,33 @@ func (c *Checker) Ready() (bool, []string) {
 	return len(bad) == 0, bad
 }
 
-// Handler serves /healthz, /healthz/startup, /healthz/ready, /healthz/live.
+// PathLameduck is the ops-listener route of `kudurru lameduck`: POST
+// enters lameduck, DELETE leaves it, GET reports it. Only loopback peers
+// may change it (the ops listener has no authentication; a preStop hook or
+// `docker exec` runs on the node itself).
+const PathLameduck = "/lameduck"
+
+// Handler serves /healthz, /healthz/startup, /healthz/ready, /healthz/live
+// and /lameduck.
 func (c *Checker) Handler() http.Handler {
 	mux := http.NewServeMux()
+	lameduck := func(w http.ResponseWriter, on bool) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"lameduck": on})
+	}
+	mux.HandleFunc("GET "+PathLameduck, func(w http.ResponseWriter, _ *http.Request) { lameduck(w, c.IsLameduck()) })
+	set := func(on bool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !loopbackPeer(r) {
+				http.Error(w, "lameduck can only be changed from the node itself (loopback)", http.StatusForbidden)
+				return
+			}
+			c.SetLameduck(on)
+			lameduck(w, on)
+		}
+	}
+	mux.HandleFunc("POST "+PathLameduck, set(true))
+	mux.HandleFunc("DELETE "+PathLameduck, set(false))
 	mux.HandleFunc("GET /healthz/startup", func(w http.ResponseWriter, _ *http.Request) {
 		c.mu.RLock()
 		started := c.started
@@ -145,6 +182,12 @@ func (c *Checker) Handler() http.Handler {
 		_ = json.NewEncoder(w).Encode(body)
 	})
 	return mux
+}
+
+// loopbackPeer reports whether the request came from a loopback address.
+func loopbackPeer(r *http.Request) bool {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && ap.Addr().Unmap().IsLoopback()
 }
 
 func status(w http.ResponseWriter, ok bool, okMsg, failMsg string) {

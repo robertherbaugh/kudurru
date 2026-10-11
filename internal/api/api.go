@@ -107,6 +107,17 @@ type SettingsWriter interface {
 	WriteSettings(ctx context.Context, next *config.Config, changed []string) error
 }
 
+// UpstreamStatus reports the upstream servers (*upstream.Set).
+type UpstreamStatus interface {
+	Status() []upstream.ServerStatus
+}
+
+// UpstreamStatusFunc adapts a function to UpstreamStatus.
+type UpstreamStatusFunc func() []upstream.ServerStatus
+
+// Status implements UpstreamStatus.
+func (f UpstreamStatusFunc) Status() []upstream.ServerStatus { return f() }
+
 // IAMReader lists identities and bindings for the read-only IAM routes
 // (the write API is v0.2). Every method may return nil.
 type IAMReader interface {
@@ -137,14 +148,20 @@ type Options struct {
 	Tail     *querylog.Tail
 	Purger   QuerylogPurger
 	// Upstreams and ResponseCache back upstream status and /cache/flush.
-	Upstreams     *upstream.Set
+	// Upstreams is an *upstream.Set, or UpstreamStatusFunc over the
+	// upstream stage when the set is swapped on settings reloads.
+	Upstreams     UpstreamStatus
 	ResponseCache *cache.Cache
 	// Chain runs POST /dns/query in-process.
 	Chain *pipeline.Chain
 	// Config is the effective configuration (settings routes, listener);
-	// Settings persists PATCHes.
+	// Settings persists PATCH /settings (cluster scope; PATCH /node/config
+	// changes stay in memory). Reload, when set, is the live configuration:
+	// reads use Reload.Current() and PATCHes are applied with Reload.Set,
+	// which notifies the hot-reload subscribers; Config is then ignored.
 	Config   *config.Config
 	Settings SettingsWriter
+	Reload   *config.Reloadable
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader
@@ -240,6 +257,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Version.Version == "" {
 		opts.Version = version.Get()
+	}
+	if opts.Reload != nil {
+		opts.Config = opts.Reload.Current()
 	}
 	if opts.Config == nil {
 		cfg, err := config.Load("", nil)
@@ -352,6 +372,9 @@ func (s *Server) Routes() []rbac.Route {
 
 // config returns the current configuration (PATCH /settings replaces it).
 func (s *Server) config() *config.Config {
+	if s.opts.Reload != nil {
+		return s.opts.Reload.Current()
+	}
 	s.cfgMu.RLock()
 	defer s.cfgMu.RUnlock()
 	return s.cfg
