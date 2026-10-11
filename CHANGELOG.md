@@ -17,17 +17,49 @@ D126 record what changed on the way.
 
 ### Dashboard and API fixes (v0.1 fix round)
 
-Fixes made before the first tag. TODO (integrator): replace each stream
-below with its user-visible changes and remove this note.
+Fixes made before the first tag, after the dashboard was first run against
+a real server instead of its mocks.
 
-- TODO API contract: server shapes the dashboard relies on (IAM routes,
-  `/auth/me` roles, audit order, deep links, OpenAPI for `/auth` and `/iam`).
-- TODO dashboard data: the SPA reads the real response shapes.
-- TODO dashboard visuals and branding (docs/brand).
-- TODO browser e2e: Playwright against a real `kudurru serve` (D123).
-- TODO blocked services and safe search catalogue (D60, D120, D124-D126).
-- TODO docs site (D121).
-- TODO followup burndown (store, controller, zone cache, edge tests).
+- Dashboard against the real API: Settings shows the real values (switches
+  showed OFF for enabled keys) and warns when a change is not persisted or
+  needs a restart; the dig tool renders answer records (it showed
+  `undefined`), latency, flags and errors; the Clients, Nodes and Audit
+  pages no longer crash; API tokens can be created again; zone import, the
+  Diagnosis links, live-tail resume and sign-out work. The wire types are
+  generated from `api/openapi.json` (`bun run gen:api`, D128).
+- New dashboard pages and actions: **Upstreams** (groups, servers, strategy,
+  timeout, per-server health and RTT, bootstrap resolvers, conditional
+  forwarding, ECS), change password (and the forced change after a password
+  reset), query-log purge, creating a zone from a zone file; Policy and
+  forward-zone upstream groups are picked from the configured groups.
+- Dashboard look: the kudurru brand (logo, favicon, app icons and a default
+  "Kudurru" theme with the Clay accent); readable hover and selection states
+  in every theme; every dialog scrolls, keeps its buttons visible and has a
+  close button.
+- API: `/iam/*` lists users, service accounts, role bindings and identity
+  providers; `GET /auth/me` reports the real roles and `mustChangePassword`,
+  and the API's own routes refuse a session that must change its password
+  (403 `password_change_required`); `GET /audit?order=desc`; `last_seen` on
+  client rows; `GET /auth/tokens/{id}`; "Domains on lists" counts the
+  compiled block lists; the OpenAPI document of the forwarded `/auth` and
+  `/iam` routes matches the handlers (D127); zone deep links with dots load
+  the dashboard instead of a 404.
+- Blocked services and safe search (D60, D120, D124-D126):
+  `Policy.spec.blockedServices` from an embedded, kudurru-authored catalogue
+  of 32 services, and `safeSearch`/`safeSearchMode` for Google, Bing,
+  DuckDuckGo, YouTube, Yandex, Brave and Pixabay; `blocking.catalogue.url`
+  replaces the catalogue at runtime; `GET /catalogue`.
+- Store, zones and transfers: the 1.5 MiB object cap in every store driver
+  (D130); zones re-reconcile at their next record expiry; per-message write
+  deadline on TCP/DoT streams including zone transfers (D129);
+  `BlockList.status.unsupported` and `spec.sources[].subdomains`; local.db is
+  stamped with the store's last contact.
+- Edge and VIP: keepalived and dnsdist configurations refuse unusable
+  addresses; a keepalived restart race that crashed the new child is fixed.
+- Testing and docs: a Playwright suite drives every dashboard page against a
+  real `kudurru serve` (`make web-e2e`, D123); a Hugo documentation site
+  with generated settings, CRD, CLI and API references (`make docs-site`,
+  D121).
 - Release engineering: the `kudurru-keepalived` image builds again
   (keepalived 2.4.3 configured with `--disable-iptables --disable-nftables`),
   `make edge-check` passes and a failing `edge` workflow now fails the check;
