@@ -240,7 +240,7 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			f.writeErr(w, 401, "unauthenticated", "invalid username or password", "")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "sess-1", Path: "/", HttpOnly: true})
+		http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "sess-1", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode}) //nolint:gosec // G124: httptest serves plain HTTP, a Secure cookie would never come back
 		f.writeJSON(w, 200, map[string]any{"took_ms": 1})
 	})
 	mux.HandleFunc("POST /api/v1/auth/logout", func(w http.ResponseWriter, _ *http.Request) {
@@ -346,7 +346,7 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		}
 		f.writeJSON(w, 200, map[string]any{"recordSets": 1, "records": 3, "took_ms": 3})
 	})
-	mux.HandleFunc("GET /api/v1/zones/{zone}/export", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/zones/{zone}/export", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/dns")
 		_, _ = fmt.Fprintf(w, "$ORIGIN home.example.com.\n@\t300\tIN\tSOA\tns1 hostmaster 2026100101 3600 600 604800 300\nwww\t300\tIN\tA\t192.168.1.10\n")
 	})

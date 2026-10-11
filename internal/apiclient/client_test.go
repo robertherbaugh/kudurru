@@ -153,7 +153,7 @@ func TestAuthHeaders(t *testing.T) {
 		mu.Unlock()
 		switch r.URL.Path {
 		case "/api/v1/auth/login":
-			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "s1", Path: "/"})
+			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "s1", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode}) //nolint:gosec // G124: httptest serves plain HTTP
 			_, _ = io.WriteString(w, `{}`)
 		case "/api/v1/auth/me":
 			_, _ = io.WriteString(w, `{"principal":{"kind":"User","id":"u1","name":"admin"},"roles":["admin"],"csrf":"c-1","permissions":{"zones":["read","write"]}}`)

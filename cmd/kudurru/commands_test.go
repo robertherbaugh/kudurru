@@ -76,7 +76,7 @@ func TestZonesImportExportNotify(t *testing.T) {
 	}
 	file := filepath.Join(t.TempDir(), "out.zone")
 	h.mustRun("zones", "export", "home-example-com", "--out", file)
-	if b, _ := os.ReadFile(file); !strings.Contains(string(b), "www\t300\tIN\tA") {
+	if b, _ := os.ReadFile(file); !strings.Contains(string(b), "www\t300\tIN\tA") { //nolint:gosec // G304: the test's temp file
 		t.Fatalf("export --out wrote %q", b)
 	}
 	if out := h.mustRun("zones", "notify", "home-example-com"); out != "NOTIFY queued for zone home-example-com\n" {
@@ -206,7 +206,7 @@ func TestBackupAndRestore(t *testing.T) {
 	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("backup mode %v", st.Mode().Perm())
 	}
-	b, _ := os.ReadFile(file)
+	b, _ := os.ReadFile(file) //nolint:gosec // G304: the test's temp file
 	text := string(b)
 	for _, want := range []string{"# objects: 9 (dnszones 2, dnsrecordsets 2, blocklists 2, clientgroups 1, policies 2)", "# safe: credentials", "token=REDACTED", "kind: DNSZone", "namespace: apps"} {
 		if !strings.Contains(text, want) {

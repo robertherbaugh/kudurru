@@ -174,15 +174,15 @@ func golden(t *testing.T, h *harness, name, got string) {
 	got = strings.ReplaceAll(got, h.api.URL(), "SERVER")
 	path := filepath.Join("testdata", "golden", name+".txt")
 	if *update {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(got), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return
 	}
-	want, err := os.ReadFile(path)
+	want, err := os.ReadFile(path) //nolint:gosec // G304: a golden file under testdata
 	if err != nil {
 		t.Fatalf("%v (run go test ./cmd/kudurru -run %s -update)", err, t.Name())
 	}

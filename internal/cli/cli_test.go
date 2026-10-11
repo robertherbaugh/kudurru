@@ -97,7 +97,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	if !back.Remove("b") || back.CurrentContext != "" || back.Remove("b") {
 		t.Fatal("Remove")
 	}
-	raw, _ := os.ReadFile(path)
+	raw, _ := os.ReadFile(path) //nolint:gosec // G304: the test's temp file
 	if !strings.HasPrefix(string(raw), "apiVersion: kudurru.io/v1alpha1\n") {
 		t.Fatalf("file:\n%s", raw)
 	}

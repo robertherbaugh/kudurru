@@ -37,7 +37,7 @@ func TestDoctorChecksTheServer(t *testing.T) {
 	}
 	defer func() { _ = busy.Close() }()
 	data := t.TempDir()
-	if err := os.Chmod(data, 0o750); err != nil {
+	if err := os.Chmod(data, 0o750); err != nil { //nolint:gosec // G302: the mode doctor expects of a dataDir
 		t.Fatal(err)
 	}
 	cfg := doctorConfig(t, data, busy)
@@ -94,7 +94,7 @@ func TestDoctorDataDirPermissions(t *testing.T) {
 	}
 	defer func() { _ = busy.Close() }()
 	data := t.TempDir()
-	if err := os.Chmod(data, 0o777); err != nil {
+	if err := os.Chmod(data, 0o777); err != nil { //nolint:gosec // G302: the bad mode doctor must flag
 		t.Fatal(err)
 	}
 	cfg := doctorConfig(t, data, busy)
@@ -102,8 +102,8 @@ func TestDoctorDataDirPermissions(t *testing.T) {
 	if !strings.Contains(out, "dataDir: WARN "+data+" is world-writable (mode 0777)") {
 		t.Errorf("world-writable dataDir:\n%s", out)
 	}
-	_ = os.Chmod(data, 0o750)
-	if err := os.WriteFile(filepath.Join(data, "state.db"), nil, 0o644); err != nil {
+	_ = os.Chmod(data, 0o750)                                                         //nolint:gosec // G302: back to a sane dataDir mode
+	if err := os.WriteFile(filepath.Join(data, "state.db"), nil, 0o644); err != nil { //nolint:gosec // G306: the bad mode doctor must flag
 		t.Fatal(err)
 	}
 	out, _, _ = h.run("--config", cfg, "doctor", "--skip-api", "--skip-ports")

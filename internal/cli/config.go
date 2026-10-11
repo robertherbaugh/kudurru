@@ -20,7 +20,7 @@ import (
 // Environment variables the CLI reads.
 const (
 	EnvServer    = "KUDURRU_SERVER"
-	EnvToken     = "KUDURRU_TOKEN"
+	EnvToken     = "KUDURRU_TOKEN" //nolint:gosec // G101: the variable name, not a credential
 	EnvContext   = "KUDURRU_CONTEXT"
 	EnvCLIConfig = "KUDURRU_CLI_CONFIG"
 	// EnvKeyring selects token storage: "system" (default: the OS keyring,
