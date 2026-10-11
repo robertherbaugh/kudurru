@@ -1,0 +1,10 @@
+# kudurru runs under the Restricted Pod Security Standard (§5); overlays
+# that need host networking or keepalived relax the level.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kudurru-system
+  labels:
+    app.kubernetes.io/part-of: kudurru
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

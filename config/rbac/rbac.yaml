@@ -1,0 +1,314 @@
+# Generated from charts/kudurru by `go test ./deploy -run TestKustomizeBases -update`
+# (make kustomize). Do not edit; change the chart and regenerate.
+---
+apiVersion: v1
+automountServiceAccountToken: true
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru
+  namespace: kudurru-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru
+rules:
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnszones
+      - dnsrecordsets
+      - blocklists
+      - clientgroups
+      - policies
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - patch
+      - delete
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnszones/status
+      - dnsrecordsets/status
+      - blocklists/status
+      - clientgroups/status
+      - policies/status
+    verbs:
+      - update
+      - patch
+  - apiGroups:
+      - externaldns.k8s.io
+    resources:
+      - dnsendpoints
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: kudurru-viewer
+rules:
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnszones
+      - dnsrecordsets
+      - blocklists
+      - clientgroups
+      - policies
+      - stats
+      - caches
+      - blocking
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: kudurru-editor
+rules:
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnszones
+      - stats
+      - querylogs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnsrecordsets
+      - blocklists
+      - clientgroups
+      - policies
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - caches
+      - blocking
+    verbs:
+      - get
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+  name: kudurru-admin
+rules:
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - '*'
+    verbs:
+      - '*'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru-auditor
+rules:
+  - apiGroups:
+      - kudurru.io
+    resources:
+      - dnszones
+      - dnsrecordsets
+      - blocklists
+      - clientgroups
+      - policies
+      - stats
+      - querylogs
+      - audits
+      - settings
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kudurru
+subjects:
+  - kind: ServiceAccount
+    name: kudurru
+    namespace: kudurru-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru
+  namespace: kudurru-system
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - create
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dns
+    app.kubernetes.io/instance: kudurru
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+    app.kubernetes.io/version: 0.1.0-dev
+  name: kudurru
+  namespace: kudurru-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kudurru
+subjects:
+  - kind: ServiceAccount
+    name: kudurru
+    namespace: kudurru-system

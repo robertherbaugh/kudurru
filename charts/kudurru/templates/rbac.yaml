@@ -1,5 +1,6 @@
-{{- if .Values.rbac.create }}
-# Least-privilege ClusterRole for the kudurru ServiceAccount (docs/architecture.md §5.3).
+{{- if and .Values.rbac.create (not (include "kudurru.standalone" .)) }}
+# Least-privilege RBAC for the kudurru ServiceAccount (§5.3, D77). The
+# standalone mode (sqlite store) talks to no Kubernetes API and gets none.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -7,25 +8,35 @@ metadata:
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
 rules:
-  # Server-side apply needs create+patch; file-managed objects and finalizers need delete (D77).
+  # Server-side apply needs create+patch; file-managed objects and
+  # finalizers need delete (D77).
   - apiGroups: ["kudurru.io"]
     resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
   - apiGroups: ["kudurru.io"]
     resources: ["dnszones/status", "dnsrecordsets/status", "blocklists/status", "clientgroups/status", "policies/status"]
-    verbs: ["get", "update", "patch"]
+    verbs: ["update", "patch"]
+  # DNSEndpoint compatibility watch (read-only, never owned, §5.1).
   - apiGroups: ["externaldns.k8s.io"]
     resources: ["dnsendpoints"]
     verbs: ["get", "list", "watch"]
+  # kube-system uid as the cluster id (D77); Services for LoadBalancer status.
   - apiGroups: [""]
-    resources: ["services", "namespaces"]
+    resources: ["namespaces", "services"]
     verbs: ["get", "list", "watch"]
+  # Peers of the headless Service (Nodes page scatter-gather, §5.3).
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
+  # Events on kudurru.io objects in any namespace.
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Kubernetes identities: ServiceAccount tokens and SubjectAccessReview
+  # authorization (system:auth-delegator equivalent, §5.5).
   - apiGroups: ["authentication.k8s.io"]
     resources: ["tokenreviews"]
     verbs: ["create"]
@@ -48,7 +59,9 @@ subjects:
     name: {{ include "kudurru.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 ---
-# Namespace-scoped: leases for leader election, secrets for internal kinds.
+# Release namespace only: Leases (Elector(name) → Lease kudurru-<name>,
+# D78), Secrets for internal kinds (tokens, users, TSIG, DNSSEC keys) and
+# ConfigMaps for runtime state (blocking toggle replication).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -61,8 +74,11 @@ rules:
     resources: ["leases"]
     verbs: ["get", "create", "update"]
   - apiGroups: [""]
-    resources: ["secrets", "configmaps"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -81,11 +97,13 @@ subjects:
     namespace: {{ .Release.Namespace }}
 {{- if .Values.rbac.aggregateToDefaultRoles }}
 ---
-# User-facing roles generated from internal/rbac/permissions.yaml (decision D31).
+# User-facing roles (D31): real CRDs plus the virtual resources kudurru
+# checks with SubjectAccessReview (§5.5). They aggregate into the built-in
+# view/edit/admin roles.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kudurru-viewer
+  name: {{ include "kudurru.fullname" . }}-viewer
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
     rbac.authorization.k8s.io/aggregate-to-view: "true"
@@ -97,7 +115,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kudurru-editor
+  name: {{ include "kudurru.fullname" . }}-editor
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
@@ -115,7 +133,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kudurru-admin
+  name: {{ include "kudurru.fullname" . }}-admin
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
@@ -127,7 +145,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kudurru-auditor
+  name: {{ include "kudurru.fullname" . }}-auditor
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
 rules:

@@ -1,35 +1,53 @@
-# node-a: 10.0.0.11, priority index 0. Copy to node-b/node-c and change
-# NODE_NAME, the proxyProtocolFrom list stays identical, --priority-index 1/2
-# and --peers accordingly.
+# Compose HA, ha-static profile (docs/architecture.md §6.5): node-a.
+# Nodes: node-a 10.0.0.11 (priority index 0 → 200), node-b 10.0.0.12 (1 →
+# 190), node-c 10.0.0.13 (2 → 180); VIP 10.0.0.53/24 on eth0, VRID 53.
+# The three directories differ only in KUDURRU_NODE__NAME, --peers and
+# --priority-index; kudurru.yaml and objects.d/ are identical on every node
+# (distribute them with git, ansible or rsync). The dnsdist and keepalived
+# supervisor images are milestone M4 deliverables.
+# Before the first start, on every node, with the SAME secret files:
+#   mkdir -p secrets certs
+#   openssl rand -base64 32 > secrets/encryption_key     # shared: sessions, internal TLS
+#   openssl rand -base64 18 > secrets/admin_password
+#   openssl rand -hex 32 > secrets/proxy_secret          # PROXYv2 TLV 0xE0
+#   openssl rand -hex 16 > secrets/vrrp_hmac             # keepalived auth_hmac
+name: kudurru
 services:
   kudurru:
-    image: ghcr.io/robertherbaugh/kudurru:0.1.0-dev
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
     network_mode: host                       # :5353 for dnsdist, :8080 API, :8082 internal; keepalived owns the VIP
     restart: unless-stopped
     environment:
       KUDURRU_NODE__NAME: node-a
-      KUDURRU_LISTENERS__PROXYPROTOCOLFROM: "127.0.0.1/32,10.0.0.11/32,10.0.0.12/32,10.0.0.13/32"   # exact peers, never the LAN /24
+      # Exact peers, never the LAN /24: every node's dnsdist sends PROXYv2.
+      KUDURRU_LISTENERS__PROXYPROTOCOLFROM: "127.0.0.1/32,10.0.0.11/32,10.0.0.12/32,10.0.0.13/32"
       KUDURRU_LISTENERS__PROXYPROTOCOLSECRETFILE: /run/secrets/proxy_secret
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
-      # v0.2: KUDURRU_CLUSTER__ROLE=follower  KUDURRU_CLUSTER__PRIMARY=https://10.0.0.11:8082   (nodes b, c)
-      # v1.0: KUDURRU_CLUSTER__BOOTSTRAPEXPECT=3  KUDURRU_CLUSTER__PEERS=10.0.0.11:7000,10.0.0.12:7000,10.0.0.13:7000
+      # v0.2 follower mode (nodes b and c) and v1.0 raft add cluster.* keys
+      # here; they do not exist in v0.1.
     volumes:
       - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro
       - ./objects.d:/etc/kudurru/objects.d:ro
       - kudurru-data:/var/lib/kudurru
       - kudurru-run:/run/kudurru
     secrets: [admin_password, encryption_key, proxy_secret]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD", "kudurru", "health", "--ready"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 60s
+    stop_grace_period: 30s
 
   dnsdist:
-    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-dev
-    network_mode: host                       # binds 0.0.0.0:53 so the VIP is served as it appears
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
+    network_mode: host                       # binds 0.0.0.0:53 so the VIP is served as soon as it appears
     restart: unless-stopped
     command:
       - kudurru
@@ -45,12 +63,12 @@ services:
       - --proxy-protocol-secret-file=/run/secrets/proxy_secret
     secrets: [proxy_secret]
     volumes:
-      - certs:/certs:ro
+      - ./certs:/certs:ro
       - kudurru-run:/run/kudurru
     depends_on: [kudurru]
 
   keepalived:
-    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.1.0-dev
+    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.1.0
     network_mode: host
     cap_add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
     restart: unless-stopped
@@ -74,10 +92,13 @@ services:
 volumes:
   kudurru-data: {}
   kudurru-run: {}
-  certs: {}
 
 secrets:
-  admin_password: { file: ./secrets/admin_password }
-  encryption_key: { file: ./secrets/encryption_key }
-  proxy_secret:   { file: ./secrets/proxy_secret }
-  vrrp_hmac:      { file: ./secrets/vrrp_hmac }
+  admin_password:
+    file: ./secrets/admin_password
+  encryption_key:
+    file: ./secrets/encryption_key
+  proxy_secret:
+    file: ./secrets/proxy_secret
+  vrrp_hmac:
+    file: ./secrets/vrrp_hmac

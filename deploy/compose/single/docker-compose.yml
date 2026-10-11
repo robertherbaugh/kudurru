@@ -1,13 +1,18 @@
-# Single instance. Profile "edge" adds dnsdist in front (M4).
-# Secrets: create ./secrets/admin_password and ./secrets/encryption_key first.
+# kudurru, single instance (docs/architecture.md §6.4).
+# Before the first start:
+#   mkdir -p secrets && openssl rand -base64 32 > secrets/encryption_key
+#   openssl rand -base64 18 > secrets/admin_password
+# dnsdist in front (DoT/DoH/DoQ termination, packet cache): ../single-edge.
+name: kudurru
 services:
   kudurru:
-    image: ghcr.io/robertherbaugh/kudurru:0.1.0-dev
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
     restart: unless-stopped
     ports:
       - "53:53/udp"
       - "53:53/tcp"
-      - "8080:8080"
+      - "8080:8080"           # API and UI
+      # - "127.0.0.1:9153:9153"  # Prometheus metrics
     environment:
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
@@ -17,27 +22,26 @@ services:
       - ./objects.d:/etc/kudurru/objects.d:ro
       - kudurru-data:/var/lib/kudurru
     secrets: [admin_password, encryption_key]
+    # uid 65532 binds :53 because Docker sets the container's unprivileged
+    # port range to start at 0; made explicit here.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/kudurru
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD", "kudurru", "health", "--ready"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 60s
-    cap_add: [NET_BIND_SERVICE]
-
-  # dnsdist edge tier (M4): kudurru then listens on 127.0.0.1:5353 behind it.
-  dnsdist:
-    profiles: [edge]
-    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-dev
-    command: ["kudurru", "edge", "run", "--backends", "127.0.0.1:5353", "--tls-dir", "/certs"]
-    network_mode: "service:kudurru"
-    volumes:
-      - certs:/certs:ro
-    depends_on: [kudurru]
+    stop_grace_period: 30s
 
 volumes:
   kudurru-data: {}
-  certs: {}
 
 secrets:
   admin_password:

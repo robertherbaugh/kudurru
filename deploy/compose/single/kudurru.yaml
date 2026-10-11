@@ -1,7 +1,11 @@
-# /etc/kudurru/kudurru.yaml (v0.1 shape, docs/architecture.md §6.2).
-# Node-scoped keys are host-only; cluster-scoped keys are the Kudurru singleton.
+# /etc/kudurru/kudurru.yaml (docs/architecture.md §6.2). Every key is listed
+# by `kudurru config schema`; node-scoped keys are host-only, cluster-scoped
+# keys (upstreams, cache, blocking, querylog, ratelimit) are the settings the
+# UI edits. Objects (zones, lists, groups, policies) go into objects.d/.
 node:
   dataDir: /var/lib/kudurru
+store:
+  driver: sqlite
 listeners:
   dns:
     - address: "0.0.0.0:53"
@@ -9,17 +13,24 @@ listeners:
   api: { address: "0.0.0.0:8080" }
   ops: { address: "0.0.0.0:8081" }
   metrics: { address: "0.0.0.0:9153" }
-  proxyProtocolFrom: []          # ["127.0.0.1/32"] when the edge profile shares the netns
 upstreams:
   groups:
     default:
-      servers: ["1.1.1.1:53", "9.9.9.9:53"]   # tls:// and https:// upstreams arrive with dnsproxy (M1)
+      servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
       strategy: parallel_best
       timeout: 2s
-  bootstrap: ["1.1.1.1:53"]
-  conditional: {}
+  bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
+cache:
+  maxEntries: 200000
+blocking:
+  enabled: true
+  defaultResponse: zeroIP
+querylog:
+  enabled: true
+  privacy: full
+  retention:
+    raw: 720h
+    maxDBBytes: 10GiB
 log:
   level: info
   format: json
-# Objects (zones, lists, groups, policies) go into objects.d/*.yaml as CRD
-# documents; they are file-managed and read-only in the UI (M1).

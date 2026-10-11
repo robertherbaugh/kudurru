@@ -16,6 +16,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -91,7 +92,11 @@ generate: manifests
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
 	mkdir -p charts/kudurru-crds/templates
-	cp config/crd/bases/*.yaml charts/kudurru-crds/templates/
+	@# The chart copies carry helm.sh/resource-policy: keep so that
+	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
+	for f in config/crd/bases/*.yaml; do \
+		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
+	done
 	$(MAKE) --no-print-directory validator-crds
 
 ## validator-crds: copy the CRDs into the store validator's go:embed directory (D34)
@@ -186,9 +191,41 @@ web-lint: web-install
 ## web-dev: the dashboard against the MSW mock API (no server needed)
 web-dev: web-install
 	cd web && $(BUN) run dev:mock
+## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are
+## installed into bin/ at pinned versions; helm comes from the system.
+KUBECONFORM_VERSION ?= v0.8.0
+KUSTOMIZE_VERSION   ?= v5.8.3
+DEPLOY_BIN          := $(CURDIR)/bin/deploy-tools
+
+deploy-tools: $(DEPLOY_BIN)/kubeconform $(DEPLOY_BIN)/kustomize
+
+$(DEPLOY_BIN)/kubeconform:
+	GOBIN=$(DEPLOY_BIN) go install github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION)
+
+$(DEPLOY_BIN)/kustomize:
+	GOBIN=$(DEPLOY_BIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 
 helm-lint:
-	helm lint charts/kudurru charts/kudurru-crds
+	helm lint --strict charts/kudurru charts/kudurru-crds
+
+## helm-check: helm lint, the chart render matrix, the kustomize overlays and
+## the compose/dashboard/rules checks, with kubeconform against the
+## Kubernetes 1.30 schemas and the CRDs (downloads schemas; cached in bin/).
+helm-check: helm-lint deploy-tools
+	PATH=$(DEPLOY_BIN):$$PATH KUDURRU_KUBECONFORM=1 KUBECONFORM_CACHE=$(CURDIR)/bin/kubeconform-cache \
+		go test -count=1 -v ./deploy/
+
+## deploy-assets: regenerate the Grafana dashboard, the chart's copies of
+## deploy/ files and the kustomize bases rendered from the chart.
+deploy-assets:
+	go test -count=1 ./deploy/ -update
+
+## release-manifests: crds.yaml and install.yaml (kustomize build
+## config/default) for the GitHub release, written to bin/release/.
+release-manifests: $(DEPLOY_BIN)/kustomize
+	mkdir -p bin/release
+	$(DEPLOY_BIN)/kustomize build config/crd > bin/release/crds.yaml
+	$(DEPLOY_BIN)/kustomize build config/default > bin/release/install.yaml
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
 ## (internal/edge/*/testdata) with the real programs inside the pinned images:
@@ -223,7 +260,10 @@ edge-check: edge-images
 	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version
 
 docker:
-	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) .
+	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
+
+docker-debug:
+	docker build --target debug -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-debug --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
 
 clean:
 	rm -rf bin dist web/dist/assets
