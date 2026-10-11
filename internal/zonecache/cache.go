@@ -322,6 +322,9 @@ func (c *Cache) Ready() (bool, []string) {
 	defer c.mu.Unlock()
 	switch c.state {
 	case Live:
+		if snap := c.current.Load(); snap == nil || snap.State != Live {
+			return false, append([]string{"waiting for the first live snapshot"}, c.conditionStrings()...)
+		}
 		return true, c.conditionStrings()
 	case FromSnapshot:
 		if age := time.Since(c.snapWritten); age > c.opts.MaxAge {
