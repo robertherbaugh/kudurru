@@ -194,6 +194,9 @@ func (s *Supervisor) install(ctx context.Context, c Config) (bool, error) {
 	if c.Legacy {
 		s.log.Warn("legacy mode: keepalived 2.3.x without auth_hmac, VRRP adverts are unauthenticated")
 	}
+	if err := writeLegacyMarker(c.RunDir, c.Legacy); err != nil {
+		s.log.Warn("legacy marker", "err", err)
+	}
 	return true, nil
 }
 
