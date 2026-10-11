@@ -224,3 +224,46 @@ func TestSeedValidationAndStoreErrors(t *testing.T) {
 		t.Fatalf("store errors must surface: %v", err)
 	}
 }
+
+// TestEmbeddedStarterBlockList seeds the real embedded list through the
+// CRD validator: created on first boot, referenced by Policy "default",
+// never recreated after the operator deletes it.
+func TestEmbeddedStarterBlockList(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	opts := Options{StarterBlockList: EmbeddedStarterBlockList, Validator: testValidator(t)}
+	res, err := Seed(ctx, st, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blKey := store.Key{Kind: "BlockList", Namespace: DefaultNamespace, Name: "starter"}
+	if !res.FirstBoot || len(res.Created) != 4 || res.Created[0] != blKey {
+		t.Fatalf("result = %+v", res)
+	}
+	var bl v1alpha1.BlockList
+	if err := st.Get(ctx, blKey, &bl); err != nil {
+		t.Fatal(err)
+	}
+	if store.ManagedBy(&bl) != store.ManagerBootstrap || len(bl.Spec.Sources) != 1 || len(bl.Spec.Sources[0].Inline) < 2000 {
+		t.Fatalf("starter list = %s, %d sources", store.ManagedBy(&bl), len(bl.Spec.Sources))
+	}
+	if bl.Annotations["kudurru.io/provenance"] == "" {
+		t.Error("starter list carries no provenance annotation")
+	}
+	var pol v1alpha1.Policy
+	if err := st.Get(ctx, policyKey, &pol); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(pol.Spec.BlockListRefs, []string{"starter"}) {
+		t.Fatalf("policy refs = %v", pol.Spec.BlockListRefs)
+	}
+	if err := st.Delete(ctx, blKey, store.DeleteOptions{Manager: store.ManagerBootstrap}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Seed(ctx, st, opts); err != nil || res.FirstBoot || len(res.Created) != 0 {
+		t.Fatalf("second boot = %+v, %v", res, err)
+	}
+	if err := st.Get(ctx, blKey, &bl); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("deleted starter list came back: %v", err)
+	}
+}

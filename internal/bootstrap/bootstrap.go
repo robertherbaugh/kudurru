@@ -12,7 +12,9 @@
 // internal/objects); the API may do the same.
 //
 // The build-time starter blocklist (§6.4) plugs in through
-// Options.StarterBlockList; the embedded list itself lands later.
+// Options.StarterBlockList; EmbeddedStarterBlockList provides the list
+// embedded by internal/listdata (Steven Black's ad-hoc list, MIT), which
+// is created on first boot only, like every other seed.
 package bootstrap
 
 import (
@@ -24,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/listdata"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
@@ -45,6 +48,14 @@ const (
 // or embedded-source BlockList), or nil when the build carries none. When
 // it returns a list, Seed creates it and Policy "default" references it.
 type StarterBlockListFunc func(ctx context.Context) (*v1alpha1.BlockList, error)
+
+// EmbeddedStarterBlockList is the StarterBlockListFunc for the list
+// embedded in the binary: BlockList "starter" with one inline domains
+// source built from internal/listdata (provenance and licence in
+// internal/listdata/stevenblack). Pass it as Options.StarterBlockList.
+func EmbeddedStarterBlockList(ctx context.Context) (*v1alpha1.BlockList, error) {
+	return listdata.StarterBlockList(ctx)
+}
 
 // Options configures Seed.
 type Options struct {
