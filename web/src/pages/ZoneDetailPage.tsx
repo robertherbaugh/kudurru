@@ -6,7 +6,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type ChangeEvent } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
@@ -14,7 +14,7 @@ import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { RecordEditor } from '../components/RecordEditor';
 import { ownership, readOnlyReason } from '../lib/managedBy';
-import { Link } from '../lib/router';
+import { Link, useNavigate } from '../lib/router';
 import { dnsNameToOwner } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { TransferCell } from './ZonesPage';
@@ -93,8 +93,40 @@ function ExportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
   );
 }
 
+// Object names never end with a dot, so a trailing dot means the URL holds
+// the zone's apex (a link someone typed or copied from dig output). Resolve
+// it to the DNSZone object instead of asking the API for an object that
+// cannot exist; the API keeps the object name as the only {zone} key because
+// zone-scoped RBAC grants are keyed by it.
+function ApexRedirect({ apex }: { apex: string }) {
+  const api = useApi();
+  const navigate = useNavigate();
+  const q = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
+  const want = apex.toLowerCase();
+  const match = q.data?.items.find((z) => z.zoneName.toLowerCase() === want || `${z.zoneName.toLowerCase()}.` === want);
+  useEffect(() => {
+    if (match) navigate(`/zones/${encodeURIComponent(match.name)}`, { replace: true });
+  }, [match, navigate]);
+  if (q.error) return <ErrorBanner error={q.error} />;
+  if (q.data && !match) {
+    return (
+      <div className="k-page">
+        <h1>{apex}</h1>
+        <Banner status="warning" title="No such zone" description={`No zone has the apex ${apex}.`} />
+        <Link href="/zones">All zones</Link>
+      </div>
+    );
+  }
+  return <Loading />;
+}
+
 export default function ZoneDetailPage({ params }: PageProps) {
   const zone = params.zone ?? '';
+  if (zone.endsWith('.')) return <ApexRedirect apex={zone} />;
+  return <ZoneDetail zone={zone} />;
+}
+
+function ZoneDetail({ zone }: { zone: string }) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();

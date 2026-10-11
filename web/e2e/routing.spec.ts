@@ -23,7 +23,7 @@ test('reload of /zones/<apex with trailing dot> renders the SPA', async ({ page 
 test('navigating from the zone list to the zone and reloading', async ({ page }) => {
   await page.goto('/zones');
   await settle(page);
-  await main(page).getByRole('link', { name: ZONE.object, exact: true }).click();
+  await main(page).getByRole('link', { name: ZONE.apex, exact: true }).click();
   await expect(page).toHaveURL((u) => decodeURIComponent(u.pathname) === `/zones/${ZONE.object}`);
   await settle(page);
   await page.reload();
