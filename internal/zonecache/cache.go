@@ -128,7 +128,9 @@ func (o *Options) setDefaults() {
 
 // DefaultKinds returns every kind registered in the kudurru.io/v1alpha1
 // scheme that has a matching list type, sorted: a kind added to
-// api/v1alpha1 is watched without touching zonecache.
+// api/v1alpha1 is watched without touching zonecache. UnblockRequest is
+// left out: it never affects serving, and a block page request must not
+// rebuild the serving snapshot (internal/unblock watches it).
 func DefaultKinds() []store.Kind {
 	s := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(s); err != nil {
@@ -149,6 +151,9 @@ func DefaultKinds() []store.Kind {
 			continue
 		}
 		if _, ok := reflect.New(listTyp).Interface().(metav1.ListInterface); !ok {
+			continue
+		}
+		if name == v1alpha1.KindUnblockRequest {
 			continue
 		}
 		kinds = append(kinds, store.Kind(name))

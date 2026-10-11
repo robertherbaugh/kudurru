@@ -78,6 +78,7 @@ rules:
       - policies
       - settings
       - stats
+      - unblockrequests
     verbs:
       - get
       - list
@@ -163,6 +164,16 @@ rules:
   - apiGroups:
       - kudurru.io
     resources:
+      - unblockrequests
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+      - decide
+  - apiGroups:
+      - kudurru.io
+    resources:
       - caches
     verbs:
       - get
@@ -225,6 +236,7 @@ rules:
       - blocklists
       - clientgroups
       - policies
+      - unblockrequests
     verbs:
       - get
       - list
@@ -240,6 +252,7 @@ rules:
       - blocklists/status
       - clientgroups/status
       - policies/status
+      - unblockrequests/status
     verbs:
       - update
       - patch

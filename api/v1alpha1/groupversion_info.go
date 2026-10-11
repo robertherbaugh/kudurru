@@ -60,6 +60,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&BlockList{}, &BlockListList{},
 		&ClientGroup{}, &ClientGroupList{},
 		&Policy{}, &PolicyList{},
+		&UnblockRequest{}, &UnblockRequestList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

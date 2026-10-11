@@ -40,11 +40,12 @@ func testValidator(t testing.TB) *Validator {
 
 // Sample files under config/samples, by kind.
 var sampleFiles = map[store.Kind]string{
-	"DNSZone":      "kudurru.io_v1alpha1_dnszone.yaml",
-	"DNSRecordSet": "kudurru.io_v1alpha1_dnsrecordset.yaml",
-	"BlockList":    "kudurru.io_v1alpha1_blocklist.yaml",
-	"ClientGroup":  "kudurru.io_v1alpha1_clientgroup.yaml",
-	"Policy":       "kudurru.io_v1alpha1_policy.yaml",
+	"DNSZone":        "kudurru.io_v1alpha1_dnszone.yaml",
+	"DNSRecordSet":   "kudurru.io_v1alpha1_dnsrecordset.yaml",
+	"BlockList":      "kudurru.io_v1alpha1_blocklist.yaml",
+	"ClientGroup":    "kudurru.io_v1alpha1_clientgroup.yaml",
+	"Policy":         "kudurru.io_v1alpha1_policy.yaml",
+	"UnblockRequest": "kudurru.io_v1alpha1_unblockrequest.yaml",
 }
 
 func readSample(t testing.TB, kind store.Kind) []byte {
@@ -70,6 +71,8 @@ func newTyped(t testing.TB, kind store.Kind) store.Object {
 		return &v1alpha1.ClientGroup{}
 	case "Policy":
 		return &v1alpha1.Policy{}
+	case "UnblockRequest":
+		return &v1alpha1.UnblockRequest{}
 	}
 	t.Fatalf("no Go type for %s", kind)
 	return nil
