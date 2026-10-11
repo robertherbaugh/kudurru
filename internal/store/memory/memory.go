@@ -226,7 +226,17 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 	if s.closed {
 		return nil, store.ErrClosed
 	}
-	w := &watcher{ch: make(chan store.Event, 256)}
+	// The initial events are queued under the lock before Watch returns,
+	// so the buffer must hold all of them (plus the bookmark) on top of
+	// the live-event headroom, or a kind with more than 256 objects would
+	// deadlock here.
+	initial := 0
+	for k := range s.objects {
+		if k.Kind == kind {
+			initial++
+		}
+	}
+	w := &watcher{ch: make(chan store.Event, initial+257)}
 	w.stop = func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
