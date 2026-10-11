@@ -312,9 +312,9 @@ func (s *Server) getObjectRoute(ctx context.Context, plural, namespace, name str
 	}
 	obj, err := s.getObject(ctx, k, namespace, name)
 	if err != nil {
-		if s.require(ctx, k.resource, "read", s.guessScope(k, name), name) != nil {
-			// Do not reveal existence to callers who may not read it.
-			return nil, s.require(ctx, k.resource, "read", s.guessScope(k, name), name)
+		// Do not reveal existence to callers who may not read it.
+		if aerr := s.require(ctx, k.resource, "read", s.guessScope(k, name), name); aerr != nil {
+			return nil, aerr
 		}
 		return nil, err
 	}

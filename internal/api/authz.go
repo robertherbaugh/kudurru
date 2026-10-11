@@ -244,6 +244,12 @@ func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 			}
 			resource = k.resource
 		}
+		if resource == "" && p.scopable {
+			// Multi-kind routes (POST /apply) authorize every document in
+			// the handler.
+			next(ctx)
+			return
+		}
 		sc := clusterScope
 		if p.scope != nil {
 			sc = p.scope(ctx)
