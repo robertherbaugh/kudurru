@@ -1,7 +1,8 @@
-// Charts read their colours from CSS (§10 principle 4): the --q-* custom
-// properties in styles.css map the semantic query classes onto the active
-// Astryx theme, so one palette serves tables, badges and both chart
-// libraries, in light, dark and high contrast.
+// Charts read their colours from CSS (§10 principle 4): the --q-* tokens
+// every theme in src/themes declares (high contrast re-points them in
+// styles.css) colour the semantic query classes, so one palette serves
+// tables, badges and both chart libraries, in light, dark and high
+// contrast.
 
 export type SeriesKey = 'blocked' | 'cached' | 'forwarded' | 'authoritative' | 'other' | 'permitted' | 'error';
 
