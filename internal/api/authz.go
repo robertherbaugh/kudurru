@@ -61,7 +61,13 @@ func scopeString(sc rbac.Scope) string {
 // service accounts ("<ns>/<name>" or a bare name) become
 // ServiceAccount "<ns>/<name>" for binding subjects.
 func rbacPrincipal(p auth.Principal) rbac.Principal {
-	out := rbac.Principal{Name: p.Name, Groups: p.Groups}
+	// auth.RBACPrincipal carries what the authorizer needs beyond name and
+	// groups: the builtin-admin flag, grants frozen in a session or token,
+	// implicit grants and token scopes (restrictions).
+	out := auth.RBACPrincipal(p)
+	if out.ServiceAccount != "" {
+		return out
+	}
 	switch p.Kind {
 	case auth.KindKubernetesServiceAccount:
 		if rest, ok := strings.CutPrefix(p.Name, "system:serviceaccount:"); ok {
