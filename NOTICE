@@ -16,6 +16,10 @@ licences. Attributions are added to this file as the dependencies land:
   secondary-transfer flow, test helpers.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
+- Kubernetes apiextensions-apiserver (https://github.com/kubernetes/kubernetes,
+  module k8s.io/apiextensions-apiserver), Apache-2.0: linked as a library for
+  CRD schema, defaulting and CEL validation; the custom-resource admission
+  sequence in internal/store/validator mirrors pkg/registry/customresource.
 
 dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
 They are distributed unmodified as separate programs in their own container
