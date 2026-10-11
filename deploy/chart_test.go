@@ -1,0 +1,418 @@
+package deploy_test
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// chartCase is one values permutation of charts/kudurru.
+type chartCase struct {
+	name   string
+	values string // YAML
+	// wantKind is the kind of the kudurru workload.
+	wantKind string
+	// check runs case-specific assertions.
+	check func(t *testing.T, r *rendered)
+}
+
+const releaseNS = "kudurru-system"
+
+// chartCases is the render matrix of the deploy package: every mode, the
+// split Service, each edge mode with each store mode, each VIP provider,
+// hostNetwork, persistence on and off, ingress, monitoring, network policy,
+// encrypted transports and seeds. The CI helm job runs it and kubeconform.
+var chartCases = []chartCase{
+	{name: "default", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantStore(t, "kube")
+		r.wantObject(t, "ClusterRole", "kudurru")
+		r.wantObject(t, "Role", "kudurru")
+		r.wantObject(t, "PodDisruptionBudget", "kudurru")
+		r.wantObject(t, "Secret", "kudurru-encryption-key")
+		r.wantObject(t, "Secret", "kudurru-admin")
+		svc := r.object(t, "Service", "kudurru-dns")
+		if n := len(list(dig(svc, "spec", "ports"))); n != 2 {
+			t.Errorf("mixed dns Service has %d ports, want udp+tcp", n)
+		}
+		if dig(r.pod(t), "spec", "subdomain") != "kudurru-headless" {
+			t.Errorf("Deployment pods need subdomain=kudurru-headless for <pod>.<headless> lookups")
+		}
+		if dig(r.pod(t), "spec", "dnsPolicy") != "Default" {
+			t.Errorf("dnsPolicy must be Default for the DNS server itself")
+		}
+	}},
+	{name: "standalone", values: "mode: standalone", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		r.wantStore(t, "sqlite")
+		r.wantNoKind(t, "ClusterRole")
+		r.wantNoKind(t, "Role")
+		r.wantNoKind(t, "PodDisruptionBudget")
+		w := r.workload(t)
+		if dig(w, "spec", "replicas") != 1 {
+			t.Errorf("standalone runs exactly one replica, got %v", dig(w, "spec", "replicas"))
+		}
+		if len(list(dig(w, "spec", "volumeClaimTemplates"))) != 1 {
+			t.Errorf("standalone needs the data volumeClaimTemplate")
+		}
+		if dig(r.pod(t), "spec", "automountServiceAccountToken") != false {
+			t.Errorf("standalone pods need no ServiceAccount token")
+		}
+	}},
+	{name: "standalone-no-persistence", values: "mode: standalone\npersistence: {standalone: {enabled: false}}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		if len(list(dig(r.workload(t), "spec", "volumeClaimTemplates"))) != 0 {
+			t.Errorf("persistence.standalone.enabled=false must not request a claim")
+		}
+		r.wantVolume(t, "data", "emptyDir")
+	}},
+	{name: "split-protocols", values: "service: {dns: {splitProtocols: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantNoObject(t, "Service", "kudurru-dns")
+		for _, n := range []string{"kudurru-dns-udp", "kudurru-dns-tcp"} {
+			svc := r.object(t, "Service", n)
+			if str(dig(svc, "metadata", "annotations", "metallb.io/allow-shared-ip")) == "" {
+				t.Errorf("%s lacks metallb.io/allow-shared-ip", n)
+			}
+		}
+	}},
+	{name: "edge-deployment", values: "edge: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantEdge(t, "Deployment")
+		r.wantObject(t, "PodDisruptionBudget", "kudurru-edge")
+		r.wantObject(t, "Secret", "kudurru-proxy-protocol")
+		cfg := r.config(t)
+		if cfg.Listeners.DNS[0].Address != "0.0.0.0:5353" || cfg.Listeners.ProxyProtocolSecretFile == "" || len(cfg.Listeners.ProxyProtocolFrom) == 0 {
+			t.Errorf("behind the edge kudurru listens on :5353 with the PROXYv2 CIDR and TLV secret, got %+v", cfg.Listeners)
+		}
+		args := r.edgeArgs(t)
+		if !slices.Contains(args, "--backends-from=endpointslice:kudurru-system/kudurru-headless") {
+			t.Errorf("edge args lack the endpointslice backends: %v", args)
+		}
+	}},
+	{name: "edge-sidecar", values: "edge: {enabled: true, mode: sidecar}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantNoObject(t, "Deployment", "kudurru-edge")
+		cfg := r.config(t)
+		if cfg.Listeners.DNS[0].Address != "127.0.0.1:5353" || cfg.Listeners.ProxyProtocolSecretFile != "" || !slices.Equal(cfg.Listeners.ProxyProtocolFrom, []string{"127.0.0.1/32"}) {
+			t.Errorf("sidecar: kudurru on loopback :5353, loopback PROXYv2 without a secret; got %+v", cfg.Listeners)
+		}
+		if r.container(t, r.pod(t), "dnsdist") == nil {
+			t.Errorf("sidecar mode needs the dnsdist container in the kudurru pod")
+		}
+	}},
+	{name: "edge-daemonset", values: "edge: {enabled: true, mode: daemonset}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantEdge(t, "DaemonSet")
+	}},
+	{name: "edge-deployment-standalone", values: "mode: standalone\nedge: {enabled: true}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		r.wantEdge(t, "Deployment")
+		r.wantStore(t, "sqlite")
+	}},
+	{name: "edge-sidecar-standalone", values: "mode: standalone\nedge: {enabled: true, mode: sidecar}", wantKind: "StatefulSet"},
+	{name: "edge-daemonset-standalone", values: "mode: standalone\nedge: {enabled: true, mode: daemonset}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		r.wantEdge(t, "DaemonSet")
+	}},
+	{name: "vip-none", values: "vip: {provider: none}", wantKind: "Deployment"},
+	{name: "vip-kube-vip", values: "vip: {provider: kube-vip, address: 10.0.0.53}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if v := dig(r.object(t, "Service", "kudurru-dns"), "metadata", "annotations", "kube-vip.io/loadbalancerIPs"); v != "10.0.0.53" {
+			t.Errorf("kube-vip annotation = %v", v)
+		}
+	}},
+	{name: "vip-metallb-split", values: "vip: {provider: metallb, address: 10.0.0.53, metallbPool: lan}\nservice: {dns: {splitProtocols: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		for _, n := range []string{"kudurru-dns-udp", "kudurru-dns-tcp"} {
+			a := mapOf(dig(r.object(t, "Service", n), "metadata", "annotations"))
+			if a["metallb.io/loadBalancerIPs"] != "10.0.0.53" || a["metallb.io/address-pool"] != "lan" || a["metallb.io/allow-shared-ip"] == nil {
+				t.Errorf("%s: MetalLB annotations = %v", n, a)
+			}
+		}
+	}},
+	{name: "vip-keepalived", values: "edge: {enabled: true}\nvip: {provider: keepalived, address: 10.0.0.53/24, keepalived: {interface: eth0}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		ds := r.wantEdge(t, "DaemonSet")
+		pod := mapOf(dig(ds, "spec", "template"))
+		if dig(pod, "spec", "hostNetwork") != true {
+			t.Errorf("keepalived edge must use hostNetwork")
+		}
+		k := r.container(t, pod, "keepalived")
+		if k == nil {
+			t.Fatal("keepalived container missing")
+		}
+		caps := list(dig(k, "securityContext", "capabilities", "add"))
+		for _, c := range []string{"NET_ADMIN", "NET_RAW", "NET_BROADCAST"} {
+			if !slices.Contains(caps, any(c)) {
+				t.Errorf("keepalived lacks %s", c)
+			}
+		}
+		if !slices.Contains(list(k["args"]), any("--vip=dns=10.0.0.53/24@eth0#53")) {
+			t.Errorf("keepalived args = %v", k["args"])
+		}
+		if dig(pod, "spec", "nodeSelector", "kudurru.io/vip") != "true" {
+			t.Errorf("keepalived DaemonSet must run on the kudurru.io/vip nodes")
+		}
+		r.wantObject(t, "Secret", "kudurru-vrrp")
+		r.wantObject(t, "ClusterRole", "kudurru-edge-nodes")
+	}},
+	{name: "host-network", values: "hostNetwork: {enabled: true}", wantKind: "DaemonSet", check: func(t *testing.T, r *rendered) {
+		pod := r.pod(t)
+		if dig(pod, "spec", "hostNetwork") != true || dig(pod, "spec", "dnsPolicy") != "ClusterFirstWithHostNet" {
+			t.Errorf("hostNetwork pods need hostNetwork and ClusterFirstWithHostNet")
+		}
+		if dig(pod, "spec", "topologySpreadConstraints") != nil {
+			t.Errorf("a DaemonSet needs no topology spread")
+		}
+	}},
+	{name: "host-network-standalone", values: "mode: standalone\nhostNetwork: {enabled: true}", wantKind: "StatefulSet"},
+	{name: "persistence-querylog", values: "persistence: {querylog: {enabled: true, size: 20Gi}}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		vct := mapOf(dig(r.workload(t), "spec", "volumeClaimTemplates", 0))
+		if dig(vct, "spec", "resources", "requests", "storage") != "20Gi" {
+			t.Errorf("querylog claim = %v", vct)
+		}
+		r.wantStore(t, "kube")
+	}},
+	{name: "persistence-local", values: "persistence: {local: {enabled: true}}\npriorityClassName: system-cluster-critical", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		if dig(r.pod(t), "spec", "priorityClassName") != "system-cluster-critical" {
+			t.Errorf("priorityClassName not set")
+		}
+	}},
+	{name: "ingress", values: "ingress: {enabled: true, className: nginx, host: dns.example.com, tls: [{secretName: dns-tls, hosts: [dns.example.com]}]}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		ing := r.object(t, "Ingress", "kudurru")
+		if dig(ing, "spec", "rules", 0, "host") != "dns.example.com" {
+			t.Errorf("ingress host = %v", dig(ing, "spec", "rules", 0, "host"))
+		}
+	}},
+	{name: "monitoring", values: "serviceMonitor: {enabled: true}\npodMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantObject(t, "ServiceMonitor", "kudurru")
+		r.wantObject(t, "PodMonitor", "kudurru")
+		rule := r.object(t, "PrometheusRule", "kudurru")
+		if len(list(dig(rule, "spec", "groups"))) == 0 {
+			t.Errorf("PrometheusRule has no groups")
+		}
+		cm := r.object(t, "ConfigMap", "kudurru-dashboard")
+		if !strings.Contains(str(dig(cm, "data", "kudurru-overview.json")), `"uid": "kudurru-overview"`) {
+			t.Errorf("dashboard ConfigMap does not carry the dashboard JSON")
+		}
+	}},
+	{name: "network-policy", values: "networkPolicy: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		np := r.object(t, "NetworkPolicy", "kudurru")
+		r.wantPortOnlyFrom(t, np, 8082, "dns")
+	}},
+	{name: "network-policy-edge", values: "networkPolicy: {enabled: true}\nedge: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		np := r.object(t, "NetworkPolicy", "kudurru")
+		r.wantPortOnlyFrom(t, np, 5353, "edge")
+		r.wantPortOnlyFrom(t, np, 8082, "dns", "edge")
+		r.wantObject(t, "NetworkPolicy", "kudurru-edge")
+	}},
+	{name: "network-policy-keepalived", values: "networkPolicy: {enabled: true}\nedge: {enabled: true}\nvip: {provider: keepalived, address: 10.0.0.53/24, keepalived: {interface: eth0}}", wantKind: "Deployment"},
+	{name: "network-policy-sidecar", values: "networkPolicy: {enabled: true}\nedge: {enabled: true, mode: sidecar}", wantKind: "Deployment"},
+	{name: "encrypted-transports", values: "tls: {secretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}, doq: {enabled: true}, doh3: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		cfg := r.config(t)
+		if len(cfg.Listeners.DoT) != 1 || len(cfg.Listeners.DoH) != 1 || len(cfg.Listeners.DoQ) != 1 || len(cfg.Listeners.DoH3) != 1 {
+			t.Errorf("encrypted listeners missing: %+v", cfg.Listeners)
+		}
+		if n := len(list(dig(r.object(t, "Service", "kudurru-dns"), "spec", "ports"))); n != 6 {
+			t.Errorf("dns Service has %d ports, want 6", n)
+		}
+	}},
+	{name: "encrypted-transports-edge", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}, doq: {enabled: true}, doh3: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if cfg := r.config(t); len(cfg.Listeners.DoT) != 0 {
+			t.Errorf("behind the edge, dnsdist terminates TLS; kudurru must not listen on DoT")
+		}
+		if !slices.Contains(r.edgeArgs(t), "--dot=0.0.0.0:853") {
+			t.Errorf("edge lacks --dot: %v", r.edgeArgs(t))
+		}
+	}},
+	{name: "external-dns-webhook", values: "externalDNS: {webhook: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if !strings.Contains(r.nodeFile(t), "listen: :8888") {
+			t.Errorf("node file lacks externalDNS.webhook.listen")
+		}
+	}},
+	{name: "existing-secrets", values: "auth: {encryptionKeySecret: my-key, encryptionKeyPreviousSecret: my-old-key, bootstrapAdminSecret: my-admin, bootstrapToken: {enabled: true, existingSecret: my-token}}\nedge: {enabled: true, existingSecret: my-proxy}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantNoKind(t, "Secret")
+		env := r.envNames(t)
+		for _, want := range []string{"KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE", "KUDURRU_BOOTSTRAP_TOKEN_FILE"} {
+			if !slices.Contains(env, want) {
+				t.Errorf("env lacks %s", want)
+			}
+		}
+	}},
+	{name: "bootstrap-token", values: "auth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantObject(t, "Secret", "kudurru-bootstrap-token")
+	}},
+	{name: "seed-objects", values: seedObjects, wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		z := r.object(t, "DNSZone", "home")
+		if dig(z, "metadata", "annotations", "helm.sh/hook") != "post-install" || dig(z, "metadata", "namespace") != nil {
+			t.Errorf("DNSZone seed: %v", z["metadata"])
+		}
+		if dig(r.object(t, "BlockList", "ads"), "metadata", "namespace") != releaseNS {
+			t.Errorf("namespaced seeds default to the release namespace")
+		}
+	}},
+	{name: "seed-objects-standalone", values: "mode: standalone\n" + seedObjects, wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
+		r.wantNoKind(t, "DNSZone")
+		if cfg := r.config(t); len(cfg.Objects) != 2 {
+			t.Errorf("standalone seeds go into the node file's inline objects, got %d", len(cfg.Objects))
+		}
+	}},
+	{name: "settings", values: "config:\n  node: {log: {level: debug}, listeners: {sockets: 2}}\n  settings:\n    cache: {maxEntries: 50000}\n    blocking: {defaultResponse: nxdomain}\n    upstreams: {groups: {default: {servers: ['tls://1.1.1.1'], strategy: strict}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		cfg := r.config(t)
+		if cfg.Cache.MaxEntries != 50000 || cfg.Log.Level != "debug" || cfg.Listeners.Sockets != 2 || cfg.Blocking.DefaultResponse != "nxdomain" {
+			t.Errorf("config.node/config.settings not applied: %+v", cfg)
+		}
+		if !strings.Contains(str(dig(r.object(t, "ConfigMap", "kudurru-settings"), "data", "settings.yaml")), "maxEntries: 50000") {
+			t.Errorf("settings ConfigMap lacks the cluster keys")
+		}
+	}},
+	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
+}
+
+const seedObjects = `objects:
+  - apiVersion: kudurru.io/v1alpha1
+    kind: DNSZone
+    metadata: {name: home}
+    spec: {zoneName: home.arpa., type: primary}
+  - apiVersion: kudurru.io/v1alpha1
+    kind: BlockList
+    metadata: {name: ads}
+    spec: {mode: block, sources: [{url: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"}]}
+`
+
+// failCases must not render.
+var failCases = []struct{ name, values, want string }{
+	{"bad-mode", "mode: docker", "mode must be"},
+	{"bad-vip", "vip: {provider: bgp}", "vip.provider must be"},
+	{"bad-edge-mode", "edge: {enabled: true, mode: host}", "edge.mode must be"},
+	{"keepalived-without-edge", "vip: {provider: keepalived, address: 10.0.0.53/24, keepalived: {interface: eth0}}", "needs edge.enabled"},
+	{"keepalived-sidecar", "edge: {enabled: true, mode: sidecar}\nvip: {provider: keepalived, address: 10.0.0.53/24, keepalived: {interface: eth0}}", "sidecar"},
+	{"keepalived-without-address", "edge: {enabled: true}\nvip: {provider: keepalived, keepalived: {interface: eth0}}", "vip.address"},
+	{"keepalived-not-cidr", "edge: {enabled: true}\nvip: {provider: keepalived, address: 10.0.0.53, keepalived: {interface: eth0}}", "CIDR"},
+	{"keepalived-without-interface", "edge: {enabled: true}\nvip: {provider: keepalived, address: 10.0.0.53/24}", "interface"},
+	{"metallb-without-address", "vip: {provider: metallb}", "vip.address"},
+	{"dot-without-tls", "service: {dot: {enabled: true}}", "tls.secretName"},
+	{"dot-edge-without-tls", "edge: {enabled: true}\nservice: {doh: {enabled: true}}", "edge.tlsSecretName"},
+	{"hostnetwork-persistence", "hostNetwork: {enabled: true}\npersistence: {querylog: {enabled: true}}", "hostNetwork DaemonSet"},
+	{"ingress-without-host", "ingress: {enabled: true}", "ingress.host"},
+	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},
+	{"edge-backend-53", "edge: {enabled: true, backendPort: 53}", "backendPort"},
+}
+
+// helmBin returns the helm binary or skips the test.
+func helmBin(t *testing.T) string {
+	t.Helper()
+	p, err := exec.LookPath("helm")
+	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("helm is required in CI")
+		}
+		t.Skip("helm not installed; the CI helm job runs the render matrix")
+	}
+	return p
+}
+
+// renderChart runs helm template for a values document.
+func renderChart(t *testing.T, values string) ([]byte, error) {
+	t.Helper()
+	root := repoRoot(t)
+	args := []string{"template", "kudurru", filepath.Join(root, "charts/kudurru"), "--namespace", releaseNS}
+	if values != "" {
+		f := filepath.Join(t.TempDir(), "values.yaml")
+		if err := os.WriteFile(f, []byte(values), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, "--values", f)
+	}
+	cmd := exec.Command(helmBin(t), args...) //nolint:gosec // fixed binary, test arguments
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, stderr.String())
+	}
+	return out, nil
+}
+
+func TestChartRenderMatrix(t *testing.T) {
+	for _, tc := range chartCases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := renderChart(t, tc.values)
+			if err != nil {
+				t.Fatalf("helm template: %v", err)
+			}
+			r := newRendered(t, out)
+			r.checkGeneric(t)
+			if k := r.workloadKind(t); k != tc.wantKind {
+				t.Errorf("kudurru workload is a %s, want %s", k, tc.wantKind)
+			}
+			r.config(t) // loads through config.Load
+			if tc.check != nil {
+				tc.check(t, r)
+			}
+		})
+	}
+}
+
+func TestChartRejectsInvalidValues(t *testing.T) {
+	for _, tc := range failCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := renderChart(t, tc.values)
+			if err == nil {
+				t.Fatalf("values rendered; want a failure mentioning %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestChartChecksumCoversNodeFileOnly pins D25: a change to the node file
+// (including, until the binary reads the settings file, the cluster keys
+// merged into it) rolls the pods; anything else leaves the template alone.
+func TestChartChecksumCoversNodeFileOnly(t *testing.T) {
+	checksum := func(values string) string {
+		out, err := renderChart(t, values)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := newRendered(t, out)
+		return str(dig(r.pod(t), "metadata", "annotations", "checksum/node-config"))
+	}
+	base := checksum("")
+	if base == "" {
+		t.Fatal("no checksum/node-config annotation")
+	}
+	if got := checksum("config: {node: {log: {level: debug}}}"); got == base {
+		t.Errorf("a node key change must roll the pods")
+	}
+	if got := checksum("serviceMonitor: {enabled: true}\nresources: {requests: {cpu: 200m}}"); got != base {
+		t.Errorf("changes outside the node file must not change the checksum")
+	}
+}
+
+// TestChartLint runs helm lint on both charts.
+func TestChartLint(t *testing.T) {
+	root := repoRoot(t)
+	for _, c := range []string{"charts/kudurru", "charts/kudurru-crds"} {
+		cmd := exec.Command(helmBin(t), "lint", "--strict", filepath.Join(root, c)) //nolint:gosec // fixed binary
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("helm lint %s: %v\n%s", c, err, out)
+		}
+	}
+}
+
+// TestCRDChartMatchesBases keeps charts/kudurru-crds/templates a verbatim
+// copy of config/crd/bases (make manifests is the source).
+func TestCRDChartMatchesBases(t *testing.T) {
+	root := repoRoot(t)
+	bases, err := filepath.Glob(filepath.Join(root, "config/crd/bases/*.yaml"))
+	if err != nil || len(bases) == 0 {
+		t.Fatalf("no CRD bases: %v", err)
+	}
+	for _, b := range bases {
+		want, err := os.ReadFile(b) //nolint:gosec // repository file
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(root, "charts/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
+		if err != nil || !bytes.Equal(got, want) {
+			t.Errorf("charts/kudurru-crds/templates/%s differs from config/crd/bases; run make manifests", filepath.Base(b))
+		}
+	}
+}
