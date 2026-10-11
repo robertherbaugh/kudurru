@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"strconv"
 	"strings"
 
 	discoveryv1client "k8s.io/client-go/kubernetes/typed/discovery/v1"
 	"k8s.io/client-go/rest"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
@@ -34,6 +37,22 @@ func listRefresher(m cluster.Membership, f *listfetcher.Fetcher) api.ListRefresh
 		}
 		return err
 	})
+}
+
+// listBodies backs the entries browser of URL and ConfigMap sources with
+// this node's list cache.
+type listBodies struct{ cache *listfetcher.DiskCache }
+
+func (b listBodies) OpenSourceBody(namespace string, src v1alpha1.ListSource) (io.ReadCloser, api.SourceBody, error) {
+	key := listfetcher.SourceKey(namespace, src)
+	if key == "" {
+		return nil, api.SourceBody{}, fs.ErrNotExist
+	}
+	f, e, err := b.cache.Open(key)
+	if err != nil {
+		return nil, api.SourceBody{}, err
+	}
+	return f, api.SourceBody{Digest: e.Digest, Fetched: e.Fetched, Size: e.Size}, nil
 }
 
 // querylogPurger backs DELETE /querylog with the sqlite writer (nil: 501).

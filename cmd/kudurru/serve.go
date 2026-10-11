@@ -35,6 +35,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/controller"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
@@ -586,6 +587,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:    listRefresher(membership, fetcher),
+		ListBodies:   listBodies{cache: lists},
 		Purger:       querylogPurger(qlWriter),
 		Audit:        recorders,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
@@ -675,6 +677,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		{"api", false, apiSrv.Run},
 		{"unblock", false, unblockBook.Run},
 		{"unblock-janitor", true, unblockBook.RunJanitor},
+		{"domainlist-migration", true, domainlist.New(domainlist.Options{Store: st, Logger: logger}).RunMigration},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
 			return err

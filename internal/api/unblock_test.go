@@ -66,12 +66,12 @@ func TestUnblockRequestsAPI(t *testing.T) {
 	h.do(http.MethodPost, path+"/approve", "operator", map[string]any{"scope": "group", "group": "nobody"}).want(http.StatusUnprocessableEntity)
 	var res UnblockDecisionResult
 	h.do(http.MethodPost, path+"/approve", "operator", map[string]any{"scope": "everyone", "match": "subdomains", "duration": "1h", "note": "ok"}).want(http.StatusOK).json(&res)
-	if res.Request.State != "Approved" || res.Request.Allow == nil || res.Request.Allow.Entry != "||games.example^" || res.Request.Allow.ExpiresAt == nil ||
+	if res.Request.State != "Approved" || res.Request.Allow == nil || res.Request.Allow.Entry != "*.games.example" || res.Request.Allow.ExpiresAt == nil ||
 		res.Request.DecidedBy != "User:operator" || !slices.Equal(res.Attached, []string{"default/default"}) {
 		t.Fatalf("approve %+v", res)
 	}
 	bl := &v1alpha1.BlockList{}
-	if err := h.st.Get(context.Background(), store.Key{Kind: "BlockList", Namespace: "default", Name: unblock.EveryoneList}, bl); err != nil || !slices.Contains(bl.Spec.Sources[0].Inline, "||games.example^") {
+	if err := h.st.Get(context.Background(), store.Key{Kind: "BlockList", Namespace: "default", Name: unblock.EveryoneList}, bl); err != nil || len(bl.Spec.Sources[0].Entries) != 1 || bl.Spec.Sources[0].Entries[0].Value != "*.games.example" || bl.Spec.Sources[0].Entries[0].Origin != v1alpha1.OriginUnblock {
 		t.Fatalf("ui-allow %+v %v", bl.Spec, err)
 	}
 	h.do(http.MethodPost, path+"/approve", "operator", map[string]any{}).want(http.StatusConflict)

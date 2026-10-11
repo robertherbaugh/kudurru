@@ -1159,6 +1159,459 @@
         ],
         "type": "object"
       },
+      "DomainEntries": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DomainEntry"
+            },
+            "type": "array"
+          },
+          "lists": {
+            "items": {
+              "$ref": "#/components/schemas/DomainListInfo"
+            },
+            "type": "array"
+          },
+          "matched": {
+            "description": "Entries matching the filters.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "total": {
+            "description": "Entries of the action(s) and namespace(s), before filters.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unattached": {
+            "description": "Policies that should reference a list but are managed by a file or an integration; add the list there.",
+            "items": {
+              "$ref": "#/components/schemas/DomainUnattached"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "matched",
+          "lists",
+          "unattached",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "DomainEntriesBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
+          },
+          "op": {
+            "enum": [
+              "enable",
+              "disable",
+              "delete"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ids",
+          "op"
+        ],
+        "type": "object"
+      },
+      "DomainEntriesCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Default true.",
+            "type": "boolean"
+          },
+          "groups": {
+            "description": "ClientGroups (ns/name or a name in namespace); empty applies to everyone.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "nullable": true,
+            "type": "array"
+          },
+          "namespace": {
+            "description": "Default the server's default namespace.",
+            "type": "string"
+          },
+          "origin": {
+            "description": "Where the entry was added from (default manual).",
+            "enum": [
+              "manual",
+              "querylog",
+              "api"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "description": "Default exact.",
+            "enum": [
+              "exact",
+              "wildcard",
+              "regex"
+            ],
+            "type": "string"
+          },
+          "values": {
+            "description": "One entry per value, all of one type.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "type": "object"
+      },
+      "DomainEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "created": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "The actor that added the entry (user:alice).",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "everyone": {
+            "description": "Applies to every client (stored in ui-allow / ui-deny).",
+            "type": "boolean"
+          },
+          "groups": {
+            "description": "ClientGroups (ns/name) with a group-scoped copy.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}.",
+            "type": "string"
+          },
+          "lists": {
+            "items": {
+              "$ref": "#/components/schemas/DomainEntryList"
+            },
+            "type": "array"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "querylog",
+              "unblock",
+              "api",
+              "migrated"
+            ],
+            "type": "string"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/DomainOverride"
+            },
+            "type": "array"
+          },
+          "policies": {
+            "description": "Policies that reference the entry's lists, ns/name.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "readOnlyReason": {
+            "type": "string"
+          },
+          "request": {
+            "description": "The UnblockRequest (ns/name) whose approval added the entry.",
+            "type": "string"
+          },
+          "rule": {
+            "description": "The rule as compiled and shown in the query log: name, *.name or /expression/.",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "exact",
+              "wildcard",
+              "regex"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "description": "exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "namespace",
+          "value",
+          "type",
+          "rule",
+          "enabled",
+          "everyone",
+          "groups",
+          "lists",
+          "policies",
+          "origin",
+          "overrides",
+          "readOnly"
+        ],
+        "type": "object"
+      },
+      "DomainEntryList": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "description": "The ClientGroup of a group list, ns/name.",
+            "type": "string"
+          },
+          "list": {
+            "description": "The BlockList, ns/name (ui-allow, ui-deny, ui-allow-\u003cgroup\u003e, ui-deny-\u003cgroup\u003e).",
+            "type": "string"
+          },
+          "managedBy": {
+            "description": "The list's owner when not the API.",
+            "type": "string"
+          },
+          "source": {
+            "description": "The source holding the entry (ui).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "list",
+          "source"
+        ],
+        "type": "object"
+      },
+      "DomainEntryPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "nullable": true,
+            "type": "array"
+          },
+          "scope": {
+            "description": "everyone, or groups (with groups).",
+            "enum": [
+              "everyone",
+              "groups"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "exact",
+              "wildcard",
+              "regex"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 1024,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DomainListInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "description": "The list's kudurru.io/enabled switch.",
+            "type": "boolean"
+          },
+          "entries": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "group": {
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "managedBy": {
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "list",
+          "action",
+          "enabled",
+          "entries",
+          "policies"
+        ],
+        "type": "object"
+      },
+      "DomainOverride": {
+        "additionalProperties": false,
+        "properties": {
+          "list": {
+            "description": "The compiled list, ns/name.",
+            "type": "string"
+          },
+          "rule": {
+            "description": "The rule of that list that matches the name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "list",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "DomainUnattached": {
+        "additionalProperties": false,
+        "properties": {
+          "list": {
+            "type": "string"
+          },
+          "managedBy": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "list",
+          "policy",
+          "managedBy"
+        ],
+        "type": "object"
+      },
+      "DomainWriteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "attached": {
+            "description": "Policies that reference the written lists.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "flushed": {
+            "description": "Response-cache entries of the names removed on this node.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "description": "The entries written, as stored after the write.",
+            "items": {
+              "$ref": "#/components/schemas/DomainEntry"
+            },
+            "type": "array"
+          },
+          "processed": {
+            "$ref": "#/components/schemas/ProcessedItems"
+          },
+          "skipped": {
+            "description": "Policies that should reference a list but are managed elsewhere.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "processed",
+          "attached",
+          "skipped",
+          "flushed",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "DomainsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1640,122 +2093,6 @@
           "serial",
           "warnings",
           "took_ms"
-        ],
-        "type": "object"
-      },
-      "InlineEntries": {
-        "additionalProperties": false,
-        "properties": {
-          "continue": {
-            "description": "Token for the next page; empty on the last page.",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/InlineEntry"
-            },
-            "type": "array"
-          },
-          "matched": {
-            "description": "Entries matching q (Total without q).",
-            "format": "int64",
-            "type": "integer"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          },
-          "total": {
-            "description": "Entries in the source.",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "matched",
-          "took_ms"
-        ],
-        "type": "object"
-      },
-      "InlineEntriesPatch": {
-        "additionalProperties": false,
-        "properties": {
-          "add": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10000,
-            "nullable": true,
-            "type": "array"
-          },
-          "remove": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 10000,
-            "nullable": true,
-            "type": "array"
-          }
-        },
-        "type": "object"
-      },
-      "InlineEntriesResult": {
-        "additionalProperties": false,
-        "properties": {
-          "added": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "removed": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "resourceVersion": {
-            "type": "string"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          },
-          "total": {
-            "description": "Entries in the source after the change.",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "added",
-          "removed",
-          "total",
-          "resourceVersion",
-          "took_ms"
-        ],
-        "type": "object"
-      },
-      "InlineEntry": {
-        "additionalProperties": false,
-        "properties": {
-          "line": {
-            "description": "1-based position in spec.sources[].inline.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "value": {
-            "description": "The entry as written in spec.sources[].inline.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "value",
-          "line"
         ],
         "type": "object"
       },
@@ -3954,6 +4291,205 @@
         ],
         "type": "object"
       },
+      "SourceEntries": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "digest": {
+            "description": "url and configMap: sha256 of the body this node holds.",
+            "type": "string"
+          },
+          "excluded": {
+            "description": "Entries switched off.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "fetched": {
+            "description": "url and configMap: when this node's body was fetched.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceEntry"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "inline",
+              "url",
+              "configMap",
+              "entries"
+            ],
+            "type": "string"
+          },
+          "matched": {
+            "description": "Entries matching q and enabled.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "stale": {
+            "description": "This node's body is not the one status.sources[].digest publishes yet.",
+            "type": "boolean"
+          },
+          "staleExcludes": {
+            "description": "spec.sources[].exclude values that match no entry of the current body.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "total": {
+            "description": "Entries in the source.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "matched",
+          "excluded",
+          "staleExcludes",
+          "kind",
+          "stale",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "SourceEntriesPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "description": "Inline sources only: lines to add.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "nullable": true,
+            "type": "array"
+          },
+          "disable": {
+            "description": "Entries to switch off: added to spec.sources[].exclude (enabled: false for structured entries).",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "nullable": true,
+            "type": "array"
+          },
+          "enable": {
+            "description": "Entries (values as GET lists them) to switch back on.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "nullable": true,
+            "type": "array"
+          },
+          "remove": {
+            "description": "Inline sources only: lines to remove.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SourceEntriesResult": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "excluded": {
+            "description": "Exclude values, or structured entries switched off, after the change.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resourceVersion": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "total": {
+            "description": "Inline lines or structured entries after the change (0 for url and configMap sources).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "enabled",
+          "disabled",
+          "total",
+          "excluded",
+          "resourceVersion",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "SourceEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "description": "false when switched off (spec.sources[].exclude, or enabled: false of a structured entry).",
+            "type": "boolean"
+          },
+          "line": {
+            "description": "1-based line of the body (inline: position in spec.sources[].inline; entries: position in spec.sources[].entries).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "value": {
+            "description": "inline: the line as written; url and configMap: the rule as the source's format normalises it (one item per host of a hosts line); entries: the rendered rule.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "line",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "Stats": {
         "additionalProperties": false,
         "properties": {
@@ -5196,6 +5732,761 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/allowlist": {
+      "get": {
+        "description": "Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-\u003cgroup\u003e (one ClientGroup), referenced by the policies concerned. Newest first.",
+        "operationId": "listAllowlist",
+        "parameters": [
+          {
+            "description": "Only this namespace (default: every namespace).",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only this namespace (default: every namespace).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "enum": [
+                "exact",
+                "wildcard",
+                "regex"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "enabled",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "everyone, or a ClientGroup (ns/name).",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "everyone, or a ClientGroup (ns/name).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Substring of the value or comment, case-insensitive.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Substring of the value or comment, case-insensitive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100).",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size (default 100).",
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntries"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Allowlist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "operationId": "createAllowlistEntries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntriesCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Add Allowlist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/allowlist/{id}": {
+      "delete": {
+        "description": "Removes every copy; a list left empty is deleted and its policy references removed.",
+        "operationId": "deleteAllowlistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete a Allowlist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      },
+      "get": {
+        "operationId": "getAllowlistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntry"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get a Allowlist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "patch": {
+        "description": "Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.",
+        "operationId": "patchAllowlistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Change a Allowlist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/allowlist:batch": {
+      "post": {
+        "operationId": "batchAllowlistEntries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntriesBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Switch on, off or delete several Allowlist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
     "/apply": {
       "post": {
         "description": "Whole-object apply with manager \"api\". The body is multi-document YAML (application/yaml) or JSON (an object, an array of objects, or a kind: List). Every document is authorized, validated and applied on its own; the response lists one result per document in order.",
@@ -7625,8 +8916,8 @@
     },
     "/blocklists/{namespace}/{name}/sources/{source}/entries": {
       "get": {
-        "description": "The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.",
-        "operationId": "listInlineEntries",
+        "description": "Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.",
+        "operationId": "listSourceEntries",
         "parameters": [
           {
             "in": "path",
@@ -7665,6 +8956,20 @@
             }
           },
           {
+            "description": "Only entries switched on (true) or off (false).",
+            "explode": false,
+            "in": "query",
+            "name": "enabled",
+            "schema": {
+              "description": "Only entries switched on (true) or off (false).",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Page size (default 100).",
             "explode": false,
             "in": "query",
@@ -7691,7 +8996,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InlineEntries"
+                  "$ref": "#/components/schemas/SourceEntries"
                 }
               }
             },
@@ -7776,7 +9081,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Page through the entries of an inline BlockList source",
+        "summary": "Page through the entries of a BlockList source",
         "tags": [
           "blocklists"
         ],
@@ -7787,8 +9092,8 @@
         }
       },
       "patch": {
-        "description": "Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.",
-        "operationId": "patchInlineEntries",
+        "description": "Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.",
+        "operationId": "patchSourceEntries",
         "parameters": [
           {
             "in": "path",
@@ -7830,7 +9135,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InlineEntriesPatch"
+                "$ref": "#/components/schemas/SourceEntriesPatch"
               }
             }
           },
@@ -7841,7 +9146,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InlineEntriesResult"
+                  "$ref": "#/components/schemas/SourceEntriesResult"
                 }
               }
             },
@@ -7945,7 +9250,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Add and remove entries of an inline BlockList source",
+        "summary": "Switch entries of a BlockList source off and on, add and remove inline entries",
         "tags": [
           "blocklists"
         ],
@@ -9861,6 +11166,761 @@
         }
       }
     },
+    "/denylist": {
+      "get": {
+        "description": "Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-\u003cgroup\u003e (one ClientGroup), referenced by the policies concerned. Newest first.",
+        "operationId": "listDenylist",
+        "parameters": [
+          {
+            "description": "Only this namespace (default: every namespace).",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only this namespace (default: every namespace).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "enum": [
+                "exact",
+                "wildcard",
+                "regex"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "enabled",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "everyone, or a ClientGroup (ns/name).",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "everyone, or a ClientGroup (ns/name).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Substring of the value or comment, case-insensitive.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Substring of the value or comment, case-insensitive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100).",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size (default 100).",
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntries"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Denylist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.",
+        "operationId": "createDenylistEntries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntriesCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Add Denylist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/denylist/{id}": {
+      "delete": {
+        "description": "Removes every copy; a list left empty is deleted and its policy references removed.",
+        "operationId": "deleteDenylistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete a Denylist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      },
+      "get": {
+        "operationId": "getDenylistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntry"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get a Denylist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "patch": {
+        "description": "Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.",
+        "operationId": "patchDenylistEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntryPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Change a Denylist entry",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/denylist:batch": {
+      "post": {
+        "operationId": "batchDenylistEntries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DomainEntriesBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainWriteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Switch on, off or delete several Denylist entries",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
     "/dns/blocking": {
       "get": {
         "operationId": "getBlocking",
@@ -10490,6 +12550,195 @@
         ],
         "x-kudurru-permission": {
           "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/domains": {
+      "get": {
+        "description": "The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.",
+        "operationId": "listDomainEntries",
+        "parameters": [
+          {
+            "description": "Only Allowlist (allow) or Denylist (deny) entries.",
+            "explode": false,
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "description": "Only Allowlist (allow) or Denylist (deny) entries.",
+              "enum": [
+                "allow",
+                "deny"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this namespace (default: every namespace).",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only this namespace (default: every namespace).",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "enum": [
+                "exact",
+                "wildcard",
+                "regex"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "enabled",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "everyone, or a ClientGroup (ns/name).",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "everyone, or a ClientGroup (ns/name).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Substring of the value or comment, case-insensitive.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Substring of the value or comment, case-insensitive.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 100).",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size (default 100).",
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainEntries"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Allowlist and Denylist entries together",
+        "tags": [
+          "domains"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
           "scope": "cluster",
           "verb": "read"
         }

@@ -130,13 +130,13 @@ type SourceStats struct {
 	Format parser.Format // effective (detected when the source said auto)
 	Title  string
 	// CRC32 is the checksum of the normalised rule lines.
-	CRC32              uint32
-	Lines              int
-	Rules              int
-	Exceptions         int
-	Unsupported        int
-	Invalid            int
-	Ignored            int
+	CRC32       uint32
+	Lines       int
+	Rules       int
+	Exceptions  int
+	Unsupported int
+	Invalid     int
+	Ignored     int
 	// Excluded counts the rules Source.Exclude switched off; they are not
 	// in Rules.
 	Excluded int

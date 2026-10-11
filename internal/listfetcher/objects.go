@@ -2,8 +2,8 @@ package listfetcher
 
 import (
 	"crypto/sha256"
-	"slices"
 	"encoding/hex"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -114,6 +114,23 @@ func ListName(namespace, name string) string {
 		return name
 	}
 	return namespace + "/" + name
+}
+
+// SourceKey is the list cache key of a URL or ConfigMap source of a
+// BlockList in namespace: the URL, or configmap://<namespace>/<name>; ""
+// for sources kept in the object.
+func SourceKey(namespace string, src v1alpha1.ListSource) string {
+	switch {
+	case src.URL != "":
+		return src.URL
+	case src.ConfigMapRef != nil:
+		ns := src.ConfigMapRef.Namespace
+		if ns == "" {
+			ns = namespace
+		}
+		return ConfigMapKey(ns, src.ConfigMapRef.Name)
+	}
+	return ""
 }
 
 // plannedSource is one source of a BlockList with everything both halves

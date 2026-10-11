@@ -144,8 +144,8 @@ func searchHits(raw json.RawMessage) ([]searchHit, error) {
 	return out, nil
 }
 
-// newDomainsCmd adds inline allow/deny entries (the "ui-allow"/"ui-deny"
-// lists, created on demand).
+// newDomainsCmd adds Allowlist/Denylist entries for everyone (the
+// "ui-allow"/"ui-deny" lists, created on demand).
 func newDomainsCmd(o *cliOpts, verb string) *cobra.Command {
 	var (
 		regex bool
