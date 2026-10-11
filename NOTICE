@@ -14,11 +14,23 @@ licences. Attributions are added to this file as the dependencies land:
   cache/stringcache: the length-bucketed sorted concatenated-string exact
   set searched by binary search, the cheapest-first matcher chain with
   per-list matched-rule reporting, and the regex-count warning threshold.
+  internal/upstream takes the parallel_best strategy (race two randomly
+  chosen healthy upstreams, first usable answer wins) and the strict
+  strategy from blocky's resolver package, and internal/cache follows its
+  caching resolver (prefetch of entries hit often within a window, packed
+  messages as cache values, never caching conditional or local answers).
   No blocky source file is copied verbatim.
-- dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: upstream
-  client library (also the independent DoT/DoH/DoQ/DoH3 client in the
-  internal/dnsserver tests); the DoQ and DoH3 server structure in
-  internal/dnsserver follows proxy/serverquic.go and proxy/serverhttps.go.
+- dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: linked as
+  the upstream client library of internal/upstream (plain, TCP, DoT, DoH,
+  DoQ, DoH3 and DNSCrypt transports, sdns:// stamps, bootstrap resolution;
+  also the independent DoT/DoH/DoQ/DoH3 client in the internal/dnsserver
+  tests); the dnsmasq-style "[/domain/]upstream" syntax accepted by
+  upstream.ImportDnsmasq follows its upstream configuration format; the DoQ
+  and DoH3 server structure in internal/dnsserver follows
+  proxy/serverquic.go and proxy/serverhttps.go. Its dependencies
+  AdguardTeam/golibs, AdguardTeam/dnscrypt and ameshkov/dnsstamps are
+  public domain (Unlicense) and robfig/cron/v3 is MIT, Copyright (C) 2012
+  Rob Figueiredo.
 - CoreDNS (https://github.com/coredns/coredns), Apache-2.0: zone tree,
   secondary-transfer flow, test helpers; the DoQ and DoH3 listeners in
   internal/dnsserver follow core/dnsserver/server_quic.go and
@@ -38,6 +50,8 @@ licences. Attributions are added to this file as the dependencies land:
   Provider in tests.
 - golang.org/x/oauth2 and golang.org/x/crypto, BSD-3-Clause, Copyright The
   Go Authors: authorization code + PKCE client; bcrypt in tests only.
+  golang.org/x/sync, BSD-3-Clause, Copyright The Go Authors: singleflight
+  coalescing of identical cache misses in internal/cache.
 - Kubernetes (https://github.com/kubernetes/kubernetes), Apache-2.0: the
   shape of claimValidationRules and claimMappings follows the apiserver's
   structured authentication configuration.
