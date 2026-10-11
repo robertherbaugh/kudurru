@@ -21,9 +21,8 @@ Close an item by deleting its row and citing the commit.
 |---|---|---|
 | zonecache: refresh the local.db timestamp (`Touch`) from `store.Info().LastContact` instead of the wall clock when it is non-zero; the kube driver exports it since M2 (docs/m2/hardening.md) | hardening report | M2 (zonecache owner) |
 | Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
-| sqlite: daily leader loop calling `PruneAudit` (400 d); remaining §11.4 audit fields via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist | store-sqlite report | M3 / v0.2 |
+| sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in docs/m5/burndown-server.md) | store-sqlite report | v0.2 |
 | Enforce the 1.5 MiB object cap (etcd) in the sqlite driver (the API refuses larger objects with 413 since docs/m3/api.md) | validator spike | M3 |
-| sqlite: `WithActor` from the auth principal in the API middleware (`auth.PrincipalFrom(ctx).ID`, docs/m3/auth.md); daily leader loop calling `PruneAudit` (400 d); remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing | store-sqlite report | M3 / v0.2 |
 | Enforce the 1.5 MiB object cap (etcd) in the sqlite driver and the API | validator spike | M3 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
 | conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | M2 |
@@ -46,7 +45,6 @@ Close an item by deleting its row and citing the commit.
 | Per-integration Leases: one Runner per elector name or an elector per runnable | controller report | v0.2 |
 | objects: `cluster.role` key driving `Options.Static` (the API answers 503 read_only from `CheckAPIWrite` since docs/m3/api.md); reload inline objects without restart; starter blocklist into `bootstrap.Options.StarterBlockList` | objects report | M2/M3 |
 | objects: `cluster.role` key driving `Options.Static` (the API answers 503 read_only from `CheckAPIWrite` since docs/m3/api.md); reload inline objects without restart; bootstrap `Policy/default` priority as explicit fallback | objects report | M2/M3 |
-| controller `TestKubeDriver` (envtest) reads the SerialBumped events right after the serial moves; under full-suite load the last Event can lag the status write (failed once in the M2 hardening run, passed alone 3/3): wait for the Event too. Likewise `TestMeasureRecordSetChanges/paced_updates` asserts exactly 2,000 status writes and sees 2,001-2,003 with `-cpu 1,2` (reproduced at e56cbea with the M1 memory driver, so not caused by the M2 changes) | hardening report | M2 |
 | objects: `cluster.role` key driving `Options.Static` (the API answers 503 read_only from `CheckAPIWrite` since docs/m3/api.md); reload inline objects without restart; starter blocklist into `bootstrap.Options.StarterBlockList`; bootstrap `Policy/default` priority as explicit fallback | objects report | M2/M3 |
 
 ## Dataplane
@@ -54,7 +52,6 @@ Close an item by deleting its row and citing the commit.
 | Item | Source | Target |
 |---|---|---|
 | Blocking: `$important`/`$badfilter` (considered for v0.1 in the policy package and left to the v0.2 modifier slow path, §7.3; v0.1 counts them unsupported) | blocking spike, policy report | v0.2 |
-| dnsserver: honour `pipeline.ErrDrop` (send nothing on UDP/DoQ, close TCP/DoT/DoH) instead of answering SERVFAIL | policy report | M2 (integration) |
 | Config keys for the control stage (`control.allowedNetworks`, `control.blockedQTypes`) and a hostname source (`policy.HostnameResolver`: reverse PTR cache, DHCP leases, UniFi) for hostname/nameGlob client matchers | policy report | M3 / v0.2 |
 | Blocking toggle replication: a `blocking.Publisher` writing `kudurru.io/blocking-disabled-until` on the `kudurru-runtime` ConfigMap (kube) or state.db (sqlite), and a watcher calling `Toggle.Apply` (`POST /dns/blocking` toggles the node-local Toggle since docs/m3/api.md) | policy report | M3 |
 | Blocking: conformance corpus black-box against an AdGuard Home container (needs Docker); FuzzParse in CI; move benchgate to hack/; lazy-DFA regex engine for regex-heavy users | blocking spike | M2 / later |
@@ -64,17 +61,15 @@ Close an item by deleting its row and citing the commit.
 | Transfer chunks are budgeted by uncompressed size (69 messages of ~42 KB for 100k records); budget by compressed size for fewer, fuller messages | docs/m2/xfr.md | later |
 | Run the dnsdist half of spike (b) and `kdig +quic/+tls/+https` once a dnsdist binary is available | dnsserver spike | hardware |
 | pipeline: dedicated `servfail_unsynced` status instead of reusing `servfail_upstream` | zone report | M2 |
-| log observer: a rate-limited drop (Response with a nil Msg, status `blocked_rate_limit`) is counted in `kudurru_dns_responses_total` with rcode SERVFAIL although nothing was sent; use an `rcode="none"` label for drops | hardening report | M2 (log stage) |
-| ratelimit: apply `ratelimit.*` changes without a restart (cluster-scope keys); a slip counter next to `kudurru_dns_dropped_total{reason="ratelimit"}`; exemptions per ClientGroup once the policy package lands | hardening report | M3 |
+| ratelimit: a slip counter next to `kudurru_dns_dropped_total{reason="ratelimit"}`; exemptions per ClientGroup (`ratelimit.*` reload without a restart landed in docs/m5/burndown-server.md) | hardening report | v0.2 |
 | Multi-socket listeners for DoT (same code path, left at one socket) and DoQ/DoH3 (needs QUIC connection-ID aware routing) | hardening report | M3 |
+| Settings hot reload caveats: a `querylog.privacy`/`anonymize`/`exclude.*` reload builds a new privacy transform, so `pseudonym` mode draws a new HMAC key (pseudonyms change at the reload); `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | docs/m5/burndown-server.md | v0.2 |
 
 ## API (docs/m3/api.md)
 
 | Item | Source | Target |
 |---|---|---|
-| `POST /blocklists/{ns}/{name}/refresh` answers 501 until the list fetcher exposes an on-demand refresh (`api.Options.Refresher`, e.g. a `listfetcher.Fetcher.RefreshNow(ns, name)` on the leader) | api report | M3 |
-| `DELETE /querylog` answers 501 until `sqlitelog.Writer` exports a batched purge (`api.Options.Purger`) | api report | M3 |
-| `PATCH /settings` and `/node/config` change the in-memory configuration only: a `SettingsWriter` (Kudurru singleton / kudurru.yaml) and live reload in the stages that read the keys | api report | M3 |
+| `PATCH /node/config` changes stay in memory (log.level applies at once; nothing persists them, the node file is the operator's): persist node-scope API changes somewhere (a `node.d/` overlay?) or drop the route's write half | docs/m5/burndown-server.md | v0.2 |
 | Scatter-gather over the internal listener for `scope=cluster` stats/log calls, `GET /nodes` peer readiness and `GET /nodes/{name}/health` of other nodes (501 today) | api report | M4 |
 | Scalar docs page (huma default) loads its script from unpkg.com and ignores `listeners.api.pathPrefix`; serve an embedded copy (MIT) under the strict CSP | api report | M3 |
 | `IAMReader` backed by the auth store for the read-only `/iam/*` routes (empty lists until wired) | api report | M3 |
@@ -87,8 +82,6 @@ Close an item by deleting its row and citing the commit.
 
 | Item | Source | Target |
 |---|---|---|
-| `/internal/zones` on the internal server: `internalapi.PathZones` returning `internalapi.ZoneList{node, zones:[{name, serial, type}]}` (primary and secondary zones) from the zone cache; the client (`internalapi.Client.Zones`) and the edge poller exist and tolerate the 404 | docs/m3/edge.md | M3 (integrator/zones owner) |
-| D51 drain path: ingress must stop answering `health.kudurru.internal.` TXT with NOERROR while the node is lameduck (SERVFAIL), so dnsdist's must_resolve check drains it; lameduck never writes the track file (`vip.WithReason(ctx, vip.ReasonLameduck)` refuses Fault) | docs/m3/edge.md | M3 (ingress owner) |
 | health.go: call `installVRRPHealth(cmd)` in `newHealthCmd`; then `kudurru health --vrrp` works and `--probe-command "/usr/local/bin/kudurru health --vrrp"` can become the rendered default (§3.6 wording; `kudurru vip probe` today) | docs/m3/edge.md | M3 (CLI) |
 | Compose/chart: name static backends (`--backends=node-a=10.0.0.11:5353,...`) so the 2.1 validation function checks node ids; `--hmac-key-file` per VRID or the single-file form; edge ServiceAccount get/list/watch on `discovery.k8s.io/endpointslices`; keepalived DaemonSet `--peers-file` from the Node list | docs/m3/edge.md | M4 (deploy/chart) |
 | Flush edge packet caches (`DELETE /api/v1/cache?pool=resolver`) on `POST /dns/blocking` and list refreshes: the resolver pool caches blocked/unblocked answers up to their TTL | docs/m3/edge.md | M4 |
@@ -116,9 +109,8 @@ Close an item by deleting its row and citing the commit.
 | Item | Source | Target |
 |---|---|---|
 | api package: serve the shapes the SPA assumes (docs/m3/ui.md "API routes and shapes"; settings schema JSON names, SSE event `query` + `?lastEventId=`, `transfer` on zone rows, `managedBy` on record rows, `/clients` inventory); then `bun run gen:api` and alias `web/src/api/types.ts` to the generated schemas | ui report | M3 (api + ui) |
-| Honour `kudurru.io/enabled: "false"` on BlockList/ClientGroup/Policy (controller, policy compiler, list resolver) or add `comment`/`enabled` spec fields to v1alpha1 (decision row) | ui report | M3 |
 | Config key for the URL prefix (e.g. `listeners.api.pathPrefix`) feeding `web.Options.BasePath` and the API mount | ui report | M3 (config + integrator) |
-| `GET /api/v1/doctor` so Tools shows the same checks as `kudurru doctor` | ui report | M4 |
+| Tools page: read `GET /api/v1/doctor` (`{node, version, checks:[{check, status ok\|warn\|fail, message}], failures, warnings}`, docs/m5/burndown-server.md) instead of assembling the report client-side | docs/m5/burndown-server.md | M5 (ui) |
 | Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | M4 |
 | Playwright end-to-end run of the dashboard against `kudurru serve` in CI | ui report | M4 |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | M4 |
@@ -127,7 +119,7 @@ Close an item by deleting its row and citing the commit.
 | Item | Source | Target |
 |---|---|---|
 | `--context` selecting a kubeconfig so CRD verbs go straight to the apiserver (§3.5); a context is always a kudurru API endpoint today | docs/m3/cli.md | M4 |
-| Remaining §3.5 verbs: `import pihole\|adguard\|blocky\|technitium`, `lameduck`, `health --vrrp`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) | docs/m3/cli.md | M4 / v0.2 |
+| Remaining §3.5 verbs: `import pihole\|adguard\|blocky\|technitium`, `health --vrrp`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) (`lameduck` landed in docs/m5/burndown-server.md) | docs/m3/cli.md | M4 / v0.2 |
 | Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | docs/m3/cli.md | v0.2 |
 | Put the generated `internal/apiclient/openapi` client under `apiclient.Client` (surface listed in docs/m3/cli.md) | docs/m3/cli.md | M4 |
 | CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in architecture.md §10 | docs/m3/cli.md | M3 (integrator) |
@@ -146,11 +138,10 @@ Close an item by deleting its row and citing the commit.
 
 | Item | Source | Target |
 |---|---|---|
-| Read the settings file the chart mounts (`/etc/kudurru/settings/settings.yaml`, e.g. a `KUDURRU_SETTINGS_FILE` variable or a second `--config` layer) and hot-reload cluster-scope keys on change (D25); then drop the merge of `config.settings` into the node file in `kudurru.nodeConfig` so settings changes stop rolling pods | deploy report | M3 (config/settings) |
-| Leader address with `dnsPolicy: Default`: serve.go dials `<pod>.<KUDURRU_HEADLESS_SERVICE>:8082`, which the node resolver usually cannot resolve; look the leader pod's IP up in the headless EndpointSlice (RBAC already granted) and keep the name only for TLS. Until then replicas fall back to fetching lists themselves after 10 min | deploy report | M3 (cluster) |
+| Chart: point the binary at the mounted settings file (`settingsFile: /etc/kudurru/settings/settings.yaml` in `kudurru.nodeConfig`, or `KUDURRU_SETTINGS_FILE`), then drop the merge of `config.settings` into the node file so settings changes stop rolling pods; the binary reads and hot-reloads it since docs/m5/burndown-server.md (PATCH /settings answers 409 managed_by in kube mode) | deploy report, docs/m5/burndown-server.md | M5 (deploy/chart) |
 | Supervisors `kudurru edge run` / `kudurru vip run` with the flags the chart and compose files render (`--backends`, `--backends-from endpointslice:<ns>/<svc>`, `--backend-port`, `--proxy-protocol-secret-file`, `--readiness-address` with `/healthz/ready` and `/healthz/live`, `--dot/--doh/--doq/--doh3`, `--authoritative-cache`, `--dynblocks`, `--ebpf`, `--peers-from nodes:<selector>`, `--node-name`) and the published images | deploy report | M4 |
-| CLI used by the docs and runbooks: `kudurru lameduck` (the chart uses a preStop sleep meanwhile), `health --vrrp`, `vip drain`, `admin reset-password`, `backup`/`restore` | deploy report | M3 / M4 |
-| Metrics the §11.6 dashboard and alerts still lack: `kudurru_zone_serial{zone}` (serial-divergence panel and alert), `kudurru_edge_backend_up`, `kudurru_vip_master{vip}`, `kudurru_cluster_fenced` (v0.2), `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0); `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe). Add the panels/alerts in deploy/dashboard_test.go and deploy/prometheus/rules.yaml when they land | deploy report | M3 / M4 |
+| CLI used by the docs and runbooks: `health --vrrp`, `vip drain`, `admin reset-password`, `backup`/`restore`. The chart's preStop should become `exec: ["kudurru", "lameduck", "<lameduckSeconds>s"]` (a `sleep` drains the Service endpoints but not dnsdist, docs/deploy/runbooks.md) | deploy report, docs/m5/burndown-server.md | M5 (deploy/chart) |
+| Metrics the §11.6 dashboard and alerts still lack: `kudurru_edge_backend_up`, `kudurru_vip_master{vip}`, `kudurru_cluster_fenced` (v0.2), `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0); `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe). `kudurru_zone_serial{zone}` and `kudurru_zone_records{zone,kind}` exist since docs/m5/burndown-server.md: add the serial-divergence panel and `KudurruSerialDivergence` in deploy/dashboard_test.go and deploy/prometheus/rules.yaml | deploy report | M5 (deploy) |
 | Settings key `externalDNS.webhook.listen` (rendered by `externalDNS.webhook.enabled`, accepted by the deploy tests' `pendingKeys` allowlist until the key exists) | deploy report | M3 (API) |
 | Settings keys for OIDC identity providers and `cluster.role: static`: the chart's `auth.oidc` (§5.2) and the compose HA read-only mode cannot be expressed until they exist | deploy report | M3 (auth, objects) |
 | Consumers of `KUDURRU_ADMIN_PASSWORD_FILE` and `KUDURRU_BOOTSTRAP_TOKEN_FILE` (the chart and compose files already mount them) | deploy report | M3 (auth) |
@@ -158,3 +149,5 @@ Close an item by deleting its row and citing the commit.
 | Separate path keys for `querylog.db` and `local.db` so `persistence.querylog` and `persistence.local` can be distinct volumes; today either switches `/var/lib/kudurru` to one per-pod claim | deploy report | v0.2 |
 | hostNetwork pods cannot use the `ip_unprivileged_port_start` sysctl: binding :53 as uid 65532 there needs `cap_net_bind_service=+ep` on the binary, which ko cannot set; build the release image with a file capability (or document a host sysctl) | deploy report | M4 |
 | Pin `gcr.io/distroless/static:nonroot` and `:debug-nonroot` by digest in `.goreleaser.yaml` and the Dockerfile, bumped by the CVE job; §6.1's `-debug` "adds dig" is not possible on distroless (busybox `nslookup` only) | deploy report | release checklist |
+| Compose files and docs/deploy/docker.md: set `KUDURRU_SETTINGS_FILE` (e.g. `/var/lib/kudurru/settings.yaml` or a mounted `/etc/kudurru/settings/settings.yaml`) so `PATCH /api/v1/settings` persists in Docker; without it changes stay in memory (`persisted: false`) | docs/m5/burndown-server.md | M5 (deploy) |
+| `local.db` and `querylog.db` (and their -wal/-shm) are created 0644 under the process umask; `kudurru doctor` and `GET /doctor` warn "world-readable". Create them 0600 like state.db (localdb, sqlitelog) | docs/m5/burndown-server.md (smoke run) | M5 (store/querylog owners) |
