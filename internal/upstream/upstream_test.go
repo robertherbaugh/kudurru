@@ -324,7 +324,7 @@ func TestHealthBackoffAndRecovery(t *testing.T) {
 	if got := testutil.ToFloat64(metrics.Healthy.WithLabelValues(labelA)); got != 1 {
 		t.Fatalf("healthy gauge after recovery = %v", got)
 	}
-	if got := testutil.ToFloat64(metrics.Requests.WithLabelValues("default/" + b.addr)); got < 6 {
+	if got := testutil.ToFloat64(metrics.Requests.WithLabelValues("default/"+b.addr, "udp")); got < 6 {
 		t.Fatalf("requests_total for b = %v", got)
 	}
 }
@@ -419,7 +419,7 @@ func TestServerNamesAndLabels(t *testing.T) {
 	if r.Server != "lab" || r.Upstream != "default/lab" {
 		t.Fatalf("named server: %q %q", r.Server, r.Upstream)
 	}
-	if testutil.ToFloat64(m.Requests.WithLabelValues("default/lab")) != 1 {
+	if testutil.ToFloat64(m.Requests.WithLabelValues("default/lab", "udp")) != 1 {
 		t.Fatal("metrics must use the display name")
 	}
 	if c := testutil.CollectAndCount(m.Duration); c != 1 {

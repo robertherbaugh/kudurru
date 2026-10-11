@@ -121,6 +121,9 @@ type Options struct {
 	Logger *slog.Logger
 	// Now is the clock (tests). Default time.Now.
 	Now func() time.Time
+	// Metrics, when non-nil, receive the kudurru_store_* instruments
+	// (metrics.go). Default: none.
+	Metrics *Metrics
 }
 
 func (o *Options) setDefaults() error {
