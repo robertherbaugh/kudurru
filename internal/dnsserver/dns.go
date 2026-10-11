@@ -65,6 +65,7 @@ func (l *dnsListener) Bind() error {
 		// EDNS queries (and a PROXYv2 header plus query) silently.
 		UDPSize:           dns.DefaultMsgSize,
 		NotifyStartedFunc: func() { close(l.started) },
+		TsigProvider:      l.env.tsigProvider(),
 	}
 	proxied := l.env.proxy.Enabled()
 	switch l.spec.Protocol {
@@ -160,19 +161,35 @@ func (l *dnsListener) Serve(ctx context.Context) error {
 
 // ServeDNS implements dns.Handler.
 func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	serveMiekg(l.env.handler, l.proto, w, r)
+	serveMiekg(l.env.handler, l.env, l.proto, w, r)
 }
 
-// serveMiekg answers one message delivered by a miekg/dns server.
-func serveMiekg(h *Handler, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
-	m := h.Resolve(context.Background(), r, clientFrom(w.RemoteAddr(), proto))
+// serveMiekg answers one message delivered by a miekg/dns server. Requests
+// whose TSIG fails are answered NOTAUTH without running the pipeline;
+// replies to signed requests are signed (tsig.go); multi-message answers
+// (AXFR/IXFR) are streamed on TCP and DoT.
+func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
+	client := clientFrom(w.RemoteAddr(), proto)
+	sig, ok := verifyTSIG(h, e, w, r, &client)
+	if !ok {
+		return
+	}
+	m, stream := h.resolve(context.Background(), r, client)
+	if stream != nil && proto != pipeline.ProtoUDP {
+		writeStream(h, w, stream, sig)
+		return
+	}
 	if proto == pipeline.ProtoUDP {
 		size := dns.MinMsgSize
 		if opt := r.IsEdns0(); opt != nil && int(opt.UDPSize()) > size {
 			size = int(opt.UDPSize())
 		}
+		if sig.signed() {
+			size -= tsigReserve
+		}
 		m.Truncate(size)
 	}
+	sig.sign(m)
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err, "proto", proto.String())
 	}

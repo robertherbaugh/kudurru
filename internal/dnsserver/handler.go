@@ -3,6 +3,7 @@ package dnsserver
 import (
 	"context"
 	"errors"
+	"iter"
 	"log/slog"
 	"net"
 	"time"
@@ -46,6 +47,15 @@ func (h *Handler) timeout() time.Duration {
 // equals r.Id. ctx carries transport cancellation (an HTTP/2 or QUIC stream
 // reset); Resolve adds the query deadline.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
+	m, _ := h.resolve(ctx, r, client)
+	return m
+}
+
+// resolve is Resolve that also returns the rest of a multi-message answer
+// (pipeline.Response.Transfer, an AXFR/IXFR stream) for stream transports.
+// When the stream is non-nil it yields every message of the answer,
+// starting with the returned one, and the caller writes those instead.
+func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg]) {
 	timeout := h.timeout()
 	if ctx == nil {
 		ctx = context.Background()
@@ -63,11 +73,22 @@ func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 		}
 		m := new(dns.Msg)
 		m.SetRcode(r, dns.RcodeServerFailure)
-		return m
+		return m, nil
 	}
 	m := resp.Msg
 	m.Id = r.Id
-	return m
+	if resp.Transfer == nil {
+		return m, nil
+	}
+	id := r.Id
+	return m, func(yield func(*dns.Msg) bool) {
+		for x := range resp.Transfer {
+			x.Id = id
+			if !yield(x) {
+				return
+			}
+		}
+	}
 }
 
 // resolveFreshID is Resolve for transports whose clients send a fixed

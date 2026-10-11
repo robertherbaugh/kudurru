@@ -131,5 +131,5 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	if a := w.RemoteAddr(); a != nil && a.Network() == "tcp" {
 		proto = pipeline.ProtoTCP
 	}
-	serveMiekg(s.handler(), proto, w, r)
+	serveMiekg(s.handler(), nil, proto, w, r)
 }

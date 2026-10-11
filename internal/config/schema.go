@@ -88,6 +88,8 @@ var Schema = []Key{
 	{Path: "cache.serveStale.maxWait", Type: TypeDuration, Scope: ScopeCluster, Default: "1800ms", Help: "How long a query for an expired entry waits for the upstream refresh before the stale answer is sent (RFC 8767 client response timer)."},
 	{Path: "objects", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.", HostOnly: true, RestartRequired: true},
 	{Path: "objectsDir", Type: TypeString, Scope: ScopeNode, Default: "/etc/kudurru/objects.d", Help: "Directory of *.yaml object files, file-managed as file:<dir>/<name> and re-applied on change; deleting a document deletes the object.", HostOnly: true, RestartRequired: true},
+	{Path: "tsigKeys", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "TSIG keys (RFC 8945) for zone transfers and NOTIFY: name (referenced by DNSZone spec.policy.transferTSIGKeyRefs), algorithm (hmac-sha256, hmac-sha512) and secretFile holding the base64 secret (tsig-keygen format).", HostOnly: true, RestartRequired: true, WriteOnly: true},
+	{Path: "notify.source", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Local IP address outbound NOTIFY messages are sent from; empty lets the kernel choose. Secondaries must list it as a primary.", HostOnly: true, RestartRequired: true},
 	{Path: "log.level", Type: TypeString, Scope: ScopeNode, Default: "info", Help: "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug."},
 	{Path: "log.format", Type: TypeString, Scope: ScopeNode, Default: "json", Help: "Log format: json or text."},
 }

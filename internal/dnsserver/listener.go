@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/miekg/dns"
+
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/tlsreload"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
@@ -233,6 +235,13 @@ type Options struct {
 	// listeners. Nil or disabled means headers are not inspected.
 	Proxy  *proxyproto.Policy
 	Limits Limits
+	// TSIG verifies signed requests and signs their replies on the udp,
+	// tcp and dot listeners (RFC 8945, tsig.go). Nil knows no key: every
+	// signed request is answered NOTAUTH/BADKEY.
+	TSIG TSIGKeyring
+	// OnTSIGFailure, if set, is called with TSIGBadKey, TSIGBadSig or
+	// TSIGBadTime for every request rejected for its TSIG (metrics).
+	OnTSIGFailure func(reason string)
 }
 
 // env is what every listener constructor receives.
@@ -242,6 +251,20 @@ type env struct {
 	certs   *tlsreload.Store
 	proxy   *proxyproto.Policy
 	limits  Limits
+	// tsig verifies and signs TSIG on the miekg transports; nil means a
+	// provider that knows no key.
+	tsig          dns.TsigProvider
+	onTSIGFailure func(reason string)
+}
+
+// tsigProvider returns the provider every miekg server uses, so TSIG is
+// always verified (miekg skips verification without one and would let a
+// forged signature through as "verified").
+func (e *env) tsigProvider() dns.TsigProvider {
+	if e.tsig == nil {
+		return TSIGProvider(nil)
+	}
+	return e.tsig
 }
 
 // factories is the protocol-keyed constructor table behind the registry.
@@ -285,6 +308,9 @@ func NewRegistry(opts Options) (*Registry, error) {
 		certs:   certs,
 		proxy:   opts.Proxy,
 		limits:  opts.Limits.withDefaults(),
+
+		tsig:          TSIGProvider(opts.TSIG),
+		onTSIGFailure: opts.OnTSIGFailure,
 	}}, nil
 }
 
