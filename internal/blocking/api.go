@@ -33,7 +33,9 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 		sname := SourceName(i, src)
 		format := parser.Format(src.Format)
 		if len(src.Inline) > 0 {
-			out.Sources = append(out.Sources, LinesSource(sname, format, src.Inline))
+			s := LinesSource(sname, format, src.Inline)
+			s.HostsSubdomains = src.Subdomains
+			out.Sources = append(out.Sources, s)
 			continue
 		}
 		if open == nil {
@@ -43,7 +45,7 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 		if err != nil {
 			return Spec{}, fmt.Errorf("blocking: list %q source %q: %w", name, sname, err)
 		}
-		out.Sources = append(out.Sources, Source{Name: sname, Format: format, Open: fn})
+		out.Sources = append(out.Sources, Source{Name: sname, Format: format, HostsSubdomains: src.Subdomains, Open: fn})
 	}
 	return out, nil
 }

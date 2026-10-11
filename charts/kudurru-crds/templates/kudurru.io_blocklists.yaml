@@ -117,6 +117,12 @@ spec:
                       type: array
                     name:
                       type: string
+                    subdomains:
+                      description: |-
+                        Subdomains makes the hosts and plain-domain entries of this source
+                        match their subdomains too, for lists published as "domains with
+                        subdomains". Adblock and wildcard rules are not affected.
+                      type: boolean
                     url:
                       type: string
                   type: object
@@ -233,6 +239,12 @@ spec:
                   - name
                   type: object
                 type: array
+              unsupported:
+                description: |-
+                  Unsupported counts valid rules this version parses but does not
+                  apply: modifiers such as $important and $badfilter, mid-pattern
+                  wildcards, hosts rewrites.
+                type: integer
             type: object
         required:
         - spec

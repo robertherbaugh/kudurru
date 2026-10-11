@@ -121,8 +121,10 @@ type plannedSource struct {
 	name   string // blocking.SourceName; keys status.sources
 	key    string // cache key; "" for inline sources
 	format parser.Format
-	inline []string
-	cm     *ConfigMapRef
+	// subdomains is spec.sources[].subdomains.
+	subdomains bool
+	inline     []string
+	cm         *ConfigMapRef
 	// status is the published status entry for this source, if any.
 	status *v1alpha1.SourceStatus
 }
@@ -169,7 +171,7 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 		pl.statusBy[s.Name] = s
 	}
 	for i, src := range bl.Spec.Sources {
-		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format)}
+		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains}
 		switch {
 		case len(src.Inline) > 0:
 			ps.inline = src.Inline
