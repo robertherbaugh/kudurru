@@ -48,16 +48,6 @@ func FuzzKeepalivedRender(f *testing.F) {
 		if err != nil {
 			return
 		}
-		// E2E-6: Validate's safePath admits '{' and '}' (for the {vrid}
-		// placeholder) in every path-like field, so a value such as "/x}"
-		// closes a keepalived.conf block early.
-		if skipKnownBug("E2E-6") {
-			for _, v := range []string{strings.ReplaceAll(hmac, "{vrid}", ""), qname, runDir} {
-				if strings.ContainsAny(v, "{}") {
-					return
-				}
-			}
-		}
 		c := keepalived.Config{
 			RouterID: router, VIPs: []keepalived.VIP{v}, UnicastSrc: src, Peers: []string{peer},
 			HMACKeyFile: hmac, RunDir: runDir, Probe: keepalived.Probe{QName: qname},

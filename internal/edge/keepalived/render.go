@@ -269,12 +269,16 @@ func safeToken(s string) bool {
 	return true
 }
 
+// safePath accepts a path-like value keepalived.conf can carry unquoted.
+// Braces are allowed only as the literal "{vrid}" placeholder: a stray '{'
+// or '}' would open or close a configuration block (E2E-6).
 func safePath(s string) bool {
 	if s == "" {
 		return false
 	}
+	s = strings.ReplaceAll(s, "{vrid}", "")
 	for _, r := range s {
-		if !alnum(r) && !strings.ContainsRune("._-/:{}+=@", r) {
+		if !alnum(r) && !strings.ContainsRune("._-/:+=@", r) {
 			return false
 		}
 	}
