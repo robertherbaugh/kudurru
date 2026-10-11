@@ -60,6 +60,21 @@ licences. Attributions are added to this file as the dependencies land:
   transport for the DoQ and DoH3 listeners.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
+  internal/integration/externaldns re-implements the webhook server side
+  studied in provider/webhook/api/httpapi.go (v0.23.0): the four routes,
+  the versioned media type checked byte for byte by the client, 204 on
+  apply, 413 for oversized bodies, and the JSON forms of plan.Changes and
+  endpoint.DomainFilter; its tests follow provider/webhook/api's test
+  flow. No external-dns source file is copied.
+- huma (https://github.com/danielgtaylor/huma), MIT, Copyright 2020 Daniel
+  G. Taylor: linked as the REST framework of internal/api (operations,
+  OpenAPI 3.1 document, request validation, the Scalar docs page).
+- oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
+  generates internal/apiclient/openapi from api/openapi-3.0.json at
+  development time (not linked); the generated client links
+  github.com/oapi-codegen/runtime, Apache-2.0, and its dependency
+  github.com/apapsch/go-jsonmerge, MIT, Copyright (c) 2016-2019 Artur
+  Kraev.
 - Kubernetes apiextensions-apiserver (https://github.com/kubernetes/kubernetes,
   module k8s.io/apiextensions-apiserver), Apache-2.0: linked as a library for
   CRD schema, defaulting and CEL validation; the custom-resource admission

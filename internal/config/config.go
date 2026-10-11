@@ -40,6 +40,8 @@ type Config struct {
 	TSIGKeys []TSIGKey `koanf:"tsigKeys" json:"tsigKeys,omitempty"`
 	// Notify configures outbound NOTIFY (RFC 1996).
 	Notify Notify `koanf:"notify" json:"notify"`
+	// ExternalDNS configures the external-dns webhook provider (§5.6).
+	ExternalDNS ExternalDNS `koanf:"externalDNS" json:"externalDNS"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
 	// of object files, both reconciled by internal/objects (§6.2).
@@ -66,10 +68,10 @@ type Listeners struct {
 	DoQ  []TLSListener  `koanf:"doq" json:"doq"`
 	DoH3 []HTTPListener `koanf:"doh3" json:"doh3"`
 
-	API               Listener `koanf:"api" json:"api"`
-	Ops               Listener `koanf:"ops" json:"ops"`
-	Metrics           Listener `koanf:"metrics" json:"metrics"`
-	ProxyProtocolFrom []string `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
+	API               APIListener `koanf:"api" json:"api"`
+	Ops               Listener    `koanf:"ops" json:"ops"`
+	Metrics           Listener    `koanf:"metrics" json:"metrics"`
+	ProxyProtocolFrom []string    `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
@@ -482,6 +484,8 @@ func (c *Config) Validate() error {
 		}
 	}
 	errs = append(errs, c.RateLimit.validate()...)
+	errs = append(errs, c.Listeners.API.validate()...)
+	errs = append(errs, c.ExternalDNS.validate()...)
 	if c.Listeners.Sockets < 0 {
 		errs = append(errs, fmt.Errorf("listeners.sockets: %d is negative", c.Listeners.Sockets))
 	}

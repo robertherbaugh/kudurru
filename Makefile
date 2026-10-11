@@ -13,7 +13,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -61,6 +61,19 @@ lint: vet
 
 fmt:
 	gofmt -s -w ./cmd ./api ./internal
+
+## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
+## serves) and api/openapi-3.0.json from the huma route registry;
+## TestOpenAPIDrift fails when the committed files are stale
+openapi:
+	go run ./internal/api/openapigen -dir api
+
+## client-go: generate the Go API client internal/apiclient/openapi from
+## api/openapi-3.0.json with oapi-codegen (Apache-2.0)
+OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
+client-go: openapi
+	$(OAPI_CODEGEN) -config internal/apiclient/openapi/oapi-codegen.yaml api/openapi-3.0.json
+	gofmt -s -w internal/apiclient/openapi
 
 tidy:
 	go mod tidy
