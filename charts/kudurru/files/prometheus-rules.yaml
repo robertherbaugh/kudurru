@@ -1,0 +1,62 @@
+# PrometheusRule for kudurru (docs/architecture.md §11.6). Metrics marked
+# (M-n) are emitted once that milestone lands; the scaffold emits
+# kudurru_build_info, kudurru_dns_requests_total, kudurru_dns_responses_total,
+# kudurru_dns_request_duration_seconds and kudurru_dns_inflight_requests.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kudurru
+  labels:
+    app.kubernetes.io/name: kudurru
+spec:
+  groups:
+    - name: kudurru
+      rules:
+        - alert: KudurruServfailRatio
+          expr: sum(rate(kudurru_dns_responses_total{rcode="SERVFAIL"}[5m])) / sum(rate(kudurru_dns_responses_total[5m])) > 0.05
+          for: 5m
+          labels: { severity: warning }
+          annotations: { summary: "More than 5% of answers are SERVFAIL" }
+        - alert: KudurruLatencyP95High
+          expr: histogram_quantile(0.95, sum by (le) (rate(kudurru_dns_request_duration_seconds_bucket[5m]))) > 0.25
+          for: 10m
+          labels: { severity: warning }
+          annotations: { summary: "p95 query latency above 250 ms" }
+        - alert: KudurruNoLeader              # (M1)
+          expr: max(kudurru_leader{role="controller"}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations: { summary: "No kudurru controller leader" }
+        - alert: KudurruUpstreamUnhealthy     # (M1)
+          expr: kudurru_upstream_healthy == 0
+          for: 2m
+          labels: { severity: warning }
+          annotations: { summary: "Upstream {{ $labels.upstream }} unhealthy" }
+        - alert: KudurruServingFromSnapshot   # (M1)
+          expr: kudurru_store_snapshot_serving == 1
+          for: 15m
+          labels: { severity: warning }
+          annotations: { summary: "{{ $labels.pod }} is serving from local.db; apiserver unreachable" }
+        - alert: KudurruSerialDivergence      # (M2)
+          expr: max by (zone) (kudurru_zone_serial) != min by (zone) (kudurru_zone_serial)
+          for: 10m
+          labels: { severity: warning }
+          annotations: { summary: "Zone {{ $labels.zone }} serial differs between nodes" }
+        - alert: KudurruBlocklistStale        # (M2)
+          expr: time() - kudurru_blocklist_last_update_timestamp_seconds > 3 * 86400
+          labels: { severity: warning }
+          annotations: { summary: "Blocklist {{ $labels.list }} has not refreshed" }
+        - alert: KudurruQuerylogDrops         # (M3)
+          expr: increase(kudurru_querylog_dropped_total[10m]) > 0
+          labels: { severity: warning }
+          annotations: { summary: "Query log events dropped on {{ $labels.pod }}" }
+        - alert: KudurruVIPNoMaster           # (M4)
+          expr: max by (vip) (kudurru_vip_master) == 0
+          for: 1m
+          labels: { severity: critical }
+          annotations: { summary: "No MASTER for VIP {{ $labels.vip }}" }
+        - alert: KudurruEdgeBackendDown       # (M4)
+          expr: kudurru_edge_backend_up == 0
+          for: 2m
+          labels: { severity: warning }
+          annotations: { summary: "dnsdist backend {{ $labels.backend }} down" }

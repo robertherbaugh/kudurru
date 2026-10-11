@@ -1,5 +1,7 @@
-# Two ConfigMaps (decision D25): node keys roll pods via the checksum
-# annotation; settings hot-reload without a restart.
+# Two ConfigMaps (D25). <fullname>-node is the file `serve --config` reads;
+# its checksum annotation rolls the pods. <fullname>-settings carries the
+# cluster-scoped keys and is mounted at /etc/kudurru/settings for hot
+# reload; until the binary reads it, the node file includes the same keys.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,4 +22,4 @@ metadata:
     {{- include "kudurru.labels" . | nindent 4 }}
 data:
   settings.yaml: |
-    {{- toYaml .Values.config.settings | nindent 4 }}
+    {{- toYaml (.Values.config.settings | default dict) | nindent 4 }}
