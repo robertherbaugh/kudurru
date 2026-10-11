@@ -99,8 +99,9 @@ nothing to map them onto: `auth.oidc`, `auth.kubernetes.mode`, `webhook`.
   `<pod>.<headless>:8082`; with the node's resolver that name usually does
   not resolve. The chart sets `subdomain` and the FQDN anyway; the fix
   belongs in the binary (EndpointSlice lookup).
-- **Non-root :53 in Kubernetes needs a sysctl, not a capability.** Kubernetes
-  adds capabilities to the bounding set only, so uid 65532 with
+- **Non-root :53 in Kubernetes needs a sysctl, not a capability.** Capabilities
+  added in the securityContext do not reach the effective set of a non-root
+  process (Kubernetes sets no ambient capabilities), so uid 65532 with
   `NET_BIND_SERVICE` still cannot bind :53. The chart sets the safe
   namespaced sysctl `net.ipv4.ip_unprivileged_port_start=0` (allowed under
   Restricted); hostNetwork pods cannot, and ko cannot set file capabilities.
