@@ -94,6 +94,24 @@ www	IN AAAA 2001:db8::80
 mail	IN MX 10 mx.example.net.
 `
 
+// TestZoneImportKeepsOtherZones is the regression test of the M5 hardening
+// "a re-import deletes every record set carrying its import label": the
+// cleanup of leftover chunks matched the kudurru.io/import label only, so
+// a zone-admin of one zone could delete another zone's record set that
+// carried (or was given) that label.
+func TestZoneImportKeepsOtherZones(t *testing.T) {
+	h := newHarness(t)
+	victim := recordSetObj("default", "other-records", "other", ep("www.other.org", "A", "192.0.2.7"))
+	victim.Labels = map[string]string{labelImport: "example"}
+	h.seed(store.ManagerAPI, zoneObj("example", "example.com."), zoneObj("other", "other.org."), victim)
+	file := "$ORIGIN example.com.\n$TTL 300\n@ IN SOA ns1.example.com. h.example.com. 1 7200 3600 1209600 300\n@ IN NS ns1.example.com.\nwww IN A 192.0.2.80\n"
+	h.do(http.MethodPost, "/api/v1/zones/example/import", "zoneadmin", file, "Content-Type", "text/dns").want(http.StatusOK)
+	var rs v1alpha1.DNSRecordSet
+	if err := h.st.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "other-records"}, &rs); err != nil {
+		t.Fatalf("the import deleted another zone's record set: %v", err)
+	}
+}
+
 func TestZoneImportExport(t *testing.T) {
 	h := newHarness(t)
 	// Without the zone and without origin: 404 with a hint.
