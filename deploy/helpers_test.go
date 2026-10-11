@@ -172,7 +172,7 @@ func writeOrCompare(t *testing.T, path string, want []byte, regen string) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, want, 0o600); err != nil {
+		if err := os.WriteFile(path, want, 0o644); err != nil { //nolint:gosec // committed repository file
 			t.Fatal(err)
 		}
 		return

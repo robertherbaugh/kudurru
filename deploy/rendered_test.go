@@ -14,6 +14,9 @@ import (
 type rendered struct {
 	docs []map[string]any
 	cfg  *config.Config
+	// externalSecrets allows Secret volumes the render does not contain
+	// (the kustomize tree expects pre-created Secrets).
+	externalSecrets bool
 }
 
 var clusterScoped = map[string]bool{
@@ -336,7 +339,7 @@ func (r *rendered) checkWorkload(t *testing.T, w, pod map[string]any) {
 		if cm := str(dig(vm, "configMap", "name")); cm != "" && r.find("ConfigMap", cm) == nil {
 			t.Errorf("%s: ConfigMap %s not rendered", name, cm)
 		}
-		if s := str(dig(vm, "secret", "secretName")); strings.HasPrefix(s, "kudurru") && r.find("Secret", s) == nil {
+		if s := str(dig(vm, "secret", "secretName")); strings.HasPrefix(s, "kudurru") && !r.externalSecrets && r.find("Secret", s) == nil {
 			t.Errorf("%s: chart-generated Secret %s not rendered", name, s)
 		}
 	}

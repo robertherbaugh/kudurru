@@ -1,0 +1,9 @@
+# Standalone ("Pi-hole on k3s"): sqlite store on a PVC, one StatefulSet
+# replica, no CRDs and no Kubernetes API access. resources.yaml is rendered
+# from the chart with mode=standalone (make kustomize).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kudurru-system
+resources:
+  - ../../namespace
+  - resources.yaml
