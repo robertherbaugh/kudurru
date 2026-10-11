@@ -15,7 +15,8 @@ const RegexWarnThreshold = 500
 // RegexUnindexedWarnThreshold is the number of unindexed expressions (no
 // required literal of four bytes) per list above which callers should warn:
 // each one runs for every name the exact and suffix sets did not answer, at
-// roughly 25-60 ns apiece, so 50 of them cost about 2 µs per lookup.
+// roughly 25-75 ns apiece on the spike machine, so 50 of them cost 2-3.5 µs
+// per lookup (docs/spikes/blocking.md).
 const RegexUnindexedWarnThreshold = 50
 
 // ErrRegexCap is returned by RegexBuilder.Add once the hard cap is reached.
