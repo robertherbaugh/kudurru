@@ -18,8 +18,9 @@ Commits:
 - `9d5ab28` controller test flakes
 - `b57859e` audit prune loop
 - `e5fbd9f` followups
+- `3ae4bd0` memory driver resourceVersion check and conformance case
 
-This report is the last commit.
+This report (`eeaeb84`, then this update) closes the series.
 
 ## 1. Settings hot reload (D25)
 
