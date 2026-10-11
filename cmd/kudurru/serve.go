@@ -675,6 +675,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return err
 		}
 	}
+	// Audit retention (§11.4): the leader prunes state.db audit rows older
+	// than 400 days once a day.
+	if ss, ok := st.(*sqlite.Store); ok {
+		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
 
 	runErr := runner.Run(ctx)
 	if runErr != nil {
