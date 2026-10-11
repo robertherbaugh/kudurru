@@ -20,6 +20,18 @@ licences. Attributions are added to this file as the dependencies land:
   module k8s.io/apiextensions-apiserver), Apache-2.0: linked as a library for
   CRD schema, defaulting and CEL validation; the custom-resource admission
   sequence in internal/store/validator mirrors pkg/registry/customresource.
+- go-oidc (https://github.com/coreos/go-oidc), Apache-2.0, with go-jose
+  (https://github.com/go-jose/go-jose), Apache-2.0: OIDC discovery, JWKS
+  and ID token verification; its oidctest helpers back the mock OpenID
+  Provider in tests.
+- golang.org/x/oauth2 and golang.org/x/crypto, BSD-3-Clause, Copyright The
+  Go Authors: authorization code + PKCE client; bcrypt in tests only.
+- Kubernetes (https://github.com/kubernetes/kubernetes), Apache-2.0: the
+  shape of claimValidationRules and claimMappings follows the apiserver's
+  structured authentication configuration.
+- dex (https://github.com/dexidp/dex), Apache-2.0: the OIDC end-to-end test
+  runs an unmodified dex release as a separate process; dex is not linked
+  into or distributed with kudurru.
 
 dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
 They are distributed unmodified as separate programs in their own container
