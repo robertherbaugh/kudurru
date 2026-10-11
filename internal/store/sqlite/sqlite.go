@@ -34,6 +34,10 @@
 // events from an in-process broadcaster. A watcher that falls behind, or a
 // caller that resumes from a resourceVersion, catches up from the change
 // feed instead of losing events.
+//
+// Beyond store.Store, *Store exposes the audit table (ReadAudit,
+// VerifyAudit, RecordAudit for non-store actions, PruneAudit for
+// retention); WithActor names the principal a write is audited under.
 package sqlite
 
 import (
@@ -78,6 +82,10 @@ var (
 	ErrSchemaTooNew = errors.New("store/sqlite: on-disk schema is newer than this binary")
 	// ErrLocked means another process has state.db open.
 	ErrLocked = errors.New("store/sqlite: state.db is in use by another process")
+	// ErrResourceVersionTooNew means Watch was asked to resume after a
+	// resourceVersion this store has not reached (the caller holds a
+	// version from another or a restored state.db and must relist).
+	ErrResourceVersionTooNew = errors.New("store/sqlite: resourceVersion is newer than the store")
 )
 
 // Options configures Open. The zero value is usable.
@@ -167,12 +175,16 @@ type Store struct {
 
 	w    *sql.DB // single writer connection, BEGIN IMMEDIATE
 	r    *sql.DB // reader pool, query_only
+	ws   *stmts  // prepared statements of w
+	rs   *stmts  // prepared statements of r
+	rq   cachedDB
 	lock *fileLock
 
 	// wmu serialises write transactions and the publication of their
 	// events, so the broadcaster sees changes in resourceVersion order.
 	wmu            sync.Mutex
 	sinceCompacted int // writes since the last feed compaction (under wmu)
+	compactEvery   int
 
 	head      atomic.Uint64 // last committed resourceVersion
 	compacted atomic.Uint64 // the change feed holds every seq > compacted
@@ -225,6 +237,8 @@ func Open(path string, opts Options) (*Store, error) {
 		log:      opts.Logger,
 		lock:     lock,
 		bus:      newBroadcaster(),
+
+		compactEvery: defaultCompactEvery,
 	}
 	for _, k := range opts.InternalKinds {
 		s.internal[k] = true
@@ -240,6 +254,7 @@ func Open(path string, opts Options) (*Store, error) {
 	s.w.SetMaxIdleConns(1)
 	s.w.SetConnMaxLifetime(0)
 	s.w.SetConnMaxIdleTime(0)
+	s.ws = newStmts(s.w)
 
 	ctx := context.Background()
 	// Migrate before the reader pool exists: query_only connections must
@@ -247,11 +262,16 @@ func Open(path string, opts Options) (*Store, error) {
 	if err := migrate(ctx, s.w, migrations, store.SchemaVersion, opts.Now); err != nil {
 		return fail(err)
 	}
+	if err := s.ws.prepareAll(ctx, writerQueries); err != nil {
+		return fail(fmt.Errorf("store/sqlite: prepare: %w", err))
+	}
 	if s.r, err = sql.Open("sqlite", dsn(path, opts.BusyTimeout, false)); err != nil {
 		return fail(fmt.Errorf("store/sqlite: open %s: %w", path, err))
 	}
 	s.r.SetMaxOpenConns(opts.ReadConns)
 	s.r.SetMaxIdleConns(opts.ReadConns)
+	s.rs = newStmts(s.r)
+	s.rq = cachedDB{c: s.rs}
 	if err := s.loadMeta(ctx); err != nil {
 		return fail(err)
 	}
@@ -338,6 +358,12 @@ func (s *Store) Close() error {
 
 func (s *Store) closeDBs() error {
 	var errs []error
+	if s.rs != nil {
+		errs = append(errs, s.rs.close())
+	}
+	if s.ws != nil {
+		errs = append(errs, s.ws.close())
+	}
 	if s.r != nil {
 		errs = append(errs, s.r.Close())
 	}

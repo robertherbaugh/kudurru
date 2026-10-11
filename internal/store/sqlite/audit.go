@@ -87,7 +87,7 @@ func ActorFrom(ctx context.Context) string {
 // summary {"truncated":true,"bytes":N,"sha256":"...","prefix":"..."} that
 // fits.
 func capDiff(doc json.RawMessage) json.RawMessage {
-	if doc == nil || len(doc) <= AuditDiffCap {
+	if len(doc) <= AuditDiffCap {
 		return doc
 	}
 	sum := sha256.Sum256(doc)
@@ -111,6 +111,14 @@ func capDiff(doc json.RawMessage) json.RawMessage {
 	}
 }
 
+// Audit statements on the write path.
+const (
+	sqlLastAuditHash = `SELECT hash FROM audit ORDER BY id DESC LIMIT 1`
+	sqlInsertAudit   = `INSERT INTO audit
+		(ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+)
+
 // auditHash computes the chain hash of e (whose PrevHash is set).
 func auditHash(e *AuditEntry) string {
 	h := sha256.New()
@@ -128,22 +136,20 @@ func auditHash(e *AuditEntry) string {
 
 // insertAudit appends e to the chain inside tx, filling ID, PrevHash and
 // Hash.
-func insertAudit(ctx context.Context, tx *sql.Tx, e *AuditEntry) error {
+func insertAudit(ctx context.Context, tx txQueryer, e *AuditEntry) error {
 	if e.Actor == "" {
 		e.Actor = e.Manager
 	}
 	e.Before, e.After = capDiff(e.Before), capDiff(e.After)
 	e.Time = time.Unix(0, e.Time.UnixNano()) // stored as UnixNano; drop the monotonic reading
-	switch err := tx.QueryRowContext(ctx, `SELECT hash FROM audit ORDER BY id DESC LIMIT 1`).Scan(&e.PrevHash); {
+	switch err := tx.QueryRowContext(ctx, sqlLastAuditHash).Scan(&e.PrevHash); {
 	case errors.Is(err, sql.ErrNoRows):
 		e.PrevHash = ""
 	case err != nil:
 		return fmt.Errorf("store/sqlite: audit chain: %w", err)
 	}
 	e.Hash = auditHash(e)
-	res, err := tx.ExecContext(ctx, `INSERT INTO audit
-		(ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	res, err := tx.ExecContext(ctx, sqlInsertAudit,
 		e.Time.UnixNano(), e.Actor, e.Manager, e.Action, string(e.Key.Kind), e.Key.Namespace, e.Key.Name,
 		e.ResourceVersion, e.Result, e.Reason, nullJSON(e.Before), nullJSON(e.After), e.PrevHash, e.Hash)
 	if err != nil {
@@ -186,7 +192,7 @@ func (s *Store) RecordAudit(ctx context.Context, e AuditEntry) (AuditEntry, erro
 		return AuditEntry{}, fmt.Errorf("store/sqlite: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := insertAudit(ctx, tx, &e); err != nil {
+	if err := insertAudit(ctx, cachedTx{tx: tx, c: s.ws}, &e); err != nil {
 		return AuditEntry{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -258,6 +264,23 @@ func (s *Store) queryAudit(ctx context.Context, query string, args ...any) ([]Au
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// PruneAudit deletes audit rows older than before (the retention job of
+// §11.4, 400 days by default, runs it daily) and returns how many rows it
+// removed. The chain stays verifiable: VerifyAudit accepts an oldest row
+// whose predecessor was pruned.
+func (s *Store) PruneAudit(ctx context.Context, before time.Time) (int64, error) {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	if s.isClosed() {
+		return 0, store.ErrClosed
+	}
+	res, err := s.w.ExecContext(ctx, `DELETE FROM audit WHERE ts < ?`, before.UnixNano())
+	if err != nil {
+		return 0, fmt.Errorf("store/sqlite: prune audit: %w", err)
+	}
+	return res.RowsAffected()
 }
 
 // VerifyAudit walks the whole chain and returns an error naming the first

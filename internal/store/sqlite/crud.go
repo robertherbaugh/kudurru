@@ -27,8 +27,27 @@ import (
 // holds the lock from the read to the commit and therefore cannot race.
 const optimisticAttempts = 3
 
-// compactEvery is how many writes pass between change-feed compactions.
-const compactEvery = 1024
+// defaultCompactEvery is how many writes pass between change-feed
+// compactions.
+const defaultCompactEvery = 1024
+
+// Write-path statements, prepared once when the store opens.
+const (
+	sqlCurrentRV    = `SELECT resource_version FROM objects WHERE kind = ? AND namespace = ? AND name = ?`
+	sqlNextRV       = `UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = ? RETURNING value`
+	sqlDeleteObject = `DELETE FROM objects WHERE kind = ? AND namespace = ? AND name = ?`
+	sqlUpsertObject = `INSERT INTO objects
+		(kind, namespace, name, uid, generation, resource_version, managed_by, created_at, updated_at, spec_hash, labels, deleting, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (kind, namespace, name) DO UPDATE SET
+			uid = excluded.uid, generation = excluded.generation, resource_version = excluded.resource_version,
+			managed_by = excluded.managed_by, created_at = excluded.created_at, updated_at = excluded.updated_at,
+			spec_hash = excluded.spec_hash, labels = excluded.labels, deleting = excluded.deleting, data = excluded.data`
+	sqlInsertChange = `INSERT INTO changes (seq, kind, namespace, name, type, resource_version, tombstone) VALUES (?, ?, ?, ?, ?, ?, ?)`
+)
+
+// writerQueries are prepared on the writer connection by Open.
+var writerQueries = []string{sqlCurrentRV, sqlNextRV, sqlDeleteObject, sqlUpsertObject, sqlInsertChange, sqlLastAuditHash, sqlInsertAudit}
 
 // errRaced means the stored row changed between preparing a write and
 // committing it; the write is prepared again.
@@ -92,7 +111,7 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 		return fmt.Errorf("store/sqlite: Get %s into a %s", key, got)
 	}
 	var data string
-	err = s.r.QueryRowContext(ctx, `SELECT data FROM objects WHERE kind = ? AND namespace = ? AND name = ?`,
+	err = s.rq.QueryRowContext(ctx, `SELECT data FROM objects WHERE kind = ? AND namespace = ? AND name = ?`,
 		string(key.Kind), key.Namespace, key.Name).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: %s", store.ErrNotFound, key)
@@ -171,7 +190,7 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 		b.WriteString(` LIMIT ?`)
 		args = append(args, opts.Limit+1)
 	}
-	rows, err := s.r.QueryContext(ctx, b.String(), args...)
+	rows, err := s.rq.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return store.ObjectList{}, fmt.Errorf("store/sqlite: list %s: %w", kind, err)
 	}
@@ -225,7 +244,7 @@ func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*
 		if locked {
 			s.wmu.Lock()
 		}
-		m, err := plan(s.r)
+		m, err := plan(s.rq)
 		if err != nil || m.noop {
 			if locked {
 				s.wmu.Unlock()
@@ -262,9 +281,10 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 		return nil, fmt.Errorf("store/sqlite: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	q := cachedTx{tx: tx, c: s.ws}
 
 	var curRV int64
-	err = tx.QueryRowContext(ctx, `SELECT resource_version FROM objects WHERE kind = ? AND namespace = ? AND name = ?`,
+	err = q.QueryRowContext(ctx, sqlCurrentRV,
 		string(m.key.Kind), m.key.Namespace, m.key.Name).Scan(&curRV)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -280,7 +300,7 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 	}
 
 	var rvText string
-	if err := tx.QueryRowContext(ctx, `UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = ? RETURNING value`, metaResourceVersion).Scan(&rvText); err != nil {
+	if err := q.QueryRowContext(ctx, sqlNextRV, metaResourceVersion).Scan(&rvText); err != nil {
 		return nil, fmt.Errorf("store/sqlite: next resourceVersion: %w", err)
 	}
 	rv, err := strconv.ParseUint(rvText, 10, 64)
@@ -296,7 +316,7 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 
 	var tombstone any
 	if m.typ == store.Deleted {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM objects WHERE kind = ? AND namespace = ? AND name = ?`,
+		if _, err := q.ExecContext(ctx, sqlDeleteObject,
 			string(m.key.Kind), m.key.Namespace, m.key.Name); err != nil {
 			return nil, fmt.Errorf("store/sqlite: delete %s: %w", m.key, err)
 		}
@@ -315,19 +335,13 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 			deleting = 1
 		}
 		ct := m.obj.GetCreationTimestamp()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO objects
-			(kind, namespace, name, uid, generation, resource_version, managed_by, created_at, updated_at, spec_hash, labels, deleting, data)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (kind, namespace, name) DO UPDATE SET
-				uid = excluded.uid, generation = excluded.generation, resource_version = excluded.resource_version,
-				managed_by = excluded.managed_by, created_at = excluded.created_at, updated_at = excluded.updated_at,
-				spec_hash = excluded.spec_hash, labels = excluded.labels, deleting = excluded.deleting, data = excluded.data`,
+		if _, err := q.ExecContext(ctx, sqlUpsertObject,
 			string(m.key.Kind), m.key.Namespace, m.key.Name, string(m.obj.GetUID()), m.obj.GetGeneration(), int64(rv), // #nosec G115 -- bounded by SQLite's int64 counter
 			store.ManagedBy(m.obj), ct.UTC().Format(time.RFC3339), now.UnixNano(), specHash(m.obj), labels, deleting, string(data)); err != nil {
 			return nil, fmt.Errorf("store/sqlite: write %s: %w", m.key, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO changes (seq, kind, namespace, name, type, resource_version, tombstone) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	if _, err := q.ExecContext(ctx, sqlInsertChange,
 		int64(rv), string(m.key.Kind), m.key.Namespace, m.key.Name, string(m.typ), rvText, tombstone); err != nil { // #nosec G115 -- see above
 		return nil, fmt.Errorf("store/sqlite: change feed %s: %w", m.key, err)
 	}
@@ -348,17 +362,17 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 	if m.typ != store.Deleted {
 		entry.After = json.RawMessage(data)
 	}
-	if err := insertAudit(ctx, tx, &entry); err != nil {
+	if err := insertAudit(ctx, q, &entry); err != nil {
 		return nil, err
 	}
 
 	compactTo := uint64(0)
 	s.sinceCompacted++
-	if s.sinceCompacted >= compactEvery {
+	if s.sinceCompacted >= s.compactEvery {
 		retention := uint64(s.opts.FeedRetention) // #nosec G115 -- positive by setDefaults
 		if rv > retention && rv-retention > s.compacted.Load() {
 			compactTo = rv - retention
-			if err := compactFeed(ctx, tx, compactTo); err != nil {
+			if err := compactFeed(ctx, q, compactTo); err != nil {
 				return nil, err
 			}
 		}
@@ -376,7 +390,7 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 }
 
 // compactFeed drops change-feed rows at or below seq.
-func compactFeed(ctx context.Context, tx *sql.Tx, seq uint64) error {
+func compactFeed(ctx context.Context, tx txQueryer, seq uint64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM changes WHERE seq <= ?`, int64(seq)); err != nil { // #nosec G115 -- bounded by SQLite's int64 counter
 		return fmt.Errorf("store/sqlite: compact change feed: %w", err)
 	}
@@ -447,7 +461,9 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 			next.SetUID(types.UID(uuid.NewString()))
 		}
 		if ct := next.GetCreationTimestamp(); ct.IsZero() {
-			next.SetCreationTimestamp(metav1.NewTime(s.opts.Now()))
+			next.SetCreationTimestamp(storedTime(s.opts.Now()))
+		} else {
+			next.SetCreationTimestamp(storedTime(ct.Time))
 		}
 		next.SetGeneration(1)
 		next.SetDeletionTimestamp(nil)
@@ -521,8 +537,10 @@ func identical(next store.Object, prev *stored) (bool, error) {
 // recorded managedBy unless Force (an empty Manager is unchecked, as in the
 // other drivers). An object with finalizers is not removed: its
 // deletionTimestamp is set (a Modified event) and it is removed by the
-// Apply that clears the last finalizer. Deleting an object that is already
-// being deleted is a no-op.
+// Apply that clears the last finalizer. UpdateStatus cannot clear them: it
+// writes status only, like the apiserver's status subresource (and
+// validator.ValidateStatus takes metadata from the stored object). Deleting
+// an object that is already being deleted is a no-op.
 func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
 	if s.isClosed() {
 		return store.ErrClosed
@@ -556,7 +574,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 				m.noop = true
 				return m, nil
 			}
-			now := metav1.NewTime(s.opts.Now())
+			// Second precision, as stored: the Modified event then carries
+			// exactly what Get returns.
+			now := storedTime(s.opts.Now())
 			next.SetDeletionTimestamp(&now)
 			m.typ, m.obj = store.Modified, next
 			m.reason = strings.TrimPrefix(m.reason+"; waiting for finalizers", "; ")
@@ -615,6 +635,13 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 		return m, nil
 	})
 	return err
+}
+
+// storedTime is t as a stored document decodes it: metav1.Time encodes
+// whole seconds and decodes in the local zone. Timestamps the driver stamps
+// go through it so returned objects and watch events equal what Get reads.
+func storedTime(t time.Time) metav1.Time {
+	return metav1.NewTime(time.Unix(t.Unix(), 0))
 }
 
 // copyStatus sets the Status field of dst to that of src.

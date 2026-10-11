@@ -108,8 +108,8 @@ type watcher struct {
 	exited chan struct{}
 	once   sync.Once
 
-	sent  uint64              // highest resourceVersion forwarded or covered
-	known map[store.Key]bool  // objects the consumer has been told about
+	sent  uint64             // highest resourceVersion forwarded or covered
+	known map[store.Key]bool // objects the consumer has been told about
 }
 
 // ResultChan implements store.Watcher.
@@ -156,6 +156,11 @@ func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOpti
 	if resume {
 		if from, err = strconv.ParseUint(opts.ResourceVersion, 10, 64); err != nil {
 			return nil, fmt.Errorf("store/sqlite: invalid resourceVersion %q", opts.ResourceVersion)
+		}
+		// A version this store never issued (a resume against a restored
+		// or different state.db) cannot be replayed; the caller relists.
+		if head := s.head.Load(); from > head {
+			return nil, fmt.Errorf("%w: %d, store is at %d", ErrResourceVersionTooNew, from, head)
 		}
 	}
 	wctx, cancel := context.WithCancel(ctx)

@@ -68,6 +68,13 @@ func recordSet(ns, name string, labels map[string]string) *v1alpha1.DNSRecordSet
 	}
 }
 
+func clientGroup(ns, name string) *v1alpha1.ClientGroup {
+	return &v1alpha1.ClientGroup{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec:       v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{CIDR: "10.0.20.0/24"}}},
+	}
+}
+
 func mustApply(t testing.TB, s store.Store, obj store.Object, manager string) store.Object {
 	t.Helper()
 	out, err := s.Apply(context.Background(), obj, store.ApplyOptions{Manager: manager})
