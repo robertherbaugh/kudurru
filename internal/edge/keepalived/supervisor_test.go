@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -208,6 +209,61 @@ func TestSupervisorPeersFile(t *testing.T) {
 	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf")) //nolint:gosec // test-owned path
 	if !strings.Contains(string(conf), "10.0.0.15") {
 		t.Error("peer from the file not rendered")
+	}
+}
+
+// syncBuffer collects the supervisor's log across goroutines.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+// A peers change that arrives while keepalived is down is installed before
+// the restart, not SIGHUPed into the new keepalived as it starts.
+func TestSupervisorPeersFileRestart(t *testing.T) {
+	peers := filepath.Join(t.TempDir(), "peers")
+	if err := os.WriteFile(peers, []byte("10.0.0.12\n10.0.0.13\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var supLog syncBuffer
+	h := newKHarness(t, func(c *SupervisorConfig) {
+		c.PeersFile = peers
+		c.Logger = slog.New(slog.NewTextHandler(&supLog, nil))
+	})
+	h.waitFor("start", func() bool { return strings.Contains(h.log(), "start pid=") })
+	h.sup.mu.Lock()
+	child := h.sup.child
+	h.sup.mu.Unlock()
+	if err := child.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	// The supervisor is in its restart backoff once it logged the exit.
+	h.waitFor("the exit", func() bool { return strings.Contains(supLog.String(), "keepalived exited unexpectedly") })
+	if err := os.WriteFile(peers, []byte("10.0.0.12\n10.0.0.13\n10.0.0.15\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("restart", func() bool { return strings.Count(h.log(), "start pid=") == 2 })
+	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf")) //nolint:gosec // test-owned path
+	if !strings.Contains(string(conf), "10.0.0.15") {
+		t.Error("keepalived restarted without the peer from the file")
+	}
+	h.waitFor("ready", func() bool { ok, _ := h.sup.Ready(); return ok })
+	time.Sleep(300 * time.Millisecond)
+	if l := h.log(); strings.Contains(l, "\nhup") || strings.Count(l, "start pid=") != 2 ||
+		strings.Count(supLog.String(), "keepalived exited unexpectedly") != 1 {
+		t.Errorf("the restarted keepalived got a SIGHUP or restarted again:\n%s\n%s", l, supLog.String())
 	}
 }
 
