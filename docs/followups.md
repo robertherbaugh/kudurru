@@ -120,7 +120,7 @@ Close an item by deleting its row and citing the commit.
 | external-dns webhook: optional shared-secret header (`externalDNS.webhook.tokenFile`, the external-dns webhook provider can send custom headers) so the listener can leave loopback without relying on a NetworkPolicy | docs/m5/security.md | v0.2 |
 | OIDC docs: warn that the default username chain starts at `preferred_username`, which some IdPs let users edit; recommend group bindings or `claimMappings.username.claim: sub` for `User` subjects | docs/m5/security.md | M5 docs |
 | A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | docs/m5/security.md | v0.2 |
-| `TestSupervisorPeersFile` (internal/edge/keepalived) times out waiting for the HUP after the peers file changes on the shared M5 machine, also with the package and its only kudurru dependency (internal/edge) as on 347f4c7; the supervisor restarts the fake keepalived instead. Investigate whether the fake exits early under load or the restart path wins the race | M5 security run | M5 |
+| `TestSupervisorPeersFile` (internal/edge/keepalived) passes with `-race` (what `make test` runs) but times out without it, waiting for the HUP after the peers file changes: the log shows the supervisor checking and starting the fake keepalived again instead. Reproduced 3/3 with the package and its only kudurru dependency (internal/edge) as on 347f4c7, so it predates M5; a timing assumption in the test or a restart path that wins the race when the code runs fast | M5 security run | M5 |
 
 ## Dashboard (web/)
 
