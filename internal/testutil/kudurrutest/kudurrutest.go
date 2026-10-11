@@ -161,7 +161,8 @@ func NewPorts(t testing.TB) Ports {
 
 // BaseConfig returns a node configuration with the given name, data
 // directory and ports: sqlite store, udp+tcp DNS, plain-HTTP API, one
-// socket per listener, the default upstream group pointing at the discard
+// socket per listener, the admin socket in the data directory, the default
+// upstream group pointing at the discard
 // port (nothing leaves the host) and text logs. Callers add keys before
 // WriteConfig.
 func BaseConfig(name, dataDir string, p Ports) map[string]any {
@@ -180,7 +181,10 @@ func BaseConfig(name, dataDir string, p Ports) map[string]any {
 				"default": map[string]any{"servers": []any{"127.0.0.1:9"}, "timeout": "1s"},
 			},
 		},
-		"log": map[string]any{"level": "info", "format": "text"},
+		// The default admin socket (/run/kudurru/kudurru.sock) is shared by
+		// every process on the host; each test node gets its own.
+		"auth": map[string]any{"adminSocket": map[string]any{"path": filepath.Join(dataDir, "admin.sock")}},
+		"log":  map[string]any{"level": "info", "format": "text"},
 	}
 }
 
@@ -352,7 +356,7 @@ func (n *Node) WaitReady(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("kudurru not ready: %s\n%s", last, n.Log())
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(10 * time.Millisecond):
 		}
 	}
 }
