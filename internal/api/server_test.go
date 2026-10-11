@@ -310,10 +310,10 @@ func TestMeWithBearerRoles(t *testing.T) {
 // the live grants of Options.Roles, as the login answer does.
 func TestMeCookieSessionLiveRoles(t *testing.T) {
 	h := newHarness(t, func(o *Options) {
-		o.Roles = func(_ context.Context, p auth.Principal) []string { return []string{"admin"} }
+		o.Roles = func(context.Context, auth.Principal) []string { return []string{"admin"} }
 	})
 	r := h.req(http.MethodGet, "/api/v1/auth/me", "", nil)
-	r.AddCookie(&http.Cookie{Name: apitest.CookieName, Value: "admin"})
+	r.AddCookie(&http.Cookie{Name: apitest.CookieName, Value: "admin", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	var me Me
 	h.serve(r).want(http.StatusOK).json(&me)
 	if len(me.Roles) != 1 || me.Roles[0] != "admin" || me.CSRF != apitest.CSRFToken || me.MustChangePassword {

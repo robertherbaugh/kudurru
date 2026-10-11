@@ -44,9 +44,9 @@ func TestForwardedShapes(t *testing.T) {
 		{api.RoleBindingInfo{}, stack.RoleBindingInfo{}},
 		{api.IdentityProviderInfo{}, stack.IdentityProviderInfo{}},
 	} {
-		doc, real := reflect.TypeOf(pair.doc), reflect.TypeOf(pair.real)
-		if d, r := jsonShape(doc), jsonShape(real); d != r {
-			t.Errorf("api.%s does not document %s:\n doc  %s\n real %s", doc.Name(), real, d, r)
+		doc, actual := reflect.TypeOf(pair.doc), reflect.TypeOf(pair.real)
+		if d, r := jsonShape(doc), jsonShape(actual); d != r {
+			t.Errorf("api.%s does not document %s:\n doc  %s\n real %s", doc.Name(), actual, d, r)
 		}
 	}
 

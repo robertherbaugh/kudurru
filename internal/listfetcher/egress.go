@@ -67,11 +67,6 @@ func checkURLHost(u *url.URL) error {
 	return nil
 }
 
-// guardedClient returns the default list client: DefaultHTTPTimeout, the
-// proxy from the environment, and a dialer that refuses local addresses
-// at connect time. The check runs on the resolved address of every
-// connection (redirect targets and DNS-rebinding answers included); dials
-// to a configured HTTP(S) proxy are allowed.
 // HTTPClient returns the client a Downloader uses by default for the
 // given blocking.allowLocalListURLs value: unless allowLocal, its dialer
 // refuses the local addresses BlockList URLs may not reach. The catalogue
@@ -83,6 +78,11 @@ func HTTPClient(allowLocal bool) *http.Client {
 	return guardedClient()
 }
 
+// guardedClient returns the default list client: DefaultHTTPTimeout, the
+// proxy from the environment, and a dialer that refuses local addresses
+// at connect time. The check runs on the resolved address of every
+// connection (redirect targets and DNS-rebinding answers included); dials
+// to a configured HTTP(S) proxy are allowed.
 func guardedClient() *http.Client {
 	proxies := proxyAddrs()
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}

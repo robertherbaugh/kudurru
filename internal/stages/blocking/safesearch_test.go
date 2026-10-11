@@ -190,7 +190,9 @@ func TestSafeSearchAndBlockedServicesEndToEnd(t *testing.T) {
 	}
 
 	// The temporary disable turns safe search off with the block lists.
-	st.Toggle().Disable(0)
+	if _, err := st.Toggle().Disable(0); err != nil {
+		t.Fatal(err)
+	}
 	resp, err := chain.Serve(&pipeline.Request{Msg: query("www.google.com.", dns.TypeA, false), Client: pipeline.Client{Addr: addrPort("10.0.90.5")}})
 	if err != nil || resp.Status != pipeline.StatusForwarded {
 		t.Errorf("disabled: %v %v", resp, err)

@@ -297,7 +297,7 @@ func (r *Refresher) persist(c *Catalogue) {
 		data []byte
 	}{{fileDocument, c.raw}, {fileSource, []byte(c.Origin() + "\n")}} {
 		tmp := filepath.Join(r.opts.Dir, "."+f.name+".tmp")
-		if err := os.WriteFile(tmp, f.data, 0o640); err != nil {
+		if err := os.WriteFile(tmp, f.data, 0o600); err != nil {
 			r.log.Warn("catalogue: cannot keep the download", "err", err)
 			return
 		}
