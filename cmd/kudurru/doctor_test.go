@@ -1,7 +1,10 @@
 package main
 
 import (
+	"io"
+	"log"
 	"net"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,5 +113,27 @@ func TestDoctorDataDirPermissions(t *testing.T) {
 	out, _, _ = h.run("--config", cfg, "doctor", "--skip-api", "--skip-ports")
 	if !strings.Contains(out, "state.db is world-readable") {
 		t.Errorf("world-readable state.db:\n%s", out)
+	}
+}
+
+func TestDoctorLocalTLSListener(t *testing.T) {
+	api := newFakeAPI(t)
+	tlsSrv := httptest.NewUnstartedServer(api.srv.Config.Handler)
+	tlsSrv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	tlsSrv.StartTLS()
+	defer tlsSrv.Close()
+	h := newHarness(t)
+	addr := strings.TrimPrefix(tlsSrv.URL, "https://")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := doctorConfig(t, t.TempDir(), l)
+	_ = l.Close()
+	b, _ := os.ReadFile(cfg) //nolint:gosec // G304: the test's temp file
+	_ = os.WriteFile(cfg, []byte(strings.Replace(string(b), l.Addr().String(), addr, 1)), 0o600) //nolint:gosec // G703: the test's temp file
+	out, _, _ := h.run("--config", cfg, "doctor", "--skip-ports")
+	if !strings.Contains(out, "api: OK https://"+addr+" (kudurru v0.1.0-test") {
+		t.Fatalf("local TLS listener not probed over https:\n%s", out)
 	}
 }

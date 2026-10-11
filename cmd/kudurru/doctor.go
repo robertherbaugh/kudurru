@@ -169,8 +169,8 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 	}
 	saved := o.timeout
 	o.timeout = 5 * time.Second
+	defer func() { o.timeout = saved }()
 	c, err := o.newClient(r)
-	o.timeout = saved
 	if err != nil {
 		rep.fail("api", "%v", err)
 		return false
@@ -179,7 +179,19 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 	var ver struct {
 		Version string `json:"version"`
 	}
-	if err := c.Get(ctx, "/version", nil, &ver); err != nil {
+	err = c.Get(ctx, "/version", nil, &ver)
+	var plainToTLS *apiclient.Error
+	if !explicit && errors.As(err, &plainToTLS) && plainToTLS.StatusCode == 400 && strings.Contains(plainToTLS.Message, "HTTPS") {
+		// The local listener terminates TLS (listeners.api.tls): probe it
+		// over https; a self-signed loopback certificate is not verified.
+		r.Server, r.InsecureSkipVerify = "https://"+strings.TrimPrefix(r.Server, "http://"), true
+		if c, err = o.newClient(r); err != nil {
+			rep.fail("api", "%v", err)
+			return false
+		}
+		err = c.Get(ctx, "/version", nil, &ver)
+	}
+	if err != nil {
 		var apiErr *apiclient.Error
 		switch {
 		case errors.As(err, &apiErr) && apiErr.StatusCode == 401:
