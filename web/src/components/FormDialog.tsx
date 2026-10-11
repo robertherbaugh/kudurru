@@ -73,8 +73,10 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
       maxHeight="90dvh"
       aria-labelledby={titleId}
     >
+      {/* Content only while open: a closed dialog keeps no hidden copies of
+          its fields in the page (labels, ids and tests stay unambiguous). */}
       <Frame value={ctx}>
-        {own ? (
+        {!isOpen ? null : own ? (
           <DialogForm onSubmit={onSubmit} noValidate={noValidate} footer={footer}>
             {children}
           </DialogForm>

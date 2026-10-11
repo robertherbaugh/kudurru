@@ -58,6 +58,8 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
       } else {
         void qc.invalidateQueries({ queryKey: qk.me });
       }
+      // The default-credentials banner reads /auth/status.
+      void qc.invalidateQueries({ queryKey: qk.authStatus });
       notify.success('Password changed; other sessions were signed out');
       reset();
       onClose();
