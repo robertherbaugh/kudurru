@@ -201,17 +201,17 @@ with links to the list and policy pages). The detail page
 (from the query log of the node that took the request) and the decision
 history.
 
-- **Approve** adds an allow entry and attaches its list to the policies
-  concerned:
-  - *everyone*: the UI allow list `ui-allow` (the Domains page's list),
-    attached to the `default` policy and to the policies that applied to the
-    requester;
+- **Approve** adds an Allowlist entry ([allowlist.md](allowlist.md); origin
+  `unblock`, with the request, the approver and the note as comment) and
+  attaches its list to the policies concerned:
+  - *everyone*: the everyone list `ui-allow`, attached to every policy of
+    the namespace kudurru may edit;
   - *group*: `ui-allow-<group>` in the group's namespace, created on demand
     (managed by the API) and attached to every policy whose `clientGroupRefs`
     names the group; refused when no policy covers the group.
 
   *exact* allows the name only, *subdomains* the name and every name below it
-  (`||name^`). A duration (1 h, 8 h, a day, a week, any Go duration up to a
+  (a wildcard entry `*.name`). A duration (1 h, 8 h, a day, a week, any Go duration up to a
   year) makes the approval time-limited; empty is permanent. Policies managed
   by a file or an integration are left alone and listed in the answer as
   skipped. There is no per-client scope: policies apply to ClientGroups, and a
