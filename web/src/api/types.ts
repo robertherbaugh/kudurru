@@ -640,3 +640,47 @@ export interface AuditEntry {
   outcome: 'success' | 'denied' | 'error';
   authzPath?: string;
 }
+
+/** Result of POST /zones/{zone}/import. */
+export interface ZoneImportResult {
+  imported: number;
+  recordSet?: string;
+  skipped?: { line: number; error: string }[];
+}
+
+/** One hit of GET /blocklists/_search?domain=. */
+export interface ListSearchHit {
+  list: string;
+  namespace: string;
+  rule: string;
+  mode: 'block' | 'allow';
+}
+
+// ---------------------------------------------------------------------------
+// IAM (read-only in v0.1; the write API is v0.2)
+
+export interface IamUser {
+  name: string;
+  displayName?: string;
+  local: boolean;
+  roles?: string[];
+  disabled?: boolean;
+}
+
+export interface IamServiceAccount {
+  name: string;
+  namespace?: string;
+  tokens?: number;
+}
+
+export interface IamRoleBinding {
+  name: string;
+  role: string;
+  subjects: { kind: string; name: string }[];
+}
+
+export interface IamIdentityProvider {
+  name: string;
+  issuer: string;
+  clientID?: string;
+}

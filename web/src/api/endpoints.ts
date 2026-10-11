@@ -38,6 +38,12 @@ import type {
   ZoneSummary,
   AnyObject,
   Endpoint,
+  IamUser,
+  IamServiceAccount,
+  IamRoleBinding,
+  IamIdentityProvider,
+  ZoneImportResult,
+  ListSearchHit,
 } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
@@ -98,7 +104,7 @@ export function endpoints(c: ApiClient) {
       deleteRecord: (zone: string, name: string, type: string, recordSet?: string) =>
         c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, recordSet ? { recordSet } : undefined),
       importBind: (zone: string, text: string) =>
-        c.request<{ imported: number; skipped?: { line: number; error: string }[] }>('POST', `/zones/${enc(zone)}/import`, {
+        c.request<ZoneImportResult>('POST', `/zones/${enc(zone)}/import`, {
           text,
           contentType: 'text/dns',
         }),
@@ -109,8 +115,7 @@ export function endpoints(c: ApiClient) {
 
     lists: {
       refresh: (namespace: string, name: string) => c.post<void>(`/blocklists/${enc(namespace)}/${enc(name)}/refresh`),
-      search: (domain: string) =>
-        c.get<{ items: { list: string; namespace: string; rule: string; mode: 'block' | 'allow' }[] }>('/blocklists/_search', { domain }),
+      search: (domain: string) => c.get<ListEnvelope<ListSearchHit>>('/blocklists/_search', { domain }),
       addDomains: (action: 'allow' | 'deny', kind: 'exact' | 'regex', domains: string[], namespace?: string, list?: string) =>
         c.post<Processed>(`/domains/${action}/${kind}`, { domains, namespace, list }),
     },
@@ -123,6 +128,7 @@ export function endpoints(c: ApiClient) {
       blocking: () => c.get<BlockingState>('/dns/blocking'),
       setBlocking: (blocking: boolean, timer?: number) =>
         c.post<BlockingState>('/dns/blocking', timer ? { blocking, timer } : { blocking }),
+      setBlockingUntil: (until: string) => c.post<BlockingState>('/dns/blocking', { blocking: false, until }),
       flushCache: (name?: string) => c.post<{ flushed: number }>('/cache/flush', name ? { name } : {}),
       dig: (req: DnsQueryRequest) => c.post<DnsQueryResult>('/dns/query', req),
     },
@@ -165,6 +171,13 @@ export function endpoints(c: ApiClient) {
       edge: () => c.get<EdgeInfo>('/edge'),
       messages: () => c.get<ListEnvelope<DiagnosisMessage>>('/info/messages'),
       version: () => c.get<VersionInfo>('/version'),
+    },
+
+    iam: {
+      users: () => c.get<ListEnvelope<IamUser>>('/iam/users'),
+      serviceAccounts: () => c.get<ListEnvelope<IamServiceAccount>>('/iam/serviceaccounts'),
+      roleBindings: () => c.get<ListEnvelope<IamRoleBinding>>('/iam/rolebindings'),
+      identityProviders: () => c.get<ListEnvelope<IamIdentityProvider>>('/iam/identityproviders'),
     },
 
     audit: {
