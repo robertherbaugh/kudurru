@@ -60,6 +60,8 @@ export const qk = {
   authStatus: ['auth', 'status'] as const,
   tokens: ['auth', 'tokens'] as const,
   objects: (kind: string) => ['objects', kind] as const,
+  policyState: (namespace: string, name: string) => ['policies', 'state', namespace, name] as const,
+  clients: (...rest: unknown[]) => ['clients', ...rest] as const,
   zones: ['zones'] as const,
   zone: (z: string) => ['zones', z] as const,
   records: (z: string) => ['zones', z, 'records'] as const,

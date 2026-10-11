@@ -13,11 +13,11 @@ import { QueryLogTable } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
 import { SuggestInput } from '../components/SuggestInput';
 import { formatDateTime, formatExact } from '../lib/format';
-import { useSearchParams } from '../lib/router';
+import { Link, useSearchParams } from '../lib/router';
 import { useLiveTail } from '../lib/useLiveTail';
 
 /** The filter keys the page reads from and writes to the URL. */
-export const FILTER_KEYS = ['client', 'domain', 'status', 'status_class', 'qtype', 'upstream', 'list', 'zone', 'since', 'until'] as const;
+export const FILTER_KEYS = ['client', 'domain', 'status', 'status_class', 'qtype', 'upstream', 'list', 'zone', 'policy', 'since', 'until'] as const;
 
 export const PAGE_SIZE = 100;
 const LIVE_MAX = 2000;
@@ -205,9 +205,14 @@ export default function QueryLogPage() {
         ) : null}
       </form>
 
-      {filters.status || filters.zone ? (
+      {filters.status || filters.zone || filters.policy ? (
         <p className="k-small">
-          Also filtered by {filters.status ? <code>status={filters.status}</code> : null} {filters.zone ? <code>zone={filters.zone}</code> : null}
+          Also filtered by {filters.status ? <code>status={filters.status}</code> : null} {filters.zone ? <code>zone={filters.zone}</code> : null}{' '}
+          {filters.policy ? (
+            <>
+              policy <Link href={`/policies/${filters.policy.split('/').map(encodeURIComponent).join('/')}`}>{filters.policy}</Link>
+            </>
+          ) : null}
         </p>
       ) : null}
 

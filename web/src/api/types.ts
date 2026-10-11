@@ -150,7 +150,8 @@ export type DNSRecordSet = KObject<
 >;
 
 export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
-export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP';
+/** blockPage: A/AAAA answers point at the block page (ux-plan C5). */
+export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
 export interface ListSource {
   url?: string;
@@ -536,6 +537,8 @@ export interface QueryRow {
   zone?: string;
   list?: string;
   rule?: string;
+  /** The deciding policy, "namespace/name" (ux-plan C3). */
+  policy?: string;
   dnssec: string;
   ede?: number;
   ecs?: string;
@@ -552,6 +555,8 @@ export interface QueryFilter {
   upstream?: string;
   list?: string;
   zone?: string;
+  /** The deciding policy, "namespace/name". */
+  policy?: string;
   since?: string;
   until?: string;
   cursor?: string;
@@ -747,6 +752,8 @@ export interface CatalogueService {
   rules: number;
   domains: string[];
   source: string;
+  /** API path of the service's logo (/api/v1/catalogue/icons/{id}.svg); absent: no logo, show a monogram. */
+  icon?: string;
 }
 
 /** One safe-search engine of GET /catalogue/safesearch. */
@@ -760,6 +767,8 @@ export interface SafeSearchEngine {
   addresses?: string[];
   domains: number;
   source: string;
+  /** API path of the engine's logo; absent when the binary has none. */
+  icon?: string;
 }
 
 /** GET /catalogue. */
@@ -773,4 +782,42 @@ export interface CatalogueInfo {
   services: number;
   safeSearchEngines: number;
   refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
+}
+
+/** GET /catalogue/icons: the logos the binary embeds (ux-plan C4). */
+export interface CatalogueIcon {
+  id: string;
+  /** API path, /api/v1/catalogue/icons/{id}.svg. */
+  path: string;
+}
+
+// Policy current state (ux-plan C3) ------------------------------------------
+
+/** GET /policies/{namespace}/{name}/state. Refs are "namespace/name". */
+export interface PolicyState {
+  policy: string;
+  enabled: boolean;
+  /** enabled and the schedule allows it now. */
+  active: boolean;
+  schedule?: { now: boolean; nextChange?: string; summary: string };
+  priority: number;
+  /** Higher-priority policies matching the same groups. */
+  shadowedBy?: string[];
+  /** clients: matchers of the group; seen24h: distinct clients in the query log. */
+  groups: { ref: string; exists: boolean; clients: number; seen24h: number }[];
+  lists: { ref: string; mode: 'block' | 'allow'; exists: boolean; ready: boolean; entries: number; sourcesEnabled: number; sourcesTotal: number }[];
+  services: { id: string; name: string; known: boolean; rules: number; icon?: string }[];
+  safeSearch: { enabled: boolean; mode: string; engines: { id: string; name: string; icon?: string }[] };
+  upstreamGroup?: { name: string; exists: boolean };
+  blockMode: string;
+  blockTTL?: string;
+  /** status.conditions of the Policy. */
+  conditions: Condition[];
+  stats24h: {
+    queries: number;
+    blocked: number;
+    blockedPercent: number;
+    topBlocked: { domain: string; count: number }[];
+    topClients: { key: string; name?: string; count: number }[];
+  };
 }

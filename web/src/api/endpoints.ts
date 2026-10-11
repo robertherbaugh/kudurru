@@ -52,7 +52,7 @@ import type {
   ZoneImportResult,
   ListSearchHit,
 } from './types';
-import type { CatalogueInfo, CatalogueService, SafeSearchEngine } from './types';
+import type { CatalogueIcon, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -142,6 +142,11 @@ export function endpoints(c: ApiClient) {
         c.post<Processed>(`/domains/${action}/${kind}`, { domains, namespace, list }),
     },
 
+    policies: {
+      /** The policy's current state (ux-plan C3). */
+      state: (namespace: string, name: string) => c.get<PolicyState>(`/policies/${enc(namespace)}/${enc(name)}/state`),
+    },
+
     clients: {
       list: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientItem>>('/clients', q),
     },
@@ -214,6 +219,9 @@ export function endpoints(c: ApiClient) {
       info: () => c.get<CatalogueInfo>('/catalogue'),
       services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
       safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
+      icons: () => c.get<ListEnvelope<CatalogueIcon>>('/catalogue/icons'),
+      /** The URL of an `icon` API path (/api/v1/catalogue/icons/x.svg) under this client's base. */
+      iconURL: (path: string) => c.url(path.replace(/^(?:.*\/)?api\/v1(?=\/)/, '')),
     },
   };
 }

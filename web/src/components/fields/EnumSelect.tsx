@@ -26,11 +26,19 @@ export function EnumSelect({ label, value, options, onChange, emptyLabel, descri
   const id = useId();
   const all = value && !options.some((o) => o.value === value) ? [...options, { value, label: value }] : options;
   const selected = all.find((o) => o.value === value);
+  const hint = error ?? selected?.help;
+  const describedBy = [description ? `${id}-d` : '', hint ? `${id}-h` : ''].filter(Boolean).join(' ') || undefined;
+  // The label names the select; description and help describe it, so a
+  // screen reader (and getByRole name) hears the label alone.
   return (
-    <label className="k-label" htmlFor={id}>
-      {label}
-      {description ? <span className="k-muted k-small">{description}</span> : null}
-      <select id={id} className="k-native-select" value={value} disabled={isDisabled} aria-invalid={error ? true : undefined} onChange={(e) => onChange(e.target.value)}>
+    <div className="k-label">
+      <label htmlFor={id}>{label}</label>
+      {description ? (
+        <span id={`${id}-d`} className="k-muted k-small">
+          {description}
+        </span>
+      ) : null}
+      <select id={id} className="k-native-select" value={value} disabled={isDisabled} aria-invalid={error ? true : undefined} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)}>
         {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
         {all.map((o) => (
           <option key={o.value} value={o.value}>
@@ -38,7 +46,11 @@ export function EnumSelect({ label, value, options, onChange, emptyLabel, descri
           </option>
         ))}
       </select>
-      {error ? <span className="k-error-text">{error}</span> : selected?.help ? <span className="k-muted k-small">{selected.help}</span> : null}
-    </label>
+      {hint ? (
+        <span id={`${id}-h`} className={error ? 'k-error-text' : 'k-muted k-small'}>
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
 }
