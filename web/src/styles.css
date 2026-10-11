@@ -239,30 +239,9 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-why-grid dt { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
 .k-why-grid dd { margin: 0; overflow-wrap: anywhere; }
 
-.k-filters { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: flex-end; }
 /* A search box in a toolbar row: room for its placeholder, shrinks on phones. */
 .k-search { inline-size: min(400px, calc(100vw - 2 * var(--k-gap))); }
-.k-filters > * { min-inline-size: 140px; }
 
-.k-suggest { position: relative; }
-.k-suggest ul {
-  position: absolute;
-  z-index: 5;
-  inset-inline: 0;
-  inset-block-start: 100%;
-  margin: 2px 0 0;
-  padding: 4px 0;
-  list-style: none;
-  background: var(--color-background-popover, var(--color-background-card));
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-element, 8px);
-  box-shadow: var(--shadow-med);
-  max-block-size: 260px;
-  overflow: auto;
-}
-.k-suggest li { padding: 6px 10px; cursor: pointer; font-family: var(--k-mono); font-size: var(--font-size-sm, 0.875rem); }
-.k-suggest li:hover { background: var(--k-hover); }
-.k-suggest li[aria-selected='true'] { background: var(--k-selected); }
 
 /* Sidebar status block --------------------------------------------------- */
 
@@ -365,35 +344,7 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-array-item { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .k-array-item > :first-child { flex: 1 1 260px; }
 .k-error-text { color: var(--q-blocked); font-size: var(--font-size-sm, 0.875rem); }
-.k-native-select {
-  font: inherit;
-  font-size: var(--text-body-size, 0.875rem);
-  padding: 4px 8px;
-  border-radius: var(--radius-element, 8px);
-  border: 1px solid var(--color-border-emphasized, var(--color-border));
-  background: var(--color-background-surface, transparent);
-  color: inherit;
-  min-block-size: var(--size-element-md, 32px);
-}
-/* Native controls match the Astryx field label and input text sizes. */
 .k-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label-size, 0.875rem); font-weight: var(--text-label-weight, 500); }
-.k-label > select, .k-label > input { font-weight: normal; }
-.k-native-input {
-  font: inherit;
-  font-size: var(--text-body-size, 0.875rem);
-  font-weight: normal;
-  padding: 6px 8px;
-  border-radius: var(--radius-element, 8px);
-  border: 1px solid var(--color-border-emphasized, var(--color-border));
-  background: var(--color-background-surface, transparent);
-  color: inherit;
-  min-block-size: var(--size-element-md, 32px);
-  box-sizing: border-box;
-  inline-size: 100%;
-}
-.k-native-input:focus-visible, .k-native-select:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 1px; }
-.k-native-input[aria-invalid='true'] { border-color: var(--q-blocked); }
-.k-native-input[readonly] { background: var(--color-background-muted); }
 .k-setting-key { font-weight: var(--font-weight-semibold, 600); overflow-wrap: anywhere; }
 
 .k-pre {
@@ -450,20 +401,10 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 /* Typed settings, fields and wizards (spa-settings, UX round 2) */
 .k-setting .k-setting-key { font-weight: normal; }
 .k-setting[data-changed='true'] .k-setting-label::after { content: ''; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--color-text-accent, var(--q-cached)); margin-inline-start: 6px; vertical-align: middle; }
-.k-number { inline-size: 12ch; }
-.k-unit { inline-size: auto; }
 .k-map-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: end; }
 .k-map-row > .k-fieldset { grid-column: 1 / -1; }
 @media (max-width: 720px) { .k-map-row { grid-template-columns: 1fr; } }
 .k-preview-frame { inline-size: 100%; block-size: min(60dvh, 560px); border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); background: #fff; }
-.k-choice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; border: 0; padding: 0; margin: 0; }
-.k-choice-grid > legend { padding: 0; margin-block-end: 8px; font-weight: 600; font-size: var(--font-size-sm, 0.875rem); }
-.k-choice { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); cursor: pointer; font-weight: normal; }
-.k-choice:hover { background: var(--k-hover); }
-.k-choice:has(input:checked) { border-color: var(--color-text-accent, var(--q-cached)); background: var(--k-selected); }
-.k-choice:has(input:focus-visible) { outline: 2px solid var(--k-focus); outline-offset: 2px; }
-.k-choice input { margin-block-start: 3px; }
-.k-choice strong { display: block; }
 .k-provider-icon { inline-size: 28px; block-size: 28px; flex: none; border-radius: 6px; display: inline-grid; place-items: center; font-size: 0.8rem; font-weight: 600; background: var(--color-background-muted); color: var(--color-text-secondary); overflow: hidden; }
 .k-provider-icon img { inline-size: 100%; block-size: 100%; object-fit: contain; }
 .k-review { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
@@ -511,25 +452,8 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-review dt { color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
 .k-review dd { margin: 0; overflow-wrap: anywhere; }
 .k-review dd.k-review-edit { justify-self: end; }
-.k-num-input { max-inline-size: 160px; }
-.k-radio { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; font-size: var(--text-body-size, 0.875rem); }
 
 /* Weekday toggles of the schedule editor. */
-.k-day {
-  font: inherit;
-  font-size: var(--font-size-sm, 0.875rem);
-  min-inline-size: 48px;
-  padding: 4px 10px;
-  border-radius: var(--radius-element, 8px);
-  border: 1px solid var(--color-border-emphasized, var(--color-border));
-  background: var(--color-background-surface, transparent);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-.k-day:hover { background: var(--k-hover); }
-.k-day[aria-pressed='true'] { background: var(--color-accent-muted); border-color: var(--color-accent); color: var(--color-text-accent); font-weight: var(--font-weight-semibold, 600); }
-.k-day:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
-.k-day:disabled { cursor: default; opacity: 0.7; }
 
 /* Client matchers editor. */
 .k-matchers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
