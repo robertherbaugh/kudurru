@@ -160,6 +160,7 @@ func New(opts Options) (*Loader, error) {
 		manager:   store.ManagerFile,
 		fileMode:  true,
 		log:       opts.Logger,
+		seen:      map[store.Key]agreement{},
 	}
 	l.status = Status{Dir: opts.Dir, APIReadOnly: opts.Static}
 	return l, nil

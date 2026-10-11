@@ -68,8 +68,10 @@ func TestLoadAppliesInlineAndFiles(t *testing.T) {
 	if z == nil || store.ManagedBy(z) != "file:objects.d/10-zones.yaml" {
 		t.Fatalf("zone not applied with the file manager: %+v", z)
 	}
-	if z.Spec.DefaultTTL != 300 {
-		t.Errorf("schema defaults not applied: ttl=%d", z.Spec.DefaultTTL)
+	// spec.policy is absent from the document; its defaults still apply,
+	// as they do when a driver validates the typed write.
+	if z.Spec.DefaultTTL != 300 || z.Spec.Policy.QueryAccess != v1alpha1.AccessAllow {
+		t.Errorf("schema defaults not applied: ttl=%d queryAccess=%q", z.Spec.DefaultTTL, z.Spec.Policy.QueryAccess)
 	}
 	if got := owner(t, f.st, nsKey("ClientGroup", "dns", "kids")); got != "file:objects.d/10-zones.yaml" {
 		t.Errorf("ClientGroup owner = %q", got)
@@ -242,6 +244,25 @@ func TestLoadDriftIsRepaired(t *testing.T) {
 	}
 	if rep := f.l.Load(ctx(t)); rep.Created != 1 || zone(t, f.st, "home") == nil {
 		t.Fatalf("deleted file-managed object must be recreated: %+v", rep)
+	}
+
+	// A write under the file's own manager (or a status update) moves the
+	// resourceVersion: the fast path must not hide the drift.
+	z := zone(t, f.st, "home")
+	z.Spec.DefaultTTL = 5
+	if _, err := f.st.Apply(ctx(t), z, store.ApplyOptions{Manager: "file:objects.d/zones.yaml"}); err != nil {
+		t.Fatal(err)
+	}
+	if rep := f.l.Load(ctx(t)); rep.Updated != 1 || zone(t, f.st, "home").Spec.DefaultTTL != 300 {
+		t.Fatalf("modified file-managed object must be restored: %+v", rep)
+	}
+	z = zone(t, f.st, "home")
+	z.Status.RecordCount = 3
+	if err := f.st.UpdateStatus(ctx(t), z); err != nil {
+		t.Fatal(err)
+	}
+	if rep := f.l.Load(ctx(t)); rep.Unchanged != 2 || rep.Updated != 0 {
+		t.Fatalf("a status update is not drift: %+v", rep)
 	}
 }
 

@@ -2,6 +2,8 @@ package objects
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -57,6 +59,18 @@ type reconciler struct {
 	// longer declares them are taken over (moved) or deleted.
 	fileMode bool
 	log      *slog.Logger
+	// seen remembers, per object, the document and stored resourceVersion
+	// of the last pass that found them in agreement; a poll that sees both
+	// again skips validation and comparison. Only the Loader keeps a
+	// reconciler across passes; passes are serialised by its loadMu.
+	seen map[store.Key]agreement
+}
+
+// agreement is a document (by hash) known to match the stored object at
+// resourceVersion rv.
+type agreement struct {
+	doc [sha256.Size]byte
+	rv  string
 }
 
 // item is one identified document.
@@ -130,6 +144,11 @@ func (r *reconciler) run(ctx context.Context, srcs []source, brokenPrefixes []st
 	}
 	if r.fileMode && ctx.Err() == nil {
 		p.deleteOrphans(ctx)
+	}
+	for k := range r.seen {
+		if _, ok := p.declared[k]; !ok {
+			delete(r.seen, k)
+		}
 	}
 	p.sortDiagnoses()
 	p.rep.Duration = time.Since(p.rep.Started)
@@ -250,6 +269,16 @@ func (p *pass) apply(ctx context.Context, it item) {
 		}
 	}
 
+	// Fast path: the same document already matched this very stored object.
+	docHash := hashDocument(manager, it.key, d.obj)
+	if existing != nil && !force && store.ManagedBy(existing) == manager && p.r.seen != nil {
+		if a, ok := p.r.seen[it.key]; ok && a.doc == docHash && a.rv == existing.GetResourceVersion() {
+			p.rep.Unchanged++
+			return
+		}
+	}
+	delete(p.r.seen, it.key)
+
 	u := &unstructured.Unstructured{Object: runtime.DeepCopyJSON(d.obj)}
 	sanitize(u)
 	if it.key.Namespace != "" && u.GetNamespace() == "" {
@@ -283,12 +312,27 @@ func (p *pass) apply(ctx context.Context, it item) {
 		return
 	}
 	obj.GetObjectKind().SetGroupVersionKind(it.gvk)
+	// The typed encoding always carries non-pointer structs a document may
+	// omit (DNSZone spec.policy), and the driver defaults them when it
+	// validates the typed write (the apiserver in Kubernetes). Default them
+	// here too, so the comparison below sees what the store will hold and an
+	// unchanged document stays unchanged in every driver.
+	if err := p.r.v.Validate(ctx, obj, existing); err != nil {
+		hint, fields := "", []string(nil)
+		if ve, ok := validator.AsError(err); ok {
+			hint, fields = ve.Hint(), ve.Fields()
+		}
+		skip(SeverityError, ReasonInvalid, "", err.Error(), hint, fields)
+		return
+	}
 
 	if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
 		p.rep.Unchanged++
+		p.r.remember(it.key, docHash, existing.GetResourceVersion())
 		return
 	}
-	if _, err := p.r.st.Apply(ctx, obj, store.ApplyOptions{Manager: manager, Force: force}); err != nil {
+	written, err := p.r.st.Apply(ctx, obj, store.ApplyOptions{Manager: manager, Force: force})
+	if err != nil {
 		var mb *store.ErrManagedBy
 		switch {
 		case errors.As(err, &mb):
@@ -305,6 +349,7 @@ func (p *pass) apply(ctx context.Context, it item) {
 		}
 		return
 	}
+	p.r.remember(it.key, docHash, written.GetResourceVersion())
 	if note != nil {
 		p.diag(*note)
 	}
@@ -315,6 +360,32 @@ func (p *pass) apply(ctx context.Context, it item) {
 		p.rep.Updated++
 		p.r.log.Info("objects: updated", "object", it.key.String(), "source", d.source)
 	}
+}
+
+// remember records that the document matched the stored object at rv.
+func (r *reconciler) remember(key store.Key, doc [sha256.Size]byte, rv string) {
+	if r.seen != nil && rv != "" && doc != ([sha256.Size]byte{}) {
+		r.seen[key] = agreement{doc: doc, rv: rv}
+	}
+}
+
+// hashDocument fingerprints a document together with what decides its
+// meaning beyond its bytes (the manager and the defaulted key).
+// encoding/json sorts map keys, so the encoding is deterministic.
+func hashDocument(manager string, key store.Key, obj map[string]any) [sha256.Size]byte {
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return [sha256.Size]byte{} // the zero hash is never remembered
+	}
+	h := sha256.New()
+	h.Write([]byte(manager))
+	h.Write([]byte{0})
+	h.Write([]byte(key.String()))
+	h.Write([]byte{0})
+	h.Write(b)
+	var out [sha256.Size]byte
+	h.Sum(out[:0])
+	return out
 }
 
 // sourceBroken reports whether objects owned by src must be left alone.
