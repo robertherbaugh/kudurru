@@ -287,6 +287,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/blocklists/{namespace}/{name}/sources/{source}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page through the entries of an inline BlockList source
+         * @description The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+         */
+        get: operations["listInlineEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Add and remove entries of an inline BlockList source
+         * @description Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+         */
+        patch: operations["patchInlineEntries"];
+        trace?: never;
+    };
     "/blocklists:batchDelete": {
         parameters: {
             query?: never;
@@ -330,6 +354,43 @@ export interface paths {
         };
         /** The blocked-services and safe-search catalogue in service */
         get: operations["getCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalogue/icons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Logos embedded in this build */
+        get: operations["listCatalogueIcons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalogue/icons/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One embedded logo (image/svg+xml)
+         * @description {file} is {slug}.svg. The SVGs come from homarr-labs/dashboard-icons (Apache-2.0) and carry no script, event handler or external reference. Strong ETag; If-None-Match answers 304. Show them with <img>; the logos are trademarks of their owners and identify the service only.
+         */
+        get: operations["getCatalogueIcon"];
         put?: never;
         post?: never;
         delete?: never;
@@ -805,6 +866,26 @@ export interface paths {
         post?: never;
         /** Delete a Policy */
         delete: operations["deletePolicies"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{namespace}/{name}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A policy's current state
+         * @description Enabled and active now (schedule), rank against other policies, the state of every referenced group, list, service and the upstream group, and the last 24 hours of the queries this policy decided on this node.
+         */
+        get: operations["getPolicyState"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1345,6 +1426,14 @@ export interface components {
             /** Format: date-time */
             until?: string;
         };
+        CatalogueIcon: {
+            /** @description The icon slug (the homarr-labs/dashboard-icons file name). */
+            id: string;
+            /** @description Path of the variant for dark backgrounds, when one exists. */
+            onDark?: string;
+            /** @description /api/v1/catalogue/icons/{id}.svg */
+            path: string;
+        };
         CatalogueInfo: {
             /** @description SHA-256 of the catalogue document. */
             digest: string;
@@ -1384,6 +1473,10 @@ export interface components {
             category: string;
             /** @description The service's rules as list text (||domain^). */
             domains: string[];
+            /** @description Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none. */
+            icon?: string;
+            /** @description The logo drawn for dark backgrounds, when the default one is dark artwork. */
+            iconOnDark?: string;
             /** @description The ID Policy.spec.blockedServices names. */
             id: string;
             /** @description The list name the query log records for this service's blocks (service:<id>). */
@@ -1454,6 +1547,16 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        Condition: {
+            /** Format: date-time */
+            lastTransitionTime: string;
+            message: string;
+            /** Format: int64 */
+            observedGeneration?: number;
+            reason: string;
+            status: string;
+            type: string;
         };
         CreateTokenRequest: {
             /** @description Free text shown in the token list. */
@@ -1693,6 +1796,54 @@ export interface components {
             zone: string;
             zoneName: string;
         };
+        InlineEntries: {
+            /** @description Token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["InlineEntry"][];
+            /**
+             * Format: int64
+             * @description Entries matching q (Total without q).
+             */
+            matched: number;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            /**
+             * Format: int64
+             * @description Entries in the source.
+             */
+            total: number;
+        };
+        InlineEntriesPatch: {
+            add?: string[] | null;
+            remove?: string[] | null;
+        };
+        InlineEntriesResult: {
+            added: string[];
+            removed: string[];
+            resourceVersion: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            /**
+             * Format: int64
+             * @description Entries in the source after the change.
+             */
+            total: number;
+        };
+        InlineEntry: {
+            /**
+             * Format: int64
+             * @description 1-based position in spec.sources[].inline.
+             */
+            line: number;
+            /** @description The entry as written in spec.sources[].inline. */
+            value: string;
+        };
         LatencySummary: {
             /** Format: double */
             avg_ms: number;
@@ -1707,6 +1858,16 @@ export interface components {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
             items: components["schemas"]["ApplyResult"][];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
+        ListCatalogueIcon: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["CatalogueIcon"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -1915,6 +2076,136 @@ export interface components {
             /** Format: date-time */
             ts: string;
         };
+        PolicyClient: {
+            /** Format: int64 */
+            count: number;
+            key: string;
+            name?: string;
+        };
+        PolicyDomain: {
+            /** Format: int64 */
+            count: number;
+            domain: string;
+        };
+        PolicyGroup: {
+            /**
+             * Format: int64
+             * @description Client matchers of the group (spec.clients).
+             */
+            clients: number;
+            enabled: boolean;
+            exists: boolean;
+            ref: string;
+            /**
+             * Format: int64
+             * @description Distinct clients this node's query log attributed to the group (as their first group) in the last 24 hours; absent without a query log.
+             */
+            seen24h?: number;
+        };
+        PolicyList: {
+            enabled: boolean;
+            /** Format: int64 */
+            entries: number;
+            exists: boolean;
+            /** @description The list's own spec.mode (how it is applied); the role when it does not exist. */
+            mode: string;
+            ready: boolean;
+            ref: string;
+            /**
+             * @description Which reference field names it: blockListRefs (block) or allowListRefs (allow).
+             * @enum {string}
+             */
+            role: "block" | "allow";
+            /** Format: int64 */
+            sourcesEnabled: number;
+            /** Format: int64 */
+            sourcesTotal: number;
+        };
+        PolicySafeSearch: {
+            enabled: boolean;
+            /** @description Every engine the catalogue rewrites (all apply when enabled). */
+            engines: components["schemas"]["PolicySafeSearchEngine"][];
+            /** @enum {string} */
+            mode: "strict" | "moderate";
+        };
+        PolicySafeSearchEngine: {
+            /** @description Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none. */
+            icon?: string;
+            /** @description The logo drawn for dark backgrounds, when the default one is dark artwork. */
+            iconOnDark?: string;
+            id: string;
+            name: string;
+        };
+        PolicySchedule: {
+            /** @description Why the schedule is invalid; the policy then applies at all times. */
+            error?: string;
+            /**
+             * Format: date-time
+             * @description When now flips next (within eight days).
+             */
+            nextChange?: string;
+            /** @description The schedule allows the policy now. */
+            now: boolean;
+            /** @description "Mon-Fri 08:00-17:00 (Europe/Berlin)" */
+            summary: string;
+        };
+        PolicyService: {
+            /** @description Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none. */
+            icon?: string;
+            /** @description The logo drawn for dark backgrounds, when the default one is dark artwork. */
+            iconOnDark?: string;
+            id: string;
+            /** @description The catalogue in service has the ID. */
+            known: boolean;
+            /** @description The catalogue name; the ID when unknown. */
+            name: string;
+            /** Format: int64 */
+            rules: number;
+        };
+        PolicyState: {
+            /** @description enabled and the schedule allows it now (an invalid schedule applies at all times). */
+            active: boolean;
+            /** @description spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list. */
+            blockMode: string;
+            blockTTL?: string;
+            conditions: components["schemas"]["Condition"][];
+            /** @description false while the kudurru.io/enabled annotation is "false". */
+            enabled: boolean;
+            groups: components["schemas"]["PolicyGroup"][];
+            lists: components["schemas"]["PolicyList"][];
+            managedBy?: string;
+            /** @description namespace/name */
+            policy: string;
+            /** Format: int64 */
+            priority: number;
+            safeSearch: components["schemas"]["PolicySafeSearch"];
+            schedule?: components["schemas"]["PolicySchedule"];
+            services: components["schemas"]["PolicyService"][];
+            /** @description Enabled policies (namespace/name, rank order) that outrank this one for at least one of its client groups: they decide for those clients and their settings win; the lists of all active policies still apply. */
+            shadowedBy?: string[] | null;
+            stats24h?: components["schemas"]["PolicyStats24h"];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            upstreamGroup?: components["schemas"]["PolicyUpstreamGroup"];
+        };
+        PolicyStats24h: {
+            /** Format: int64 */
+            blocked: number;
+            /** Format: double */
+            blockedPercent: number;
+            /** Format: int64 */
+            queries: number;
+            topBlocked: components["schemas"]["PolicyDomain"][];
+            topClients: components["schemas"]["PolicyClient"][];
+        };
+        PolicyUpstreamGroup: {
+            /** @description upstreams.groups has it; queries fall back to the default group otherwise. */
+            exists: boolean;
+            name: string;
+        };
         Processed: {
             processed: components["schemas"]["ProcessedItems"];
             /**
@@ -1994,6 +2285,7 @@ export interface components {
             id: number;
             list?: string;
             node: string;
+            policy?: string;
             proto: string;
             /** Format: int64 */
             qclass: number;
@@ -2110,6 +2402,10 @@ export interface components {
              * @description Number of host names rewritten.
              */
             domains: number;
+            /** @description Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none. */
+            icon?: string;
+            /** @description The logo drawn for dark backgrounds, when the default one is dark artwork. */
+            iconOnDark?: string;
             id: string;
             /** @description The list name the query log records for its rewrites (safesearch:<id>). */
             list: string;
@@ -4337,6 +4633,215 @@ export interface operations {
             };
         };
     };
+    listInlineEntries: {
+        parameters: {
+            query?: {
+                /** @description Substring filter, case-insensitive. */
+                q?: string;
+                /** @description Page size (default 100). */
+                limit?: number;
+                continue?: string;
+            };
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+                /** @description Source name or index. */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InlineEntries"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchInlineEntries: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Apply only when the stored resourceVersion equals this value (412 otherwise). */
+                "If-Match"?: string;
+            };
+            path: {
+                namespace: string;
+                name: string;
+                /** @description Source name or index. */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InlineEntriesPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InlineEntriesResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     batchDeleteBlocklists: {
         parameters: {
             query?: never;
@@ -4579,6 +5084,144 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCatalogueIcons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCatalogueIcon"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCatalogueIcon: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description {slug}.svg */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The SVG document */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "Content-Length"?: string;
+                    "Content-Security-Policy"?: string;
+                    "Content-Type"?: string;
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8312,6 +8955,92 @@ export interface operations {
             };
         };
     };
+    getPolicyState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyState"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     batchDeletePolicies: {
         parameters: {
             query?: never;
@@ -8422,6 +9151,8 @@ export interface operations {
                 upstream?: string;
                 list?: string;
                 zone?: string;
+                /** @description Deciding policy, namespace/name. */
+                policy?: string;
                 /** @description RFC 3339, inclusive. */
                 since?: string;
                 /** @description RFC 3339, exclusive. */
@@ -8525,6 +9256,8 @@ export interface operations {
                 upstream?: string;
                 list?: string;
                 zone?: string;
+                /** @description Deciding policy, namespace/name. */
+                policy?: string;
                 /** @description RFC 3339, inclusive. */
                 since?: string;
                 /** @description RFC 3339, exclusive. */
@@ -8621,7 +9354,7 @@ export interface operations {
     querySuggestions: {
         parameters: {
             query: {
-                field: "domain" | "client" | "upstream" | "list" | "zone";
+                field: "domain" | "client" | "upstream" | "list" | "zone" | "policy";
                 prefix?: string;
                 n?: number;
             };
