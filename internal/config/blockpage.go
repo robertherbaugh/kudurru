@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -39,6 +40,41 @@ type BlockPage struct {
 	// RateLimit is the page requests per minute one client address may
 	// make; 0 disables the limit.
 	RateLimit int `koanf:"rateLimit" json:"rateLimit"`
+}
+
+// UnblockRequests configures the "Request access" form of the block page
+// (docs/deploy/blocking-page.md, "Unblock requests"): users ask for a
+// blocked name, administrators decide on the Requests page.
+type UnblockRequests struct {
+	// Enabled shows the form (with blockPage.enabled).
+	Enabled bool `koanf:"enabled" json:"enabled"`
+	// RateLimit is the requests per hour one client address (IPv6 /64)
+	// may submit.
+	RateLimit int `koanf:"rateLimit" json:"rateLimit"`
+	// MaxPending caps the undecided requests cluster-wide; beyond it the
+	// form says requests are paused.
+	MaxPending int `koanf:"maxPending" json:"maxPending"`
+	// PendingExpiry expires undecided requests; Retention prunes decided
+	// and expired ones.
+	PendingExpiry Duration `koanf:"pendingExpiry" json:"pendingExpiry"`
+	Retention     Duration `koanf:"retention" json:"retention"`
+}
+
+// minUnblockAge bounds unblockRequests.pendingExpiry and retention below.
+const minUnblockAge = Duration(time.Hour)
+
+// validateUnblockRequests checks the durations (the ints are bounded by
+// the schema).
+func (c *Config) validateUnblockRequests() []error {
+	var errs []error
+	u := c.UnblockRequests
+	if u.PendingExpiry < minUnblockAge {
+		errs = append(errs, errors.New("unblockRequests.pendingExpiry: at least 1h"))
+	}
+	if u.Retention < minUnblockAge {
+		errs = append(errs, errors.New("unblockRequests.retention: at least 1h"))
+	}
+	return errs
 }
 
 // BlockPageListener is the block page's HTTP and HTTPS binds. Every key is
