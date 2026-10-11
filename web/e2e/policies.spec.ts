@@ -23,7 +23,7 @@ test('the policy wizard creates a policy that blocks a service', async ({ page }
 
   await page.goto('/policies');
   await settle(page);
-  await main(page).getByRole('button', { name: 'New policy' }).click();
+  await main(page).getByRole('link', { name: 'New policy' }).click();
   await expect(page).toHaveURL((u) => u.pathname === '/policies/new');
   await settle(page);
 
