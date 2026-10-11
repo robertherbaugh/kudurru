@@ -1,0 +1,50 @@
+Subdomain semantics of ||x^ versus exact entries, case folding, trailing
+dots, IDNA entries, a whole-TLD rule and an IP entry.
+
+-- list ads block adblock --
+! Title: Conformance: adblock basics
+! Last modified: 2026-10-11
+[Adblock Plus 2.0]
+||example.org^
+|exact-anchor.example^
+plain.example
+||Mixed-Case.Example^
+||trailing-dot.example.^
+||bücher.example^
+||xn--caf-dma.example^
+||no-caret.example
+||zip^
+||1.2.3.4^
+-- counts ads --
+rules=10 exceptions=0 unsupported=0 invalid=0 ignored=0 entries=10
+-- expect --
+example.org                  block ads ||example.org^
+www.example.org              block ads ||example.org^
+a.b.c.example.org            block ads ||example.org^
+EXAMPLE.ORG.                 block ads ||example.org^
+Www.Example.Org              block ads ||example.org^
+notexample.org               pass
+example.org.evil.com         pass
+example.organic              pass
+org                          pass
+exact-anchor.example         block ads |exact-anchor.example^
+www.exact-anchor.example     pass    # |x^ is exact
+plain.example                block ads plain.example
+www.plain.example            pass    # plain domains are exact (spec: "but not its subdomains")
+mixed-case.example           block ads ||mixed-case.example^
+sub.MIXED-case.example       block ads ||mixed-case.example^
+trailing-dot.example         block ads ||trailing-dot.example^
+trailing-dot.example.        block ads ||trailing-dot.example^
+xn--bcher-kva.example        block ads ||xn--bcher-kva.example^
+www.xn--bcher-kva.example    block ads ||xn--bcher-kva.example^
+xn--caf-dma.example          block ads ||xn--caf-dma.example^
+no-caret.example             block ads ||no-caret.example^
+x.no-caret.example           block ads ||no-caret.example^
+no-caret.example.uk          pass    # deviation: ||x is read as ||x^ (no substring match)
+whatever.zip                 block ads ||zip^
+zip                          block ads ||zip^
+zipper.example               pass
+ip:1.2.3.4                   block ads 1.2.3.4
+ip:1.2.3.5                   pass
+1.2.3.4                      pass    # IP entries only match answer addresses
+.                            pass

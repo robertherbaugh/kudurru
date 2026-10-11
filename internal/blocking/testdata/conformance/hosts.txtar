@@ -1,0 +1,34 @@
+Hosts-file semantics: entries are exact unless the source declares
+hostsSubdomains; only sink addresses block; OS boilerplate is ignored.
+
+-- list hosts block hosts --
+# Title: Conformance hosts
+127.0.0.1 localhost
+::1 localhost ip6-localhost ip6-loopback
+255.255.255.255 broadcasthost
+0.0.0.0 0.0.0.0
+0.0.0.0 ads.example.com
+0.0.0.0 One.Example Two.Example   # inline comment
+127.0.0.1	tab.example
+:: v6.example
+192.168.1.10 nas.lan
+0.0.0.0 under_score.example bad!.example
+-- list wild block hosts hostsSubdomains --
+0.0.0.0 wild.example
+-- counts hosts --
+rules=6 exceptions=0 unsupported=1 invalid=1 ignored=6 entries=6
+-- counts wild --
+rules=1 entries=1
+-- expect --
+ads.example.com          block hosts ads.example.com
+www.ads.example.com      pass    # hosts entries never match subdomains by default
+one.example              block hosts one.example
+two.example              block hosts two.example
+tab.example              block hosts tab.example
+v6.example               block hosts v6.example
+nas.lan                  pass    # a non-sink address is a rewrite (v0.2), counted unsupported
+localhost                pass
+broadcasthost            pass
+under_score.example      block hosts under_score.example
+wild.example             block wild wild.example
+deep.wild.example        block wild wild.example

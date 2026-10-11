@@ -13,6 +13,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 
 .PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds
 .PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated dex test-auth-e2e
+.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated bench bench-baseline
 
 all: build
 
@@ -80,6 +81,34 @@ $(DEX_BIN):
 ## binaries kudurru ships stay CGO_ENABLED=0.
 test-auth-e2e: $(DEX_BIN)
 	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
+
+## bench: blocking benchmarks gated against bench/baseline.txt (+20 %) and the
+## absolute limits in bench/limits.txt (docs/architecture.md §7.3). The
+## baseline is machine-specific: refresh it with `make bench-baseline` on the
+## runner class that enforces it (docs/spikes/blocking.md, "Refreshing").
+BENCH_PKGS      ?= ./internal/blocking/...
+BENCH_COUNT     ?= 5
+BENCH_BASELINE  ?= bench/baseline.txt
+BENCH_LIMITS    ?= bench/limits.txt
+BENCH_THRESHOLD ?= 20
+BENCH_OUT       ?= bin/bench-current.txt
+# Each count runs in a fresh process so that the medians also cover the
+# run-to-run variance of memory layout, which -count inside one process hides.
+BENCH_RUN        = for i in $$(seq $(BENCH_COUNT)); do \
+	  go test -run '^$$' -bench . -benchmem -count 1 -timeout 30m $(BENCH_PKGS) 2>&1 || echo "FAIL: go test exited non-zero"; \
+	done
+
+bench:
+	@mkdir -p $(dir $(BENCH_OUT))
+	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
+	go run ./internal/blocking/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) $(BENCH_OUT)
+
+## bench-baseline: re-record bench/baseline.txt on this machine and check it against the limits
+bench-baseline:
+	@mkdir -p $(dir $(BENCH_OUT))
+	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
+	go run ./internal/blocking/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
+	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
 helm-lint:
 	helm lint charts/kudurru charts/kudurru-crds
