@@ -226,7 +226,7 @@ func (o *cliOpts) applyManifests(cmd *cobra.Command, ms []cli.Manifest) error {
 			if i < len(ms) {
 				src = fmt.Sprintf(" (%s, document %d)", ms[i].Source, ms[i].Index)
 			}
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: error: %s%s\n", ref, res.Error, src)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: error: %s%s\n", ref, res.Message(), src)
 			continue
 		}
 		if !f.Structured() {
@@ -329,28 +329,38 @@ func newDeleteCmd(o *cliOpts) *cobra.Command {
 	return cmd
 }
 
-// diagnosis is one entry of GET /info/messages. The contract names the
-// endpoint ("diagnoses from objects, policy ties, lists") but not the
-// shape; the fields below are read leniently.
+// diagnosis is one entry of GET /info/messages: {severity, source,
+// reason, object, message, hint, node}. object is the store key
+// ("DNSZone/home", "Policy/dns/kids"); an object form and top-level
+// kind/namespace/name are accepted too.
 type diagnosis struct {
-	Severity  string `json:"severity"`
-	Kind      string `json:"kind"`
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-	Reason    string `json:"reason"`
-	Message   string `json:"message"`
-	Hint      string `json:"hint"`
-	Node      string `json:"node"`
-	Object    *struct {
-		Kind      string `json:"kind"`
-		Namespace string `json:"namespace"`
-		Name      string `json:"name"`
-	} `json:"object"`
+	Severity  string          `json:"severity"`
+	Source    string          `json:"source"`
+	Kind      string          `json:"kind"`
+	Namespace string          `json:"namespace"`
+	Name      string          `json:"name"`
+	Reason    string          `json:"reason"`
+	Message   string          `json:"message"`
+	Hint      string          `json:"hint"`
+	Node      string          `json:"node"`
+	Object    json.RawMessage `json:"object"`
 }
 
 func (d diagnosis) ref() (kind, ns, name string) {
-	if d.Object != nil {
-		return d.Object.Kind, d.Object.Namespace, d.Object.Name
+	var key string
+	if json.Unmarshal(d.Object, &key) == nil && key != "" {
+		parts := strings.Split(key, "/")
+		switch len(parts) {
+		case 2:
+			return parts[0], "", parts[1]
+		case 3:
+			return parts[0], parts[1], parts[2]
+		}
+		return "", "", key
+	}
+	var obj struct{ Kind, Namespace, Name string }
+	if json.Unmarshal(d.Object, &obj) == nil && obj.Name != "" {
+		return obj.Kind, obj.Namespace, obj.Name
 	}
 	return d.Kind, d.Namespace, d.Name
 }

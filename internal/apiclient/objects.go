@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // ObjectPath is the /objects path of one object or, with an empty name, of
@@ -89,6 +90,28 @@ type ApplyResult struct {
 	// Result is created, updated, unchanged or error.
 	Result string `json:"result"`
 	Error  string `json:"error,omitempty"`
+	// ErrorKey is the envelope key of the error (invalid, managed_by, ...).
+	ErrorKey string `json:"errorKey,omitempty"`
+	// Hint is the error hint (the owner for managed_by).
+	Hint string `json:"hint,omitempty"`
+	// ResourceVersion is the stored version after the write.
+	ResourceVersion string `json:"resourceVersion,omitempty"`
+}
+
+// Message renders a failed result as "key: error (hint)".
+func (r ApplyResult) Message() string {
+	msg := r.Error
+	if r.ErrorKey != "" && !strings.HasPrefix(msg, r.ErrorKey) {
+		msg = r.ErrorKey + ": " + msg
+	}
+	switch {
+	case r.Hint == "":
+	case r.ErrorKey == "managed_by":
+		msg += " (managed by " + r.Hint + ")"
+	default:
+		msg += " (hint: " + r.Hint + ")"
+	}
+	return msg
 }
 
 // Apply sends documents (JSON objects) to POST /apply as a JSON array and

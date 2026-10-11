@@ -122,6 +122,16 @@ type topResult struct {
 		Blocked int64   `json:"blocked"`
 		Percent float64 `json:"percent"`
 	} `json:"items"`
+	// Upstreams replaces items for dim=upstreams.
+	Upstreams []struct {
+		Addr     string  `json:"addr"`
+		Total    int64   `json:"total"`
+		Errors   int64   `json:"errors"`
+		Timeouts int64   `json:"timeouts"`
+		Percent  float64 `json:"percent"`
+		AvgMS    float64 `json:"avg_ms"`
+		P95MS    float64 `json:"p95_ms"`
+	} `json:"upstreams"`
 }
 
 func newStatsCmd(o *cliOpts) *cobra.Command {
@@ -211,6 +221,14 @@ func newStatsCmd(o *cliOpts) *cobra.Command {
 				return err
 			}
 			return o.render(cmd, raw, func(wide bool) (*cli.Table, error) {
+				if dim == "upstreams" && len(res.Items) == 0 {
+					t := &cli.Table{Headers: []string{"RANK", "UPSTREAM", "COUNT", "PERCENT", "ERRORS", "TIMEOUTS", "AVG-MS", "P95-MS"}}
+					for i, u := range res.Upstreams {
+						t.Add(strconv.Itoa(i+1), u.Addr, strconv.FormatInt(u.Total, 10), fmt.Sprintf("%.1f%%", u.Percent), strconv.FormatInt(u.Errors, 10),
+							strconv.FormatInt(u.Timeouts, 10), fmt.Sprintf("%.1f", u.AvgMS), fmt.Sprintf("%.1f", u.P95MS))
+					}
+					return t, nil
+				}
 				t := &cli.Table{Headers: []string{"RANK", strings.ToUpper(strings.TrimSuffix(dim, "s")), "COUNT", "PERCENT"}}
 				if wide {
 					t.Headers = append(t.Headers, "NAME", "BLOCKED")
@@ -227,7 +245,7 @@ func newStatsCmd(o *cliOpts) *cobra.Command {
 		},
 	}
 	top.Flags().StringVar(&dim, "dim", "domains", "dimension: domains, clients, upstreams, lists or zones")
-	top.Flags().IntVar(&n, "top", 10, "number of rows")
+	top.Flags().IntVar(&n, "top", 10, "number of rows (at most 100)")
 	top.Flags().BoolVar(&blocked, "blocked", false, "rank blocked queries only")
 	top.Flags().StringVar(&twindow, "window", "24h", "window ending now")
 	_ = top.RegisterFlagCompletionFunc("dim", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
@@ -602,14 +620,17 @@ func cloneQuery(q url.Values) url.Values {
 	return out
 }
 
-// nodeInfo is one item of GET /nodes, read leniently.
+// nodeInfo is one item of GET /nodes.
 type nodeInfo struct {
 	Name     string   `json:"name"`
-	Ready    any      `json:"ready"`
-	Roles    []string `json:"roles"`
-	Leader   bool     `json:"leader"`
-	Version  string   `json:"version"`
 	Address  string   `json:"address"`
+	Self     bool     `json:"self"`
+	Leader   bool     `json:"leader"`
+	Ready    any      `json:"ready"`
+	Unready  []string `json:"unready"`
+	Version  string   `json:"version"`
+	State    string   `json:"state"`
+	Roles    []string `json:"roles"`
 	QPS      *float64 `json:"qps"`
 	Snapshot string   `json:"snapshotAge"`
 }
@@ -648,18 +669,19 @@ func newNodesCmd(o *cliOpts) *cobra.Command {
 				nodes = append(nodes, n)
 			}
 			return o.render(cmd, raw, func(wide bool) (*cli.Table, error) {
-				t := &cli.Table{Headers: []string{"NAME", "READY", "ROLES", "LEADER", "VERSION"}}
+				t := &cli.Table{Headers: []string{"NAME", "READY", "LEADER", "STATE", "VERSION"}}
 				if wide {
-					t.Headers = append(t.Headers, "ADDRESS", "QPS", "SNAPSHOT-AGE")
+					t.Headers = append(t.Headers, "ADDRESS", "SELF", "ROLES", "QPS", "SNAPSHOT-AGE", "UNREADY")
 				}
 				for _, n := range nodes {
-					row := []string{n.Name, readyString(n.Ready), firstNonEmpty(strings.Join(n.Roles, ","), "-"), strconv.FormatBool(n.Leader), firstNonEmpty(n.Version, "-")}
+					row := []string{n.Name, readyString(n.Ready), strconv.FormatBool(n.Leader), firstNonEmpty(n.State, "-"), firstNonEmpty(n.Version, "-")}
 					if wide {
 						qps := "-"
 						if n.QPS != nil {
 							qps = strconv.FormatFloat(*n.QPS, 'f', 1, 64)
 						}
-						row = append(row, firstNonEmpty(n.Address, "-"), qps, firstNonEmpty(n.Snapshot, "-"))
+						row = append(row, firstNonEmpty(n.Address, "-"), strconv.FormatBool(n.Self), firstNonEmpty(strings.Join(n.Roles, ","), "-"), qps,
+							firstNonEmpty(n.Snapshot, "-"), firstNonEmpty(strings.Join(n.Unready, ","), "-"))
 					}
 					t.Add(row...)
 				}
@@ -669,19 +691,48 @@ func newNodesCmd(o *cliOpts) *cobra.Command {
 	}
 }
 
-// auditEntry is one item of GET /audit, read leniently.
+// auditEntry is one item of GET /audit: {ts, actor:{kind,id,name},
+// action, resource:{kind,namespace,name}, result, authz}. Flat string
+// forms (actor "admin", top-level kind/name, verb, outcome) are accepted.
 type auditEntry struct {
-	TS        time.Time `json:"ts"`
-	Time      time.Time `json:"time"`
-	Actor     string    `json:"actor"`
-	Verb      string    `json:"verb"`
-	Action    string    `json:"action"`
-	Kind      string    `json:"kind"`
-	Namespace string    `json:"namespace"`
-	Name      string    `json:"name"`
-	Outcome   string    `json:"outcome"`
-	Result    string    `json:"result"`
-	AuthzPath string    `json:"authzPath"`
+	TS        time.Time       `json:"ts"`
+	Time      time.Time       `json:"time"`
+	Actor     json.RawMessage `json:"actor"`
+	Verb      string          `json:"verb"`
+	Action    string          `json:"action"`
+	Resource  json.RawMessage `json:"resource"`
+	Kind      string          `json:"kind"`
+	Namespace string          `json:"namespace"`
+	Name      string          `json:"name"`
+	Outcome   string          `json:"outcome"`
+	Result    string          `json:"result"`
+	Authz     string          `json:"authz"`
+}
+
+func (e auditEntry) actor() string {
+	var s string
+	if json.Unmarshal(e.Actor, &s) == nil {
+		return s
+	}
+	var a struct{ Kind, ID, Name string }
+	if json.Unmarshal(e.Actor, &a) == nil {
+		return firstNonEmpty(a.Name, a.ID)
+	}
+	return ""
+}
+
+func (e auditEntry) object() string {
+	var r struct{ Kind, Namespace, Name string }
+	if json.Unmarshal(e.Resource, &r) == nil && r.Kind != "" {
+		if r.Name == "" {
+			return strings.ToLower(r.Kind)
+		}
+		return cli.ObjectRef(r.Kind, r.Namespace, r.Name)
+	}
+	if e.Name != "" {
+		return cli.ObjectRef(e.Kind, e.Namespace, e.Name)
+	}
+	return "-"
 }
 
 func newAuditCmd(o *cliOpts) *cobra.Command {
@@ -745,11 +796,7 @@ func newAuditCmd(o *cliOpts) *cobra.Command {
 					if ts.IsZero() {
 						ts = e.Time
 					}
-					obj := "-"
-					if e.Name != "" {
-						obj = cli.ObjectRef(e.Kind, e.Namespace, e.Name)
-					}
-					t.Add(formatTime(ts), firstNonEmpty(e.Actor, "-"), firstNonEmpty(e.Verb, e.Action, "-"), obj, firstNonEmpty(e.Outcome, e.Result, "-"))
+					t.Add(formatTime(ts), firstNonEmpty(e.actor(), "-"), firstNonEmpty(e.Action, e.Verb, "-"), e.object(), firstNonEmpty(e.Result, e.Outcome, "-"))
 				}
 				return t, nil
 			})

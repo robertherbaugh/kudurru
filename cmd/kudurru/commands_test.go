@@ -25,7 +25,9 @@ func TestConvenienceGolden(t *testing.T) {
 		{"stats-summary", []string{"stats", "summary"}},
 		{"stats-top", []string{"stats", "top", "--dim", "domains", "--blocked"}},
 		{"stats-top-wide", []string{"stats", "top", "--dim", "domains", "-o", "wide"}},
+		{"stats-top-upstreams", []string{"stats", "top", "--dim", "upstreams"}},
 		{"nodes", []string{"nodes"}},
+		{"nodes-wide", []string{"nodes", "-o", "wide"}},
 		{"audit", []string{"audit", "--since", "24h"}},
 		{"settings-get", []string{"settings", "get"}},
 		{"settings-get-key", []string{"settings", "get", "cache.maxEntries", "-o", "json"}},
@@ -54,16 +56,22 @@ func TestZonesImportExportNotify(t *testing.T) {
 	if err := os.WriteFile(zf, []byte(zone), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out := h.mustRun("zones", "import", "home-example-com", "-f", zf)
-	if out != "zone home-example-com imported: recordSets 1, records 3\n" {
-		t.Fatalf("import output %q", out)
+	out, errOut, err := h.run("zones", "import", "home-example-com", "-f", zf)
+	if err != nil || out != "zone home-example-com imported: endpoints 3, recordSets 1, serial 2026101101\n" || errOut != "warning: line 9: $INCLUDE ignored\n" {
+		t.Fatalf("import: %v %q %q", err, out, errOut)
 	}
 	if got := string(h.api.lastBody("POST", "/api/v1/zones/home-example-com/import")); got != zone {
 		t.Fatalf("import body %q", got)
 	}
 	// `import bind` is the same request.
 	h.stdin = zone
-	h.mustRun("import", "bind", "home-example-com", "-f", "-")
+	if out := h.mustRun("import", "bind", "new-example-com", "-f", "-", "--origin", "new.example.com.", "-n", "apps"); !strings.Contains(out, "imported: zone created, ") {
+		t.Fatalf("import bind --origin: %q", out)
+	}
+	if len(h.api.requested("POST /api/v1/zones/new-example-com/import?namespace=apps&origin=new.example.com.")) != 1 {
+		t.Fatalf("import query: %v", h.api.requested("POST"))
+	}
+	h.mustRun("import", "bind", "home-example-com", "-f", zf)
 	if n := len(h.api.requested("POST /api/v1/zones/home-example-com/import")); n != 2 {
 		t.Fatalf("import requests %d", n)
 	}
@@ -79,7 +87,7 @@ func TestZonesImportExportNotify(t *testing.T) {
 	if b, _ := os.ReadFile(file); !strings.Contains(string(b), "www\t300\tIN\tA") { //nolint:gosec // G304: the test's temp file
 		t.Fatalf("export --out wrote %q", b)
 	}
-	if out := h.mustRun("zones", "notify", "home-example-com"); out != "NOTIFY queued for zone home-example-com\n" {
+	if out := h.mustRun("zones", "notify", "home-example-com"); out != "NOTIFY queued for zone home-example-com to 192.0.2.53\n" {
 		t.Fatalf("notify %q", out)
 	}
 }
@@ -164,17 +172,18 @@ func TestListsBlockingCache(t *testing.T) {
 
 func TestSettingsSet(t *testing.T) {
 	h := loggedIn(t)
-	out, errOut, err := h.run("settings", "set", "cache.maxEntries=200000", "log.level=debug", "upstreams.bootstrap=9.9.9.9, 1.1.1.1", "cache.minTTL-")
+	out, errOut, err := h.run("settings", "set", "cache.maxEntries=200000", "log.level=debug", "log.format=text", "upstreams.bootstrap=9.9.9.9, 1.1.1.1", "cache.minTTL-")
 	if err != nil {
 		t.Fatalf("set: %v\n%s", err, errOut)
 	}
-	if out != "cluster settings updated\nnode settings updated\n" {
-		t.Fatalf("set output %q", out)
+	if out != "cluster settings updated: cache.maxEntries, cache.minTTL, upstreams.bootstrap\nnode settings updated: log.format, log.level\n" ||
+		errOut != "note: log.format takes effect after a restart\n" {
+		t.Fatalf("set output %q %q", out, errOut)
 	}
 	if got := string(h.api.lastBody("PATCH", "/api/v1/settings")); got != `{"cache":{"maxEntries":200000,"minTTL":null},"upstreams":{"bootstrap":["9.9.9.9","1.1.1.1"]}}` {
 		t.Fatalf("cluster patch %s", got)
 	}
-	if got := string(h.api.lastBody("PATCH", "/api/v1/node/config")); got != `{"log":{"level":"debug"}}` {
+	if got := string(h.api.lastBody("PATCH", "/api/v1/node/config")); got != `{"log":{"format":"text","level":"debug"}}` {
 		t.Fatalf("node patch %s", got)
 	}
 	cases := []struct{ arg, want string }{

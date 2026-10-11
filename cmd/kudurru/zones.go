@@ -125,7 +125,7 @@ func (o *cliOpts) completeZones(cmd *cobra.Command, args []string, _ string) ([]
 // newZoneImportCmd posts BIND text to /zones/{zone}/import. It is shared
 // by `zones import` and `import bind`.
 func newZoneImportCmd(o *cliOpts, use string) *cobra.Command {
-	var file string
+	var file, origin string
 	cmd := &cobra.Command{
 		Use:               use,
 		Short:             "Import a BIND zone file into a zone's record sets",
@@ -141,7 +141,14 @@ func newZoneImportCmd(o *cliOpts, use string) *cobra.Command {
 				return err
 			}
 			var res json.RawMessage
-			req := apiclient.Request{Method: http.MethodPost, Path: "/zones/" + apiclient.Seg(args[0]) + "/import", Body: bytes.NewReader(body), ContentType: "text/dns"}
+			q := url.Values{}
+			if origin != "" {
+				q.Set("origin", origin)
+			}
+			if o.namespace != "" {
+				q.Set("namespace", o.namespace)
+			}
+			req := apiclient.Request{Method: http.MethodPost, Path: "/zones/" + apiclient.Seg(args[0]) + "/import", Query: q, Body: bytes.NewReader(body), ContentType: "text/dns"}
 			resp, err := c.Raw(cmd.Context(), req)
 			if err != nil {
 				return err
@@ -163,27 +170,43 @@ func newZoneImportCmd(o *cliOpts, use string) *cobra.Command {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), ": %s", s)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout())
+			var warn struct {
+				Warnings []string `json:"warnings"`
+			}
+			_ = json.Unmarshal(res, &warn)
+			for _, w := range warn.Warnings {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&file, "filename", "f", "", "zone file in BIND presentation format, or - for stdin")
+	cmd.Flags().StringVar(&origin, "origin", "", "zone apex, to create the DNSZone when it does not exist yet")
 	_ = cmd.MarkFlagRequired("filename")
 	return cmd
 }
 
-// importSummary renders the numeric fields of an import result
-// ("records: 12, recordSets: 3").
+// importSummary renders an import result: numbers as is, lists by their
+// length, created when the zone was made ("created, endpoints 3,
+// recordSets 1, serial 2026101101").
 func importSummary(raw json.RawMessage) string {
 	var m map[string]any
 	if json.Unmarshal(raw, &m) != nil {
 		return ""
 	}
 	var parts []string
+	if m["created"] == true {
+		parts = append(parts, "zone created")
+	}
 	for _, k := range sortedKeys(m) {
 		switch v := m[k].(type) {
 		case float64:
 			if k != "took_ms" {
-				parts = append(parts, fmt.Sprintf("%s %v", k, v))
+				parts = append(parts, fmt.Sprintf("%s %s", k, strconv.FormatFloat(v, 'f', -1, 64)))
+			}
+		case []any:
+			if k != "warnings" {
+				parts = append(parts, fmt.Sprintf("%s %d", k, len(v)))
 			}
 		case string:
 			if k == "recordSet" || k == "result" {
@@ -250,7 +273,15 @@ func newZoneNotifyCmd(o *cliOpts) *cobra.Command {
 			if f.Structured() {
 				return cli.WriteStructured(cmd.OutOrStdout(), f, res)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "NOTIFY queued for zone %s\n", args[0])
+			var nr struct {
+				Targets []string `json:"targets"`
+			}
+			_ = json.Unmarshal(res, &nr)
+			msg := "NOTIFY queued for zone " + args[0]
+			if len(nr.Targets) > 0 {
+				msg += " to " + strings.Join(nr.Targets, ", ")
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), msg)
 			return err
 		},
 	}
@@ -341,6 +372,9 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 			if recordSet != "" {
 				q.Set("recordSet", recordSet)
 			}
+			if o.namespace != "" {
+				q.Set("namespace", o.namespace)
+			}
 			var res json.RawMessage
 			if err := c.Post(cmd.Context(), "/zones/"+apiclient.Seg(args[0])+"/records", q, ep, &res); err != nil {
 				return err
@@ -357,6 +391,7 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	add.Flags().StringVar(&recordSet, "record-set", "", "record set to write (default api-<zone>)")
 	add.Flags().StringVar(&comment, "comment", "", "comment stored with the record")
 	add.Flags().StringVar(&setID, "set-identifier", "", "external-dns set identifier")
+	var rmSet, rmSetID string
 	rm := &cobra.Command{
 		Use:               "rm <zone> <name> <type>",
 		Aliases:           []string{"remove", "delete"},
@@ -368,14 +403,23 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 			if err != nil {
 				return err
 			}
+			q := url.Values{}
+			if rmSet != "" {
+				q.Set("recordSet", rmSet)
+			}
+			if rmSetID != "" {
+				q.Set("setIdentifier", rmSetID)
+			}
 			path := "/zones/" + apiclient.Seg(args[0]) + "/records/" + apiclient.Seg(args[1]) + "/" + apiclient.Seg(strings.ToUpper(args[2]))
-			if err := c.Delete(cmd.Context(), path, nil); err != nil {
+			if err := c.Delete(cmd.Context(), path, q); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s removed from zone %s\n", args[1], strings.ToUpper(args[2]), args[0])
 			return err
 		},
 	}
+	rm.Flags().StringVar(&rmSet, "record-set", "", "only this record set (namespace/name or name)")
+	rm.Flags().StringVar(&rmSetID, "set-identifier", "", "only the endpoint with this set identifier")
 	cmd.AddCommand(list, add, rm)
 	return cmd
 }

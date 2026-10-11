@@ -84,9 +84,17 @@ func newListsCmd(o *cliOpts) *cobra.Command {
 				return err
 			}
 			return o.render(cmd, raw, func(bool) (*cli.Table, error) {
-				t := &cli.Table{Headers: []string{"NAMESPACE", "NAME", "MODE", "RULE", "SOURCE"}}
+				t := &cli.Table{Headers: []string{"NAMESPACE", "NAME", "MODE", "RULE"}}
 				for _, h := range hits {
-					t.Add(firstNonEmpty(h.Namespace, "-"), firstNonEmpty(h.Name, h.List), firstNonEmpty(h.Mode, "-"), firstNonEmpty(h.Rule, "-"), firstNonEmpty(h.Source, "-"))
+					ns, name := h.Namespace, h.Name
+					if name == "" {
+						if a, b, ok := strings.Cut(h.List, "/"); ok {
+							ns, name = a, b
+						} else {
+							name = h.List
+						}
+					}
+					t.Add(firstNonEmpty(ns, "-"), name, firstNonEmpty(h.Mode, "-"), firstNonEmpty(h.Rule, "-"))
 				}
 				return t, nil
 			})
@@ -103,7 +111,6 @@ type searchHit struct {
 	List      string `json:"list"`
 	Mode      string `json:"mode"`
 	Rule      string `json:"rule"`
-	Source    string `json:"source"`
 }
 
 func searchHits(raw json.RawMessage) ([]searchHit, error) {
@@ -335,12 +342,39 @@ type queryResult struct {
 	Rule       string            `json:"rule,omitempty"`
 	Zone       string            `json:"zone,omitempty"`
 	Node       string            `json:"node,omitempty"`
-	Flags      json.RawMessage   `json:"flags,omitempty"`
+	Flags      *digFlags         `json:"flags,omitempty"`
+	Error      string            `json:"error,omitempty"`
 	Answer     []json.RawMessage `json:"answer,omitempty"`
 	Authority  []json.RawMessage `json:"authority,omitempty"`
 	Additional []json.RawMessage `json:"additional,omitempty"`
 	LatencyMS  *float64          `json:"latency_ms,omitempty"`
 	TookMS     float64           `json:"took_ms,omitempty"`
+}
+
+// digFlags are the header bits of the answer.
+type digFlags struct {
+	AA bool `json:"aa"`
+	TC bool `json:"tc"`
+	RD bool `json:"rd"`
+	RA bool `json:"ra"`
+	AD bool `json:"ad"`
+	CD bool `json:"cd"`
+}
+
+func (f *digFlags) String() string {
+	if f == nil {
+		return ""
+	}
+	var out []string
+	for _, b := range []struct {
+		on   bool
+		name string
+	}{{true, "qr"}, {f.AA, "aa"}, {f.TC, "tc"}, {f.RD, "rd"}, {f.RA, "ra"}, {f.AD, "ad"}, {f.CD, "cd"}} {
+		if b.on {
+			out = append(out, b.name)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // newQueryCmd is `kudurru query <name> [type] [--client ip]`: the
@@ -418,6 +452,12 @@ func printDig(w io.Writer, name, qtype string, res queryResult, server string) e
 	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
 	rcode := firstNonEmpty(rcodeString(res.Rcode), "NOERROR")
 	p(";; ->>HEADER<<- status: %s\n", rcode)
+	if res.Flags != nil {
+		p(";; flags: %s\n", res.Flags)
+	}
+	if res.Error != "" {
+		p(";; error: %s\n", res.Error)
+	}
 	verdict := []string{"status: " + firstNonEmpty(res.Status, "-")}
 	if res.Upstream != "" {
 		verdict = append(verdict, "upstream: "+res.Upstream)

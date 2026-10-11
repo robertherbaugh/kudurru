@@ -1,0 +1,3 @@
+NAME     READY   LEADER   STATE          VERSION   ADDRESS     SELF    ROLES   QPS   SNAPSHOT-AGE   UNREADY
+node-a   True    true     live           v0.1.0    10.0.0.11   true    -       -     -              -
+node-b   False   false    fromSnapshot   v0.1.0    10.0.0.12   false   -       -     3m             zonecache

@@ -174,6 +174,10 @@ func newSettingsCmd(o *cliOpts) *cobra.Command {
 				if err := c.Get(cmd.Context(), settingsPath(s), nil, &m); err != nil {
 					return fmt.Errorf("GET %s: %w", settingsPath(s), err)
 				}
+				// {scope, node, settings:{...}}; a bare tree is accepted too.
+				if inner, ok := m["settings"].(map[string]any); ok {
+					m = inner
+				}
 				delete(m, "took_ms")
 				values[s] = m
 			}
@@ -278,17 +282,32 @@ host. "key-" removes the override so the default applies again.`,
 				if !ok {
 					continue
 				}
-				if err := patchSettings(cmd, c, settingsPath(s), p); err != nil {
+				res, err := patchSettings(cmd, c, settingsPath(s), p)
+				if err != nil {
 					if apiclient.IsKey(err, "host_only") {
 						return fmt.Errorf("%w: hostOnly keys are set in kudurru.yaml or KUDURRU_* environment variables on the host", err)
 					}
 					return err
 				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s settings updated\n", s)
-			}
-			for _, a := range args {
-				path, _, _ := strings.Cut(strings.TrimSuffix(a, "-"), "=")
-				if k, _ := config.Lookup(path); k.RestartRequired {
+				msg := string(s) + " settings updated"
+				if len(res.Changed) > 0 {
+					msg += ": " + strings.Join(res.Changed, ", ")
+				}
+				if res.Persisted != nil && !*res.Persisted {
+					msg += " (not persisted: lost on restart)"
+				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), msg)
+				restart := res.RestartRequired
+				if res.Changed == nil && restart == nil {
+					// The server did not say; fall back to the schema.
+					for _, a := range args {
+						path, _, _ := strings.Cut(strings.TrimSuffix(a, "-"), "=")
+						if k, _ := config.Lookup(path); k.RestartRequired && k.Scope == s {
+							restart = append(restart, path)
+						}
+					}
+				}
+				for _, path := range restart {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "note: %s takes effect after a restart\n", path)
 				}
 			}
@@ -299,15 +318,27 @@ host. "key-" removes the override so the default applies again.`,
 	return cmd
 }
 
-func patchSettings(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any) error {
+// patchResult is the PATCH /settings and /node/config answer.
+type patchResult struct {
+	Changed         []string `json:"changed"`
+	RestartRequired []string `json:"restartRequired"`
+	Persisted       *bool    `json:"persisted"`
+}
+
+func patchSettings(cmd *cobra.Command, c *apiclient.Client, path string, patch map[string]any) (patchResult, error) {
+	var res patchResult
 	b, err := json.Marshal(patch)
 	if err != nil {
-		return err
+		return res, err
 	}
 	resp, err := c.Raw(cmd.Context(), apiclient.Request{Method: http.MethodPatch, Path: path, Body: bytes.NewReader(b), ContentType: "application/merge-patch+json"})
 	if err != nil {
-		return err
+		return res, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return apiclient.CheckResponse(resp)
+	if err := apiclient.CheckResponse(resp); err != nil {
+		return res, err
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&res)
+	return res, nil
 }

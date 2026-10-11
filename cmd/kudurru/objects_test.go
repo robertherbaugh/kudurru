@@ -177,7 +177,7 @@ func TestApplyDirectoryAndErrors(t *testing.T) {
 	if !strings.Contains(out, "policy/default/guests created") {
 		t.Fatalf("stdout:\n%s", out)
 	}
-	if !strings.Contains(errOut, "dnszone/lab-example-com: error: managed_by: owned by file:objects.d/zones.yaml") || !strings.Contains(errOut, "b.json, document 0") {
+	if !strings.Contains(errOut, "dnszone/lab-example-com: error: managed_by: object is managed by another manager (managed by file:objects.d/zones.yaml) (") || !strings.Contains(errOut, "b.json, document 0") {
 		t.Fatalf("stderr:\n%s", errOut)
 	}
 	// -R descends into sub/.

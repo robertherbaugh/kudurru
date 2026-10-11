@@ -1,5 +1,6 @@
 ;; ->>HEADER<<- status: NOERROR
-;; kudurru status: forwarded, upstream: default
+;; flags: qr rd ra
+;; kudurru status: forwarded, upstream: default, client: 127.0.0.1
 
 ;; QUESTION SECTION:
 ;www.example.com.	IN	A

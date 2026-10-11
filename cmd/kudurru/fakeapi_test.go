@@ -127,9 +127,11 @@ func (f *fakeAPI) seed() {
 	}
 	// Newest first, like the query log.
 	slices.Reverse(f.queries)
+	// internal/api DiagnosisMessage: object is the store key.
 	f.messages = []map[string]any{
-		{"severity": "error", "kind": "DNSZone", "name": "lab-example-com", "reason": "NoUpstream", "message": "forward zone has no forwarders", "hint": "set spec.forward.servers"},
-		{"severity": "warning", "kind": "Policy", "namespace": "default", "name": "kids", "reason": "PriorityTie", "message": "same priority as policy other"},
+		{"severity": "error", "source": "objects", "object": "DNSZone/lab-example-com", "reason": "NoUpstream", "message": "forward zone has no forwarders", "hint": "set spec.forward.servers", "node": "node-a"},
+		{"severity": "warning", "source": "policy", "object": "Policy/default/kids", "reason": "PriorityTie", "message": "same priority as policy other", "node": "node-a"},
+		{"severity": "info", "source": "cluster", "reason": "ReadOnly", "message": "objects are read-only through the API (ha-static)", "node": "node-a"},
 	}
 }
 
@@ -344,7 +346,8 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			f.writeErr(w, 415, "invalid", "want text/dns", "")
 			return
 		}
-		f.writeJSON(w, 200, map[string]any{"recordSets": 1, "records": 3, "took_ms": 3})
+		f.writeJSON(w, 200, map[string]any{"zone": r.PathValue("zone"), "zoneName": "home.example.com.", "created": r.URL.Query().Get("origin") != "",
+			"recordSets": []string{"default/import-home-example-com"}, "endpoints": 3, "serial": 2026101101, "warnings": []string{"line 9: $INCLUDE ignored"}, "took_ms": 3})
 	})
 	mux.HandleFunc("GET /api/v1/zones/{zone}/export", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/dns")
@@ -363,8 +366,9 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		f.writeJSON(w, 202, map[string]any{})
 	})
 	mux.HandleFunc("GET /api/v1/blocklists/_search", func(w http.ResponseWriter, r *http.Request) {
-		f.writeJSON(w, 200, map[string]any{"domain": r.URL.Query().Get("domain"), "items": []map[string]any{
-			{"namespace": "default", "name": "ads", "mode": "block", "rule": "||ads.example.net^", "source": "local"},
+		f.writeJSON(w, 200, map[string]any{"items": []map[string]any{
+			{"list": "default/ads", "mode": "block", "rule": "||" + r.URL.Query().Get("domain") + "^"},
+			{"list": "home/kids-extra", "mode": "block", "rule": "ads.example.net"},
 		}})
 	})
 	mux.HandleFunc("POST /api/v1/domains/{verb}/{kind}", func(w http.ResponseWriter, r *http.Request) {
@@ -416,7 +420,8 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 				"answer": []map[string]any{{"name": req.Name, "ttl": 600, "class": "IN", "type": "A", "data": "0.0.0.0"}}})
 			return
 		}
-		f.writeJSON(w, 200, map[string]any{"name": req.Name + ".", "type": req.Type, "status": "forwarded", "rcode": "NOERROR", "upstream": "default", "node": "node-a", "latency_ms": 12.5,
+		f.writeJSON(w, 200, map[string]any{"name": req.Name + ".", "type": req.Type, "client": "127.0.0.1", "status": "forwarded", "status_class": "permitted", "rcode": "NOERROR",
+			"upstream": "default", "node": "node-a", "latency_ms": 12.5, "flags": map[string]bool{"rd": true, "ra": true},
 			"answer":    []string{req.Name + ". 300 IN CNAME edge.example.net.", "edge.example.net. 60 IN A 93.184.216.34"},
 			"authority": []string{}, "additional": []string{}})
 	})
@@ -431,6 +436,11 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			"approximate":      false})
 	})
 	mux.HandleFunc("GET /api/v1/stats/top", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("dim") == "upstreams" {
+			f.writeJSON(w, 200, map[string]any{"scope": "node", "nodes": []map[string]any{{"name": "node-a", "ok": true}}, "dim": "upstreams", "items": []any{},
+				"upstreams": []map[string]any{{"addr": "default", "total": 48000, "errors": 12, "timeouts": 3, "percent": 92.3, "avg_ms": 14.2, "p95_ms": 40}, {"addr": "cache", "total": 4000, "percent": 7.7}}})
+			return
+		}
 		f.writeJSON(w, 200, map[string]any{"scope": map[string]any{"scope": "node", "nodes": []map[string]any{{"name": "node-a", "ok": true}}}, "dim": r.URL.Query().Get("dim"),
 			"blocked": r.URL.Query().Get("blocked") == "true", "items": []map[string]any{
 				{"key": "ads.example.net", "count": 900, "blocked": 900, "percent": 5},
@@ -441,13 +451,17 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/queries/stream", f.queriesStream)
 	mux.HandleFunc("GET /api/v1/nodes", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 200, map[string]any{"items": []map[string]any{
-			{"name": "node-a", "ready": true, "roles": []string{"dns", "api"}, "leader": true, "version": "v0.1.0", "address": "10.0.0.11", "qps": 2.5},
-		}})
+			{"name": "node-a", "address": "10.0.0.11", "self": true, "leader": true, "ready": true, "version": "v0.1.0", "state": "live"},
+			{"name": "node-b", "address": "10.0.0.12", "self": false, "leader": false, "ready": false, "unready": []string{"zonecache"}, "version": "v0.1.0", "state": "fromSnapshot", "snapshotAge": "3m"},
+		}, "took_ms": 1})
 	})
 	mux.HandleFunc("GET /api/v1/audit", func(w http.ResponseWriter, r *http.Request) {
+		// internal/audit.Event rows.
 		items := []map[string]any{
-			{"ts": "2026-10-11T11:00:00Z", "actor": "admin", "verb": "update", "kind": "DNSZone", "name": "home-example-com", "outcome": "success"},
-			{"ts": "2026-10-11T10:00:00Z", "actor": "ci", "verb": "delete", "kind": "BlockList", "namespace": "default", "name": "old", "outcome": "denied"},
+			{"id": 2, "ts": "2026-10-11T11:00:00Z", "node": "node-a", "actor": map[string]any{"kind": "User", "id": "u-admin", "name": "admin"}, "action": "update",
+				"resource": map[string]any{"kind": "DNSZone", "name": "home-example-com"}, "result": "success", "authz": "binding"},
+			{"id": 1, "ts": "2026-10-11T10:00:00Z", "node": "node-a", "actor": map[string]any{"kind": "ServiceAccount", "id": "sa-ci", "name": "ci"}, "action": "delete",
+				"resource": map[string]any{"kind": "BlockList", "namespace": "default", "name": "old"}, "result": "denied", "reason": "forbidden"},
 		}
 		if r.URL.Query().Get("cursor") == "" {
 			f.writeJSON(w, 200, map[string]any{"items": items[:1], "cursor_next": "c1"})
@@ -458,23 +472,40 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/info/messages", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 200, map[string]any{"items": f.messages})
 	})
+	// internal/api SettingsBody: {scope, node, settings:{tree}}.
 	mux.HandleFunc("GET /api/v1/settings", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.writeJSON(w, 200, f.settings)
+		f.writeJSON(w, 200, map[string]any{"scope": "cluster", "node": "node-a", "settings": f.settings, "took_ms": 0.2})
 	})
 	mux.HandleFunc("GET /api/v1/node/config", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.writeJSON(w, 200, f.nodeCfg)
+		f.writeJSON(w, 200, map[string]any{"scope": "node", "node": "node-a", "settings": f.nodeCfg, "took_ms": 0.2})
 	})
 	patch := func(w http.ResponseWriter, r *http.Request) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/merge-patch+json" {
 			f.writeErr(w, 415, "invalid", "want merge patch, got "+ct, "")
 			return
 		}
-		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{}`))
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		var changed, restart []string
+		var walk func(prefix string, m map[string]any)
+		walk = func(prefix string, m map[string]any) {
+			for _, k := range sortedKeys(m) {
+				if sub, ok := m[k].(map[string]any); ok {
+					walk(prefix+k+".", sub)
+					continue
+				}
+				changed = append(changed, prefix+k)
+				if prefix+k == "log.format" {
+					restart = append(restart, prefix+k)
+				}
+			}
+		}
+		walk("", body)
+		f.writeJSON(w, 200, map[string]any{"scope": "cluster", "node": "node-a", "settings": map[string]any{}, "changed": changed, "restartRequired": restart})
 	}
 	mux.HandleFunc("PATCH /api/v1/settings", patch)
 	mux.HandleFunc("PATCH /api/v1/node/config", patch)
@@ -590,7 +621,7 @@ func (f *fakeAPI) apply(w http.ResponseWriter, r *http.Request) {
 		case !ok:
 			res["result"], res["error"] = "error", "unknown kind "+kind
 		case exists && strings.Contains(string(existing), `"kudurru.io/managed-by":"file:`):
-			res["result"], res["error"] = "error", "managed_by: owned by file:objects.d/zones.yaml"
+			res["result"], res["error"], res["errorKey"], res["hint"] = "error", "object is managed by another manager", "managed_by", "file:objects.d/zones.yaml"
 		default:
 			b, _ := json.Marshal(d)
 			switch {
