@@ -89,7 +89,7 @@ func TestLoginWithPasswordMintsAToken(t *testing.T) {
 	if got := h.api.lastHeader("POST", "/api/v1/auth/tokens").Get("X-Kudurru-CSRF"); got != fakeCSRF {
 		t.Fatalf("CSRF header on token mint = %q", got)
 	}
-	if body := string(h.api.lastBody("POST", "/api/v1/auth/tokens")); !strings.Contains(body, `"name":"laptop"`) {
+	if body := string(h.api.lastBody("POST", "/api/v1/auth/tokens")); !strings.Contains(body, `"description":"laptop"`) {
 		t.Fatalf("token request body %s", body)
 	}
 	if len(h.api.requested("POST /api/v1/auth/logout")) != 1 {
