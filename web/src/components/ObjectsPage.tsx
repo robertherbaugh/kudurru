@@ -1,4 +1,4 @@
-// The shared list page of Lists, Groups and Policies (§10 principle 6):
+// The generic object list page (Lists; §10 principle 6):
 // search, enabled switches and comments on every row, "managed by" badges,
 // multi-select with :batchDelete, and the generated create/edit form in a
 // dialog. Objects managed elsewhere are listed but not selectable and open
