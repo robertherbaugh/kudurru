@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -193,6 +194,13 @@ zone "denied.test" {
 		}
 		if !r.Authoritative || !hasA(r.Answer, "www.interop.test.", "192.0.2.10") || !hasA(r.Answer, "www.interop.test.", "192.0.2.11") {
 			t.Fatalf("named answer for www.interop.test: %v", r)
+		}
+		if dig, err := exec.LookPath("dig"); err == nil {
+			host, port, _ := strings.Cut(nd.addr, ":")
+			out, err := exec.Command(dig, "@"+host, "-p", port, "+short", "www.interop.test", "A").CombinedOutput() //nolint:gosec // test binary
+			if err != nil || !strings.Contains(string(out), "192.0.2.10") || !strings.Contains(string(out), "192.0.2.11") {
+				t.Errorf("dig @named www.interop.test: %v\n%s", err, out)
+			}
 		}
 		r, err = query(t, nd.addr, "txt.interop.test.", dns.TypeTXT, false)
 		if err != nil || len(r.Answer) != 1 || !strings.Contains(r.Answer[0].String(), "hello from kudurru") {
