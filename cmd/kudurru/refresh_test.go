@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
@@ -72,5 +74,30 @@ func TestListRefresher(t *testing.T) {
 	}
 	if querylogPurger(nil) != nil {
 		t.Fatal("no sqlite writer: DELETE /querylog stays 501")
+	}
+}
+
+func TestLeaderResolverFallsBackToTheName(t *testing.T) {
+	byName := func(_ context.Context, pod string) (string, error) { return pod + ".svc:8082", nil }
+	for _, headless := range []string{"", "kudurru-headless.kudurru.svc.cluster.local"} {
+		r, err := leaderResolver(nil, headless, "8082", byName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := r(context.Background(), "kudurru-0"); got != "kudurru-0.svc:8082" {
+			t.Fatalf("%q: %q", headless, got)
+		}
+	}
+	// With a cluster config the EndpointSlice client is built (no request
+	// is made until the leader is looked up).
+	r, err := leaderResolver(&rest.Config{Host: "https://127.0.0.1:1"}, "kudurru-headless.kudurru.svc.cluster.local", "8082", byName)
+	if err != nil || r == nil {
+		t.Fatalf("endpointslice resolver: %v", err)
+	}
+	// The apiserver is unreachable: the DNS name is the fallback.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if got, err := r(ctx, "kudurru-0"); err != nil || got != "kudurru-0.svc:8082" {
+		t.Fatalf("fallback: %q %v", got, err)
 	}
 }

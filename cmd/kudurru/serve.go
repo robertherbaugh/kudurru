@@ -262,20 +262,26 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	var membership cluster.Membership = cluster.Self{Name: cfg.Node.Name}
 	if cfg.Store.Driver == "kube" {
 		headless := os.Getenv("KUDURRU_HEADLESS_SERVICE")
+		_, port, _ := net.SplitHostPort(cfg.Listeners.Internal.Address)
+		if port == "" {
+			port = "8082"
+		}
+		byName := func(_ context.Context, pod string) (string, error) {
+			host := pod
+			if headless != "" {
+				host = pod + "." + headless
+			}
+			return net.JoinHostPort(host, port), nil
+		}
+		resolve, err := leaderResolver(restCfg, headless, port, byName)
+		if err != nil {
+			return err
+		}
 		membership = &cluster.ElectorMembership{
 			SelfName: cfg.Node.Name,
 			Elector:  st.Elector(cluster.ElectionController),
-			Resolve: func(_ context.Context, pod string) (string, error) {
-				host := pod
-				if headless != "" {
-					host = pod + "." + headless
-				}
-				_, port, _ := net.SplitHostPort(cfg.Listeners.Internal.Address)
-				if port == "" {
-					port = "8082"
-				}
-				return net.JoinHostPort(host, port), nil
-			},
+			Resolve:  resolve,
+			CacheTTL: 30 * time.Second,
 		}
 	}
 	encKeys, err := keys.Load(keys.Options{Driver: cfg.Store.Driver, DataDir: cfg.Node.DataDir})
