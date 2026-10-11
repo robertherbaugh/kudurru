@@ -22,10 +22,13 @@ type Metrics struct {
 	// Duration is the latency of the same calls by op; for apply, delete
 	// and update_status it is the write latency including the commit.
 	Duration *prometheus.HistogramVec
-	// Resyncs counts watchers that fell behind the in-process broadcast
-	// and caught up from the change feed (or relisted after compaction),
-	// by kind: the feed-lag signal.
-	Resyncs *prometheus.CounterVec
+	// Catchups is kudurru_store_watch_catchups_total{kind}: watchers that
+	// fell behind the in-process broadcast and caught up from the change
+	// feed (or relisted after compaction) without closing, the feed-lag
+	// signal. kudurru_store_watch_resyncs_total{kind}, the consumer-side
+	// re-list after a watch closed, is exported by zonecache; sharing the
+	// name would make the two registrations collide.
+	Catchups *prometheus.CounterVec
 	// Watchers is the number of open watches.
 	Watchers prometheus.Gauge
 }
@@ -54,9 +57,9 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help:    "Latency of store calls by operation (writes include the commit).",
 			Buckets: []float64{.0001, .00025, .0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5},
 		}, []string{"op"}),
-		Resyncs: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kudurru_store_watch_resyncs_total",
-			Help: "Watchers that fell behind and caught up from the change feed or relisted, by kind.",
+		Catchups: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_store_watch_catchups_total",
+			Help: "Watchers that fell behind the live broadcast and caught up from the change feed (or relisted after compaction) without closing, by kind.",
 		}, []string{"kind"}),
 		Watchers: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "kudurru_store_watchers",
@@ -64,7 +67,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}),
 	}
 	if reg != nil {
-		reg.MustRegister(m.Operations, m.Duration, m.Resyncs, m.Watchers)
+		reg.MustRegister(m.Operations, m.Duration, m.Catchups, m.Watchers)
 	}
 	return m
 }
@@ -83,10 +86,10 @@ func (s *Store) observe(op string, start time.Time, errp *error) {
 	m.Duration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 }
 
-// resyncObserved counts one watcher catch-up for kind.
-func (s *Store) resyncObserved(kind store.Kind) {
+// catchupObserved counts one watcher catch-up for kind.
+func (s *Store) catchupObserved(kind store.Kind) {
 	if m := s.opts.Metrics; m != nil {
-		m.Resyncs.WithLabelValues(string(kind)).Inc()
+		m.Catchups.WithLabelValues(string(kind)).Inc()
 	}
 }
 

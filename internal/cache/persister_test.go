@@ -78,8 +78,10 @@ func TestRunPersister(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if p.count() != before+1 {
-		t.Fatalf("final save: %d saves, want %d", p.count(), before+1)
+	// A periodic tick may still land between reading before and cancel;
+	// the final save always comes on top.
+	if p.count() < before+1 {
+		t.Fatalf("final save: %d saves, want at least %d", p.count(), before+1)
 	}
 	d := New(Options{MaxEntries: 100})
 	if st, err := p.Restore(context.Background(), d); err != nil || st.Entries != 3 {

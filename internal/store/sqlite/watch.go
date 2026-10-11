@@ -213,7 +213,7 @@ func (w *watcher) run(resume bool, from uint64) {
 				return
 			}
 			if w.lagged.Load() {
-				w.s.resyncObserved(w.ki.kind)
+				w.s.catchupObserved(w.ki.kind)
 				if !w.s.bus.subscribe(w) {
 					return
 				}

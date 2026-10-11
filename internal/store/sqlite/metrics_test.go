@@ -36,6 +36,9 @@ func TestResultOf(t *testing.T) {
 
 func TestStoreMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
+	// serve registers zonecache's kudurru_store_watch_resyncs_total{kind}
+	// on the same registry; the driver's metrics must not collide with it.
+	reg.MustRegister(prometheus.NewCounterVec(prometheus.CounterOpts{Name: "kudurru_store_watch_resyncs_total", Help: "zonecache"}, []string{"kind"}))
 	m := NewMetrics(reg)
 	s := openTemp(t, func(o *Options) { o.Metrics = m })
 	ctx := context.Background()
@@ -120,8 +123,8 @@ func TestStoreMetrics(t *testing.T) {
 			t.Fatalf("watch delivered %d events", got)
 		}
 	}
-	if r := testutil.ToFloat64(m.Resyncs.WithLabelValues("DNSZone")); r < 1 {
-		t.Errorf("kudurru_store_watch_resyncs_total{kind=DNSZone} = %v, want >= 1", r)
+	if r := testutil.ToFloat64(m.Catchups.WithLabelValues("DNSZone")); r < 1 {
+		t.Errorf("kudurru_store_watch_catchups_total{kind=DNSZone} = %v, want >= 1", r)
 	}
 	w.Stop()
 	if got := testutil.ToFloat64(m.Watchers); got != 0 {
@@ -130,7 +133,7 @@ func TestStoreMetrics(t *testing.T) {
 	if ops(opWatch, "ok") != 1 {
 		t.Errorf("watch calls %v", ops(opWatch, "ok"))
 	}
-	if n, err := testutil.GatherAndCount(reg, "kudurru_store_operations_total", "kudurru_store_operation_duration_seconds", "kudurru_store_watch_resyncs_total", "kudurru_store_watchers"); err != nil || n == 0 {
+	if n, err := testutil.GatherAndCount(reg, "kudurru_store_operations_total", "kudurru_store_operation_duration_seconds", "kudurru_store_watch_catchups_total", "kudurru_store_watchers"); err != nil || n == 0 {
 		t.Fatalf("metrics not registered: %d %v", n, err)
 	}
 }
