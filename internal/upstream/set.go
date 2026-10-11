@@ -151,15 +151,15 @@ func (s *Set) Group(name string) (*Group, bool) {
 // ordinary forwarding. An unknown hint is an error so that a forward zone
 // never leaks to the public resolvers.
 func (s *Set) Route(qname, hint string) (group string, conditional bool, err error) {
-	if hint != "" {
+	if hint != "" && hint != DefaultGroup {
 		if _, ok := s.groups[hint]; !ok {
 			return hint, true, fmt.Errorf("%w %q", ErrUnknownGroup, hint)
 		}
-		// A forward zone that points at the default group (the bootstrap
-		// root zone does) is ordinary forwarding and stays cacheable, like a
-		// conditional suffix mapped to the default group.
-		return hint, hint != DefaultGroup, nil
+		return hint, true, nil
 	}
+	// No hint, or a forward zone that points at the default group (the
+	// bootstrap root zone does): ordinary forwarding, where the conditional
+	// map still applies and answers stay cacheable (E2E-1).
 	if g, ok := s.conditional.lookup(qname); ok {
 		return g, g != DefaultGroup, nil
 	}

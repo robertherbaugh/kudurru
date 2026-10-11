@@ -86,7 +86,6 @@ alias	IN CNAME www
 	})
 
 	t.Run("Conditional", func(t *testing.T) {
-		kudurrutest.KnownBug(t, "E2E-1", "upstreams.conditional is never consulted: the bootstrap root forward zone sets UpstreamGroup=default on every query and upstream.Set.Route returns the hint before the suffix map")
 		forwards(t, "cond.test.")
 	})
 
