@@ -10,6 +10,7 @@ coverage.*
 # web/dist/index.html is a committed placeholder so Go builds without Bun;
 # `make web-build` overwrites it and writes the hashed bundle into assets/.
 /web/dist/assets/
+/web/dist/third-party-licenses.txt
 /web/node_modules/
 /web/coverage/
 

@@ -36,6 +36,40 @@ jobs:
         run: make size
       - name: Smoke test the binary
         run: ./bin/kudurru version
+  # The dashboard SPA (web/, D69): lint, typecheck, unit tests with MSW,
+  # the production bundle with its size budget, and the Go embed test
+  # against the real bundle.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Test
+        run: bun run test
+      - name: Build (fails over the initial-load budget)
+        run: bun run build
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Embed the built bundle
+        working-directory: .
+        run: go test -count=1 ./web/...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
   auth-e2e:
     runs-on: ubuntu-latest
     steps:

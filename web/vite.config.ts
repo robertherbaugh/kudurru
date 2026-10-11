@@ -28,6 +28,18 @@ export default defineConfig(({ mode }) => ({
     assetsInlineLimit: 0,
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 900,
+    rolldownOptions: {
+      output: {
+        // Stable, recognisable vendor chunks (long-lived cache across app
+        // releases); everything else splits by route.
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'tanstack-query', test: /node_modules[\\/]@tanstack[\\/](query-core|react-query)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 5173,
