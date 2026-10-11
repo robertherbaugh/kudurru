@@ -63,7 +63,7 @@ function resolveColor(value: string, el?: Element | null): string {
   host.appendChild(probe);
   probe.style.color = '';
   probe.style.color = value;
-  let c = '';
+  let c: string;
   try {
     c = getComputedStyle(probe).color;
   } catch {

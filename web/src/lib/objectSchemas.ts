@@ -31,6 +31,11 @@ export interface KindSchema {
   empty: () => Record<string, unknown>;
 }
 
+/** A string field of an untyped form value ("" for anything else). */
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
 const DNS_NAME = /^(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$/;
 
 /** A Kubernetes object name (RFC 1123 subdomain). */
@@ -119,7 +124,7 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
         label: 'Sources',
         itemLabel: 'source',
         help: 'A URL, inline entries or a ConfigMap; every source is fetched and merged.',
-        summary: (s) => String(s.url || (Array.isArray(s.inline) ? `${s.inline.length} inline entries` : '') || s.name || 'source'),
+        summary: (s) => str(s.url) || (Array.isArray(s.inline) ? `${s.inline.length} inline entries` : '') || str(s.name) || 'source',
         fields: [
           { type: 'text', key: 'name', label: 'Name', placeholder: 'main' },
           { type: 'text', key: 'url', label: 'URL', placeholder: 'https://example.com/hosts.txt', validate: (v) => (!v || /^https?:\/\/\S+$/.test(v) ? null : 'An http(s) URL') },
@@ -167,7 +172,7 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
         label: 'Clients',
         itemLabel: 'client',
         help: 'A client matches when any one field matches. Paste many addresses into "Add many".',
-        summary: (c) => String(c.name || c.ip || c.cidr || c.mac || c.clientID || c.hostname || c.nameGlob || 'client'),
+        summary: (c) => str(c.name) || str(c.ip) || str(c.cidr) || str(c.mac) || str(c.clientID) || str(c.hostname) || str(c.nameGlob) || 'client',
         fields: [
           { type: 'text', key: 'ip', label: 'IP address', validate: ipError },
           { type: 'text', key: 'cidr', label: 'CIDR', validate: cidrError },
@@ -217,7 +222,7 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
         key: 'rewrites',
         label: 'Rewrites',
         itemLabel: 'rewrite',
-        summary: (r) => `${String(r.name ?? '')} → ${String(r.cname || (Array.isArray(r.targets) ? r.targets.join(', ') : ''))}`,
+        summary: (r) => `${str(r.name)} → ${str(r.cname) || (Array.isArray(r.targets) ? r.targets.map(str).join(', ') : '')}`,
         fields: [
           { type: 'text', key: 'name', label: 'Name', required: true, placeholder: 'printer.lan' },
           { type: 'text', key: 'type', label: 'Type', placeholder: 'A' },

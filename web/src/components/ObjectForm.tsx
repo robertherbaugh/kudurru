@@ -101,7 +101,7 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
         break;
       case 'object':
         next = v && typeof v === 'object' ? cleanSpec(f.fields, v as Obj) : undefined;
-        if (next && Object.keys(next as Obj).length === 0) next = undefined;
+        if (next && Object.keys(next).length === 0) next = undefined;
         break;
       case 'bool':
         next = typeof v === 'boolean' ? v : undefined;

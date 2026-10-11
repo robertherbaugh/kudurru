@@ -62,7 +62,7 @@ export function SuggestInput({ label, field, value, onCommit, placeholder }: Sug
       setActive((a) => Math.max(-1, a - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      commit(active >= 0 && options[active] !== undefined ? (options[active] as string) : text.trim());
+      commit(active >= 0 && options[active] !== undefined ? options[active] : text.trim());
     } else if (e.key === 'Escape') {
       if (expanded) {
         e.preventDefault();

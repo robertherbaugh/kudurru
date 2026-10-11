@@ -5,7 +5,7 @@
 
 /** The base path with a leading and trailing slash, e.g. "/" or "/kudurru/". */
 export function detectBasePath(doc: Document = document): string {
-  let path = '/';
+  let path: string;
   try {
     path = new URL(doc.baseURI).pathname;
   } catch {

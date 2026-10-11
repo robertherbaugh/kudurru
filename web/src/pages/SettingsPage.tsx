@@ -91,7 +91,7 @@ export default function SettingsPage() {
       notify.success(`${k.path} saved${k.restartRequired ? '; takes effect after a restart' : ''}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.describe() : (err as Error).message;
-      throw new Error(msg);
+      throw new Error(msg, { cause: err });
     }
   };
 

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -36,6 +37,27 @@ func TestFSServesIndex(t *testing.T) {
 		t.Fatal("no Content-Security-Policy header")
 	}
 }
+
+// TestIndexAssetsPresent fails when index.html references bundle files
+// that are not embedded, e.g. a built index.html committed by mistake
+// over the placeholder while web/dist/assets stays ignored.
+func TestIndexAssetsPresent(t *testing.T) {
+	b, err := fs.ReadFile(FS, "index.html")
+	if err != nil {
+		t.Fatalf("FS has no index.html: %v", err)
+	}
+	for _, m := range assetRef.FindAllSubmatch(b, -1) {
+		name := string(m[1])
+		if _, err := fs.Stat(FS, name); err != nil {
+			t.Errorf("index.html references %s, which is not in the embedded bundle (commit only the placeholder web/dist/index.html, or run make web-build before go build)", name)
+		}
+	}
+	if !Built() && len(assetRef.FindAll(b, -1)) != 0 {
+		t.Error("the placeholder index.html must not reference bundle assets")
+	}
+}
+
+var assetRef = regexp.MustCompile(`(?:src|href)="\.?/?(assets/[^"]+)"`)
 
 func testFS() fstest.MapFS {
 	return fstest.MapFS{

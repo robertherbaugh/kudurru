@@ -61,17 +61,23 @@ export function sectionOf(path: string): string {
   return path.split('.')[0] ?? path;
 }
 
+function scalar(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  return JSON.stringify(v) ?? '';
+}
+
 /** Renders a value for display in its input. */
 export function displayValue(key: SettingKey, value: unknown): string {
   if (value === undefined || value === null) return '';
   switch (key.type) {
     case 'string[]':
-      return Array.isArray(value) ? value.join('\n') : String(value);
+      return Array.isArray(value) ? value.map(scalar).join('\n') : scalar(value);
     case 'list':
     case 'map':
       return JSON.stringify(value, null, 2);
     default:
-      return String(value);
+      return scalar(value);
   }
 }
 

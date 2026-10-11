@@ -139,8 +139,10 @@ export function matchPath(pattern: string, path: string): Record<string, string>
   return params;
 }
 
-export type LinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+export type LinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'download'> & {
   href?: string;
+  /** Download attribute (React types it as any). */
+  download?: string | boolean;
   /** Astryx passes `to` alongside href for custom link components. */
   to?: string;
   replace?: boolean;

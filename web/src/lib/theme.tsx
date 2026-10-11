@@ -51,14 +51,14 @@ async function loadTheme(name: ThemeName): Promise<DefinedTheme> {
   switch (name) {
     case 'stone': {
       const [mod] = await Promise.all([import('@astryxdesign/theme-stone/built'), import('@astryxdesign/theme-stone/theme.css')]);
-      return mod.stoneTheme as DefinedTheme;
+      return mod.stoneTheme;
     }
     case 'y2k': {
       const [mod] = await Promise.all([import('@astryxdesign/theme-y2k/built'), import('@astryxdesign/theme-y2k/theme.css')]);
-      return mod.y2kTheme as DefinedTheme;
+      return mod.y2kTheme;
     }
     default:
-      return neutralTheme as DefinedTheme;
+      return neutralTheme;
   }
 }
 
@@ -67,7 +67,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<Mode>(initial.mode);
   const [theme, setThemeName] = useState<ThemeName>(initial.theme);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
-  const [defined, setDefined] = useState<DefinedTheme>(neutralTheme as DefinedTheme);
+  const [defined, setDefined] = useState<DefinedTheme>(neutralTheme);
 
   useEffect(() => {
     let live = true;
@@ -76,7 +76,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
         if (live) setDefined(t);
       })
       .catch(() => {
-        if (live) setDefined(neutralTheme as DefinedTheme);
+        if (live) setDefined(neutralTheme);
       });
     return () => {
       live = false;

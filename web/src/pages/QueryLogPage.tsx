@@ -37,7 +37,7 @@ export function filtersFrom(sp: URLSearchParams): QueryFilter {
     const v = sp.get(k);
     if (v) f[k] = v;
   }
-  return f as QueryFilter;
+  return f;
 }
 
 /** ISO → the value of a datetime-local input (local time, minutes). */
@@ -73,7 +73,7 @@ export default function QueryLogPage() {
   const q = useInfiniteQuery({
     queryKey: qk.queries('log', scope, filters),
     queryFn: ({ pageParam, signal }) => api.queries.list(scope, { ...filters, limit: PAGE_SIZE, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
-    initialPageParam: '' as string,
+    initialPageParam: '',
     getNextPageParam: (last) => last.cursor_next || undefined,
     staleTime: 30_000,
   });

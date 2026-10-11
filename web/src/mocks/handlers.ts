@@ -8,7 +8,6 @@ import type {
   ApplyResult,
   BlockList,
   ClientGroup,
-  DNSRecordSet,
   DNSZone,
   DnsQueryResult,
   Endpoint,
@@ -639,7 +638,7 @@ export const handlers = [
     let docs: AnyObject[];
     try {
       docs = JSON.parse(text) as AnyObject[];
-      if (!Array.isArray(docs)) docs = [docs as unknown as AnyObject];
+      if (!Array.isArray(docs)) docs = [docs];
     } catch {
       return fail(400, 'invalid', 'The mock accepts JSON arrays only; the server also takes multi-document YAML');
     }
@@ -704,7 +703,7 @@ export const handlers = [
     }
     if (!rs) {
       db.rv += 1;
-      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: 'default', resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } } as DNSRecordSet;
+      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: 'default', resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } };
       db.recordSets.push(rs);
     }
     const idx = rs.spec.endpoints.findIndex((x) => x.dnsName === e.dnsName && x.recordType === e.recordType && (x.setIdentifier ?? '') === (e.setIdentifier ?? ''));

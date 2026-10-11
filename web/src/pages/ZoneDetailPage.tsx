@@ -283,7 +283,7 @@ export default function ZoneDetailPage({ params }: PageProps) {
                 try {
                   await api.zones.upsertRecord(zone, ep, recordSet);
                 } catch (err) {
-                  throw new Error(errorText(err));
+                  throw new Error(errorText(err), { cause: err });
                 }
                 notify.success(`Saved ${ep.dnsName} ${ep.recordType}`);
                 setEditing(null);
