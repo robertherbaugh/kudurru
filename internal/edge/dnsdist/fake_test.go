@@ -43,7 +43,7 @@ var (
 )
 
 func parseFake(path string) (*fakeConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // test fake
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func parseFake(path string) (*fakeConfig, error) {
 		if len(doc.Webserver.ListenAddresses) != 1 || doc.Console == nil || len(doc.Binds) == 0 || len(doc.QueryRules) == 0 {
 			return nil, fmt.Errorf("fake dnsdist: %s: missing webserver, console, binds or query_rules", path)
 		}
-		if _, err := os.Stat(strings.TrimSuffix(path, ".yml") + ".lua"); err != nil {
+		if _, err := os.Stat(strings.TrimSuffix(path, ".yml") + ".lua"); err != nil { //nolint:gosec // test fake
 			return nil, fmt.Errorf("fake dnsdist: sibling lua missing: %w", err)
 		}
 		fc.apiAddr, fc.apiKey = doc.Webserver.ListenAddresses[0], doc.Webserver.APIKey
@@ -91,7 +91,7 @@ func parseFake(path string) (*fakeConfig, error) {
 }
 
 func fakeLog(dir, format string, args ...any) {
-	f, err := os.OpenFile(filepath.Join(dir, "fake.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(filepath.Join(dir, "fake.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // test-owned path
 	if err != nil {
 		return
 	}
@@ -137,7 +137,7 @@ func fakeDNSDist(args []string) int {
 			return
 		}
 		state := "up"
-		if _, err := os.Stat(filepath.Join(dir, "fake-down")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "fake-down")); err == nil { //nolint:gosec // test fake
 			state = "down"
 		}
 		servers := []map[string]any{}

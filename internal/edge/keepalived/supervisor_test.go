@@ -22,7 +22,7 @@ func link(t *testing.T, name string) string {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, name)
@@ -90,7 +90,7 @@ func (h *khar) stop() {
 }
 
 func (h *khar) log() string {
-	b, _ := os.ReadFile(filepath.Join(h.etc, "fake.log"))
+	b, _ := os.ReadFile(filepath.Join(h.etc, "fake.log")) //nolint:gosec // test-owned path
 	return string(b)
 }
 
@@ -145,11 +145,11 @@ func TestSupervisorFIFOAndReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.waitFor("hup", func() bool { return strings.Contains(h.log(), "\nhup\n") })
-	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf"))
+	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf")) //nolint:gosec // test-owned path
 	if !strings.Contains(string(conf), "10.0.0.14") {
 		t.Error("new peer not rendered")
 	}
-	if _, err := os.Stat(filepath.Join(h.etc, "keepalived.conf.prev")); err != nil {
+	if _, err := os.Stat(filepath.Join(h.etc, "keepalived.conf.prev")); err != nil { //nolint:gosec // test-owned path
 		t.Errorf("previous config not kept: %v", err)
 	}
 	// Unchanged re-render: no signal.
@@ -169,7 +169,7 @@ func TestSupervisorFIFOAndReload(t *testing.T) {
 	if err := h.sup.Rerender(context.Background(), rejected); err == nil {
 		t.Error("rejected configuration installed")
 	}
-	conf, _ = os.ReadFile(filepath.Join(h.etc, "keepalived.conf"))
+	conf, _ = os.ReadFile(filepath.Join(h.etc, "keepalived.conf")) //nolint:gosec // test-owned path
 	if strings.Contains(string(conf), "FAIL-CHECK") || strings.Contains(string(conf), "virtual_router_id 99") {
 		t.Error("an invalid configuration reached keepalived.conf")
 	}
@@ -198,7 +198,7 @@ func TestSupervisorPeersFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.waitFor("hup after the peers file changed", func() bool { return strings.Contains(h.log(), "\nhup\n") })
-	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf"))
+	conf, _ := os.ReadFile(filepath.Join(h.etc, "keepalived.conf")) //nolint:gosec // test-owned path
 	if !strings.Contains(string(conf), "10.0.0.15") {
 		t.Error("peer from the file not rendered")
 	}
@@ -290,7 +290,7 @@ func TestTrackFile(t *testing.T) {
 			t.Errorf("wrote %d, read %d %v", w, got, err)
 		}
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "weight-dns"))
+	b, _ := os.ReadFile(filepath.Join(dir, "weight-dns")) //nolint:gosec // test temp dir
 	if string(b) != "0\n" {
 		t.Errorf("file content %q", b)
 	}

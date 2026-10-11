@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 }
 
 func fakeLog(dir, format string, args ...any) {
-	f, err := os.OpenFile(filepath.Join(dir, "fake.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(filepath.Join(dir, "fake.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // test fake
 	if err != nil {
 		return
 	}
@@ -51,7 +51,7 @@ type fakeConf struct {
 }
 
 func parseFakeConf(path string) (*fakeConf, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // test fake
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func fakeKeepalived(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fifo, err := os.OpenFile(fc.fifo, os.O_WRONLY, 0)
+	fifo, err := os.OpenFile(fc.fifo, os.O_WRONLY, 0) //nolint:gosec // test-owned path
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -264,7 +264,7 @@ func safeToken(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_') {
+		if !alnum(r) && r != '.' && r != '-' && r != '_' {
 			return false
 		}
 	}
@@ -276,11 +276,15 @@ func safePath(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-/:{}+=@", r)) {
+		if !alnum(r) && !strings.ContainsRune("._-/:{}+=@", r) {
 			return false
 		}
 	}
 	return true
+}
+
+func alnum(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
 // ProbeCommand returns the vrrp_script command of a VIP.

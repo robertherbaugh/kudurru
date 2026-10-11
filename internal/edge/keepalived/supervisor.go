@@ -472,7 +472,7 @@ func (s *Supervisor) Serve(ctx context.Context, addr string) error {
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
-		sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()

@@ -38,7 +38,7 @@ func TestEdgeRender(t *testing.T) {
 	}
 	dir := t.TempDir()
 	run(t, "edge", "render", "--backends", "127.0.0.1:5353", "--renderer", "lua", "--out", dir)
-	if b, err := os.ReadFile(filepath.Join(dir, "dnsdist.conf")); err != nil || !bytes.Contains(b, []byte(`newServer({address="127.0.0.1:5353"`)) {
+	if b, err := os.ReadFile(filepath.Join(dir, "dnsdist.conf")); err != nil || !bytes.Contains(b, []byte(`newServer({address="127.0.0.1:5353"`)) { //nolint:gosec // test-owned path
 		t.Errorf("lua render: %v\n%s", err, b)
 	}
 

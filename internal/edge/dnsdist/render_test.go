@@ -24,7 +24,7 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 
 // goldenCreds are fixed so the golden files are stable; production
 // credentials are random per start (edge.NewCredentials).
-var goldenCreds = edge.Credentials{
+var goldenCreds = edge.Credentials{ //nolint:gosec // fixed test credentials
 	ConsoleKey: "a3VkdXJydS1nb2xkZW4tY29uc29sZS1rZXktMzJieXQ=",
 	APIKey:     "golden-api-key-0123456789abcdef",
 	Password:   "golden-dashboard-password",
@@ -139,7 +139,7 @@ func TestRenderGolden(t *testing.T) {
 func checkGolden(t *testing.T, path string, got []byte) {
 	t.Helper()
 	if *update {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, got, 0o600); err != nil {
@@ -147,7 +147,7 @@ func checkGolden(t *testing.T, path string, got []byte) {
 		}
 		return
 	}
-	want, err := os.ReadFile(path)
+	want, err := os.ReadFile(path) //nolint:gosec // test-owned path
 	if err != nil {
 		t.Fatalf("%v (run go test -update)", err)
 	}
@@ -233,9 +233,10 @@ func checkLua(t *testing.T, name string, data []byte) {
 		for i := 0; i < len(line); i++ {
 			c := line[i]
 			if inStr != 0 {
-				if c == '\\' {
+				switch c {
+				case '\\':
 					i++
-				} else if c == inStr {
+				case inStr:
 					inStr = 0
 				}
 				continue

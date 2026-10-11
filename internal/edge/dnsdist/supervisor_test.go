@@ -66,7 +66,7 @@ func fakeBinary(t *testing.T) string {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "dnsdist")
@@ -137,7 +137,7 @@ func (h *harness) stop() {
 }
 
 func (h *harness) log() string {
-	b, _ := os.ReadFile(filepath.Join(h.dir, "fake.log"))
+	b, _ := os.ReadFile(filepath.Join(h.dir, "fake.log")) //nolint:gosec // test-owned path
 	return string(b)
 }
 
@@ -169,19 +169,19 @@ func TestSupervisorLifecycle(t *testing.T) {
 	h.waitFor("ready", h.ready)
 
 	// The per-start API key is published 0640 and matches the config.
-	st, err := os.Stat(filepath.Join(filepath.Dir(h.dir), "run", "dnsdist-api.key"))
+	st, err := os.Stat(filepath.Join(filepath.Dir(h.dir), "run", "dnsdist-api.key")) //nolint:gosec // test-owned path
 	if err != nil {
 		t.Fatal(err)
 	}
 	if st.Mode().Perm() != 0o640 {
 		t.Errorf("api key mode %v, want 0640", st.Mode().Perm())
 	}
-	key, _ := os.ReadFile(filepath.Join(filepath.Dir(h.dir), "run", "dnsdist-api.key"))
-	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))
+	key, _ := os.ReadFile(filepath.Join(filepath.Dir(h.dir), "run", "dnsdist-api.key")) //nolint:gosec // test-owned path
+	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))                          //nolint:gosec // test-owned path
 	if !strings.Contains(string(cfg), "api_key: "+strings.TrimSpace(string(key))) {
 		t.Error("published API key does not match the rendered one")
 	}
-	if fi, _ := os.Stat(filepath.Join(h.dir, "dnsdist.yml")); fi.Mode().Perm() != 0o600 {
+	if fi, _ := os.Stat(filepath.Join(h.dir, "dnsdist.yml")); fi.Mode().Perm() != 0o600 { //nolint:gosec // test-owned path
 		t.Errorf("config mode %v, want 0600 (it holds credentials)", fi.Mode().Perm())
 	}
 	if h.count("check dnsdist.candidate.yml") != 1 || h.count("start") != 1 {
@@ -196,7 +196,7 @@ func TestSupervisorLifecycle(t *testing.T) {
 	if n := h.count("start"); n != 2 {
 		t.Errorf("%d starts, want 2 (two quick changes must be debounced into one restart)", n)
 	}
-	if _, err := os.Stat(filepath.Join(h.dir, "dnsdist.yml.prev")); err != nil {
+	if _, err := os.Stat(filepath.Join(h.dir, "dnsdist.yml.prev")); err != nil { //nolint:gosec // test-owned path
 		t.Errorf("previous config not kept: %v", err)
 	}
 	h.waitFor("ready again", h.ready)
@@ -254,7 +254,7 @@ func TestSupervisorRejectsBadRender(t *testing.T) {
 	if n := h.count("start"); n != 1 {
 		t.Errorf("%d starts, want 1", n)
 	}
-	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))
+	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml")) //nolint:gosec // test-owned path
 	if strings.Contains(string(cfg), "FAIL-CHECK") {
 		t.Error("a configuration that failed --check-config was swapped in")
 	}
@@ -275,7 +275,7 @@ func TestSupervisorInitialCheckFailure(t *testing.T) {
 	if err := sup.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "FAIL-CHECK") {
 		t.Fatalf("Run = %v, want the check failure", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "dnsdist.yml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "dnsdist.yml")); !os.IsNotExist(err) { //nolint:gosec // test-owned path
 		t.Error("an unchecked configuration was installed")
 	}
 }
@@ -293,7 +293,7 @@ func TestSupervisorCertificateChange(t *testing.T) {
 		c.Options.Ports = map[edge.Protocol]int{edge.Do53: 5300, edge.DoT: 8853, edge.DoH: 8443, edge.DoQ: 8853, edge.DoH3: 8443}
 	})
 	h.waitFor("ready", h.ready)
-	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))
+	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml")) //nolint:gosec // test-owned path
 	if !strings.Contains(string(cfg), "protocol: DoH3") {
 		t.Fatal("TLS frontends not rendered")
 	}
@@ -347,7 +347,7 @@ func TestSupervisorZoneSerialFlush(t *testing.T) {
 		c.Options.AuthoritativeCache = true
 	})
 	h.waitFor("zone routing restart", func() bool {
-		cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))
+		cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml")) //nolint:gosec // test-owned path
 		return strings.Contains(string(cfg), "- example.com.") && h.count("start") == 2
 	})
 	h.waitFor("ready", h.ready)
@@ -367,7 +367,7 @@ func TestSupervisorZonesUnsupported(t *testing.T) {
 	})
 	h.waitFor("ready", h.ready)
 	time.Sleep(200 * time.Millisecond)
-	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml"))
+	cfg, _ := os.ReadFile(filepath.Join(h.dir, "dnsdist.yml")) //nolint:gosec // test-owned path
 	if !strings.Contains(string(cfg), "- lan.") || h.count("start") != 1 {
 		t.Errorf("static zones must render and nothing restart:\n%s", h.log())
 	}

@@ -57,7 +57,7 @@ func TestRenderGolden(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			want, err := os.ReadFile(path)
+			want, err := os.ReadFile(path) //nolint:gosec // golden file
 			if err != nil {
 				t.Fatalf("%v (run go test -update)", err)
 			}

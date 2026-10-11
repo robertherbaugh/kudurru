@@ -62,7 +62,7 @@ func TestKeepalivedProvider(t *testing.T) {
 	if err := k.SetWeight(ctx, "dns", PreferNot); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "weight-dns")); string(b) != "60\n" {
+	if b, _ := os.ReadFile(filepath.Join(dir, "weight-dns")); string(b) != "60\n" { //nolint:gosec // test temp dir
 		t.Errorf("track file %q", b)
 	}
 	// D51: lameduck never writes 300.
