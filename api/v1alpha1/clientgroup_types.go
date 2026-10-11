@@ -36,6 +36,7 @@ type ClientGroupSources struct {
 // ClientGroupSpec defines which clients belong to the group.
 type ClientGroupSpec struct {
 	// +optional
+	// +kubebuilder:validation:MaxItems=1000
 	Clients []ClientMatcher `json:"clients,omitempty"`
 	// +optional
 	Sources *ClientGroupSources `json:"sources,omitempty"`

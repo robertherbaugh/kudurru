@@ -3,6 +3,7 @@ package v1alpha1
 // ObjectRef points at another kudurru object. Namespace is omitted for
 // cluster-scoped kinds and for same-namespace references.
 type ObjectRef struct {
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 	// +optional
 	Namespace string `json:"namespace,omitempty"`

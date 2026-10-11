@@ -42,15 +42,17 @@ type CustomIP struct {
 }
 
 // BlockListSpec defines a set of sources compiled into one matcher chain.
+// +kubebuilder:validation:XValidation:rule="!has(self.response) || self.response != 'customIP' || has(self.customIP)",message="response customIP requires the customIP block"
 type BlockListSpec struct {
 	// +kubebuilder:default=block
 	// +optional
 	Mode ListMode `json:"mode,omitempty"`
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=256
 	Sources []ListSource `json:"sources"`
 	// +kubebuilder:default="24h"
 	// +optional
-	RefreshInterval metav1.Duration `json:"refreshInterval,omitempty"`
+	RefreshInterval metav1.Duration `json:"refreshInterval,omitempty,omitzero"`
 	// +optional
 	Response BlockResponse `json:"response,omitempty"`
 	// +optional

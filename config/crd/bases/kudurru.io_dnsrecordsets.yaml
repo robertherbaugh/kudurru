@@ -63,6 +63,7 @@ spec:
                     record type with one or more targets in presentation format.
                   properties:
                     dnsName:
+                      minLength: 1
                       type: string
                     kudurru:
                       description: EndpointExt is the kudurru extension block on an
@@ -129,6 +130,7 @@ spec:
                   cluster-scoped kinds and for same-namespace references.
                 properties:
                   name:
+                    minLength: 1
                     type: string
                   namespace:
                     type: string

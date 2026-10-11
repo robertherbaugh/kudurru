@@ -19,22 +19,40 @@ func TestSchemaGaps(t *testing.T) {
 		kind   store.Kind
 		mutate func(store.Object)
 	}{
-		// `^([a-zA-Z0-9_-]+\.)*$` matches the empty string; zoneName needs
-		// MinLength=1.
-		{"empty zoneName", "DNSZone", func(o store.Object) { zoneOf(o).Spec.ZoneName = "" }},
-		// ObjectRef.Name has no omitempty and no MinLength, so "" satisfies
-		// `required`.
-		{"empty zoneRef.name", "DNSRecordSet", func(o store.Object) { rrsetOf(o).Spec.ZoneRef.Name = "" }},
-		{"empty dnsName", "DNSRecordSet", func(o store.Object) { rrsetOf(o).Spec.Endpoints[0].DNSName = "" }},
+		// An empty record set is a valid placeholder (nothing to serve).
 		{"empty endpoints list", "DNSRecordSet", func(o store.Object) { rrsetOf(o).Spec.Endpoints = []v1alpha1.Endpoint{} }},
-		{"customIP response without customIP", "BlockList", func(o store.Object) { blOf(o).Spec.Response = "customIP" }},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.kind)+"/"+tc.name, func(t *testing.T) {
 			obj := typedSample(t, tc.kind)
 			tc.mutate(obj)
 			if err := v.Validate(ctx(), obj, nil); err != nil {
-				t.Fatalf("now rejected (good): move this case to invalidCases and update the spike report: %v", err)
+				t.Fatalf("now rejected (good): move this case to TestClosedGaps and update the spike report: %v", err)
+			}
+		})
+	}
+}
+
+// TestClosedGaps pins the gaps the spike found and api/v1alpha1 has since
+// closed (MinLength=1 on names, the customIP one-of rule).
+func TestClosedGaps(t *testing.T) {
+	v := testValidator(t)
+	cases := []struct {
+		name   string
+		kind   store.Kind
+		mutate func(store.Object)
+	}{
+		{"empty zoneName", "DNSZone", func(o store.Object) { zoneOf(o).Spec.ZoneName = "" }},
+		{"empty zoneRef.name", "DNSRecordSet", func(o store.Object) { rrsetOf(o).Spec.ZoneRef.Name = "" }},
+		{"empty dnsName", "DNSRecordSet", func(o store.Object) { rrsetOf(o).Spec.Endpoints[0].DNSName = "" }},
+		{"customIP response without customIP", "BlockList", func(o store.Object) { blOf(o).Spec.Response = "customIP" }},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.kind)+"/"+tc.name, func(t *testing.T) {
+			obj := typedSample(t, tc.kind)
+			tc.mutate(obj)
+			if err := v.Validate(ctx(), obj, nil); err == nil {
+				t.Fatal("accepted; the api/v1alpha1 marker that closed this gap is missing")
 			}
 		})
 	}

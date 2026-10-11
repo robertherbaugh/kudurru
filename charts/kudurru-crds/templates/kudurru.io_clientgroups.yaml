@@ -81,6 +81,7 @@ spec:
                     rule: '[has(self.ip), has(self.cidr), has(self.mac), has(self.clientID),
                       has(self.hostname), has(self.nameGlob)].filter(x, x).size()
                       == 1'
+                maxItems: 1000
                 type: array
               sources:
                 description: ClientGroupSources lets an integration add members (v0.2).
@@ -91,6 +92,7 @@ spec:
                       cluster-scoped kinds and for same-namespace references.
                     properties:
                       name:
+                        minLength: 1
                         type: string
                       namespace:
                         type: string

@@ -30,6 +30,7 @@ type EndpointExt struct {
 // Endpoint is a superset of the external-dns Endpoint: one owner name and
 // record type with one or more targets in presentation format.
 type Endpoint struct {
+	// +kubebuilder:validation:MinLength=1
 	DNSName string `json:"dnsName"`
 	// +kubebuilder:validation:Pattern=`^([A-Z0-9]+|TYPE[0-9]+)$`
 	RecordType string `json:"recordType"`

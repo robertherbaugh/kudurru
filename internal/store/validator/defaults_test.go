@@ -40,10 +40,9 @@ func TestDefaultsTypedDNSZone(t *testing.T) {
 			Notify:       v1alpha1.NotifyNone,
 			Update:       v1alpha1.AccessDeny,
 		},
-		// ForwardSpec.UpstreamGroup has no omitempty, so a typed client
-		// always sends "" and the schema default "default" never applies
-		// (on the apiserver either). See TestDefaultsUnstructured.
-		Forward: &v1alpha1.ForwardSpec{UpstreamGroup: ""},
+		// ForwardSpec.UpstreamGroup is omitempty, so an unset value is
+		// absent on the wire and the schema default applies (D70).
+		Forward: &v1alpha1.ForwardSpec{UpstreamGroup: "default"},
 		DNSSEC:  &v1alpha1.DNSSECSpec{Algorithm: "ECDSAP256SHA256", Denial: "nsec"},
 	}
 	if !equality.Semantic.DeepEqual(z.Spec, want) {
@@ -140,21 +139,19 @@ spec:
 	}
 }
 
-// TestTypedDurationZeroIsNotDefaulted pins a property of the current Go
-// types: metav1.Duration fields with `omitempty` are non-pointer structs, so
-// encoding/json always emits them ("0s") and the schema default never
-// applies to a typed object. A Kubernetes client sends the same bytes, so
-// both drivers agree; the fix belongs in api/v1alpha1 (`omitzero`, see
-// docs/spikes/store-validator.md). Update this test when the tag changes.
-func TestTypedDurationZeroIsNotDefaulted(t *testing.T) {
+// TestTypedDurationZeroIsDefaulted pins the `omitzero` tag on the
+// metav1.Duration fields: a zero value is absent on the wire, so the schema
+// default applies to typed objects exactly as it does for a Kubernetes
+// client (docs/spikes/store-validator.md, D70).
+func TestTypedDurationZeroIsDefaulted(t *testing.T) {
 	v := testValidator(t)
 	p := polOf(typedSample(t, "Policy"))
 	p.Spec.BlockTTL = metav1.Duration{}
 	if err := v.Validate(ctx(), p, nil); err != nil {
 		t.Fatal(err)
 	}
-	if p.Spec.BlockTTL.Duration != 0 {
-		t.Fatalf("blockTTL = %v; if api/v1alpha1 gained omitzero, flip this test to expect 10m", p.Spec.BlockTTL)
+	if p.Spec.BlockTTL.Duration != 10*time.Minute {
+		t.Fatalf("blockTTL = %v, want the schema default 10m", p.Spec.BlockTTL)
 	}
 }
 

@@ -110,7 +110,8 @@ type UpdatePolicy struct {
 type ForwardSpec struct {
 	// UpstreamGroup names a group in the Kudurru settings.
 	// +kubebuilder:default=default
-	UpstreamGroup string `json:"upstreamGroup"`
+	// +optional
+	UpstreamGroup string `json:"upstreamGroup,omitempty"`
 	// +optional
 	DNSSECValidation *bool `json:"dnssecValidation,omitempty"`
 }
@@ -182,6 +183,7 @@ type PublishRule struct {
 // DNSZoneSpec defines the desired state of a zone.
 type DNSZoneSpec struct {
 	// ZoneName is the fully qualified zone name with a trailing dot.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern=`^([a-zA-Z0-9_-]+\.)*$|^\.$`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="zoneName is immutable"
 	ZoneName string   `json:"zoneName"`

@@ -93,6 +93,7 @@ spec:
                         cluster-scoped kinds and for same-namespace references.
                       properties:
                         name:
+                          minLength: 1
                           type: string
                         namespace:
                           type: string
@@ -122,11 +123,15 @@ spec:
                   - message: exactly one of url, inline or configMapRef must be set
                     rule: '[has(self.url), has(self.inline), has(self.configMapRef)].filter(x,
                       x).size() == 1'
+                maxItems: 256
                 minItems: 1
                 type: array
             required:
             - sources
             type: object
+            x-kubernetes-validations:
+            - message: response customIP requires the customIP block
+              rule: '!has(self.response) || self.response != ''customIP'' || has(self.customIP)'
           status:
             description: BlockListStatus is the observed state of a block list.
             properties:

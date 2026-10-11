@@ -58,19 +58,6 @@ func TestEmbeddedCRDsMatchManifests(t *testing.T) {
 	}
 }
 
-// knownUninstallable lists CRDs that the apiserver currently refuses, with
-// the reason. The x-kubernetes-validations one-of rules sit on items of
-// lists without maxItems, so the static CEL cost estimate multiplies them by
-// the largest list a 3 MiB request could hold and exceeds the budget. The
-// fix is a +kubebuilder:validation:MaxItems marker on BlockListSpec.Sources
-// and ClientGroupSpec.Clients in api/v1alpha1 (any value up to 65536 passes;
-// docs/spikes/store-validator.md). Delete an entry once its CRD installs;
-// the test fails until you do.
-var knownUninstallable = map[string]string{
-	"kudurru.io_blocklists.yaml":   "spec.sources has no maxItems: estimated CEL rule cost exceeds budget",
-	"kudurru.io_clientgroups.yaml": "spec.clients has no maxItems: estimated CEL rule cost exceeds budget",
-}
-
 // TestEmbeddedCRDsInstall runs the apiserver's own CustomResourceDefinition
 // create validation over every embedded CRD: structural schema, pruned
 // defaults, list-type rules and the static CEL cost estimate. A CRD that
@@ -82,17 +69,7 @@ func TestEmbeddedCRDsInstall(t *testing.T) {
 	}
 	for name, doc := range embedded {
 		t.Run(name, func(t *testing.T) {
-			errs := crdInstallErrors(t, doc)
-			reason, known := knownUninstallable[name]
-			switch {
-			case known && len(errs) == 0:
-				t.Fatalf("%s now installs; remove it from knownUninstallable", name)
-			case known:
-				if !strings.Contains(errs.ToAggregate().Error(), "estimated rule cost exceeds budget") {
-					t.Fatalf("expected the known refusal (%s), got:\n%v", reason, errs.ToAggregate())
-				}
-				t.Logf("known refusal (%s): %v", reason, errs.ToAggregate())
-			case len(errs) > 0:
+			if errs := crdInstallErrors(t, doc); len(errs) > 0 {
 				t.Fatalf("the apiserver would refuse this CRD:\n%v", errs.ToAggregate())
 			}
 		})
@@ -119,33 +96,6 @@ func crdInstallErrors(t *testing.T, doc []byte) field.ErrorList {
 		}
 	}
 	return crdvalidation.ValidateCustomResourceDefinition(ctx(), &internal)
-}
-
-// TestKnownUninstallableFix proves the recommended api/v1alpha1 change: the
-// same CRDs with maxItems on the one-of lists pass the apiserver's checks.
-func TestKnownUninstallableFix(t *testing.T) {
-	embedded, err := EmbeddedCRDs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixes := map[string]string{
-		"kudurru.io_blocklists.yaml":   "              sources:\n",
-		"kudurru.io_clientgroups.yaml": "              clients:\n",
-	}
-	for name := range knownUninstallable {
-		anchor, ok := fixes[name]
-		if !ok {
-			t.Fatalf("no fix prototype for %s", name)
-		}
-		doc := string(embedded[name])
-		if !strings.Contains(doc, anchor) {
-			t.Fatalf("%s: anchor %q not found", name, anchor)
-		}
-		doc = strings.Replace(doc, anchor, anchor+"                maxItems: 1000\n", 1)
-		if errs := crdInstallErrors(t, []byte(doc)); len(errs) > 0 {
-			t.Fatalf("%s with maxItems 1000 is still refused: %v", name, errs.ToAggregate())
-		}
-	}
 }
 
 func TestNewFromCRDsRejectsBadInput(t *testing.T) {

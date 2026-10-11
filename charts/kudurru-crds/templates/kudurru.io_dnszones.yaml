@@ -91,6 +91,7 @@ spec:
                       cluster-scoped kinds and for same-namespace references.
                     properties:
                       name:
+                        minLength: 1
                         type: string
                       namespace:
                         type: string
@@ -120,8 +121,6 @@ spec:
                     default: default
                     description: UpstreamGroup names a group in the Kudurru settings.
                     type: string
-                required:
-                - upstreamGroup
                 type: object
               nameservers:
                 items:
@@ -231,6 +230,7 @@ spec:
                         cluster-scoped kinds and for same-namespace references.
                       properties:
                         name:
+                          minLength: 1
                           type: string
                         namespace:
                           type: string
@@ -427,6 +427,7 @@ spec:
               zoneName:
                 description: ZoneName is the fully qualified zone name with a trailing
                   dot.
+                minLength: 1
                 pattern: ^([a-zA-Z0-9_-]+\.)*$|^\.$
                 type: string
                 x-kubernetes-validations:

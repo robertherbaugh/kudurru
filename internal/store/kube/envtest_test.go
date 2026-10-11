@@ -126,25 +126,7 @@ func startControlPlane(assets string) (*envtest.Environment, *rest.Config, clien
 	return env, cfg, admin, nil
 }
 
-// celBudgetPatches bounds arrays whose items carry a CEL rule. Without
-// maxItems the apiserver estimates the rule cost for an unbounded list and
-// rejects the generated BlockList and ClientGroup CRDs ("estimated rule
-// cost exceeds budget by factor of 7.1x" / "1.26x") on Kubernetes 1.37.
-// The fix belongs in api/v1alpha1 (+kubebuilder:validation:MaxItems on
-// BlockListSpec.Sources and ClientGroupSpec.Clients; see
-// docs/spikes/store-kube.md); until it lands the test control plane
-// installs the CRDs with exactly these bounds. A field that already has
-// maxItems is left alone, so the patch becomes a no-op once api/ is fixed.
-var celBudgetPatches = []struct {
-	crd   string
-	path  []string // property path under openAPIV3Schema
-	limit int64
-}{
-	{crd: "blocklists.kudurru.io", path: []string{"spec", "sources"}, limit: 256},
-	{crd: "clientgroups.kudurru.io", path: []string{"spec", "clients"}, limit: 1000},
-}
-
-// loadCRDs reads every CRD manifest in dir and applies celBudgetPatches.
+// loadCRDs reads every CRD manifest in dir.
 func loadCRDs(dir string) ([]*apiextensionsv1.CustomResourceDefinition, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
 	if err != nil {
@@ -163,44 +145,9 @@ func loadCRDs(dir string) ([]*apiextensionsv1.CustomResourceDefinition, error) {
 		if err := yaml.UnmarshalStrict(b, crd); err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		for _, p := range celBudgetPatches {
-			if p.crd != crd.Name {
-				continue
-			}
-			for vi := range crd.Spec.Versions {
-				v := &crd.Spec.Versions[vi]
-				if v.Schema == nil || v.Schema.OpenAPIV3Schema == nil {
-					continue
-				}
-				if err := setMaxItems(v.Schema.OpenAPIV3Schema, p.path, p.limit); err != nil {
-					return nil, fmt.Errorf("%s: %w", crd.Name, err)
-				}
-			}
-		}
 		crds = append(crds, crd)
 	}
 	return crds, nil
-}
-
-func setMaxItems(s *apiextensionsv1.JSONSchemaProps, path []string, limit int64) error {
-	if len(path) == 0 {
-		if s.Type != "array" {
-			return fmt.Errorf("maxItems patch target is a %s, not an array", s.Type)
-		}
-		if s.MaxItems == nil {
-			s.MaxItems = &limit
-		}
-		return nil
-	}
-	child, ok := s.Properties[path[0]]
-	if !ok {
-		return fmt.Errorf("maxItems patch: no property %q", path[0])
-	}
-	if err := setMaxItems(&child, path[1:], limit); err != nil {
-		return err
-	}
-	s.Properties[path[0]] = child
-	return nil
 }
 
 func testScheme() *runtime.Scheme {

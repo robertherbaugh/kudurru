@@ -48,7 +48,7 @@ type PolicySpec struct {
 	BlockMode BlockResponse `json:"blockMode,omitempty"`
 	// +kubebuilder:default="10m"
 	// +optional
-	BlockTTL metav1.Duration `json:"blockTTL,omitempty"`
+	BlockTTL metav1.Duration `json:"blockTTL,omitempty,omitzero"`
 	// QueryLog false excludes matching clients from the query log.
 	// +optional
 	QueryLog *bool `json:"queryLog,omitempty"`
