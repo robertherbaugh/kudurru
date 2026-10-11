@@ -174,6 +174,7 @@ func (s *Server) registerObjects() {
 		"application/yaml": {Schema: &huma.Schema{Type: "string"}},
 		"application/json": {Schema: &huma.Schema{Type: "array", Items: &huma.Schema{Type: "object", AdditionalProperties: true}}},
 	}}
+	applyOp.SkipValidateBody = true
 	register(s, applyOp, perm{kindResources: kindResources(), verb: "write", scopable: true}, s.apply)
 
 	for _, k := range kinds {
@@ -317,7 +318,7 @@ func (s *Server) getObjectRoute(ctx context.Context, plural, namespace, name str
 	if err != nil {
 		return nil, err
 	}
-	return &objectOutput{ETag: obj.GetResourceVersion(), Body: m}, nil
+	return &objectOutput{ETag: obj.GetResourceVersion(), Body: m, Status: http.StatusOK}, nil
 }
 
 // guessScope is the scope of an object that could not be read: zone:<name>
