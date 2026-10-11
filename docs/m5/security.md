@@ -371,4 +371,16 @@ the touched packages and `go build ./...`: see the
 
 ### Results
 
-Filled in at the end of the package.
+At 46975d9:
+
+- `CGO_ENABLED=1 go test -race ./...` with envtest
+  (`KUBEBUILDER_ASSETS` 1.37.0): all 64 test packages pass.
+- `golangci-lint run` on every touched package: 0 issues.
+- `go vet ./...` and `go build ./...`: clean.
+- `go run ./internal/api/openapigen -dir api`: no drift; no route or
+  schema changed.
+
+One pre-existing problem: `TestSupervisorPeersFile`
+(internal/edge/keepalived) passes with `-race` but times out without it.
+It also fails with the package and its dependencies unchanged from
+347f4c7, and is recorded in docs/followups.md.
