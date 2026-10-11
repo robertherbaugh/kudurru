@@ -1,6 +1,6 @@
 // Block and allow lists: one row per list with its enable switch, mode,
 // sources ("3 of 4 enabled"), entries, health and last update; rows open
-// the list page (/lists/:ns/:name) and "New list" the wizard (/lists/new).
+// the list page (/lists/:ns/:name) and "New list" the wizard (?new=1).
 // Also the multi-add of exact or regex domains into the ui-allow / ui-deny
 // lists and "which lists contain this domain" (GET /blocklists/_search).
 import { Badge } from '@astryxdesign/core/Badge';
@@ -13,6 +13,7 @@ import { ErrorBanner, useNotify } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
 import { AddDomainsDialog } from '../components/lists/AddDomainsDialog';
 import { ObjectsPage } from '../components/ObjectsPage';
+import { ListWizardDialog } from '../components/wizards/ListWizard';
 import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
 import { listPath, sourceEnabled, sourcesSummary } from '../lib/lists';
@@ -111,7 +112,7 @@ export default function ListsPage() {
       schema={SCHEMAS.blocklists}
       onSaved={pollStatus}
       detailPath={listPath}
-      createPath="/lists/new"
+      wizard={ListWizardDialog}
       headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} onClick={() => setAdding(true)} />}
       rowActions={(l) =>
         l.spec.sources.some((s) => s.url && sourceEnabled(s)) ? (

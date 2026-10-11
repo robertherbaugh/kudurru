@@ -119,13 +119,27 @@ building blocks.
   counts), sections, and actions. List pages are tables whose rows link to
   the detail page. Routes: `/policies/:ns/:name`, `/lists/:ns/:name`,
   `/groups/:ns/:name`, `/clients/:key`, `/zones/:zone`, `/upstreams/:group`.
-- **Wizard on its own route** for creating anything with more than about
-  four fields or several concepts: `/policies/new`, `/lists/new`,
-  `/groups/new`, `/zones/new`, `/upstreams/new`. Editing an existing object
-  happens on its detail page, in inline sections with their own Save, or at
-  `/…/:name/edit` reusing the wizard steps with every step reachable. Wizard
-  step state may live in `?step=`. The word `new` is therefore not a usable
-  object name on those routes (the zone and upstream wizards refuse it).
+- **Creation wizard in a modal** over the page you are on, for creating
+  anything with more than about four fields or several concepts: policies,
+  lists, groups, zones and upstream groups (`web/src/components/wizards/`).
+  Dedicated pages are for objects, not for the flow that creates one. The
+  modal (`WizardDialog`, composed like Astryx's `form-wizard-dialog`
+  template) pins the title, ✕ and a compact Stepper above the step and
+  Cancel, the step's message, Back and Next (Create on the last step)
+  below it, so nothing scrolls out of reach; only the step body scrolls.
+  ✕, Escape and Cancel close it; once anything was entered they ask
+  "Discard the new …?" first, and the backdrop never closes it. Focus moves
+  to the step's heading on every step change. Create closes the modal and
+  opens the new object's page. List pages open their wizard with "New …"
+  and `?new=1` (closing drops it), and the old routes `/policies/new`,
+  `/lists/new`, `/groups/new`, `/zones/new` and `/upstreams/new` redirect
+  there, so bookmarks and links keep working; the word `new` is therefore
+  not a usable object name on those routes (the zone and upstream wizards
+  refuse it). A detail page opens a related wizard in place where that is
+  the natural next step, e.g. "New policy" on a group's page with the group
+  chosen. A wizard never opens another dialog (Astryx: no nested dialogs),
+  apart from the discard question. Editing an existing object happens on
+  its detail page, in inline sections with their own Save.
 - **Dialog (FormDialog)** only for short, single-purpose actions:
   confirmations, adding one source or entry, adding domains to allow/deny,
   cache flush, the blocking timer, password change, token creation,

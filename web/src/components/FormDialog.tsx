@@ -13,7 +13,7 @@ import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { createContext, useContext, useId, useState, type FormEvent, type ReactNode } from 'react';
 
-interface FrameContext {
+export interface FrameContext {
   title: ReactNode;
   subtitle?: ReactNode;
   /** Unset for a dialog that cannot be dismissed (no close button). */
@@ -22,6 +22,11 @@ interface FrameContext {
 }
 
 const Frame = createContext<FrameContext | null>(null);
+
+/** The enclosing FormDialog's title, close and dirty tracking (null outside one). */
+export function useDialogFrame(): FrameContext | null {
+  return useContext(Frame);
+}
 
 export interface FormDialogProps {
   isOpen: boolean;
@@ -45,10 +50,14 @@ export interface FormDialogProps {
    * button, Escape and the backdrop do nothing, only the footer acts.
    */
   isDismissable?: boolean;
+  /** Dirty whatever the input events say (a wizard's own state, a click-only choice). */
+  isDirty?: boolean;
+  /** Called when a field inside changes (the first input or change event and every later one). */
+  onDirty?: () => void;
   children: ReactNode;
 }
 
-export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, footer, onSubmit, noValidate, isDismissable = true, children }: FormDialogProps) {
+export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, footer, onSubmit, noValidate, isDismissable = true, isDirty, onDirty, children }: FormDialogProps) {
   const [dirty, setDirty] = useState(false);
   // Every opening starts pristine (state adjusted during render, not in an effect).
   const [wasOpen, setWasOpen] = useState(isOpen);
@@ -60,7 +69,15 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
   // already rendered when the <dialog> mounts, and most dialogs mount
   // closed with their content not rendered yet.
   const titleId = useId();
-  const ctx: FrameContext = { title: <span id={titleId}>{title}</span>, subtitle, onClose: isDismissable ? onClose : undefined, markDirty: () => setDirty(true) };
+  const ctx: FrameContext = {
+    title: <span id={titleId}>{title}</span>,
+    subtitle,
+    onClose: isDismissable ? onClose : undefined,
+    markDirty: () => {
+      setDirty(true);
+      onDirty?.();
+    },
+  };
   const own = footer !== undefined || onSubmit !== undefined;
   return (
     <Dialog
@@ -68,7 +85,7 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
       onOpenChange={(open) => {
         if (!open && isDismissable) onClose();
       }}
-      purpose={!isDismissable ? 'required' : dirty ? 'form' : 'info'}
+      purpose={!isDismissable ? 'required' : dirty || isDirty ? 'form' : 'info'}
       width={width}
       maxHeight="90dvh"
       aria-labelledby={titleId}

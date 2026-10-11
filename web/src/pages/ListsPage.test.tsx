@@ -43,12 +43,37 @@ describe('ListsPage', () => {
     expect(within(screen.getByTestId('row-regex-trackers')).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/lists/default/regex-trackers');
   });
 
-  it('opens the wizard for a new list', async () => {
+  it('opens the wizard for a new list in a dialog and asks before discarding it', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
-    const link = await screen.findByRole('link', { name: 'New list' });
-    expect(link).toHaveAttribute('href', '/lists/new');
-    fireEvent.click(link);
-    expect(window.location.pathname).toBe('/lists/new');
+    const add = await screen.findByRole('button', { name: 'New list' });
+    await waitFor(() => expect(add).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(add);
+    expect(window.location.search).toBe('?new=1');
+    const dialog = await screen.findByRole('dialog', { name: 'New list' });
+    expect(within(dialog).getByRole('list', { name: 'New list' })).toBeInTheDocument();
+
+    // Something entered: Cancel asks first; "Keep editing" keeps the wizard.
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Allow list/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Discard the new list?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Keep editing' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(within(dialog).getByRole('radio', { name: /Allow list/ })).toBeChecked();
+
+    // Discard closes it and drops ?new=1.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^close/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Discard the new list?' })).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New list' })).toBeNull());
+    expect(window.location.search).toBe('');
+  });
+
+  it('opens the wizard from ?new=1 and closes a pristine one without asking', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists?new=1' });
+    const dialog = await screen.findByRole('dialog', { name: 'New list' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New list' })).toBeNull());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(window.location.search).toBe('');
   });
 
   it('batch-deletes the selected lists after confirmation', async () => {

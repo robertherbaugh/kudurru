@@ -1,6 +1,6 @@
 // Zones (§10 principle 11): type, serial, record count, Ready and the
 // manager of every zone and transfer/NOTIFY status. New zones are created
-// with the wizard at /zones/new; a BIND file is imported in a dialog.
+// with the wizard (a modal, ?new=1); a BIND file is imported in a dialog.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { useQuery } from '@tanstack/react-query';
@@ -8,9 +8,10 @@ import { qk, useApi, useCan } from '../api/context';
 import type { ZoneSummary } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { ManagedBadge } from '../components/ManagedBadge';
+import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
 import { formatExact, formatRelative } from '../lib/format';
-import { Link, useNavigate, useSearchParams } from '../lib/router';
+import { Link, useNewParam, useSearchParams } from '../lib/router';
 
 export function TransferCell({ z }: { z: ZoneSummary }) {
   const t = z.transfer;
@@ -42,8 +43,8 @@ export function TransferCell({ z }: { z: ZoneSummary }) {
 export default function ZonesPage() {
   const api = useApi();
   const can = useCan();
-  const navigate = useNavigate();
   const [sp, setParams] = useSearchParams();
+  const [creating, setCreating] = useNewParam();
   const importing = sp.get('import') === '1';
   const setImporting = (on: boolean) => setParams({ import: on ? '1' : null });
   const q = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list(), refetchInterval: 30_000 });
@@ -62,7 +63,7 @@ export default function ZonesPage() {
             tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'}
             onClick={() => setImporting(true)}
           />
-          <Button label="New zone" variant="primary" isDisabled={!can('zones', 'write')} tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'} onClick={() => navigate('/zones/new')} />
+          <Button label="New zone" variant="primary" isDisabled={!can('zones', 'write')} tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'} onClick={() => setCreating(true)} />
         </div>
       </div>
       {q.error ? <ErrorBanner error={q.error} /> : null}
@@ -119,6 +120,7 @@ export default function ZonesPage() {
         </div>
       ) : null}
       <ZoneImportDialog isOpen={importing} onClose={() => setImporting(false)} />
+      <ZoneWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }

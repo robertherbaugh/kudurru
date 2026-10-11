@@ -71,8 +71,8 @@ a real server instead of its mocks.
 ### Dashboard pages, wizards and the block page (v0.1 UX round)
 
 - Every object a user configures has its own page and every multi-concept
-  create flow is a wizard on its own route; dialogs are kept for short
-  actions (D132). Policies (`/policies/:ns/:name`: active now, schedule,
+  create flow is a wizard in a modal over the page you are on (`/…/new`
+  links open it there); other dialogs are kept for short actions (D132). Policies (`/policies/:ns/:name`: active now, schedule,
   shadowing, groups, lists, a blocked-services logo grid, safe search, 24 h
   activity), lists (`/lists/:ns/:name`), groups, clients (which group and
   policy apply and why), upstream groups and zones; wizards for new

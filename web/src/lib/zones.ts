@@ -47,7 +47,7 @@ export function apexError(apex: string, existing: string[]): string | null {
   if (he) return he;
   const name = zoneObjectName(apex);
   if (nameError(name)) return 'Use letters, digits, "-" and "." (the object is named after the zone)';
-  if (name === 'new') return '"new" is reserved for this page; pick another name';
+  if (name === 'new') return '"new" is reserved (/zones/new opens the wizard); pick another name';
   if (existing.includes(name)) return `A zone ${name} exists`;
   return null;
 }

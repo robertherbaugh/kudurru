@@ -1,20 +1,21 @@
-// The creation wizards of spa-settings against the real API: a forward
-// zone through /zones/new and an upstream group from a provider preset
-// through /upstreams/new. Each test removes what it created.
-import { expect, expectRendered, main, pick, selector, settle, test } from './fixtures';
+// The creation wizards of spa-settings against the real API, in their
+// dialogs over the list page (?new=1): a forward zone and an upstream
+// group from a provider preset. Each test removes what it created.
+import { expect, expectRendered, main, settle, test } from './fixtures';
+import { choose } from './support/astryx';
 
 test('the zone wizard creates a forward zone', async ({ page }) => {
   const apex = `fwd-${Date.now().toString(36)}.example`;
   await page.goto('/zones');
   await settle(page);
   await main(page).getByRole('button', { name: 'New zone' }).click();
-  await expect(page).toHaveURL(/\/zones\/new$/);
-  await settle(page);
+  await expect(page).toHaveURL(/\/zones\?new=1$/);
+  await expect(page.getByRole('dialog', { name: 'New zone' })).toBeVisible();
   await main(page).getByRole('radio', { name: /^Forward/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('textbox', { name: /^Zone name/ }).fill(apex);
   await main(page).getByRole('button', { name: 'Next' }).click();
-  await pick(selector(main(page), /Upstream group/), /^default$/);
+  await choose(main(page).getByRole('combobox', { name: /Upstream group/ }), 'default');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await expect(main(page).getByTestId('zone-review')).toContainText(`${apex}.`);
   await main(page).getByRole('button', { name: 'Create zone' }).click();
@@ -36,15 +37,15 @@ test('the upstream wizard creates a group from a provider preset', async ({ page
   await page.goto('/upstreams');
   await settle(page);
   await main(page).getByRole('button', { name: 'New group' }).click();
-  await expect(page).toHaveURL(/\/upstreams\/new$/);
-  await settle(page);
+  await expect(page).toHaveURL(/\/upstreams\?new=1$/);
+  await expect(page.getByRole('dialog', { name: 'New upstream group' })).toBeVisible();
   await main(page).getByRole('radio', { name: /^Quad9/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
-  await pick(selector(main(page), 'Transport'), 'DNS over TLS (DoT)');
+  await choose(main(page).getByRole('combobox', { name: 'Transport' }), 'DNS over TLS (DoT)');
   await expect(main(page).getByTestId('preset-servers')).toContainText('tls://dns.quad9.net');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('textbox', { name: /^Name/ }).fill(name);
-  await pick(selector(main(page), 'Strategy'), 'Strict order');
+  await choose(main(page).getByRole('combobox', { name: 'Strategy' }), 'Strict order');
   await main(page).getByRole('button', { name: 'Next' }).click();
   await expect(main(page).getByTestId('upstream-review')).toContainText('quad9-dot=tls://dns.quad9.net');
   await main(page).getByRole('button', { name: 'Create group' }).click();

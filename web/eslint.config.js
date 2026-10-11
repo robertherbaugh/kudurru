@@ -45,10 +45,9 @@ export default tseslint.config(
     // Every form control is an Astryx component (docs/m3/ui.md): no raw
     // <select>/<input>/<textarea> and no .k-native-* styling outside the
     // field wrappers in components/fields/. A justified exception carries
-    // an eslint-disable-next-line comment saying why. The wizard pages
-    // belong to the wizard stream and are converted there.
+    // an eslint-disable-next-line comment saying why.
     files: ['src/**/*.tsx'],
-    ignores: ['src/**/*.test.tsx', 'src/test/**', 'src/mocks/**', 'src/components/fields/**', 'src/components/Wizard.tsx', 'src/pages/*Wizard*.tsx'],
+    ignores: ['src/**/*.test.tsx', 'src/test/**', 'src/mocks/**', 'src/components/fields/**'],
     rules: {
       'no-restricted-syntax': [
         'error',

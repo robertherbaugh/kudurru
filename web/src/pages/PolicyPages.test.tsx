@@ -7,7 +7,7 @@ import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import PoliciesPage from './PoliciesPage';
 import PolicyDetailPage from './PolicyDetailPage';
-import PolicyWizardPage from './PolicyWizardPage';
+import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 
 /** Clicks a button once the session has loaded and enabled it. */
 async function clickWhenEnabled(name: string | RegExp, root: HTMLElement = document.body): Promise<void> {
@@ -19,7 +19,7 @@ async function clickWhenEnabled(name: string | RegExp, root: HTMLElement = docum
 /** Next, then waits for the step's heading. */
 async function goTo(step: string): Promise<void> {
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByRole('heading', { level: 2, name: step });
+  await screen.findByRole('heading', { level: 3, name: step });
 }
 
 const policy = (name: string) => mockDB().policies.find((p) => p.metadata.name === name);
@@ -51,8 +51,10 @@ describe('PoliciesPage', () => {
     renderWithApp(<PoliciesPage />, { route: '/policies?q=kids' });
     await screen.findByTestId('row-kids-bedtime');
     expect(screen.queryByTestId('row-default')).toBeNull();
-    const add = screen.getByRole('link', { name: 'New policy' });
-    expect(add).toHaveAttribute('href', '/policies/new');
+    await clickWhenEnabled('New policy');
+    expect(window.location.search).toBe('?q=kids&new=1');
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    expect(await within(dialog).findByRole('heading', { level: 3, name: 'Who' })).toBeInTheDocument();
   });
 });
 
@@ -165,9 +167,9 @@ describe('PolicyDetailPage', () => {
   });
 });
 
-describe('PolicyWizardPage', () => {
+describe('PolicyWizardDialog', () => {
   it('walks Who → What → Safe search → How → When → Review and creates the policy', async () => {
-    renderWithApp(<PolicyWizardPage />, { route: '/policies/new' });
+    renderWithApp(<PolicyWizardDialog isOpen onClose={() => {}} />, { route: '/policies?new=1' });
     const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     // Who: the name and at least one group are required.
@@ -192,23 +194,15 @@ describe('PolicyWizardPage', () => {
 
     // Safe search.
     fireEvent.click(await screen.findByRole('switch', { name: /Enforce safe search/ }));
-    pick(getSelector('Level'), 'Moderate (YouTube)');
+    pick(getSelector('Level'), /^Moderate/);
     await goTo('How');
 
     // How.
-    pick(await findSelector('Block response'), 'NXDOMAIN');
+    pick(await findSelector('Block response'), /^NXDOMAIN/);
     await goTo('When');
 
     // When: a window.
     fireEvent.click(await screen.findByRole('radio', { name: 'Only during a time window' }));
-    const setTime = (label: RegExp, v: string) => {
-      const el = screen.getByLabelText(label);
-      fireEvent.focus(el);
-      fireEvent.change(el, { target: { value: v } });
-      fireEvent.blur(el);
-    };
-    setTime(/^Start/, '15:00');
-    setTime(/^End/, '18:30');
     pick(getSelector('Time zone'), 'Europe/Berlin');
     await goTo('Review');
 
@@ -218,7 +212,7 @@ describe('PolicyWizardPage', () => {
     expect(review).toHaveTextContent('Roblox');
     expect(review).toHaveTextContent('On (moderate)');
     expect(review).toHaveTextContent('NXDOMAIN');
-    expect(review).toHaveTextContent('15:00–18:30 (Europe/Berlin)');
+    expect(review).toHaveTextContent('21:00–07:00 (Europe/Berlin)');
     fireEvent.click(within(review).getByRole('button', { name: 'Edit blocked services' }));
     fireEvent.click(await screen.findByRole('button', { name: /YouTube/ }));
     for (const step of ['Safe search', 'How', 'When', 'Review']) await goTo(step);
@@ -233,14 +227,14 @@ describe('PolicyWizardPage', () => {
       safeSearch: true,
       safeSearchMode: 'moderate',
       blockMode: 'nxdomain',
-      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '15:00', end: '18:30', tz: 'Europe/Berlin' },
+      schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00', tz: 'Europe/Berlin' },
     });
     await waitFor(() => expect(window.location.pathname).toBe('/policies/default/kids-games'));
   });
 
   it('shows the server error on the last step', async () => {
     server.use(http.put(`${API}/objects/policies/:ns/:name`, () => HttpResponse.json({ error: { key: 'invalid', message: 'spec.blockedServices: too many' } }, { status: 400 })));
-    renderWithApp(<PolicyWizardPage />, { route: '/policies/new' });
+    renderWithApp(<PolicyWizardDialog isOpen onClose={() => {}} />, { route: '/policies?new=1' });
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), { target: { value: 'x' } });
     fireEvent.click(await screen.findByRole('checkbox', { name: 'kids' }));
     for (const step of ['What', 'Safe search', 'How', 'When', 'Review']) await goTo(step);

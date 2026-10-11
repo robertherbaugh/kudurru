@@ -42,8 +42,9 @@ test('the wizard creates a list from pasted entries', async ({ page }) => {
   try {
     await page.goto('/lists');
     await settle(page);
-    await page.getByRole('link', { name: 'New list' }).click();
-    await expect(page).toHaveURL(/\/lists\/new$/);
+    await page.getByRole('button', { name: 'New list' }).click();
+    await expect(page).toHaveURL(/\/lists\?new=1$/);
+    await expect(page.getByRole('dialog', { name: 'New list' })).toBeVisible();
     await expect(page.getByRole('radio', { name: /Block list/ })).toBeChecked();
     await page.getByRole('button', { name: 'Next' }).click();
     await page.getByRole('textbox', { name: /^Paste entries/ }).fill(`wizard-${id}.example\nother-${id}.example`);

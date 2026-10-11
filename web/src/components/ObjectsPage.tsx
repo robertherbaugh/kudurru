@@ -3,17 +3,18 @@
 // multi-select with :batchDelete, and the generated create/edit form in a
 // dialog. Objects managed elsewhere are listed but not selectable and open
 // read-only. Kinds with their own page and wizard (all three) pass detailPath
-// and createPath: names link to the page and "New" opens the wizard.
+// and wizard: names link to the page and "New" opens the wizard in a modal
+// over the list (?new=1, so /policies?new=1 and /policies/new open it too).
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Switch } from '@astryxdesign/core/Switch';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { AnyObject } from '../api/types';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, withMeta } from '../lib/managedBy';
 import type { KindSchema } from '../lib/objectSchemas';
-import { Link, useSearchParams } from '../lib/router';
+import { Link, useNewParam, useSearchParams } from '../lib/router';
 import { ErrorBanner, Loading, useNotify } from './Feedback';
 import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
@@ -41,8 +42,8 @@ export interface ObjectsPageProps<T extends AnyObject> {
   onSaved?: (obj: AnyObject) => void;
   /** The object's own page: the name links there instead of opening the form dialog. */
   detailPath?: (obj: T) => string;
-  /** The create wizard's route: "New" goes there instead of opening the form dialog. */
-  createPath?: string;
+  /** The creation wizard: "New" opens it (?new=1) instead of the form dialog. */
+  wizard?: ComponentType<{ isOpen: boolean; onClose: () => void }>;
   /** Row order (default: the server's, by name). */
   sort?: (a: T, b: T) => number;
 }
@@ -51,7 +52,7 @@ function key(o: AnyObject): string {
   return `${o.metadata.namespace ?? ''}/${o.metadata.name}`;
 }
 
-export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, createPath, sort }: ObjectsPageProps<T>) {
+export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, wizard: CreateWizard, sort }: ObjectsPageProps<T>) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -59,6 +60,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
   const [sp, setParams] = useSearchParams();
   const search = sp.get('q') ?? '';
   const [editing, setEditing] = useState<T | 'new' | null>(null);
+  const [creating, setCreating] = useNewParam();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   const canWrite = can(schema.resource, 'write');
@@ -132,7 +134,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
             variant="primary"
             isDisabled={!canWrite}
             tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`}
-            {...(createPath ? { href: createPath } : { onClick: () => setEditing('new') })}
+            onClick={() => (CreateWizard ? setCreating(true) : setEditing('new'))}
           />
         </div>
       </div>
@@ -249,6 +251,8 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
           </table>
         </div>
       ) : null}
+
+      {CreateWizard ? <CreateWizard isOpen={creating} onClose={() => setCreating(false)} /> : null}
 
       <FormDialog
         isOpen={editing !== null}

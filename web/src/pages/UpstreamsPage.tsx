@@ -1,7 +1,7 @@
 // Upstreams: the resolver groups kudurru forwards to (upstreams.groups) as
 // a table whose rows open the group's page (/upstreams/:group) with its
 // servers' live health and traffic; new groups are created with the wizard
-// at /upstreams/new. Bootstrap resolvers, conditional forwarding and EDNS
+// in a modal (?new=1). Bootstrap resolvers, conditional forwarding and EDNS
 // Client Subnet are edited here. Everything is a cluster setting written
 // with PATCH /settings (a JSON merge patch); in Kubernetes the settings
 // ConfigMap owns them and the pages are read-only.
@@ -17,8 +17,9 @@ import { NumberField, numberError } from '../components/fields/NumberField';
 import { cleanList, StringListField } from '../components/fields/StringListField';
 import { TextField } from '../components/fields/TextField';
 import { healthSummary, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
+import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { formatExact } from '../lib/format';
-import { Link, useNavigate } from '../lib/router';
+import { Link, useNewParam } from '../lib/router';
 import { bootstrapError, conditionalKeyError, DEFAULT_GROUP, ECS_MODES, groupNames, mapPatch, type UpstreamsConfig } from '../lib/upstreams';
 
 export { healthFor, strategyLabel, trafficFor } from '../components/UpstreamGroup';
@@ -275,7 +276,7 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
 }
 
 export default function UpstreamsPage() {
-  const navigate = useNavigate();
+  const [creating, setCreating] = useNewParam();
   const u = useUpstreams();
   const names = groupNames(u.cfg);
   return (
@@ -294,7 +295,7 @@ export default function UpstreamsPage() {
             variant="primary"
             isDisabled={!u.canWrite}
             tooltip={u.canWriteSetting ? undefined : 'Needs settings.write'}
-            onClick={() => navigate('/upstreams/new')}
+            onClick={() => setCreating(true)}
           />
         </div>
       </div>
@@ -323,6 +324,7 @@ export default function UpstreamsPage() {
           <ConditionalPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
         </>
       ) : null}
+      <UpstreamWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }

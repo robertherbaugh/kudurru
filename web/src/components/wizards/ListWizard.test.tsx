@@ -1,16 +1,16 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import type { BlockList, Policy } from '../api/types';
-import { mockDB } from '../mocks/handlers';
-import { getSelector, pick, valueOf } from '../test/controls';
-import { renderWithApp } from '../test/utils';
-import ListWizardPage, { withListRef, wizardSources } from './ListWizardPage';
+import { describe, expect, it, vi } from 'vitest';
+import type { BlockList, Policy } from '../../api/types';
+import { mockDB } from '../../mocks/handlers';
+import { getSelector, pick, valueOf } from '../../test/controls';
+import { renderWithApp } from '../../test/utils';
+import { ListWizardDialog, withListRef, wizardSources } from './ListWizard';
 
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
-describe('ListWizardPage', () => {
+describe('ListWizardDialog', () => {
   it('creates a block list from a well-known list and a URL and adds it to the default policy', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+    renderWithApp(<ListWizardDialog isOpen onClose={() => {}} />, { route: '/lists?new=1' });
     // Type
     expect(await screen.findByRole('radio', { name: /Block list/ })).toBeChecked();
     next();
@@ -59,7 +59,7 @@ describe('ListWizardPage', () => {
   });
 
   it('creates an allow list from pasted entries without well-known block lists', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+    renderWithApp(<ListWizardDialog isOpen onClose={() => {}} />, { route: '/lists?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /Allow list/ }));
     next();
     expect(await screen.findByRole('group', { name: 'List URLs' })).toBeInTheDocument();
@@ -82,10 +82,11 @@ describe('ListWizardPage', () => {
     await waitFor(() => expect(mockDB().policies.find((p) => p.metadata.name === 'default')?.spec.allowListRefs).toContain('my-allow-list'));
   });
 
-  it('cancels back to the lists', async () => {
-    renderWithApp(<ListWizardPage />, { route: '/lists/new' });
+  it('closes from Cancel while nothing was entered', async () => {
+    const onClose = vi.fn();
+    renderWithApp(<ListWizardDialog isOpen onClose={onClose} />, { route: '/lists?new=1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
-    expect(window.location.pathname).toBe('/lists');
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
 

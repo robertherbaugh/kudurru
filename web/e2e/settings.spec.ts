@@ -1,7 +1,8 @@
 // Settings shows the values the server runs with (GET /settings answers
 // the envelope {scope,node,settings,...}; the values are under .settings),
 // each key with the typed control of its C1 metadata.
-import { env, expect, expectRendered, main, pick, selector, settle, test } from './fixtures';
+import { env, expect, expectRendered, main, selector, settle, test } from './fixtures';
+import { choose } from './support/astryx';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/settings');
@@ -38,7 +39,7 @@ test('an enum key is a Selector that saves and shows the new value', async ({ pa
   // Something other than the default (fast), so the row shows "changed".
   const next = before === 'failOnError' ? 'blocking' : 'failOnError';
   const labels: Record<string, string> = { fast: 'Fast', blocking: 'Wait for lists', failOnError: 'Fail on error' };
-  await pick(select, labels[next] ?? next);
+  await choose(select, labels[next] ?? next);
   // The chosen option's help shows under the control.
   await expect(row).toContainText(next === 'failOnError' ? 'exit when one fails to load' : 'Not ready until every list is loaded');
   await row.getByRole('button', { name: 'Save' }).click();
@@ -47,7 +48,7 @@ test('an enum key is a Selector that saves and shows the new value', async ({ pa
   await settle(page);
   await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', next);
   // Back to what the suite started with.
-  await pick(selector(row, 'List loading at start'), labels[before] ?? before);
+  await choose(selector(row, 'List loading at start'), labels[before] ?? before);
   await row.getByRole('button', { name: 'Save' }).click();
   await expect(selector(row, 'List loading at start')).toHaveAttribute('data-value', before);
   await expect(row.getByRole('button', { name: 'Save' })).toHaveCount(0);
