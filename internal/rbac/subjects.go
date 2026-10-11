@@ -154,3 +154,14 @@ func FromRoleBinding(rb *internalv1alpha1.RoleBinding) Binding {
 	}
 	return b
 }
+
+// RoleBindingObjects converts RoleBinding objects into the map
+// BindingSource.SetObjects takes, keyed "<namespace>/<name>". The identity
+// layer calls it whenever its watch-fed RoleBinding cache changes.
+func RoleBindingObjects(list []*internalv1alpha1.RoleBinding) map[string]Binding {
+	out := make(map[string]Binding, len(list))
+	for _, rb := range list {
+		out[rb.Namespace+"/"+rb.Name] = FromRoleBinding(rb)
+	}
+	return out
+}

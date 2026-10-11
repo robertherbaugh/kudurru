@@ -163,18 +163,18 @@ func podNamespace() string {
 
 // Store implements store.Store over the Kubernetes apiserver.
 type Store struct {
-	opts    Options
-	kinds   *registry
-	mapper  meta.RESTMapper
-	c       client.Client // uncached: reads and writes go to the apiserver
-	cache   cache.Cache   // informers for Watch
-	leases  coordinationv1client.LeasesGetter
-	log     *slog.Logger
+	opts   Options
+	kinds  *registry
+	mapper meta.RESTMapper
+	c      client.Client // uncached: reads and writes go to the apiserver
+	cache  cache.Cache   // informers for Watch
+	leases coordinationv1client.LeasesGetter
+	log    *slog.Logger
 
 	internal *internalKinds  // Options.InternalKinds, served as Secrets
 	coreREST rest.Interface  // core/v1 client for the internal-kind informer
 	bgCtx    context.Context // cancelled by Close
-	contact *contact // last successful apiserver round trip
+	contact  *contact        // last successful apiserver round trip
 
 	cancel         context.CancelFunc // stops the cache and background work
 	cacheDone      chan struct{}      // closed when cache.Start returns
