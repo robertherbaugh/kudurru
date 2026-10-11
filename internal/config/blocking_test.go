@@ -13,7 +13,7 @@ func TestBlockingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Blocking{Enabled: true, DefaultResponse: "zeroIP", BlockTTL: Duration(10 * time.Minute), AllowDegraded: true}
+	want := Blocking{Enabled: true, DefaultResponse: "zeroIP", BlockTTL: Duration(10 * time.Minute), AllowDegraded: true, RefreshInterval: Duration(24 * time.Hour), InitStrategy: "fast"}
 	if cfg.Blocking != want {
 		t.Errorf("blocking defaults:\n got %+v\nwant %+v", cfg.Blocking, want)
 	}
