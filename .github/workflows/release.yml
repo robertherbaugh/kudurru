@@ -1,0 +1,60 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # GitHub release and assets
+      packages: write        # ghcr.io images and Helm charts
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: sigstore/cosign-installer@v3
+      - uses: azure/setup-helm@v4
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Test before publishing
+        run: make test
+      - name: Chart render matrix and kubeconform
+        run: make helm-check
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KO_DOCKER_REPO: ghcr.io/robertherbaugh/kudurru
+      - name: Build provenance for the release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/checksums.txt
+      - name: Push the Helm charts to oci://ghcr.io/robertherbaugh/charts
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          mkdir -p bin/charts
+          for chart in kudurru-crds kudurru; do
+            helm package "charts/${chart}" --version "${version}" --app-version "${version}" -d bin/charts
+            out=$(helm push "bin/charts/${chart}-${version}.tgz" oci://ghcr.io/robertherbaugh/charts 2>&1)
+            echo "${out}"
+            digest=$(echo "${out}" | awk '/^Digest:/ {print $2}')
+            cosign sign --yes "ghcr.io/robertherbaugh/charts/${chart}@${digest}"
+          done

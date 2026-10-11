@@ -55,13 +55,37 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+  # Chart, kustomize, compose, dashboard and alert-rule checks
+  # (docs/m3/deploy.md): helm lint, the values render matrix with every
+  # rendered kudurru.yaml loaded through config.Load, the kustomize overlays,
+  # and kubeconform against the Kubernetes 1.30 schemas and the CRDs.
   helm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - uses: azure/setup-helm@v4
-      - run: helm lint charts/kudurru charts/kudurru-crds
-      - run: helm template kudurru charts/kudurru > /dev/null
+      - name: Cache kubeconform schemas and tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            bin/kubeconform-cache
+            bin/deploy-tools
+          key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Render matrix, kustomize overlays, kubeconform
+        run: make helm-check
+      - name: Generated deployment assets are current
+        run: |
+          make deploy-assets
+          git diff --exit-code -- charts config deploy
+      - name: goreleaser configuration
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
   licenses:
     runs-on: ubuntu-latest
     steps:
