@@ -1,8 +1,12 @@
-// A closed choice shown as cards, for the first step of a wizard where
-// each option needs a sentence (zone type, upstream provider): native
-// radio buttons in a fieldset, so arrows move between cards and the
-// choice is announced like any radio group.
-import { useId, type ReactNode } from 'react';
+// A closed choice where each option needs a sentence, for the first step
+// of a wizard (zone type, upstream provider): an Astryx RadioList with the
+// sentence under each option's label and an optional icon before it, so
+// arrows move between options and the choice is announced like any radio
+// group. Options carry data-choice for tests.
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
+import { VStack } from '@astryxdesign/core/VStack';
+import type { ReactNode } from 'react';
 
 export interface Choice {
   value: string;
@@ -23,21 +27,14 @@ export interface ChoiceCardsProps {
 }
 
 export function ChoiceCards({ label, isLabelHidden, value, choices, onChange, error }: ChoiceCardsProps) {
-  const name = useId();
   return (
-    <fieldset className="k-choice-grid" aria-invalid={error ? true : undefined}>
-      <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-      {choices.map((c) => (
-        <label key={c.value} className="k-choice" data-choice={c.value}>
-          <input type="radio" name={name} value={c.value} checked={value === c.value} disabled={c.isDisabled} onChange={() => onChange(c.value)} />
-          {c.icon}
-          <span>
-            <strong>{c.label}</strong>
-            {c.description ? <span className="k-muted k-small">{c.description}</span> : null}
-          </span>
-        </label>
-      ))}
-      {error ? <span className="k-error-text">{error}</span> : null}
-    </fieldset>
+    <VStack gap={1}>
+      <RadioList label={label} isLabelHidden={isLabelHidden} value={value} onChange={onChange} status={error ? { type: 'error' } : undefined}>
+        {choices.map((c) => (
+          <RadioListItem key={c.value} value={c.value} label={c.label} description={c.description} startContent={c.icon} isDisabled={c.isDisabled} data-choice={c.value} />
+        ))}
+      </RadioList>
+      {error ? <FieldStatus type="error" message={error} variant="detached" /> : null}
+    </VStack>
   );
 }

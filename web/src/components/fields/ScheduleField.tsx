@@ -1,10 +1,19 @@
 // A Policy schedule (spec.schedule) as typed controls: "always" or a
-// window, weekday toggles, start and end as time inputs and the time zone
+// window (RadioList), weekday toggles, start and end as TimeInputs and the time zone
 // from the browser's list of IANA zones. The window is [start, end) on the
 // chosen weekdays and crosses midnight when end is before start, exactly
 // as internal/policy evaluates it; the summary line says whether it would
 // be on right now.
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack } from '@astryxdesign/core/HStack';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
+import { Text } from '@astryxdesign/core/Text';
+import { TimeInput, type ISOTimeString } from '@astryxdesign/core/TimeInput';
+import { ToggleButton } from '@astryxdesign/core/ToggleButton';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useId, useMemo } from 'react';
+import { SelectField } from './SelectField';
 import { scheduleActive, scheduleError, scheduleSummary, WEEKDAYS, weekdayNumber, type Schedule } from '../../lib/policies';
 
 export interface ScheduleFieldProps {
@@ -56,63 +65,46 @@ export function ScheduleField({ value, onChange, isDisabled, error, now }: Sched
     set({ weekdays: WEEKDAYS.filter((w) => next.some((x) => weekdayNumber(x) === weekdayNumber(w))) });
   };
   const tz = value?.tz || 'UTC';
+  const time = (v: string | undefined) => (v ? (v as ISOTimeString) : undefined);
   return (
     <fieldset className="k-fieldset" disabled={isDisabled}>
       <legend>When</legend>
-      <div className="k-row" role="radiogroup" aria-label="When the policy applies">
-        <label className="k-radio">
-          <input type="radio" name={`${id}-mode`} checked={!on} onChange={() => onChange(undefined)} /> Always
-        </label>
-        <label className="k-radio">
-          <input type="radio" name={`${id}-mode`} checked={on} onChange={() => onChange(value ?? defaultSchedule())} /> Only during a time window
-        </label>
-      </div>
+      <RadioList label="When the policy applies" isLabelHidden orientation="horizontal" value={on ? 'window' : 'always'} isDisabled={isDisabled} onChange={(v) => (v === 'always' ? onChange(undefined) : onChange(value ?? defaultSchedule()))}>
+        <RadioListItem value="always" label="Always" />
+        <RadioListItem value="window" label="Only during a time window" />
+      </RadioList>
       {on ? (
         <>
-          <div className="k-stack-sm">
-            <span className="k-label">Weekdays</span>
-            <div className="k-row" role="group" aria-label="Weekdays">
+          <VStack gap={1}>
+            <Text type="label" id={`${id}-days`}>
+              Weekdays
+            </Text>
+            <HStack gap={1} wrap="wrap" role="group" aria-labelledby={`${id}-days`} aria-describedby={`${id}-days-help`}>
               {WEEKDAYS.map((d) => (
-                <button key={d} type="button" className="k-day" aria-pressed={days.has(weekdayNumber(d))} onClick={() => toggleDay(d)} disabled={isDisabled}>
-                  {d}
-                </button>
+                <ToggleButton key={d} label={d} size="sm" isPressed={days.has(weekdayNumber(d))} onPressedChange={() => toggleDay(d)} isDisabled={isDisabled} />
               ))}
-            </div>
-            <span className="k-muted k-small">None selected means every day. A window that ends after midnight belongs to the day it starts on.</span>
-          </div>
-          <div className="k-form-grid">
-            <label className="k-label">
-              Start
-              <input className="k-native-input" type="time" value={value?.start ?? ''} onChange={(e) => set({ start: e.target.value })} required />
-            </label>
-            <label className="k-label">
-              End
-              <input className="k-native-input" type="time" value={value?.end ?? ''} onChange={(e) => set({ end: e.target.value })} required />
-            </label>
-            <label className="k-label">
-              Time zone
-              <select className="k-native-select" value={tz} onChange={(e) => set({ tz: e.target.value })}>
-                {zones.includes(tz) ? null : <option value={tz}>{tz}</option>}
-                {zones.map((z) => (
-                  <option key={z} value={z}>
-                    {z}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+            </HStack>
+            <Text type="supporting" display="block" id={`${id}-days-help`}>
+              None selected means every day. A window that ends after midnight belongs to the day it starts on.
+            </Text>
+          </VStack>
+          <Grid columns={{ minWidth: 180, repeat: 'fit' }} gap={3} align="start">
+            <TimeInput label="Start" value={time(value?.start)} onChange={(v) => set({ start: v ?? '' })} hourFormat="24h" isRequired isDisabled={isDisabled} />
+            <TimeInput label="End" value={time(value?.end)} onChange={(v) => set({ end: v ?? '' })} hourFormat="24h" isRequired isDisabled={isDisabled} />
+            <SelectField label="Time zone" value={tz} options={zones.map((z) => ({ value: z, label: z }))} onChange={(z) => set({ tz: z })} hasSearch isDisabled={isDisabled} />
+          </Grid>
           {message ? (
-            <span className="k-error-text" role="alert">
-              {message}
-            </span>
+            <FieldStatus type="error" message={message} variant="detached" />
           ) : (
-            <span className="k-muted k-small" data-testid="schedule-summary">
+            <Text type="supporting" display="block" data-testid="schedule-summary">
               {scheduleSummary(value)} · {scheduleActive(value, now ?? new Date()) ? 'on right now' : 'off right now'}
-            </span>
+            </Text>
           )}
         </>
       ) : (
-        <span className="k-muted k-small">The policy applies at all times.</span>
+        <Text type="supporting" display="block">
+          The policy applies at all times.
+        </Text>
       )}
     </fieldset>
   );

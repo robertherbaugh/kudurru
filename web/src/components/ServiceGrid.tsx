@@ -7,7 +7,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useApi } from '../api/context';
 import type { CatalogueService, SafeSearchEngine } from '../api/types';
+import { Text } from '@astryxdesign/core/Text';
 import { errorText } from './Feedback';
+import { TextField } from './fields/TextField';
 import { ServiceIcon } from './ServiceIcon';
 
 /** Query keys of the catalogue (shared with the policy pages). */
@@ -66,10 +68,7 @@ export function ServiceGrid({ label, value, onChange, isDisabled, description, i
         {label}
         <span className="k-muted k-small"> ({value.length} selected)</span>
       </legend>
-      {description ? <p className="k-muted k-small">{description}</p> : null}
-      {items.length > 12 ? (
-        <input className="k-native-input k-search" type="search" placeholder="Filter services" aria-label="Filter services" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      ) : null}
+      {items.length > 12 ? <TextField label="Filter services" isLabelHidden startIcon="search" placeholder="Filter services" value={filter} onChange={setFilter} hasClear /> : null}
       {q.isLoading ? <p className="k-muted k-small">Loading the catalogue…</p> : null}
       {q.isError ? <p className="k-error-text">Could not load the catalogue: {errorText(q.error)}</p> : null}
       <div className="k-logo-grid" role="group" aria-label={`${label}: catalogue`}>
@@ -95,6 +94,11 @@ export function ServiceGrid({ label, value, onChange, isDisabled, description, i
         )}
       </div>
       {filter && shown.length === 0 ? <p className="k-muted k-small">No service matches "{filter}".</p> : null}
+      {description ? (
+        <Text type="supporting" display="block">
+          {description}
+        </Text>
+      ) : null}
       {unknown.length ? (
         <div className="k-stack">
           <span className="k-muted k-small">Not in the catalogue (ignored until it is)</span>

@@ -5,11 +5,12 @@
 // Hostname and name-pattern matchers of existing groups stay editable but
 // say that this version has no hostname source, so they never match.
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { useId, useState } from 'react';
+import { Text } from '@astryxdesign/core/Text';
+import { useState } from 'react';
 import type { ClientItem, ClientMatcher } from '../../api/types';
 import { cidrError, ipError, macError } from '../../lib/objectSchemas';
 import { EnumSelect, type EnumOption } from './EnumSelect';
+import { TextAreaField, TextField } from './TextField';
 
 export type MatcherKind = 'ip' | 'cidr' | 'clientID' | 'mac' | 'hostname' | 'nameGlob';
 
@@ -113,15 +114,14 @@ export interface MatchersFieldProps {
 }
 
 export function MatchersField({ value, onChange, isDisabled, showErrors }: MatchersFieldProps) {
-  const id = useId();
   const [bulk, setBulk] = useState<string | null>(null);
   const update = (i: number, m: ClientMatcher) => onChange(value.map((x, j) => (j === i ? m : x)));
   const lines = (bulk ?? '').split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean);
   return (
     <fieldset className="k-fieldset" disabled={isDisabled}>
       <legend>Members</legend>
-      <p className="k-muted k-small">A client is in the group when any one matcher matches it. Exact addresses beat ranges, ranges beat client IDs.</p>
-      {value.length === 0 ? <p className="k-muted k-small">No matchers yet: the group matches nobody.</p> : null}
+      <Text type="supporting" display="block">A client is in the group when any one matcher matches it. Exact addresses beat ranges, ranges beat client IDs.</Text>
+      {value.length === 0 ? <Text type="supporting" display="block">No matchers yet: the group matches nobody.</Text> : null}
       <ol className="k-matchers" aria-label="Matchers">
         {value.map((m, i) => {
           const kind = matcherKind(m);
@@ -132,28 +132,17 @@ export function MatchersField({ value, onChange, isDisabled, showErrors }: Match
           return (
             <li key={i} className="k-matcher" data-testid={`matcher-${i}`}>
               <EnumSelect label={`Matcher ${i + 1} kind`} value={kind} options={options} onChange={(k) => update(i, withSelector(m, k as MatcherKind, matcherValue(m)))} isDisabled={isDisabled} />
-              <label className="k-label" htmlFor={`${id}-v${i}`}>
-                {def?.label ?? 'Value'}
-                <input
-                  id={`${id}-v${i}`}
-                  className="k-native-input k-mono"
-                  value={matcherValue(m)}
-                  placeholder={def?.placeholder}
-                  aria-invalid={touched && err ? true : undefined}
-                  aria-label={`Matcher ${i + 1} ${def?.label ?? 'value'}`}
-                  onChange={(e) => update(i, withSelector(m, kind, e.target.value))}
-                  spellCheck={false}
-                />
-                {touched && err ? <span className="k-error-text">{err}</span> : null}
-              </label>
-              <label className="k-label" htmlFor={`${id}-n${i}`}>
-                Display name
-                <input id={`${id}-n${i}`} className="k-native-input" value={m.name ?? ''} placeholder="kids-tablet" aria-label={`Matcher ${i + 1} display name`} onChange={(e) => update(i, { ...m, name: e.target.value || undefined })} />
-              </label>
-              <label className="k-label" htmlFor={`${id}-c${i}`}>
-                Comment
-                <input id={`${id}-c${i}`} className="k-native-input" value={m.comment ?? ''} aria-label={`Matcher ${i + 1} comment`} onChange={(e) => update(i, { ...m, comment: e.target.value || undefined })} />
-              </label>
+              <TextField
+                label={def?.label ?? 'Value'}
+                aria-label={`Matcher ${i + 1} ${def?.label ?? 'value'}`}
+                mono
+                value={matcherValue(m)}
+                placeholder={def?.placeholder}
+                onChange={(v) => update(i, withSelector(m, kind, v))}
+                error={touched && err ? err : undefined}
+              />
+              <TextField label="Display name" aria-label={`Matcher ${i + 1} display name`} value={m.name ?? ''} placeholder="kids-tablet" onChange={(v) => update(i, { ...m, name: v || undefined })} />
+              <TextField label="Comment" aria-label={`Matcher ${i + 1} comment`} value={m.comment ?? ''} onChange={(v) => update(i, { ...m, comment: v || undefined })} />
               <Button label="Remove" size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} tooltip={`Remove matcher ${i + 1}`} />
             </li>
           );
@@ -167,7 +156,7 @@ export function MatchersField({ value, onChange, isDisabled, showErrors }: Match
       )}
       {bulk !== null ? (
         <div className="k-stack">
-          <TextArea label="Paste addresses, ranges, MAC addresses or client IDs" description="One per line or comma separated; each line becomes a matcher of the kind it looks like." value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} />
+          <TextAreaField label="Paste addresses, ranges, MAC addresses or client IDs" help="One per line or comma separated; each line becomes a matcher of the kind it looks like." value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} mono />
           <div className="k-row">
             <Button
               label={`Add ${lines.length || ''} matchers`.replace('  ', ' ')}

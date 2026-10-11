@@ -28,6 +28,7 @@ export interface SecondsFieldProps {
   onChange: (v: string) => void;
   presets?: number[];
   emptyLabel?: string | undefined;
+  /** Help under the field. */
   description?: string | undefined;
   isDisabled?: boolean | undefined;
   error?: string | undefined;
@@ -42,7 +43,7 @@ export function SecondsField({ label, value, onChange, presets = TTL_PRESETS, em
       presets={secondPresets(presets)}
       same={(a, b) => a.trim() !== '' && Number(a) === Number(b)}
       emptyLabel={emptyLabel}
-      description={description}
+      help={description}
       isDisabled={isDisabled}
       error={error}
       customPlaceholder="e.g. 120"

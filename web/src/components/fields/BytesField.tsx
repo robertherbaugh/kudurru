@@ -1,7 +1,11 @@
-// A size (querylog.retention.maxDBBytes): a number and a unit select. The
+// A size (querylog.retention.maxDBBytes): a NumberInput and a unit Selector. The
 // value is the API's form, "10GiB" or a plain byte count; 0 usually means
 // "no cap".
-import { useId } from 'react';
+import { HStack } from '@astryxdesign/core/HStack';
+import { NumberInput } from '@astryxdesign/core/NumberInput';
+import { Selector } from '@astryxdesign/core/Selector';
+import { StackItem } from '@astryxdesign/core/Stack';
+import { FieldShell } from './FieldHelp';
 
 export const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
 export type ByteUnit = (typeof BYTE_UNITS)[number];
@@ -40,41 +44,43 @@ export interface BytesFieldProps {
   isLabelHidden?: boolean | undefined;
   value: unknown;
   onChange: (v: string | number) => void;
+  /** Help under the field. */
   description?: string | undefined;
   isDisabled?: boolean | undefined;
   error?: string | undefined;
 }
 
 export function BytesField({ label, isLabelHidden, value, onChange, description, isDisabled, error }: BytesFieldProps) {
-  const id = useId();
   const { n, unit } = splitBytes(value);
+  const num = n.trim() === '' ? null : Number(n);
   return (
-    <div className="k-stack-sm">
-      <label className="k-label" htmlFor={id}>
-        {isLabelHidden ? <span className="k-visually-hidden">{label}</span> : label}
-        {description ? <span className="k-muted k-small">{description}</span> : null}
-      </label>
-      <span className="k-row">
-        <input
-          id={id}
-          className="k-native-input k-number"
-          type="number"
-          min={0}
-          step="any"
-          value={n}
-          disabled={isDisabled}
-          aria-invalid={error ? true : undefined}
-          onChange={(e) => onChange(joinBytes(e.target.value, unit))}
-        />
-        <select className="k-native-select k-unit" aria-label={`${label} unit`} value={unit} disabled={isDisabled} onChange={(e) => onChange(joinBytes(n, e.target.value as ByteUnit))}>
-          {BYTE_UNITS.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-      </span>
-      {error ? <span className="k-error-text">{error}</span> : null}
-    </div>
+    <FieldShell help={description} error={error}>
+      {(status) => (
+        <HStack gap={2} vAlign="end">
+          <StackItem size="fill">
+            <NumberInput
+              label={label}
+              isLabelHidden={isLabelHidden}
+              value={num === null || Number.isNaN(num) ? null : num}
+              hasClear
+              min={0}
+              isWheelEnabled={false}
+              isDisabled={isDisabled}
+              status={status}
+              onChange={(v) => onChange(joinBytes(v === null ? '' : String(v), unit))}
+            />
+          </StackItem>
+          <Selector
+            label={`${label} unit`}
+            isLabelHidden
+            value={unit}
+            options={[...BYTE_UNITS]}
+            isDisabled={isDisabled}
+            data-value={unit}
+            onChange={(u) => onChange(joinBytes(n, u as ByteUnit))}
+          />
+        </HStack>
+      )}
+    </FieldShell>
   );
 }
