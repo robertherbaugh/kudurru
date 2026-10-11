@@ -345,8 +345,10 @@ func TestServeGolden(t *testing.T) {
 		// Opcodes and transfers.
 		{Name: "notify", Qname: "example.org.", Qtype: dns.TypeSOA, Opcode: dns.OpcodeNotify, Rcode: dns.RcodeNotImplemented, Status: pipeline.StatusAuthoritative},
 		{Name: "update", Qname: "example.org.", Qtype: dns.TypeSOA, Opcode: dns.OpcodeUpdate, Rcode: dns.RcodeNotImplemented, Status: pipeline.StatusAuthoritative},
-		{Name: "axfr", Qname: "example.org.", Qtype: dns.TypeAXFR, Proto: pipeline.ProtoTCP, Rcode: dns.RcodeNotImplemented, Status: pipeline.StatusAuthoritative},
-		{Name: "ixfr", Qname: "example.org.", Qtype: dns.TypeIXFR, Rcode: dns.RcodeNotImplemented, Status: pipeline.StatusAuthoritative},
+		// Transfers: zoneTransfer defaults to deny (transfer_test.go has
+		// the policy matrix).
+		{Name: "axfr", Qname: "example.org.", Qtype: dns.TypeAXFR, Proto: pipeline.ProtoTCP, Rcode: dns.RcodeRefused, Status: pipeline.StatusRefusedACL, Upstream: "zone:example.org."},
+		{Name: "ixfr", Qname: "example.org.", Qtype: dns.TypeIXFR, Rcode: dns.RcodeRefused, Status: pipeline.StatusRefusedACL, Upstream: "zone:example.org."},
 
 		// RFC 8482: ANY over UDP is minimal, over TCP complete.
 		{Name: "any-udp", Qname: "example.org.", Qtype: dns.TypeANY, AA: true, Status: pipeline.StatusAuthoritative,
@@ -390,7 +392,7 @@ func TestServeForwardZoneACL(t *testing.T) {
 
 func TestServeUnsynced(t *testing.T) {
 	servfail := func(name, qname string, qtype uint16) Case {
-		return Case{Name: name, Qname: qname, Qtype: qtype, Rcode: dns.RcodeServerFailure, Status: pipeline.StatusServfailUpstream, Upstream: UpstreamUnsynced}
+		return Case{Name: name, Qname: qname, Qtype: qtype, Rcode: dns.RcodeServerFailure, Status: pipeline.StatusServfailUnsynced, Upstream: UpstreamUnsynced}
 	}
 	run(t, New(source(t, false)), []Case{
 		// Positive data the zone asserts is still served.
@@ -501,8 +503,9 @@ func TestNotifyUpdateHandlers(t *testing.T) {
 }
 
 func TestTransferSlot(t *testing.T) {
+	// Without a synced zone set the capability hands out nothing.
 	var tp TransferProvider = New(nil)
-	if ch, err := tp.Transfer("example.org.", 0); ch != nil || !errors.Is(err, ErrTransferNotImplemented) {
+	if ch, err := tp.Transfer("example.org.", 0); ch != nil || !errors.Is(err, ErrUnsynced) {
 		t.Fatalf("Transfer: %v %v", ch, err)
 	}
 }
