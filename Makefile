@@ -10,10 +10,13 @@ export CGO_ENABLED
 
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
 GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
+ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds
 .PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated dex test-auth-e2e
 .PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated bench bench-baseline
+.PHONY: all build run test lint vet generate manifests fmt tidy clean docker helm-lint check-generated envtest
 
 all: build
 
@@ -25,6 +28,12 @@ run: build
 
 test:
 	go test -race -count=1 ./...
+
+## envtest: download kube-apiserver and etcd into bin/k8s/<version>-<os>-<arch>;
+## the kube store driver tests find them there (or via KUBEBUILDER_ASSETS)
+## and skip when they are missing
+envtest:
+	$(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(CURDIR)/bin -p path
 
 vet:
 	go vet ./...
