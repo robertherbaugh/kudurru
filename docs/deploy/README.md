@@ -11,7 +11,7 @@
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
-The block page (blocked names open a page explaining the block): [blocking-page.md](blocking-page.md).
+The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
 
 ## Release artifacts
 
