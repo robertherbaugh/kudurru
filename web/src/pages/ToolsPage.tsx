@@ -246,6 +246,9 @@ function Exports() {
           </a>
         </li>
       </ul>
+      <p className="k-small k-muted">
+        The dashboard includes open-source software; see the <a href="third-party-licenses.txt">third-party licences</a>.
+      </p>
     </section>
   );
 }
