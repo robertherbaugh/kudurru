@@ -1,8 +1,9 @@
-# Optional: validates the rendered dnsdist and keepalived configurations with
-# the real programs inside the pinned images (`make edge-check`). It is not a
-# required check until the project settles a runner policy for Docker builds
-# (keepalived is compiled from source, a few minutes); failures are reported
-# but do not block merges. docs/m3/edge.md.
+# Validates the rendered dnsdist and keepalived configurations with the real
+# programs inside the pinned images (`make edge-check`): builds the kudurru
+# image and both supervisor images (keepalived is compiled from source, a few
+# minutes), then runs `dnsdist --check-config` on the 12 golden dnsdist files
+# and `keepalived -t` on the 4 golden keepalived files. A failure fails the
+# workflow; make it a required check on main. docs/m3/edge.md.
 name: edge
 on:
   workflow_dispatch:
@@ -12,6 +13,7 @@ on:
       - cmd/kudurru/edge.go
       - cmd/kudurru/vip.go
       - images/**
+      - Dockerfile
       - .github/workflows/edge.yml
   push:
     branches: [main]
@@ -23,7 +25,6 @@ permissions:
 jobs:
   edge-check:
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5

@@ -26,7 +26,7 @@ func (o *openedSources) close() {
 // fileSource returns a blocking.Source over an already open cache file.
 func (o *openedSources) fileSource(name string, ps *plannedSource, f *os.File, size int64) blocking.Source {
 	o.files = append(o.files, f)
-	return blocking.Source{Name: name, Format: ps.format, Open: func() (io.ReadCloser, error) {
+	return blocking.Source{Name: name, Format: ps.format, HostsSubdomains: ps.subdomains, Open: func() (io.ReadCloser, error) {
 		return io.NopCloser(io.NewSectionReader(f, 0, size)), nil
 	}}
 }

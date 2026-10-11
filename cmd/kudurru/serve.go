@@ -41,6 +41,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
+	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/notifier"
@@ -237,7 +238,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err := zc.Register(zoneview.Builder(logger)); err != nil {
 		return err
 	}
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace}, logger)); err != nil {
+	// Blocked-services and safe-search catalogue (D60): embedded, replaced
+	// at runtime from blocking.catalogue.url.
+	catalogues := catalogue.NewHolder(nil)
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace, Services: catalogues}, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -314,7 +318,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
-			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists,
+			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues),
 			Status: func(ctx context.Context) internalapi.Status {
 				leader, _ := membership.Leader(ctx)
 				var ls []internalapi.ListStatus
@@ -348,13 +352,17 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
 		Objects: listObjs, Cache: lists, Sink: flushingListSink{next: zc, flush: edgeFlush}, Membership: membership, Client: internalClient,
 		Downloader: downloader, RefreshInterval: cfg.Blocking.RefreshInterval.Std(),
-		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded,
+		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded, Extra: catalogues,
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {
 		return err
 	}
 	checker.Register("blocklists", listResolver.Ready)
+	catRefresher, err := catalogueRefresher(cfg, catalogues, membership, internalClient, logger)
+	if err != nil {
+		return err
+	}
 
 	// Query log (§11.2): privacy once at ingest, live tail, sqlite or slog sink.
 	var (
@@ -381,6 +389,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return err
 			}
 			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
+			opts.DomainsOnLists = func() int64 {
+				if sn := zc.Snapshot(); sn != nil {
+					return domainsOnLists(sn.Objects.Lists())
+				}
+				return 0
+			}
 			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
 				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
@@ -432,7 +446,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
 	bopts := blockingstage.OptionsFrom(cfg.Blocking)
-	bopts.Index, bopts.Registerer = polSrc, reg
+	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogues
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
 		return err
@@ -565,6 +579,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: bootstrap.DefaultNamespace,
+		Catalogue:        catalogueAPI(catalogues, catRefresher),
 	})
 	if err != nil {
 		return err
@@ -579,7 +594,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger})
+	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogues.HasService, ServicesChanged: catalogues.Subscribe()})
 	if err != nil {
 		return err
 	}
@@ -643,6 +658,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		{"api", false, apiSrv.Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
+			return err
+		}
+	}
+	if catRefresher != nil {
+		if err := add("catalogue", false, catRefresher.Run); err != nil {
 			return err
 		}
 	}
@@ -809,4 +829,22 @@ type flushingListSink struct {
 func (s flushingListSink) SetLists(sn *blocking.Snapshot) {
 	s.next.SetLists(sn)
 	s.flush.ListsChanged()
+}
+
+// domainsOnLists is the dashboard's "domains on lists" tile: the compiled
+// block entries of every block-mode list, without the lists' own @@
+// exceptions. Allow lists do not count. nil (no lists compiled yet) is 0.
+func domainsOnLists(sn *blocking.Snapshot) int64 {
+	if sn == nil {
+		return 0
+	}
+	var n int64
+	for _, l := range sn.Lists() {
+		if l.Mode() != blocking.ModeBlock {
+			continue
+		}
+		st := l.Stats()
+		n += int64(st.Entries - st.Exceptions)
+	}
+	return n
 }

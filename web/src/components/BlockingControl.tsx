@@ -10,6 +10,7 @@ import { useCan } from '../api/context';
 import { useBlocking, useSetBlocking } from '../api/hooks';
 import type { BlockingState } from '../api/types';
 import { formatCountdown, parseDuration } from '../lib/format';
+import { Link } from '../lib/router';
 import { useCountdown } from '../lib/useCountdown';
 import { useNotify } from './Feedback';
 import { FormDialog } from './FormDialog';
@@ -53,6 +54,20 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
 
   if (!state) {
     return <span className="k-muted k-small">Blocking state unknown</span>;
+  }
+  if (state.configured === false) {
+    // blocking.enabled is false: the switch would have no effect.
+    return (
+      <div className={compact ? 'k-stack' : 'k-row'} data-testid="blocking-panel">
+        <span className="k-row">
+          <StatusDot variant="neutral" label="off in settings" />
+          <span>Blocking is turned off in the settings</span>
+        </span>
+        <Link href="/settings" className="k-small">
+          Turn on blocking.enabled
+        </Link>
+      </div>
+    );
   }
 
   const disable = (seconds: number) => {

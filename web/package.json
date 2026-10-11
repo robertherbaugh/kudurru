@@ -14,7 +14,8 @@
     "lint": "eslint --max-warnings 0 .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:api": "openapi-typescript ../api/openapi.json -o src/api/generated.ts"
+    "gen:api": "bunx openapi-typescript@7.13.0 ../api/openapi.json -o src/api/generated.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.8",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

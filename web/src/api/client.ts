@@ -58,7 +58,10 @@ export class ApiError extends Error {
       return `${this.message} (needs ${missing.resource}.${missing.verb} at ${missing.scope})`;
     }
     if (this.owner) {
-      return `${this.message} (managed by ${this.owner})`;
+      // Object conflicts name the owner in the message already; settings
+      // conflicts carry a how-to-change-it sentence as the hint.
+      if (this.message.includes(this.owner)) return this.message;
+      return /managed by/i.test(this.message) ? `${this.message}. ${this.owner}` : `${this.message} (managed by ${this.owner})`;
     }
     if (this.retryAfter) {
       return `${this.message} (retry in ${this.retryAfter}s)`;

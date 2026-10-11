@@ -17,6 +17,8 @@ import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
 import { DialogForm } from './FormDialog';
+import { ServicesField } from './ServicesField';
+import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
 type Obj = Record<string, unknown>;
 export type FieldErrors = Record<string, string>;
@@ -85,6 +87,7 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
       case 'text':
       case 'duration':
       case 'enum':
+      case 'upstreamGroup':
         next = typeof v === 'string' ? v.trim() : v;
         if (next === '') next = undefined;
         break;
@@ -93,6 +96,7 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
         break;
       case 'strings':
       case 'refs':
+      case 'services':
         next = Array.isArray(v) ? (v as string[]).map((s) => s.trim()).filter(Boolean) : undefined;
         if (Array.isArray(next) && next.length === 0) next = undefined;
         break;
@@ -312,6 +316,8 @@ function Field({
       );
     case 'refs':
       return <RefsField def={def} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
+    case 'services':
+      return <ServicesField label={def.label} help={def.help} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
     case 'object': {
       const obj = value && typeof value === 'object' ? (value as Obj) : {};
       return (
@@ -326,6 +332,8 @@ function Field({
     }
     case 'objects':
       return <ObjectsField def={def} path={path} value={Array.isArray(value) ? (value as Obj[]) : []} onChange={onChange} errors={errors} disabled={disabled} />;
+    case 'upstreamGroup':
+      return <UpstreamGroupSelect label={def.label} help={def.help} value={typeof value === 'string' ? value : ''} onChange={(v) => onChange(v)} isDisabled={disabled} error={errors[path]} />;
   }
 }
 

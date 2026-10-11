@@ -65,6 +65,7 @@ func testFS() fstest.MapFS {
 		"assets/app-1.js":  {Data: []byte(strings.Repeat("console.log('kudurru');\n", 200))},
 		"assets/app-1.css": {Data: []byte("body{margin:0}")},
 		"favicon.svg":      {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
+		"brand/logo.svg":   {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
 	}
 }
 
@@ -83,6 +84,15 @@ func TestHandlerRoutes(t *testing.T) {
 		{"root file", "GET", "/favicon.svg", 200, "image/svg+xml", "no-cache", "<svg"},
 		{"missing asset", "GET", "/assets/gone-2.js", 404, "", "", ""},
 		{"missing file", "GET", "/robots.txt", 404, "", "", ""},
+		{"missing top-level script", "GET", "/sw.js", 404, "", "", ""},
+		{"missing nested asset", "GET", "/assets/fonts/gone.woff2", 404, "", "", ""},
+		{"missing file in a bundle dir", "GET", "/brand/gone.png", 404, "", "", ""},
+		{"bundle dir file", "GET", "/brand/logo.svg", 200, "image/svg+xml", "no-cache", "<svg"},
+		{"fqdn route", "GET", "/zones/home.example.", 200, "text/html", "no-cache", `<div id="root">`},
+		{"fqdn route below", "GET", "/zones/home.example./records", 200, "text/html", "no-cache", `<div id="root">`},
+		{"route ending in .js tld", "GET", "/zones/example.js", 200, "text/html", "no-cache", `<div id="root">`},
+		{"route ending in .map tld", "GET", "/queries/maps.example.map", 200, "text/html", "no-cache", `<div id="root">`},
+		{"top-level trailing dot", "GET", "/home.example.", 200, "text/html", "no-cache", `<div id="root">`},
 		{"api is not the SPA", "GET", "/api/v1/nope", 404, "", "", ""},
 		{"dot-dot stays inside", "GET", "/../../etc/passwd", 200, "text/html", "no-cache", `<div id="root">`},
 		{"head", "HEAD", "/", 200, "text/html", "no-cache", ""},

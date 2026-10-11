@@ -16,10 +16,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-// MaxObjectBytes is the largest object the API accepts: the 1.5 MiB
-// request cap of etcd, so an object that fits the sqlite driver also fits
-// a Kubernetes apiserver.
-const MaxObjectBytes = 1536 << 10
+// MaxObjectBytes is the largest object the API accepts: the store's 1.5
+// MiB cap (the etcd request cap), which the sqlite driver also enforces.
+const MaxObjectBytes = store.MaxObjectBytes
 
 // Write results, as POST /apply reports them per document.
 const (

@@ -5,14 +5,36 @@ All notable changes to kudurru are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Until v1.0 the API group is
 `kudurru.io/v1alpha1` and may change between minor releases.
 
-## [0.1.0] - unreleased (release candidate 0.1.0-rc.1)
+## [0.1.0] - unreleased (release candidate 0.1.0-rc.1, not tagged yet)
 
 The first release, "stone": a daily-driver DNS server that runs as one
 container or as a Kubernetes Deployment with CRDs. It covers milestones M1 to
-M5 of [docs/architecture.md §13.1](docs/architecture.md); the milestone
-reports in [docs/m1](docs/m1/README.md), [docs/m2](docs/m2/README.md) and
-[docs/m3](docs/m3/README.md) hold the measurements, and decisions D79 to D105
-record what changed on the way.
+M5 of [docs/architecture.md §13.1](docs/architecture.md), with the gaps that
+section lists. The milestone reports in [docs/m1](docs/m1/README.md),
+[docs/m2](docs/m2/README.md), [docs/m3](docs/m3/README.md) (M3 and M4, D122)
+and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
+D126 record what changed on the way.
+
+### Dashboard and API fixes (v0.1 fix round)
+
+Fixes made before the first tag. TODO (integrator): replace each stream
+below with its user-visible changes and remove this note.
+
+- TODO API contract: server shapes the dashboard relies on (IAM routes,
+  `/auth/me` roles, audit order, deep links, OpenAPI for `/auth` and `/iam`).
+- TODO dashboard data: the SPA reads the real response shapes.
+- TODO dashboard visuals and branding (docs/brand).
+- TODO browser e2e: Playwright against a real `kudurru serve` (D123).
+- TODO blocked services and safe search catalogue (D60, D120, D124-D126).
+- TODO docs site (D121).
+- TODO followup burndown (store, controller, zone cache, edge tests).
+- Release engineering: the `kudurru-keepalived` image builds again
+  (keepalived 2.4.3 configured with `--disable-iptables --disable-nftables`),
+  `make edge-check` passes and a failing `edge` workflow now fails the check;
+  distroless bases pinned by digest; the release workflow verifies the ko
+  image signatures; serial-divergence, edge and VIP panels and the
+  `KudurruSerialDivergence`, `KudurruEdgeBackendDown` and
+  `KudurruVIPNoMaster` alerts; a kind + MetalLB smoke test workflow.
 
 ### DNS serving
 
@@ -75,7 +97,7 @@ record what changed on the way.
 - Per-node SQLite query log (28-31 k rows/s, 141 B/row) with rollups,
   retention, privacy modes, live tail (SSE with resume) and export.
 - Prometheus metrics with bounded labels, a generated Grafana dashboard and
-  alert rules (`deploy/`).
+  alert rules (`deploy/`), including the serial-divergence panel and alert.
 - Audit trail for every write, with actor, authorization path and request id.
 
 ### REST API
@@ -161,6 +183,9 @@ record what changed on the way.
 
 See [docs/followups.md](docs/followups.md) for the full list. Notably: no
 DNSSEC signing or validation (v1.0), no follower/raft replication (v0.2),
-cluster-scope stats are per node, the dnsdist console diff-apply is v0.2, and
-the edge and VIP behaviour still needs runs on real hardware
+cluster-scope stats are per node, the blocking toggle is per node (v0.2), the
+dnsdist console diff-apply is v0.2, the chart's `edge.ebpf.enabled` does not
+work in the non-root edge container and hostNetwork pods need the host's
+`net.ipv4.ip_unprivileged_port_start=0` (both v0.1.x), and the two-node VRRP
+behaviour still needs runs on real hardware
 ([docs/release-checklist.md](docs/release-checklist.md)).

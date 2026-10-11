@@ -1,0 +1,9 @@
+{{- with .Ancestors.Reverse }}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    {{- range . }}
+      <li><a href="{{ .RelPermalink }}">{{ if .IsHome }}Home{{ else }}{{ partialCached "title.html" . .RelPermalink }}{{ end }}</a></li>
+    {{- end }}
+  </ol>
+</nav>
+{{- end }}

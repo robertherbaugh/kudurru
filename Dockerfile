@@ -4,6 +4,8 @@
 # Dockerfile is the equivalent for local builds and CI smoke tests:
 #   docker build -t kudurru:dev .                  # release-shaped image
 #   docker build --target debug -t kudurru:dev-debug .
+# The distroless bases are pinned by their multi-arch index digest (the same
+# digests as base_image in .goreleaser.yaml); bump both together.
 FROM --platform=$BUILDPLATFORM golang:1.27 AS build
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -23,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 # -debug variant: the same binary on distroless's busybox image (a shell and
 # nslookup for troubleshooting; dig is not part of distroless).
-FROM gcr.io/distroless/static:debug-nonroot AS debug
+FROM gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51 AS debug
 COPY --from=build /out/kudurru /usr/local/bin/kudurru
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]
@@ -36,7 +38,7 @@ CMD ["serve"]
 # Docker starts the container's unprivileged port range at 0 and the chart
 # sets net.ipv4.ip_unprivileged_port_start=0 (docs/deploy/helm.md); no file
 # capability is needed.
-FROM gcr.io/distroless/static:nonroot AS release
+FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS release
 COPY --from=build /out/kudurru /usr/local/bin/kudurru
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]

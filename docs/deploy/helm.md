@@ -39,7 +39,7 @@ release notes print the commands; in short:
 ```sh
 kubectl -n kudurru-system get secret kudurru-admin -o jsonpath='{.data.password}' | base64 -d; echo
 kubectl -n kudurru-system port-forward svc/kudurru-api 8080:8080
-# open http://localhost:8080/ and sign in as admin
+# open https://localhost:8080/ and sign in as admin
 ```
 
 The admin Secret is read only while no user exists; the UI asks for a new
@@ -146,8 +146,11 @@ mode=kubernetes: created once, then owned by kubectl and the UI).
 The dashboard has the §11.6 rows (tiles, traffic, latency heatmap,
 blocking, cache, upstreams, zones, pipeline and query log, cluster and
 store, dnsdist, VIP); every query uses a metric the binary registers today
-(the deploy tests enforce it). The serial-divergence panel and the VIP and
-edge-backend alerts wait for their metrics (docs/followups.md).
+(the deploy tests enforce it), including the serial-divergence panel and
+`KudurruSerialDivergence`. The edge and VIP panels and the
+`KudurruEdgeBackendDown` and `KudurruVIPNoMaster` alerts read the
+supervisors' metrics listeners (:8084, :8085), which the chart's
+ServiceMonitor and PodMonitor do not scrape yet.
 
 ## Network policy
 
@@ -187,3 +190,10 @@ a list of OpenID Providers rendered into the settings key
 `auth.identityProviders` (the §5.2 outline's single-issuer `auth.oidc`
 became a list). `webhook` from the §5.2 outline is not in the chart: the
 validating webhook does not exist in the binary.
+
+OIDC usernames: without `claimMappings.username.claim` a provider's
+username is the first of `preferred_username`, `upn`, `email` (only when
+`email_verified` is true) and `sub`. Some identity providers let users edit
+`preferred_username`, so a role binding with a `User` subject could be
+claimed by another account. Bind groups instead, or set
+`claimMappings.username.claim: sub` (with a `prefix`) on such providers.

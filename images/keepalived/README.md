@@ -37,7 +37,7 @@ through keepalived.conf, `track_file`, the notify FIFO and signals.
    `/run/kudurru/vip-state.json`; the supervisor mirrors it into
    `kudurru_vip_master{vip}` on `:8085/metrics`,
 5. the VRRP check is `kudurru health --vrrp` (the rendered default since
-   v0.1.0-rc.1: udp+tcp DNS on the VIP, loopback while BACKUP, and at least
+   the M5 burndown: udp+tcp DNS on the VIP, loopback while BACKUP, and at least
    one dnsdist backend up; `kudurru vip probe --dns <vip>:53 ...` still
    works for hand-written configurations),
 6. weights are written by the local kudurru to `/run/kudurru/weight-<vip>`

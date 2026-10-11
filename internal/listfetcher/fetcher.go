@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -74,15 +75,16 @@ type sourceState struct {
 }
 
 type listStats struct {
-	fp                        string
-	entries, ruleCount, inval int
-	perSource                 map[string][2]int // name -> {rules, invalid}
+	fp                                     string
+	entries, ruleCount, inval, unsupported int
+	perSource                              map[string][2]int // name -> {rules, invalid}
 }
 
 // Fetcher is the leader-only runnable that downloads every BlockList
 // source on its refresh interval and publishes digests, entry counts and
 // fetch errors into BlockList.status (§4.6, §7.3, D15). It owns only
-// status.sources, status.entries, status.ruleCount, status.invalid and
+// status.sources, status.entries, status.ruleCount, status.invalid,
+// status.unsupported and
 // status.lastFetched; observedGeneration and the conditions belong to the
 // controller, which derives Degraded{ListFetchFailed} from
 // status.sources[].error.
@@ -384,15 +386,16 @@ type ownedStatus struct {
 	Entries     int
 	RuleCount   int
 	Invalid     int
+	Unsupported int
 	LastFetched *metav1.Time
 }
 
 func ownedOf(s *v1alpha1.BlockListStatus) ownedStatus {
-	return ownedStatus{Sources: s.Sources, Entries: s.Entries, RuleCount: s.RuleCount, Invalid: s.Invalid, LastFetched: s.LastFetched}
+	return ownedStatus{Sources: s.Sources, Entries: s.Entries, RuleCount: s.RuleCount, Invalid: s.Invalid, Unsupported: s.Unsupported, LastFetched: s.LastFetched}
 }
 
 func (o ownedStatus) applyTo(s *v1alpha1.BlockListStatus) {
-	s.Sources, s.Entries, s.RuleCount, s.Invalid, s.LastFetched = o.Sources, o.Entries, o.RuleCount, o.Invalid, o.LastFetched
+	s.Sources, s.Entries, s.RuleCount, s.Invalid, s.Unsupported, s.LastFetched = o.Sources, o.Entries, o.RuleCount, o.Invalid, o.Unsupported, o.LastFetched
 }
 
 func (o ownedStatus) equal(p ownedStatus) bool {
@@ -429,7 +432,9 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 		ss := v1alpha1.SourceStatus{Name: ps.name}
 		if ps.key == "" {
 			ss.Digest = inlineDigest(ps.inline)
-			spec.Sources = append(spec.Sources, blocking.LinesSource(ps.name, ps.format, ps.inline))
+			src := blocking.LinesSource(ps.name, ps.format, ps.inline)
+			src.HostsSubdomains = ps.subdomains
+			spec.Sources = append(spec.Sources, src)
 		} else {
 			st := f.state[ps.key]
 			switch {
@@ -453,7 +458,7 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 				stale = true
 			}
 		}
-		fp.add(ps.name, string(ps.format), ss.Digest)
+		fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
 		owned.Sources = append(owned.Sources, ss)
 		if ss.LastFetched != nil && (owned.LastFetched == nil || ss.LastFetched.After(owned.LastFetched.Time)) {
 			owned.LastFetched = ss.LastFetched.DeepCopy()
@@ -466,7 +471,7 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 	if err != nil {
 		f.log.Warn("listfetcher: compile for status", "list", pl.name, "err", err)
 	}
-	owned.Entries, owned.RuleCount, owned.Invalid = stats.entries, stats.ruleCount, stats.inval
+	owned.Entries, owned.RuleCount, owned.Invalid, owned.Unsupported = stats.entries, stats.ruleCount, stats.inval, stats.unsupported
 	for i := range owned.Sources {
 		if c, ok := stats.perSource[owned.Sources[i].Name]; ok {
 			owned.Sources[i].Entries, owned.Sources[i].Invalid = c[0], c[1]
@@ -516,7 +521,7 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 		return out, err
 	}
 	st := l.Stats()
-	out.entries, out.ruleCount, out.inval = st.Entries, st.RuleCount, st.Invalid
+	out.entries, out.ruleCount, out.inval, out.unsupported = st.Entries, st.RuleCount, st.Invalid, st.Unsupported
 	for _, s := range l.Sources() {
 		out.perSource[s.Name] = [2]int{s.Rules, s.Invalid}
 	}
@@ -532,13 +537,13 @@ func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
 	}
 	check := &fpBuilder{}
 	check.add(string(pl.mode))
-	out := listStats{fp: fp, entries: st.Entries, ruleCount: st.RuleCount, inval: st.Invalid, perSource: map[string][2]int{}}
+	out := listStats{fp: fp, entries: st.Entries, ruleCount: st.RuleCount, inval: st.Invalid, unsupported: st.Unsupported, perSource: map[string][2]int{}}
 	for i, ps := range pl.sources {
 		ss := st.Sources[i]
 		if ss.Name != ps.name {
 			return listStats{}, false
 		}
-		check.add(ps.name, string(ps.format), ss.Digest)
+		check.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
 		out.perSource[ss.Name] = [2]int{ss.Entries, ss.Invalid}
 	}
 	if check.String() != fp {

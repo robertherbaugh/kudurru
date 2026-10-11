@@ -15,10 +15,21 @@
 //     allow list of any applied policy wins, then allow-only mode blocks,
 //     then each block list's deny rules unless that list's @@ exception
 //     matches.
-//  4. Otherwise the query continues, and the answer is inspected: every
+//  4. When the policy enforces safe search (spec.safeSearch) and the
+//     question is a search engine's host name in the catalogue
+//     (internal/listdata/catalogue), the answer is the vendor's safe
+//     target: a CNAME to it plus the target's records resolved through
+//     the rest of the chain, or the documented addresses, with status
+//     blocked_safesearch and list "safesearch:<engine>". An allow list
+//     match in step 3 skips this, as it skips every block.
+//  5. Otherwise the query continues, and the answer is inspected: every
 //     CNAME target, SVCB/HTTPS target name and A/AAAA address (and SVCB
 //     address hint) is checked against the same lists (bare-IP entries
 //     match addresses). Skipped when an allow list allowed the question.
+//
+// A Policy's blockedServices are block lists of the selection like any
+// other ("service:<id>", compiled from the catalogue), so steps 3 and 5
+// apply to them unchanged.
 //
 // A block synthesises the response (BlockList response, else the policy's
 // blockMode, else blocking.defaultResponse): zeroIP answers 0.0.0.0 for A
@@ -86,6 +97,9 @@ type Options struct {
 	Toggle *Toggle
 	// Index feeds Ready and the enabled gauge; optional.
 	Index IndexSource
+	// Catalogue supplies the safe-search rewrites; nil means the embedded
+	// catalogue.
+	Catalogue CatalogueSource
 	// Registerer receives the metrics; nil leaves them unregistered.
 	Registerer prometheus.Registerer
 	// Now is the clock of the enabled gauge; nil means time.Now.
@@ -247,6 +261,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		if bd.Reason == engine.ReasonAllowList {
 			s.metrics.decision(allowList, groupLabel(req))
 			return next(req)
+		}
+	}
+	if d.SafeSearchOn() && q.Qclass == dns.ClassINET {
+		if rw, ok := s.catalogue().RewriteFor(q.Name, d.SafeSearchMode); ok {
+			return s.safeSearch(req, d, rw, next)
 		}
 	}
 	resp, err := next(req)

@@ -58,6 +58,7 @@ type Route struct {
 //	GET    /auth/oidc/{idp}/callback       public
 //	GET    /auth/tokens                    tokens.own
 //	POST   /auth/tokens                    tokens.own
+//	GET    /auth/tokens/{id}               tokens.own (others' tokens need tokens.read)
 //	DELETE /auth/tokens/{id}               tokens.own (others' tokens need tokens.delete)
 //	GET    /iam/users                      users.read
 //	GET    /iam/serviceaccounts            serviceaccounts.read
@@ -74,6 +75,7 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/callback", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
 		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
+		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
 		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},
@@ -309,6 +311,29 @@ func (s *Stack) effectiveGrants(p auth.Principal) []rbac.Grant {
 	return out
 }
 
+// shownGrants are the grants /auth/me reports: the effective grants, or
+// a scoped API token's scopes, to which every decision is narrowed (the
+// permission matrix shows what remains of the owner's grants).
+func (s *Stack) shownGrants(p auth.Principal) []rbac.Grant {
+	if len(p.Scopes) == 0 {
+		return s.effectiveGrants(p)
+	}
+	var out []rbac.Grant
+	for _, sc := range p.Scopes {
+		g, err := rbac.ParseGrant(sc)
+		if err != nil {
+			continue
+		}
+		if g.Scope.Kind == "" {
+			g.Scope.Kind = rbac.ScopeCluster
+		}
+		if !slices.Contains(out, g) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResponse {
 	resp := MeResponse{
 		Principal: MePrincipal{Kind: p.Kind, ID: p.ID, Name: p.Name, Groups: p.Groups, Provider: p.Provider, AuthMethod: p.AuthMethod, TokenID: p.TokenID},
@@ -322,11 +347,15 @@ func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResp
 		exp, idle := sess.ExpiresAt.UTC(), sess.IdleExpiresAt.UTC()
 		resp.ExpiresAt, resp.IdleExpiresAt = &exp, &idle
 	}
-	grants := s.effectiveGrants(p)
+	grants := s.shownGrants(p)
 	for _, g := range grants {
 		resp.Roles = append(resp.Roles, g.String())
 	}
 	slices.Sort(resp.Roles)
+	if p.MustChangePassword {
+		// Authorize answers 403 password_change_required everywhere else.
+		return resp
+	}
 	ctx := r.Context()
 	rp := auth.RBACPrincipal(p)
 	matrix := func(scope rbac.Scope) map[string][]string {
@@ -475,9 +504,10 @@ func remoteHost(r *http.Request) string {
 }
 
 // Roles lists p's effective grants in their wire form (role or
-// role@kind:name), for api.Options.Roles.
+// role@kind:name), for api.Options.Roles; a scoped API token reports its
+// scopes.
 func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
-	grants := s.effectiveGrants(p)
+	grants := s.shownGrants(p)
 	out := make([]string, 0, len(grants))
 	for _, g := range grants {
 		out = append(out, g.String())

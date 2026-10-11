@@ -14,6 +14,9 @@ coverage.*
 !/web/dist/index.html
 /web/node_modules/
 /web/coverage/
+/web/e2e/.auth/
+/web/playwright-report/
+/web/test-results/
 
 # local state
 /.context/
@@ -31,3 +34,9 @@ coverage.*
 
 # agent worktrees live inside the repo
 /.claude/
+
+# docs site (site/): build output, Hugo's cache and the generated assets
+/site/public/
+/site/resources/
+/site/.generated/
+/site/.hugo_build.lock

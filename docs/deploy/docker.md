@@ -45,12 +45,16 @@ docker compose logs -f kudurru
 
 ### First login
 
-Open `http://<host>:8080/` and sign in as `admin` with the content of
+Open `https://<host>:8080/` and sign in as `admin` with the content of
 `secrets/admin_password`. The UI asks for a new password. Without
 `KUDURRU_ADMIN_PASSWORD_FILE` a password is generated and logged once at the
 first start (`docker compose logs kudurru | grep -i password`). The file is
 read only while no user exists; to recover a lost password use
 `docker compose exec kudurru kudurru admin reset-password admin`.
+
+Without a configured certificate the API and UI serve a self-signed one
+(written to `keys/api.crt` in the data volume), so the browser warns on the
+first visit; set `listeners.api.tls.certFile`/`keyFile` for a trusted one.
 
 ### Configuration
 
@@ -93,7 +97,10 @@ docker run --rm -v kudurru_kudurru-data:/data -v "$PWD:/backup" busybox \
 docker compose start kudurru
 ```
 
-(`kudurru backup`, which takes a consistent snapshot online, is planned.)
+`kudurru backup --out objects.yaml` exports the objects (zones, record sets,
+lists, client groups, policies) online and `kudurru restore -f objects.yaml`
+re-applies them; it does not include users, tokens, the audit trail or the
+query log, so keep the volume backup above for those.
 
 ### Metrics
 

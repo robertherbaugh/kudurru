@@ -111,15 +111,19 @@ The REST API server under `/api/v1` and the external-dns webhook
     loader diagnoses, policy index diagnoses, list resolver, zonecache
     Degraded and snapshot state, ha-static, unready components).
   - auth: `/auth/status`, `/auth/login`, `/auth/oidc/{idp}/start|callback`,
-    `/auth/logout`, `/auth/tokens[/{id}]` are documented here and forwarded
-    untouched to `Options.AuthHandler` (501 until the auth package wires
-    it); `GET /auth/me` is served here (principal, roles from the session
-    snapshot or `Options.Roles`, CSRF from the session, permissions
-    evaluated per resource/verb at cluster scope). IAM read-only: `GET
-    /iam/users|serviceaccounts|rolebindings|identityproviders` over
-    `Options.IAM`.
-  - audit: `GET /audit` (kind, name, actor, since, limit, cursor; oldest
-    first, `cursor_next`), `GET /audit/export` (NDJSON, `audit.export`).
+    `/auth/logout`, `/auth/password`, `/auth/tokens[/{id}]` and the IAM
+    read-only lists `GET
+    /iam/users|serviceaccounts|rolebindings|identityproviders` are
+    documented here and forwarded untouched to `Options.AuthHandler` (the
+    auth stack's mux; 501 without it). Their schemas are the mirrors in
+    `internal/api/authtypes.go`; `TestForwardedShapes` (cmd/kudurru)
+    compares them with the stack's types and decodes the real answers
+    strictly. `GET /auth/me` is served here (principal, the live roles of
+    `Options.Roles`, CSRF from the session, permissions evaluated per
+    resource/verb at cluster scope, `mustChangePassword`).
+  - audit: `GET /audit` (kind, name, actor, since, limit, cursor or
+    continue, order=asc|desc; oldest first by default, `cursor_next`),
+    `GET /audit/export` (NDJSON, `audit.export`).
   - meta: `GET /version`, `/openapi.json` (+ yaml and 3.0 variants huma
     serves), `/docs`.
 - **SSE.** `GET /queries/stream` subscribes to the querylog Tail, filters

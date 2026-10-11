@@ -43,9 +43,9 @@
 //
 // The active policies are merged into one Decision: the lists of all of
 // them (allow lists before block lists, so an allow match in any group's
-// policy wins), and per setting (blockMode, blockTTL, upstreamGroup,
-// queryLog, safeSearch) the value of the highest-priority policy that sets
-// it; allowOnly comes from the highest-priority policy. Equal priorities
+// policy wins; blocked services after the block lists), and per setting
+// (blockMode, blockTTL, upstreamGroup, queryLog, safeSearch,
+// safeSearchMode) the value of the highest-priority policy that sets it; allowOnly comes from the highest-priority policy. Equal priorities
 // are ordered by namespace/name. Decisions, including the
 // blocking.Selection resolved against the compiled lists of the same
 // snapshot, are precomputed for every combination of the scheduled
@@ -60,6 +60,12 @@
 // the bare name, so either naming convention of the list compiler works.
 // A referenced BlockList that exists but is not compiled yet is reported
 // by NotLoaded, the readiness input of blocking.allowDegraded.
+//
+// blockedServices IDs resolve to the catalogue's compiled block lists
+// "service:<id>" (internal/listdata/catalogue), which the list resolver
+// compiles into the same snapshot. An ID the catalogue in service does
+// not have (Options.Services) is skipped with Diagnosis UnknownService;
+// one that is known but not compiled yet counts as NotLoaded.
 //
 // # Serving
 //

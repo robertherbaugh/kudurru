@@ -35,6 +35,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KO_DOCKER_REPO: ghcr.io/robertherbaugh/kudurru
+      - name: Verify the ko image signatures (docker_signs, artifacts manifests)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          for ref in "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"; do
+            cosign verify "${ref}" \
+              --certificate-identity-regexp '^https://github.com/robertherbaugh/kudurru/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            echo "verified ${ref}"
+          done
       - name: Build provenance for the release artifacts
         uses: actions/attest-build-provenance@v2
         with:

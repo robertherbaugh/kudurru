@@ -13,7 +13,8 @@ func TestBlockingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Blocking{Enabled: true, DefaultResponse: "zeroIP", BlockTTL: Duration(10 * time.Minute), AllowDegraded: true, RefreshInterval: Duration(24 * time.Hour), InitStrategy: "fast"}
+	want := Blocking{Enabled: true, DefaultResponse: "zeroIP", BlockTTL: Duration(10 * time.Minute), AllowDegraded: true, RefreshInterval: Duration(24 * time.Hour), InitStrategy: "fast",
+		Catalogue: BlockingCatalogue{RefreshInterval: Duration(24 * time.Hour)}}
 	if cfg.Blocking != want {
 		t.Errorf("blocking defaults:\n got %+v\nwant %+v", cfg.Blocking, want)
 	}
@@ -60,5 +61,27 @@ blocking: { defaultResponse: sinkhole, blockTTL: -1s, customIP: { v4: "::1", v6:
 	}
 	if _, err := Load(path, nil); err == nil || !strings.Contains(err.Error(), "needs blocking.customIP") {
 		t.Errorf("customIP without addresses must be rejected: %v", err)
+	}
+}
+
+func TestBlockingCatalogueValidation(t *testing.T) {
+	for _, tc := range []struct {
+		env  []string
+		want string
+	}{
+		{[]string{"KUDURRU_BLOCKING__CATALOGUE__URL=ftp://data.example/catalogue.json"}, "blocking.catalogue.url"},
+		{[]string{"KUDURRU_BLOCKING__CATALOGUE__URL=https://"}, "blocking.catalogue.url"},
+		{[]string{"KUDURRU_BLOCKING__CATALOGUE__REFRESHINTERVAL=30s"}, "blocking.catalogue.refreshInterval"},
+	} {
+		if _, err := Load("", tc.env); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: err = %v", tc.env, err)
+		}
+	}
+	cfg, err := Load("", []string{"KUDURRU_BLOCKING__CATALOGUE__URL=https://data.example/catalogue.json", "KUDURRU_BLOCKING__CATALOGUE__REFRESHINTERVAL=6h"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cfg.Blocking.Catalogue; c.URL != "https://data.example/catalogue.json" || c.RefreshInterval.Std() != 6*time.Hour {
+		t.Errorf("catalogue = %+v", c)
 	}
 }

@@ -74,6 +74,20 @@ spec:
               blockTTL:
                 default: 10m
                 type: string
+              blockedServices:
+                description: |-
+                  BlockedServices names services of the blocked-services catalogue
+                  (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains
+                  this policy blocks like a block list; the query log names the
+                  service as the list, "service:<id>". IDs are checked against the
+                  catalogue in service, which can change at runtime, so an unknown ID
+                  is reported as Degraded{UnknownService} rather than refused.
+                items:
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+                  type: string
+                maxItems: 256
+                type: array
+                x-kubernetes-list-type: set
               clientGroupRefs:
                 items:
                   type: string
@@ -105,7 +119,20 @@ spec:
                   type: object
                 type: array
               safeSearch:
+                description: |-
+                  SafeSearch true answers the search engines' and YouTube's host names
+                  with their vendor's safe-search target (a CNAME to
+                  forcesafesearch.google.com, strict.bing.com, ...; see the catalogue).
                 type: boolean
+              safeSearchMode:
+                description: |-
+                  SafeSearchMode is the level for engines that offer two: strict (the
+                  default) or moderate. Only YouTube has two levels (Strict or
+                  Moderate Restricted Mode); every other engine is always strict.
+                enum:
+                - strict
+                - moderate
+                type: string
               schedule:
                 description: Schedule limits when a policy applies.
                 properties:

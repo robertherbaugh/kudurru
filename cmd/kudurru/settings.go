@@ -230,7 +230,7 @@ PATCH /api/v1/node/config on the node that serves the request. hostOnly keys
 in kudurru.yaml or the KUDURRU_<SECTION>__<KEY> environment variable on the
 host. "key-" removes the override so the default applies again.`,
 		Example: `  kudurru settings set cache.maxEntries=200000
-  kudurru settings set blocking.lists.refreshInterval=12h log.level=debug
+  kudurru settings set blocking.refreshInterval=12h log.level=debug
   kudurru settings set upstreams.bootstrap=9.9.9.9,1.1.1.1
   kudurru settings set log.level-`,
 		Args: cobra.MinimumNArgs(1),

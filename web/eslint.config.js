@@ -6,7 +6,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'mock-public/**', 'node_modules/**', 'src/api/generated.ts'] },
+  { ignores: ['dist/**', 'coverage/**', 'mock-public/**', 'node_modules/**', 'src/api/generated.ts', 'playwright-report/**', 'test-results/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -27,13 +27,22 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.{ts,tsx}', 'src/test/**', 'src/mocks/**', 'scripts/**', 'vite.config.ts', 'eslint.config.js'],
+    files: ['**/*.test.{ts,tsx}', 'src/test/**', 'src/mocks/**', 'scripts/**', 'e2e/**', 'vite.config.ts', 'playwright.config.ts', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       'no-console': 'off',
+    },
+  },
+  {
+    // Playwright fixtures: `use` is not a React hook, and `{}` is the
+    // fixture-without-dependencies idiom.
+    files: ['e2e/**'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'no-empty-pattern': 'off',
     },
   },
 );

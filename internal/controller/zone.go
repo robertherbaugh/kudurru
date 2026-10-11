@@ -45,6 +45,12 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	for _, k := range conflictsChanged(prev, build) {
 		c.queues[KindDNSRecordSet].Add(k)
 	}
+	if !build.NextExpiry.IsZero() {
+		// The next expiresAt changes what the zone serves without any
+		// object changing: reconcile again then, so the serial moves
+		// on time (the build is stale from that instant).
+		c.queues[KindDNSZone].AddAfter(key, time.Until(build.NextExpiry))
+	}
 	now := c.opts.Now()
 
 	next := cur.DeepCopy()

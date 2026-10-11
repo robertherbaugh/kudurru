@@ -36,13 +36,15 @@ export interface ObjectsPageProps<T extends AnyObject> {
   rowActions?: (obj: T) => ReactNode;
   /** Content between the header and the table. */
   children?: ReactNode;
+  /** Called after a create or edit was saved. */
+  onSaved?: (obj: AnyObject) => void;
 }
 
 function key(o: AnyObject): string {
   return `${o.metadata.namespace ?? ''}/${o.metadata.name}`;
 }
 
-export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children }: ObjectsPageProps<T>) {
+export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved }: ObjectsPageProps<T>) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -67,7 +69,10 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
 
   const save = useMutation({
     mutationFn: (obj: AnyObject) => api.objects.put(schema.kind, obj),
-    onSuccess: () => void invalidate(),
+    onSuccess: (_r, obj) => {
+      void invalidate();
+      onSaved?.(obj);
+    },
   });
 
   const toggle = useMutation({

@@ -298,19 +298,28 @@ func (r *Reader) clientNames(ctx context.Context, tx *sql.Tx, ids []int64) (map[
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id, ip, coalesce(name,''), coalesce(grp,'') FROM dict_client WHERE id IN (SELECT value FROM json_each(?))`, idsJSON(ids))
+	// last_seen: the newer of the newest fact row (an index seek on
+	// query_client_ts) and the dictionary's last_seen, which lags by up to
+	// touchInterval but outlives raw retention and fact-less privacy modes.
+	rows, err := tx.QueryContext(ctx, `SELECT d.id, d.ip, coalesce(d.name,''), coalesce(d.grp,''), coalesce(d.last_seen,0),
+		coalesce((SELECT max(q.ts) FROM query q WHERE q.client = d.id),0)
+		FROM dict_client d WHERE d.id IN (SELECT value FROM json_each(?))`, idsJSON(ids))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var id int64
+		var id, seen, lastTS int64
 		var it TopItem
-		if err := rows.Scan(&id, &it.Key, &it.Name, &it.Group); err != nil {
+		if err := rows.Scan(&id, &it.Key, &it.Name, &it.Group, &seen, &lastTS); err != nil {
 			return nil, err
 		}
 		if it.Key == "" {
 			it.Key = it.Name
+		}
+		if us := max(lastTS, seen*1_000_000); us > 0 {
+			t := time.UnixMicro(us).UTC()
+			it.LastSeen = &t
 		}
 		out[id] = it
 	}

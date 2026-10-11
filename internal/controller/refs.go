@@ -81,6 +81,9 @@ func (c *Controller) reconcileClientGroup(ctx context.Context, key store.Key) (b
 // clientGroupRefs name ClientGroups, blockListRefs and allowListRefs name
 // BlockLists. A missing reference is Degraded{MissingReference} naming it;
 // the policy stays Ready because the remaining references still apply.
+// blockedServices IDs the catalogue does not know (Options.KnownService)
+// are Degraded{UnknownService}, unless a reference is also missing, in
+// which case the MissingReference message names them too.
 func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, error) {
 	cur, ok := c.cache.get(key).(*v1alpha1.Policy)
 	if !ok || cur == nil {
@@ -100,14 +103,27 @@ func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, 
 	check(KindClientGroup, "clientGroupRefs", cur.Spec.ClientGroupRefs)
 	check(KindBlockList, "blockListRefs", cur.Spec.BlockListRefs)
 	check(KindBlockList, "allowListRefs", cur.Spec.AllowListRefs)
+	var unknown []string
+	if known := c.opts.KnownService; known != nil {
+		for _, id := range cur.Spec.BlockedServices {
+			if !known(id) {
+				unknown = append(unknown, fmt.Sprintf("service %q (blockedServices)", id))
+			}
+		}
+	}
 
 	next := cur.DeepCopy()
 	next.Status.ObservedGeneration = cur.Generation
 	v := serving("all references resolved")
-	if len(missing) > 0 {
-		v.ReadyMessage = fmt.Sprintf("%d references unresolved", len(missing))
+	switch {
+	case len(missing) > 0:
+		v.ReadyMessage = fmt.Sprintf("%d references unresolved", len(missing)+len(unknown))
 		v.Degraded, v.DegradedRsn = true, ReasonMissingReference
-		v.DegradedMsg = "missing " + joinLimited(missing, 10)
+		v.DegradedMsg = "missing " + joinLimited(append(missing, unknown...), 10)
+	case len(unknown) > 0:
+		v.ReadyMessage = fmt.Sprintf("%d references unresolved", len(unknown))
+		v.Degraded, v.DegradedRsn = true, v1alpha1.ReasonUnknownService
+		v.DegradedMsg = "not in the blocked-services catalogue: " + joinLimited(unknown, 10)
 	}
 	if len(disabled) > 0 {
 		v.ReadyMessage += "; skipped (disabled): " + joinLimited(disabled, 10)

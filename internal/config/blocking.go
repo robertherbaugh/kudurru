@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"time"
 )
 
@@ -32,6 +33,17 @@ type Blocking struct {
 	// (cloud metadata), unspecified and multicast addresses; off by default
 	// so a BlockList writer cannot use the node for SSRF.
 	AllowLocalListURLs bool `koanf:"allowLocalListURLs" json:"allowLocalListURLs"`
+	// Catalogue is the blocked-services and safe-search catalogue source.
+	Catalogue BlockingCatalogue `koanf:"catalogue" json:"catalogue"`
+}
+
+// BlockingCatalogue configures the runtime refresh of the blocked-services
+// and safe-search catalogue (D60).
+type BlockingCatalogue struct {
+	// URL of a catalogue document; empty serves the embedded catalogue.
+	URL string `koanf:"url" json:"url"`
+	// RefreshInterval between the leader's downloads.
+	RefreshInterval Duration `koanf:"refreshInterval" json:"refreshInterval"`
 }
 
 // BlockingCustomIP is the customIP block response.
@@ -72,6 +84,14 @@ func (b *Blocking) validate() []error {
 	}
 	if b.RefreshInterval.Std() < time.Minute {
 		errs = append(errs, fmt.Errorf("blocking.refreshInterval: %s is shorter than 1m", b.RefreshInterval))
+	}
+	if u := b.Catalogue.URL; u != "" {
+		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" {
+			errs = append(errs, fmt.Errorf("blocking.catalogue.url: %q is not an http or https URL", u))
+		}
+	}
+	if b.Catalogue.RefreshInterval.Std() < time.Minute {
+		errs = append(errs, fmt.Errorf("blocking.catalogue.refreshInterval: %s is shorter than 1m", b.Catalogue.RefreshInterval))
 	}
 	return errs
 }

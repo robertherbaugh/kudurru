@@ -34,6 +34,9 @@ const (
 	// ReasonMissingReference: a Policy names a ClientGroup or BlockList
 	// that does not exist.
 	ReasonMissingReference = "MissingReference"
+	// ReasonUnknownService: a Policy's blockedServices names a service the
+	// blocked-services catalogue in service does not have.
+	ReasonUnknownService = "UnknownService"
 	// ReasonUnsupported: the zone type is not served by this version.
 	ReasonUnsupported = "Unsupported"
 	// ReasonOccluded: records below a DNAME owner, which no lookup can

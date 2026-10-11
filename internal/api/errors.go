@@ -38,6 +38,9 @@ const (
 	KeyInternal        = "internal"
 	KeyNotAcceptable   = "not_acceptable"
 	KeyMethod          = "method_not_allowed"
+	// KeyPasswordChange is the 403 of a local user who must change the
+	// password first (auth.Authorize answers the same key).
+	KeyPasswordChange = "password_change_required"
 )
 
 // Missing names the permission a 403 lacked, so the UI can explain it.
@@ -181,6 +184,8 @@ func storeError(err error) error {
 	case errors.Is(err, store.ErrConflict):
 		return newError(http.StatusConflict, KeyConflict, "the object changed since it was read (resourceVersion mismatch)",
 			"read the object again and retry with its current resourceVersion")
+	case errors.Is(err, store.ErrTooLarge):
+		return newError(http.StatusRequestEntityTooLarge, KeyTooLarge, err.Error(), "split it into several objects")
 	case errors.Is(err, objects.ErrStaticReadOnly):
 		return newError(http.StatusServiceUnavailable, KeyReadOnly, err.Error(),
 			"objects are read-only through the API in the ha-static shape; edit objects.d on every node")

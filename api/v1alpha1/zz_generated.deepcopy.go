@@ -812,6 +812,11 @@ func (in *PolicySpec) DeepCopyInto(out *PolicySpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.BlockedServices != nil {
+		in, out := &in.BlockedServices, &out.BlockedServices
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.SafeSearch != nil {
 		in, out := &in.SafeSearch, &out.SafeSearch
 		*out = new(bool)

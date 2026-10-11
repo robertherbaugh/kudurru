@@ -90,6 +90,14 @@ type Options struct {
 	Registerer prometheus.Registerer
 	// Logger defaults to slog.Default().
 	Logger *slog.Logger
+	// KnownService reports whether the blocked-services catalogue in
+	// service has a service ID (catalogue.Holder.HasService); Policy
+	// blockedServices IDs it does not know make the Policy
+	// Degraded{UnknownService}. Nil skips the check.
+	KnownService func(id string) bool
+	// ServicesChanged re-queues every Policy when the catalogue changes at
+	// runtime (catalogue.Holder.Subscribe); nil leaves it to the resync.
+	ServicesChanged <-chan struct{}
 	// ReconcileHook, if set, is called after every reconcile with its
 	// duration and outcome (tracing and measurements).
 	ReconcileHook func(key store.Key, took time.Duration, wroteStatus bool, err error)
@@ -206,6 +214,10 @@ func (c *Controller) Run(ctx context.Context) error {
 				go func() { defer wg.Done(); c.worker(ctx, k, reconcilers[k]) }()
 			}
 		}
+		if ch := c.opts.ServicesChanged; ch != nil {
+			wg.Add(1)
+			go func() { defer wg.Done(); c.requeuePolicies(ctx, ch) }()
+		}
 	}
 	<-ctx.Done()
 	for _, q := range c.queues {
@@ -214,6 +226,21 @@ func (c *Controller) Run(ctx context.Context) error {
 	wg.Wait()
 	c.log.Info("controller stopped")
 	return nil
+}
+
+// requeuePolicies queues every Policy on each signal of ch, so their
+// blockedServices are re-validated against a new catalogue.
+func (c *Controller) requeuePolicies(ctx context.Context, ch <-chan struct{}) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+			for _, o := range c.cache.list(KindPolicy, "") {
+				c.queues[KindPolicy].Add(store.KeyOf(o))
+			}
+		}
+	}
 }
 
 // Synced reports whether every kind's initial list has been delivered in

@@ -144,12 +144,19 @@ func (c *Cache) persistOnce(ctx context.Context) error {
 		return nil
 	}
 	if !c.persistDirty {
-		due := time.Since(c.lastConfirm) >= c.opts.RefreshInterval
+		last := c.lastConfirm
+		due := time.Since(last) >= c.opts.RefreshInterval
 		c.mu.Unlock()
 		if !due {
 			return nil
 		}
-		now := time.Now()
+		now := c.confirmedAt()
+		if !now.After(last) {
+			// The driver has not reached its backend since the last
+			// confirmation (an apiserver outage): the informer cache may be
+			// stale, so the stored timestamp stays where it is.
+			return nil
+		}
 		err := c.opts.LocalDB.Touch(ctx, now)
 		if errors.Is(err, localdb.ErrNoSnapshot) {
 			c.mu.Lock()
@@ -177,7 +184,8 @@ func (c *Cache) persistOnce(ctx context.Context) error {
 	c.persistDirty = false
 	c.mu.Unlock()
 
-	now := time.Now()
+	start := time.Now()
+	now := c.confirmedAt()
 	snap := &localdb.Snapshot{Objects: objs, ResourceVersions: rvs, ClusterID: c.st.Info().ClusterID, WrittenAt: now}
 	if err := c.opts.LocalDB.Write(ctx, snap); err != nil {
 		c.mu.Lock()
@@ -186,8 +194,20 @@ func (c *Cache) persistOnce(ctx context.Context) error {
 		return c.persistFailed(err)
 	}
 	c.persistSucceeded(now)
-	c.log.Debug("local.db snapshot written", "objects", len(objs), "took", time.Since(now))
+	c.log.Debug("local.db snapshot written", "objects", len(objs), "took", time.Since(start))
 	return nil
+}
+
+// confirmedAt is the time the live set was last known current: the store's
+// Info().LastContact when the driver reports one (kube: the last apiserver
+// round trip, so an outage does not keep moving the local.db timestamp),
+// otherwise the wall clock (sqlite and memory are always in contact).
+func (c *Cache) confirmedAt() time.Time {
+	now := time.Now()
+	if lc := c.st.Info().LastContact; !lc.IsZero() && lc.Before(now) {
+		return lc
+	}
+	return now
 }
 
 func (c *Cache) persistFailed(err error) error {

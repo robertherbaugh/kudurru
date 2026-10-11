@@ -1,22 +1,433 @@
 {
   "items": [
     {
-      "path": "node.name",
+      "path": "auth.adminSocket.group",
+      "type": "int",
+      "scope": "node",
+      "default": -1,
+      "help": "Extra gid allowed on the admin socket; -1 for none.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.adminSocket.path",
+      "type": "string",
+      "scope": "node",
+      "default": "/run/kudurru/kudurru.sock",
+      "help": "Unix socket for `kudurru admin` (reset-password, create-token, list-users); peers must be uid 0, the server's uid or in adminSocket.group. Empty disables it.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.bootstrap.adminPasswordFile",
       "type": "string",
       "scope": "node",
       "default": "",
-      "help": "Node identity; defaults to the hostname.",
+      "help": "File holding the first-boot admin password; KUDURRU_ADMIN_PASSWORD[_FILE] take precedence, and without either a password is generated and printed once.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
-      "path": "node.dataDir",
+      "path": "auth.identityProviders",
+      "type": "list",
+      "scope": "cluster",
+      "default": [],
+      "help": "OpenID Providers for UI login and bearer ID tokens: id, issuer, clientID, clientSecretFile, redirectURL, cliClientID, scopes, claimValidationRules, claimMappings, provisioning.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.kubernetes.mode",
+      "type": "string",
+      "scope": "cluster",
+      "default": "sar",
+      "help": "How Kubernetes service-account tokens are authorized: sar (SubjectAccessReview on kudurru.io resources). impersonate is v0.2.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.localLogin",
+      "type": "string",
+      "scope": "cluster",
+      "default": "enabled",
+      "help": "Local password login (POST /api/v1/auth/login): enabled, admins-only (builtin admins only) or disabled; `kudurru admin` over the admin socket always works.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.session.idleTimeout",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "30m",
+      "help": "Sliding idle timeout of a UI session (at least 1m).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.session.lifetime",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "12h",
+      "help": "Absolute lifetime of a UI session; roles are re-resolved at the next login.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.session.secure",
+      "type": "string",
+      "scope": "cluster",
+      "default": "auto",
+      "help": "Session cookie Secure attribute: auto (when TLS terminates here or a trusted proxy reports https), always or never.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "auth.tokens.maxLifetime",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "0s",
+      "help": "Longest lifetime of a new API token; tokens without expiry get it. 0 allows tokens that never expire.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.allowDegraded",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Report ready and serve while referenced blocklists are not loaded yet (queries are filtered by the lists that are loaded).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.allowLocalListURLs",
+      "type": "bool",
+      "scope": "node",
+      "default": false,
+      "help": "Let BlockList URLs reach loopback, link-local (169.254.0.0/16, fe80::/10: cloud metadata), unspecified and multicast addresses. Off by default so a BlockList writer cannot make the node fetch its own or the cloud's internal services (SSRF); private LAN ranges are always allowed.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.blockTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "10m",
+      "help": "TTL of block responses when the Policy sets no blockTTL; short so a one-click allow takes effect quickly.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.customIP.v4",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv4 answer for blocked A queries when the response is customIP; empty answers NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.customIP.v6",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "IPv6 answer for blocked AAAA queries when the response is customIP; empty answers NODATA.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.defaultResponse",
+      "type": "string",
+      "scope": "cluster",
+      "default": "zeroIP",
+      "help": "Block response when neither the Policy (blockMode) nor the BlockList (response) sets one: zeroIP (0.0.0.0 / ::, other types NODATA), nxdomain, customIP (blocking.customIP), refused (discouraged: stub resolvers fail over).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Apply blocklists to recursive queries; false answers everything unfiltered (temporary disable is a runtime toggle, not this key).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.initStrategy",
+      "type": "string",
+      "scope": "cluster",
+      "default": "fast",
+      "help": "Blocklist loading at start: fast (serve at once from the disk cache, load in the background), blocking (not ready until every list is loaded), failOnError (blocking, and exit when a list fails to load).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.listsDir",
       "type": "string",
       "scope": "node",
-      "default": "/var/lib/kudurru",
-      "help": "Directory for state.db, querylog.db, local.db, lists and keys.",
+      "default": "",
+      "help": "Blocklist body cache (sha256(url) files); empty means <node.dataDir>/lists.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "blocking.refreshInterval",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "Refresh interval of BlockLists that set no spec.refreshInterval (at least 1m); the leader fetches, replicas pull by digest.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.maxEntries",
+      "type": "int",
+      "scope": "cluster",
+      "default": 200000,
+      "help": "Maximum number of cached responses (LRU beyond it); 0 disables the cache.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.maxTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "Upper clamp for answer TTLs.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.minTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "5s",
+      "help": "Lower clamp for positive answer TTLs.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.negativeTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "5m",
+      "help": "Upper clamp for NXDOMAIN/NODATA TTLs (RFC 2308 SOA minimum otherwise).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.prefetch.threshold",
+      "type": "int",
+      "scope": "cluster",
+      "default": 5,
+      "help": "Hits within prefetch.window that make an entry hot enough to refresh before it expires; 0 disables prefetch.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.prefetch.window",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "2h",
+      "help": "Window over which prefetch hits are counted.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.serveStale.answerTTL",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "30s",
+      "help": "TTL of stale answers (RFC 8767).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.serveStale.maxWait",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "1800ms",
+      "help": "How long a query for an expired entry waits for the upstream refresh before the stale answer is sent (RFC 8767 client response timer).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "cache.serveStale.ttl",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "72h",
+      "help": "How long past expiry an answer may be served stale when every upstream fails (RFC 8767); 0 disables serve-stale.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "externalDNS.webhook.enabled",
+      "type": "bool",
+      "scope": "node",
+      "default": false,
+      "help": "Serve the external-dns webhook provider (GET /, GET/POST /records, POST /adjustendpoints) on externalDNS.webhook.listen.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "externalDNS.webhook.listen",
+      "type": "string",
+      "scope": "node",
+      "default": "127.0.0.1:8888",
+      "help": "Listener of the external-dns webhook. It has no authentication, so the default is loopback (external-dns as a sidecar or on the same host); a wider address (the chart renders :<port> behind its NetworkPolicy) lets every client that reaches it write records.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "externalDNS.webhook.namespace",
+      "type": "string",
+      "scope": "node",
+      "default": "external-dns",
+      "help": "Namespace of the DNSRecordSets the webhook writes (managed by integration:external-dns, one record set per DNS name).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "externalDNS.webhook.zoneSelector",
+      "type": "map",
+      "scope": "node",
+      "default": {},
+      "help": "Label selector (key: value) choosing the primary DNSZones external-dns may write to; empty allows every primary zone.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:8080",
+      "help": "HTTP API and UI listener.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.pathPrefix",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "URL path prefix the API and UI are served under when a reverse proxy mounts kudurru below / (e.g. /kudurru).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.tls.auto",
+      "type": "string",
+      "scope": "node",
+      "default": "selfsigned",
+      "help": "TLS for the API listener when no certFile is set: selfsigned (generate a certificate once into <node.dataDir>/keys/) or off (plain HTTP, e.g. behind a TLS-terminating proxy).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.tls.certFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "API listener certificate (PEM); takes precedence over tls.auto.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.tls.keyFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Private key for listeners.api.tls.certFile.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.api.trustedProxies",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "Reverse proxies (addresses or CIDRs) whose X-Forwarded-For and X-Forwarded-Proto headers the API trusts for the client address and scheme.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.dns",
@@ -33,16 +444,9 @@
       ],
       "help": "DNS listeners: address and protocols (udp, tcp).",
       "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.dot",
-      "type": "list",
-      "scope": "node",
-      "default": [],
-      "help": "DNS-over-TLS listeners (RFC 7858, ALPN dot): address and tls {certFile, keyFile}.",
-      "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.doh",
@@ -51,16 +455,9 @@
       "default": [],
       "help": "DNS-over-HTTPS listeners (RFC 8484, HTTP/2 and HTTP/1.1): address, path (default /dns-query) and tls {certFile, keyFile}.",
       "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.doq",
-      "type": "list",
-      "scope": "node",
-      "default": [],
-      "help": "DNS-over-QUIC listeners (RFC 9250, udp, ALPN doq): address and tls {certFile, keyFile}.",
-      "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.doh3",
@@ -69,52 +466,31 @@
       "default": [],
       "help": "DNS-over-HTTPS over HTTP/3 listeners (udp, ALPN h3): address, path (default /dns-query) and tls {certFile, keyFile}.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
-      "path": "listeners.api.address",
-      "type": "string",
-      "scope": "node",
-      "default": "0.0.0.0:8080",
-      "help": "HTTP API and UI listener.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.ops.address",
-      "type": "string",
-      "scope": "node",
-      "default": "0.0.0.0:8081",
-      "help": "Unauthenticated health listener (/healthz/*).",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.metrics.address",
-      "type": "string",
-      "scope": "node",
-      "default": "0.0.0.0:9153",
-      "help": "Prometheus /metrics listener.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.proxyProtocolFrom",
-      "type": "string[]",
+      "path": "listeners.doq",
+      "type": "list",
       "scope": "node",
       "default": [],
-      "help": "Exact peers (CIDRs, normally /32) allowed to send PROXYv2 headers; loopback only when dnsdist shares the network namespace.",
+      "help": "DNS-over-QUIC listeners (RFC 9250, udp, ALPN doq): address and tls {certFile, keyFile}.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
-      "path": "listeners.proxyProtocolSecretFile",
-      "type": "string",
+      "path": "listeners.dot",
+      "type": "list",
       "scope": "node",
-      "default": "",
-      "help": "File holding the PROXYv2 TLV 0xE0 secret shared with the dnsdist supervisor (at least 32 bytes, e.g. openssl rand -hex 32); required when proxyProtocolFrom names a non-loopback peer.",
+      "default": [],
+      "help": "DNS-over-TLS listeners (RFC 7858, ALPN dot): address and tls {certFile, keyFile}.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.internal.address",
@@ -123,34 +499,9 @@
       "default": "0.0.0.0:8082",
       "help": "Node-to-node listener (list bodies by digest, /internal/status); always TLS.",
       "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.internal.tokenFile",
-      "type": "string",
-      "scope": "node",
-      "default": "",
-      "help": "File holding the internal bearer token; empty derives it from the encryption key (KUDURRU_ENCRYPTION_KEY) with HKDF.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.internal.tls.certFile",
-      "type": "string",
-      "scope": "node",
-      "default": "",
-      "help": "Internal listener certificate (PEM); empty issues one from the CA derived from the encryption key.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "listeners.internal.tls.keyFile",
-      "type": "string",
-      "scope": "node",
-      "default": "",
-      "help": "Private key for listeners.internal.tls.certFile.",
-      "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.internal.tls.caFile",
@@ -159,7 +510,31 @@
       "default": "",
       "help": "CA bundle (PEM) trusted when dialling other nodes; empty trusts the CA derived from the encryption key.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.internal.tls.certFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Internal listener certificate (PEM); empty issues one from the CA derived from the encryption key.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.internal.tls.keyFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Private key for listeners.internal.tls.certFile.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.internal.tls.serverName",
@@ -168,7 +543,64 @@
       "default": "",
       "help": "Name verified in peers' internal certificates; empty uses the derived certificates' fixed name. Set it to a SAN of tls.certFile.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.internal.tokenFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "File holding the internal bearer token; empty derives it from the encryption key (KUDURRU_ENCRYPTION_KEY) with HKDF.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.metrics.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:9153",
+      "help": "Prometheus /metrics listener.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.ops.address",
+      "type": "string",
+      "scope": "node",
+      "default": "0.0.0.0:8081",
+      "help": "Unauthenticated health listener (/healthz/*).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.proxyProtocolFrom",
+      "type": "string[]",
+      "scope": "node",
+      "default": [],
+      "help": "Exact peers (CIDRs, normally /32) allowed to send PROXYv2 headers; loopback only when dnsdist shares the network namespace.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "listeners.proxyProtocolSecretFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "File holding the PROXYv2 TLV 0xE0 secret shared with the dnsdist supervisor (at least 32 bytes, e.g. openssl rand -hex 32); required when proxyProtocolFrom names a non-loopback peer.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "listeners.sockets",
@@ -177,7 +609,291 @@
       "default": 0,
       "help": "SO_REUSEPORT sockets per udp and tcp DNS listener, each with its own read loop (Linux; one elsewhere); 0 means GOMAXPROCS, 1 a single socket.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "log.format",
+      "type": "string",
+      "scope": "node",
+      "default": "json",
+      "help": "Log format: json or text.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "log.level",
+      "type": "string",
+      "scope": "node",
+      "default": "info",
+      "help": "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "node.dataDir",
+      "type": "string",
+      "scope": "node",
+      "default": "/var/lib/kudurru",
+      "help": "Directory for state.db, querylog.db, local.db, lists and keys.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "node.lameduck",
+      "type": "duration",
+      "scope": "node",
+      "default": "2s",
+      "help": "Drain window after SIGTERM: readiness answers 503 and the health name SERVFAIL for this long before the listeners close (0 disables). The Helm chart also runs kudurru lameduck in preStop.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "node.name",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Node identity; defaults to the hostname.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "notify.source",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Local IP address outbound NOTIFY messages are sent from; empty lets the kernel choose. Secondaries must list it as a primary.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "objects",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "objectsDir",
+      "type": "string",
+      "scope": "node",
+      "default": "/etc/kudurru/objects.d",
+      "help": "Directory of *.yaml object files, file-managed as file:<dir>/<name> and re-applied on change; deleting a document deletes the object.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.anonymize",
+      "type": "string",
+      "scope": "cluster",
+      "default": "prefix",
+      "help": "How anonymize_client hides clients: prefix (IPv4 /24, IPv6 /48) or pseudonym (HMAC with a random in-memory key rotated daily; stable for a day, not reversible).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Collect the per-node query log (querylog.db, rollups and the stats API).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.exclude.clients",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Clients never logged: IP addresses, CIDR prefixes or client names.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.exclude.domains",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "Names never logged: exact names, *.suffix wildcards (the suffix and everything below it) or /regex/.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.exclude.sudn",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Do not log special-use names (localhost, .local, .home.arpa, private and link-local reverse zones).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.privacy",
+      "type": "string",
+      "scope": "cluster",
+      "default": "full",
+      "help": "Privacy applied once at ingest, irreversibly: full, anonymize_client, hide_domains, hide_domains_clients or nothing (per-minute totals only). The answer summary is stored only in full.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.retention.maxDBBytes",
+      "type": "bytes",
+      "scope": "cluster",
+      "default": "10GiB",
+      "help": "Upper bound for querylog.db; the oldest rows are deleted first when it is exceeded. 0 disables the cap.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.retention.raw",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "720h",
+      "help": "How long per-query rows are kept (rollups: 35 d per minute, 400 d per hour, daily forever); 0 keeps rows until maxDBBytes is reached.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "querylog.sink",
+      "type": "string",
+      "scope": "cluster",
+      "default": "sqlite",
+      "help": "Built-in query-log sink: sqlite (querylog.db with rollups; required for the dashboard) or slog (one JSON log line per query, nothing stored).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.enabled",
+      "type": "bool",
+      "scope": "cluster",
+      "default": true,
+      "help": "Per-prefix QPM rate limiting of UDP queries at ingress; TCP, DoT, DoH, DoQ and DoH3 are never limited, nor loopback clients and the health name.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.exempt",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [],
+      "help": "CIDRs or addresses never rate limited (loopback always is).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.ipv4",
+      "type": "map",
+      "scope": "cluster",
+      "default": {
+        "24": 6000,
+        "32": 600
+      },
+      "help": "IPv4 prefix length to queries per minute per prefix (token bucket holding one minute's allowance); merged with the defaults key by key, 0 disables a level.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.ipv6",
+      "type": "map",
+      "scope": "cluster",
+      "default": {
+        "128": 600,
+        "56": 12000,
+        "64": 6000
+      },
+      "help": "IPv6 prefix length to queries per minute per prefix; merged with the defaults key by key, 0 disables a level.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.maxBuckets",
+      "type": "int",
+      "scope": "cluster",
+      "default": 65536,
+      "help": "Most prefixes tracked at once (LRU); an evicted prefix starts with a full bucket.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "ratelimit.slip",
+      "type": "int",
+      "scope": "cluster",
+      "default": 50,
+      "help": "Percentage (0-100) of over-limit UDP queries answered with an empty TC=1 response so real clients retry over TCP; the rest are dropped.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "rbac.bindings",
+      "type": "list",
+      "scope": "cluster",
+      "default": [],
+      "help": "Role bindings: role, scope {kind cluster|zone, name} and subjects [{kind User|Group|ServiceAccount, name, namespace}]; RoleBinding objects add to them.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "settingsFile",
+      "type": "string",
+      "scope": "node",
+      "default": "",
+      "help": "Settings file layered over this file for the cluster-scope keys and watched for changes (hot reload, D25); KUDURRU_SETTINGS_FILE takes precedence. The Helm chart mounts /etc/kudurru/settings/settings.yaml; in Docker PATCH /api/v1/settings persists into it. Empty disables the layer.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "store.driver",
@@ -186,16 +902,9 @@
       "default": "sqlite",
       "help": "Store driver: sqlite (state.db under node.dataDir) or kube (CRDs via the apiserver).",
       "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "store.kube.startupTimeout",
-      "type": "duration",
-      "scope": "node",
-      "default": "15s",
-      "help": "How long to wait for the apiserver watches to sync before serving from local.db.",
-      "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
     },
     {
       "path": "store.kube.snapshot.maxAge",
@@ -204,7 +913,88 @@
       "default": "24h",
       "help": "Oldest local.db snapshot that may still answer primary zones; older snapshots answer SERVFAIL while forwarding continues.",
       "hostOnly": true,
-      "restartRequired": true
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "store.kube.startupTimeout",
+      "type": "duration",
+      "scope": "node",
+      "default": "15s",
+      "help": "How long to wait for the apiserver watches to sync before serving from local.db.",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false
+    },
+    {
+      "path": "tsigKeys",
+      "type": "list",
+      "scope": "node",
+      "default": [],
+      "help": "TSIG keys (RFC 8945) for zone transfers and NOTIFY: name (referenced by DNSZone spec.policy.transferTSIGKeyRefs), algorithm (hmac-sha256, hmac-sha512) and secretFile holding the base64 secret (tsig-keygen format).",
+      "hostOnly": true,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": true
+    },
+    {
+      "path": "upstreams.bootstrap",
+      "type": "string[]",
+      "scope": "cluster",
+      "default": [
+        "1.1.1.1:53"
+      ],
+      "help": "Plain resolvers used to resolve upstream hostnames (DoT/DoH).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "upstreams.conditional",
+      "type": "map",
+      "scope": "cluster",
+      "default": {},
+      "help": "Suffix to upstream group map for conditional forwarding (longest suffix wins); a key may list several suffixes in dnsmasq form, \"[/corp.example/10.in-addr.arpa/]\". Conditional answers are never cached.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "upstreams.ecs.ipv4Prefix",
+      "type": "int",
+      "scope": "cluster",
+      "default": 24,
+      "help": "Longest IPv4 source prefix sent upstream in ECS (0-32).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "upstreams.ecs.ipv6Prefix",
+      "type": "int",
+      "scope": "cluster",
+      "default": 56,
+      "help": "Longest IPv6 source prefix sent upstream in ECS (0-128).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
+    },
+    {
+      "path": "upstreams.ecs.mode",
+      "type": "string",
+      "scope": "cluster",
+      "default": "strip",
+      "help": "EDNS Client Subnet on upstream queries: strip (never send one; privacy default), forward (pass the client's own option), add (forward the client's option, else derive one from a public client address).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
     },
     {
       "path": "upstreams.groups",
@@ -220,336 +1010,11 @@
           "timeout": "2s"
         }
       },
-      "help": "Named upstream groups: servers, strategy (parallel_best, strict, random, rtt_weighted), timeout."
-    },
-    {
-      "path": "upstreams.bootstrap",
-      "type": "string[]",
-      "scope": "cluster",
-      "default": [
-        "1.1.1.1:53"
-      ],
-      "help": "Plain resolvers used to resolve upstream hostnames (DoT/DoH)."
-    },
-    {
-      "path": "upstreams.conditional",
-      "type": "map",
-      "scope": "cluster",
-      "default": {},
-      "help": "Suffix to upstream group map for conditional forwarding (longest suffix wins); a key may list several suffixes in dnsmasq form, \"[/corp.example/10.in-addr.arpa/]\". Conditional answers are never cached."
-    },
-    {
-      "path": "upstreams.ecs.mode",
-      "type": "string",
-      "scope": "cluster",
-      "default": "strip",
-      "help": "EDNS Client Subnet on upstream queries: strip (never send one; privacy default), forward (pass the client's own option), add (forward the client's option, else derive one from a public client address)."
-    },
-    {
-      "path": "upstreams.ecs.ipv4Prefix",
-      "type": "int",
-      "scope": "cluster",
-      "default": 24,
-      "help": "Longest IPv4 source prefix sent upstream in ECS (0-32)."
-    },
-    {
-      "path": "upstreams.ecs.ipv6Prefix",
-      "type": "int",
-      "scope": "cluster",
-      "default": 56,
-      "help": "Longest IPv6 source prefix sent upstream in ECS (0-128)."
-    },
-    {
-      "path": "cache.maxEntries",
-      "type": "int",
-      "scope": "cluster",
-      "default": 200000,
-      "help": "Maximum number of cached responses (LRU beyond it); 0 disables the cache."
-    },
-    {
-      "path": "cache.minTTL",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "5s",
-      "help": "Lower clamp for positive answer TTLs."
-    },
-    {
-      "path": "cache.maxTTL",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "24h",
-      "help": "Upper clamp for answer TTLs."
-    },
-    {
-      "path": "cache.negativeTTL",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "5m",
-      "help": "Upper clamp for NXDOMAIN/NODATA TTLs (RFC 2308 SOA minimum otherwise)."
-    },
-    {
-      "path": "cache.prefetch.threshold",
-      "type": "int",
-      "scope": "cluster",
-      "default": 5,
-      "help": "Hits within prefetch.window that make an entry hot enough to refresh before it expires; 0 disables prefetch."
-    },
-    {
-      "path": "cache.prefetch.window",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "2h",
-      "help": "Window over which prefetch hits are counted."
-    },
-    {
-      "path": "cache.serveStale.ttl",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "72h",
-      "help": "How long past expiry an answer may be served stale when every upstream fails (RFC 8767); 0 disables serve-stale."
-    },
-    {
-      "path": "cache.serveStale.answerTTL",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "30s",
-      "help": "TTL of stale answers (RFC 8767)."
-    },
-    {
-      "path": "cache.serveStale.maxWait",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "1800ms",
-      "help": "How long a query for an expired entry waits for the upstream refresh before the stale answer is sent (RFC 8767 client response timer)."
-    },
-    {
-      "path": "blocking.enabled",
-      "type": "bool",
-      "scope": "cluster",
-      "default": true,
-      "help": "Apply blocklists to recursive queries; false answers everything unfiltered (temporary disable is a runtime toggle, not this key)."
-    },
-    {
-      "path": "blocking.defaultResponse",
-      "type": "string",
-      "scope": "cluster",
-      "default": "zeroIP",
-      "help": "Block response when neither the Policy (blockMode) nor the BlockList (response) sets one: zeroIP (0.0.0.0 / ::, other types NODATA), nxdomain, customIP (blocking.customIP), refused (discouraged: stub resolvers fail over)."
-    },
-    {
-      "path": "blocking.blockTTL",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "10m",
-      "help": "TTL of block responses when the Policy sets no blockTTL; short so a one-click allow takes effect quickly."
-    },
-    {
-      "path": "blocking.allowDegraded",
-      "type": "bool",
-      "scope": "cluster",
-      "default": true,
-      "help": "Report ready and serve while referenced blocklists are not loaded yet (queries are filtered by the lists that are loaded)."
-    },
-    {
-      "path": "blocking.customIP.v4",
-      "type": "string",
-      "scope": "cluster",
-      "default": "",
-      "help": "IPv4 answer for blocked A queries when the response is customIP; empty answers NODATA."
-    },
-    {
-      "path": "blocking.customIP.v6",
-      "type": "string",
-      "scope": "cluster",
-      "default": "",
-      "help": "IPv6 answer for blocked AAAA queries when the response is customIP; empty answers NODATA."
-    },
-    {
-      "path": "querylog.enabled",
-      "type": "bool",
-      "scope": "cluster",
-      "default": true,
-      "help": "Collect the per-node query log (querylog.db, rollups and the stats API)."
-    },
-    {
-      "path": "querylog.sink",
-      "type": "string",
-      "scope": "cluster",
-      "default": "sqlite",
-      "help": "Built-in query-log sink: sqlite (querylog.db with rollups; required for the dashboard) or slog (one JSON log line per query, nothing stored)."
-    },
-    {
-      "path": "querylog.privacy",
-      "type": "string",
-      "scope": "cluster",
-      "default": "full",
-      "help": "Privacy applied once at ingest, irreversibly: full, anonymize_client, hide_domains, hide_domains_clients or nothing (per-minute totals only). The answer summary is stored only in full."
-    },
-    {
-      "path": "querylog.anonymize",
-      "type": "string",
-      "scope": "cluster",
-      "default": "prefix",
-      "help": "How anonymize_client hides clients: prefix (IPv4 /24, IPv6 /48) or pseudonym (HMAC with a random in-memory key rotated daily; stable for a day, not reversible)."
-    },
-    {
-      "path": "querylog.retention.raw",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "720h",
-      "help": "How long per-query rows are kept (rollups: 35 d per minute, 400 d per hour, daily forever); 0 keeps rows until maxDBBytes is reached."
-    },
-    {
-      "path": "querylog.retention.maxDBBytes",
-      "type": "bytes",
-      "scope": "cluster",
-      "default": "10GiB",
-      "help": "Upper bound for querylog.db; the oldest rows are deleted first when it is exceeded. 0 disables the cap."
-    },
-    {
-      "path": "querylog.exclude.domains",
-      "type": "string[]",
-      "scope": "cluster",
-      "default": [],
-      "help": "Names never logged: exact names, *.suffix wildcards (the suffix and everything below it) or /regex/."
-    },
-    {
-      "path": "querylog.exclude.clients",
-      "type": "string[]",
-      "scope": "cluster",
-      "default": [],
-      "help": "Clients never logged: IP addresses, CIDR prefixes or client names."
-    },
-    {
-      "path": "querylog.exclude.sudn",
-      "type": "bool",
-      "scope": "cluster",
-      "default": true,
-      "help": "Do not log special-use names (localhost, .local, .home.arpa, private and link-local reverse zones)."
-    },
-    {
-      "path": "blocking.refreshInterval",
-      "type": "duration",
-      "scope": "cluster",
-      "default": "24h",
-      "help": "Refresh interval of BlockLists that set no spec.refreshInterval (at least 1m); the leader fetches, replicas pull by digest."
-    },
-    {
-      "path": "blocking.initStrategy",
-      "type": "string",
-      "scope": "cluster",
-      "default": "fast",
-      "help": "Blocklist loading at start: fast (serve at once from the disk cache, load in the background), blocking (not ready until every list is loaded), failOnError (blocking, and exit when a list fails to load).",
-      "restartRequired": true
-    },
-    {
-      "path": "blocking.listsDir",
-      "type": "string",
-      "scope": "node",
-      "default": "",
-      "help": "Blocklist body cache (sha256(url) files); empty means \u003cnode.dataDir\u003e/lists.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "ratelimit.enabled",
-      "type": "bool",
-      "scope": "cluster",
-      "default": true,
-      "help": "Per-prefix QPM rate limiting of UDP queries at ingress; TCP, DoT, DoH, DoQ and DoH3 are never limited, nor loopback clients and the health name."
-    },
-    {
-      "path": "ratelimit.ipv4",
-      "type": "map",
-      "scope": "cluster",
-      "default": {
-        "24": 6000,
-        "32": 600
-      },
-      "help": "IPv4 prefix length to queries per minute per prefix (token bucket holding one minute's allowance); merged with the defaults key by key, 0 disables a level."
-    },
-    {
-      "path": "ratelimit.ipv6",
-      "type": "map",
-      "scope": "cluster",
-      "default": {
-        "128": 600,
-        "56": 12000,
-        "64": 6000
-      },
-      "help": "IPv6 prefix length to queries per minute per prefix; merged with the defaults key by key, 0 disables a level."
-    },
-    {
-      "path": "ratelimit.slip",
-      "type": "int",
-      "scope": "cluster",
-      "default": 50,
-      "help": "Percentage (0-100) of over-limit UDP queries answered with an empty TC=1 response so real clients retry over TCP; the rest are dropped."
-    },
-    {
-      "path": "ratelimit.maxBuckets",
-      "type": "int",
-      "scope": "cluster",
-      "default": 65536,
-      "help": "Most prefixes tracked at once (LRU); an evicted prefix starts with a full bucket."
-    },
-    {
-      "path": "ratelimit.exempt",
-      "type": "string[]",
-      "scope": "cluster",
-      "default": [],
-      "help": "CIDRs or addresses never rate limited (loopback always is)."
-    },
-    {
-      "path": "objects",
-      "type": "list",
-      "scope": "node",
-      "default": [],
-      "help": "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "objectsDir",
-      "type": "string",
-      "scope": "node",
-      "default": "/etc/kudurru/objects.d",
-      "help": "Directory of *.yaml object files, file-managed as file:\u003cdir\u003e/\u003cname\u003e and re-applied on change; deleting a document deletes the object.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "tsigKeys",
-      "type": "list",
-      "scope": "node",
-      "default": [],
-      "help": "TSIG keys (RFC 8945) for zone transfers and NOTIFY: name (referenced by DNSZone spec.policy.transferTSIGKeyRefs), algorithm (hmac-sha256, hmac-sha512) and secretFile holding the base64 secret (tsig-keygen format).",
-      "hostOnly": true,
-      "restartRequired": true,
-      "writeOnly": true
-    },
-    {
-      "path": "notify.source",
-      "type": "string",
-      "scope": "node",
-      "default": "",
-      "help": "Local IP address outbound NOTIFY messages are sent from; empty lets the kernel choose. Secondaries must list it as a primary.",
-      "hostOnly": true,
-      "restartRequired": true
-    },
-    {
-      "path": "log.level",
-      "type": "string",
-      "scope": "node",
-      "default": "info",
-      "help": "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug."
-    },
-    {
-      "path": "log.format",
-      "type": "string",
-      "scope": "node",
-      "default": "json",
-      "help": "Log format: json or text."
+      "help": "Named upstream groups: servers, strategy (parallel_best, strict, random, rtt_weighted), timeout.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": false,
+      "writeOnly": false
     }
   ]
 }

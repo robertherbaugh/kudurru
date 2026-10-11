@@ -118,15 +118,6 @@ type UpstreamStatusFunc func() []upstream.ServerStatus
 // Status implements UpstreamStatus.
 func (f UpstreamStatusFunc) Status() []upstream.ServerStatus { return f() }
 
-// IAMReader lists identities and bindings for the read-only IAM routes
-// (the write API is v0.2). Every method may return nil.
-type IAMReader interface {
-	Users(ctx context.Context) ([]map[string]any, error)
-	ServiceAccounts(ctx context.Context) ([]map[string]any, error)
-	RoleBindings(ctx context.Context) ([]map[string]any, error)
-	IdentityProviders(ctx context.Context) ([]map[string]any, error)
-}
-
 // Options configures a Server. Only Store and Validator are required;
 // every other dependency switches its routes to 501/503 when absent, so
 // tests and partial wirings work.
@@ -189,15 +180,17 @@ type Options struct {
 	CSRF func(*http.Request) error
 	// RateLimit wraps the auth routes (login brute-force limiter hook).
 	RateLimit func(http.Handler) http.Handler
-	// AuthHandler serves /api/v1/auth/{status,login,logout,oidc/...,
-	// tokens...}; GET /auth/me is served by the API itself.
+	// AuthHandler serves /api/v1/auth/{status,login,logout,password,
+	// oidc/...,tokens...} and the read-only /api/v1/iam/* lists (the auth
+	// stack's mux, documented by the mirrors of authtypes.go); GET
+	// /auth/me is served by the API itself.
 	AuthHandler http.Handler
-	// Roles lists the grants of a bearer-authenticated principal for GET
-	// /auth/me (role or role@kind:name); cookie sessions report their roles
-	// snapshot instead. nil reports none.
+	// Roles lists the effective grants of a principal for GET /auth/me
+	// (role or role@kind:name). nil reports a cookie session's roles
+	// snapshot, else none.
 	Roles func(ctx context.Context, p auth.Principal) []string
-	// IAM backs the read-only /iam routes.
-	IAM IAMReader
+	// Catalogue backs /catalogue; a nil Holder serves the embedded one.
+	Catalogue CatalogueSource
 	// UI is the single-page app bundle (web.FS); nil serves a built-in
 	// placeholder page. UIHandler, when set, replaces the built-in SPA
 	// handler (web.Handler with the same path prefix); it receives paths

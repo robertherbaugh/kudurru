@@ -241,6 +241,13 @@ func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 			next(ctx)
 			return
 		}
+		if pr.MustChangePassword {
+			// Only the self-service routes (authenticated: me, password,
+			// logout) serve a local user who must change the password.
+			s.writeHumaError(ctx, newError(http.StatusForbidden, KeyPasswordChange, "change your password before using the API",
+				"POST "+BasePath+"/auth/password"))
+			return
+		}
 		resource := p.resource
 		if p.byKind {
 			k, ok := kindByPlural(ctx.Param("kind"))

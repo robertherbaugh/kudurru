@@ -250,8 +250,21 @@ func (s *Supervisor) startChild() error {
 // until ctx ends; keepalived then gets SIGTERM (it releases the VIPs) and
 // StopTimeout before SIGKILL.
 func (s *Supervisor) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer cancel()
+
+	// Watch before the first read: a change between the read and the watch
+	// would never be applied. One that lands before the read re-renders an
+	// unchanged file.
+	peersChanged := make(chan struct{}, 1)
 	c := s.cfg.Config
 	if s.cfg.PeersFile != "" {
+		if err := watchFile(ctx, &wg, s.cfg.PeersFile, peersChanged, s.log); err != nil {
+			s.log.Warn("peers file watch disabled", "file", s.cfg.PeersFile, "err", err)
+		}
 		peers, err := ReadPeersFile(s.cfg.PeersFile)
 		if err != nil {
 			return err
@@ -272,18 +285,6 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		ch.Stop()
 		s.log.Info("stopped keepalived", "exit", fmt.Sprint(ch.Err()))
 	}()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var wg sync.WaitGroup
-	defer wg.Wait()
-	defer cancel()
-
-	peersChanged := make(chan struct{}, 1)
-	if s.cfg.PeersFile != "" {
-		if err := watchFile(ctx, &wg, s.cfg.PeersFile, peersChanged, s.log); err != nil {
-			s.log.Warn("peers file watch disabled", "file", s.cfg.PeersFile, "err", err)
-		}
-	}
 	wg.Go(func() { s.pollState(ctx) })
 
 	backoff := 500 * time.Millisecond
@@ -295,15 +296,11 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-peersChanged:
-			peers, err := ReadPeersFile(s.cfg.PeersFile)
+			next, err := s.peersConfig()
 			if err != nil {
 				s.log.Error("peers file", "err", err)
 				continue
 			}
-			s.mu.Lock()
-			next := s.current
-			s.mu.Unlock()
-			next.Peers, next.NodeCount = peers, 0
 			if err := s.Rerender(ctx, next); err != nil {
 				s.log.Error("re-render failed; keepalived keeps the previous configuration", "err", err)
 			}
@@ -315,11 +312,38 @@ func (s *Supervisor) Run(ctx context.Context) error {
 			case <-time.After(backoff):
 			}
 			backoff = min(backoff*2, 30*time.Second)
+			// Install a peers change that arrived meanwhile before the
+			// start: the new keepalived reads it, whereas a SIGHUP right
+			// after the start reaches keepalived before it installs its
+			// signal handlers and kills it.
+			select {
+			case <-peersChanged:
+				if next, err := s.peersConfig(); err != nil {
+					s.log.Error("peers file", "err", err)
+				} else if _, err := s.install(ctx, next); err != nil {
+					s.log.Error("re-render failed; keepalived restarts with the previous configuration", "err", err)
+				}
+			default:
+			}
 			if err := s.startChild(); err != nil {
 				s.log.Error("keepalived restart failed", "err", err)
 			}
 		}
 	}
+}
+
+// peersConfig is the current configuration with the peers file's
+// addresses.
+func (s *Supervisor) peersConfig() (Config, error) {
+	peers, err := ReadPeersFile(s.cfg.PeersFile)
+	if err != nil {
+		return Config{}, err
+	}
+	s.mu.Lock()
+	next := s.current
+	s.mu.Unlock()
+	next.Peers, next.NodeCount = peers, 0
+	return next, nil
 }
 
 // ReadPeersFile reads one address per line; blank lines and # comments

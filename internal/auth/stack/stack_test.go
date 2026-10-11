@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -280,6 +281,12 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		if r := e.do(http.MethodDelete, "/api/v1/auth/tokens/"+tokID, nil, withCookie(alice), withHeader(auth.CSRFHeader, aliceCSRF)); r.code != 404 {
 			t.Fatalf("alice deleting admin's token: %d", r.code)
 		}
+		if r := e.do(http.MethodGet, "/api/v1/auth/tokens/"+tokID, nil, withCookie(alice)); r.code != 404 {
+			t.Fatalf("alice reading admin's token: %d", r.code)
+		}
+		if r := e.do(http.MethodGet, "/api/v1/auth/tokens/"+tokID, nil, withCookie(cookie)); r.code != 200 || r.body["id"] != tokID || r.body["token"] != nil {
+			t.Fatalf("admin reading the own token: %d %s", r.code, r.raw)
+		}
 
 		// A RoleBinding object grants zone-admin on home to alice, live.
 		rb := &internalv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "alice-home", Namespace: "dns"}, Spec: internalv1.RoleBindingSpec{
@@ -320,6 +327,10 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		if r := e.do(http.MethodPost, "/api/v1/zones/home/records", nil, bearer(scoped)); r.code != 403 {
 			t.Fatalf("scoped write: %d %s", r.code, r.raw)
 		}
+		// /auth/me reports the scopes, not the owner's admin.
+		if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, bearer(scoped)); r.code != 200 || fmt.Sprint(r.body["roles"]) != "[viewer]" {
+			t.Fatalf("scoped me: %d %s", r.code, r.raw)
+		}
 		// A scoped token cannot mint a broader token.
 		if r := e.do(http.MethodPost, "/api/v1/auth/tokens", CreateTokenRequest{Scopes: []string{"operator"}}, bearer(scoped)); r.code != 403 {
 			t.Fatalf("scope escalation: %d %s", r.code, r.raw)
@@ -350,7 +361,8 @@ func TestMustChangePasswordFlow(t *testing.T) {
 	if r := e.do(http.MethodGet, "/api/v1/zones", nil, withCookie(old)); r.code != 403 || r.errKey() != "password_change_required" {
 		t.Fatalf("before change: %d %s", r.code, r.raw)
 	}
-	if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, withCookie(old)); r.code != 200 || r.body["mustChangePassword"] != true {
+	if r := e.do(http.MethodGet, "/api/v1/auth/me", nil, withCookie(old)); r.code != 200 || r.body["mustChangePassword"] != true ||
+		len(r.body["permissions"].(map[string]any)) != 0 {
 		t.Fatalf("me before change: %d %s", r.code, r.raw)
 	}
 	if r := e.do(http.MethodPost, "/api/v1/auth/password", PasswordRequest{CurrentPassword: "wrong", NewPassword: "bob-password-2"}, withCookie(old), withHeader(auth.CSRFHeader, csrf)); r.code != 403 {

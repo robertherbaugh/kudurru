@@ -1,0 +1,5 @@
+{{- /* The tree of the current top-level section. */ -}}
+{{- $section := .FirstSection -}}
+{{- if $section.IsHome -}}{{- $section = . -}}{{- end -}}
+<p class="sidebar__title"><a href="{{ $section.RelPermalink }}"{{ if eq $section . }} aria-current="page"{{ end }}>{{ partialCached "title.html" $section $section.RelPermalink }}</a></p>
+{{ partial "nav-tree.html" (dict "section" $section "current" .) }}

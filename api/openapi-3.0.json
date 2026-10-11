@@ -98,6 +98,166 @@
         ],
         "type": "object"
       },
+      "AuthListIAMUser": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IAMUser"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "AuthListIdentityProviderInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityProviderInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "AuthListRoleBindingInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RoleBindingInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "AuthListServiceAccountInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceAccountInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "AuthListTokenInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "type": "string"
+          },
+          "diagnoses": {
+            "description": "Why entries were ignored (role bindings, identity providers).",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TokenInfo"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "continue",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "AuthProvider": {
         "additionalProperties": false,
         "properties": {
@@ -114,25 +274,58 @@
         ],
         "type": "object"
       },
+      "AuthSessionLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "idleTimeout": {
+            "description": "Go duration (auth.session.idleTimeout).",
+            "type": "string"
+          },
+          "lifetime": {
+            "description": "Go duration (auth.session.lifetime).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idleTimeout",
+          "lifetime"
+        ],
+        "type": "object"
+      },
       "AuthStatus": {
         "additionalProperties": false,
         "properties": {
           "hasDefaultCredentials": {
+            "description": "The bootstrap admin still has its generated password.",
             "type": "boolean"
           },
           "localLogin": {
+            "description": "False only when auth.localLogin is disabled.",
+            "type": "boolean"
+          },
+          "localLoginMode": {
+            "description": "auth.localLogin.",
+            "enum": [
+              "enabled",
+              "admins-only",
+              "disabled"
+            ],
             "type": "string"
           },
           "providers": {
+            "description": "The OIDC login options.",
             "items": {
               "$ref": "#/components/schemas/AuthProvider"
             },
-            "nullable": true,
             "type": "array"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSessionLimits"
           }
         },
         "required": [
           "localLogin",
+          "localLoginMode",
           "providers",
           "hasDefaultCredentials"
         ],
@@ -156,6 +349,42 @@
         },
         "required": [
           "names"
+        ],
+        "type": "object"
+      },
+      "BindingScope": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "cluster, zone, ...",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "BindingSubject": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "User, Group, ServiceAccount, ...",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
         ],
         "type": "object"
       },
@@ -238,6 +467,131 @@
         ],
         "type": "object"
       },
+      "CatalogueInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "description": "SHA-256 of the catalogue document.",
+            "type": "string"
+          },
+          "homepage": {
+            "type": "string"
+          },
+          "license": {
+            "description": "SPDX licence of the catalogue data.",
+            "type": "string"
+          },
+          "origin": {
+            "description": "\"embedded\" (built into the binary) or the blocking.catalogue.url it was downloaded from.",
+            "type": "string"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/CatalogueRefresh"
+          },
+          "safeSearchEngines": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "description": "Catalogue document schema version.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "services": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "version": {
+            "description": "Catalogue version (YYYY.MM.DD).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "version",
+          "license",
+          "origin",
+          "digest",
+          "services",
+          "safeSearchEngines",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "CatalogueRefresh": {
+        "additionalProperties": false,
+        "properties": {
+          "lastAttempt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "lastSuccess": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "CatalogueService": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "video, social, messaging, gaming, music, ai, dating, ...",
+            "type": "string"
+          },
+          "domains": {
+            "description": "The service's rules as list text (||domain^).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The ID Policy.spec.blockedServices names.",
+            "type": "string"
+          },
+          "list": {
+            "description": "The list name the query log records for this service's blocks (service:\u003cid\u003e).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {
+            "description": "Number of rules (||domain^).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Where the entry comes from: a vendor documentation URL or \"first-party domains of the service\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "list",
+          "rules",
+          "domains",
+          "source"
+        ],
+        "type": "object"
+      },
       "ClientItem": {
         "additionalProperties": false,
         "properties": {
@@ -253,6 +607,11 @@
             "type": "string"
           },
           "key": {
+            "type": "string"
+          },
+          "last_seen": {
+            "description": "The newest query from the client on this node (hour precision once its query rows aged out).",
+            "format": "date-time",
             "type": "string"
           },
           "name": {
@@ -408,6 +767,78 @@
           "readOnly",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "CreateTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Free text shown in the token list.",
+            "type": "string"
+          },
+          "expiresIn": {
+            "description": "Go duration (720h); empty means auth.tokens.maxLifetime, or never.",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Narrow the token to these grants in wire form (viewer, zone-admin@zone:home-example-com); empty keeps the owner's grants.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "CreatedToken": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "null: the token never expires.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastUsedIP": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/TokenOwner"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "token": {
+            "description": "The kdr_ secret, shown only in this answer.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "id",
+          "owner",
+          "createdAt",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -1007,25 +1438,92 @@
         ],
         "type": "object"
       },
-      "IAMList": {
+      "IAMUser": {
         "additionalProperties": false,
         "properties": {
-          "items": {
+          "builtinAdmin": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "groups": {
             "items": {
-              "additionalProperties": {},
-              "type": "object"
+              "type": "string"
             },
+            "nullable": true,
             "type": "array"
           },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mustChangePassword": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "passwordChangedAt": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
-          "items",
-          "took_ms"
+          "name",
+          "builtinAdmin",
+          "disabled",
+          "mustChangePassword"
+        ],
+        "type": "object"
+      },
+      "IdentityProviderInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "cliClientID": {
+            "type": "string"
+          },
+          "clientID": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "redirectURL": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "config",
+              "object"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "issuer",
+          "clientID",
+          "scopes",
+          "redirectURL",
+          "source"
         ],
         "type": "object"
       },
@@ -1120,6 +1618,31 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/ApplyResult"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "ListCatalogueService": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogueService"
             },
             "type": "array"
           },
@@ -1235,6 +1758,31 @@
         ],
         "type": "object"
       },
+      "ListSafeSearchEngine": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SafeSearchEngine"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListSearchHit": {
         "additionalProperties": false,
         "properties": {
@@ -1265,31 +1813,6 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/SettingKey"
-            },
-            "type": "array"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "took_ms"
-        ],
-        "type": "object"
-      },
-      "ListToken": {
-        "additionalProperties": false,
-        "properties": {
-          "continue": {
-            "description": "Opaque keyset token for the next page; empty on the last page.",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/Token"
             },
             "type": "array"
           },
@@ -1355,11 +1878,31 @@
         ],
         "type": "object"
       },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
       "Me": {
         "additionalProperties": false,
         "properties": {
           "csrf": {
             "type": "string"
+          },
+          "mustChangePassword": {
+            "description": "The local user must change the password (POST /auth/password) before using the API.",
+            "type": "boolean"
           },
           "permissions": {
             "additionalProperties": {
@@ -1375,6 +1918,7 @@
             "$ref": "#/components/schemas/MePrincipal"
           },
           "roles": {
+            "description": "Effective grants: role, or role@kind:name for scoped grants.",
             "items": {
               "type": "string"
             },
@@ -1587,6 +2131,24 @@
         "required": [
           "items",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "PasswordChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currentPassword": {
+            "description": "The current password.",
+            "type": "string"
+          },
+          "newPassword": {
+            "description": "The new password (at least 12 characters, different from the current one).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
         ],
         "type": "object"
       },
@@ -2179,6 +2741,232 @@
         ],
         "type": "object"
       },
+      "RoleBindingInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "managedBy": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The object name, or rbac.bindings[i] for config bindings.",
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/BindingScope"
+          },
+          "source": {
+            "enum": [
+              "config",
+              "object"
+            ],
+            "type": "string"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/BindingSubject"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "name",
+          "role",
+          "scope",
+          "subjects"
+        ],
+        "type": "object"
+      },
+      "SafeSearchEngine": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "description": "Addresses answered directly when the vendor documents an address instead of a host name.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "domains": {
+            "description": "Number of host names rewritten.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "list": {
+            "description": "The list name the query log records for its rewrites (safesearch:\u003cid\u003e).",
+            "type": "string"
+          },
+          "moderateTarget": {
+            "description": "CNAME target in moderate mode (safeSearchMode: moderate); empty when the engine has one level.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "description": "The vendor documentation the rewrite follows.",
+            "type": "string"
+          },
+          "target": {
+            "description": "CNAME target in strict mode.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "list",
+          "domains",
+          "source"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "builtinAdmin": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "tokens": {
+            "description": "Number of API tokens the account owns.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "disabled",
+          "builtinAdmin",
+          "tokens"
+        ],
+        "type": "object"
+      },
+      "SessionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "csrf": {
+            "description": "The X-Kudurru-CSRF value of the session.",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "End of the session lifetime.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "idleExpiresAt": {
+            "description": "End of the session if idle.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "mustChangePassword": {
+            "description": "Every route but the self-service ones answers 403 password_change_required until POST /auth/password.",
+            "type": "boolean"
+          },
+          "permissions": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "principal": {
+            "$ref": "#/components/schemas/SessionPrincipal"
+          },
+          "roles": {
+            "description": "Effective grants: role, or role@kind:name for scoped grants.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scopedPermissions": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "nullable": true,
+                "type": "array"
+              },
+              "type": "object"
+            },
+            "description": "Verbs per resource for each scoped grant, keyed by scope (zone:home-example-com).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "principal",
+          "roles",
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "SessionPrincipal": {
+        "additionalProperties": false,
+        "properties": {
+          "authMethod": {
+            "description": "cookie, token, jwt, k8s, ...",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "User, ServiceAccount, KubernetesServiceAccount, LocalRoot or Node.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "description": "local, or the identity provider id.",
+            "type": "string"
+          },
+          "tokenID": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "groups"
+        ],
+        "type": "object"
+      },
       "SetBlockingInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2587,15 +3375,20 @@
         ],
         "type": "object"
       },
-      "Token": {
+      "TokenInfo": {
         "additionalProperties": false,
         "properties": {
           "createdAt": {
             "format": "date-time",
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
           "expiresAt": {
+            "description": "null: the token never expires.",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -2605,15 +3398,56 @@
             "format": "date-time",
             "type": "string"
           },
-          "name": {
+          "lastUsedIP": {
             "type": "string"
           },
-          "token": {
-            "type": "string"
+          "owner": {
+            "$ref": "#/components/schemas/TokenOwner"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
           }
         },
         "required": [
           "id",
+          "owner",
+          "createdAt",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "TokenOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The owner's principal id (local:alice, oidc:...).",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "User",
+              "ServiceAccount"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "description": "The service account's namespace.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "local, or the identity provider id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
           "name"
         ],
         "type": "object"
@@ -2709,6 +3543,11 @@
             "type": "string"
           },
           "key": {
+            "type": "string"
+          },
+          "last_seen": {
+            "description": "Clients only: the newest query from the client on this node (hour precision once its query rows aged out).",
+            "format": "date-time",
             "type": "string"
           },
           "name": {
@@ -3301,10 +4140,37 @@
             }
           },
           {
+            "description": "cursor_next (or continue) of the previous page, read with the same order.",
             "explode": false,
             "in": "query",
             "name": "cursor",
             "schema": {
+              "description": "cursor_next (or continue) of the previous page, read with the same order.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as cursor.",
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "description": "Same as cursor.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "asc: oldest first (the default); desc: newest first.",
+            "explode": false,
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "asc: oldest first (the default); desc: newest first.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           }
@@ -3391,7 +4257,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Audit events of this node (oldest first)",
+        "summary": "Audit events of this node (oldest first; order=desc for newest first)",
         "tags": [
           "audit"
         ],
@@ -3456,10 +4322,37 @@
             }
           },
           {
+            "description": "cursor_next (or continue) of the previous page, read with the same order.",
             "explode": false,
             "in": "query",
             "name": "cursor",
             "schema": {
+              "description": "cursor_next (or continue) of the previous page, read with the same order.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as cursor.",
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "description": "Same as cursor.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "asc: oldest first (the default); desc: newest first.",
+            "explode": false,
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "asc: oldest first (the default); desc: newest first.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           }
@@ -3565,9 +4458,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "format": "binary",
-                "type": "string",
-                "x-contentMediaType": "application/octet-stream"
+                "$ref": "#/components/schemas/LoginRequest"
               }
             }
           },
@@ -3578,7 +4469,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Me"
+                  "$ref": "#/components/schemas/SessionInfo"
                 }
               }
             },
@@ -3899,6 +4790,14 @@
         "operationId": "oidcStart",
         "parameters": [
           {
+            "description": "Same-origin path to return to after the login.",
+            "in": "query",
+            "name": "next",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "path",
             "name": "idp",
             "required": true,
@@ -3966,17 +4865,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "format": "binary",
-                "type": "string",
-                "x-contentMediaType": "application/octet-stream"
+                "$ref": "#/components/schemas/PasswordChangeRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            },
+            "description": "OK"
           },
           "400": {
             "content": {
@@ -4059,7 +4963,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Change the local user's own password",
+        "summary": "Change the local user's own password (a cookie session gets a new cookie)",
         "tags": [
           "auth"
         ],
@@ -4131,12 +5035,22 @@
     "/auth/tokens": {
       "get": {
         "operationId": "listTokens",
+        "parameters": [
+          {
+            "description": "true lists every owner's tokens (needs tokens.read).",
+            "in": "query",
+            "name": "all",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListToken"
+                  "$ref": "#/components/schemas/AuthListTokenInfo"
                 }
               }
             },
@@ -4215,9 +5129,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "format": "binary",
-                "type": "string",
-                "x-contentMediaType": "application/octet-stream"
+                "$ref": "#/components/schemas/CreateTokenRequest"
               }
             }
           },
@@ -4228,7 +5140,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Token"
+                  "$ref": "#/components/schemas/CreatedToken"
                 }
               }
             },
@@ -4420,7 +5332,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Revoke one own API token",
+        "summary": "Revoke one API token (someone else's needs tokens.delete)",
         "tags": [
           "auth"
         ],
@@ -4443,7 +5355,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Token"
+                  "$ref": "#/components/schemas/TokenInfo"
                 }
               }
             },
@@ -4510,7 +5422,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Get one own API token",
+        "summary": "Get one API token (someone else's needs tokens.read)",
         "tags": [
           "auth"
         ],
@@ -5698,6 +6610,286 @@
           "resource": "cache",
           "scope": "cluster",
           "verb": "flush"
+        }
+      }
+    },
+    "/catalogue": {
+      "get": {
+        "operationId": "getCatalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "The blocked-services and safe-search catalogue in service",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/catalogue/safesearch": {
+      "get": {
+        "operationId": "listCatalogueSafeSearch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSafeSearchEngine"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Search engines Policy.spec.safeSearch rewrites",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/catalogue/services": {
+      "get": {
+        "operationId": "listCatalogueServices",
+        "parameters": [
+          {
+            "description": "Only services of this category.",
+            "explode": false,
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "description": "Only services of this category.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCatalogueService"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Services Policy.spec.blockedServices can block",
+        "tags": [
+          "catalogue"
+        ],
+        "x-kudurru-permission": {
+          "resource": "policies",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },
@@ -7636,7 +8828,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IAMList"
+                  "$ref": "#/components/schemas/AuthListIdentityProviderInfo"
                 }
               }
             },
@@ -7722,7 +8914,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IAMList"
+                  "$ref": "#/components/schemas/AuthListRoleBindingInfo"
                 }
               }
             },
@@ -7808,7 +9000,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IAMList"
+                  "$ref": "#/components/schemas/AuthListServiceAccountInfo"
                 }
               }
             },
@@ -7894,7 +9086,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IAMList"
+                  "$ref": "#/components/schemas/AuthListIAMUser"
                 }
               }
             },

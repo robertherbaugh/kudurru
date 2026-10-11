@@ -16,7 +16,8 @@ import { createContext, useContext, useId, useState, type FormEvent, type ReactN
 interface FrameContext {
   title: ReactNode;
   subtitle?: ReactNode;
-  onClose: () => void;
+  /** Unset for a dialog that cannot be dismissed (no close button). */
+  onClose?: () => void;
   markDirty: () => void;
 }
 
@@ -39,10 +40,15 @@ export interface FormDialogProps {
   /** Wraps header, body and footer in a <form> (Enter submits). */
   onSubmit?: () => void;
   noValidate?: boolean;
+  /**
+   * False for a mandatory step (a forced password change): no close
+   * button, Escape and the backdrop do nothing, only the footer acts.
+   */
+  isDismissable?: boolean;
   children: ReactNode;
 }
 
-export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, footer, onSubmit, noValidate, children }: FormDialogProps) {
+export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, footer, onSubmit, noValidate, isDismissable = true, children }: FormDialogProps) {
   const [dirty, setDirty] = useState(false);
   // Every opening starts pristine (state adjusted during render, not in an effect).
   const [wasOpen, setWasOpen] = useState(isOpen);
@@ -54,15 +60,15 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
   // already rendered when the <dialog> mounts, and most dialogs mount
   // closed with their content not rendered yet.
   const titleId = useId();
-  const ctx: FrameContext = { title: <span id={titleId}>{title}</span>, subtitle, onClose, markDirty: () => setDirty(true) };
+  const ctx: FrameContext = { title: <span id={titleId}>{title}</span>, subtitle, onClose: isDismissable ? onClose : undefined, markDirty: () => setDirty(true) };
   const own = footer !== undefined || onSubmit !== undefined;
   return (
     <Dialog
       isOpen={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && isDismissable) onClose();
       }}
-      purpose={dirty ? 'form' : 'info'}
+      purpose={!isDismissable ? 'required' : dirty ? 'form' : 'info'}
       width={width}
       maxHeight="90dvh"
       aria-labelledby={titleId}
@@ -120,7 +126,14 @@ export function DialogForm({ onSubmit, noValidate, footer, className, children, 
   }
   const layout = (
     <Layout
-      header={<DialogHeader title={frame.title} subtitle={frame.subtitle} onOpenChange={(open) => !open && frame.onClose()} hasDivider />}
+      header={
+        <DialogHeader
+          title={frame.title}
+          subtitle={frame.subtitle}
+          onOpenChange={frame.onClose ? (open) => !open && frame.onClose?.() : undefined}
+          hasDivider
+        />
+      }
       content={
         <LayoutContent>
           <div className={className ?? 'k-stack-lg'}>{children}</div>

@@ -46,11 +46,29 @@ describe('App', () => {
     expect(nav).toBeDefined();
   });
 
+  it.each(ROUTES.filter((r) => !r.hidden).map((r) => [r.path] as const))('shows no undefined, NaN or object text on %s', async (path) => {
+    signIn('admin');
+    renderApp(path);
+    await screen.findByRole('heading', { level: 1 }, { timeout: 5000 });
+    // Let the page's queries settle, then read every text node.
+    await waitFor(() => expect(document.querySelector('[role="status"][aria-live="polite"] .astryx-spinner')).toBeNull(), { timeout: 5000 }).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(document.body.textContent).not.toMatch(/\bundefined\b|\bNaN\b|\[object Object\]/);
+  });
+
   it('renders a zone with its records', async () => {
     signIn('admin');
     renderApp('/zones/home-arpa');
     expect(await screen.findByRole('heading', { level: 1, name: 'home.arpa.' })).toBeInTheDocument();
     expect(await screen.findByRole('table', { name: 'Records of home.arpa.' })).toBeInTheDocument();
+  });
+
+  it('signs out back to the login page', async () => {
+    signIn('admin');
+    renderApp('/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
 
   it('shows a not-found page for unknown routes', async () => {

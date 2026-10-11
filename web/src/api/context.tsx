@@ -125,8 +125,11 @@ export function useSignOut(): () => Promise<void> {
       await api.auth.logout();
     } finally {
       setCsrf(undefined);
-      qc.clear();
+      // Signed out first, so the session gate renders the login page; then
+      // drop every other cached answer. qc.clear() would also remove the
+      // null session and leave the gate on stale data.
       qc.setQueryData(qk.me, null);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
     }
   }, [api, qc, setCsrf]);
 }

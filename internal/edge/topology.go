@@ -425,7 +425,7 @@ func (t *Topology) Validate() error {
 		add("no binds")
 	}
 	for _, b := range t.Binds {
-		if err := validHostPort(b.Address); err != nil {
+		if err := validAddrPort(b.Address); err != nil {
 			add("bind %s: %v", b.Address, err)
 		}
 		if _, err := ParseProtocol(string(b.Protocol)); err != nil {
@@ -585,7 +585,18 @@ func safeValue(s string) bool {
 	return true
 }
 
+// validHostPort checks a backend's host:port. The host is an IP address
+// (netip; not unspecified, an IPv6 zone must be an interface name) or a
+// host name: nothing else may reach the rendered configuration (a newline
+// would end a Lua comment), and a bracketed or all-numeric name such as
+// "[0]:1" is neither.
 func validHostPort(s string) error {
+	if ap, err := netip.ParseAddrPort(s); err == nil {
+		if ap.Addr().IsUnspecified() {
+			return errors.New("the unspecified address")
+		}
+		return validAddrPort(s)
+	}
 	host, port, err := net.SplitHostPort(s)
 	if err != nil {
 		return err
@@ -593,13 +604,49 @@ func validHostPort(s string) error {
 	if host == "" {
 		return errors.New("empty host")
 	}
-	// The host is an IP address or a DNS name: nothing else may reach the
-	// rendered configuration (a newline would end a Lua comment).
-	if _, err := netip.ParseAddr(host); err != nil && !safeName(host) {
-		return fmt.Errorf("host %q is neither an IP address nor a DNS name", host)
+	if strings.HasPrefix(s, "[") || !hostName(host) {
+		return fmt.Errorf("host %q is neither an IP address nor a host name", host)
 	}
 	if p, err := strconv.Atoi(port); err != nil || p <= 0 || p > 65535 {
 		return fmt.Errorf("invalid port %q", port)
+	}
+	return nil
+}
+
+// hostName reports whether s is a host name (RFC 1123): dot-separated
+// labels of 1-63 letters, digits and inner hyphens, at most 253
+// characters, the last label not all digits (so it is no IPv4 shorthand).
+func hostName(s string) bool {
+	s = strings.TrimSuffix(s, ".")
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	labels := strings.Split(s, ".")
+	for _, l := range labels {
+		if l == "" || len(l) > 63 || l[0] == '-' || l[len(l)-1] == '-' {
+			return false
+		}
+		for _, c := range l {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' {
+				return false
+			}
+		}
+	}
+	return strings.Trim(labels[len(labels)-1], "0123456789") != ""
+}
+
+// validAddrPort checks the ip:port of a bind: dnsdist binds to addresses,
+// not names, and an IPv6 zone must be an interface name.
+func validAddrPort(s string) error {
+	ap, err := netip.ParseAddrPort(s)
+	if err != nil {
+		return err
+	}
+	if ap.Port() == 0 {
+		return errors.New("port 0")
+	}
+	if z := ap.Addr().Zone(); !safeName(z) {
+		return fmt.Errorf("zone %q is not an interface name", z)
 	}
 	return nil
 }

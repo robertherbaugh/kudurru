@@ -118,11 +118,17 @@ type Query struct {
 	Since time.Time
 	// AfterID is the keyset cursor: events with ID > AfterID.
 	AfterID int64
+	// BeforeID, when positive, is the keyset cursor of a Desc page:
+	// events with ID < BeforeID.
+	BeforeID int64
 	// Limit bounds the page; default 100, maximum 1000.
 	Limit int
+	// Desc reads newest first.
+	Desc bool
 }
 
-// Reader reads stored events back, oldest first.
+// Reader reads stored events back, oldest first (newest first with
+// Query.Desc).
 type Reader interface {
 	Read(ctx context.Context, q Query) ([]Event, error)
 }
@@ -239,7 +245,11 @@ func (m *Memory) Read(_ context.Context, q Query) ([]Event, error) {
 	defer m.mu.Unlock()
 	limit := clampLimit(q.Limit)
 	out := []Event{}
-	for _, ev := range m.events {
+	for i := range m.events {
+		ev := m.events[i]
+		if q.Desc {
+			ev = m.events[len(m.events)-1-i]
+		}
 		if !q.match(ev) {
 			continue
 		}
@@ -261,6 +271,8 @@ func (m *Memory) Events() []Event {
 func (q Query) match(ev Event) bool {
 	switch {
 	case ev.ID <= q.AfterID:
+		return false
+	case q.BeforeID > 0 && ev.ID >= q.BeforeID:
 		return false
 	case q.Kind != "" && ev.Resource.Kind != q.Kind:
 		return false

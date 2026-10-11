@@ -4,7 +4,7 @@ import { cleanSpec, validateFields } from '../components/ObjectForm';
 import { mockDB } from '../mocks/handlers';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { renderWithApp } from '../test/utils';
-import ListsPage from './ListsPage';
+import ListsPage, { inlineOnly } from './ListsPage';
 
 /** Clicks a button once the session has loaded and enabled it. */
 async function clickWhenEnabled(name: string): Promise<void> {
@@ -22,6 +22,14 @@ describe('ListsPage', () => {
     expect(within(screen.getByTestId('row-oisd-small')).getByText('unavailable, cached')).toBeInTheDocument();
     expect(within(screen.getByTestId('row-ui-deny')).getByText('invalid')).toBeInTheDocument();
     expect(within(screen.getByTestId('row-starter')).getByText('OK')).toBeInTheDocument();
+  });
+
+  it('says "inline" under Updated for lists without anything to fetch', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const starter = await screen.findByTestId('row-starter');
+    expect(within(starter).getByText('inline')).toBeInTheDocument();
+    expect(inlineOnly([{ inline: ['a.example'] }])).toBe(true);
+    expect(inlineOnly([{ inline: ['a.example'] }, { url: 'https://x/y' }])).toBe(false);
   });
 
   it('opens a file-managed list read-only with its owner', async () => {

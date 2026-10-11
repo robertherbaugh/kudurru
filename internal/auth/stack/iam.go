@@ -166,22 +166,40 @@ func (s *Stack) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, CreatedToken{TokenInfo: tokenInfo(tok), Token: wire})
 }
 
-func (s *Stack) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
+// tokenFor returns the token id of the request path when the caller owns
+// it or holds verb on tokens. Someone else's token without the permission
+// is reported missing, not forbidden (no existence oracle).
+func (s *Stack) tokenFor(r *http.Request, verb string) (*internalv1.APIToken, *auth.Error) {
 	p, _ := auth.PrincipalFrom(r.Context())
 	id := r.PathValue("id")
-	tok, ok := s.tokens.Get(id)
 	notFound := &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "no token " + id}
+	tok, ok := s.tokens.Get(id)
 	if !ok {
-		writeErr(w, r, notFound)
-		return
+		return nil, notFound
 	}
 	if own := ownerID(p); own == "" || tok.Spec.Owner.ID != own {
-		// Someone else's token: needs tokens.delete; without it the token
-		// is reported missing, not forbidden (no existence oracle).
-		if d, err := s.engine.Authorize(r.Context(), auth.RBACPrincipal(p), rbac.Attributes{Resource: "tokens", Verb: "delete", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}); err != nil || !d.Allowed {
-			writeErr(w, r, notFound)
-			return
+		if d, err := s.engine.Authorize(r.Context(), auth.RBACPrincipal(p), rbac.Attributes{Resource: "tokens", Verb: verb, Scope: rbac.Scope{Kind: rbac.ScopeCluster}}); err != nil || !d.Allowed {
+			return nil, notFound
 		}
+	}
+	return tok, nil
+}
+
+func (s *Stack) handleGetToken(w http.ResponseWriter, r *http.Request) {
+	tok, e := s.tokenFor(r, "read")
+	if e != nil {
+		writeErr(w, r, e)
+		return
+	}
+	writeJSON(w, http.StatusOK, tokenInfo(tok))
+}
+
+func (s *Stack) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	notFound := &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "no token " + id}
+	if _, e := s.tokenFor(r, "delete"); e != nil {
+		writeErr(w, r, e)
+		return
 	}
 	if err := s.tokens.Revoke(r.Context(), id); err != nil {
 		if errors.Is(err, tokens.ErrNotFound) {

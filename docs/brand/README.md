@@ -32,7 +32,7 @@ All production files use lowercase kebab-case names under [assets/](assets/). Th
 | [kudurru-social.png](assets/kudurru-social.png) | 1200 × 630, opaque PNG | Repository social preview |
 | [kudurru-brand-sheet.png](assets/kudurru-brand-sheet.png) | 1440 × 1240, opaque PNG | Quick visual reference |
 
-The social card is available for upload to repository settings; it has not been published there. App icons are ready for the future frontend, which has not started yet.
+The social card is available for upload to repository settings; it has not been published there. The dashboard (`web/`, React + Astryx, D69) exists since milestone M3; the v0.1 fix round applies this brand to it: the tokens in `tokens.css`/`tokens.json`, the favicon and the app icons.
 
 ## Identity and copy
 

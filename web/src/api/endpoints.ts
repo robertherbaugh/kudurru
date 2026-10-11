@@ -4,12 +4,14 @@ import type { ApiClient, Query } from './client';
 import type {
   ApiToken,
   ApplyResult,
-  AuditEntry,
+  AuditPage,
+  AuditQuery,
   AuthStatus,
   BlockingState,
-  ClientInventoryItem,
+  ClientItem,
   ClientTimeseries,
   ClusterInfo,
+  CreateTokenRequest,
   EdgeInfo,
   CreatedToken,
   DiagnosisMessage,
@@ -17,16 +19,20 @@ import type {
   DnsQueryRequest,
   DnsQueryResult,
   ListEnvelope,
+  IamList,
   Me,
   NodeHealth,
   NodeInfo,
   ObjectKind,
+  PasswordChangeRequest,
   Processed,
+  PurgeResult,
   QueriesPage,
   QueryFilter,
   QuerylogStatus,
   RecentBlocked,
   SettingKey,
+  SettingsBody,
   SuggestionField,
   Suggestions,
   Summary,
@@ -46,6 +52,7 @@ import type {
   ZoneImportResult,
   ListSearchHit,
 } from './types';
+import type { CatalogueInfo, CatalogueService, SafeSearchEngine } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -83,7 +90,9 @@ export function endpoints(c: ApiClient) {
       logout: () => c.post<void>('/auth/logout'),
       oidcStartURL: (idp: string, next: string) => c.url(`/auth/oidc/${enc(idp)}/start`, { next }),
       tokens: () => c.get<ListEnvelope<ApiToken>>('/auth/tokens'),
-      createToken: (name: string, expiresIn?: string) => c.post<CreatedToken>('/auth/tokens', { name, expiresIn }),
+      createToken: (req: CreateTokenRequest) => c.post<CreatedToken>('/auth/tokens', req),
+      /** Answers the refreshed session (a new CSRF token); every other session of the user is revoked. */
+      changePassword: (req: PasswordChangeRequest) => c.post<Me | undefined>('/auth/password', req),
       deleteToken: (id: string) => c.delete(`/auth/tokens/${enc(id)}`),
     },
 
@@ -112,12 +121,14 @@ export function endpoints(c: ApiClient) {
       records: (zone: string) => c.get<ListEnvelope<ZoneRecord>>(`/zones/${enc(zone)}/records`),
       upsertRecord: (zone: string, ep: Endpoint, recordSet?: string) =>
         c.post<ZoneRecord>(`/zones/${enc(zone)}/records`, ep, recordSet ? { recordSet } : undefined),
-      deleteRecord: (zone: string, name: string, type: string, recordSet?: string) =>
-        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, recordSet ? { recordSet } : undefined),
-      importBind: (zone: string, text: string) =>
+      deleteRecord: (zone: string, name: string, type: string, recordSet?: string, setIdentifier?: string) =>
+        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, { recordSet, setIdentifier }),
+      /** Imports a BIND file; `origin` creates the zone when it does not exist yet. */
+      importBind: (zone: string, text: string, origin?: string) =>
         c.request<ZoneImportResult>('POST', `/zones/${enc(zone)}/import`, {
           text,
           contentType: 'text/dns',
+          query: origin ? { origin } : undefined,
         }),
       exportURL: (zone: string) => c.url(`/zones/${enc(zone)}/export`),
       exportText: (zone: string) => c.request<string>('GET', `/zones/${enc(zone)}/export`, { asText: true, headers: { Accept: 'text/dns' } }),
@@ -132,7 +143,7 @@ export function endpoints(c: ApiClient) {
     },
 
     clients: {
-      inventory: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientInventoryItem>>('/clients', q),
+      list: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientItem>>('/clients', q),
     },
 
     runtime: {
@@ -163,15 +174,15 @@ export function endpoints(c: ApiClient) {
         c.get<Suggestions>('/queries/suggestions', { field, prefix }, signal),
       streamURL: (s: ScopeParams, f: QueryFilter) => c.url('/queries/stream', { ...scopeQuery(s), ...(f as Query) }),
       action: (id: number, action: 'allow' | 'deny') => c.post<Processed>(`/queries/${id}/actions`, { action }),
-      purge: (before?: string) => c.delete('/querylog', before ? { before } : undefined),
+      purge: (before?: string) => c.delete<PurgeResult>('/querylog', before ? { before } : undefined),
       status: () => c.get<QuerylogStatus>('/querylog/status'),
     },
 
     settings: {
-      get: () => c.get<Record<string, unknown>>('/settings'),
-      patch: (patch: Record<string, unknown>) => c.patch<Record<string, unknown>>('/settings', patch),
-      nodeConfig: () => c.get<Record<string, unknown>>('/node/config'),
-      patchNodeConfig: (patch: Record<string, unknown>) => c.patch<Record<string, unknown>>('/node/config', patch),
+      get: () => c.get<SettingsBody>('/settings'),
+      patch: (patch: Record<string, unknown>) => c.patch<SettingsBody>('/settings', patch),
+      nodeConfig: () => c.get<SettingsBody>('/node/config'),
+      patchNodeConfig: (patch: Record<string, unknown>) => c.patch<SettingsBody>('/node/config', patch),
       schema: () => c.get<ListEnvelope<SettingKey>>('/settings/_schema'),
     },
 
@@ -186,16 +197,23 @@ export function endpoints(c: ApiClient) {
     },
 
     iam: {
-      users: () => c.get<ListEnvelope<IamUser>>('/iam/users'),
-      serviceAccounts: () => c.get<ListEnvelope<IamServiceAccount>>('/iam/serviceaccounts'),
-      roleBindings: () => c.get<ListEnvelope<IamRoleBinding>>('/iam/rolebindings'),
-      identityProviders: () => c.get<ListEnvelope<IamIdentityProvider>>('/iam/identityproviders'),
+      users: () => c.get<IamList<IamUser>>('/iam/users'),
+      serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
+      roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),
+      identityProviders: () => c.get<IamList<IamIdentityProvider>>('/iam/identityproviders'),
     },
 
     audit: {
-      list: (q: { kind?: string; name?: string; actor?: string; since?: string; limit?: number; cursor?: string }) =>
-        c.get<ListEnvelope<AuditEntry> & { cursor_next?: string }>('/audit', q),
+      /** The page token goes out as `cursor` (and as `continue`, the list-envelope name). */
+      list: ({ cursor, ...q }: AuditQuery) => c.get<AuditPage>('/audit', { ...q, cursor, continue: cursor }),
       exportURL: () => c.url('/audit/export'),
+    },
+
+    // Blocked-services and safe-search catalogue (D60).
+    catalogue: {
+      info: () => c.get<CatalogueInfo>('/catalogue'),
+      services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
+      safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
     },
   };
 }
