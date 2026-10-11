@@ -378,7 +378,8 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 		if mode == "" {
 			mode = v1alpha1.ListMode(blocking.ModeBlock)
 		}
-		// Inline: every enabled source is inline (disabled ones contribute
+		// Inline: every enabled source is inline or structured entries
+		// (disabled ones contribute
 		// nothing to the compiled list).
 		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response}
 		for i := range bl.Spec.Sources {
@@ -386,7 +387,7 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 			if !s.IsEnabled() {
 				continue
 			}
-			if len(s.Inline) == 0 {
+			if len(s.Inline) == 0 && len(s.Entries) == 0 {
 				info.Inline = false
 				break
 			}

@@ -51,7 +51,12 @@ type Source struct {
 	// HostsSubdomains makes hosts and plain-domain entries of this source
 	// match subdomains too (see parser.Options).
 	HostsSubdomains bool
-	Open            func() (io.ReadCloser, error)
+	// Exclude holds rules of this source, as Rule.String renders them
+	// ("ads.example.com", "||ads.example.com^", "/re/"), that are not
+	// compiled: the entries a user switched off
+	// (spec.sources[].exclude).
+	Exclude []string
+	Open    func() (io.ReadCloser, error)
 }
 
 // BytesSource is a Source over an in-memory body.
@@ -132,6 +137,12 @@ type SourceStats struct {
 	Unsupported        int
 	Invalid            int
 	Ignored            int
+	// Excluded counts the rules Source.Exclude switched off; they are not
+	// in Rules.
+	Excluded int
+	// StaleExcludes are the Source.Exclude values that matched no rule
+	// (sorted, at most MaxStaleExcludes).
+	StaleExcludes      []string
 	UnsupportedReasons map[string]int
 	InvalidReasons     map[string]int
 	InvalidSamples     []parser.Diagnostic
@@ -300,7 +311,7 @@ func fingerprint(spec *Spec, regexCap int) (uint32, error) {
 		if format == "" {
 			format = parser.FormatAuto
 		}
-		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00", src.Name, format, src.HostsSubdomains, crc)
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, crc, ExcludeDigest(src.Exclude))
 	}
 	return h.Sum32(), nil
 }
@@ -353,10 +364,25 @@ func (c *compiler) source(src Source) (SourceStats, error) {
 		return st, err
 	}
 	defer func() { _ = rc.Close() }()
-	res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains}, c.add)
+	emit := c.add
+	ex := newExcluder(src.Exclude)
+	if ex != nil {
+		emit = func(r parser.Rule) error {
+			if ex.excluded(r) {
+				return nil
+			}
+			return c.add(r)
+		}
+	}
+	res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains}, emit)
 	if err != nil {
 		st.Err = err
 		return st, err
+	}
+	if ex != nil {
+		res.Rules -= ex.count
+		res.Exceptions -= ex.exceptions
+		st.Excluded, st.StaleExcludes = ex.count, ex.stale()
 	}
 	st.Format, st.Title, st.CRC32 = res.Format, res.Title, res.CRC32
 	st.Lines, st.Rules, st.Exceptions = res.Lines, res.Rules, res.Exceptions

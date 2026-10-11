@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -32,9 +33,10 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 	for i, src := range spec.Sources {
 		sname := SourceName(i, src)
 		format := parser.Format(src.Format)
-		if len(src.Inline) > 0 {
-			s := LinesSource(sname, format, src.Inline)
-			s.HostsSubdomains = src.Subdomains
+		if lines, f, exclude, ok := InlineLines(src); ok {
+			s := LinesSource(sname, f, lines)
+			s.HostsSubdomains = src.Subdomains && len(src.Entries) == 0
+			s.Exclude = exclude
 			out.Sources = append(out.Sources, s)
 			continue
 		}
@@ -45,9 +47,34 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 		if err != nil {
 			return Spec{}, fmt.Errorf("blocking: list %q source %q: %w", name, sname, err)
 		}
-		out.Sources = append(out.Sources, Source{Name: sname, Format: format, HostsSubdomains: src.Subdomains, Open: fn})
+		out.Sources = append(out.Sources, Source{Name: sname, Format: format, HostsSubdomains: src.Subdomains, Exclude: src.Exclude, Open: fn})
 	}
 	return out, nil
+}
+
+// InlineLines returns what a source kept in the object compiles from: its
+// inline lines in its own format, or, for structured entries, their rules
+// (v1alpha1.EntryRule) in the adblock format. exclude is
+// spec.sources[].exclude plus the rules of entries switched off. ok is
+// false for URL and ConfigMap sources, whose body is fetched.
+func InlineLines(src v1alpha1.ListSource) (lines []string, format parser.Format, exclude []string, ok bool) {
+	switch {
+	case len(src.Entries) > 0:
+		lines = make([]string, 0, len(src.Entries))
+		exclude = slices.Clone(src.Exclude)
+		for i := range src.Entries {
+			e := &src.Entries[i]
+			r := v1alpha1.EntryRule(e.Type, e.Value)
+			lines = append(lines, r)
+			if !e.IsEnabled() {
+				exclude = append(exclude, r)
+			}
+		}
+		return lines, parser.FormatAdblock, exclude, true
+	case src.URL != "" || src.ConfigMapRef != nil:
+		return nil, "", nil, false
+	}
+	return src.Inline, parser.Format(src.Format), src.Exclude, true
 }
 
 // SourceName is the name a source carries in compile statistics and in

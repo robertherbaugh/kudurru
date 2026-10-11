@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -77,7 +76,13 @@ type sourceState struct {
 type listStats struct {
 	fp                                     string
 	entries, ruleCount, inval, unsupported int
-	perSource                              map[string][2]int // name -> {rules, invalid}
+	perSource                              map[string]sourceCounts
+}
+
+// sourceCounts are the per-source counts of status.sources[].
+type sourceCounts struct {
+	rules, invalid, excluded int
+	stale                    []string
 }
 
 // Fetcher is the leader-only runnable that downloads every BlockList
@@ -437,9 +442,7 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 		ss := v1alpha1.SourceStatus{Name: ps.name}
 		if ps.key == "" {
 			ss.Digest = inlineDigest(ps.inline)
-			src := blocking.LinesSource(ps.name, ps.format, ps.inline)
-			src.HostsSubdomains = ps.subdomains
-			spec.Sources = append(spec.Sources, src)
+			spec.Sources = append(spec.Sources, ps.compileSource())
 		} else {
 			st := f.state[ps.key]
 			switch {
@@ -463,7 +466,7 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 				stale = true
 			}
 		}
-		fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
+		fp.add(ps.fp(ss.Digest)...)
 		owned.Sources = append(owned.Sources, ss)
 		if ss.LastFetched != nil && (owned.LastFetched == nil || ss.LastFetched.After(owned.LastFetched.Time)) {
 			owned.LastFetched = ss.LastFetched.DeepCopy()
@@ -479,7 +482,8 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 	owned.Entries, owned.RuleCount, owned.Invalid, owned.Unsupported = stats.entries, stats.ruleCount, stats.inval, stats.unsupported
 	for i := range owned.Sources {
 		if c, ok := stats.perSource[owned.Sources[i].Name]; ok {
-			owned.Sources[i].Entries, owned.Sources[i].Invalid = c[0], c[1]
+			ss := &owned.Sources[i]
+			ss.Entries, ss.Invalid, ss.Excluded, ss.StaleExcludes = c.rules, c.invalid, c.excluded, c.stale
 		}
 	}
 
@@ -517,7 +521,7 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 	if s, ok := statsFromStatus(pl, fp); ok {
 		return s, nil
 	}
-	out := listStats{fp: fp, perSource: map[string][2]int{}}
+	out := listStats{fp: fp, perSource: map[string]sourceCounts{}}
 	if len(spec.Sources) == 0 {
 		return out, nil
 	}
@@ -528,7 +532,7 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 	st := l.Stats()
 	out.entries, out.ruleCount, out.inval, out.unsupported = st.Entries, st.RuleCount, st.Invalid, st.Unsupported
 	for _, s := range l.Sources() {
-		out.perSource[s.Name] = [2]int{s.Rules, s.Invalid}
+		out.perSource[s.Name] = sourceCounts{rules: s.Rules, invalid: s.Invalid, excluded: s.Excluded, stale: s.StaleExcludes}
 	}
 	return out, err
 }
@@ -542,19 +546,23 @@ func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
 	}
 	check := &fpBuilder{}
 	check.add(string(pl.mode))
-	out := listStats{fp: fp, entries: st.Entries, ruleCount: st.RuleCount, inval: st.Invalid, unsupported: st.Unsupported, perSource: map[string][2]int{}}
+	out := listStats{fp: fp, entries: st.Entries, ruleCount: st.RuleCount, inval: st.Invalid, unsupported: st.Unsupported, perSource: map[string]sourceCounts{}}
 	for i, ps := range pl.sources {
 		ss := st.Sources[i]
 		statusOff := ss.Enabled != nil && !*ss.Enabled
 		if ss.Name != ps.name || statusOff != ps.disabled {
 			return listStats{}, false
 		}
+		// The status does not record which exclusions its counts reflect.
+		if len(ps.exclude) > 0 || ss.Excluded != 0 || len(ss.StaleExcludes) > 0 {
+			return listStats{}, false
+		}
 		if ps.disabled {
 			check.add(ps.name, "disabled")
 		} else {
-			check.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), ss.Digest)
+			check.add(ps.fp(ss.Digest)...)
 		}
-		out.perSource[ss.Name] = [2]int{ss.Entries, ss.Invalid}
+		out.perSource[ss.Name] = sourceCounts{rules: ss.Entries, invalid: ss.Invalid, excluded: ss.Excluded, stale: ss.StaleExcludes}
 	}
 	if check.String() != fp {
 		return listStats{}, false

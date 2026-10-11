@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -361,11 +360,9 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			}
 			if ps.key == "" {
 				d := inlineDigest(ps.inline)
-				src := blocking.LinesSource(ps.name, ps.format, ps.inline)
-				src.HostsSubdomains = ps.subdomains
-				spec.Sources = append(spec.Sources, src)
+				spec.Sources = append(spec.Sources, ps.compileSource())
 				ls.Digests = append(ls.Digests, d)
-				fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), d)
+				fp.add(ps.fp(d)...)
 				continue
 			}
 			referenced[ps.key] = true
@@ -393,7 +390,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 					res.Waiting++
 					waiting = append(waiting, fmt.Sprintf("%s source %q: %s", pl.name, ps.name, r.waitReason(wanted, &leader)))
 				}
-				fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), "missing")
+				fp.add(ps.fp("missing")...)
 				continue
 			}
 			f, fe, err := r.opts.Cache.Open(ps.key)
@@ -407,7 +404,7 @@ func (r *Resolver) pass(ctx context.Context, offline bool) PassResult {
 			}
 			spec.Sources = append(spec.Sources, opened.fileSource(ps.name, ps, f, fe.Size))
 			ls.Digests = append(ls.Digests, fe.Digest)
-			fp.add(ps.name, string(ps.format), strconv.FormatBool(ps.subdomains), fe.Digest)
+			fp.add(ps.fp(fe.Digest)...)
 		}
 		if pl.allDisabled() {
 			// Loaded with 0 entries, so policies referencing it are not
