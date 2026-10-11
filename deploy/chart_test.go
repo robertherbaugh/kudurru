@@ -45,6 +45,9 @@ var chartCases = []chartCase{
 		if dig(r.pod(t), "spec", "dnsPolicy") != "Default" {
 			t.Errorf("dnsPolicy must be Default for the DNS server itself")
 		}
+		if dig(r.pod(t), "spec", "securityContext", "sysctls", 0, "name") != "net.ipv4.ip_unprivileged_port_start" {
+			t.Errorf("uid 65532 binding :53 needs the ip_unprivileged_port_start sysctl")
+		}
 	}},
 	{name: "standalone", values: "mode: standalone", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
 		r.wantStore(t, "sqlite")
@@ -157,6 +160,9 @@ var chartCases = []chartCase{
 		}
 		if dig(pod, "spec", "topologySpreadConstraints") != nil {
 			t.Errorf("a DaemonSet needs no topology spread")
+		}
+		if dig(pod, "spec", "securityContext", "sysctls") != nil {
+			t.Errorf("hostNetwork pods cannot set namespaced sysctls")
 		}
 	}},
 	{name: "host-network-standalone", values: "mode: standalone\nhostNetwork: {enabled: true}", wantKind: "StatefulSet"},

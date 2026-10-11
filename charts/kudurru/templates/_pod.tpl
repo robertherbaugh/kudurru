@@ -45,7 +45,13 @@ spec:
   {{- end }}
   terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
   securityContext:
-    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+    {{- $psc := deepCopy .Values.podSecurityContext }}
+    {{- if include "kudurru.lowPortSysctl" . }}
+    {{- /* Non-root processes get no ambient NET_BIND_SERVICE from Kubernetes;
+    the safe, namespaced sysctl lets uid 65532 bind :53/:443/:853. */}}
+    {{- $_ := set $psc "sysctls" (append ($psc.sysctls | default list) (dict "name" "net.ipv4.ip_unprivileged_port_start" "value" "0")) }}
+    {{- end }}
+    {{- toYaml $psc | nindent 4 }}
   containers:
     - name: kudurru
       image: {{ include "kudurru.image" . }}

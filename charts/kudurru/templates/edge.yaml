@@ -63,6 +63,12 @@ spec:
         fsGroup: 953
         seccompProfile:
           type: RuntimeDefault
+        {{- if ne $mode "daemonset" }}
+        # dnsdist (uid 953) binds :53 without file capabilities.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
+        {{- end }}
       containers:
         {{- include "kudurru.edge.container" (dict "root" . "sidecar" false) | nindent 8 }}
         {{- if $keepalived }}
