@@ -1,79 +1,90 @@
 {{- $svc := .Values.service.dns -}}
-{{- if $svc.splitProtocols }}
-{{- range $proto := list "udp" "tcp" }}
+{{- $s := .Values.service -}}
+{{- $edgeSeparate := include "kudurru.edge.separate" . -}}
+{{- $prefix := ternary "edge-" "" .Values.edge.enabled -}}
+{{- /* Service-level annotations: VIP provider and shared-IP for split Services. */ -}}
+{{- $ann := deepCopy ($svc.annotations | default dict) -}}
+{{- if eq .Values.vip.provider "kube-vip" -}}
+{{- $_ := set $ann "kube-vip.io/loadbalancerIPs" .Values.vip.address -}}
+{{- else if eq .Values.vip.provider "metallb" -}}
+{{- $_ := set $ann "metallb.io/loadBalancerIPs" .Values.vip.address -}}
+{{- if .Values.vip.metallbPool }}{{ $_ := set $ann "metallb.io/address-pool" .Values.vip.metallbPool }}{{ end -}}
+{{- end -}}
+{{- if $svc.splitProtocols -}}
+{{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
+{{- end -}}
+{{- /* Ports by protocol; the mixed Service carries both lists. */ -}}
+{{- $udp := list (dict "name" "dns-udp" "port" $svc.port "target" (printf "%sdns-udp" $prefix)) -}}
+{{- $tcp := list (dict "name" "dns-tcp" "port" $svc.port "target" (printf "%sdns-tcp" $prefix)) -}}
+{{- if $s.dot.enabled }}{{ $tcp = append $tcp (dict "name" "dot" "port" $s.dot.port "target" (printf "%sdot" $prefix)) }}{{ end -}}
+{{- if $s.doh.enabled }}{{ $tcp = append $tcp (dict "name" "doh" "port" $s.doh.port "target" (printf "%sdoh" $prefix)) }}{{ end -}}
+{{- if $s.doq.enabled }}{{ $udp = append $udp (dict "name" "doq" "port" $s.doq.port "target" (printf "%sdoq" $prefix)) }}{{ end -}}
+{{- if $s.doh3.enabled }}{{ $udp = append $udp (dict "name" "doh3" "port" $s.doh3.port "target" (printf "%sdoh3" $prefix)) }}{{ end -}}
+{{- $groups := list (dict "suffix" "dns" "udp" $udp "tcp" $tcp) -}}
+{{- if $svc.splitProtocols -}}
+{{- $groups = list (dict "suffix" "dns-udp" "udp" $udp "tcp" list) (dict "suffix" "dns-tcp" "udp" list "tcp" $tcp) -}}
+{{- end -}}
+{{- range $g := $groups }}
 ---
+# DNS clients. One mixed-protocol Service by default (GA since 1.26);
+# splitProtocols emits dns-udp and dns-tcp sharing one address.
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kudurru.fullname" $ }}-dns-{{ $proto }}
+  name: {{ include "kudurru.fullname" $ }}-{{ $g.suffix }}
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "kudurru.labels" $ | nindent 4 }}
-  annotations:
-    metallb.io/allow-shared-ip: {{ include "kudurru.fullname" $ | quote }}
-    {{- with $svc.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  type: {{ $svc.type }}
-  {{- if $svc.loadBalancerIP }}
-  loadBalancerIP: {{ $svc.loadBalancerIP }}
-  {{- end }}
-  {{- if $svc.loadBalancerClass }}
-  loadBalancerClass: {{ $svc.loadBalancerClass }}
-  {{- end }}
-  externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
-  ipFamilyPolicy: {{ $svc.ipFamilyPolicy }}
-  selector:
-    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
-  ports:
-    - name: dns-{{ $proto }}
-      port: {{ $svc.port }}
-      targetPort: dns-{{ $proto }}
-      protocol: {{ upper $proto }}
-{{- end }}
-{{- else }}
----
-# One mixed-protocol LoadBalancer Service (GA since Kubernetes 1.26).
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "kudurru.fullname" . }}-dns
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "kudurru.labels" . | nindent 4 }}
-  {{- with $svc.annotations }}
+    kudurru.io/service: {{ $g.suffix }}
+  {{- with $ann }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   type: {{ $svc.type }}
-  {{- if $svc.loadBalancerIP }}
+  {{- if and $svc.loadBalancerIP (eq $svc.type "LoadBalancer") }}
   loadBalancerIP: {{ $svc.loadBalancerIP }}
   {{- end }}
-  {{- if $svc.loadBalancerClass }}
+  {{- if and $svc.loadBalancerClass (eq $svc.type "LoadBalancer") }}
   loadBalancerClass: {{ $svc.loadBalancerClass }}
   {{- end }}
-  {{- if eq $svc.type "LoadBalancer" }}
+  {{- with $svc.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort") }}
   externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
   {{- end }}
   ipFamilyPolicy: {{ $svc.ipFamilyPolicy }}
+  {{- with $svc.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- if $svc.trafficDistribution }}
   trafficDistribution: {{ $svc.trafficDistribution }}
   {{- end }}
   selector:
-    {{- include "kudurru.selectorLabels" . | nindent 4 }}
+    {{- if $edgeSeparate }}
+    {{- include "kudurru.edge.selectorLabels" $ | nindent 4 }}
+    {{- else }}
+    {{- include "kudurru.selectorLabels" $ | nindent 4 }}
+    {{- end }}
   ports:
-    - name: dns-udp
-      port: {{ $svc.port }}
-      targetPort: dns-udp
+    {{- range $g.udp }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .target }}
       protocol: UDP
-    - name: dns-tcp
-      port: {{ $svc.port }}
-      targetPort: dns-tcp
+    {{- end }}
+    {{- range $g.tcp }}
+    - name: {{ .name }}
+      port: {{ .port }}
+      targetPort: {{ .target }}
       protocol: TCP
+    {{- end }}
 {{- end }}
 ---
+# API, UI and metrics (expose the API through the Ingress).
 apiVersion: v1
 kind: Service
 metadata:
@@ -81,6 +92,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
+    kudurru.io/service: api
+  {{- with .Values.service.api.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.api.type }}
   selector:
@@ -94,15 +110,24 @@ spec:
       port: 9153
       targetPort: metrics
       protocol: TCP
+    {{- if .Values.externalDNS.webhook.enabled }}
+    - name: webhook
+      port: {{ .Values.externalDNS.webhook.port }}
+      targetPort: webhook
+      protocol: TCP
+    {{- end }}
 ---
-# Headless: edge backends, IXFR between replicas, NOTIFY source.
+# Headless: edge backends (EndpointSlice), <pod>.<headless> for list pulls
+# from the leader over :8082, NOTIFY source. Not-ready pods are published so
+# the edge sees surge pods and peers can reach a starting leader.
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kudurru.fullname" . }}-headless
+  name: {{ include "kudurru.headlessName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
+    kudurru.io/service: headless
 spec:
   clusterIP: None
   publishNotReadyAddresses: {{ .Values.service.headless.publishNotReadyAddresses }}
@@ -110,10 +135,10 @@ spec:
     {{- include "kudurru.selectorLabels" . | nindent 4 }}
   ports:
     - name: dns-udp
-      port: {{ .Values.listen.port }}
+      port: {{ include "kudurru.dnsPort" . }}
       protocol: UDP
     - name: dns-tcp
-      port: {{ .Values.listen.port }}
+      port: {{ include "kudurru.dnsPort" . }}
       protocol: TCP
     - name: internal
       port: 8082
