@@ -141,7 +141,7 @@ func (f *edgeFlags) options() (edge.Options, error) {
 	o := edge.Options{
 		ServerID: f.serverID, Listen: f.listen,
 		PoolResolver: f.poolResolver, PoolAuthoritative: f.poolAuthoritative,
-		ResolverCacheSize: f.resolverCacheSize,
+		ResolverCacheSize:  f.resolverCacheSize,
 		AuthoritativeCache: f.authCache, AuthoritativeCacheTTL: f.authCacheTTL,
 		API: f.api, Console: f.console,
 		ACL: f.acl, TransferSources: f.transferSources, AuthoritativeZones: f.authZones,

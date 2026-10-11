@@ -43,6 +43,7 @@ func newRoot() *cobra.Command {
 		newDoctorCmd(&configPath),
 		newConfigCmd(&configPath),
 	)
+	root.AddCommand(newEdgeCmd(), newVIPCmd())
 	return root
 }
 
