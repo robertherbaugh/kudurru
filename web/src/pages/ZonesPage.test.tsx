@@ -5,6 +5,7 @@ import { mockDB } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
 import ZoneDetailPage from './ZoneDetailPage';
 import ZonesPage from './ZonesPage';
+import ZoneWizardPage from './ZoneWizardPage';
 
 const FILE = '$ORIGIN lab.example.\n@ 3600 IN SOA ns1 hostmaster 42 7200 3600 1209600 300\nwww 300 IN A 192.0.2.10\nmail 300 IN A 192.0.2.25\n';
 
@@ -43,15 +44,64 @@ describe('zone import', () => {
     expect(mockDB().zones.find((z) => z.metadata.name === 'lab.example')?.spec.zoneName).toBe('lab.example.');
   });
 
-  it('offers the configured upstream groups for a forward zone', async () => {
+  it('opens the new-zone wizard from the list', async () => {
     renderWithApp(<ZonesPage />, { route: '/zones' });
     const btn = await screen.findByRole('button', { name: 'New zone' });
     await waitFor(() => expect(btn.getAttribute('aria-disabled') !== 'true' && !btn.hasAttribute('disabled')).toBe(true));
     fireEvent.click(btn);
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Type' }), { target: { value: 'forward' } });
-    const sel = await within(dialog).findByRole('combobox', { name: /Upstream group/ });
-    const options = within(sel).getAllByRole('option').map((o) => o.textContent);
-    expect(options).toEqual(['Not set (default)', 'default', 'filtered']);
+    await waitFor(() => expect(window.location.pathname).toBe('/zones/new'));
+  });
+});
+
+describe('ZoneWizardPage', () => {
+  it('creates a forward zone with an upstream group picked from the configured ones', async () => {
+    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    fireEvent.click(await screen.findByRole('radio', { name: /^Forward/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
+    fireEvent.change(apex, { target: { value: 'bad..corp' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect((await screen.findAllByText('Empty label (two dots in a row)')).length).toBeGreaterThan(0);
+    fireEvent.change(apex, { target: { value: 'Corp.Example.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const sel = await screen.findByRole('combobox', { name: /Upstream group/ });
+    await waitFor(() => expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['Not set (default)', 'default', 'filtered']));
+    fireEvent.change(sel, { target: { value: 'filtered' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByTestId('zone-review')).toHaveTextContent('corp.example.');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'corp.example')?.spec).toEqual({ zoneName: 'corp.example.', type: 'forward', forward: { upstreamGroup: 'filtered' } }));
+    await waitFor(() => expect(window.location.pathname).toBe('/zones/corp.example'));
+  });
+
+  it('creates a primary zone with typed SOA timers and a query ACL', async () => {
+    renderWithApp(<ZoneWizardPage />, { route: '/zones/new' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    const apex = await screen.findByRole('textbox', { name: /^Zone name/ });
+    fireEvent.change(apex, { target: { value: 'example.internal' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('A zone example.internal exists')).toBeInTheDocument();
+    fireEvent.change(apex, { target: { value: 'lab.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Refresh' }), { target: { value: '7200' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Who may query' }), { target: { value: 'useNetworkACL' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('The ACL needs at least one entry for this access mode')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add entry' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Query ACL 1' }), { target: { value: '!192.168.1.66' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add entry' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Query ACL 2' }), { target: { value: '192.168.1.0/24' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Responsible mailbox/ }), { target: { value: 'hostmaster@lab.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByTestId('zone-review');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() =>
+      expect(mockDB().zones.find((z) => z.metadata.name === 'lab.example')?.spec).toEqual({
+        zoneName: 'lab.example.',
+        type: 'primary',
+        soa: { rname: 'hostmaster.lab.example.', refresh: 7200 },
+        policy: { queryAccess: 'useNetworkACL', queryACL: ['!192.168.1.66', '192.168.1.0/24'] },
+      }),
+    );
   });
 });

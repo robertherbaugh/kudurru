@@ -1,15 +1,12 @@
 // A Go duration (`10m`, `24h`) picked from presets, with "Custom…" for
 // anything else. Values are kept in the API's form; presets are matched by
 // their parsed length so "10m0s" (what GET /settings answers) selects the
-// "10 minutes" preset.
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useState } from 'react';
+// "10 minutes" preset. The settings schema's `presets` (C1) become options
+// through durationPresets().
 import { parseDuration } from '../../lib/format';
+import { PresetField, type Preset } from './PresetField';
 
-export interface DurationPreset {
-  value: string;
-  label: string;
-}
+export type DurationPreset = Preset;
 
 export const DURATION_PRESETS: DurationPreset[] = [
   { value: '30s', label: '30 seconds' },
@@ -25,76 +22,82 @@ export const DURATION_PRESETS: DurationPreset[] = [
   { value: '720h', label: '30 days' },
 ];
 
-const CUSTOM = '__custom__';
+const UNITS: [number, string][] = [
+  [86400, 'day'],
+  [3600, 'hour'],
+  [60, 'minute'],
+  [1, 'second'],
+];
+
+/** Seconds as words: 90 → "90 seconds", 3600 → "1 hour", 604800 → "7 days". */
+export function secondsLabel(s: number): string {
+  if (s === 0) return '0';
+  if (!Number.isInteger(s)) return `${Math.round(s * 1000)} ms`;
+  for (const [n, unit] of UNITS) {
+    if (s >= n && s % n === 0) {
+      const v = s / n;
+      return `${v} ${unit}${v === 1 ? '' : 's'}`;
+    }
+  }
+  return `${s} seconds`;
+}
+
+/** A Go duration in words ("1800ms" → "1800 ms", "72h" → "3 days"); the input when it does not parse. */
+export function durationLabel(v: string): string {
+  const s = parseDuration(v);
+  return Number.isNaN(s) ? v : secondsLabel(s);
+}
+
+/** Options for preset durations (C1 `presets`); "0s" reads `zeroLabel` when given. */
+export function durationPresets(values: string[], zeroLabel?: string): DurationPreset[] {
+  return values.map((v) => ({ value: v, label: parseDuration(v) === 0 ? (zeroLabel ?? '0 (off)') : durationLabel(v) }));
+}
+
+/** Whether two Go durations are the same length ("10m" and "10m0s"). */
+export function sameDuration(a: string, b: string): boolean {
+  if (a === b) return true;
+  const x = parseDuration(a);
+  const y = parseDuration(b);
+  return !Number.isNaN(x) && x === y;
+}
+
+/** A user-facing error for a Go duration, or null. */
+export function durationError(v: string, opts: { min?: number; allowEmpty?: boolean } = {}): string | null {
+  const t = v.trim();
+  if (!t) return opts.allowEmpty ? null : 'Required';
+  const s = parseDuration(t);
+  if (Number.isNaN(s)) return 'A duration such as 90s, 10m or 1h30m';
+  if (opts.min !== undefined && s < opts.min) return `At least ${secondsLabel(opts.min)}`;
+  return null;
+}
 
 export interface DurationFieldProps {
   label: string;
+  isLabelHidden?: boolean | undefined;
   value: string;
   onChange: (v: string) => void;
   presets?: DurationPreset[];
   /** A first option meaning "not set" (inherit the default). */
-  emptyLabel?: string;
-  description?: string;
-  isDisabled?: boolean;
-  error?: string;
+  emptyLabel?: string | undefined;
+  description?: string | undefined;
+  isDisabled?: boolean | undefined;
+  error?: string | undefined;
 }
 
-function same(a: string, b: string): boolean {
-  if (a === b) return true;
-  try {
-    return parseDuration(a) === parseDuration(b);
-  } catch {
-    return false;
-  }
-}
-
-export function DurationField({ label, value, onChange, presets = DURATION_PRESETS, emptyLabel, description, isDisabled, error }: DurationFieldProps) {
-  const id = useId();
-  const preset = value ? presets.find((p) => same(p.value, value)) : undefined;
-  const [custom, setCustom] = useState(() => Boolean(value) && !preset);
-  const selectValue = custom ? CUSTOM : value === '' ? '' : (preset?.value ?? CUSTOM);
+export function DurationField({ label, isLabelHidden, value, onChange, presets = DURATION_PRESETS, emptyLabel, description, isDisabled, error }: DurationFieldProps) {
   return (
-    <div className="k-stack-sm">
-      <label className="k-label" htmlFor={id}>
-        {label}
-        {description ? <span className="k-muted k-small">{description}</span> : null}
-        <select
-          id={id}
-          className="k-native-select"
-          value={selectValue}
-          disabled={isDisabled}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === CUSTOM) {
-              setCustom(true);
-              return;
-            }
-            setCustom(false);
-            onChange(v);
-          }}
-        >
-          {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
-          {presets.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom…</option>
-        </select>
-      </label>
-      {selectValue === CUSTOM ? (
-        <TextInput
-          label={`${label} (custom)`}
-          isLabelHidden
-          placeholder="e.g. 90s, 45m, 36h"
-          value={value}
-          onChange={onChange}
-          isDisabled={isDisabled}
-          status={error ? { type: 'error', message: error } : undefined}
-        />
-      ) : error ? (
-        <span className="k-error-text">{error}</span>
-      ) : null}
-    </div>
+    <PresetField
+      label={label}
+      isLabelHidden={isLabelHidden}
+      value={value}
+      onChange={onChange}
+      presets={presets}
+      same={sameDuration}
+      emptyLabel={emptyLabel}
+      description={description}
+      isDisabled={isDisabled}
+      error={error}
+      customPlaceholder="e.g. 90s, 45m, 36h"
+    />
   );
 }

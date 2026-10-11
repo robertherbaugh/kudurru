@@ -602,7 +602,7 @@ function buildAudit(now: number): AuditEvent[] {
 }
 
 /** Sets a dotted path in a nested document. */
-function setPath(tree: Record<string, unknown>, path: string, v: unknown): void {
+export function setPath(tree: Record<string, unknown>, path: string, v: unknown): void {
   const segs = path.split('.');
   let cur = tree;
   for (const seg of segs.slice(0, -1)) {

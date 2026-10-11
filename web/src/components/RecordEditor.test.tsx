@@ -28,7 +28,8 @@ describe('RecordEditor', () => {
   it('rejects an owner outside the zone and a bad TTL', async () => {
     const onSubmit = setup();
     fireEvent.change(field(/^Name/), { target: { value: 'www.other.com.' } });
-    fireEvent.change(field(/TTL/), { target: { value: '-5' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'TTL' }), { target: { value: '__custom__' } });
+    fireEvent.change(field('TTL (custom)'), { target: { value: '-5' } });
     fireEvent.change(field(/IPv4 address/), { target: { value: '192.0.2.1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
     expect((await screen.findAllByText('Not inside example.internal.')).length).toBeGreaterThan(0);
@@ -40,7 +41,7 @@ describe('RecordEditor', () => {
     const onSubmit = setup();
     fireEvent.change(screen.getByRole('combobox', { name: 'Type' }), { target: { value: 'MX' } });
     fireEvent.change(field(/^Name/), { target: { value: '@' } });
-    fireEvent.change(field(/TTL/), { target: { value: '3600' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'TTL' }), { target: { value: '3600' } });
     fireEvent.change(field(/Preference/), { target: { value: '10' } });
     fireEvent.change(field(/Mail server/), { target: { value: 'mx1.example.internal' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add target' }));

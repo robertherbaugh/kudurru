@@ -21,6 +21,8 @@ export interface ApiErrorBody {
     key: string;
     message: string;
     hint?: string | MissingPermission | Record<string, unknown>;
+    /** The paths a 400 invalid failed on (settings: "upstreams.groups.corp.strategy"). */
+    fields?: string[];
   };
   took_ms?: number;
 }
@@ -618,6 +620,24 @@ export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   value?: unknown;
 };
 
+/** C1 value formats of string keys (and string[] items). */
+export type SettingFormat = NonNullable<S['SettingShape']['format']>;
+
+/** C1: the kinds of object a value may name. */
+export type SettingRef = NonNullable<S['SettingShape']['ref']>;
+
+/** C1: one allowed value of a closed set. */
+export type SettingEnumOption = S['SettingOption'];
+
+/** C1: the shape of a value (a list item, a map key or value). */
+export type SettingShape = S['SettingShape'];
+
+/** C1: one field of an object shape (with label, help, required, default). */
+export type SettingShapeField = S['SettingField'];
+
+/** C1 settings metadata of a key (GET /settings/_schema); every field is optional. */
+export type SettingMeta = Pick<S['SettingKey'], 'enum' | 'min' | 'max' | 'presets' | 'format' | 'ref' | 'items' | 'keys' | 'values' | 'fields' | 'group' | 'label'>;
+
 /** GET|PATCH /settings and /node/config: the keys of one scope under `settings`. */
 export type SettingsBody = S['SettingsBody'];
 
@@ -796,3 +816,6 @@ export interface CatalogueInfo {
   safeSearchEngines: number;
   refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
 }
+
+/** GET /catalogue/icons (C4): the icons this binary embeds. */
+export type CatalogueIconIndex = ListEnvelope<S['CatalogueIcon']>;
