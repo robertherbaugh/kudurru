@@ -148,6 +148,29 @@ $(DEX_BIN):
 test-auth-e2e: $(DEX_BIN)
 	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
 
+## e2e: end-to-end tests against a freshly built `kudurru serve`
+## (docs/m5/e2e.md): two nodes on loopback sharing the encryption key,
+## SIGTERM lameduck, restarts over existing databases, configuration and
+## port failures (test/e2e), and the BIND 9 interop (test/interop, skipped
+## when named is not installed). Recorded bugs are skipped; set
+## KUDURRU_E2E_KNOWN_BUGS=1 to reproduce them. The dex OIDC end to end
+## test is `make test-auth-e2e`; CI's e2e job runs both.
+.PHONY: e2e interop fuzz
+E2E_FLAGS ?= -race -count=1 -timeout 20m
+e2e:
+	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/e2e/ ./test/interop/
+
+## interop: only the BIND 9 interop (dnf install bind / apt-get install bind9)
+interop:
+	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/interop/
+
+## fuzz: every fuzz target for FUZZTIME each (hack/fuzz.sh --list); FUZZ_JOBS
+## targets at a time. Without -fuzz, `make test` replays the seed corpora.
+FUZZTIME  ?= 60s
+FUZZ_JOBS ?= 1
+fuzz:
+	FUZZTIME=$(FUZZTIME) FUZZ_JOBS=$(FUZZ_JOBS) hack/fuzz.sh
+
 ## bench: blocking benchmarks and the zone lookup benchmark gated against
 ## bench/baseline.txt (+20 %) and the absolute limits in bench/limits.txt
 ## (docs/architecture.md §7.3, docs/m2/xfr.md). The baseline is
