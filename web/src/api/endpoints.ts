@@ -13,6 +13,7 @@ import type {
   EdgeInfo,
   CreatedToken,
   DiagnosisMessage,
+  DoctorReport,
   DnsQueryRequest,
   DnsQueryResult,
   ListEnvelope,
@@ -181,6 +182,7 @@ export function endpoints(c: ApiClient) {
       edge: () => c.get<EdgeInfo>('/edge'),
       messages: () => c.get<ListEnvelope<DiagnosisMessage>>('/info/messages'),
       version: () => c.get<VersionInfo>('/version'),
+      doctor: () => c.get<DoctorReport>('/doctor'),
     },
 
     iam: {

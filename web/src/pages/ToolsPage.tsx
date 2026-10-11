@@ -1,7 +1,8 @@
 // Tools (§10 principle 13): the built-in dig (POST /dns/query runs the
 // whole pipeline in-process), cache flush, YAML/JSON import through
-// POST /apply, backup/export downloads and a doctor report assembled
-// from the health, version, query-log and diagnosis endpoints.
+// POST /apply, backup/export downloads and the doctor report (GET /doctor,
+// the server-side checks of `kudurru doctor`, plus the cluster nodes and
+// the query-log status).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -271,18 +272,16 @@ function Doctor() {
           out.push({ ok: false, text: `${label}: ${(e as Error).message}` });
         }
       };
-      await settle('version', api.cluster.version(), (v) => [{ ok: true, text: `kudurru ${v.version} (${v.commit}, ${v.go ?? 'go'})` }]);
+      // The server runs the checks of `kudurru doctor` it can see from
+      // inside (config, api, token, diagnoses, dataDir, ready).
+      await settle('doctor', api.cluster.doctor(), (d) => [
+        { ok: true, text: `kudurru ${d.version} on ${d.node}` },
+        ...d.checks.map((c) => ({ ok: c.status === 'ok' ? true : c.status === 'warn' ? ('warn' as const) : false, text: `${c.check}: ${c.message}` })),
+      ]);
       await settle('nodes', api.cluster.nodes(), (n) => n.items.map((x) => ({ ok: x.ready, text: `node ${x.name}: ${x.ready ? 'ready' : 'NOT READY'}${x.leader ? ', leader' : ''}, ${x.version}` })));
-      const nodes = await api.cluster.nodes().catch(() => ({ items: [] }));
-      for (const n of nodes.items) {
-        await settle(`health ${n.name}`, api.cluster.health(n.name), (h) => h.checks.map((c) => ({ ok: c.ok, text: `  ${n.name} ${c.name}: ${c.ok ? 'ok' : 'FAIL'}${c.message ? ` (${c.message})` : ''}` })));
-      }
       await settle('query log', api.queries.status(), (s) => [
         { ok: s.wal_bytes < 256 * 1024 * 1024 ? true : 'warn', text: `query log: ${formatExact(s.rows)} rows, db ${formatBytes(s.db_bytes)}, WAL ${formatBytes(s.wal_bytes)}, oldest ${formatDateTime(s.oldest_ts)}` },
       ]);
-      await settle('diagnosis', api.cluster.messages(), (msgs) =>
-        msgs.items.length ? msgs.items.map((x) => ({ ok: x.severity === 'error' ? false : 'warn', text: `${x.severity}: ${x.reason}: ${x.message}` })) : [{ ok: true, text: 'no diagnosis messages' }],
-      );
       return out;
     },
     onSuccess: setLines,

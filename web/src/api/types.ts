@@ -684,3 +684,18 @@ export interface IamIdentityProvider {
   issuer: string;
   clientID?: string;
 }
+
+/** GET /doctor: the server-side half of `kudurru doctor` as this node sees it. */
+export interface DoctorCheck {
+  check: string;
+  status: 'ok' | 'warn' | 'fail';
+  message: string;
+}
+
+export interface DoctorReport {
+  node: string;
+  version: string;
+  checks: DoctorCheck[];
+  failures: number;
+  warnings: number;
+}
