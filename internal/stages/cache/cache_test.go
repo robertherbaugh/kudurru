@@ -239,7 +239,9 @@ func TestWhatIsNotCached(t *testing.T) {
 		}},
 		{"error", func(*pipeline.Request) (*pipeline.Response, error) { return nil, errors.New("boom") }},
 	}
-	h.stage.set.MinTTL = 0
+	set := *h.stage.settings()
+	set.MinTTL = 0
+	h.stage.SetSettings(set)
 	for _, tc := range cases {
 		h.up.set(tc.respond)
 		before := h.up.calls.Load()

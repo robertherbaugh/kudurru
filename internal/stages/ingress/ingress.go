@@ -29,6 +29,11 @@ type Stage struct {
 	// Limiter is the per-prefix QPM limiter (ratelimit.go); nil disables
 	// rate limiting.
 	Limiter *RateLimiter
+	// Lameduck reports whether the node is draining (D51): the health name
+	// then answers SERVFAIL, so dnsdist's must-resolve health check takes
+	// the node out of every backend pool while it still serves the queries
+	// already routed to it. nil never drains.
+	Lameduck func() bool
 }
 
 // Name implements pipeline.Stage.
@@ -89,6 +94,9 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		if txt, ok := s.chaos(q.Name); ok {
 			return s.txt(req, q, txt), nil
 		}
+	}
+	if q.Qclass == dns.ClassINET && strings.EqualFold(q.Name, HealthName) && s.Lameduck != nil && s.Lameduck() {
+		return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusSpecialDomain), nil
 	}
 	if q.Qclass == dns.ClassINET && q.Qtype == dns.TypeTXT && strings.EqualFold(q.Name, HealthName) {
 		var epoch uint64

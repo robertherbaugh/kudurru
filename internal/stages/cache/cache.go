@@ -19,6 +19,7 @@ import (
 	"math"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -81,16 +82,35 @@ type Subnetter interface {
 
 // Stage implements pipeline.Stage.
 type Stage struct {
-	c   *cache.Cache
-	set Settings
-	ecs Subnetter
-	bg  sync.WaitGroup
+	c        *cache.Cache
+	set      atomic.Pointer[Settings]
+	disabled atomic.Bool
+	ecs      Subnetter
+	bg       sync.WaitGroup
 }
 
 // New returns the stage over c. ecs may be nil when ECS is never sent.
 func New(c *cache.Cache, s Settings, ecs Subnetter) *Stage {
-	return &Stage{c: c, set: s.withDefaults(), ecs: ecs}
+	st := &Stage{c: c, ecs: ecs}
+	st.SetSettings(s)
+	return st
 }
+
+// SetSettings replaces the TTL clamps and stale-serving timers (settings
+// hot reload); queries in flight finish with the previous values.
+func (s *Stage) SetSettings(set Settings) {
+	set = set.withDefaults()
+	s.set.Store(&set)
+}
+
+// SetDisabled makes the stage pass every query through (cache.maxEntries
+// 0 at runtime); the caller flushes the cache.
+func (s *Stage) SetDisabled(off bool) { s.disabled.Store(off) }
+
+// Disabled reports whether the stage passes queries through.
+func (s *Stage) Disabled() bool { return s.disabled.Load() }
+
+func (s *Stage) settings() *Settings { return s.set.Load() }
 
 // Name implements pipeline.Stage.
 func (s *Stage) Name() string { return "cache" }
@@ -107,7 +127,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	// those answers are never cached, and an entry stored for the name
 	// before the zone existed must not shadow it. A hint to the default
 	// group (the bootstrap root zone) is ordinary forwarding.
-	if (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
+	if s.disabled.Load() || (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
 		return next(req)
 	}
 	k, ecsBits := s.key(req)
@@ -174,7 +194,7 @@ func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-
 		parent = context.Background()
 	}
 	return s.c.Coalesce(k, func() (any, error) {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.set.FetchTimeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.settings().FetchTimeout)
 		defer cancel()
 		fr.Ctx = ctx
 		fr.Deadline, _ = ctx.Deadline()
@@ -182,7 +202,7 @@ func (s *Stage) fetch(k cache.Key, req *pipeline.Request, next pipeline.Next) <-
 		if refreshed(resp, err) {
 			s.store(k, resp)
 		} else {
-			s.c.MarkRefreshFailed(k, s.set.StaleAnswerTTL)
+			s.c.MarkRefreshFailed(k, s.settings().StaleAnswerTTL)
 		}
 		return resp, err
 	})
@@ -233,7 +253,7 @@ func personalise(req *pipeline.Request, r singleflight.Result) (*pipeline.Respon
 func (s *Stage) serveStale(k cache.Key, req *pipeline.Request, next pipeline.Next, l cache.Lookup, ecsBits int) (*pipeline.Response, error) {
 	if !l.Hold {
 		ch := s.fetch(k, req, next)
-		timer := time.NewTimer(s.set.StaleMaxWait)
+		timer := time.NewTimer(s.settings().StaleMaxWait)
 		defer timer.Stop()
 		var done <-chan struct{}
 		if req.Ctx != nil {
@@ -279,7 +299,7 @@ func (s *Stage) answer(req *pipeline.Request, k cache.Key, l cache.Lookup, ecsBi
 		return nil
 	}
 	age := uint32(l.Age / time.Second) //nolint:gosec // non-negative, bounded by the stale window
-	staleTTL := seconds(s.set.StaleAnswerTTL)
+	staleTTL := seconds(s.settings().StaleAnswerTTL)
 	for _, sec := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
 		for _, rr := range sec {
 			h := rr.Header()
@@ -372,8 +392,8 @@ func copyRRs(in []dns.RR) []dns.RR {
 // clampPositive clamps every TTL into [MinTTL, MaxTTL] and returns the
 // entry lifetime: the smallest clamped TTL.
 func (s *Stage) clampPositive(m *dns.Msg) time.Duration {
-	lo := seconds(s.set.MinTTL)
-	hi := seconds(s.set.MaxTTL)
+	lo := seconds(s.settings().MinTTL)
+	hi := seconds(s.settings().MaxTTL)
 	least := uint32(0)
 	first := true
 	for _, sec := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
@@ -396,7 +416,7 @@ func (s *Stage) clampPositive(m *dns.Msg) time.Duration {
 // minimum) capped by NegativeTTL; without a SOA, min(MinTTL, NegativeTTL).
 // No record outlives the entry.
 func (s *Stage) clampNegative(m *dns.Msg) time.Duration {
-	limit := seconds(s.set.NegativeTTL)
+	limit := seconds(s.settings().NegativeTTL)
 	var ttl uint32
 	found := false
 	for _, rr := range m.Ns {
@@ -406,7 +426,7 @@ func (s *Stage) clampNegative(m *dns.Msg) time.Duration {
 		}
 	}
 	if !found {
-		ttl = seconds(s.set.MinTTL)
+		ttl = seconds(s.settings().MinTTL)
 	}
 	if limit > 0 {
 		ttl = min(ttl, limit)

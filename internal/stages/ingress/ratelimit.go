@@ -114,9 +114,7 @@ type shard struct {
 
 // RateLimiter is the ingress QPM limiter. It is safe for concurrent use.
 type RateLimiter struct {
-	v4, v6  []level
-	slip    uint64
-	exempt  []netip.Prefix
+	lim     atomic.Pointer[limits]
 	now     func() time.Time
 	seed    maphash.Seed
 	shards  [rateLimitShards]shard
@@ -125,10 +123,17 @@ type RateLimiter struct {
 	hook    atomic.Pointer[func(Verdict)]
 }
 
-// NewRateLimiter validates cfg and returns a limiter.
-func NewRateLimiter(cfg RateLimitConfig) (*RateLimiter, error) {
+// limits are the configuration Reconfigure replaces.
+type limits struct {
+	disabled bool
+	v4, v6   []level
+	slip     uint64
+	exempt   []netip.Prefix
+}
+
+func newLimits(cfg RateLimitConfig) (*limits, int, error) {
 	if cfg.Slip < 0 || cfg.Slip > 100 {
-		return nil, fmt.Errorf("ingress: rate limit slip %d is outside 0-100", cfg.Slip)
+		return nil, 0, fmt.Errorf("ingress: rate limit slip %d is outside 0-100", cfg.Slip)
 	}
 	maxBuckets := cfg.MaxBuckets
 	if maxBuckets <= 0 {
@@ -136,20 +141,60 @@ func NewRateLimiter(cfg RateLimitConfig) (*RateLimiter, error) {
 	}
 	v4, err := levels(cfg.IPv4, 32)
 	if err != nil {
-		return nil, fmt.Errorf("ingress: rate limit ipv4: %w", err)
+		return nil, 0, fmt.Errorf("ingress: rate limit ipv4: %w", err)
 	}
 	v6, err := levels(cfg.IPv6, 128)
 	if err != nil {
-		return nil, fmt.Errorf("ingress: rate limit ipv6: %w", err)
+		return nil, 0, fmt.Errorf("ingress: rate limit ipv6: %w", err)
 	}
-	l := &RateLimiter{v4: v4, v6: v6, slip: uint64(cfg.Slip), exempt: cfg.Exempt, now: cfg.Now, seed: maphash.MakeSeed()} // #nosec G115 -- slip is 0-100
-	per := max(maxBuckets/rateLimitShards, 1)
+	return &limits{v4: v4, v6: v6, slip: uint64(cfg.Slip), exempt: cfg.Exempt}, max(maxBuckets/rateLimitShards, 1), nil // #nosec G115 -- slip is 0-100
+}
+
+// NewRateLimiter validates cfg and returns a limiter.
+func NewRateLimiter(cfg RateLimitConfig) (*RateLimiter, error) {
+	lim, per, err := newLimits(cfg)
+	if err != nil {
+		return nil, err
+	}
+	l := &RateLimiter{now: cfg.Now, seed: maphash.MakeSeed()}
+	l.lim.Store(lim)
 	for i := range l.shards {
 		l.shards[i].m = make(map[netip.Prefix]*list.Element)
 		l.shards[i].cap = per
 	}
 	return l, nil
 }
+
+// Reconfigure replaces the limits (settings hot reload); nil disables
+// limiting. Every bucket is dropped, so each prefix starts again with a
+// full minute's allowance, as after an LRU eviction. cfg.Now is ignored.
+func (l *RateLimiter) Reconfigure(cfg *RateLimitConfig) error {
+	lim, per := &limits{disabled: true}, 0
+	if cfg != nil {
+		var err error
+		if lim, per, err = newLimits(*cfg); err != nil {
+			return err
+		}
+	}
+	l.lim.Store(lim)
+	for i := range l.shards {
+		sh := &l.shards[i]
+		sh.mu.Lock()
+		n := len(sh.m)
+		sh.m = make(map[netip.Prefix]*list.Element)
+		sh.lru.Init()
+		if per > 0 {
+			sh.cap = per
+		}
+		sh.mu.Unlock()
+		l.buckets.Add(int64(-n))
+	}
+	return nil
+}
+
+// Enabled reports whether queries are limited (false after
+// Reconfigure(nil)).
+func (l *RateLimiter) Enabled() bool { return !l.lim.Load().disabled }
 
 // levels turns a prefix-length → QPM map into levels, most specific first.
 func levels(m map[int]int, maxBits int) ([]level, error) {
@@ -198,7 +243,7 @@ func (l *RateLimiter) Exempt(addr netip.Addr) bool {
 	if !addr.IsValid() || addr.IsLoopback() {
 		return true
 	}
-	for _, p := range l.exempt {
+	for _, p := range l.lim.Load().exempt {
 		if p.Contains(addr) {
 			return true
 		}
@@ -210,10 +255,14 @@ func (l *RateLimiter) Exempt(addr netip.Addr) bool {
 // Callers exempt TCP, loopback and the health name before calling (Check
 // does all of it).
 func (l *RateLimiter) Allow(addr netip.Addr, now time.Time) Verdict {
+	lim := l.lim.Load()
+	if lim.disabled {
+		return VerdictAllow
+	}
 	addr = addr.Unmap()
-	lv := l.v4
+	lv := lim.v4
 	if addr.Is6() {
-		lv = l.v6
+		lv = lim.v6
 	}
 	ns := now.UnixNano()
 	for _, lev := range lv {
@@ -222,7 +271,7 @@ func (l *RateLimiter) Allow(addr netip.Addr, now time.Time) Verdict {
 			continue
 		}
 		if !l.take(p, lev, ns) {
-			return l.overLimit()
+			return l.overLimit(lim.slip)
 		}
 	}
 	return VerdictAllow
@@ -230,10 +279,10 @@ func (l *RateLimiter) Allow(addr netip.Addr, now time.Time) Verdict {
 
 // overLimit spreads Slip percent of the over-limit queries evenly over the
 // sequence: query n slips when floor(n*slip/100) moves.
-func (l *RateLimiter) overLimit() Verdict {
+func (l *RateLimiter) overLimit(slip uint64) Verdict {
 	n := l.over.Add(1)
 	v := VerdictDrop
-	if n*l.slip/100 != (n-1)*l.slip/100 {
+	if n*slip/100 != (n-1)*slip/100 {
 		v = VerdictSlip
 	}
 	if fn := l.hook.Load(); fn != nil {

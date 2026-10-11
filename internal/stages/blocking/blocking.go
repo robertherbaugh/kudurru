@@ -36,6 +36,7 @@ package blocking
 import (
 	"math"
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -112,9 +113,34 @@ func OptionsFrom(c config.Blocking) Options {
 // Stage implements pipeline.Stage.
 type Stage struct {
 	opts    Options
+	live    atomic.Pointer[defaults]
 	toggle  *Toggle
 	metrics *metrics
 }
+
+// defaults are the settings Reconfigure replaces at runtime.
+type defaults struct {
+	disabled         bool
+	response         v1alpha1.BlockResponse
+	customV4, customV6 netip.Addr
+	blockTTL         time.Duration
+}
+
+func defaultsOf(o Options) *defaults {
+	d := &defaults{disabled: o.Disabled, response: o.DefaultResponse, customV4: o.CustomV4, customV6: o.CustomV6, blockTTL: o.BlockTTL}
+	if d.response == "" {
+		d.response = v1alpha1.BlockResponse("zeroIP")
+	}
+	if d.blockTTL <= 0 {
+		d.blockTTL = DefaultBlockTTL
+	}
+	return d
+}
+
+// Reconfigure applies the blocking.* settings that are hot (enabled,
+// defaultResponse, blockTTL, customIP) from o; Toggle, Index, AllowDegraded
+// and the metrics stay. Queries in flight finish with the old values.
+func (s *Stage) Reconfigure(o Options) { s.live.Store(defaultsOf(o)) }
 
 // New returns the stage and registers its metrics.
 func New(opts Options) (*Stage, error) {
@@ -131,6 +157,7 @@ func New(opts Options) (*Stage, error) {
 		opts.Now = time.Now
 	}
 	s := &Stage{opts: opts, toggle: opts.Toggle}
+	s.live.Store(defaultsOf(opts))
 	m, err := newMetrics(opts.Registerer, newEnabledCollector(s.groupState))
 	if err != nil {
 		return nil, err
@@ -146,13 +173,13 @@ func (s *Stage) Name() string { return "blocking" }
 func (s *Stage) Toggle() *Toggle { return s.toggle }
 
 // Enabled reports whether blocking applies right now.
-func (s *Stage) Enabled() bool { return !s.opts.Disabled && s.toggle.Enabled() }
+func (s *Stage) Enabled() bool { return !s.live.Load().disabled && s.toggle.Enabled() }
 
 // Ready is the readiness check (checker.Register("blocking", s.Ready)):
 // not ready while a referenced BlockList is not compiled yet, unless
 // AllowDegraded.
 func (s *Stage) Ready() (bool, []string) {
-	if s.opts.AllowDegraded || s.opts.Disabled || s.opts.Index == nil {
+	if s.opts.AllowDegraded || s.live.Load().disabled || s.opts.Index == nil {
 		return true, nil
 	}
 	ix := s.opts.Index.Index()
@@ -325,7 +352,8 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 	}
 	s.metrics.listHit(bd.List)
 
-	mode, v4, v6 := d.BlockMode, s.opts.CustomV4, s.opts.CustomV6
+	live := s.live.Load()
+	mode, v4, v6 := d.BlockMode, live.customV4, live.customV6
 	if info != nil && info.Response != "" {
 		mode = info.Response
 		if mode == "customIP" {
@@ -333,11 +361,11 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 		}
 	}
 	if mode == "" {
-		mode = s.opts.DefaultResponse
+		mode = live.response
 	}
 	ttl := d.BlockTTL
 	if ttl <= 0 {
-		ttl = s.opts.BlockTTL
+		ttl = live.blockTTL
 	}
 	ede := dns.ExtendedErrorCodeBlocked
 	if bd.Reason == engine.ReasonAllowOnly {
