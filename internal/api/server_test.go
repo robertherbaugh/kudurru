@@ -206,7 +206,7 @@ func TestAuthForwarding(t *testing.T) {
 			_, _ = io.WriteString(w, `{"localLogin":"enabled","providers":[],"hasDefaultCredentials":true}`)
 		case "/api/v1/auth/login":
 			body, _ := io.ReadAll(r.Body)
-			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "x"})
+			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "x", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 			_, _ = w.Write(body)
 		case "/api/v1/auth/oidc/corp/start":
 			http.Redirect(w, r, "https://idp.example/authorize", http.StatusFound)

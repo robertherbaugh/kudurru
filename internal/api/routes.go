@@ -94,9 +94,7 @@ func scopeDoc(p perm) string {
 
 // addErrorResponses documents error statuses with the envelope schema.
 func addErrorResponses(op *huma.Operation, codes ...int) {
-	for _, c := range codes {
-		op.Errors = append(op.Errors, c)
-	}
+	op.Errors = append(op.Errors, codes...)
 }
 
 // registerRoutes registers every route group.
@@ -144,15 +142,4 @@ type versionOutput struct {
 		API      string `json:"api" doc:"API version (the /api/v1 contract)."`
 		Took
 	}
-}
-
-// pathName renders path segments for audit records.
-func pathName(parts ...string) string {
-	var out []string
-	for _, p := range parts {
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return strings.Join(out, "/")
 }

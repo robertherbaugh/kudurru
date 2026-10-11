@@ -80,7 +80,7 @@ func TestForbiddenEnvelope(t *testing.T) {
 
 func TestCookieSessionNeedsCSRF(t *testing.T) {
 	h := newHarness(t)
-	cookie := &http.Cookie{Name: apitest.CookieName, Value: "operator"}
+	cookie := &http.Cookie{Name: apitest.CookieName, Value: "operator", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode}
 	r := h.req(http.MethodPost, "/api/v1/dns/blocking", "", map[string]any{"blocking": true})
 	r.AddCookie(cookie)
 	if got := h.serve(r); got.Code != http.StatusForbidden || got.errKey() != KeyCSRF {

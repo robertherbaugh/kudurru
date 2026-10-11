@@ -119,10 +119,6 @@ func errNotImplemented(what string) *Error {
 	return newError(http.StatusNotImplemented, KeyNotImplemented, what+" is not available on this node", "")
 }
 
-func errUnprocessable(format string, args ...any) *Error {
-	return newError(http.StatusUnprocessableEntity, KeyUnprocessable, fmt.Sprintf(format, args...), "")
-}
-
 func errUnauthenticated() *Error {
 	e := newError(http.StatusUnauthorized, KeyUnauthenticated, "authentication required",
 		"send Authorization: Bearer kdr_<id>_<secret>, an OIDC or ServiceAccount token, or log in at /api/v1/auth/login")

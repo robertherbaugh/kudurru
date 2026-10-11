@@ -250,4 +250,3 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 	}
 	return &messagesOutput{Body: newList(out, "")}, nil
 }
-

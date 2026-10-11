@@ -46,9 +46,9 @@ type (
 		// ExpiresIn is a Go duration ("720h"); empty is the server default.
 		ExpiresIn string `json:"expiresIn,omitempty"`
 	}
-	// APIToken is one personal API token; Token (the kdr_ secret) is only
-	// in the POST response, once.
-	APIToken struct {
+	// Token is one personal API token; its token field (the kdr_ secret)
+	// is only in the POST response, once.
+	Token struct {
 		ID         string     `json:"id"`
 		Name       string     `json:"name"`
 		Token      string     `json:"token,omitempty"`
@@ -83,14 +83,6 @@ type MePrincipal struct {
 }
 
 type meOutput struct{ Body *Me }
-
-type forwardInput struct {
-	IDP string `path:"idp"`
-}
-
-type forwardIDInput struct {
-	ID string `path:"id"`
-}
 
 // IAMItem is one identity or binding of the read-only IAM routes.
 type IAMItem = map[string]any
@@ -140,9 +132,9 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth"), public, nil, nil)
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
-	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, TokenRequest{}, APIToken{})
-	s.forward(operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth"), tokens, nil, List[APIToken]{})
-	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one own API token", "auth"), tokens, nil, APIToken{})
+	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, TokenRequest{}, Token{})
+	s.forward(operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth"), tokens, nil, List[Token]{})
+	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one own API token", "auth"), tokens, nil, Token{})
 	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one own API token", "auth"), http.StatusNoContent), tokens, nil, nil)
 	register(s, operation(http.MethodGet, "/auth/me", "me", "The authenticated principal, roles, permissions and CSRF token", "auth"), authed, s.me)
 
@@ -378,4 +370,3 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 		}
 	}}, nil
 }
-

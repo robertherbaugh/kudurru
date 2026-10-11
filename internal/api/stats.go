@@ -700,7 +700,7 @@ func eventRow(ev *querylog.Event) StreamRow {
 // sseHeartbeat is the interval of keep-alive comments on the stream.
 var sseHeartbeat = 15 * time.Second
 
-func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.StreamResponse, error) {
+func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamResponse, error) {
 	if s.opts.Tail == nil && s.opts.Querylog == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
 	}

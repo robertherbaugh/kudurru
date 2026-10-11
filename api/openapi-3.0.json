@@ -1,37 +1,6 @@
 {
   "components": {
     "schemas": {
-      "APIToken": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "lastUsedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
-        ],
-        "type": "object"
-      },
       "Actor": {
         "additionalProperties": false,
         "properties": {
@@ -1076,31 +1045,6 @@
         ],
         "type": "object"
       },
-      "ListAPIToken": {
-        "additionalProperties": false,
-        "properties": {
-          "continue": {
-            "description": "Opaque keyset token for the next page; empty on the last page.",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/APIToken"
-            },
-            "type": "array"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "took_ms"
-        ],
-        "type": "object"
-      },
       "ListApplyResult": {
         "additionalProperties": false,
         "properties": {
@@ -1256,6 +1200,31 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/SettingKey"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "ListToken": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
             },
             "type": "array"
           },
@@ -2550,6 +2519,37 @@
           "from",
           "until",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "Token": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "type": "object"
       },
@@ -3964,7 +3964,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListAPIToken"
+                  "$ref": "#/components/schemas/ListToken"
                 }
               }
             },
@@ -4056,7 +4056,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIToken"
+                  "$ref": "#/components/schemas/Token"
                 }
               }
             },
@@ -4271,7 +4271,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIToken"
+                  "$ref": "#/components/schemas/Token"
                 }
               }
             },

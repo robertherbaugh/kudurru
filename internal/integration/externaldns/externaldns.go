@@ -51,6 +51,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -128,6 +129,12 @@ type Options struct {
 	// Registerer receives the kudurru_externaldns_* metrics; nil skips.
 	Registerer prometheus.Registerer
 	Logger     *slog.Logger
+}
+
+// OptionsFrom maps the externalDNS.webhook settings onto Options; the
+// caller adds Store, Validator, Cache, Registerer and Logger.
+func OptionsFrom(c config.ExternalDNSWebhook) Options {
+	return Options{Namespace: c.Namespace, ZoneSelector: c.ZoneSelector, Address: c.Listen}
 }
 
 // Server is the webhook provider. It is an http.Handler.

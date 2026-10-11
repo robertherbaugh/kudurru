@@ -310,7 +310,9 @@ func (s *Server) appendListEntries(ctx context.Context, ns, name, action string,
 		return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
 			fmt.Sprintf("BlockList %s/%s has mode %s, not %s", ns, name, bl.Spec.Mode, mode), "choose another list")
 	}
-	idx := slices.IndexFunc(bl.Spec.Sources, func(src v1alpha1.ListSource) bool { return src.Name == uiSource || (src.URL == "" && src.ConfigMapRef == nil) })
+	idx := slices.IndexFunc(bl.Spec.Sources, func(src v1alpha1.ListSource) bool {
+		return src.Name == uiSource || (src.URL == "" && src.ConfigMapRef == nil)
+	})
 	if idx < 0 {
 		bl.Spec.Sources = append(bl.Spec.Sources, v1alpha1.ListSource{Name: uiSource})
 		idx = len(bl.Spec.Sources) - 1

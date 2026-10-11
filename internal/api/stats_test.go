@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -69,7 +68,7 @@ func TestStatsRoutes(t *testing.T) {
 
 	var sum SummaryBody
 	h.do(http.MethodGet, "/api/v1/stats/summary?window=1h", "viewer", nil).want(http.StatusOK).json(&sum)
-	if sum.Queries.Total != 4 || sum.Queries.Blocked != 2 || sum.Scope.Scope != "node" || len(sum.Scope.Nodes) != 1 || sum.Scope.Nodes[0].Name != "node-a" || sum.Scope.Partial {
+	if sum.Queries.Total != 4 || sum.Queries.Blocked != 2 || sum.Scope.Scope != "node" || len(sum.Nodes) != 1 || sum.Nodes[0].Name != "node-a" || sum.Partial {
 		t.Fatalf("summary %+v", sum)
 	}
 	var top TopBody
@@ -277,7 +276,7 @@ func waitSubscribers(t *testing.T, tail *querylog.Tail, n int) {
 	deadline := time.Now().Add(5 * time.Second)
 	for tail.Subscribers() < n {
 		if time.Now().After(deadline) {
-			t.Fatal(fmt.Sprintf("%d subscribers, want %d", tail.Subscribers(), n))
+			t.Fatalf("%d subscribers, want %d", tail.Subscribers(), n)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

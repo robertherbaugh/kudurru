@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -647,13 +646,4 @@ func kindNames() []string {
 		out[i] = string(k.kind)
 	}
 	return out
-}
-
-// errorMessage is the human-readable part of an API error.
-func errorMessage(err error) string {
-	var e *Error
-	if errors.As(err, &e) {
-		return e.Body.Message
-	}
-	return fmt.Sprint(err)
 }

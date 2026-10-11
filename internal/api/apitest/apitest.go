@@ -23,7 +23,7 @@ const (
 	// "<user>" or "<user>:<group>,<group>".
 	CookieName = "kudurru_test_session"
 	// CSRFToken is the X-Kudurru-CSRF value cookie sessions must send.
-	CSRFToken = "csrf-test-token"
+	CSRFToken = "csrf-test-token" //nolint:gosec // a fixed token of the test double, not a credential
 	// HeaderCSRF is the CSRF header name (§8.2).
 	HeaderCSRF = "X-Kudurru-CSRF"
 )

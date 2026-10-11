@@ -69,9 +69,9 @@ type Listeners struct {
 	DoH3 []HTTPListener `koanf:"doh3" json:"doh3"`
 
 	API               APIListener `koanf:"api" json:"api"`
-	Ops               Listener `koanf:"ops" json:"ops"`
-	Metrics           Listener `koanf:"metrics" json:"metrics"`
-	ProxyProtocolFrom []string `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
+	Ops               Listener    `koanf:"ops" json:"ops"`
+	Metrics           Listener    `koanf:"metrics" json:"metrics"`
+	ProxyProtocolFrom []string    `koanf:"proxyProtocolFrom" json:"proxyProtocolFrom"`
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`

@@ -435,16 +435,6 @@ func (e StatsUpstreamsParamsScope) Valid() bool {
 	}
 }
 
-// APIToken defines model for APIToken.
-type APIToken struct {
-	CreatedAt  *time.Time `json:"createdAt,omitempty"`
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
-	Id         string     `json:"id"`
-	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
-	Name       string     `json:"name"`
-	Token      *string    `json:"token,omitempty"`
-}
-
 // Actor defines model for Actor.
 type Actor struct {
 	Auth   *string   `json:"auth,omitempty"`
@@ -781,16 +771,6 @@ type LatencySummary struct {
 	P99Ms float64 `json:"p99_ms"`
 }
 
-// ListAPIToken defines model for ListAPIToken.
-type ListAPIToken struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string    `json:"continue,omitempty"`
-	Items    []APIToken `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
 // ListApplyResult defines model for ListApplyResult.
 type ListApplyResult struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -853,6 +833,16 @@ type ListSettingKey struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
 	Continue *string      `json:"continue,omitempty"`
 	Items    []SettingKey `json:"items"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// ListToken defines model for ListToken.
+type ListToken struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string `json:"continue,omitempty"`
+	Items    []Token `json:"items"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -1261,6 +1251,16 @@ type TimeseriesBody struct {
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64   `json:"took_ms"`
 	Until  time.Time `json:"until"`
+}
+
+// Token defines model for Token.
+type Token struct {
+	CreatedAt  *time.Time `json:"createdAt,omitempty"`
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+	Id         string     `json:"id"`
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	Name       string     `json:"name"`
+	Token      *string    `json:"token,omitempty"`
 }
 
 // TopBody defines model for TopBody.
@@ -10687,7 +10687,7 @@ type ListTokensResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListAPIToken
+	JSON200 *ListToken
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -10703,7 +10703,7 @@ type ListTokensResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListTokensResponse) GetJSON200() *ListAPIToken {
+func (r ListTokensResponse) GetJSON200() *ListToken {
 	return r.JSON200
 }
 
@@ -10770,7 +10770,7 @@ type CreateTokenResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *APIToken
+	JSON201 *Token
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -10790,7 +10790,7 @@ type CreateTokenResponse struct {
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateTokenResponse) GetJSON201() *APIToken {
+func (r CreateTokenResponse) GetJSON201() *Token {
 	return r.JSON201
 }
 
@@ -10957,7 +10957,7 @@ type GetTokenResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *APIToken
+	JSON200 *Token
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -10973,7 +10973,7 @@ type GetTokenResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetTokenResponse) GetJSON200() *APIToken {
+func (r GetTokenResponse) GetJSON200() *Token {
 	return r.JSON200
 }
 
@@ -19803,7 +19803,7 @@ func ParseListTokensResponse(rsp *http.Response) (*ListTokensResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListAPIToken
+		var dest ListToken
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -19871,7 +19871,7 @@ func ParseCreateTokenResponse(rsp *http.Response) (*CreateTokenResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest APIToken
+		var dest Token
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -20031,7 +20031,7 @@ func ParseGetTokenResponse(rsp *http.Response) (*GetTokenResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest APIToken
+		var dest Token
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

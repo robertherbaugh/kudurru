@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -300,5 +301,16 @@ func TestRunServes(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve did not stop")
+	}
+}
+
+func TestOptionsFrom(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := OptionsFrom(cfg.ExternalDNS.Webhook)
+	if o.Namespace != "external-dns" || o.Address != ":8888" {
+		t.Fatalf("options %+v", o)
 	}
 }
