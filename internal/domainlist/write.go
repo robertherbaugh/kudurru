@@ -69,6 +69,15 @@ func (s *Service) tryMutate(ctx context.Context, ns, name string, a Action, crea
 	var cur []v1alpha1.ListEntry
 	if idx >= 0 {
 		cur = slices.Clone(bl.Spec.Sources[idx].Entries)
+		if !bl.Spec.Sources[idx].IsEnabled() {
+			// A switched-off source would hide what this write does: the
+			// switch moves onto its entries (they stay off unless fn
+			// switches them on) and the source is switched on.
+			for i := range cur {
+				cur[i].Enabled = ptrFalse()
+			}
+			bl.Spec.Sources[idx].Enabled = nil
+		}
 	}
 	next, changed := fn(cur)
 	if !changed && !migrated {

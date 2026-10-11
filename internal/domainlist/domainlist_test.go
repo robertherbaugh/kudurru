@@ -288,6 +288,38 @@ func TestGroupScopeAndUpdate(t *testing.T) {
 	}
 }
 
+// TestSwitchedOffSource: adding to a list whose ui source is switched off
+// switches the source on and keeps the earlier entries off.
+func TestSwitchedOffSource(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	bl := &v1alpha1.BlockList{ObjectMeta: meta(DenyList), Spec: v1alpha1.BlockListSpec{Mode: "block", Sources: []v1alpha1.ListSource{
+		{Name: SourceName, Enabled: ptrFalse(), Entries: []v1alpha1.ListEntry{{Value: "old.example"}}},
+	}}}
+	if _, err := f.st.Apply(ctx, bl, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Add(ctx, AddRequest{Action: Deny, Namespace: "default", Type: v1alpha1.EntryExact, Values: []string{"new.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := f.list(DenyList)
+	if !got.Spec.Sources[0].IsEnabled() || !slices.Equal(entries(got), []string{"exact:old.example:off", "exact:new.example"}) {
+		t.Errorf("list %+v entries %v", got.Spec.Sources[0].Enabled, entries(got))
+	}
+	// Switching an entry of a switched-off source on works too.
+	got.Spec.Sources[0].Enabled = ptrFalse()
+	if _, err := f.st.Apply(ctx, got, store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: got.ResourceVersion}); err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := f.svc.Update(ctx, Deny, "default", v1alpha1.EntryExact, "old.example", Patch{Enabled: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.list(DenyList); !got.Spec.Sources[0].IsEnabled() || !slices.Equal(entries(got), []string{"exact:new.example:off", "exact:old.example"}) {
+		t.Errorf("after switching old.example on: %v", entries(got))
+	}
+}
+
 func TestReadOnlyList(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

@@ -264,6 +264,9 @@ func listCopies(bl *v1alpha1.BlockList, group, owner string, created *metav1.Tim
 			if e.Type == "" {
 				e.Type = v1alpha1.EntryExact
 			}
+			if !src.IsEnabled() {
+				e.Enabled = ptrFalse() // the whole source is switched off
+			}
 			add(Copy{List: list, Source: name, Group: group, ManagedBy: owner, Entry: e})
 		}
 		for _, line := range src.Inline {
