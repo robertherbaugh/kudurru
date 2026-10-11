@@ -6,7 +6,11 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // TestExcludeURLSource: spec.sources[].exclude switches single entries of
@@ -106,4 +110,64 @@ func TestStructuredEntries(t *testing.T) {
 			t.Errorf("%s: matches %v, want %v", name, got, want)
 		}
 	}
+}
+
+// TestAllowlistChain is the end-to-end check of the Allowlist through
+// store → zonecache → resolver → policy index → stages: an exclusion of a
+// block list entry unblocks that name; an allow entry for everyone wins
+// over the block list; one scoped to a group unblocks only that group's
+// clients; a wildcard covers subdomains; switching an entry off blocks
+// again.
+func TestAllowlistChain(t *testing.T) {
+	ch := newChain(t)
+	ctx := context.Background()
+	meta := func(name string) metav1.ObjectMeta { return metav1.ObjectMeta{Name: name, Namespace: "default"} }
+	ch.apply(&v1alpha1.ClientGroup{ObjectMeta: meta("default"), Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{CIDR: "0.0.0.0/0"}}}})
+	ch.apply(&v1alpha1.ClientGroup{ObjectMeta: meta("kids"), Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{IP: "192.0.2.77"}}}})
+	ch.apply(&v1alpha1.BlockList{ObjectMeta: meta("ads"), Spec: v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{
+		{Name: "feed", Inline: []string{"0.0.0.0 one.example two.example", "||wild.example^", "three.example"}, Format: "hosts"},
+	}}})
+	ch.apply(&v1alpha1.Policy{ObjectMeta: meta("default"), Spec: v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockListRefs: []string{"ads"}}})
+	ch.apply(&v1alpha1.Policy{ObjectMeta: meta("kids"), Spec: v1alpha1.PolicySpec{ClientGroupRefs: []string{"kids"}, BlockListRefs: []string{"ads"}}})
+	adult, kid := "192.0.2.10", "192.0.2.77"
+	for _, n := range []string{"one.example.", "two.example.", "a.wild.example.", "three.example."} {
+		ch.waitBlocked(n, adult, true)
+		ch.waitBlocked(n, kid, true)
+	}
+
+	// Switch one entry of the block list off.
+	bl := &v1alpha1.BlockList{}
+	if err := ch.st.Get(ctx, store.Key{Kind: "BlockList", Namespace: "default", Name: "ads"}, bl); err != nil {
+		t.Fatal(err)
+	}
+	bl.Spec.Sources[0].Exclude = []string{"two.example"}
+	ch.apply(bl)
+	ch.waitBlocked("two.example.", adult, false)
+	ch.waitBlocked("one.example.", adult, true)
+
+	lists := domainlist.New(domainlist.Options{Store: ch.st})
+	if _, err := lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryExact, Values: []string{"one.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	ch.waitBlocked("one.example.", adult, false)
+	ch.waitBlocked("one.example.", kid, false)
+
+	if _, err := lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryWildcard, Values: []string{"*.wild.example"}, Scope: domainlist.Scope{Groups: []string{"kids"}}}); err != nil {
+		t.Fatal(err)
+	}
+	ch.waitBlocked("a.wild.example.", kid, false)
+	ch.waitBlocked("wild.example.", kid, false)
+	ch.waitBlocked("a.wild.example.", adult, true)
+
+	off := false
+	if _, err := lists.Update(ctx, domainlist.Allow, "default", v1alpha1.EntryExact, "one.example", domainlist.Patch{Enabled: &off}); err != nil {
+		t.Fatal(err)
+	}
+	ch.waitBlocked("one.example.", adult, true)
+
+	if _, err := lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Deny, Namespace: "default", Type: v1alpha1.EntryRegex, Values: []string{`^deny[0-9]+\.example$`}}); err != nil {
+		t.Fatal(err)
+	}
+	ch.waitBlocked("deny7.example.", adult, true)
+	ch.waitBlocked("allowed.example.", adult, false)
 }
