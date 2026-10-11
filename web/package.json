@@ -14,7 +14,7 @@
     "lint": "eslint --max-warnings 0 .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:api": "openapi-typescript ../api/openapi.json -o src/api/generated.ts"
+    "gen:api": "bunx openapi-typescript@7.13.0 ../api/openapi.json -o src/api/generated.ts"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.8",
