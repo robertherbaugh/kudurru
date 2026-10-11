@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -98,11 +99,16 @@ func TestMeasureRecordSetChanges(t *testing.T) {
 		e, lat := measureEnv(t, memory.New(), -1)
 		const sets = 100
 		objs := make([]*v1alpha1.DNSRecordSet, sets)
+		var tuples []RecordTuple
 		for i := range sets {
-			objs[i] = rrsetObj("apps", fmt.Sprintf("rs%03d", i), "example", time.Duration(i)*time.Second, ep(fmt.Sprintf("h%03d.example.com", i), "A", "192.0.2.1"))
+			name := fmt.Sprintf("h%03d.example.com", i)
+			objs[i] = rrsetObj("apps", fmt.Sprintf("rs%03d", i), "example", time.Duration(i)*time.Second, ep(name, "A", "192.0.2.1"))
 			e.apply(objs[i])
+			tuples = append(tuples, RecordTuple{Name: name + ".", Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}})
 		}
-		e.settle()
+		// The baseline is taken only once the setup has converged, so
+		// none of its writes is counted against the changes below.
+		e.waitConverged("example", "example.com.", tuples)
 		drain(lat.wrote)
 		drain(lat.rsWrote)
 		w0 := e.st.Writes("")
@@ -148,16 +154,21 @@ func TestMeasureRecordSetChanges(t *testing.T) {
 	})
 	t.Run("resync of 1000 converged record sets", func(t *testing.T) {
 		e, _ := measureEnv(t, memory.New(), -1)
+		var tuples []RecordTuple
 		for i := range n {
-			e.apply(rrsetObj("apps", fmt.Sprintf("rs%04d", i), "example", time.Duration(i)*time.Second, ep(fmt.Sprintf("h%04d.example.com", i), "A", "192.0.2.1")))
+			name := fmt.Sprintf("h%04d.example.com", i)
+			e.apply(rrsetObj("apps", fmt.Sprintf("rs%04d", i), "example", time.Duration(i)*time.Second, ep(name, "A", "192.0.2.1")))
+			tuples = append(tuples, RecordTuple{Name: name + ".", Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}})
 		}
-		e.settle()
+		// Converged must mean converged: the first term's own writes
+		// would otherwise be counted as the resync's.
+		e.waitConverged("example", "example.com.", tuples)
 		w0 := e.st.Writes("")
 		r0 := sumCounter(t, e.ctrl.metrics.reconciles)
 		t1 := time.Now()
 		e.stop() // a new term relists everything, like a resync
 		e.start()
-		e.eventually("relisted and reconciled", func() bool { return sumCounter(t, e.ctrl.metrics.reconciles) >= r0+n+1 })
+		e.waitLong("relisted and reconciled", func() bool { return sumCounter(t, e.ctrl.metrics.reconciles) >= r0+n+1 })
 		took := time.Since(t1)
 		e.settle()
 		t.Logf("new term over %d converged record sets: all reconciled in %s, %d status writes", n, took.Round(time.Millisecond), e.st.Writes("")-w0)
@@ -182,9 +193,9 @@ func burst(t *testing.T, n int, coalesce time.Duration) {
 	}
 	applied := time.Since(start)
 	want := zoneHash(t, "example.com.", tuples)
-	e.eventually("zone converged", func() bool { return e.zone("example").Status.ContentHash == want })
+	e.waitLong("zone converged", func() bool { return e.zone("example").Status.ContentHash == want })
 	took := time.Since(start)
-	e.settle()
+	e.waitConverged("example", "example.com.", tuples)
 	writes, zoneWrites := e.st.Writes("")-w0, e.st.Writes(KindDNSZone)-z0
 	t.Logf("burst: %d creates applied in %s, zone converged after %s; status writes %d (DNSRecordSet %d, DNSZone %d) = %.3f per change; serial bumps %d",
 		n, applied.Round(time.Millisecond), took.Round(time.Millisecond), writes, e.st.Writes(KindDNSRecordSet), zoneWrites, float64(writes)/float64(n), e.zone("example").Status.Serial-s0)
@@ -246,6 +257,59 @@ func TestMeasureKube(t *testing.T) {
 		n, applied.Round(time.Millisecond), took.Round(time.Millisecond), e.st.Writes("")-w0, e.st.Writes(KindDNSRecordSet), e.st.Writes(KindDNSZone)-1, float64(e.st.Writes("")-w0)/n, conflicts)
 	t.Logf("kube reconcile latency DNSRecordSet: %s", lat.summary(KindDNSRecordSet))
 	t.Logf("kube reconcile latency DNSZone: %s", lat.summary(KindDNSZone))
+}
+
+// convergeTimeout bounds waitLong. With zone coalescing off, each of 1,000
+// record-set changes rebuilds the zone view and the zone model over up to
+// 1,000 record sets; under -race on a loaded machine converging takes
+// longer than eventually's 10 s.
+const convergeTimeout = 2 * time.Minute
+
+// waitLong is eventually with convergeTimeout, polling less often (the
+// record-set condition below lists every object).
+func (e *env) waitLong(what string, cond func() bool) {
+	e.t.Helper()
+	deadline := time.Now().Add(convergeTimeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			e.t.Fatalf("timed out after %s waiting for %s", convergeTimeout, what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// waitConverged waits until zone serves exactly tuples and every record
+// set's status is for its current generation, then settles.
+//
+// settle alone does not prove convergence after a large apply: it calls
+// the writes done after 50 ms without one, and under -race and load a
+// single reconcile that rebuilds the view or the zone of 1,000 record sets
+// takes longer than that. settle then returned with hundreds of record-set
+// writes still queued, which landed after the baseline (a resync of a
+// "converged" store writing 454-949 statuses; paced updates counting
+// 2,001-2,003 writes for 2,000), or it did not see the writes stop within
+// its 10 s deadline at all.
+func (e *env) waitConverged(zone, origin string, tuples []RecordTuple) {
+	e.t.Helper()
+	want := zoneHash(e.t, origin, tuples)
+	e.waitLong("zone "+zone+" converged", func() bool { return e.zone(zone).Status.ContentHash == want })
+	e.waitLong("record set statuses current", func() bool {
+		list, err := e.st.List(context.Background(), KindDNSRecordSet, store.ListOptions{})
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		for _, o := range list.Items {
+			rs, ok := o.(*v1alpha1.DNSRecordSet)
+			if !ok || rs.Status.ObservedGeneration != rs.Generation {
+				return false
+			}
+			if c := condition(rs.Status.Conditions, v1alpha1.ConditionReady); c == nil || c.ObservedGeneration != rs.Generation {
+				return false
+			}
+		}
+		return true
+	})
+	e.settle()
 }
 
 func drain(ch chan store.Key) {
