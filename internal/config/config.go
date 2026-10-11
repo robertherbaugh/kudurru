@@ -50,6 +50,11 @@ type Config struct {
 	Objects    []map[string]any `koanf:"objects" json:"objects,omitempty"`
 	ObjectsDir string           `koanf:"objectsDir" json:"objectsDir"`
 
+	// SettingsFile is the cluster-scope settings layer (D25): read after
+	// this file, before the environment, and watched for hot reload.
+	// KUDURRU_SETTINGS_FILE overrides it; Load stores the effective path.
+	SettingsFile string `koanf:"settingsFile" json:"settingsFile"`
+
 	// EnvLocked lists the key paths that came from the environment.
 	EnvLocked []string `koanf:"-" json:"-"`
 	// Source is the file the config was read from, or "" for defaults only.
@@ -388,7 +393,8 @@ type Log struct {
 }
 
 // Load reads defaults, then the file (if path is non-empty), then the
-// environment overrides, and validates the result.
+// settings file (settingsFile or KUDURRU_SETTINGS_FILE, cluster-scope keys
+// only), then the environment overrides, and validates the result.
 func Load(path string, environ []string) (*Config, error) {
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(Defaults(), "."), nil); err != nil {
@@ -403,6 +409,16 @@ func Load(path string, environ []string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	settingsPath := settingsFilePath(k, overrides, environ)
+	if settingsPath != "" {
+		layer, err := ReadSettingsFile(settingsPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := k.Load(confmap.Provider(layer, "."), nil); err != nil {
+			return nil, fmt.Errorf("config: settings file %s: %w", settingsPath, err)
+		}
+	}
 	if err := k.Load(confmap.Provider(overrides, "."), nil); err != nil {
 		return nil, fmt.Errorf("config: environment: %w", err)
 	}
@@ -413,6 +429,7 @@ func Load(path string, environ []string) (*Config, error) {
 	}
 	cfg.EnvLocked = locked
 	cfg.Source = path
+	cfg.SettingsFile = settingsPath
 	if cfg.Node.Name == "" {
 		if h, err := os.Hostname(); err == nil {
 			cfg.Node.Name = h

@@ -48,7 +48,11 @@ type Key struct {
 	// the UI then shows the key read-only.
 	EnvLocked bool
 	// RestartRequired keys roll pods in Kubernetes (checksum annotation on
-	// the node ConfigMap) and need a process restart in Docker.
+	// the node ConfigMap) and need a process restart in Docker. Every other
+	// key is applied without a restart (config.Reloadable subscribers in
+	// serve: upstreams, cache, blocking defaults, ratelimit, querylog
+	// privacy, exclusions and retention, log.level); TestRestartRequired
+	// pins the hot set.
 	RestartRequired bool
 	// WriteOnly keys are never read back through the API (secrets).
 	WriteOnly bool
@@ -102,11 +106,11 @@ var Schema = []Key{
 	{Path: "blocking.enabled", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Apply blocklists to recursive queries; false answers everything unfiltered (temporary disable is a runtime toggle, not this key)."},
 	{Path: "blocking.defaultResponse", Type: TypeString, Scope: ScopeCluster, Default: "zeroIP", Help: "Block response when neither the Policy (blockMode) nor the BlockList (response) sets one: zeroIP (0.0.0.0 / ::, other types NODATA), nxdomain, customIP (blocking.customIP), refused (discouraged: stub resolvers fail over)."},
 	{Path: "blocking.blockTTL", Type: TypeDuration, Scope: ScopeCluster, Default: "10m", Help: "TTL of block responses when the Policy sets no blockTTL; short so a one-click allow takes effect quickly."},
-	{Path: "blocking.allowDegraded", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Report ready and serve while referenced blocklists are not loaded yet (queries are filtered by the lists that are loaded)."},
+	{Path: "blocking.allowDegraded", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Report ready and serve while referenced blocklists are not loaded yet (queries are filtered by the lists that are loaded).", RestartRequired: true},
 	{Path: "blocking.customIP.v4", Type: TypeString, Scope: ScopeCluster, Default: "", Help: "IPv4 answer for blocked A queries when the response is customIP; empty answers NODATA."},
 	{Path: "blocking.customIP.v6", Type: TypeString, Scope: ScopeCluster, Default: "", Help: "IPv6 answer for blocked AAAA queries when the response is customIP; empty answers NODATA."},
-	{Path: "querylog.enabled", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Collect the per-node query log (querylog.db, rollups and the stats API)."},
-	{Path: "querylog.sink", Type: TypeString, Scope: ScopeCluster, Default: "sqlite", Help: "Built-in query-log sink: sqlite (querylog.db with rollups; required for the dashboard) or slog (one JSON log line per query, nothing stored)."},
+	{Path: "querylog.enabled", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Collect the per-node query log (querylog.db, rollups and the stats API).", RestartRequired: true},
+	{Path: "querylog.sink", Type: TypeString, Scope: ScopeCluster, Default: "sqlite", Help: "Built-in query-log sink: sqlite (querylog.db with rollups; required for the dashboard) or slog (one JSON log line per query, nothing stored).", RestartRequired: true},
 	{Path: "querylog.privacy", Type: TypeString, Scope: ScopeCluster, Default: "full", Help: "Privacy applied once at ingest, irreversibly: full, anonymize_client, hide_domains, hide_domains_clients or nothing (per-minute totals only). The answer summary is stored only in full."},
 	{Path: "querylog.anonymize", Type: TypeString, Scope: ScopeCluster, Default: "prefix", Help: "How anonymize_client hides clients: prefix (IPv4 /24, IPv6 /48) or pseudonym (HMAC with a random in-memory key rotated daily; stable for a day, not reversible)."},
 	{Path: "querylog.retention.raw", Type: TypeDuration, Scope: ScopeCluster, Default: "720h", Help: "How long per-query rows are kept (rollups: 35 d per minute, 400 d per hour, daily forever); 0 keeps rows until maxDBBytes is reached."},
@@ -114,7 +118,7 @@ var Schema = []Key{
 	{Path: "querylog.exclude.domains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Names never logged: exact names, *.suffix wildcards (the suffix and everything below it) or /regex/."},
 	{Path: "querylog.exclude.clients", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Clients never logged: IP addresses, CIDR prefixes or client names."},
 	{Path: "querylog.exclude.sudn", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Do not log special-use names (localhost, .local, .home.arpa, private and link-local reverse zones)."},
-	{Path: "blocking.refreshInterval", Type: TypeDuration, Scope: ScopeCluster, Default: "24h", Help: "Refresh interval of BlockLists that set no spec.refreshInterval (at least 1m); the leader fetches, replicas pull by digest."},
+	{Path: "blocking.refreshInterval", Type: TypeDuration, Scope: ScopeCluster, Default: "24h", Help: "Refresh interval of BlockLists that set no spec.refreshInterval (at least 1m); the leader fetches, replicas pull by digest.", RestartRequired: true},
 	{Path: "blocking.initStrategy", Type: TypeString, Scope: ScopeCluster, Default: "fast", Help: "Blocklist loading at start: fast (serve at once from the disk cache, load in the background), blocking (not ready until every list is loaded), failOnError (blocking, and exit when a list fails to load).", RestartRequired: true},
 	{Path: "blocking.listsDir", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Blocklist body cache (sha256(url) files); empty means <node.dataDir>/lists.", HostOnly: true, RestartRequired: true},
 	{Path: "ratelimit.enabled", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Per-prefix QPM rate limiting of UDP queries at ingress; TCP, DoT, DoH, DoQ and DoH3 are never limited, nor loopback clients and the health name."},
@@ -124,6 +128,7 @@ var Schema = []Key{
 	{Path: "ratelimit.maxBuckets", Type: TypeInt, Scope: ScopeCluster, Default: 65536, Help: "Most prefixes tracked at once (LRU); an evicted prefix starts with a full bucket."},
 	{Path: "ratelimit.exempt", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "CIDRs or addresses never rate limited (loopback always is)."},
 	{Path: "objects", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "Inline CRD-shaped objects (zones, lists, groups, policies); file-managed as file:kudurru.yaml and re-applied on start.", HostOnly: true, RestartRequired: true},
+	{Path: "settingsFile", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Settings file layered over this file for the cluster-scope keys and watched for changes (hot reload, D25); KUDURRU_SETTINGS_FILE takes precedence. The Helm chart mounts /etc/kudurru/settings/settings.yaml; in Docker PATCH /api/v1/settings persists into it. Empty disables the layer.", HostOnly: true, RestartRequired: true},
 	{Path: "objectsDir", Type: TypeString, Scope: ScopeNode, Default: "/etc/kudurru/objects.d", Help: "Directory of *.yaml object files, file-managed as file:<dir>/<name> and re-applied on change; deleting a document deletes the object.", HostOnly: true, RestartRequired: true},
 	{Path: "tsigKeys", Type: TypeList, Scope: ScopeNode, Default: []map[string]any{}, Help: "TSIG keys (RFC 8945) for zone transfers and NOTIFY: name (referenced by DNSZone spec.policy.transferTSIGKeyRefs), algorithm (hmac-sha256, hmac-sha512) and secretFile holding the base64 secret (tsig-keygen format).", HostOnly: true, RestartRequired: true, WriteOnly: true},
 	{Path: "notify.source", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Local IP address outbound NOTIFY messages are sent from; empty lets the kernel choose. Secondaries must list it as a primary.", HostOnly: true, RestartRequired: true},
@@ -136,14 +141,14 @@ var Schema = []Key{
 	{Path: "auth.session.idleTimeout", Type: TypeDuration, Scope: ScopeCluster, Default: "30m", Help: "Sliding idle timeout of a UI session (at least 1m).", RestartRequired: true},
 	{Path: "auth.session.lifetime", Type: TypeDuration, Scope: ScopeCluster, Default: "12h", Help: "Absolute lifetime of a UI session; roles are re-resolved at the next login.", RestartRequired: true},
 	{Path: "auth.session.secure", Type: TypeString, Scope: ScopeCluster, Default: "auto", Help: "Session cookie Secure attribute: auto (when TLS terminates here or a trusted proxy reports https), always or never.", RestartRequired: true},
-	{Path: "auth.tokens.maxLifetime", Type: TypeDuration, Scope: ScopeCluster, Default: "0s", Help: "Longest lifetime of a new API token; tokens without expiry get it. 0 allows tokens that never expire."},
+	{Path: "auth.tokens.maxLifetime", Type: TypeDuration, Scope: ScopeCluster, Default: "0s", Help: "Longest lifetime of a new API token; tokens without expiry get it. 0 allows tokens that never expire.", RestartRequired: true},
 	{Path: "auth.identityProviders", Type: TypeList, Scope: ScopeCluster, Default: []map[string]any{}, Help: "OpenID Providers for UI login and bearer ID tokens: id, issuer, clientID, clientSecretFile, redirectURL, cliClientID, scopes, claimValidationRules, claimMappings, provisioning.", HostOnly: true, RestartRequired: true},
 	{Path: "auth.kubernetes.mode", Type: TypeString, Scope: ScopeCluster, Default: "sar", Help: "How Kubernetes service-account tokens are authorized: sar (SubjectAccessReview on kudurru.io resources). impersonate is v0.2.", HostOnly: true, RestartRequired: true},
 	{Path: "auth.adminSocket.path", Type: TypeString, Scope: ScopeNode, Default: "/run/kudurru/kudurru.sock", Help: "Unix socket for `kudurru admin` (reset-password, create-token, list-users); peers must be uid 0, the server's uid or in adminSocket.group. Empty disables it.", HostOnly: true, RestartRequired: true},
 	{Path: "auth.adminSocket.group", Type: TypeInt, Scope: ScopeNode, Default: -1, Help: "Extra gid allowed on the admin socket; -1 for none.", HostOnly: true, RestartRequired: true},
 	{Path: "rbac.bindings", Type: TypeList, Scope: ScopeCluster, Default: []map[string]any{}, Help: "Role bindings: role, scope {kind cluster|zone, name} and subjects [{kind User|Group|ServiceAccount, name, namespace}]; RoleBinding objects add to them.", HostOnly: true, RestartRequired: true},
 	{Path: "log.level", Type: TypeString, Scope: ScopeNode, Default: "info", Help: "Log level: debug, info, warn, error. Per-role overrides as info,dns=debug."},
-	{Path: "log.format", Type: TypeString, Scope: ScopeNode, Default: "json", Help: "Log format: json or text."},
+	{Path: "log.format", Type: TypeString, Scope: ScopeNode, Default: "json", Help: "Log format: json or text.", RestartRequired: true},
 }
 
 // Lookup finds a key by path.
