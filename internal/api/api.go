@@ -333,15 +333,16 @@ func New(opts Options) (*Server, error) {
 }
 
 // newHumaAPI configures huma: JSON only, no $schema links, the kudurru
-// error envelope, the took_ms transformer, OpenAPI at /api/v1/openapi.json
-// and the Scalar reference at /api/v1/docs.
+// error envelope, the took_ms transformer and OpenAPI at
+// /api/v1/openapi.json (the Scalar reference at /api/v1/docs is docs.go).
 func newHumaAPI(mux *http.ServeMux, prefix string) huma.API {
 	cfg := huma.DefaultConfig("kudurru API", APIVersion)
 	cfg.CreateHooks = nil
 	cfg.SchemasPath = ""
 	cfg.OpenAPIPath = "/openapi"
-	cfg.DocsPath = "/docs"
-	cfg.DocsRenderer = huma.DocsRendererScalar
+	// The Scalar docs page is served by registerDocs from an embedded
+	// bundle (huma's renderer loads it from unpkg.com).
+	cfg.DocsPath = ""
 	cfg.Info.Description = "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
 		"lists are {items, continue, took_ms} with opaque keyset continue tokens."
 	cfg.Info.License = &huma.License{Name: "Apache-2.0", URL: "https://www.apache.org/licenses/LICENSE-2.0"}

@@ -68,7 +68,11 @@ licences. Attributions are added to this file as the dependencies land:
   flow. No external-dns source file is copied.
 - huma (https://github.com/danielgtaylor/huma), MIT, Copyright 2020 Daniel
   G. Taylor: linked as the REST framework of internal/api (operations,
-  OpenAPI 3.1 document, request validation, the Scalar docs page).
+  OpenAPI 3.1 document, request validation).
+- Scalar API Reference (https://github.com/scalar/scalar), MIT, Copyright
+  (c) 2023-present Scalar: the browser bundle of @scalar/api-reference
+  1.44.20 is embedded unmodified (gzipped) in internal/api/scalar and served
+  as the /api/v1/docs page; licence and provenance in that directory.
 - oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
   generates internal/apiclient/openapi from api/openapi-3.0.json at
   development time (not linked); the generated client links

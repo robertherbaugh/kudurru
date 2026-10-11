@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
@@ -42,7 +43,10 @@ func (r *doctorReport) fail(check, format string, args ...any) {
 }
 
 func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
-	var skipAPI, skipPorts bool
+	var (
+		skipAPI, skipPorts bool
+		vipRunDir, kaConf  string
+	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check the local configuration, environment and the API server",
@@ -56,6 +60,9 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
              listeners.api.address)
   token      the CLI token is accepted (GET /auth/me)
   diagnoses  configuration diagnoses reported by the server (GET /info/messages)
+  vrrp       warns when ` + "`kudurru vip run --legacy`" + ` renders keepalived without
+             auth_hmac (unauthenticated VRRP adverts); silent on nodes
+             without keepalived
 
 Exits non-zero when a check fails.`,
 		Args: cobra.NoArgs,
@@ -86,6 +93,7 @@ Exits non-zero when a check fails.`,
 				say("env-locked keys: %v\n", cfg.EnvLocked)
 			}
 			checkDataDir(rep, cfg.Node.DataDir)
+			checkVRRP(rep, vipRunDir, kaConf)
 
 			var serverUp bool
 			if !skipAPI {
@@ -103,7 +111,34 @@ Exits non-zero when a check fails.`,
 	}
 	cmd.Flags().BoolVar(&skipAPI, "skip-api", false, "do not contact the API server")
 	cmd.Flags().BoolVar(&skipPorts, "skip-ports", false, "do not test whether listener ports can be bound")
+	cmd.Flags().StringVar(&vipRunDir, "vip-run-dir", keepalived.DefaultRunDir, "run directory shared with `kudurru vip run` (legacy-mode marker)")
+	cmd.Flags().StringVar(&kaConf, "keepalived-config", "/etc/keepalived/keepalived.conf", "keepalived.conf rendered by `kudurru vip run`")
 	return cmd
+}
+
+// checkVRRP warns when keepalived runs in legacy mode (`kudurru vip run
+// --legacy`, keepalived 2.3.x): VRRP adverts without auth_hmac let anyone
+// on the segment take the VIP. The supervisor leaves a marker in the
+// shared run directory; a readable keepalived.conf is checked directly.
+func checkVRRP(rep *doctorReport, runDir, confPath string) {
+	const hint = "upgrade keepalived to 2.4+ and restart `kudurru vip run` without --legacy (§3.6)"
+	if _, err := os.Stat(keepalived.LegacyMarkerPath(runDir)); err == nil {
+		rep.warn("vrrp", "`kudurru vip run --legacy` is in use: VRRP adverts are unauthenticated; %s", hint)
+		return
+	}
+	b, err := os.ReadFile(confPath) //nolint:gosec // G304: the operator names the file
+	if err != nil {
+		return // no keepalived on this node (or not readable from here)
+	}
+	unauth, total := keepalived.UnauthenticatedInstances(b)
+	switch {
+	case total == 0:
+	case len(unauth) > 0:
+		rep.warn("vrrp", "%s: %d of %d VRRP instances without auth_hmac (%s), adverts are unauthenticated; %s",
+			confPath, len(unauth), total, strings.Join(unauth, ", "), hint)
+	default:
+		rep.ok("vrrp", "%d VRRP instances authenticated with auth_hmac", total)
+	}
 }
 
 // checkDataDir verifies the data directory exists, is writable and is not

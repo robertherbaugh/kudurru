@@ -24,7 +24,7 @@ import (
 type vipFlags struct {
 	vips, preempt          []string
 	peers                  []string
-	peersFile              string
+	peersFile, peersFrom   string
 	priorityIndex          int
 	nodeCount              int
 	unicastSrc             string
@@ -47,6 +47,7 @@ func (f *vipFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringArrayVar(&f.preempt, "preempt-delay", nil, "name=seconds: preempt_delay instead of nopreempt for that VIP")
 	fl.StringSliceVar(&f.peers, "peers", nil, "the other nodes' unicast addresses")
 	fl.StringVar(&f.peersFile, "peers-file", "", "file with one peer address per line, watched: re-render + SIGHUP on change (overrides --peers)")
+	fl.StringVar(&f.peersFrom, "peers-from", "", "nodes:<label selector>: peers are the selected Kubernetes Nodes' InternalIPs (this node excluded), re-listed every 30 s; the priority index defaults to this node's position by name (or its kudurru.io/vip-priority-index label)")
 	fl.IntVar(&f.priorityIndex, "priority-index", 0, "this node's index: priority 200-10*index for the first VIP")
 	fl.IntVar(&f.nodeCount, "node-count", 0, "number of nodes (default: peers + 1)")
 	fl.StringVar(&f.unicastSrc, "unicast-src", "", "this node's VRRP source address (default: the first address of the first VIP's interface)")
@@ -58,6 +59,7 @@ func (f *vipFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.probeCommand, "probe-command", strings.Join(keepalived.DefaultProbeCommand, " "), "VRRP check command prefix rendered into vrrp_script (e.g. \"/usr/local/bin/kudurru health --vrrp\")")
 	fl.StringVar(&f.runDir, "run-dir", keepalived.DefaultRunDir, "shared run directory: FIFO, track files, state, dnsdist API key")
 	fl.StringVar(&f.routerID, "router-id", "", "node name (router_id); default $KUDURRU_NODE__NAME or the host name")
+	fl.StringVar(&f.routerID, "node-name", "", "alias of --router-id (the chart passes spec.nodeName)")
 	fl.StringVar(&f.kudurruBin, "kudurru-bin", "/usr/local/bin/kudurru", "kudurru path used in rendered scripts (root-owned for enable_script_security)")
 	if run {
 		fl.StringVar(&f.keepalivedBin, "keepalived-bin", "keepalived", "keepalived executable")
@@ -165,6 +167,9 @@ func newVIPCmd() *cobra.Command {
 		Use:   "render",
 		Short: "Print the keepalived.conf the supervisor would run",
 		RunE: func(c *cobra.Command, _ []string) error {
+			if _, _, err := rf.nodePeers(c, false); err != nil {
+				return err
+			}
 			kc, err := rf.config()
 			if err != nil {
 				return err
@@ -195,6 +200,10 @@ func runVIP(c *cobra.Command, f *vipFlags) error {
 	if err != nil {
 		return err
 	}
+	np, initialPeers, err := f.nodePeers(c, true)
+	if err != nil {
+		return err
+	}
 	kc, err := f.config()
 	if err != nil {
 		return err
@@ -213,6 +222,9 @@ func runVIP(c *cobra.Command, f *vipFlags) error {
 		_ = sup.Signal(s)
 	})
 	defer stop()
+	if np != nil {
+		go np.Sync(ctx, f.peersFile, initialPeers, logger)
+	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- sup.Serve(ctx, f.healthAddr) }()
 	runErr := sup.Run(ctx)

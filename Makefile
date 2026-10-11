@@ -1,6 +1,10 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
-VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# RELEASE_VERSION is what a build without a reachable tag reports (a
+# tarball, a shallow clone, a fork without tags); bump it together with the
+# charts' version when preparing the next release (docs/release-checklist.md).
+RELEASE_VERSION := 0.1.0-rc.1
+VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(MODULE)/internal/version.Version=$(VERSION) -X $(MODULE)/internal/version.Commit=$(COMMIT) -X $(MODULE)/internal/version.Date=$(DATE)
@@ -13,7 +17,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
@@ -25,9 +29,12 @@ build:
 
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75). The budget is 10 % above the
-## 46,575,776 bytes measured at the end of milestone M1 (linux/amd64,
-## Go 1.27.2); raise it deliberately, in the change that explains the growth.
-SIZE_BUDGET ?= 51234000
+## 54,874,272 bytes measured for v0.1.0-rc.1 (linux/amd64, Go 1.27.2, the
+## placeholder dashboard): 46,575,776 at the end of M1, 53,862,560 at the end
+## of M4 (auth, OIDC, API, dashboard embed, edge and VIP supervisors), plus
+## 1,011,712 for the self-hosted Scalar docs bundle (internal/api/scalar).
+## Raise it deliberately, in the change that explains the growth.
+SIZE_BUDGET ?= 60362000
 size: build
 	@size=$$(wc -c < $(BIN) | tr -d ' '); \
 	echo "$(BIN): $$size bytes, budget $(SIZE_BUDGET) bytes ($$((size * 100 / $(SIZE_BUDGET)))% used, $$(( ($(SIZE_BUDGET) - size) / 1024 )) KiB headroom)"; \
@@ -64,6 +71,14 @@ lint: vet
 
 fmt:
 	gofmt -s -w ./cmd ./api ./internal ./web/*.go
+
+## rbac-manifests: generate the chart's aggregated ClusterRoles
+## (charts/kudurru/templates/rbac-aggregated.yaml) from
+## internal/rbac/permissions.yaml (D31); TestAggregatedRolesDrift fails when
+## the committed file is stale. Run `make deploy-assets` afterwards so the
+## kustomize bases rendered from the chart follow.
+rbac-manifests:
+	go run ./internal/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;

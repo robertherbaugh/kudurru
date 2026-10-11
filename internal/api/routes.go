@@ -113,11 +113,13 @@ func (s *Server) registerRoutes() {
 }
 
 // registerMeta declares the routes huma serves itself (the OpenAPI
-// document and the docs page) so the lint sees them, and GET /version.
+// document) and the docs page with its bundle so the lint sees them, and
+// GET /version.
 func (s *Server) registerMeta() {
-	for _, path := range []string{"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml", "/docs"} {
+	for _, path := range []string{"/openapi.json", "/openapi.yaml", "/openapi-3.0.json", "/openapi-3.0.yaml", docsPath, scalarPath} {
 		s.routes = append(s.routes, rbac.Route{Method: http.MethodGet, Path: BasePath + path, Public: true})
 	}
+	s.registerDocs()
 	register(s, operation(http.MethodGet, "/version", "getVersion", "Build information of this node", "meta"),
 		perm{public: true}, func(_ context.Context, _ *struct{}) (*versionOutput, error) {
 			out := &versionOutput{}

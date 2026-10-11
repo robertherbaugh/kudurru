@@ -60,8 +60,9 @@ subjects:
     namespace: {{ .Release.Namespace }}
 ---
 # Release namespace only: Leases (Elector(name) → Lease kudurru-<name>,
-# D78), Secrets for internal kinds (tokens, users, TSIG, DNSSEC keys) and
-# ConfigMaps for runtime state (blocking toggle replication).
+# D78), Secrets for internal kinds (tokens, users, TSIG, DNSSEC keys;
+# revoking a token and deleting a user or RoleBinding delete their
+# Secrets) and ConfigMaps for runtime state (blocking toggle replication).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -75,7 +76,7 @@ rules:
     verbs: ["get", "create", "update"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "update"]
@@ -95,62 +96,5 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "kudurru.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- if .Values.rbac.aggregateToDefaultRoles }}
----
-# User-facing roles (D31): real CRDs plus the virtual resources kudurru
-# checks with SubjectAccessReview (§5.5). They aggregate into the built-in
-# view/edit/admin roles.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kudurru.fullname" . }}-viewer
-  labels:
-    {{- include "kudurru.labels" . | nindent 4 }}
-    rbac.authorization.k8s.io/aggregate-to-view: "true"
-rules:
-  - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "stats", "caches", "blocking"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kudurru.fullname" . }}-editor
-  labels:
-    {{- include "kudurru.labels" . | nindent 4 }}
-    rbac.authorization.k8s.io/aggregate-to-edit: "true"
-rules:
-  - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "stats", "querylogs"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["kudurru.io"]
-    resources: ["dnsrecordsets", "blocklists", "clientgroups", "policies"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["kudurru.io"]
-    resources: ["caches", "blocking"]
-    verbs: ["get", "update"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kudurru.fullname" . }}-admin
-  labels:
-    {{- include "kudurru.labels" . | nindent 4 }}
-    rbac.authorization.k8s.io/aggregate-to-admin: "true"
-rules:
-  - apiGroups: ["kudurru.io"]
-    resources: ["*"]
-    verbs: ["*"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kudurru.fullname" . }}-auditor
-  labels:
-    {{- include "kudurru.labels" . | nindent 4 }}
-rules:
-  - apiGroups: ["kudurru.io"]
-    resources: ["dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "stats", "querylogs", "audits", "settings"]
-    verbs: ["get", "list", "watch"]
-{{- end }}
+{{- /* The user-facing aggregated ClusterRoles are generated: rbac-aggregated.yaml. */}}
 {{- end }}

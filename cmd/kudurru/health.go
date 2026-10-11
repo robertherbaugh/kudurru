@@ -17,7 +17,7 @@ func newHealthCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "health",
-		Short: "Probe a running instance (used by Docker HEALTHCHECK and keepalived)",
+		Short: "Probe a running instance (Docker HEALTHCHECK; --vrrp is the keepalived check)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/healthz/live"
 			if ready {
@@ -39,6 +39,9 @@ func newHealthCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opsAddr, "ops-address", "127.0.0.1:8081", "ops listener to probe")
 	cmd.Flags().BoolVar(&ready, "ready", false, "probe readiness instead of liveness")
-	cmd.Flags().DurationVar(&timeout, "timeout", 3*time.Second, "request timeout")
+	cmd.Flags().DurationVar(&timeout, "timeout", 3*time.Second, "request timeout (with --vrrp: the probe budget, 900ms unless set)")
+	// --vrrp turns the command into the keepalived track_script probe
+	// (§3.6), the same probe as `kudurru vip probe`.
+	installVRRPHealth(cmd)
 	return cmd
 }

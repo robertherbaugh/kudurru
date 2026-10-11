@@ -74,14 +74,14 @@ func TestVIPRender(t *testing.T) {
 		"--peers", "10.0.0.11,10.0.0.13", "--priority-index", "1", "--unicast-src", "10.0.0.12", "--router-id", "node-b",
 		"--hmac-key-file", "/run/secrets/vrrp_hmac", "--preempt-delay", "dns2=60")
 	for _, want := range []string{"router_id node-b", "virtual_router_id 53\n    priority 190", "virtual_router_id 54\n    priority 190",
-		"preempt_delay 60", "key 1 file:/run/secrets/vrrp_hmac\n", "/usr/local/bin/kudurru vip probe --dns 10.0.0.54:53"} {
+		"preempt_delay 60", "key 1 file:/run/secrets/vrrp_hmac\n", "/usr/local/bin/kudurru health --vrrp --dns 10.0.0.54:53"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("vip render lacks %q:\n%s", want, out)
 		}
 	}
 	out = run(t, "vip", "render", "--vip", "dns=10.0.0.53/24@eth0#53", "--peers", "10.0.0.12", "--unicast-src", "10.0.0.11",
-		"--router-id", "node-a", "--legacy", "--probe-command", "/usr/local/bin/kudurru health --vrrp")
-	if strings.Contains(out, "auth_hmac {") || !strings.Contains(out, "kudurru health --vrrp --dns 10.0.0.53:53") {
+		"--router-id", "node-a", "--legacy", "--probe-command", "/usr/local/bin/kudurru vip probe")
+	if strings.Contains(out, "auth_hmac {") || !strings.Contains(out, "kudurru vip probe --dns 10.0.0.53:53") {
 		t.Errorf("legacy render:\n%s", out)
 	}
 	for name, args := range map[string][]string{
@@ -170,5 +170,12 @@ func TestInstallVRRPHealth(t *testing.T) {
 	}
 	if _, err := runErr("vip", "probe"); err == nil {
 		t.Error("vip probe without --dns accepted")
+	}
+	// The real health command carries the hook: --vrrp reaches the probe.
+	if _, err := runErr("health", "--vrrp"); err == nil || !strings.Contains(err.Error(), "--dns is required") {
+		t.Errorf("health --vrrp without --dns: %v", err)
+	}
+	if o, err := runErr("health", "--vrrp", "--dns", "127.0.0.1:1", "--dnsdist-api", "", "--timeout", "200ms"); err == nil || !strings.Contains(o, "target=127.0.0.1:1") {
+		t.Errorf("health --vrrp against a closed port: %v %q", err, o)
 	}
 }

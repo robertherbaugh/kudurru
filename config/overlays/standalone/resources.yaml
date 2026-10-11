@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
   name: kudurru
   namespace: kudurru-system
 ---
@@ -55,7 +55,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
   name: kudurru-node
   namespace: kudurru-system
 ---
@@ -78,7 +78,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
   name: kudurru-settings
   namespace: kudurru-system
 ---
@@ -91,7 +91,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
     kudurru.io/service: dns
   name: kudurru-dns
   namespace: kudurru-system
@@ -122,7 +122,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
     kudurru.io/service: api
   name: kudurru-api
   namespace: kudurru-system
@@ -151,7 +151,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
     kudurru.io/service: headless
   name: kudurru-headless
   namespace: kudurru-system
@@ -182,7 +182,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: kudurru
     app.kubernetes.io/part-of: kudurru
-    app.kubernetes.io/version: 0.1.0-dev
+    app.kubernetes.io/version: 0.1.0-rc.1
   name: kudurru
   namespace: kudurru-system
 spec:
@@ -208,7 +208,7 @@ spec:
         app.kubernetes.io/managed-by: kustomize
         app.kubernetes.io/name: kudurru
         app.kubernetes.io/part-of: kudurru
-        app.kubernetes.io/version: 0.1.0-dev
+        app.kubernetes.io/version: 0.1.0-rc.1
     spec:
       automountServiceAccountToken: false
       containers:
@@ -231,7 +231,7 @@ spec:
                 resourceFieldRef:
                   divisor: "1"
                   resource: limits.memory
-          image: ghcr.io/robertherbaugh/kudurru:0.1.0-dev
+          image: ghcr.io/robertherbaugh/kudurru:0.1.0-rc.1
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:

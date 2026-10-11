@@ -91,12 +91,10 @@ type Probe struct {
 	RequireBackends int
 }
 
-// DefaultProbeCommand is the VRRP check. §3.6 spells it `kudurru health
-// --vrrp`; the health command belongs to the CLI package, so the probe
-// ships as `kudurru vip probe` (same flags) and `health --vrrp` becomes an
-// alias once cmd/kudurru wires installVRRPHealth into the health command
-// (docs/m3/edge.md). --probe-command switches the rendered form.
-var DefaultProbeCommand = []string{"/usr/local/bin/kudurru", "vip", "probe"}
+// DefaultProbeCommand is the VRRP check as §3.6 spells it, `kudurru health
+// --vrrp`. `kudurru vip probe` is the same probe with the same flags
+// (docs/m3/edge.md); --probe-command switches the rendered form.
+var DefaultProbeCommand = []string{"/usr/local/bin/kudurru", "health", "--vrrp"}
 
 // Config is everything keepalived.conf is rendered from.
 type Config struct {

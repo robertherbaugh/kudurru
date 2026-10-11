@@ -53,7 +53,7 @@ services:
       - kudurru
       - edge
       - run
-      - --backends=10.0.0.11:5353,10.0.0.12:5353,10.0.0.13:5353   # EVERY node lists ALL kudurru nodes
+      - --backends=node-a=10.0.0.11:5353,node-b=10.0.0.12:5353,node-c=10.0.0.13:5353   # EVERY node lists ALL kudurru nodes, named by their KUDURRU_NODE__NAME
       - --pool-resolver=chashed
       - --pool-authoritative=leastOutstanding
       - --tls-dir=/certs
