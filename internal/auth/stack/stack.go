@@ -223,7 +223,6 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	s.roleBindings = objcache.New[*internalv1.RoleBinding](opts.Store, internalv1.KindRoleBinding, objcache.Options{Logger: log})
 	s.roleBindings.OnChange(s.syncRoleBindings)
 	s.idps = objcache.New[*internalv1.IdentityProvider](opts.Store, internalv1.KindIdentityProvider, objcache.Options{Logger: log})
-	s.idps.OnChange(func() { s.rebuildRegistry(context.WithoutCancel(ctx)) })
 	for _, prime := range []func(context.Context) error{s.users.Prime, s.tokens.Prime, s.roleBindings.Prime, s.idps.Prime} {
 		if err := prime(ctx); err != nil {
 			return nil, fmt.Errorf("stack: loading identity objects: %w", err)
@@ -266,6 +265,10 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	if err := s.rebuildRegistry(ctx); err != nil {
 		return nil, err
 	}
+	// Later IdentityProvider changes (the watch started by Run) rebuild the
+	// registry; failures then only produce diagnoses.
+	bg := context.WithoutCancel(ctx)
+	s.idps.OnChange(func() { _ = s.rebuildRegistry(bg) })
 
 	if s.admin, err = adminsock.New(adminsock.Options{
 		Policy: auth.PeerPolicy{GID: cfg.Auth.AdminSocket.Group}, Users: s.users, Tokens: s.tokens,
