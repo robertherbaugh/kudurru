@@ -33,6 +33,7 @@ import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
+import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 
 let db: MockDB = createDB();
 
@@ -93,6 +94,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   cluster: ['read', 'join', 'promote', 'drain'],
   edge: ['read', 'write'],
   audit: ['read', 'export'],
+  unblockrequests: ['read', 'decide', 'delete'],
 };
 
 /** The viewer role of permissions.yaml plus querylog.read (the mock "viewer"). */
@@ -112,6 +114,8 @@ export function permissions(roles: string[]): Record<string, string[]> {
     const [r, v] = p.split('.') as [string, string];
     (out[r] ??= []).push(v);
   }
+  // The auditor role reads unblock requests but cannot decide them.
+  if (roles.includes('auditor')) out.unblockrequests = ['read'];
   return out;
 }
 
@@ -1479,6 +1483,9 @@ export const handlers = [
       ],
     }),
   ),
+
+  // unblock requests ------------------------------------------------------
+  ...unblockHandlers(),
 ];
 
 function blockingState() {
@@ -1688,4 +1695,172 @@ function policyState(p: Policy) {
       topClients: count(rows.map((q) => q.client.ip)).map(([key, n]) => ({ key, ...(names.get(key) ? { name: names.get(key) } : {}), count: n * scale })),
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Unblock requests (internal/api/unblock.go, internal/unblock/decide.go)
+
+function findUnblock(ns: unknown, name: unknown): UnblockRequest | undefined {
+  return db.unblock.find((r) => r.namespace === String(ns) && r.name === String(name));
+}
+
+/** r's history with its own decision appended (pushHistory). */
+function pushedHistory(r: UnblockRequest): UnblockRequest['history'] {
+  if (r.state === 'Pending') return r.history;
+  return [
+    ...r.history,
+    { state: r.state, ...(r.decidedBy ? { decidedBy: r.decidedBy } : {}), ...(r.decidedAt ? { decidedAt: r.decidedAt } : {}), ...(r.note ? { note: r.note } : {}), ...(r.allow ? { allow: r.allow } : {}) },
+  ];
+}
+
+/** An approval whose entry is in force (unblock.Active). */
+function unblockActive(r: UnblockRequest): boolean {
+  return r.state === 'Approved' && !!r.allow && !r.allow.removed && (!r.allow.expiresAt || new Date(r.allow.expiresAt).getTime() > Date.now());
+}
+
+function goDurationMs(v: string): number {
+  const re = /(\d+(?:\.\d+)?)(ms|s|m|h)/gy;
+  let total = 0;
+  let consumed = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(v)) !== null) {
+    const n = Number(m[1]);
+    total += n * (m[2] === 'h' ? 3_600_000 : m[2] === 'm' ? 60_000 : m[2] === 's' ? 1000 : 1);
+    consumed = re.lastIndex;
+  }
+  return consumed === v.length && consumed > 0 ? total : Number.NaN;
+}
+
+function stamp(ms = Date.now()): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/** Ends r's approval in force: its entry leaves the list when the approval added it. */
+function endApproval(r: UnblockRequest): void {
+  if (!unblockActive(r) || !r.allow) return;
+  const allow = r.allow;
+  if (allow.added) {
+    const list = db.lists.find((l) => `${l.metadata.namespace ?? 'default'}/${l.metadata.name}` === allow.list);
+    const src = list?.spec.sources.find((s) => s.inline);
+    if (src?.inline) src.inline = src.inline.filter((e) => e !== allow.entry);
+  }
+  r.allow = { ...allow, removed: stamp() };
+}
+
+function unblockHandlers() {
+  const missing = (params: Record<string, unknown>) => fail(404, 'not_found', `unblock request ${String(params.ns)}/${String(params.name)} not found`);
+  return [
+    http.get(`${B}/unblockrequests`, ({ request }) => {
+      const g = guard(request, 'unblockrequests', 'read');
+      if (g) return g;
+      const url = new URL(request.url);
+      const state = url.searchParams.get('state');
+      const limit = Math.min(500, Number(url.searchParams.get('limit') || '100')) || 100;
+      const start = Number(url.searchParams.get('continue') || '0');
+      const all = [...db.unblock].sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+      const counts = { pending: 0, approved: 0, denied: 0, expired: 0 };
+      for (const r of all) counts[r.state.toLowerCase() as keyof typeof counts]++;
+      const matching = state ? all.filter((r) => r.state === state) : all;
+      const items = matching.slice(start, start + limit);
+      const next = start + limit < matching.length ? String(start + limit) : undefined;
+      return ok({ items, counts, ...(next ? { continue: next } : {}) });
+    }),
+    http.get(`${B}/unblockrequests/:ns/:name`, ({ request, params }) => {
+      const g = guard(request, 'unblockrequests', 'read');
+      if (g) return g;
+      const r = findUnblock(params.ns, params.name);
+      return r ? ok({ ...r }) : missing(params);
+    }),
+    http.post(`${B}/unblockrequests/:ns/:name/approve`, async ({ request, params }) => {
+      const g = guard(request, 'unblockrequests', 'decide');
+      if (g) return g;
+      const r = findUnblock(params.ns, params.name);
+      if (!r) return missing(params);
+      if (unblockActive(r)) return fail(409, 'conflict', `${r.namespace}/${r.name} is already approved; deny it to revoke the approval`);
+      const body = (await request.json()) as UnblockApproval;
+      const scope = body.scope ?? 'everyone';
+      const match = body.match ?? 'exact';
+      let ms = 0;
+      if (body.duration) {
+        ms = goDurationMs(body.duration);
+        if (Number.isNaN(ms)) return fail(400, 'invalid', `duration: ${body.duration} is not a Go duration`, undefined, undefined, ['body.duration']);
+      }
+      let list = 'ui-allow';
+      let group = '';
+      let wanted: string[];
+      if (scope === 'group') {
+        group = body.group || r.groups[0] || '';
+        if (!group) return fail(422, 'invalid', 'the request names no client group; approve it for everyone');
+        if (!group.includes('/')) group = `${r.namespace}/${group}`;
+        const gname = group.split('/')[1] ?? '';
+        list = `ui-allow-${gname}`;
+        wanted = db.policies.filter((p) => (p.spec.clientGroupRefs ?? []).includes(gname)).map((p) => p.metadata.name);
+        if (!wanted.length) return fail(422, 'invalid', `no policy covers client group ${group}; approve it for everyone`);
+      } else {
+        wanted = [...new Set(['default', ...r.policies.filter((p) => p.startsWith(`${r.namespace}/`)).map((p) => p.split('/')[1] ?? '')])];
+      }
+      const entry = match === 'subdomains' ? `||${r.domain}^` : r.domain;
+      let added = true;
+      const src = db.lists.find((l) => l.metadata.name === list)?.spec.sources.find((s) => s.inline);
+      if (src?.inline) {
+        added = !src.inline.includes(entry);
+        if (added) src.inline = [...src.inline, entry];
+      }
+      const attached: string[] = [];
+      const skipped: string[] = [];
+      for (const name of wanted) {
+        const p = db.policies.find((x) => x.metadata.name === name);
+        if (!p) continue;
+        const owner = p.metadata.annotations?.[MANAGED] ?? '';
+        if (owner.startsWith('file:') || owner.startsWith('kube')) {
+          skipped.push(`${r.namespace}/${name}`);
+          continue;
+        }
+        if (!(p.spec.allowListRefs ?? []).includes(list)) p.spec.allowListRefs = [...(p.spec.allowListRefs ?? []), list];
+        attached.push(`${r.namespace}/${name}`);
+      }
+      const allow: UnblockAllow = {
+        scope,
+        match,
+        ...(group ? { group } : {}),
+        list: `${r.namespace}/${list}`,
+        entry,
+        added,
+        policies: attached,
+        ...(ms > 0 ? { expiresAt: stamp(Date.now() + ms) } : {}),
+      };
+      const history = pushedHistory(r);
+      Object.assign(r, { state: 'Approved', decidedBy: db.session?.user.name ?? 'admin', decidedAt: stamp(), allow, history, resourceVersion: String(++db.rv) });
+      delete r.expiresAt;
+      if (body.note) r.note = body.note;
+      else delete r.note;
+      return ok({ request: { ...r }, attached, skipped, flushed: 1 });
+    }),
+    http.post(`${B}/unblockrequests/:ns/:name/deny`, async ({ request, params }) => {
+      const g = guard(request, 'unblockrequests', 'decide');
+      if (g) return g;
+      const r = findUnblock(params.ns, params.name);
+      if (!r) return missing(params);
+      const body = (await request.json()) as UnblockDenial;
+      endApproval(r);
+      const history = pushedHistory(r);
+      Object.assign(r, { state: 'Denied', decidedBy: db.session?.user.name ?? 'admin', decidedAt: stamp(), history, resourceVersion: String(++db.rv) });
+      delete r.allow;
+      delete r.expiresAt;
+      if (body.note) r.note = body.note;
+      else delete r.note;
+      return ok({ request: { ...r }, attached: [], skipped: [], flushed: 0 });
+    }),
+    http.delete(`${B}/unblockrequests/:ns/:name`, ({ request, params }) => {
+      const g = guard(request, 'unblockrequests', 'delete');
+      if (g) return g;
+      const r = findUnblock(params.ns, params.name);
+      if (!r) return missing(params);
+      if (unblockActive(r) && r.allow?.expiresAt) {
+        return fail(409, 'conflict', `${r.namespace}/${r.name} is a time-limited approval in force; deny it first (which removes its allow entry)`);
+      }
+      db.unblock = db.unblock.filter((x) => x !== r);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  ];
 }

@@ -843,3 +843,28 @@ export type PolicyState = Omit<S['PolicyState'], 'took_ms' | 'conditions' | 'sha
   shadowedBy?: string[] | null;
   took_ms?: number;
 };
+
+// Unblock requests (the block page's "ask to allow") ------------------------
+
+/** One request from the block page (GET /unblockrequests/{namespace}/{name}). */
+export type UnblockRequest = S['UnblockRequest'];
+export type UnblockState = UnblockRequest['state'];
+/** How the client was recorded under querylog.privacy. */
+export type UnblockClientPrivacy = UnblockRequest['clientPrivacy'];
+/** Why the name was blocked; list is "ns/name", "service:<id>" or "safesearch:<engine>". */
+export type UnblockBlock = S['UnblockBlock'];
+/** The allow entry an approval created. */
+export type UnblockAllow = S['UnblockAllow'];
+/** One earlier decision of a request asked again. */
+export type UnblockDecision = S['UnblockDecision'];
+export type UnblockCounts = S['UnblockCounts'];
+/** GET /unblockrequests: newest first; counts cover every request. */
+export type UnblockRequestList = S['UnblockRequestList'];
+/** POST …/approve; an empty duration is permanent. */
+export type UnblockApproval = S['UnblockApproval'];
+export type UnblockScope = NonNullable<UnblockApproval['scope']>;
+export type UnblockMatch = NonNullable<UnblockApproval['match']>;
+/** POST …/deny. */
+export type UnblockDenial = S['UnblockDenial'];
+/** The answer of approve and deny; skipped policies are managed elsewhere. */
+export type UnblockDecisionResult = S['UnblockDecisionResult'];

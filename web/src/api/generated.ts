@@ -1170,6 +1170,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/unblockrequests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the unblock requests users made on the block page, newest first
+         * @description Cluster-wide: the requests are UnblockRequest objects in the store. counts covers every request, so ?state=Pending&limit=1 is the pending count.
+         */
+        get: operations["listUnblockRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/unblockrequests/{namespace}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an unblock request */
+        get: operations["getUnblockRequest"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unblock request
+         * @description A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry.
+         */
+        delete: operations["deleteUnblockRequest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/unblockrequests/{namespace}/{name}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an unblock request: add the allow entry
+         * @description Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+         */
+        post: operations["approveUnblockRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/unblockrequests/{namespace}/{name}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deny an unblock request (revokes an approval in force) */
+        post: operations["denyUnblockRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/version": {
         parameters: {
             query?: never;
@@ -2752,6 +2830,155 @@ export interface components {
             percent: number;
             /** Format: int64 */
             total: number;
+        };
+        UnblockAllow: {
+            /** @description The approval added the entry (it was not on the list); only then does its end remove it. */
+            added: boolean;
+            /** @description The line in the list's inline source ui. */
+            entry: string;
+            /**
+             * Format: date-time
+             * @description End of a time-limited approval; absent is permanent.
+             */
+            expiresAt?: string;
+            /** @description The ClientGroup of a group approval, ns/name. */
+            group?: string;
+            /** @description The allow BlockList, ns/name (ui-allow or ui-allow-<group>). */
+            list: string;
+            /** @enum {string} */
+            match: "exact" | "subdomains";
+            policies: string[];
+            /**
+             * Format: date-time
+             * @description When the entry was released (expiry or revocation).
+             */
+            removed?: string;
+            /** @enum {string} */
+            scope: "everyone" | "group";
+        };
+        UnblockApproval: {
+            /** @description Go duration (1h, 24h, 168h); empty is permanent. The entry is removed when it ends. */
+            duration?: string;
+            /** @description The ClientGroup of a group approval (ns/name or a name in the request's namespace); default the request's first group. */
+            group?: string;
+            /**
+             * @description exact: the name only; subdomains: the name and every name below it (||name^). Default exact.
+             * @enum {string}
+             */
+            match?: "exact" | "subdomains";
+            /** @description Shown to the user on the block page. */
+            note?: string;
+            /**
+             * @description everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+             * @enum {string}
+             */
+            scope?: "everyone" | "group";
+        };
+        UnblockBlock: {
+            /** @description list, service, safesearch, policy (allow-only) or cname. */
+            kind: string;
+            /** @description The deciding list: ns/name, service:<id> or safesearch:<engine>. */
+            list?: string;
+            /** @description The client's policy, ns/name. */
+            policy?: string;
+            rule?: string;
+        };
+        UnblockCounts: {
+            /** Format: int64 */
+            approved: number;
+            /** Format: int64 */
+            denied: number;
+            /** Format: int64 */
+            expired: number;
+            /** Format: int64 */
+            pending: number;
+        };
+        UnblockDecision: {
+            allow?: components["schemas"]["UnblockAllow"];
+            /** Format: date-time */
+            decidedAt?: string;
+            decidedBy?: string;
+            note?: string;
+            /** @enum {string} */
+            state: "Approved" | "Denied" | "Expired";
+        };
+        UnblockDecisionResult: {
+            attached: string[];
+            /** Format: int64 */
+            flushed: number;
+            request: components["schemas"]["UnblockRequest"];
+            /** @description Policies that should reference the list but are managed elsewhere; add the list there. */
+            skipped: string[];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
+        UnblockDenial: {
+            /** @description Shown to the user on the block page. */
+            note?: string;
+        };
+        UnblockRequest: {
+            allow?: components["schemas"]["UnblockAllow"];
+            block?: components["schemas"]["UnblockBlock"];
+            /** @description The client address (full), its /24 or /48 network address (prefix), or absent (hidden). */
+            client?: string;
+            /**
+             * @description How the client was recorded under querylog.privacy.
+             * @enum {string}
+             */
+            clientPrivacy: "full" | "prefix" | "hidden";
+            /** @description Plain text the user typed. */
+            contact?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt?: string;
+            decidedBy?: string;
+            domain: string;
+            /**
+             * Format: date-time
+             * @description When a pending request expires undecided (unblockRequests.pendingExpiry).
+             */
+            expiresAt?: string;
+            /** @description The client's ClientGroups at request time, ns/name. */
+            groups: string[];
+            history: components["schemas"]["UnblockDecision"][];
+            name: string;
+            namespace: string;
+            /** @description The node whose block page took the request. */
+            node?: string;
+            /** @description The administrator's note, shown on the block page. */
+            note?: string;
+            /** @description The client's policies at request time, highest priority first. */
+            policies: string[];
+            /** @description Plain text the user typed (at most 500 characters). */
+            reason?: string;
+            /**
+             * Format: date-time
+             * @description The latest submission.
+             */
+            requestedAt: string;
+            /** @description Plain text the user typed. */
+            requesterName?: string;
+            resourceVersion: string;
+            /** @enum {string} */
+            state: "Pending" | "Approved" | "Denied" | "Expired";
+            /** Format: int64 */
+            submissions: number;
+        };
+        UnblockRequestList: {
+            /** @description Token for the next page; empty on the last page. */
+            continue?: string;
+            /** @description Every request by state (not only this page). */
+            counts: components["schemas"]["UnblockCounts"];
+            items: components["schemas"]["UnblockRequest"][];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         UpstreamItem: {
             addr: string;
@@ -10661,6 +10888,481 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUnblockRequests: {
+        parameters: {
+            query?: {
+                /** @description Only requests in this state. */
+                state?: "Pending" | "Approved" | "Denied" | "Expired";
+                /** @description Page size (default 100). */
+                limit?: number;
+                continue?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnblockRequestList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getUnblockRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnblockRequest"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteUnblockRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    approveUnblockRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnblockApproval"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnblockDecisionResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    denyUnblockRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnblockDenial"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnblockDecisionResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

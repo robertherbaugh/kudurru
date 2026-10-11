@@ -21,6 +21,7 @@ import type {
 } from '../api/types';
 import schemaJSON from './data/settings-schema.json';
 import { pick, pickSkewed, rng } from './rand';
+import type { UnblockRequest } from '../api/types';
 
 const NS = 'default';
 const API = 'kudurru.io/v1alpha1' as const;
@@ -62,6 +63,8 @@ export interface MockDB {
   session: { user: MockUser } | null;
   nextQueryID: number;
   rv: number;
+  /** Unblock requests from the block page, newest first. */
+  unblock: UnblockRequest[];
 }
 
 export const CLIENTS: { ip: string; name: string; group: string }[] = [
@@ -713,9 +716,145 @@ export function createDB(now = FIXED_NOW): MockDB {
     users: [
       { username: 'admin', password: 'admin', name: 'admin', roles: ['admin'] },
       { username: 'viewer', password: 'viewer', name: 'viewer', roles: ['viewer'] },
+      { username: 'auditor', password: 'auditor', name: 'auditor', roles: ['auditor'] },
     ],
     session: null,
     nextQueryID: 100_501,
     rv: 100,
+    unblock: buildUnblockRequests(now),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Unblock requests (internal/api/unblock.go shapes): three pending (one
+// with a hostile name and reason that must render as text, one with the
+// client anonymised to its network, one hidden), one approval for a day,
+// one denial that revoked an earlier approval, one expired.
+
+/** The request whose requester typed markup (rendered as text, never HTML). */
+export const HOSTILE = '<img src=x onerror=alert(1)>';
+
+export function buildUnblockRequests(now: number): UnblockRequest[] {
+  const at = (ms: number) => new Date(now + ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const H = 3_600_000;
+  const base = { namespace: NS, history: [] as UnblockRequest['history'], submissions: 1 };
+  return [
+    {
+      ...base,
+      name: 'tiktokv-com-c0a8011e',
+      domain: 'tiktokv.com',
+      client: '192.168.1.30',
+      clientPrivacy: 'full',
+      groups: ['default/kids'],
+      policies: ['default/kids-bedtime', 'default/streaming-off'],
+      node: 'kudurru-0',
+      requesterName: 'Mia',
+      reason: 'I need it for the school video project, due tomorrow.',
+      block: { kind: 'list', list: 'default/starter', rule: 'tiktokv.com', policy: 'default/kids-bedtime' },
+      createdAt: at(-3 * H),
+      requestedAt: at(-600_000),
+      submissions: 2,
+      state: 'Pending',
+      expiresAt: at(7 * 24 * H),
+      resourceVersion: '201',
+    },
+    {
+      ...base,
+      name: 'graph-facebook-com-c0a80100',
+      domain: 'graph.facebook.com',
+      client: '192.168.1.0',
+      clientPrivacy: 'prefix',
+      groups: ['default/default'],
+      policies: ['default/social-media', 'default/default'],
+      node: 'kudurru-1',
+      requesterName: HOSTILE,
+      contact: 'guest@example.com',
+      reason: `${HOSTILE} please`,
+      block: { kind: 'list', list: 'default/oisd-small', rule: '||graph.facebook.com^', policy: 'default/social-media' },
+      createdAt: at(-H),
+      requestedAt: at(-H),
+      state: 'Pending',
+      expiresAt: at(7 * 24 * H - H),
+      resourceVersion: '202',
+    },
+    {
+      ...base,
+      name: 'www-roblox-com-7d1e9a40',
+      domain: 'www.roblox.com',
+      clientPrivacy: 'hidden',
+      groups: [],
+      policies: ['default/default'],
+      node: 'kudurru-0',
+      reason: 'Game night with the cousins',
+      block: { kind: 'service', list: 'service:roblox', rule: '||roblox.com^', policy: 'default/streaming-off' },
+      createdAt: at(-3 * H),
+      requestedAt: at(-3 * H),
+      state: 'Pending',
+      expiresAt: at(7 * 24 * H - 3 * H),
+      resourceVersion: '203',
+    },
+    {
+      ...base,
+      name: 'doubleclick-net-c0a8010a',
+      domain: 'doubleclick.net',
+      client: '192.168.1.10',
+      clientPrivacy: 'full',
+      groups: ['default/default'],
+      policies: ['default/social-media', 'default/default'],
+      node: 'kudurru-0',
+      contact: 'robert@example.com',
+      reason: 'The shop checkout breaks without it',
+      block: { kind: 'list', list: 'default/stevenblack', rule: '0.0.0.0 doubleclick.net', policy: 'default/social-media' },
+      createdAt: at(-5 * H),
+      requestedAt: at(-5 * H),
+      state: 'Approved',
+      decidedBy: 'admin',
+      decidedAt: at(-4 * H),
+      note: 'Allowed for a day',
+      allow: { scope: 'everyone', match: 'exact', list: 'default/ui-allow', entry: 'doubleclick.net', added: true, policies: ['default/default', 'default/social-media'], expiresAt: at(20 * H) },
+      resourceVersion: '204',
+    },
+    {
+      ...base,
+      name: 'metrics-roku-com-c0a80114',
+      domain: 'metrics.roku.com',
+      client: '192.168.1.20',
+      clientPrivacy: 'full',
+      groups: ['default/iot'],
+      policies: ['default/iot-strict'],
+      node: 'kudurru-0',
+      block: { kind: 'list', list: 'default/regex-trackers', rule: '/^metrics\\./', policy: 'default/iot-strict' },
+      createdAt: at(-72 * H),
+      requestedAt: at(-30 * H),
+      submissions: 2,
+      state: 'Denied',
+      decidedBy: 'admin',
+      decidedAt: at(-26 * H),
+      note: 'Telemetry stays blocked',
+      history: [
+        {
+          state: 'Approved',
+          decidedBy: 'admin',
+          decidedAt: at(-70 * H),
+          allow: { scope: 'group', match: 'subdomains', group: 'default/iot', list: 'default/ui-allow-iot', entry: '||metrics.roku.com^', added: true, policies: [], removed: at(-26 * H) },
+        },
+      ],
+      resourceVersion: '205',
+    },
+    {
+      ...base,
+      name: 'cdn-tracker-cname-example-c0a8010b',
+      domain: 'cdn.tracker-cname.example',
+      client: '192.168.1.11',
+      clientPrivacy: 'full',
+      groups: ['default/default'],
+      policies: ['default/social-media', 'default/default'],
+      node: 'kudurru-0',
+      block: { kind: 'cname', list: 'default/stevenblack', rule: '0.0.0.0 tracker-cname.example', policy: 'default/social-media' },
+      createdAt: at(-9 * 24 * H),
+      requestedAt: at(-9 * 24 * H),
+      state: 'Expired',
+      resourceVersion: '206',
+    },
+  ];
 }

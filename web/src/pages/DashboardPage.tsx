@@ -13,6 +13,7 @@ import { ErrorBanner, Loading } from '../components/Feedback';
 import { ScopeNote } from '../components/ScopeSelector';
 import { StatTiles } from '../components/StatTiles';
 import { TopList } from '../components/TopList';
+import { UnblockNotice } from '../components/UnblockBadge';
 import { Link, useNavigate } from '../lib/router';
 import { Badge } from '@astryxdesign/core/Badge';
 
@@ -95,6 +96,7 @@ export default function DashboardPage() {
         <ScopeNote scope={summary.data} />
       </div>
       {summary.error ? <ErrorBanner error={summary.error} /> : null}
+      <UnblockNotice />
       <StatTiles summary={summary.data} />
 
       <section className="k-panel" aria-labelledby="chart-total">

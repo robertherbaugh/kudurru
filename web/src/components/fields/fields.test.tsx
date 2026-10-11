@@ -95,6 +95,24 @@ describe('typed fields', () => {
     expect(screen.getByRole('textbox', { name: 'TTL (custom)' })).toHaveValue('45m');
   });
 
+  it('DurationField with emptyLabel keeps "" as its own choice (e.g. Permanently)', () => {
+    render(<Controlled initial="">{(v, set) => <DurationField label="Duration" value={v} onChange={set} emptyLabel="Permanently" presets={[{ value: '1h', label: '1 hour' }]} />}</Controlled>);
+    const sel = screen.getByRole('combobox', { name: 'Duration' });
+    expect(sel).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Permanently' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Duration (custom)' })).toBeNull();
+    fireEvent.change(sel, { target: { value: '1h' } });
+    expect(sel).toHaveValue('1h');
+    fireEvent.change(sel, { target: { value: '' } });
+    expect(sel).toHaveValue('');
+  });
+
+  it('EnumSelect lists a disabled option without letting it be chosen', () => {
+    render(<EnumSelect label="Scope" value="a" options={[{ value: 'a', label: 'A' }, { value: 'b', label: 'B', disabled: true }]} onChange={() => {}} />);
+    expect(screen.getByRole('option', { name: 'B' })).toBeDisabled();
+    expect(screen.getByRole('option', { name: 'A' })).not.toBeDisabled();
+  });
+
   it('SecondsField picks TTL presets and shows them in words', () => {
     const onChange = vi.fn();
     render(<SecondsField label="TTL" value="" emptyLabel="Zone default" onChange={onChange} />);
