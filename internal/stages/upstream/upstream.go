@@ -1,112 +1,145 @@
-// Package upstream is the terminal forwarding stage. The v0.1 design uses
-// dnsproxy upstream groups with strategies (docs/architecture.md §3.3); this
-// scaffold implements the "strict" strategy over miekg/dns so the chain is
-// end-to-end testable. Replace the exchange with dnsproxy in milestone M1.
+// Package upstream is the terminal forwarding stage (docs/architecture.md
+// §7.1 step 11). It forwards over the groups of internal/upstream: the
+// group is Request.UpstreamGroup when the authoritative stage set it, else
+// the longest conditional-forwarding suffix, else "default". Answers from
+// the default group are Cacheable; conditional ones are not (blocky rule).
 package upstream
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"strings"
+	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
 // Stage implements pipeline.Stage.
 type Stage struct {
-	// Group is the upstream group name recorded in Response.Upstream.
+	set atomic.Pointer[upstream.Set]
+
+	// Group, Servers and Timeout describe the group built by the
+	// compatibility constructor New; they are empty for NewStage.
+	//
+	// Deprecated: read Set().Status() instead.
 	Group   string
 	Servers []string
 	Timeout time.Duration
-
-	udp *dns.Client
-	tcp *dns.Client
 }
 
-// New builds a strict-order forwarder. Servers are host:port; a missing port
-// defaults to 53.
+// NewStage returns a stage forwarding over set. set must not be nil.
+func NewStage(set *upstream.Set) *Stage {
+	s := &Stage{}
+	s.set.Store(set)
+	return s
+}
+
+// New builds a stage with a single default group of servers using the
+// default strategy (parallel_best). It predates the group configuration and
+// is kept for callers that only have a server list; group must be
+// "default".
+//
+// Deprecated: build an upstream.Set with upstream.New and use NewStage.
 func New(group string, servers []string, timeout time.Duration) (*Stage, error) {
+	if group != upstream.DefaultGroup {
+		return nil, fmt.Errorf("upstream: the compatibility constructor builds the %q group, not %q", upstream.DefaultGroup, group)
+	}
 	if len(servers) == 0 {
 		return nil, errors.New("upstream: at least one server is required")
 	}
 	if timeout <= 0 {
-		timeout = 2 * time.Second
+		timeout = upstream.DefaultTimeout
 	}
-	norm := make([]string, len(servers))
-	for i, s := range servers {
-		s = strings.TrimPrefix(s, "udp://")
-		if _, _, err := net.SplitHostPort(s); err != nil {
-			s = net.JoinHostPort(s, "53")
-		}
-		norm[i] = s
+	set, err := upstream.New(upstream.Config{Groups: map[string]upstream.GroupConfig{
+		group: {Servers: servers, Timeout: timeout},
+	}}, upstream.Options{})
+	if err != nil {
+		return nil, err
 	}
-	return &Stage{
-		Group:   group,
-		Servers: norm,
-		Timeout: timeout,
-		udp:     &dns.Client{Net: "udp", Timeout: timeout, UDPSize: dns.DefaultMsgSize},
-		tcp:     &dns.Client{Net: "tcp", Timeout: timeout},
-	}, nil
+	s := NewStage(set)
+	s.Group, s.Servers, s.Timeout = group, append([]string(nil), servers...), timeout
+	return s, nil
 }
 
 // Name implements pipeline.Stage.
 func (s *Stage) Name() string { return "upstream" }
 
-// Serve implements pipeline.Stage.
+// Set returns the current upstream set.
+func (s *Stage) Set() *upstream.Set { return s.set.Load() }
+
+// Swap installs next (a configuration reload) and returns the previous
+// set. Retire it with prev.CloseReplacedBy(next) after a grace period of
+// one query timeout so that exchanges in flight on it can finish.
+func (s *Stage) Swap(next *upstream.Set) (prev *upstream.Set) {
+	return s.set.Swap(next)
+}
+
+// ECSSubnet is the client subnet the stage would send for m from client;
+// the cache stage keys entries by it.
+func (s *Stage) ECSSubnet(m *dns.Msg, client netip.Addr) netip.Prefix {
+	return s.set.Load().ECSSubnet(m, client)
+}
+
+// Serve implements pipeline.Stage. It never calls next.
 func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Response, error) {
-	out := req.Msg.Copy()
-	out.Id = dns.Id()
-	out.RecursionDesired = true
+	set := s.set.Load()
+	q := req.Question()
+	group, conditional, err := set.Route(q.Name, req.UpstreamGroup)
+	if err != nil {
+		return s.failure(req, group, err), nil
+	}
 
 	ctx := req.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if !req.Deadline.IsZero() {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, req.Deadline)
 		defer cancel()
 	}
-
-	var lastErr error
-	for _, server := range s.Servers {
-		in, err := s.exchange(ctx, out, server)
-		if err != nil {
-			lastErr = fmt.Errorf("%s: %w", server, err)
-			continue
-		}
-		in.Id = req.Msg.Id
-		return &pipeline.Response{
-			Msg:       in,
-			Status:    pipeline.StatusForwarded,
-			Upstream:  s.Group + "/" + server,
-			Cacheable: true,
-		}, nil
+	res, err := set.Exchange(ctx, group, set.PrepareQuery(req.Msg, req.Client.Addr.Addr()))
+	if err != nil {
+		return s.failure(req, group, err), nil
 	}
-
-	status := pipeline.StatusServfailUpstream
-	var nerr net.Error
-	if errors.As(lastErr, &nerr) && nerr.Timeout() {
-		status = pipeline.StatusTimeoutUpstream
-	}
-	r := pipeline.Reply(req, dns.RcodeServerFailure, status)
-	r.Upstream = s.Group
-	return r, nil
+	upstream.FinishReply(req.Msg, res.Msg, -1)
+	return &pipeline.Response{
+		Msg:       res.Msg,
+		Status:    pipeline.StatusForwarded,
+		Upstream:  res.Upstream,
+		Cacheable: !conditional,
+	}, nil
 }
 
-// exchange talks UDP first and retries over TCP when the answer is
-// truncated. The client's own transport is irrelevant to the upstream hop.
-func (s *Stage) exchange(ctx context.Context, m *dns.Msg, server string) (*dns.Msg, error) {
-	in, _, err := s.udp.ExchangeContext(ctx, m, server)
-	if err != nil {
-		return nil, err
+// failure answers SERVFAIL: the upstream's own SERVFAIL when one arrived
+// (it may carry an extended error), else a synthesised one with EDE 22 (no
+// reachable authority) for timeouts or 23 (network error).
+func (s *Stage) failure(req *pipeline.Request, group string, err error) *pipeline.Response {
+	status := pipeline.StatusServfailUpstream
+	if upstream.IsTimeout(err) {
+		status = pipeline.StatusTimeoutUpstream
 	}
-	if in.Truncated {
-		if tin, _, terr := s.tcp.ExchangeContext(ctx, m, server); terr == nil {
-			return tin, nil
-		}
+	var ue *upstream.Error
+	if errors.As(err, &ue) && ue.Msg != nil {
+		m := ue.Msg
+		m.Rcode = dns.RcodeServerFailure
+		m.Answer, m.Ns = nil, nil
+		upstream.FinishReply(req.Msg, m, -1)
+		return &pipeline.Response{Msg: m, Status: status, Upstream: ue.Upstream}
 	}
-	return in, nil
+	r := pipeline.Reply(req, dns.RcodeServerFailure, status)
+	r.Upstream = group
+	r.Msg.RecursionAvailable = true
+	upstream.FinishReply(req.Msg, r.Msg, -1)
+	code := uint16(dns.ExtendedErrorCodeNetworkError)
+	if status == pipeline.StatusTimeoutUpstream {
+		code = dns.ExtendedErrorCodeNoReachableAuthority
+	}
+	upstream.AddEDE(r.Msg, code, "")
+	return r
 }
