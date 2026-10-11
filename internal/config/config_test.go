@@ -239,3 +239,41 @@ listeners:
 		t.Fatalf("loopback-only proxyProtocolFrom must not need a secret: %v", err)
 	}
 }
+
+func TestLoadObjects(t *testing.T) {
+	cfg, err := Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ObjectsDir != "/etc/kudurru/objects.d" || len(cfg.Objects) != 0 {
+		t.Fatalf("objects defaults wrong: %q %v", cfg.ObjectsDir, cfg.Objects)
+	}
+	path := filepath.Join(t.TempDir(), "kudurru.yaml")
+	if err := os.WriteFile(path, []byte(`
+objectsDir: /srv/objects.d
+objects:
+- apiVersion: kudurru.io/v1alpha1
+  kind: Policy
+  metadata: { name: default, labels: { kudurru.io/tier: base } }
+  spec: { clientGroupRefs: [default], priority: 5 }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ObjectsDir != "/srv/objects.d" || len(cfg.Objects) != 1 {
+		t.Fatalf("objects not loaded: %q %v", cfg.ObjectsDir, cfg.Objects)
+	}
+	meta, _ := cfg.Objects[0]["metadata"].(map[string]any)
+	labels, _ := meta["labels"].(map[string]any)
+	if cfg.Objects[0]["kind"] != "Policy" || labels["kudurru.io/tier"] != "base" {
+		t.Fatalf("inline object decoded wrongly: %#v", cfg.Objects[0])
+	}
+	for _, p := range []string{"objects", "objectsDir"} {
+		if k, _ := Lookup(p); !k.HostOnly {
+			t.Errorf("%s must be hostOnly", p)
+		}
+	}
+}

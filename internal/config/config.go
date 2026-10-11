@@ -29,6 +29,11 @@ type Config struct {
 	Cache     Cache     `koanf:"cache" json:"cache"`
 	Log       Log       `koanf:"log" json:"log"`
 
+	// Objects are inline CRD-shaped documents and ObjectsDir the directory
+	// of object files, both reconciled by internal/objects (§6.2).
+	Objects    []map[string]any `koanf:"objects" json:"objects,omitempty"`
+	ObjectsDir string           `koanf:"objectsDir" json:"objectsDir"`
+
 	// EnvLocked lists the key paths that came from the environment.
 	EnvLocked []string `koanf:"-" json:"-"`
 	// Source is the file the config was read from, or "" for defaults only.
