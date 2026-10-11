@@ -1,0 +1,3 @@
+{{- with partial "repo-path.html" . }}
+<p class="page-meta">Source: <a href="{{ site.Params.repo }}/blob/{{ site.Params.repoRef }}/{{ . }}" rel="noopener"><code>{{ . }}</code></a></p>
+{{- end }}

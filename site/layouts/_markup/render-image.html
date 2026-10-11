@@ -1,0 +1,16 @@
+{{- /*
+  Images: absolute URLs pass through; a relative path is resolved against
+  the source file's directory in the repository and served from GitHub's
+  raw host, so docs/ keeps its images next to the markdown.
+*/ -}}
+{{- $u := urls.Parse .Destination -}}
+{{- $src := .Destination -}}
+{{- if not (or $u.IsAbs (hasPrefix $src "/")) -}}
+  {{- $path := path.Join (path.Dir (partial "repo-path.html" .Page)) $u.Path -}}
+  {{- $raw := replace site.Params.repo "https://github.com/" "https://raw.githubusercontent.com/" -}}
+  {{- $src = printf "%s/%s/%s" $raw site.Params.repoRef $path -}}
+{{- else if hasPrefix $src "/" -}}
+  {{- $src = relURL (strings.TrimPrefix "/" $src) -}}
+{{- end -}}
+<img src="{{ $src }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }} loading="lazy">
+{{- /* chomp trailing newline */ -}}

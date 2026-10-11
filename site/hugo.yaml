@@ -1,0 +1,142 @@
+# kudurru docs site (site/README.md). Content is mounted from docs/ and the
+# repository root, so every page stays plain markdown that GitHub renders;
+# only site/content holds pages of its own (landing pages, role pages,
+# migration guides and the generated references).
+title: kudurru
+# The Pages workflow passes the real --baseURL; every template link goes
+# through relURL/RelPermalink so the site also works below a sub-path.
+baseURL: /
+locale: en
+enableRobotsTXT: true
+disableKinds: [taxonomy, term, rss]
+# Hugo's own URL for an _index.md mounted from a README.md stays the
+# section path (/deploy/), and pages keep their file names.
+uglyURLs: false
+summaryLength: 30
+timeout: 120s
+
+params:
+  description: "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver, blocking with client groups, a dashboard, OIDC and RBAC."
+  tagline: "authority over every zone."
+  repo: https://github.com/robertherbaugh/kudurru
+  # Links from docs/ to repository files that are not pages point at this
+  # ref; the Pages workflow sets HUGO_PARAMS_REPOREF to the tag it builds.
+  repoRef: main
+
+markup:
+  goldmark:
+    renderer:
+      # docs/ is the project's own trusted markdown and uses <picture>, <br>
+      # and anchors; generated tables use <br> and <a id>.
+      unsafe: true
+    parser:
+      autoHeadingIDType: github
+    extensions:
+      typographer:
+        disable: true
+  highlight:
+    noClasses: false
+    guessSyntax: false
+  tableOfContents:
+    startLevel: 2
+    endLevel: 3
+
+outputFormats:
+  searchindex:
+    mediaType: application/json
+    baseName: search-index
+    isPlainText: true
+    notAlternative: true
+
+outputs:
+  home: [html, searchindex]
+  section: [html]
+  page: [html]
+
+menus:
+  main:
+    - {name: Get started, pageRef: /start, weight: 10}
+    - {name: Deploy, pageRef: /deploy, weight: 20}
+    - {name: Migrate, pageRef: /migrate, weight: 30}
+    - {name: Reference, pageRef: /reference, weight: 40}
+    - {name: Design, pageRef: /design, weight: 50}
+    - {name: Engineering notes, pageRef: /notes, weight: 60}
+    - {name: Project, pageRef: /project, weight: 70}
+
+# Order of the mounted pages that carry no front matter of their own.
+cascade:
+  - {weight: 1, target: {path: /deploy/docker}}
+  - {weight: 2, target: {path: /deploy/compose-ha}}
+  - {weight: 3, target: {path: /deploy/helm}}
+  - {weight: 4, target: {path: /deploy/kustomize}}
+  - {weight: 5, target: {path: /deploy/runbooks}}
+  - {weight: 1, target: {path: /design/architecture}}
+  - {weight: 2, target: {path: /design/open-questions}}
+  - {weight: 1, target: {path: /notes/m1}}
+  - {weight: 2, target: {path: /notes/m2}}
+  - {weight: 3, target: {path: /notes/m3}}
+  - {weight: 5, target: {path: /notes/m5}}
+  - {weight: 10, target: {path: /notes/spikes}}
+  - {weight: 11, target: {path: /notes/research}}
+  - {weight: 20, target: {path: /notes/followups}}
+  - {weight: 21, target: {path: /notes/release-checklist}}
+  - {weight: 1, target: {path: /project/changelog}}
+  - {weight: 2, target: {path: /project/security}}
+  - {weight: 3, target: {path: /project/contributing}}
+
+module:
+  mounts:
+    # The site's own pages, templates and styles.
+    - {source: content, target: content}
+    - {source: layouts, target: layouts}
+    - {source: assets, target: assets}
+
+    # User and operator guides, runbooks.
+    - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}
+    - {source: ../docs/deploy, target: content/deploy, files: ['! README.md']}
+
+    # Design.
+    - {source: ../docs/architecture.md, target: content/design/architecture.md}
+    - {source: ../docs/open-questions.md, target: content/design/open-questions.md}
+
+    # Engineering notes: milestone reports, spikes, research, follow-ups.
+    - {source: ../docs/m1/README.md, target: content/notes/m1/_index.md}
+    - {source: ../docs/m1, target: content/notes/m1, files: ['! README.md']}
+    - {source: ../docs/m2/README.md, target: content/notes/m2/_index.md}
+    - {source: ../docs/m2, target: content/notes/m2, files: ['! README.md']}
+    - {source: ../docs/m3/README.md, target: content/notes/m3/_index.md}
+    - {source: ../docs/m3, target: content/notes/m3, files: ['! README.md']}
+    - {source: ../docs/m5/README.md, target: content/notes/m5/_index.md}
+    - {source: ../docs/m5, target: content/notes/m5, files: ['! README.md']}
+    - {source: ../docs/spikes/README.md, target: content/notes/spikes/_index.md}
+    - {source: ../docs/spikes, target: content/notes/spikes, files: ['! README.md']}
+    - {source: ../docs/research/README.md, target: content/notes/research/_index.md}
+    - {source: ../docs/research, target: content/notes/research, files: ['! README.md']}
+    - {source: ../docs/followups.md, target: content/notes/followups.md}
+    - {source: ../docs/release-checklist.md, target: content/notes/release-checklist.md}
+
+    # Project files from the repository root.
+    - {source: ../CHANGELOG.md, target: content/project/changelog.md}
+    - {source: ../SECURITY.md, target: content/project/security.md}
+    - {source: ../CONTRIBUTING.md, target: content/project/contributing.md}
+
+    # Brand (docs/brand): palette and the artwork the templates use.
+    - {source: ../docs/brand/tokens.css, target: assets/css/tokens.css}
+    - source: ../docs/brand/assets
+      target: static/brand
+      files:
+        - favicon.ico
+        - kudurru-icon-192.png
+        - kudurru-icon-512.png
+        - kudurru-logo-mixed.png
+        - kudurru-logo-mixed-paper.png
+        - kudurru-logo-mixed-tagline.png
+        - kudurru-logo-mixed-paper-tagline.png
+        - kudurru-mark-clay.png
+        - kudurru-social.png
+
+    # REST reference: the OpenAPI document and the self-hosted Scalar
+    # bundle (MIT; `make docs-assets` decompresses it into .generated/).
+    - {source: ../api/openapi.json, target: static/reference/api/openapi.json}
+    - {source: ../internal/api/scalar/LICENSE, target: static/reference/api/scalar-LICENSE.txt}
+    - {source: .generated/scalar, target: assets/scalar}

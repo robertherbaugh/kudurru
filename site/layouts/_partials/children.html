@@ -1,0 +1,11 @@
+{{- /* Cards for the pages of a section. */ -}}
+<ul class="cards">
+  {{- range .Pages }}
+    {{- if not .Params.hideInNav }}
+    <li class="card">
+      <a class="card__link" href="{{ .RelPermalink }}">{{ partialCached "title.html" . .RelPermalink }}</a>
+      {{- with .Description }}<p>{{ . | markdownify }}</p>{{ end }}
+    </li>
+    {{- end }}
+  {{- end }}
+</ul>
