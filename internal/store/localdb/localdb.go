@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 
@@ -152,6 +153,11 @@ func OpenSnapshotStore(ctx context.Context, path string) (*SnapshotStore, error)
 	scheme := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
 		return nil, err
+	}
+	// Create the file 0600 before SQLite does (it would use 0644): local.db
+	// carries the configuration snapshot and the cache dump.
+	if f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600); err == nil { // #nosec G304 -- operator-supplied data path
+		_ = f.Close()
 	}
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {

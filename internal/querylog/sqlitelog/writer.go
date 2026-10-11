@@ -262,6 +262,11 @@ func (w *Writer) Open(ctx context.Context, _ json.RawMessage, _ prometheus.Regis
 			w.closeDBs()
 		}
 	}()
+	// Create the file 0600 before SQLite does (it would use 0644): the
+	// query log is personal data.
+	if f, err := os.OpenFile(w.opts.Path, os.O_RDWR|os.O_CREATE, 0o600); err == nil { // #nosec G304 -- operator-supplied data path
+		_ = f.Close()
+	}
 	if w.w, err = sql.Open("sqlite", dsn(w.opts.Path, true)); err != nil {
 		return fmt.Errorf("sqlitelog: open %s: %w", w.opts.Path, err)
 	}
