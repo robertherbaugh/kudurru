@@ -60,6 +60,10 @@ const (
 	DefaultRetryPeriod    = 2 * time.Second
 	DefaultStartupTimeout = 15 * time.Second
 	DefaultLeasePrefix    = "kudurru-"
+	// DefaultQPS and DefaultBurst replace client-go's 5/10 client-side
+	// rate limit when the rest.Config leaves QPS unset.
+	DefaultQPS   = 50
+	DefaultBurst = 100
 )
 
 // serviceAccountNamespaceFile is where a pod finds its own namespace.
@@ -175,13 +179,21 @@ var _ store.Store = (*Store)(nil)
 // New builds the driver from a rest.Config and starts its informer cache in
 // the background. It does no blocking I/O: when the apiserver is
 // unreachable New still succeeds, informers keep retrying, and WaitForSync
-// times out so the caller can fall back to local.db (§4.4).
+// times out so the caller can fall back to local.db (§4.4). cfg is copied;
+// an unset QPS becomes DefaultQPS/DefaultBurst.
 func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if cfg == nil {
 		return nil, errors.New("store/kube: nil rest.Config")
 	}
 	if err := opts.setDefaults(); err != nil {
 		return nil, err
+	}
+	cfg = rest.CopyConfig(cfg)
+	if cfg.QPS == 0 && cfg.RateLimiter == nil {
+		// client-go would default to 5 QPS / burst 10, which turns a
+		// Restore or bulk import of 1,000 objects into minutes. The
+		// apiserver's priority and fairness is the real limiter.
+		cfg.QPS, cfg.Burst = DefaultQPS, DefaultBurst
 	}
 	kinds, err := newRegistry(opts.Scheme)
 	if err != nil {

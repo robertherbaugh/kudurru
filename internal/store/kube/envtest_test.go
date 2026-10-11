@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -41,6 +42,7 @@ var testNamespaces = []string{"apps", "dns", "kudurru-system", "measure"}
 
 // shared is the control plane shared by the tests of this package.
 var shared struct {
+	env   *envtest.Environment
 	cfg   *rest.Config
 	admin client.Client
 	skip  string // non-empty: envtest is unavailable and tests skip
@@ -68,7 +70,7 @@ func runMain(m *testing.M) int {
 		return 1
 	}
 	defer func() { _ = env.Stop() }()
-	shared.cfg, shared.admin = cfg, admin
+	shared.env, shared.cfg, shared.admin = env, cfg, admin
 	return m.Run()
 }
 
@@ -207,6 +209,9 @@ func testScheme() *runtime.Scheme {
 		panic(err)
 	}
 	if err := corev1.AddToScheme(s); err != nil {
+		panic(err)
+	}
+	if err := rbacv1.AddToScheme(s); err != nil {
 		panic(err)
 	}
 	return s
