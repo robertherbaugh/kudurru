@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -19,20 +21,30 @@ import (
 	"github.com/spf13/cobra"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/cache/persist"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/controller"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
+	"github.com/robertherbaugh/kudurru/internal/notifier"
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
+	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
+	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
+	"github.com/robertherbaugh/kudurru/internal/stages/control"
+	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	logstage "github.com/robertherbaugh/kudurru/internal/stages/log"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
@@ -86,11 +98,11 @@ func newLogger(cfg config.Log) *slog.Logger {
 
 // openStore opens the configured driver (docs/architecture.md §4.3, §4.4).
 // The returned snapshot store is non-nil only for the kube driver.
-func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, error) {
+func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, error) {
 	switch cfg.Store.Driver {
 	case "sqlite":
 		st, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
-			Validator: v, Identity: cfg.Node.Name, Logger: logger.With("component", "store"),
+			Validator: v, Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
@@ -100,7 +112,15 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		case err != nil:
 			return nil, nil, err
 		}
-		return st, nil, nil
+		db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
+		if err != nil {
+			_ = st.Close()
+			if errors.Is(err, localdb.ErrSchemaTooNew) {
+				return nil, nil, fmt.Errorf("local.db was written by a newer kudurru: %w", err)
+			}
+			return nil, nil, err
+		}
+		return st, db, nil
 	case "kube":
 		restCfg, err := ctrlconfig.GetConfig()
 		if err != nil {
@@ -151,14 +171,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	st, snapDB, err := openStore(ctx, cfg, v, logger)
+	st, snapDB, err := openStore(ctx, cfg, v, reg, logger)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = st.Close() }()
 
 	// First boot: root forward zone, default client group and policy (§6.4).
-	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger})
+	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
@@ -186,8 +206,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	checker.Register("objects", loader.Ready)
 
 	// zonecache: store watches → serving snapshots, local.db cold start (§4.4).
+	var zcLocal *localdb.SnapshotStore
+	if cfg.Store.Driver == "kube" {
+		zcLocal = snapDB
+	}
 	zc, err := zonecache.New(st, zonecache.Options{
-		LocalDB: snapDB, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
+		LocalDB: zcLocal, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {
@@ -196,14 +220,137 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err := zc.Register(zoneview.Builder(logger)); err != nil {
 		return err
 	}
-	checker.Register("zonecache", zc.Ready)
-
-	// Query log: slog sink behind the non-blocking collector.
-	sink := &querylog.SlogSink{Logger: logger, Level: slog.LevelInfo}
-	if err := sink.Open(ctx, nil, reg); err != nil {
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace}, logger)); err != nil {
 		return err
 	}
-	collector := querylog.NewAsync(sink, 10000, 1000, time.Second, logger)
+	checker.Register("zonecache", zc.Ready)
+
+	// Blocklists (§7.3, D15): the leader fetches, every node pulls bodies by
+	// digest over the internal listener (D47) and compiles locally.
+	lists, err := listfetcher.OpenDiskCache(cfg.BlockingListsDir(), logger)
+	if err != nil {
+		return err
+	}
+	listObjs := listfetcher.NewZoneCacheObjects(zc)
+	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{})
+	initStrategy, err := listfetcher.ParseInitStrategy(cfg.Blocking.InitStrategy)
+	if err != nil {
+		return err
+	}
+	fetcher, err := listfetcher.New(listfetcher.Options{
+		Store: st, Objects: listObjs, Cache: lists, Downloader: downloader,
+		RefreshInterval: cfg.Blocking.RefreshInterval.Std(), Registerer: reg, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	var membership cluster.Membership = cluster.Self{Name: cfg.Node.Name}
+	if cfg.Store.Driver == "kube" {
+		headless := os.Getenv("KUDURRU_HEADLESS_SERVICE")
+		membership = &cluster.ElectorMembership{
+			SelfName: cfg.Node.Name,
+			Elector:  st.Elector(cluster.ElectionController),
+			Resolve: func(_ context.Context, pod string) (string, error) {
+				host := pod
+				if headless != "" {
+					host = pod + "." + headless
+				}
+				_, port, _ := net.SplitHostPort(cfg.Listeners.Internal.Address)
+				if port == "" {
+					port = "8082"
+				}
+				return net.JoinHostPort(host, port), nil
+			},
+		}
+	}
+	encKey, encPrev, err := readEncryptionKeys()
+	if err != nil {
+		return err
+	}
+	var (
+		internalClient *internalapi.Client
+		internalSrv    *internalapi.Server
+		listResolver   *listfetcher.Resolver
+	)
+	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
+		creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{
+			Key: encKey, PreviousKey: encPrev, NodeName: cfg.Node.Name,
+			TokenFile: cfg.Listeners.Internal.TokenFile,
+			CertFile:  cfg.Listeners.Internal.TLS.CertFile, KeyFile: cfg.Listeners.Internal.TLS.KeyFile,
+			CAFile: cfg.Listeners.Internal.TLS.CAFile, ServerName: cfg.Listeners.Internal.TLS.ServerName,
+		})
+		if err != nil {
+			return err
+		}
+		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
+		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
+			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists,
+			Status: func(ctx context.Context) internalapi.Status {
+				leader, _ := membership.Leader(ctx)
+				var ls []internalapi.ListStatus
+				if listResolver != nil {
+					ls = listResolver.Lists()
+				}
+				return internalapi.Status{Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls}
+			},
+			Registerer: reg, Logger: logger,
+		})
+		if err != nil {
+			return err
+		}
+	} else if cfg.Store.Driver == "kube" {
+		return errors.New("KUDURRU_ENCRYPTION_KEY (or listeners.internal.tokenFile) is required for the internal listener in Kubernetes")
+	}
+	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
+		Objects: listObjs, Cache: lists, Sink: zc, Membership: membership, Client: internalClient,
+		Downloader: downloader, RefreshInterval: cfg.Blocking.RefreshInterval.Std(),
+		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded,
+		Registerer: reg, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	checker.Register("blocklists", listResolver.Ready)
+
+	// Query log (§11.2): privacy once at ingest, live tail, sqlite or slog sink.
+	var (
+		collector querylog.Collector // nil interface when disabled
+		qlAsync   *querylog.Async
+		qlWriter  *sqlitelog.Writer
+	)
+	if cfg.Querylog.Enabled {
+		qlMetrics := querylog.NewMetrics(reg)
+		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
+		if err != nil {
+			return err
+		}
+		tail := querylog.NewTail(0, 0, qlMetrics)
+		var sink querylog.Sink
+		var firstID uint64
+		switch cfg.Querylog.Sink {
+		case "sqlite":
+			opts, err := sqlitelog.OptionsFrom(cfg.Querylog, cfg.Node.DataDir, cfg.Node.Name)
+			if err != nil {
+				return err
+			}
+			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
+			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
+				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
+					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
+				}
+				return err
+			}
+			sink, firstID = qlWriter, qlWriter.NextID()
+		default:
+			s := &querylog.SlogSink{Logger: logger, Level: slog.LevelInfo}
+			if err := s.Open(ctx, nil, reg); err != nil {
+				return err
+			}
+			sink = s
+		}
+		qlAsync = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: sink, Privacy: privacy, Tail: tail, Metrics: qlMetrics, FirstID: firstID, Logger: logger})
+		collector = qlAsync
+	}
 
 	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg)})
@@ -212,9 +359,42 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	fwd := upstreamstage.NewStage(upSet)
 	hostname, _ := os.Hostname()
+
+	// Ingress rate limiting (§7.1 step 2).
+	var limiter *ingress.RateLimiter
+	if rlc, err := ingress.RateLimitFromConfig(cfg.RateLimit); err != nil {
+		return err
+	} else if rlc != nil {
+		if limiter, err = ingress.NewRateLimiter(*rlc); err != nil {
+			return err
+		}
+		limiter.SetHook(func(v ingress.Verdict) {
+			if v == ingress.VerdictDrop {
+				dnsMetrics.Dropped.WithLabelValues(ingress.DropReason).Inc()
+			}
+		})
+		reg.MustRegister(limiter.Collector())
+	}
+
+	// Policies and blocking (§7.1 steps 3, 4, 7).
+	polSrc := policy.Source{Cache: zc}
+	bopts := blockingstage.OptionsFrom(cfg.Blocking)
+	bopts.Index, bopts.Registerer = polSrc, reg
+	bs, err := blockingstage.New(bopts)
+	if err != nil {
+		return err
+	}
+	checker.Register("blocking", bs.Ready)
+
+	auth := authoritative.New(zoneview.Source{Cache: zc})
+	auth.Metrics = authoritative.NewMetrics(reg)
+
 	stages := []pipeline.Stage{
-		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version},
-		authoritative.New(zoneview.Source{Cache: zc}),
+		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter},
+		identify.New(polSrc, nil),
+		control.New(control.Options{}),
+		auth,
+		bs,
 	}
 	var cs *cachestage.Stage
 	var rc *cache.Cache
@@ -231,6 +411,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	chain.Observe(&logstage.Observer{Node: cfg.Node.Name, Collector: collector, Metrics: dnsMetrics})
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())
 
+	// TSIG keys for transfers and NOTIFY (RFC 8945).
+	keyring, err := dnsserver.KeyringFromConfig(cfg.TSIGKeys)
+	if err != nil {
+		return err
+	}
+	tsigFailures := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "kudurru_dns_tsig_failures_total", Help: "Requests rejected for their TSIG (RFC 8945), by error."}, []string{"error"})
+	reg.MustRegister(tsigFailures)
+
 	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
 	// store and the authenticated PROXYv2 policy (D45, D56, D67).
 	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
@@ -241,9 +429,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
 	}
 	registry, err := dnsserver.NewRegistry(dnsserver.Options{
-		Handler: &dnsserver.Handler{Chain: chain, Logger: logger},
-		Logger:  logger,
-		Proxy:   proxyPolicy,
+		Handler:       &dnsserver.Handler{Chain: chain, Logger: logger},
+		Logger:        logger,
+		Proxy:         proxyPolicy,
+		TSIG:          keyring,
+		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
+		Sockets:       cfg.Listeners.Sockets,
 	})
 	if err != nil {
 		return err
@@ -255,6 +446,30 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	checker.Register("dns", registry.Ready)
+
+	// NOTIFY out (RFC 1996): leader-only, triggered by every published snapshot.
+	var notifySrc netip.Addr
+	if cfg.Notify.Source != "" {
+		notifySrc = netip.MustParseAddr(cfg.Notify.Source)
+	}
+	nt, err := notifier.New(notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger})
+	if err != nil {
+		return err
+	}
+	zc.OnPublish(func(*zonecache.Snapshot) { nt.Trigger() })
+
+	// Response cache persistence across restarts (local.db blob).
+	var cachePersister *persist.Persister
+	if rc != nil && snapDB != nil {
+		if cachePersister, err = persist.New(snapDB, persist.Options{}); err != nil {
+			return err
+		}
+		if pst, err := cachePersister.Restore(ctx, rc); err != nil {
+			logger.Warn("cache dump not restored", "err", err)
+		} else if pst.Entries > 0 {
+			logger.Info("cache restored", "entries", pst.Entries, "age", time.Since(pst.WrittenAt).Round(time.Second))
+		}
+	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
 	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger})
@@ -310,6 +525,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			}
 		}},
 		{"controller", true, ctrl.Run},
+		{"notifier", true, nt.Run},
+		{"listfetcher", true, fetcher.Run},
+		{"listresolver", false, listResolver.Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
 			return err
@@ -317,6 +535,23 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {
+			return err
+		}
+	}
+	if cachePersister != nil {
+		if err := add("cache-persist", false, func(ctx context.Context) error {
+			return cache.RunPersister(ctx, rc, cachePersister, 10*time.Minute, 5*time.Second, logger)
+		}); err != nil {
+			return err
+		}
+	}
+	if internalSrv != nil {
+		if err := add("internal", false, internalSrv.Run); err != nil {
+			return err
+		}
+	}
+	if qlWriter != nil {
+		if err := add("querylog", false, qlWriter.Run); err != nil {
 			return err
 		}
 	}
@@ -332,8 +567,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	_ = upSet.Close()
 	shutdownCtx, c2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer c2()
-	if err := collector.Close(shutdownCtx); err != nil {
-		logger.Warn("query log flush incomplete", "err", err, "dropped", collector.Dropped())
+	if qlAsync != nil {
+		if err := qlAsync.Close(shutdownCtx); err != nil {
+			logger.Warn("query log flush incomplete", "err", err, "dropped", qlAsync.Dropped())
+		}
 	}
 	if snapDB != nil {
 		_ = snapDB.Close()
@@ -355,4 +592,34 @@ func serveHTTP(ctx context.Context, addr string, h http.Handler, logger *slog.Lo
 	case err := <-errCh:
 		return err
 	}
+}
+
+// readEncryptionKeys reads KUDURRU_ENCRYPTION_KEY[_FILE] and the _PREVIOUS
+// variants (D57). Both may be nil in single-instance Docker mode.
+func readEncryptionKeys() (key, previous []byte, err error) {
+	read := func(name string) ([]byte, error) {
+		v := os.Getenv(name)
+		if f := os.Getenv(name + "_FILE"); f != "" {
+			b, err := os.ReadFile(f) //nolint:gosec // the operator names the file (KUDURRU_*_FILE)
+			if err != nil {
+				return nil, fmt.Errorf("%s_FILE: %w", name, err)
+			}
+			v = strings.TrimSpace(string(b))
+		}
+		if v == "" {
+			return nil, nil
+		}
+		k, err := session.ParseKey(v)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		return k, nil
+	}
+	if key, err = read("KUDURRU_ENCRYPTION_KEY"); err != nil {
+		return nil, nil, err
+	}
+	if previous, err = read("KUDURRU_ENCRYPTION_KEY_PREVIOUS"); err != nil {
+		return nil, nil, err
+	}
+	return key, previous, nil
 }
