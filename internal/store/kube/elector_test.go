@@ -128,7 +128,7 @@ func (c *candidate) run(t *testing.T, a *arena, extra func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 	go func() {
-		c.runDone <- c.e.Run(ctx, func() {
+		c.runDone <- c.e.Run(ctx, func(context.Context) {
 			c.started.Add(1)
 			if a != nil {
 				a.enter()
@@ -372,9 +372,9 @@ func TestLeaseElectorPanicStepsDown(t *testing.T) {
 	}
 }
 
-// TestLeaseElectorRunWithContext: the term context ends on lease loss and
+// TestLeaseElectorTermContext: the term context ends on lease loss and
 // on shutdown, and onStopped runs after onStarted returned.
-func TestLeaseElectorRunWithContext(t *testing.T) {
+func TestLeaseElectorTermContext(t *testing.T) {
 	requireEnv(t)
 	lease := uniqueLease()
 	ca := newCandidate(t, lease, "pod-a")
@@ -384,7 +384,7 @@ func TestLeaseElectorRunWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- ca.e.RunWithContext(ctx, func(termCtx context.Context) {
+		done <- ca.e.Run(ctx, func(termCtx context.Context) {
 			record("started")
 			<-termCtx.Done()
 			record("term-ctx-done")
@@ -398,7 +398,7 @@ func TestLeaseElectorRunWithContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("RunWithContext did not return")
+		t.Fatal("Run did not return")
 	}
 	mu.Lock()
 	got := strings.Join(order, ",")

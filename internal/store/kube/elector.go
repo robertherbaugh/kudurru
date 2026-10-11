@@ -140,30 +140,18 @@ func (e *LeaseElector) Leader() string {
 	return ""
 }
 
-// Run implements store.Elector. onStarted is called when a term starts and
-// must not block for long; onStopped is called when it ends (lease lost or
-// ctx done) and must stop the leader-only work before returning, because
-// a successor may start once the lease expires. Either callback may be nil.
-// Run returns nil once ctx is cancelled, or an error immediately if the
-// elector is already running.
-func (e *LeaseElector) Run(ctx context.Context, onStarted, onStopped func()) error {
-	return e.RunWithContext(ctx, func(context.Context) {
-		if onStarted != nil {
-			onStarted()
-		}
-	}, onStopped)
-}
-
-// RunWithContext is Run with a term context: onStarted receives a context
-// that is cancelled when the term ends and may block until then (the shape
-// of a leader-only runnable group). onStopped, if non-nil, runs after
-// onStarted has returned and the term context is done. The next election
-// attempt starts only after onStopped returns, and on shutdown the Lease is
-// released only after it returns, so two terms never overlap in this
-// process.
-func (e *LeaseElector) RunWithContext(ctx context.Context, onStarted func(context.Context), onStopped func()) error {
+// Run implements store.Elector (D78). onStarted receives a term context
+// that is cancelled when the term ends (lease lost or ctx done) and may
+// block until then (the shape of a leader-only runnable group). onStopped,
+// if non-nil, runs after onStarted has returned and the term context is
+// done, and must stop the leader-only work before returning. The next
+// election attempt starts only after onStopped returns, and on shutdown the
+// Lease is released only after it returns, so two terms never overlap in
+// this process. Either callback may be nil. Run returns nil once ctx is
+// cancelled, or an error immediately if the elector is already running.
+func (e *LeaseElector) Run(ctx context.Context, onStarted func(context.Context), onStopped func()) error {
 	if onStarted == nil {
-		return errors.New("store/kube: RunWithContext needs onStarted")
+		onStarted = func(context.Context) {}
 	}
 	if !e.running.CompareAndSwap(false, true) {
 		return errors.New("store/kube: elector is already running")
@@ -254,7 +242,7 @@ func (e *LeaseElector) runOnce(ctx, electionCtx context.Context, onStarted func(
 		RetryPeriod:   e.cfg.RetryPeriod,
 		// Never release from inside client-go: it would release while the
 		// term may still be running and, after a lost lease, could clear a
-		// successor's record. Release happens in RunWithContext.
+		// successor's record. Release happens in Run.
 		ReleaseOnCancel: false,
 		Name:            e.cfg.Name,
 		Callbacks: leaderelection.LeaderCallbacks{
@@ -381,6 +369,6 @@ func (e *LeaseElector) release() {
 // brokenElector reports a configuration error from Run.
 type brokenElector struct{ err error }
 
-func (b brokenElector) Run(context.Context, func(), func()) error { return b.err }
-func (b brokenElector) IsLeader() bool                            { return false }
-func (b brokenElector) Leader() string                            { return "" }
+func (b brokenElector) Run(context.Context, func(context.Context), func()) error { return b.err }
+func (b brokenElector) IsLeader() bool                                           { return false }
+func (b brokenElector) Leader() string                                           { return "" }
