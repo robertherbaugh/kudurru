@@ -90,8 +90,10 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | v0.1.x (moved from M4: size headroom only, the binary is within its budget) |
+| Query log: a "Policy" suggest box (the server answers `/queries/suggestions?field=policy`; the SPA's suggestion types lack it) and a "Request unblock"/"Requests" link on blocked rows | UX round | v0.1.x |
+| Domains page: "Block domain" appends to the `ui` source even while that source is switched off, so the entry has no effect until it is switched back on; warn or switch it on | UX round | v0.1.x |
+| Unify `fields/ChoiceCards` with the inline choice cards of the list wizard | UX round | v0.1.x |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
-| BlockList form and Lists page: show `status.unsupported` and edit `spec.sources[].subdomains` (the API fields landed with the v0.1 fix round; the SPA types and form do not carry them yet) | v0.1 fix round | v0.1.x |
 ## CLI
 
 | Item | Source | Target |

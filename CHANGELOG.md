@@ -68,6 +68,46 @@ a real server instead of its mocks.
   `KudurruSerialDivergence`, `KudurruEdgeBackendDown` and
   `KudurruVIPNoMaster` alerts; a kind + MetalLB smoke test workflow.
 
+### Dashboard pages, wizards and the block page (v0.1 UX round)
+
+- Every object a user configures has its own page and every multi-concept
+  create flow is a wizard on its own route; dialogs are kept for short
+  actions (D132). Policies (`/policies/:ns/:name`: active now, schedule,
+  shadowing, groups, lists, a blocked-services logo grid, safe search, 24 h
+  activity), lists (`/lists/:ns/:name`), groups, clients (which group and
+  policy apply and why), upstream groups and zones; wizards for new
+  policies, lists, groups, zones and upstream groups (with provider presets
+  for Cloudflare, Quad9, Google, AdGuard, Mullvad, NextDNS, Control D,
+  OpenDNS).
+- Lists: a Pi-hole-style enable switch per source
+  (`BlockList.spec.sources[].enabled`; a disabled source is not fetched or
+  applied and keeps its cache), an inline entries browser backed by
+  `GET/PATCH /blocklists/{ns}/{name}/sources/{source}/entries`, and a
+  Domains page.
+- Typed controls instead of free text: every settings key carries labels,
+  sections, allowed values, bounds, presets, formats and nested shapes
+  (`GET /settings/_schema`, `kudurru config schema`, the docs reference), and
+  the same metadata validates the file, the environment and the API (D133).
+  The Settings page and the forms render dropdowns, duration presets,
+  bounded numbers and object pickers from it.
+- Policy state: `GET /policies/{ns}/{name}/state`; the query log records
+  the deciding policy per row (querylog.db schema 2, upgraded in place) and
+  filters on `policy=`.
+- Service, search-engine and provider logos from homarr-labs/dashboard-icons
+  (Apache-2.0), embedded, sanitised and served at
+  `/api/v1/catalogue/icons` (D134).
+- Block page (D135): the `blockPage` block response sends blocked web
+  requests to a kudurru page on the node (`listeners.blockPage.*`,
+  `blockPage.*`) that explains the block (list, rule, service, policy) within
+  the query-log privacy mode; HTTPS is optional and always shows a
+  certificate warning. Admin preview in Settings.
+- Unblock requests (D136): a Request access form on the block page; a
+  Requests page (`/requests`) to approve (everyone or a group, exact or with
+  subdomains, permanently or for a time) or deny; the `UnblockRequest` kind
+  and the `unblockrequests` RBAC resource; `unblockRequests.*` settings.
+  **Kubernetes: install the new CRD (`kudurru-crds` chart) before upgrading
+  the server.**
+
 ### DNS serving
 
 - One binary, `kudurru serve`, with a fixed stage pipeline: ingress,
