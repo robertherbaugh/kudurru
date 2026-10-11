@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -198,7 +199,7 @@ func (c *Cache[T]) prune(keep map[store.Key]bool) {
 
 func (c *Cache[T]) put(key store.Key, t T) {
 	c.mu.Lock()
-	if old, ok := c.items[key]; ok && old.GetResourceVersion() != "" && old.GetResourceVersion() == t.GetResourceVersion() {
+	if old, ok := c.items[key]; ok && !newer(t.GetResourceVersion(), old.GetResourceVersion()) {
 		c.mu.Unlock()
 		return
 	}
@@ -250,6 +251,23 @@ func (c *Cache[T]) Len() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.items)
+}
+
+// newer reports whether resource version next should replace cur. Every
+// driver issues increasing integer versions (sqlite and memory counters,
+// etcd revisions); when both parse, an older version never replaces a
+// newer one (a read-your-writes Upsert racing the watch event). Otherwise
+// any different version replaces.
+func newer(next, cur string) bool {
+	if cur == "" || next == "" {
+		return true
+	}
+	n, err1 := strconv.ParseUint(next, 10, 64)
+	c, err2 := strconv.ParseUint(cur, 10, 64)
+	if err1 == nil && err2 == nil {
+		return n > c
+	}
+	return next != cur
 }
 
 func notify(fns []func()) {
