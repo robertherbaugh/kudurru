@@ -312,7 +312,8 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
   command: ["/usr/local/bin/kudurru", "edge", "run"]
   args:
     {{- if .sidecar }}
-    - --backends=127.0.0.1:{{ $e.backendPort }}
+    {{- /* Named after this pod (the kudurru node), so the health check verifies the answering node (BackendID). */}}
+    - --backends=$(KUDURRU_NODE__NAME)=127.0.0.1:{{ $e.backendPort }}
     {{- else }}
     - --backends-from=endpointslice:{{ $root.Release.Namespace }}/{{ include "kudurru.headlessName" $root }}
     - --backend-port={{ $e.backendPort }}

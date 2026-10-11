@@ -221,8 +221,10 @@ func TestComposeHATwins(t *testing.T) {
 			}
 		}
 		text := string(read(n + "/docker-compose.yml"))
-		if !strings.Contains(text, "--backends=10.0.0.11:5353,10.0.0.12:5353,10.0.0.13:5353") {
-			t.Errorf("%s: dnsdist must list every kudurru node", n)
+		// Named backends: dnsdist's health check then verifies that the
+		// answering kudurru is the node it expects (BackendID).
+		if !strings.Contains(text, "--backends=node-a=10.0.0.11:5353,node-b=10.0.0.12:5353,node-c=10.0.0.13:5353") {
+			t.Errorf("%s: dnsdist must list every kudurru node by name", n)
 		}
 		if !strings.Contains(text, "KUDURRU_NODE__NAME: "+n) {
 			t.Errorf("%s: wrong node name", n)

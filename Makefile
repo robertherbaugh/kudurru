@@ -13,7 +13,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
@@ -64,6 +64,14 @@ lint: vet
 
 fmt:
 	gofmt -s -w ./cmd ./api ./internal ./web/*.go
+
+## rbac-manifests: generate the chart's aggregated ClusterRoles
+## (charts/kudurru/templates/rbac-aggregated.yaml) from
+## internal/rbac/permissions.yaml (D31); TestAggregatedRolesDrift fails when
+## the committed file is stale. Run `make deploy-assets` afterwards so the
+## kustomize bases rendered from the chart follow.
+rbac-manifests:
+	go run ./internal/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;

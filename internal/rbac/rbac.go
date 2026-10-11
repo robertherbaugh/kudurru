@@ -148,10 +148,19 @@ type Binding struct {
 
 // Permissions is the parsed permissions.yaml.
 type Permissions struct {
-	Resources  map[string][]string `json:"resources"`
-	Roles      map[string][]string `json:"roles"`
-	Scoped     []string            `json:"scoped"`
-	Kubernetes map[string]string   `json:"kubernetes"`
+	Resources  map[string][]string       `json:"resources"`
+	Roles      map[string][]string       `json:"roles"`
+	Scoped     []string                  `json:"scoped"`
+	Kubernetes map[string]KubernetesRole `json:"kubernetes"`
+}
+
+// KubernetesRole is how a kudurru role appears as a Kubernetes ClusterRole.
+type KubernetesRole struct {
+	// ClusterRole is the name suffix: <release fullname>-<ClusterRole>.
+	ClusterRole string `json:"clusterRole"`
+	// AggregateTo is the built-in ClusterRole (view, edit, admin) the role
+	// aggregates into; empty for none.
+	AggregateTo string `json:"aggregateTo,omitempty"`
 }
 
 // LoadPermissions parses and validates the embedded permissions.yaml.
@@ -159,6 +168,19 @@ func LoadPermissions() (*Permissions, error) {
 	var p Permissions
 	if err := yaml.Unmarshal(permissionsYAML, &p); err != nil {
 		return nil, fmt.Errorf("rbac: parse permissions.yaml: %w", err)
+	}
+	for role, k := range p.Kubernetes {
+		if _, ok := p.Roles[role]; !ok {
+			return nil, fmt.Errorf("rbac: kubernetes: unknown role %q", role)
+		}
+		if k.ClusterRole == "" {
+			return nil, fmt.Errorf("rbac: kubernetes: role %s has no clusterRole", role)
+		}
+		switch k.AggregateTo {
+		case "", "view", "edit", "admin":
+		default:
+			return nil, fmt.Errorf("rbac: kubernetes: role %s aggregates to %q (want view, edit or admin)", role, k.AggregateTo)
+		}
 	}
 	for role, perms := range p.Roles {
 		for _, perm := range perms {

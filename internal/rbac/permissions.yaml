@@ -90,9 +90,17 @@ roles:
 scoped:
   - zone-admin
 
-# Kubernetes aggregation: which built-in ClusterRole each role aggregates to.
+# Kubernetes ClusterRoles (§5.3, §8.5): `make rbac-manifests` generates
+# charts/kudurru/templates/rbac-aggregated.yaml from the roles above.
+# clusterRole is the name suffix (<release>-<clusterRole>); aggregateTo
+# names the built-in ClusterRole it aggregates into. The auditor role
+# reads query logs and the audit trail, so it aggregates nowhere: holders
+# of the built-in view role must not gain client query history (bind
+# kudurru-auditor explicitly). Scoped roles (zone-admin) have no
+# ClusterRole: a namespaced RoleBinding with resourceNames on dnszones
+# expresses them.
 kubernetes:
-  viewer: view
-  auditor: view
-  operator: edit
-  admin: admin
+  viewer: {clusterRole: viewer, aggregateTo: view}
+  auditor: {clusterRole: auditor}
+  operator: {clusterRole: editor, aggregateTo: edit}
+  admin: {clusterRole: admin, aggregateTo: admin}
