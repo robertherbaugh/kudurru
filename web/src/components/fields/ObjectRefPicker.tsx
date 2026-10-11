@@ -2,8 +2,11 @@
 // block lists, policies or zones, read from GET /objects/{kind}. `multiple`
 // renders a checkbox list (with a filter once the list is long); otherwise a
 // select. Values are "namespace/name" for namespaced kinds and "name" for
-// zones, the form the object references use. A name that no longer exists
-// stays listed (marked missing) so editing never drops it silently.
+// zones; with `sameNamespace` they are bare names of objects in
+// `namespace`, the form Policy references take (clientGroupRefs,
+// blockListRefs: names in the policy's own namespace). A name that no
+// longer exists stays listed (marked missing) so editing never drops it
+// silently.
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { qk, useApi } from '../../api/context';
@@ -13,8 +16,10 @@ export interface ObjectRefPickerProps {
   kind: Exclude<ObjectKind, 'dnsrecordsets'>;
   label: string;
   description?: string;
-  /** Namespace used to shorten same-namespace refs; default "default". */
+  /** The namespace of `sameNamespace` refs; default "default". */
   namespace?: string;
+  /** Offer only objects of `namespace` and use their bare names as values. */
+  sameNamespace?: boolean;
   multiple?: boolean;
   value: string[];
   onChange: (v: string[]) => void;
@@ -32,13 +37,17 @@ export function refOf(o: AnyObject): string {
   return o.metadata.namespace ? `${o.metadata.namespace}/${o.metadata.name}` : o.metadata.name;
 }
 
-export function ObjectRefPicker({ kind, label, description, multiple, value, onChange, emptyLabel, filter, detail, isDisabled, error }: ObjectRefPickerProps) {
+export function ObjectRefPicker({ kind, label, description, namespace = 'default', sameNamespace, multiple, value, onChange, emptyLabel, filter, detail, isDisabled, error }: ObjectRefPickerProps) {
   const api = useApi();
   const id = useId();
   const [q, setQ] = useState('');
   const list = useQuery({ queryKey: qk.objects(kind), queryFn: () => api.objects.list<AnyObject>(kind) });
-  const items = useMemo(() => (list.data?.items ?? []).filter((o) => !filter || filter(o)), [list.data, filter]);
-  const known = new Set(items.map(refOf));
+  const items = useMemo(
+    () => (list.data?.items ?? []).filter((o) => (!filter || filter(o)) && (!sameNamespace || (o.metadata.namespace ?? 'default') === namespace)),
+    [list.data, filter, sameNamespace, namespace],
+  );
+  const keyOf = (o: AnyObject) => (sameNamespace ? o.metadata.name : refOf(o));
+  const known = new Set(items.map(keyOf));
   const missing = value.filter((v) => !known.has(v));
 
   if (!multiple) {
@@ -49,8 +58,8 @@ export function ObjectRefPicker({ kind, label, description, multiple, value, onC
         <select id={id} className="k-native-select" value={value[0] ?? ''} disabled={isDisabled || list.isLoading} onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}>
           {emptyLabel !== undefined || !value[0] ? <option value="">{emptyLabel ?? 'Choose…'}</option> : null}
           {items.map((o) => (
-            <option key={refOf(o)} value={refOf(o)}>
-              {refOf(o)}
+            <option key={keyOf(o)} value={keyOf(o)}>
+              {keyOf(o)}
               {detail?.(o) ? ` · ${detail(o)}` : ''}
             </option>
           ))}
@@ -65,7 +74,7 @@ export function ObjectRefPicker({ kind, label, description, multiple, value, onC
     );
   }
 
-  const shown = q ? items.filter((o) => refOf(o).toLowerCase().includes(q.toLowerCase())) : items;
+  const shown = q ? items.filter((o) => keyOf(o).toLowerCase().includes(q.toLowerCase())) : items;
   const toggle = (ref: string, on: boolean) => onChange(on ? [...value, ref] : value.filter((v) => v !== ref));
   return (
     <fieldset className="k-fieldset" aria-describedby={description ? `${id}-d` : undefined} disabled={isDisabled}>
@@ -80,7 +89,7 @@ export function ObjectRefPicker({ kind, label, description, multiple, value, onC
       {!list.isLoading && !items.length && !missing.length ? <span className="k-muted k-small">None exist yet.</span> : null}
       <ul className="k-checklist">
         {shown.map((o) => {
-          const ref = refOf(o);
+          const ref = keyOf(o);
           return (
             <li key={ref}>
               <label>

@@ -1,6 +1,6 @@
 // Realistic fixtures for MSW (development with `bun run dev:mock` and the
 // tests): 3 zones with 50 records, 7 block/allow lists including the
-// starter list, 4 client groups, 3 policies, 24 h of time series, 500
+// starter list, 4 client groups, 5 policies, 24 h of time series, 500
 // query-log rows and 2 nodes. Everything is generated from a fixed seed
 // relative to a fixed clock (`now`), so tests see the same data each run.
 import type {
@@ -416,8 +416,25 @@ function buildPolicies(): Policy[] {
       spec: { clientGroupRefs: ['iot'], blockListRefs: ['stevenblack', 'regex-trackers'], allowListRefs: ['ui-allow'], priority: 10, queryLog: false, upstreamGroup: 'filtered' },
       status: { conditions: [{ type: 'Ready', status: 'True', reason: 'AsExpected', message: 'tie with default at priority 10 resolved by name', lastTransitionTime: '2026-10-10T06:00:00Z' }] },
     },
+    {
+      apiVersion: API,
+      kind: 'Policy',
+      metadata: meta('social-media', 'api', { annotations: { 'kudurru.io/comment': 'No social apps on the home network' } }),
+      spec: { clientGroupRefs: ['default'], blockedServices: ['tiktok', 'facebook', 'instagram', '9gag'], safeSearch: true, priority: 5 },
+      status: { conditions: ready() },
+    },
+    {
+      apiVersion: API,
+      kind: 'Policy',
+      metadata: meta('streaming-off', 'api', { annotations: { 'kudurru.io/enabled': 'false', 'kudurru.io/comment': 'Paused until the exams are over' } }),
+      spec: { clientGroupRefs: ['kids'], blockedServices: ['youtube', 'netflix', 'twitch', 'roblox', 'fortnite', 'steam'], priority: 30, blockMode: 'blockPage' },
+      status: { conditions: [{ type: 'Ready', status: 'False', reason: 'Disabled', message: 'kudurru.io/enabled is "false"', lastTransitionTime: '2026-10-09T06:00:00Z' }] },
+    },
   ];
 }
+
+/** The policy the query log records for a client group (C3 attribution). */
+export const POLICY_OF_GROUP: Record<string, string> = { default: 'default/social-media', kids: 'default/kids-bedtime', iot: 'default/iot-strict', servers: 'default/default' };
 
 /** 24 h at a 5 minute step with a diurnal curve. */
 function buildSeries(now: number, r: () => number): TimeseriesPoint[] {
@@ -449,6 +466,7 @@ export function makeQueryRow(id: number, ts: number, r: () => number, node = 'ku
     node,
     proto: pick(r, PROTOS),
     client: { ip: client.ip, name: client.name, group: client.group },
+    policy: POLICY_OF_GROUP[client.group] ?? 'default/default',
     qtype,
     qclass: 1,
     dnssec: 'insecure',

@@ -1,0 +1,269 @@
+// The typed editors of a Policy, one per concept, shared by the
+// /policies/new wizard (one step each) and the policy page (one section
+// each): Who (client groups, priority), What (block and allow lists,
+// allow-only), Blocked services, Safe search, How (block response, block
+// TTL, upstream group, query log) and When (schedule). Each takes the spec
+// and returns a new one; references are bare names in the policy's
+// namespace, as the API stores them.
+import { Switch } from '@astryxdesign/core/Switch';
+import { useQuery } from '@tanstack/react-query';
+import { useId } from 'react';
+import { qk, useApi } from '../api/context';
+import type { AnyObject, BlockList, ClientGroup, Policy, PolicySpec } from '../api/types';
+import { formatExact } from '../lib/format';
+import { BLOCK_RESPONSES, SAFE_SEARCH_MODES, scheduleError, sortByPriority } from '../lib/policies';
+import { durationError } from '../lib/objectSchemas';
+import { DurationField, type DurationPreset } from './fields/DurationField';
+import { EnumSelect } from './fields/EnumSelect';
+import { ObjectRefPicker } from './fields/ObjectRefPicker';
+import { ScheduleField } from './fields/ScheduleField';
+import { EngineList, ServiceGrid, useSafeSearchEngines } from './ServiceGrid';
+import { UpstreamGroupSelect } from './UpstreamGroupSelect';
+
+export interface PolicyFieldsProps {
+  spec: PolicySpec;
+  onChange: (spec: PolicySpec) => void;
+  namespace: string;
+  isDisabled?: boolean;
+  showErrors?: boolean;
+  /** The policy being edited (excluded from "other policies" hints). */
+  self?: string;
+}
+
+export const PRIORITY_MIN = 0;
+export const PRIORITY_MAX = 100000;
+
+/** Drops empty arrays and strings so the stored spec stays minimal. */
+export function cleanPolicySpec(spec: PolicySpec): PolicySpec {
+  const out: PolicySpec = {};
+  for (const [k, v] of Object.entries(spec) as [keyof PolicySpec, unknown][]) {
+    if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) continue;
+    (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}
+
+const isList = (mode: 'block' | 'allow') => (o: AnyObject) => ((o as BlockList).spec.mode ?? 'block') === mode;
+const listDetail = (o: AnyObject) => {
+  const l = o as BlockList;
+  return `${formatExact(l.status?.entries ?? 0)} entries · ${l.spec.sources.length} source${l.spec.sources.length === 1 ? '' : 's'}`;
+};
+const groupDetail = (o: AnyObject) => {
+  const g = o as ClientGroup;
+  const n = g.spec.clients?.length ?? 0;
+  return `${n} matcher${n === 1 ? '' : 's'} · ${formatExact(g.status?.members ?? 0)} seen`;
+};
+const allowList = isList('allow');
+const blockListFilter = isList('block');
+
+// -- Who ----------------------------------------------------------------------
+
+export function whoError(spec: PolicySpec): string | null {
+  if (!spec.clientGroupRefs?.length) return 'Pick at least one client group; a policy without groups applies to nobody.';
+  return priorityError(spec.priority);
+}
+
+export function priorityError(p: number | undefined): string | null {
+  if (p === undefined) return null;
+  if (!Number.isInteger(p) || p < PRIORITY_MIN || p > PRIORITY_MAX) return `Priority is a whole number from ${PRIORITY_MIN} to ${PRIORITY_MAX}.`;
+  return null;
+}
+
+export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, self }: PolicyFieldsProps) {
+  const api = useApi();
+  const id = useId();
+  const pols = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
+  const groups = new Set(spec.clientGroupRefs ?? []);
+  const others = sortByPriority(pols.data?.items ?? []).filter(
+    (p) => `${p.metadata.namespace}/${p.metadata.name}` !== self && (p.metadata.namespace ?? 'default') === namespace && (p.spec.clientGroupRefs ?? []).some((g) => groups.has(g)),
+  );
+  const perr = priorityError(spec.priority);
+  return (
+    <div className="k-stack-lg">
+      <ObjectRefPicker
+        kind="clientgroups"
+        label="Client groups"
+        description="Clients in these groups get this policy."
+        namespace={namespace}
+        sameNamespace
+        multiple
+        value={spec.clientGroupRefs ?? []}
+        onChange={(v) => onChange({ ...spec, clientGroupRefs: v })}
+        detail={groupDetail}
+        isDisabled={isDisabled}
+        error={showErrors && !spec.clientGroupRefs?.length ? 'Pick at least one group' : undefined}
+      />
+      <label className="k-label" htmlFor={`${id}-prio`}>
+        Priority
+        <span className="k-muted k-small">When several active policies match a client, the highest priority decides the settings; their lists are merged.</span>
+        <input
+          id={`${id}-prio`}
+          className="k-native-input k-num-input"
+          type="number"
+          min={PRIORITY_MIN}
+          max={PRIORITY_MAX}
+          step={1}
+          value={spec.priority ?? ''}
+          disabled={isDisabled}
+          aria-invalid={perr ? true : undefined}
+          onChange={(e) => onChange({ ...spec, priority: e.target.value === '' ? undefined : Number(e.target.value) })}
+        />
+        {perr ? <span className="k-error-text">{perr}</span> : null}
+      </label>
+      {others.length ? (
+        <p className="k-muted k-small" data-testid="priority-hint">
+          Other policies of these groups:{' '}
+          {others.map((p, i) => (
+            <span key={p.metadata.name}>
+              {i ? ', ' : ''}
+              <span className="k-mono">{p.metadata.name}</span> ({p.spec.priority ?? 0})
+            </span>
+          ))}
+          .
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// -- What ---------------------------------------------------------------------
+
+export function WhatFields({ spec, onChange, namespace, isDisabled }: PolicyFieldsProps) {
+  return (
+    <div className="k-stack-lg">
+      <ObjectRefPicker
+        kind="blocklists"
+        label="Block lists"
+        description="Names on these lists are blocked."
+        namespace={namespace}
+        sameNamespace
+        multiple
+        filter={blockListFilter}
+        detail={listDetail}
+        value={spec.blockListRefs ?? []}
+        onChange={(v) => onChange({ ...spec, blockListRefs: v })}
+        isDisabled={isDisabled}
+      />
+      <ObjectRefPicker
+        kind="blocklists"
+        label="Allow lists"
+        description="Names on these lists are never blocked, whatever a block list or service says."
+        namespace={namespace}
+        sameNamespace
+        multiple
+        filter={allowList}
+        detail={listDetail}
+        value={spec.allowListRefs ?? []}
+        onChange={(v) => onChange({ ...spec, allowListRefs: v })}
+        isDisabled={isDisabled}
+      />
+      <Switch
+        label="Allow only"
+        description="Block every name that is not on an allow list (a walled garden for young children)."
+        value={spec.allowOnly === true}
+        onChange={(on) => onChange({ ...spec, allowOnly: on || undefined })}
+        isDisabled={isDisabled}
+      />
+    </div>
+  );
+}
+
+export function ServicesFields({ spec, onChange, isDisabled, isLabelHidden }: PolicyFieldsProps & { isLabelHidden?: boolean }) {
+  return (
+    <ServiceGrid
+      label="Blocked services"
+      isLabelHidden={isLabelHidden}
+      description="Block every domain of these services, like a block list. Allow lists still win; the query log names the service."
+      value={spec.blockedServices ?? []}
+      onChange={(v) => onChange({ ...spec, blockedServices: v })}
+      isDisabled={isDisabled}
+    />
+  );
+}
+
+// -- Safe search --------------------------------------------------------------
+
+export function SafeSearchFields({ spec, onChange, isDisabled }: PolicyFieldsProps) {
+  const engines = useSafeSearchEngines();
+  const on = spec.safeSearch === true;
+  return (
+    <div className="k-stack-lg">
+      <Switch
+        label="Enforce safe search"
+        description="Answer the search engines' and YouTube's host names with the vendor's safe-search address."
+        value={on}
+        onChange={(v) => onChange({ ...spec, safeSearch: v || undefined, ...(v ? {} : { safeSearchMode: undefined }) })}
+        isDisabled={isDisabled}
+      />
+      {on ? (
+        <EnumSelect label="Level" value={spec.safeSearchMode ?? 'strict'} options={SAFE_SEARCH_MODES} onChange={(v) => onChange({ ...spec, safeSearchMode: v === 'strict' ? undefined : (v as 'moderate') })} isDisabled={isDisabled} />
+      ) : null}
+      {engines.data ? (
+        <div className="k-stack">
+          <span className="k-muted k-small">{on ? 'Rewritten engines' : 'Engines it would rewrite'}</span>
+          <EngineList engines={engines.data.items} mode={spec.safeSearchMode ?? 'strict'} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// -- How ----------------------------------------------------------------------
+
+const TTL_PRESETS: DurationPreset[] = [
+  { value: '0s', label: 'No caching (0)' },
+  { value: '10s', label: '10 seconds' },
+  { value: '1m', label: '1 minute' },
+  { value: '5m', label: '5 minutes' },
+  { value: '10m', label: '10 minutes' },
+  { value: '1h', label: '1 hour' },
+];
+
+export function howError(spec: PolicySpec): string | null {
+  return spec.blockTTL ? (durationError(spec.blockTTL) ? 'Block TTL is a duration such as 30s, 10m or 1h.' : null) : null;
+}
+
+export function HowFields({ spec, onChange, isDisabled, showErrors }: PolicyFieldsProps) {
+  const ttlErr = spec.blockTTL ? durationError(spec.blockTTL) : null;
+  return (
+    <div className="k-stack-lg">
+      <EnumSelect
+        label="Block response"
+        description="What a blocked client gets back."
+        value={spec.blockMode ?? ''}
+        options={BLOCK_RESPONSES}
+        emptyLabel="Default (blocking.defaultResponse)"
+        onChange={(v) => onChange({ ...spec, blockMode: (v || undefined) as PolicySpec['blockMode'] })}
+        isDisabled={isDisabled}
+      />
+      <DurationField
+        label="Block TTL"
+        description="How long clients may cache a block answer."
+        value={spec.blockTTL ?? ''}
+        presets={TTL_PRESETS}
+        emptyLabel="Default (blocking.blockTTL)"
+        onChange={(v) => onChange({ ...spec, blockTTL: v || undefined })}
+        isDisabled={isDisabled}
+        error={showErrors || spec.blockTTL ? (ttlErr ?? undefined) : undefined}
+      />
+      <UpstreamGroupSelect value={spec.upstreamGroup ?? ''} onChange={(v) => onChange({ ...spec, upstreamGroup: v || undefined })} isDisabled={isDisabled} help="Where these clients' allowed queries are forwarded." />
+      <Switch
+        label="Log these clients' queries"
+        description="Off keeps the clients of this policy out of the query log and its statistics."
+        value={spec.queryLog !== false}
+        onChange={(on) => onChange({ ...spec, queryLog: on ? undefined : false })}
+        isDisabled={isDisabled}
+      />
+    </div>
+  );
+}
+
+// -- When ---------------------------------------------------------------------
+
+export function whenError(spec: PolicySpec): string | null {
+  return spec.schedule ? scheduleError(spec.schedule) : null;
+}
+
+export function WhenFields({ spec, onChange, isDisabled }: PolicyFieldsProps) {
+  return <ScheduleField value={spec.schedule} onChange={(s) => onChange({ ...spec, schedule: s })} isDisabled={isDisabled} />;
+}

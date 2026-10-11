@@ -1,7 +1,8 @@
-// Field descriptors for the CRUD forms of BlockList, ClientGroup and
-// Policy (§10 principle 6). They follow api/v1alpha1 field for field; the
-// generic ObjectForm renders them, so a new spec field is one line here.
-// When api/openapi.json lands these can be derived from its schemas.
+// Field descriptors for the generic BlockList form (§10 principle 6) and
+// the validators the typed editors share. They follow api/v1alpha1 field
+// for field; the generic ObjectForm renders them, so a new spec field is
+// one line here. ClientGroups and Policies have their own pages and
+// wizards (pages/Group*, pages/Polic*).
 import type { ObjectKind } from '../api/types';
 import { parseDuration } from './format';
 import { isIPv4, isIPv6 } from './rr';
@@ -13,12 +14,8 @@ export type FieldDef =
   | { type: 'enum'; key: string; label: string; help?: string; options: { value: string; label: string }[]; required?: boolean }
   | { type: 'duration'; key: string; label: string; help?: string; placeholder?: string }
   | { type: 'strings'; key: string; label: string; help?: string; placeholder?: string; validate?: (v: string) => string | null }
-  | { type: 'refs'; key: string; label: string; help?: string; refKind: ObjectKind; filter?: (o: { spec?: unknown }) => boolean }
   | { type: 'objects'; key: string; label: string; help?: string; itemLabel: string; fields: FieldDef[]; summary?: (item: Record<string, unknown>) => string }
-  | { type: 'object'; key: string; label: string; help?: string; fields: FieldDef[] }
-  /** Service IDs of the blocked-services catalogue (GET /catalogue/services). */
-  | { type: 'services'; key: string; label: string; help?: string }
-  | { type: 'upstreamGroup'; key: string; label: string; help?: string };
+  | { type: 'object'; key: string; label: string; help?: string; fields: FieldDef[] };
 
 export interface KindSchema {
   kind: ObjectKind;
@@ -103,6 +100,10 @@ const RESPONSES = [
 ];
 
 export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSchema> = {
+  // Groups and policies are created and edited on their own pages and
+  // wizards; the list page only needs their names and RBAC resource.
+  clientgroups: { kind: 'clientgroups', objectKind: 'ClientGroup', singular: 'group', plural: 'groups', namespaced: true, resource: 'clientgroups', fields: [], empty: () => ({ clients: [] }) },
+  policies: { kind: 'policies', objectKind: 'Policy', singular: 'policy', plural: 'policies', namespaced: true, resource: 'policies', fields: [], empty: () => ({ clientGroupRefs: [] }) },
   blocklists: {
     kind: 'blocklists',
     objectKind: 'BlockList',
@@ -158,102 +159,6 @@ export const SCHEMAS: Record<'blocklists' | 'clientgroups' | 'policies', KindSch
         fields: [
           { type: 'text', key: 'v4', label: 'IPv4', placeholder: '192.0.2.1', validate: (v) => (!v || isIPv4(v) ? null : 'Not an IPv4 address') },
           { type: 'text', key: 'v6', label: 'IPv6', placeholder: '2001:db8::1', validate: (v) => (!v || isIPv6(v) ? null : 'Not an IPv6 address') },
-        ],
-      },
-    ],
-  },
-  clientgroups: {
-    kind: 'clientgroups',
-    objectKind: 'ClientGroup',
-    singular: 'group',
-    plural: 'groups',
-    namespaced: true,
-    resource: 'clientgroups',
-    empty: () => ({ clients: [] }),
-    fields: [
-      {
-        type: 'objects',
-        key: 'clients',
-        label: 'Clients',
-        itemLabel: 'client',
-        help: 'A client matches when any one field matches. Paste many addresses into "Add many".',
-        summary: (c) => str(c.name) || str(c.ip) || str(c.cidr) || str(c.mac) || str(c.clientID) || str(c.hostname) || str(c.nameGlob) || 'client',
-        fields: [
-          { type: 'text', key: 'ip', label: 'IP address', validate: ipError },
-          { type: 'text', key: 'cidr', label: 'CIDR', validate: cidrError },
-          { type: 'text', key: 'mac', label: 'MAC address', validate: macError },
-          { type: 'text', key: 'clientID', label: 'Client ID (DoT/DoH/DoQ)' },
-          { type: 'text', key: 'hostname', label: 'Host name' },
-          { type: 'text', key: 'nameGlob', label: 'Name pattern', placeholder: 'kids-*' },
-          { type: 'text', key: 'name', label: 'Display name' },
-          { type: 'text', key: 'comment', label: 'Comment' },
-        ],
-      },
-    ],
-  },
-  policies: {
-    kind: 'policies',
-    objectKind: 'Policy',
-    singular: 'policy',
-    plural: 'policies',
-    namespaced: true,
-    resource: 'policies',
-    empty: () => ({ clientGroupRefs: [], blockListRefs: [], allowListRefs: [], priority: 100 }),
-    fields: [
-      { type: 'refs', key: 'clientGroupRefs', label: 'Client groups', refKind: 'clientgroups', help: 'Clients in these groups get this policy.' },
-      { type: 'refs', key: 'blockListRefs', label: 'Block lists', refKind: 'blocklists', filter: (o) => (o.spec as { mode?: string } | undefined)?.mode !== 'allow' },
-      { type: 'refs', key: 'allowListRefs', label: 'Allow lists', refKind: 'blocklists', filter: (o) => (o.spec as { mode?: string } | undefined)?.mode === 'allow' },
-      { type: 'bool', key: 'allowOnly', label: 'Allow only', help: 'Block everything that is not on an allow list.' },
-      { type: 'number', key: 'priority', label: 'Priority', min: 0, max: 100000, help: 'Higher wins when several policies match a client.' },
-      { type: 'upstreamGroup', key: 'upstreamGroup', label: 'Upstream group' },
-      { type: 'enum', key: 'blockMode', label: 'Block response', options: RESPONSES },
-      { type: 'duration', key: 'blockTTL', label: 'Block TTL', placeholder: '1m' },
-      { type: 'bool', key: 'queryLog', label: 'Log queries' },
-      {
-        type: 'services',
-        key: 'blockedServices',
-        label: 'Blocked services',
-        help: 'Block every domain of these services, like a block list. Allow lists still win; the query log names the service.',
-      },
-      {
-        type: 'bool',
-        key: 'safeSearch',
-        label: 'Enforce SafeSearch',
-        help: "Answer Google, Bing, DuckDuckGo, Brave, Yandex, Pixabay and YouTube with their vendor's safe-search address.",
-      },
-      {
-        type: 'enum',
-        key: 'safeSearchMode',
-        label: 'SafeSearch level',
-        help: 'Only YouTube has two levels (Restricted Mode strict or moderate); every other engine is always strict.',
-        options: [
-          { value: 'strict', label: 'Strict' },
-          { value: 'moderate', label: 'Moderate (YouTube)' },
-        ],
-      },
-      {
-        type: 'object',
-        key: 'schedule',
-        label: 'Schedule',
-        help: 'Only active in this window (e.g. school nights).',
-        fields: [
-          { type: 'strings', key: 'weekdays', label: 'Weekdays', placeholder: 'Mon', validate: (v) => (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/.test(v) ? null : 'Mon, Tue, Wed, Thu, Fri, Sat or Sun') },
-          { type: 'text', key: 'start', label: 'Start', placeholder: '21:00', validate: (v) => (!v || /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : 'HH:MM') },
-          { type: 'text', key: 'end', label: 'End', placeholder: '07:00', validate: (v) => (!v || /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : 'HH:MM') },
-          { type: 'text', key: 'tz', label: 'Time zone', placeholder: 'Europe/Berlin' },
-        ],
-      },
-      {
-        type: 'objects',
-        key: 'rewrites',
-        label: 'Rewrites',
-        itemLabel: 'rewrite',
-        summary: (r) => `${str(r.name)} → ${str(r.cname) || (Array.isArray(r.targets) ? r.targets.map(str).join(', ') : '')}`,
-        fields: [
-          { type: 'text', key: 'name', label: 'Name', required: true, placeholder: 'printer.lan' },
-          { type: 'text', key: 'type', label: 'Type', placeholder: 'A' },
-          { type: 'strings', key: 'targets', label: 'Targets', placeholder: '192.168.1.50' },
-          { type: 'text', key: 'cname', label: 'CNAME', placeholder: 'host.example.com.' },
         ],
       },
     ],

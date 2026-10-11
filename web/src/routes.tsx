@@ -57,6 +57,11 @@ const Domains = lazy(() => import('./pages/DomainsPage'));
 const Groups = lazy(() => import('./pages/GroupsPage'));
 const Clients = lazy(() => import('./pages/ClientsPage'));
 const Policies = lazy(() => import('./pages/PoliciesPage'));
+const PolicyDetail = lazy(() => import('./pages/PolicyDetailPage'));
+const PolicyWizard = lazy(() => import('./pages/PolicyWizardPage'));
+const GroupDetail = lazy(() => import('./pages/GroupDetailPage'));
+const GroupWizard = lazy(() => import('./pages/GroupWizardPage'));
+const ClientDetail = lazy(() => import('./pages/ClientDetailPage'));
 const Zones = lazy(() => import('./pages/ZonesPage'));
 const ZoneDetail = lazy(() => import('./pages/ZoneDetailPage'));
 const Upstreams = lazy(() => import('./pages/UpstreamsPage'));
@@ -78,8 +83,13 @@ export const ROUTES: RouteDef[] = [
   { path: '/lists/:ns/:name', navKey: 'lists', label: 'List', section: 'Filtering', icon: ListChecks, page: ListDetail, hidden: true },
   { path: '/domains', navKey: 'domains', label: 'Domains', section: 'Filtering', icon: ShieldBan, page: Domains },
   { path: '/groups', navKey: 'groups', label: 'Groups', section: 'Filtering', icon: Users, page: Groups },
+  { path: '/groups/new', navKey: 'groups', label: 'New group', section: 'Filtering', icon: Users, page: GroupWizard, hidden: true },
+  { path: '/groups/:ns/:name', navKey: 'groups', label: 'Group', section: 'Filtering', icon: Users, page: GroupDetail, hidden: true },
   { path: '/clients', navKey: 'clients', label: 'Clients', section: 'Filtering', icon: Monitor, page: Clients, scoped: true },
+  { path: '/clients/:key', navKey: 'clients', label: 'Client', section: 'Filtering', icon: Monitor, page: ClientDetail, scoped: true, hidden: true },
   { path: '/policies', navKey: 'policies', label: 'Policies', section: 'Filtering', icon: Scale, page: Policies },
+  { path: '/policies/new', navKey: 'policies', label: 'New policy', section: 'Filtering', icon: Scale, page: PolicyWizard, hidden: true },
+  { path: '/policies/:ns/:name', navKey: 'policies', label: 'Policy', section: 'Filtering', icon: Scale, page: PolicyDetail, hidden: true },
   { path: '/zones', navKey: 'zones', label: 'Zones', section: 'DNS', icon: Globe, page: Zones },
   { path: '/zones/new', navKey: 'zones', label: 'New zone', section: 'DNS', icon: Globe, page: ZoneWizard, hidden: true },
   { path: '/zones/:zone', navKey: 'zones', label: 'Zone', section: 'DNS', icon: Globe, page: ZoneDetail, hidden: true },

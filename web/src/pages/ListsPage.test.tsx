@@ -91,20 +91,18 @@ describe('ListsPage', () => {
 
 describe('generated form helpers', () => {
   it('validates nested items by dotted path', () => {
-    const errs = validateFields(SCHEMAS.clientgroups.fields, { clients: [{ ip: '10.0.0.1' }, { cidr: '10.0.0.0/33' }, { mac: 'nope' }] });
-    expect(errs).toEqual({ 'clients.1.cidr': 'IPv4 prefix length is at most 32', 'clients.2.mac': 'A MAC address such as aa:bb:cc:dd:ee:ff' });
+    const errs = validateFields(SCHEMAS.blocklists.fields, { mode: 'block', sources: [{ url: 'https://x.example/l.txt' }, { url: 'ftp://x' }], customIP: { v4: '300.1.1.1' } });
+    expect(errs).toEqual({ 'sources.1.url': 'An http(s) URL', 'customIP.v4': 'Not an IPv4 address' });
   });
 
   it('drops empty values before sending', () => {
     expect(
-      cleanSpec(SCHEMAS.policies.fields, {
-        clientGroupRefs: ['kids', ' '],
-        blockListRefs: [],
-        priority: 10,
-        upstreamGroup: '  ',
-        schedule: { weekdays: [''], start: '', end: '' },
-        rewrites: [{}],
+      cleanSpec(SCHEMAS.blocklists.fields, {
+        mode: 'block',
+        sources: [{ name: 'main', url: 'https://x.example/l.txt', inline: ['', ' '] }, {}],
+        refreshInterval: '  ',
+        customIP: { v4: '', v6: '' },
       }),
-    ).toEqual({ clientGroupRefs: ['kids'], priority: 10 });
+    ).toEqual({ mode: 'block', sources: [{ name: 'main', url: 'https://x.example/l.txt' }] });
   });
 });

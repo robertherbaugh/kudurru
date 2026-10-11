@@ -529,3 +529,105 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-choice-card:focus-within { outline: 2px solid var(--k-focus); outline-offset: 1px; }
 .k-choice-card > input { margin-block-start: 3px; flex: none; }
 .k-curated { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--k-gap-sm); }
+
+/* Policy, group and client pages (pages/Polic*, Group*, ClientDetail) --- */
+
+.k-section { display: flex; flex-direction: column; gap: var(--k-gap-sm); }
+.k-section h2 { margin: 0; font-size: var(--font-size-lg, 1.125rem); }
+.k-kv { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 6px 16px; margin: 0; font-size: var(--font-size-sm, 0.875rem); }
+.k-kv dt { color: var(--color-text-secondary); }
+.k-kv dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .k-kv { grid-template-columns: 1fr; } .k-kv dd { margin-block-end: 6px; } }
+.k-stat-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--k-gap) calc(2 * var(--k-gap)); margin: 0; }
+.k-stat-row dt { font-size: var(--font-size-sm, 0.875rem); color: var(--color-text-secondary); }
+.k-stat-row dd { margin: 0; font-size: var(--font-size-2xl, 1.5rem); font-weight: var(--font-weight-semibold, 600); font-variant-numeric: tabular-nums; }
+.k-rank { margin: 0; padding-inline-start: 1.5em; display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm, 0.875rem); }
+.k-rank li { display: flex; gap: 8px; justify-content: space-between; }
+.k-rank .num { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.k-policy-order { margin: 0; padding-inline-start: 1.5em; display: flex; flex-direction: column; gap: 6px; }
+.k-review { display: grid; grid-template-columns: minmax(130px, max-content) 1fr auto; gap: 8px 16px; align-items: center; margin: 0; }
+.k-review dt { color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
+.k-review dd { margin: 0; overflow-wrap: anywhere; }
+.k-review dd.k-review-edit { justify-self: end; }
+.k-num-input { max-inline-size: 160px; }
+.k-radio { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; font-size: var(--text-body-size, 0.875rem); }
+
+/* Weekday toggles of the schedule editor. */
+.k-day {
+  font: inherit;
+  font-size: var(--font-size-sm, 0.875rem);
+  min-inline-size: 48px;
+  padding: 4px 10px;
+  border-radius: var(--radius-element, 8px);
+  border: 1px solid var(--color-border-emphasized, var(--color-border));
+  background: var(--color-background-surface, transparent);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.k-day:hover { background: var(--k-hover); }
+.k-day[aria-pressed='true'] { background: var(--color-accent-muted); border-color: var(--color-accent); color: var(--color-text-accent); font-weight: var(--font-weight-semibold, 600); }
+.k-day:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
+.k-day:disabled { cursor: default; opacity: 0.7; }
+
+/* Client matchers editor. */
+.k-matchers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.k-matcher { display: grid; grid-template-columns: minmax(150px, 200px) minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(130px, 1fr) auto; gap: 8px; align-items: start; padding-block-end: 10px; border-block-end: 1px solid var(--color-border); }
+@media (max-width: 900px) { .k-matcher { grid-template-columns: 1fr 1fr; } }
+
+/* Service logos: tiles (toggle buttons), stacks and lists. Monogram tones
+   keep white text above 4.5:1 in both schemes. */
+.k-service-icon { display: block; flex: none; border-radius: 6px; object-fit: contain; }
+.k-service-icon-pair { display: contents; }
+.k-icon-on-dark { display: none; }
+:root[data-theme='dark'] .k-icon-on-light { display: none; }
+:root[data-theme='dark'] .k-icon-on-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .k-icon-on-light { display: none; }
+  :root:not([data-theme='light']) .k-icon-on-dark { display: block; }
+}
+.k-monogram {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: #4f5b57;
+  user-select: none;
+}
+.k-monogram[data-tone='0'] { background: #b3261e; }
+.k-monogram[data-tone='1'] { background: #8a4b00; }
+.k-monogram[data-tone='2'] { background: #1d6b30; }
+.k-monogram[data-tone='3'] { background: #0b6b72; }
+.k-monogram[data-tone='4'] { background: #1f4fb5; }
+.k-monogram[data-tone='5'] { background: #5b3cc4; }
+.k-monogram[data-tone='6'] { background: #a3195b; }
+.k-monogram[data-tone='7'] { background: #4f5b57; }
+.k-logo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.k-logo-tile {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 10px;
+  border-radius: var(--radius-element, 8px);
+  border: 1px solid var(--color-border);
+  background: var(--color-background-card, transparent);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: center;
+}
+.k-logo-tile:hover { background: var(--k-hover); border-color: var(--color-border-emphasized, var(--color-border)); }
+.k-logo-tile:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
+.k-logo-tile[aria-pressed='true'] { border-color: var(--color-accent); background: var(--color-accent-muted); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.k-logo-tile:disabled { cursor: default; }
+.k-logo-tile:disabled:not([aria-pressed='true']) { opacity: 0.75; }
+.k-logo-name { font-size: var(--font-size-sm, 0.875rem); font-weight: var(--font-weight-medium, 500); overflow-wrap: anywhere; }
+.k-logo-meta { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
+.k-logo-tile[aria-pressed='true'] .k-logo-meta { color: var(--color-text-accent); font-weight: var(--font-weight-semibold, 600); }
+.k-logo-stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.k-logo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: var(--font-size-sm, 0.875rem); }
+.k-logo-list li { display: inline-flex; align-items: center; gap: 6px; }

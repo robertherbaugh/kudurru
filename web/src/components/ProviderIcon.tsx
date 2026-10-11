@@ -1,21 +1,23 @@
-// A provider's logo from the icons the binary embeds (C4: the public
-// GET /catalogue/icons lists them with an optional dark-background
-// variant, /catalogue/icons/{id}.svg serves them; homarr-labs/
-// dashboard-icons, Apache-2.0), or a monogram when the server has no icon
-// for it. Decorative: the provider's name is always next to it.
+// A provider's logo (upstream presets) by icon id: the first of `ids` the
+// server's icon index (C4: the public GET /catalogue/icons, with an
+// optional dark-background variant; homarr-labs/dashboard-icons,
+// Apache-2.0) has, drawn by ServiceIcon, the one logo/monogram component;
+// a monogram when the server has none. Decorative: the provider's name is
+// always next to it.
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import { useApi } from '../api/context';
-import { useAppearance } from '../lib/theme';
+import { ServiceIcon } from './ServiceIcon';
 
-/** Icon id → the id of its dark-background variant ("" when none); empty when the server has no index. */
-export function useIcons(): Map<string, string> {
+export { monogram } from './ServiceIcon';
+
+/** Icon id → its path and dark-background variant path; empty when the server has no index. */
+export function useIcons(): Map<string, { path: string; onDark?: string }> {
   const api = useApi();
   const q = useQuery({
     queryKey: ['catalogue', 'icons'],
     queryFn: async () => {
       try {
-        return (await api.catalogue.icons()).items.map((i) => [i.id, i.onDark ? i.onDark.replace(/^.*\//, '').replace(/\.svg$/, '') : ''] as const);
+        return (await api.catalogue.icons()).items.map((i) => [i.id, { path: i.path, ...(i.onDark ? { onDark: i.onDark } : {}) }] as const);
       } catch {
         return [];
       }
@@ -25,30 +27,13 @@ export function useIcons(): Map<string, string> {
   return new Map(q.data ?? []);
 }
 
-/** The first two letters of the name's words: "Control D" → "CD", "Quad9" → "Q9". */
-export function monogram(name: string): string {
-  const words = name.split(/[\s-]+/).filter(Boolean);
-  if (words.length > 1) return `${words[0]?.[0] ?? ''}${words[1]?.[0] ?? ''}`.toUpperCase();
-  const w = words[0] ?? '?';
-  return (w[0] ?? '?').toUpperCase() + (/\d/.exec(w)?.[0] ?? w[1] ?? '');
-}
-
-function useDark(): boolean {
-  const { mode } = useAppearance();
-  if (mode !== 'system') return mode === 'dark';
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-}
-
 export function ProviderIcon({ name, ids }: { name: string; ids: string[] }) {
-  const api = useApi();
   const icons = useIcons();
-  const dark = useDark();
-  const [broken, setBroken] = useState(false);
   const id = ids.find((i) => icons.has(i));
-  const shown = id && dark && icons.get(id) ? (icons.get(id) as string) : id;
+  const e = id ? icons.get(id) : undefined;
   return (
-    <span className="k-provider-icon" aria-hidden="true" data-icon={shown && !broken ? shown : 'monogram'}>
-      {shown && !broken ? <img src={api.catalogue.iconURL(shown)} alt="" width={28} height={28} onError={() => setBroken(true)} /> : monogram(name)}
+    <span className="k-provider-icon" aria-hidden="true">
+      <ServiceIcon id={id ?? ids[0] ?? name.toLowerCase()} name={name} icon={e?.path} iconOnDark={e?.onDark} size={28} />
     </span>
   );
 }

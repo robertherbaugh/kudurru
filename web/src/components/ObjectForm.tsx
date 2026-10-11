@@ -1,24 +1,19 @@
-// The generic create/edit form for BlockList, ClientGroup and Policy,
-// generated from the field descriptors in lib/objectSchemas (§10
-// principle 6). Every object gets a comment and an enabled switch; objects
+// The generic create/edit form for BlockList, generated from the field
+// descriptors in lib/objectSchemas (§10 principle 6). ClientGroups and
+// Policies have their own pages and wizards. Every object gets a comment and an enabled switch; objects
 // owned by a file, Kubernetes or an integration open read-only with the
 // owner named.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
-import { useQuery } from '@tanstack/react-query';
 import { useId, useState, type ReactNode } from 'react';
-import { qk, useApi } from '../api/context';
 import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
 import { DialogForm } from './FormDialog';
-import { ServicesField } from './ServicesField';
-import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
 type Obj = Record<string, unknown>;
 export type FieldErrors = Record<string, string>;
@@ -87,7 +82,6 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
       case 'text':
       case 'duration':
       case 'enum':
-      case 'upstreamGroup':
         next = typeof v === 'string' ? v.trim() : v;
         if (next === '') next = undefined;
         break;
@@ -95,8 +89,6 @@ export function cleanSpec(fields: FieldDef[], value: Obj): Obj {
         next = typeof v === 'number' && !Number.isNaN(v) ? v : undefined;
         break;
       case 'strings':
-      case 'refs':
-      case 'services':
         next = Array.isArray(v) ? (v as string[]).map((s) => s.trim()).filter(Boolean) : undefined;
         if (Array.isArray(next) && next.length === 0) next = undefined;
         break;
@@ -314,10 +306,6 @@ function Field({
           hasSpellCheck={false}
         />
       );
-    case 'refs':
-      return <RefsField def={def} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
-    case 'services':
-      return <ServicesField label={def.label} help={def.help} value={Array.isArray(value) ? (value as string[]) : []} onChange={onChange} disabled={disabled} />;
     case 'object': {
       const obj = value && typeof value === 'object' ? (value as Obj) : {};
       return (
@@ -332,34 +320,7 @@ function Field({
     }
     case 'objects':
       return <ObjectsField def={def} path={path} value={Array.isArray(value) ? (value as Obj[]) : []} onChange={onChange} errors={errors} disabled={disabled} />;
-    case 'upstreamGroup':
-      return <UpstreamGroupSelect label={def.label} help={def.help} value={typeof value === 'string' ? value : ''} onChange={(v) => onChange(v)} isDisabled={disabled} error={errors[path]} />;
   }
-}
-
-function RefsField({ def, value, onChange, disabled }: { def: Extract<FieldDef, { type: 'refs' }>; value: string[]; onChange: (v: unknown) => void; disabled: boolean }) {
-  const api = useApi();
-  const q = useQuery({ queryKey: qk.objects(def.refKind), queryFn: () => api.objects.list(def.refKind) });
-  const names = (q.data?.items ?? []).filter((o) => !def.filter || def.filter(o)).map((o) => o.metadata.name);
-  for (const v of value) if (!names.includes(v)) names.push(v);
-  return (
-    <fieldset className="k-fieldset">
-      <legend>{def.label}</legend>
-      {def.help ? <p className="k-muted k-small">{def.help}</p> : null}
-      {names.length === 0 ? <p className="k-muted k-small">{q.isLoading ? 'Loading…' : 'Nothing to choose yet.'}</p> : null}
-      <div className="k-check-grid">
-        {names.map((n) => (
-          <CheckboxInput
-            key={n}
-            label={n}
-            value={value.includes(n)}
-            isDisabled={disabled}
-            onChange={(on) => onChange(on ? [...value, n] : value.filter((x) => x !== n))}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
 }
 
 function ObjectsField({
@@ -381,17 +342,9 @@ function ObjectsField({
   const [showBulk, setShowBulk] = useState(false);
   const firstText = def.fields.find((f) => f.type === 'text');
   const addMany = () => {
-    // Multi-add: one item per line, into the first text field (IP for
-    // clients) or into "cidr" when the line has a prefix length.
+    // Multi-add: one item per line, into the first text field.
     const lines = bulk.split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean);
-    const items = lines.map((l) => {
-      if (def.key === 'clients') {
-        if (l.includes('/')) return { cidr: l };
-        if (/^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(l)) return { mac: l };
-        return { ip: l };
-      }
-      return { [firstText?.key ?? 'name']: l };
-    });
+    const items = lines.map((l) => ({ [firstText?.key ?? 'name']: l }));
     onChange([...value, ...items]);
     setBulk('');
     setShowBulk(false);

@@ -1,8 +1,8 @@
 // Clients seen by the query log in the last 24 hours (GET /clients: the
 // top-clients ranking, keyed by IP or client ID), with the client group
-// the identify stage resolved them to. Selected clients can be added to a
-// group in one step (a PUT of the ClientGroup with the new matchers, each
-// with a display name and comment).
+// the identify stage resolved them to; a client opens its page. Selected
+// clients can be added to a group in one step (a PUT of the ClientGroup
+// with the new matchers, each with a display name and comment).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
@@ -10,21 +10,16 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { ClientGroup, ClientItem, ClientMatcher } from '../api/types';
+import type { ClientGroup, ClientItem } from '../api/types';
+import { matcherFor } from '../components/fields/MatchersField';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { formatExact, formatRelative } from '../lib/format';
-import { isIPv4, isIPv6 } from '../lib/rr';
 import { objectOwnership } from '../lib/managedBy';
+import { clientHref, objectHref } from '../lib/policies';
 import { Link, useSearchParams } from '../lib/router';
 
-/** The matcher that selects a client by its key (an IP address or a client ID). */
-export function matcherFor(c: ClientItem, comment: string): ClientMatcher {
-  const m: ClientMatcher = isIPv4(c.key) || isIPv6(c.key) ? { ip: c.key } : { clientID: c.key };
-  if (c.name) m.name = c.name;
-  if (comment) m.comment = comment;
-  return m;
-}
+export { matcherFor };
 
 /** The ClientGroup name of a "namespace/name" group reference. */
 function groupName(ref: string): string {
@@ -46,7 +41,7 @@ export default function ClientsPage() {
   const [comment, setComment] = useState('');
   const groupId = useId();
 
-  const inv = useQuery({ queryKey: ['clients', scope], queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
+  const inv = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups') });
   const writable = (groups.data?.items ?? []).filter((g) => objectOwnership(g).editable);
 
@@ -72,7 +67,7 @@ export default function ClientsPage() {
       setSelected(new Set());
       setComment('');
       void qc.invalidateQueries({ queryKey: qk.objects('clientgroups') });
-      void qc.invalidateQueries({ queryKey: ['clients'] });
+      void qc.invalidateQueries({ queryKey: qk.clients() });
     },
     onError: (err) => notify.error(err, 'Could not update the group'),
   });
@@ -140,12 +135,12 @@ export default function ClientsPage() {
                     <CheckboxInput label={`Select ${c.name ?? c.key}`} isLabelHidden value={selected.has(c.key)} onChange={(on) => toggle(c, on)} />
                   </td>
                   <td>
-                    <Link href={`/queries?client=${encodeURIComponent(c.key)}`}>{c.name ?? c.key}</Link>
+                    <Link href={clientHref(c.key)}>{c.name ?? c.key}</Link>
                     {c.name ? <span className="k-muted k-small k-mono"> {c.key}</span> : null}
                   </td>
                   <td>
                     {c.group ? (
-                      <Link href={`/groups?q=${encodeURIComponent(groupName(c.group))}`}>
+                      <Link href={objectHref('groups', c.group)} className="k-badge-link">
                         <Badge variant={groupName(c.group) === 'default' ? 'neutral' : 'blue'} label={c.group.replace(/^default\//, '')} />
                       </Link>
                     ) : (

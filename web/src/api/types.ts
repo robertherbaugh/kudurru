@@ -560,6 +560,8 @@ export interface QueryRow {
   zone?: string;
   list?: string;
   rule?: string;
+  /** The deciding policy, "namespace/name" (ux-plan C3). */
+  policy?: string;
   dnssec: string;
   ede?: number;
   ecs?: string;
@@ -576,6 +578,8 @@ export interface QueryFilter {
   upstream?: string;
   list?: string;
   zone?: string;
+  /** The deciding policy, "namespace/name". */
+  policy?: string;
   since?: string;
   until?: string;
   cursor?: string;
@@ -789,6 +793,10 @@ export interface CatalogueService {
   rules: number;
   domains: string[];
   source: string;
+  /** API path of the service's logo (/api/v1/catalogue/icons/{slug}.svg); absent: no logo, show a monogram. */
+  icon?: string;
+  /** The logo for dark backgrounds, when the default one is dark artwork. */
+  iconOnDark?: string;
 }
 
 /** One safe-search engine of GET /catalogue/safesearch. */
@@ -802,6 +810,9 @@ export interface SafeSearchEngine {
   addresses?: string[];
   domains: number;
   source: string;
+  /** API path of the engine's logo; absent when the binary has none. */
+  icon?: string;
+  iconOnDark?: string;
 }
 
 /** GET /catalogue. */
@@ -819,3 +830,16 @@ export interface CatalogueInfo {
 
 /** GET /catalogue/icons (C4): the icons this binary embeds. */
 export type CatalogueIconIndex = ListEnvelope<S['CatalogueIcon']>;
+
+// Policy current state (ux-plan C3) ------------------------------------------
+
+/**
+ * GET /policies/{namespace}/{name}/state. Refs are "namespace/name";
+ * shadowedBy ignores schedules; stats24h and groups[].seen24h are absent
+ * without a query log.
+ */
+export type PolicyState = Omit<S['PolicyState'], 'took_ms' | 'conditions' | 'shadowedBy'> & {
+  conditions: Condition[];
+  shadowedBy?: string[] | null;
+  took_ms?: number;
+};
