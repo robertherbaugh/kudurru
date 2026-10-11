@@ -78,6 +78,23 @@ func TestSplitInternalRejectsUnknownKind(t *testing.T) {
 	}
 }
 
+// TestEnvtestInternalKindsProductionScheme opens the driver with the
+// scheme production passes (internalkinds.NewScheme: kudurru.io only); the
+// driver adds core/v1 for the Secrets itself.
+func TestEnvtestInternalKindsProductionScheme(t *testing.T) {
+	requireEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	scheme, err := internalkinds.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestStore(t, Options{Scheme: scheme, InternalKinds: internalKindList()})
+	if _, err := s.List(ctx, internalkinds.KindLocalUser, store.ListOptions{}); err != nil {
+		t.Fatalf("list on the production scheme: %v", err)
+	}
+}
+
 func TestEnvtestInternalKinds(t *testing.T) {
 	requireEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

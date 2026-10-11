@@ -26,19 +26,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
+	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/auth/k8s"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
+	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
+	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/kube"
 )
 
 var (
 	envSkip  string
 	admin    *kubernetes.Clientset
 	kudurru  *rest.Config // the server's own identity: system:auth-delegator + issuer discovery
+	adminCfg *rest.Config
 	saUID    string
 	testNS   = "dns"
 	testSA   = "external-dns"
@@ -64,7 +70,7 @@ func run(m *testing.M) int {
 		ctrllog.SetLogger(logr.Discard())
 		klog.SetLogger(logr.Discard())
 	}
-	env := &envtest.Environment{BinaryAssetsDirectory: assets}
+	env := &envtest.Environment{BinaryAssetsDirectory: assets, CRDDirectoryPaths: []string{filepath.Join("..", "..", "..", "config", "crd", "bases")}}
 	args := env.ControlPlane.GetAPIServer().Configure()
 	args.Set("advertise-address", "127.0.0.1")
 	args.Set("endpoint-reconciler-type", "none")
@@ -87,9 +93,12 @@ func setup(env *envtest.Environment, cfg *rest.Config) error {
 	if admin, err = kubernetes.NewForConfig(cfg); err != nil {
 		return err
 	}
-	if _, err := admin.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}}, metav1.CreateOptions{}); err != nil {
-		return err
+	for _, ns := range []string{testNS, "kudurru"} {
+		if _, err := admin.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}, metav1.CreateOptions{}); err != nil {
+			return err
+		}
 	}
+	adminCfg = cfg
 	for _, name := range []string{testSA, otherSA} {
 		sa, err := admin.CoreV1().ServiceAccounts(testNS).Create(ctx, &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name}}, metav1.CreateOptions{})
 		if err != nil {
@@ -327,4 +336,110 @@ func TestStackEndToEnd(t *testing.T) {
 		call(http.MethodGet, "/api/v1/querylog", tok)
 	}
 	t.Logf("20 cached SA-token requests in %s", time.Since(start))
+}
+
+// TestIdentityOnKubeStore runs the identity layer on the kube store driver:
+// users, tokens and RoleBinding objects live in Secrets labelled
+// kudurru.io/kind in the release namespace.
+func TestIdentityOnKubeStore(t *testing.T) {
+	need(t)
+	scheme, err := internalv1.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := kube.New(adminCfg, kube.Options{Namespace: "kudurru", Identity: "identity-test", Scheme: scheme, InternalKinds: stack.InternalKinds(),
+		Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Auth.Session.Secure = "never"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s, err := stack.New(ctx, stack.Options{Config: cfg, Store: st, Keys: keys.Keys{Current: make([]byte, 32)}, Kube: kudurru, Namespace: "kudurru",
+		Getenv: func(k string) string {
+			if k == "KUDURRU_ADMIN_PASSWORD" {
+				return "kube-admin-password"
+			}
+			return ""
+		}, Out: io.Discard, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = s.Run(ctx) }()
+	mux := http.NewServeMux()
+	s.Register(mux)
+	mux.Handle("POST /api/v1/zones/home/records", auth.Require(s.Authorizer(), func(*http.Request) rbac.Attributes {
+		return rbac.Attributes{Resource: "records", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeZone, Name: "home"}}
+	}, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	srv := httptest.NewServer(s.Middleware()(mux))
+	defer srv.Close()
+	post := func(path string, body any, hdr map[string]string) *http.Response {
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+path, bytes.NewReader(b))
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	res := post("/api/v1/auth/login", map[string]string{"username": "admin", "password": "kube-admin-password"}, nil)
+	_ = res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("login on the kube store: %d", res.StatusCode)
+	}
+	if _, err := s.Users().Create(ctx, users.CreateOptions{Name: "dave", Password: "dave-password"}); err != nil {
+		t.Fatal(err)
+	}
+	wire, tok, err := s.Tokens().Create(ctx, tokens.CreateOptions{Owner: internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: "dave", ID: users.PrincipalID("dave"), Provider: users.Provider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec, err := admin.CoreV1().Secrets("kudurru").List(ctx, metav1.ListOptions{LabelSelector: "kudurru.io/kind=APIToken"})
+	if err != nil || len(sec.Items) != 1 {
+		t.Fatalf("APIToken Secrets: %v, %v", sec, err)
+	}
+	if bytes.Contains(sec.Items[0].Data["object"], []byte(wire[17:])) {
+		t.Fatal("the token secret is stored in the Secret")
+	}
+	bearer := map[string]string{"Authorization": "Bearer " + wire}
+	if res := post("/api/v1/zones/home/records", nil, bearer); res.StatusCode != 403 {
+		t.Fatalf("dave before the binding: %d", res.StatusCode)
+	}
+	rb := &internalv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "dave-home", Namespace: "dns"}, Spec: internalv1.RoleBindingSpec{
+		Role: "zone-admin", Scope: internalv1.BindingScope{Kind: "zone", Name: "home"}, Subjects: []internalv1.BindingSubject{{Kind: "User", Name: "dave"}}}}
+	if _, err := st.Apply(ctx, rb, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		res := post("/api/v1/zones/home/records", nil, bearer)
+		_ = res.Body.Close()
+		if res.StatusCode == 200 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the RoleBinding Secret never authorized dave")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := s.Tokens().Revoke(ctx, tok.Name); err != nil {
+		t.Fatal(err)
+	}
+	if res := post("/api/v1/zones/home/records", nil, bearer); res.StatusCode != 401 {
+		t.Fatalf("revoked token: %d", res.StatusCode)
+	}
+	if err := s.Users().SetPassword(ctx, "dave", "dave-password-2", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Users().Login(ctx, "dave", "dave-password-2", "127.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -106,7 +106,8 @@ type Options struct {
 	// kudurru.io/kind=<Kind> in Namespace instead of CRDs (internal.go):
 	// the identity layer's LocalUser, APIToken, ServiceAccount,
 	// RoleBinding and IdentityProvider. They must be registered in Scheme
-	// (internalkinds.AddToScheme). Snapshot omits them when Safe.
+	// (internalkinds.AddToScheme); core/v1 is added to Scheme when it is
+	// missing. Snapshot omits them when Safe.
 	InternalKinds []store.Kind
 }
 
@@ -224,6 +225,13 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	internal, err := splitInternal(kinds, opts.InternalKinds)
 	if err != nil {
 		return nil, err
+	}
+	if len(opts.InternalKinds) > 0 && !opts.Scheme.Recognizes(corev1.SchemeGroupVersion.WithKind("SecretList")) {
+		// Internal kinds are Secrets: the client needs core/v1 in its
+		// scheme (internalkinds.NewScheme carries only kudurru.io).
+		if err := corev1.AddToScheme(opts.Scheme); err != nil {
+			return nil, fmt.Errorf("store/kube: core/v1 scheme: %w", err)
+		}
 	}
 	httpClient, err := rest.HTTPClientFor(cfg)
 	if err != nil {
