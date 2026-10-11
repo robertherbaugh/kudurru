@@ -1,9 +1,11 @@
 package kube
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -16,7 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/structured-merge-diff/v6/fieldpath"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -114,9 +118,12 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 //   - Manager is required and becomes both the SSA field manager and the
 //     kudurru.io/managed-by annotation.
 //   - An existing object whose annotation names another manager is
-//     rejected with *store.ErrManagedBy unless Force; Force applies with
-//     ForceOwnership. An SSA field-manager conflict (for example fields
-//     owned by kubectl) is also reported as *store.ErrManagedBy.
+//     rejected with *store.ErrManagedBy unless Force. An SSA field-manager
+//     conflict (for example fields owned by kubectl) is also reported as
+//     *store.ErrManagedBy.
+//   - Force is a whole-object takeover: other managers' field ownership is
+//     reassigned to Manager (see takeOver), then the object is applied
+//     with ForceOwnership, so fields the new manager omits are removed.
 //   - ExpectedResourceVersion that does not match (or names an object that
 //     does not exist) is store.ErrConflict.
 //   - The managedBy check and the write are made atomic by sending the
@@ -162,6 +169,19 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 				return nil, &store.ErrManagedBy{Key: key, Owner: owner}
 			}
 			precondition = cur.ResourceVersion
+			if opts.Force {
+				rv, err := s.takeOver(ctx, ki, key, cur, fieldManagerFor(opts.Manager))
+				if err != nil {
+					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
+						return nil, fmt.Errorf("store/kube: take over %s: %w", key, err)
+					}
+					if opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
+						return nil, fmt.Errorf("%w: %s changed during apply", store.ErrConflict, key)
+					}
+					continue
+				}
+				precondition = rv
+			}
 		case opts.ExpectedResourceVersion != "":
 			return nil, fmt.Errorf("%w: %s does not exist, expected %s", store.ErrConflict, key, opts.ExpectedResourceVersion)
 		}
@@ -284,6 +304,62 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 			return fmt.Errorf("store/kube: update status %s: %w", key, err)
 		}
 	}
+}
+
+// takeOver prepares a forced apply that replaces the whole object, as in
+// the reference driver. Plain SSA with ForceOwnership only takes the fields
+// the new manager sends; fields that only previous owners set would linger
+// under their old owners. So every main-resource field owned by any other
+// manager (at the kind's apiVersion) is first reassigned to fm with a merge
+// patch on managedFields, guarded by the observed resourceVersion; the
+// forced apply that follows then removes whatever fm does not specify.
+// Status (subresource) ownership is untouched. It returns the
+// resourceVersion to use as the apply's precondition.
+func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, fm string) (string, error) {
+	gv := ki.gvk.GroupVersion().String()
+	keep := make([]metav1.ManagedFieldsEntry, 0, len(cur.ManagedFields)+1)
+	owned := fieldpath.NewSet()
+	others := false
+	for _, e := range cur.ManagedFields {
+		if e.Subresource != "" || e.APIVersion != gv || e.FieldsType != "FieldsV1" || e.FieldsV1 == nil {
+			keep = append(keep, e)
+			continue
+		}
+		if e.Manager != fm || e.Operation != metav1.ManagedFieldsOperationApply {
+			others = true
+		}
+		set := fieldpath.NewSet()
+		if err := set.FromJSON(bytes.NewReader(e.FieldsV1.GetRawBytes())); err != nil {
+			return "", fmt.Errorf("decode managedFields of %q: %w", e.Manager, err)
+		}
+		owned = owned.Union(set)
+	}
+	if !others {
+		return cur.ResourceVersion, nil
+	}
+	raw, err := owned.ToJSON()
+	if err != nil {
+		return "", err
+	}
+	now := metav1.Now()
+	keep = append(keep, metav1.ManagedFieldsEntry{
+		Manager: fm, Operation: metav1.ManagedFieldsOperationApply, APIVersion: gv, Time: &now,
+		FieldsType: "FieldsV1", FieldsV1: metav1.NewFieldsV1(string(raw)),
+	})
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{
+		"resourceVersion": cur.ResourceVersion, "managedFields": keep,
+	}})
+	if err != nil {
+		return "", err
+	}
+	target := &metav1.PartialObjectMetadata{}
+	target.SetGroupVersionKind(ki.gvk)
+	target.SetNamespace(key.Namespace)
+	target.SetName(key.Name)
+	if err := s.c.Patch(ctx, target, client.RawPatch(types.MergePatchType, patch), client.FieldOwner(fm)); err != nil {
+		return "", err
+	}
+	return target.ResourceVersion, nil
 }
 
 // getMeta reads the object's metadata only, returning (nil, nil) when it
