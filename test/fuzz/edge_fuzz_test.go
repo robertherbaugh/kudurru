@@ -11,17 +11,21 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
 )
 
-// unsafeChars can break out of a quoted string or a line in keepalived.conf,
-// dnsdist.conf (Lua) and dnsdist.yml.
-const unsafeChars = "\n\r\"\\{}#!;"
+// keepalivedUnsafe can end a token, a block or a line in keepalived.conf
+// (values are unquoted there); luaUnsafe can end a quoted Lua string or a
+// line in dnsdist.conf, where every value is a double-quoted string.
+const (
+	keepalivedUnsafe = "\n\r\"\\{}#!;"
+	luaUnsafe        = "\n\r\"\\"
+)
 
 // checkNoRawInjection fails when an input value holding a character that
 // could end a token, string or line appears verbatim in a rendered file:
 // such a value must be refused or escaped.
-func checkNoRawInjection(t *testing.T, file string, data []byte, inputs map[string]string) {
+func checkNoRawInjection(t *testing.T, file string, data []byte, unsafe string, inputs map[string]string) {
 	t.Helper()
 	for field, v := range inputs {
-		if v == "" || !strings.ContainsAny(v, unsafeChars) {
+		if v == "" || !strings.ContainsAny(v, unsafe) {
 			continue
 		}
 		if strings.Contains(string(data), v) {
@@ -65,7 +69,7 @@ func FuzzKeepalivedRender(f *testing.F) {
 		if o, c := strings.Count(string(out), "{"), strings.Count(string(out), "}"); o != c {
 			t.Fatalf("unbalanced braces (%d/%d):\n%s", o, c, out)
 		}
-		checkNoRawInjection(t, "keepalived.conf", out, map[string]string{
+		checkNoRawInjection(t, "keepalived.conf", out, keepalivedUnsafe, map[string]string{
 			"vip": vipSpec, "router_id": router, "unicast_src": src, "peer": peer,
 			"hmac": hmac, "qname": qname, "runDir": runDir,
 		})
@@ -138,7 +142,7 @@ func FuzzDNSDistRender(f *testing.F) {
 					}
 					continue
 				}
-				checkNoRawInjection(t, file.Name, file.Data, inputs)
+				checkNoRawInjection(t, file.Name, file.Data, luaUnsafe, inputs)
 			}
 		}
 	})
