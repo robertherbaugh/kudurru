@@ -103,10 +103,11 @@ func (s *Stage) Wait() { s.bg.Wait() }
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
-	// A forward-zone hint routes the query to a group of its own; its
-	// answers are never cached, and an entry stored for the name before the
-	// zone existed must not shadow it.
-	if req.UpstreamGroup != "" || !cacheable(req.Msg) {
+	// A forward-zone hint to a group of its own routes around the cache:
+	// those answers are never cached, and an entry stored for the name
+	// before the zone existed must not shadow it. A hint to the default
+	// group (the bootstrap root zone) is ordinary forwarding.
+	if (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
 		return next(req)
 	}
 	k, ecsBits := s.key(req)

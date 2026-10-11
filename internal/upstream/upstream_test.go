@@ -518,7 +518,7 @@ func TestRoute(t *testing.T) {
 		{"corp.example.", "lab", "lab", true},
 		{"corp.example", "", "ad", true},
 		{"www.public.corp.example.", "", DefaultGroup, false},
-		{"www.public.corp.example.", DefaultGroup, DefaultGroup, true},
+		{"www.public.corp.example.", DefaultGroup, DefaultGroup, false}, // a hint to the default group is ordinary forwarding
 	} {
 		g, c, err := s.Route(tc.qname, tc.hint)
 		if err != nil || g != tc.group || c != tc.conditional {

@@ -155,7 +155,10 @@ func (s *Set) Route(qname, hint string) (group string, conditional bool, err err
 		if _, ok := s.groups[hint]; !ok {
 			return hint, true, fmt.Errorf("%w %q", ErrUnknownGroup, hint)
 		}
-		return hint, true, nil
+		// A forward zone that points at the default group (the bootstrap
+		// root zone does) is ordinary forwarding and stays cacheable, like a
+		// conditional suffix mapped to the default group.
+		return hint, hint != DefaultGroup, nil
 	}
 	if g, ok := s.conditional.lookup(qname); ok {
 		return g, g != DefaultGroup, nil
