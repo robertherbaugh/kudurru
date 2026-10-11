@@ -87,7 +87,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ck, err := r.Cookie(a.cookie.Name)
+		ck, err := r.Cookie(a.cookie.NameFor(r))
 		if err != nil || ck.Value == "" {
 			next.ServeHTTP(w, r)
 			return
