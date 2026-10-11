@@ -1,23 +1,16 @@
 // Zones (§10 principle 11): type, serial, record count, Ready and the
-// manager of every zone, transfer/NOTIFY status, and a form for new
-// primary or forward zones (PUT /objects/dnszones/{name}).
+// manager of every zone and transfer/NOTIFY status. New zones are created
+// with the wizard at /zones/new; a BIND file is imported in a dialog.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { TextArea } from '@astryxdesign/core/TextArea';
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { qk, useApi, useCan } from '../api/context';
-import type { DNSZone, ZoneSummary, ZoneType } from '../api/types';
-import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
-import { FormDialog } from '../components/FormDialog';
+import type { ZoneSummary } from '../api/types';
+import { ErrorBanner, Loading } from '../components/Feedback';
 import { ManagedBadge } from '../components/ManagedBadge';
-import { UpstreamGroupSelect } from '../components/UpstreamGroupSelect';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
 import { formatExact, formatRelative } from '../lib/format';
-import { nameError } from '../lib/objectSchemas';
-import { Link, useNavigate } from '../lib/router';
-import { hostError } from '../lib/rr';
+import { Link, useNavigate, useSearchParams } from '../lib/router';
 
 export function TransferCell({ z }: { z: ZoneSummary }) {
   const t = z.transfer;
@@ -46,93 +39,13 @@ export function TransferCell({ z }: { z: ZoneSummary }) {
   );
 }
 
-function NewZoneDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const api = useApi();
-  const qc = useQueryClient();
-  const notify = useNotify();
-  const navigate = useNavigate();
-  const typeId = useId();
-  const [zoneName, setZoneName] = useState('');
-  const [type, setType] = useState<ZoneType>('primary');
-  const [nameservers, setNameservers] = useState('');
-  const [upstream, setUpstream] = useState('');
-  const [err, setErr] = useState<Record<string, string>>({});
-  const [serverError, setServerError] = useState<string>();
-  const objectName = zoneName.trim().replace(/\.$/, '').toLowerCase();
-  const m = useMutation({
-    mutationFn: async () => {
-      const zone: DNSZone = {
-        apiVersion: 'kudurru.io/v1alpha1',
-        kind: 'DNSZone',
-        metadata: { name: objectName },
-        spec: {
-          zoneName: `${objectName}.`,
-          type,
-          ...(type === 'primary' && nameservers.trim() ? { nameservers: nameservers.split(/\s+/).filter(Boolean) } : {}),
-          ...(type === 'forward' && upstream.trim() ? { forward: { upstreamGroup: upstream.trim() } } : {}),
-        },
-      };
-      return api.objects.put('dnszones', zone);
-    },
-    onSuccess: () => {
-      notify.success(`Created zone ${objectName}`);
-      void qc.invalidateQueries({ queryKey: qk.zones });
-      onClose();
-      navigate(`/zones/${encodeURIComponent(objectName)}`);
-    },
-    onError: (e) => setServerError(errorText(e)),
-  });
-  const submit = () => {
-    const e: Record<string, string> = {};
-    const he = hostError(zoneName);
-    if (he) e.zoneName = he;
-    else if (nameError(objectName)) e.zoneName = 'Use lower-case letters, digits, "-" and "."';
-    for (const ns of nameservers.split(/\s+/).filter(Boolean)) {
-      const nse = hostError(ns);
-      if (nse) e.nameservers = `${ns}: ${nse}`;
-    }
-    setErr(e);
-    if (!Object.keys(e).length) m.mutate();
-  };
-  return (
-    <FormDialog
-      isOpen={open}
-      onClose={onClose}
-      title="New zone"
-      width={520}
-      noValidate
-      onSubmit={submit}
-      footer={
-        <>
-          <Button label="Cancel" variant="ghost" onClick={onClose} />
-          <Button type="submit" label="Create zone" variant="primary" isLoading={m.isPending} />
-        </>
-      }
-    >
-      <TextInput label="Zone name" placeholder="home.arpa" value={zoneName} onChange={setZoneName} isRequired status={err.zoneName ? { type: 'error', message: err.zoneName } : undefined} />
-      <label className="k-label" htmlFor={typeId}>
-        Type
-        <select id={typeId} className="k-native-select" value={type} onChange={(e) => setType(e.target.value as ZoneType)}>
-          <option value="primary">Primary (records served here)</option>
-          <option value="forward">Forward (to an upstream group)</option>
-        </select>
-      </label>
-      {type === 'primary' ? (
-        <TextArea label="Name servers" description="One per line; defaults to this server" value={nameservers} onChange={setNameservers} rows={2} status={err.nameservers ? { type: 'error', message: err.nameservers } : undefined} />
-      ) : (
-        <UpstreamGroupSelect value={upstream} onChange={setUpstream} />
-      )}
-      <p className="k-muted k-small">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</p>
-      {serverError ? <ErrorBanner error={new Error(serverError)} title="The zone could not be created" /> : null}
-    </FormDialog>
-  );
-}
-
 export default function ZonesPage() {
   const api = useApi();
   const can = useCan();
-  const [creating, setCreating] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const navigate = useNavigate();
+  const [sp, setParams] = useSearchParams();
+  const importing = sp.get('import') === '1';
+  const setImporting = (on: boolean) => setParams({ import: on ? '1' : null });
   const q = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list(), refetchInterval: 30_000 });
   return (
     <div className="k-page">
@@ -149,7 +62,7 @@ export default function ZonesPage() {
             tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'}
             onClick={() => setImporting(true)}
           />
-          <Button label="New zone" variant="primary" isDisabled={!can('zones', 'write')} tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'} onClick={() => setCreating(true)} />
+          <Button label="New zone" variant="primary" isDisabled={!can('zones', 'write')} tooltip={can('zones', 'write') ? undefined : 'Needs zones.write'} onClick={() => navigate('/zones/new')} />
         </div>
       </div>
       {q.error ? <ErrorBanner error={q.error} /> : null}
@@ -205,7 +118,6 @@ export default function ZonesPage() {
           </table>
         </div>
       ) : null}
-      <NewZoneDialog open={creating} onClose={() => setCreating(false)} />
       <ZoneImportDialog isOpen={importing} onClose={() => setImporting(false)} />
     </div>
   );
