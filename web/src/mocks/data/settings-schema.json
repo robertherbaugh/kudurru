@@ -9,7 +9,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Admin socket group (gid)",
+      "group": "Security",
+      "min": -1
     },
     {
       "path": "auth.adminSocket.path",
@@ -20,7 +23,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Admin socket path",
+      "group": "Security"
     },
     {
       "path": "auth.bootstrap.adminPasswordFile",
@@ -31,7 +36,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "First-boot admin password file",
+      "group": "Security"
     },
     {
       "path": "auth.identityProviders",
@@ -42,7 +49,98 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Identity providers",
+      "group": "Security",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "id",
+            "label": "ID",
+            "help": "Provider id (a DNS label); the default username and group prefix is <id>:.",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "displayName",
+            "label": "Display name",
+            "type": "string"
+          },
+          {
+            "name": "issuer",
+            "label": "Issuer",
+            "help": "OpenID Provider issuer URL (https).",
+            "type": "string",
+            "format": "url"
+          },
+          {
+            "name": "clientID",
+            "label": "Client ID",
+            "type": "string"
+          },
+          {
+            "name": "clientSecretFile",
+            "label": "Client secret file",
+            "type": "string"
+          },
+          {
+            "name": "cliClientID",
+            "label": "CLI client ID",
+            "type": "string"
+          },
+          {
+            "name": "redirectURL",
+            "label": "Redirect URL",
+            "help": "Absolute callback URL registered at the provider.",
+            "type": "string",
+            "format": "url"
+          },
+          {
+            "name": "scopes",
+            "label": "Scopes",
+            "type": "string[]",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "audiences",
+            "label": "Audiences",
+            "type": "string[]",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimValidationRules",
+            "label": "Claim validation rules",
+            "type": "list",
+            "items": {
+              "type": "object"
+            }
+          },
+          {
+            "name": "claimMappings",
+            "label": "Claim mappings",
+            "type": "object"
+          },
+          {
+            "name": "provisioning",
+            "label": "Provisioning",
+            "type": "object"
+          },
+          {
+            "name": "allowedDomains",
+            "label": "Allowed email domains",
+            "type": "string[]",
+            "items": {
+              "type": "string",
+              "format": "domain"
+            }
+          }
+        ]
+      }
     },
     {
       "path": "auth.kubernetes.mode",
@@ -53,7 +151,16 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Kubernetes authorization",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "sar",
+          "label": "SubjectAccessReview",
+          "help": "Service-account tokens are authorized with a SubjectAccessReview on kudurru.io resources."
+        }
+      ]
     },
     {
       "path": "auth.localLogin",
@@ -64,7 +171,26 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Local password login",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "enabled",
+          "label": "Enabled",
+          "help": "Every local user may log in with a password."
+        },
+        {
+          "value": "admins-only",
+          "label": "Admins only",
+          "help": "Only builtin admins may log in with a password."
+        },
+        {
+          "value": "disabled",
+          "label": "Disabled",
+          "help": "No password login; kudurru admin over the admin socket always works."
+        }
+      ]
     },
     {
       "path": "auth.session.idleTimeout",
@@ -75,7 +201,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Session idle timeout",
+      "group": "Security",
+      "presets": [
+        "15m",
+        "30m",
+        "1h",
+        "8h"
+      ]
     },
     {
       "path": "auth.session.lifetime",
@@ -86,7 +220,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Session lifetime",
+      "group": "Security",
+      "presets": [
+        "8h",
+        "12h",
+        "24h",
+        "168h"
+      ]
     },
     {
       "path": "auth.session.secure",
@@ -97,7 +239,26 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Secure session cookie",
+      "group": "Security",
+      "enum": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "help": "When TLS terminates here or a trusted proxy reports https."
+        },
+        {
+          "value": "always",
+          "label": "Always",
+          "help": "Behind a proxy that terminates TLS without telling kudurru."
+        },
+        {
+          "value": "never",
+          "label": "Never",
+          "help": "Plain HTTP only; the cookie can be read on the wire."
+        }
+      ]
     },
     {
       "path": "auth.tokens.maxLifetime",
@@ -108,7 +269,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Maximum token lifetime",
+      "group": "Security",
+      "presets": [
+        "0s",
+        "720h",
+        "2160h",
+        "8760h"
+      ]
     },
     {
       "path": "blocking.allowDegraded",
@@ -119,7 +288,9 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Serve while lists load",
+      "group": "Blocking"
     },
     {
       "path": "blocking.allowLocalListURLs",
@@ -130,7 +301,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Allow local list URLs",
+      "group": "Blocking"
     },
     {
       "path": "blocking.blockTTL",
@@ -141,7 +314,47 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Block response TTL",
+      "group": "Blocking",
+      "presets": [
+        "10s",
+        "1m",
+        "10m",
+        "1h"
+      ]
+    },
+    {
+      "path": "blocking.catalogue.refreshInterval",
+      "type": "duration",
+      "scope": "cluster",
+      "default": "24h",
+      "help": "How often the leader downloads blocking.catalogue.url (at least 1m; conditional GET).",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Catalogue refresh interval",
+      "group": "Blocking",
+      "presets": [
+        "6h",
+        "24h",
+        "168h"
+      ]
+    },
+    {
+      "path": "blocking.catalogue.url",
+      "type": "string",
+      "scope": "cluster",
+      "default": "",
+      "help": "URL of a blocked-services and safe-search catalogue document (schema version 1, docs/deploy/blocked-services.md) that replaces the embedded one; empty serves the catalogue built into the binary. The leader downloads it, replicas pull the leader's copy; a document that fails validation keeps the catalogue in service.",
+      "hostOnly": false,
+      "envLocked": false,
+      "restartRequired": true,
+      "writeOnly": false,
+      "label": "Catalogue URL",
+      "group": "Blocking",
+      "format": "url"
     },
     {
       "path": "blocking.customIP.v4",
@@ -152,7 +365,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Custom block IPv4",
+      "group": "Blocking",
+      "format": "ipv4"
     },
     {
       "path": "blocking.customIP.v6",
@@ -163,18 +379,50 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Custom block IPv6",
+      "group": "Blocking",
+      "format": "ipv6"
     },
     {
       "path": "blocking.defaultResponse",
       "type": "string",
       "scope": "cluster",
       "default": "zeroIP",
-      "help": "Block response when neither the Policy (blockMode) nor the BlockList (response) sets one: zeroIP (0.0.0.0 / ::, other types NODATA), nxdomain, customIP (blocking.customIP), refused (discouraged: stub resolvers fail over).",
+      "help": "Block response when neither the Policy (blockMode) nor the BlockList (response) sets one: zeroIP (0.0.0.0 / ::, other types NODATA), nxdomain, customIP (blocking.customIP), refused (discouraged: stub resolvers fail over), blockPage (A and AAAA answer the block page address, other types NODATA).",
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Default block response",
+      "group": "Blocking",
+      "enum": [
+        {
+          "value": "zeroIP",
+          "label": "Zero IP",
+          "help": "0.0.0.0 for A, :: for AAAA; other types NODATA."
+        },
+        {
+          "value": "nxdomain",
+          "label": "NXDOMAIN",
+          "help": "The name does not exist."
+        },
+        {
+          "value": "customIP",
+          "label": "Custom IP",
+          "help": "The addresses in blocking.customIP.v4 and v6; NODATA for a family without one."
+        },
+        {
+          "value": "refused",
+          "label": "REFUSED",
+          "help": "Discouraged: stub resolvers fail over to another server."
+        },
+        {
+          "value": "blockPage",
+          "label": "Block page",
+          "help": "A and AAAA point at the block page, which tells a browser why the name was blocked; other types NODATA."
+        }
+      ]
     },
     {
       "path": "blocking.enabled",
@@ -185,7 +433,9 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Blocking enabled",
+      "group": "Blocking"
     },
     {
       "path": "blocking.initStrategy",
@@ -196,7 +446,26 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "List loading at start",
+      "group": "Blocking",
+      "enum": [
+        {
+          "value": "fast",
+          "label": "Fast",
+          "help": "Serve at once from the disk cache, load in the background."
+        },
+        {
+          "value": "blocking",
+          "label": "Wait for lists",
+          "help": "Not ready until every list is loaded."
+        },
+        {
+          "value": "failOnError",
+          "label": "Fail on error",
+          "help": "Wait for every list, and exit when one fails to load."
+        }
+      ]
     },
     {
       "path": "blocking.listsDir",
@@ -207,7 +476,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "List cache directory",
+      "group": "Blocking"
     },
     {
       "path": "blocking.refreshInterval",
@@ -218,7 +489,16 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "List refresh interval",
+      "group": "Blocking",
+      "presets": [
+        "1h",
+        "6h",
+        "12h",
+        "24h",
+        "168h"
+      ]
     },
     {
       "path": "cache.maxEntries",
@@ -229,7 +509,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Maximum cache entries",
+      "group": "Cache",
+      "min": 0
     },
     {
       "path": "cache.maxTTL",
@@ -240,7 +523,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Maximum TTL",
+      "group": "Cache",
+      "presets": [
+        "1h",
+        "6h",
+        "24h",
+        "168h"
+      ]
     },
     {
       "path": "cache.minTTL",
@@ -251,7 +542,16 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Minimum TTL",
+      "group": "Cache",
+      "presets": [
+        "0s",
+        "5s",
+        "30s",
+        "1m",
+        "5m"
+      ]
     },
     {
       "path": "cache.negativeTTL",
@@ -262,7 +562,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Maximum negative TTL",
+      "group": "Cache",
+      "presets": [
+        "30s",
+        "1m",
+        "5m",
+        "1h"
+      ]
     },
     {
       "path": "cache.prefetch.threshold",
@@ -273,7 +581,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Prefetch threshold (hits)",
+      "group": "Cache",
+      "min": 0
     },
     {
       "path": "cache.prefetch.window",
@@ -284,7 +595,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Prefetch window",
+      "group": "Cache",
+      "presets": [
+        "30m",
+        "1h",
+        "2h",
+        "6h"
+      ]
     },
     {
       "path": "cache.serveStale.answerTTL",
@@ -295,7 +614,14 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Stale answer TTL",
+      "group": "Cache",
+      "presets": [
+        "5s",
+        "30s",
+        "1m"
+      ]
     },
     {
       "path": "cache.serveStale.maxWait",
@@ -306,7 +632,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Stale answer wait",
+      "group": "Cache",
+      "presets": [
+        "0s",
+        "500ms",
+        "1800ms",
+        "3s"
+      ]
     },
     {
       "path": "cache.serveStale.ttl",
@@ -317,7 +651,15 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Serve stale for",
+      "group": "Cache",
+      "presets": [
+        "0s",
+        "1h",
+        "24h",
+        "72h"
+      ]
     },
     {
       "path": "externalDNS.webhook.enabled",
@@ -328,7 +670,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "external-dns webhook enabled",
+      "group": "Integrations"
     },
     {
       "path": "externalDNS.webhook.listen",
@@ -339,7 +683,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "external-dns webhook address",
+      "group": "Integrations",
+      "format": "hostport"
     },
     {
       "path": "externalDNS.webhook.namespace",
@@ -350,7 +697,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "external-dns record namespace",
+      "group": "Integrations"
     },
     {
       "path": "externalDNS.webhook.zoneSelector",
@@ -361,7 +710,15 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "external-dns zone selector",
+      "group": "Integrations",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "string"
+      }
     },
     {
       "path": "listeners.api.address",
@@ -372,7 +729,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "API and UI address",
+      "group": "Listeners",
+      "format": "hostport"
     },
     {
       "path": "listeners.api.pathPrefix",
@@ -383,7 +743,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "API path prefix",
+      "group": "Listeners"
     },
     {
       "path": "listeners.api.tls.auto",
@@ -394,7 +756,21 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "API automatic TLS",
+      "group": "Listeners",
+      "enum": [
+        {
+          "value": "selfsigned",
+          "label": "Self-signed",
+          "help": "Generate a certificate once into <node.dataDir>/keys/."
+        },
+        {
+          "value": "off",
+          "label": "Off (plain HTTP)",
+          "help": "For a TLS-terminating reverse proxy in front."
+        }
+      ]
     },
     {
       "path": "listeners.api.tls.certFile",
@@ -405,7 +781,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "API certificate file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.api.tls.keyFile",
@@ -416,7 +794,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "API key file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.api.trustedProxies",
@@ -427,7 +807,13 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Trusted reverse proxies",
+      "group": "Listeners",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
     },
     {
       "path": "listeners.dns",
@@ -446,7 +832,45 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "DNS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "host:port to bind (0.0.0.0:53, [::]:53, :53).",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "protocols",
+            "label": "Protocols",
+            "help": "Empty serves both.",
+            "type": "string[]",
+            "default": [
+              "udp",
+              "tcp"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                {
+                  "value": "udp",
+                  "label": "UDP"
+                },
+                {
+                  "value": "tcp",
+                  "label": "TCP"
+                }
+              ]
+            }
+          }
+        ]
+      }
     },
     {
       "path": "listeners.doh",
@@ -457,7 +881,51 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "DNS-over-HTTPS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "host:port to bind (0.0.0.0:53, [::]:53, :53).",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "path",
+            "label": "Path",
+            "help": "URL path of the endpoint; starts with /.",
+            "type": "string",
+            "default": "/dns-query"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "PEM certificate chain; reloaded when it changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "PEM private key of certFile.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "path": "listeners.doh3",
@@ -468,7 +936,51 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "DNS-over-HTTP/3 listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "host:port to bind (0.0.0.0:53, [::]:53, :53).",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "path",
+            "label": "Path",
+            "help": "URL path of the endpoint; starts with /.",
+            "type": "string",
+            "default": "/dns-query"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "PEM certificate chain; reloaded when it changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "PEM private key of certFile.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "path": "listeners.doq",
@@ -479,7 +991,44 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "DNS-over-QUIC listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "host:port to bind (0.0.0.0:53, [::]:53, :53).",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "PEM certificate chain; reloaded when it changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "PEM private key of certFile.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "path": "listeners.dot",
@@ -490,7 +1039,44 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "DNS-over-TLS listeners",
+      "group": "Listeners",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "address",
+            "label": "Address",
+            "help": "host:port to bind (0.0.0.0:53, [::]:53, :53).",
+            "required": true,
+            "type": "string",
+            "format": "hostport"
+          },
+          {
+            "name": "tls",
+            "label": "TLS",
+            "required": true,
+            "type": "object",
+            "fields": [
+              {
+                "name": "certFile",
+                "label": "Certificate file",
+                "help": "PEM certificate chain; reloaded when it changes.",
+                "required": true,
+                "type": "string"
+              },
+              {
+                "name": "keyFile",
+                "label": "Key file",
+                "help": "PEM private key of certFile.",
+                "required": true,
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "path": "listeners.internal.address",
@@ -501,7 +1087,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Node-to-node listener address",
+      "group": "Listeners",
+      "format": "hostport"
     },
     {
       "path": "listeners.internal.tls.caFile",
@@ -512,7 +1101,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Internal CA bundle",
+      "group": "Listeners"
     },
     {
       "path": "listeners.internal.tls.certFile",
@@ -523,7 +1114,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Internal certificate file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.internal.tls.keyFile",
@@ -534,7 +1127,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Internal key file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.internal.tls.serverName",
@@ -545,7 +1140,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Internal TLS server name",
+      "group": "Listeners",
+      "format": "domain"
     },
     {
       "path": "listeners.internal.tokenFile",
@@ -556,7 +1154,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Internal token file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.metrics.address",
@@ -567,7 +1167,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Metrics listener address",
+      "group": "Listeners",
+      "format": "hostport"
     },
     {
       "path": "listeners.ops.address",
@@ -578,7 +1181,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Health listener address",
+      "group": "Listeners",
+      "format": "hostport"
     },
     {
       "path": "listeners.proxyProtocolFrom",
@@ -589,7 +1195,13 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "PROXYv2 peers",
+      "group": "Listeners",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
     },
     {
       "path": "listeners.proxyProtocolSecretFile",
@@ -600,7 +1212,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "PROXYv2 secret file",
+      "group": "Listeners"
     },
     {
       "path": "listeners.sockets",
@@ -611,7 +1225,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Sockets per DNS listener",
+      "group": "Listeners",
+      "min": 0
     },
     {
       "path": "log.format",
@@ -622,7 +1239,19 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Log format",
+      "group": "Logging",
+      "enum": [
+        {
+          "value": "json",
+          "label": "JSON"
+        },
+        {
+          "value": "text",
+          "label": "Text"
+        }
+      ]
     },
     {
       "path": "log.level",
@@ -633,7 +1262,27 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Log level",
+      "group": "Logging",
+      "enum": [
+        {
+          "value": "debug",
+          "label": "Debug"
+        },
+        {
+          "value": "info",
+          "label": "Info"
+        },
+        {
+          "value": "warn",
+          "label": "Warning"
+        },
+        {
+          "value": "error",
+          "label": "Error"
+        }
+      ]
     },
     {
       "path": "node.dataDir",
@@ -644,7 +1293,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Data directory",
+      "group": "Node"
     },
     {
       "path": "node.lameduck",
@@ -655,7 +1306,15 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Lameduck drain window",
+      "group": "Node",
+      "presets": [
+        "0s",
+        "2s",
+        "5s",
+        "10s"
+      ]
     },
     {
       "path": "node.name",
@@ -666,7 +1325,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Node name",
+      "group": "Node"
     },
     {
       "path": "notify.source",
@@ -677,7 +1338,10 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "NOTIFY source address",
+      "group": "Zone transfers",
+      "format": "ip"
     },
     {
       "path": "objects",
@@ -688,7 +1352,34 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Inline objects",
+      "group": "Node",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "apiVersion",
+            "label": "API version",
+            "type": "string"
+          },
+          {
+            "name": "kind",
+            "label": "Kind",
+            "type": "string"
+          },
+          {
+            "name": "metadata",
+            "label": "Metadata",
+            "type": "object"
+          },
+          {
+            "name": "spec",
+            "label": "Spec",
+            "type": "object"
+          }
+        ]
+      }
     },
     {
       "path": "objectsDir",
@@ -699,7 +1390,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Objects directory",
+      "group": "Node"
     },
     {
       "path": "querylog.anonymize",
@@ -710,7 +1403,21 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Client anonymization",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "prefix",
+          "label": "Prefix",
+          "help": "IPv4 /24, IPv6 /48."
+        },
+        {
+          "value": "pseudonym",
+          "label": "Pseudonym",
+          "help": "HMAC with a random in-memory key rotated daily; stable for a day, not reversible."
+        }
+      ]
     },
     {
       "path": "querylog.enabled",
@@ -721,7 +1428,9 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Query log enabled",
+      "group": "Query log"
     },
     {
       "path": "querylog.exclude.clients",
@@ -732,7 +1441,12 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Clients never logged",
+      "group": "Query log",
+      "items": {
+        "type": "string"
+      }
     },
     {
       "path": "querylog.exclude.domains",
@@ -743,7 +1457,12 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Domains never logged",
+      "group": "Query log",
+      "items": {
+        "type": "string"
+      }
     },
     {
       "path": "querylog.exclude.sudn",
@@ -754,7 +1473,9 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Skip special-use names",
+      "group": "Query log"
     },
     {
       "path": "querylog.privacy",
@@ -765,7 +1486,36 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Query log privacy",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "full",
+          "label": "Full",
+          "help": "Everything, including the answer summary."
+        },
+        {
+          "value": "anonymize_client",
+          "label": "Anonymize clients",
+          "help": "Client addresses hidden as set by querylog.anonymize."
+        },
+        {
+          "value": "hide_domains",
+          "label": "Hide domains",
+          "help": "Query names are not stored."
+        },
+        {
+          "value": "hide_domains_clients",
+          "label": "Hide domains and clients",
+          "help": "Neither query names nor clients are stored."
+        },
+        {
+          "value": "nothing",
+          "label": "Totals only",
+          "help": "Per-minute totals only, no rows."
+        }
+      ]
     },
     {
       "path": "querylog.retention.maxDBBytes",
@@ -776,7 +1526,16 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Maximum query log size",
+      "group": "Query log",
+      "presets": [
+        "0",
+        "1GiB",
+        "5GiB",
+        "10GiB",
+        "50GiB"
+      ]
     },
     {
       "path": "querylog.retention.raw",
@@ -787,7 +1546,16 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Keep query rows for",
+      "group": "Query log",
+      "presets": [
+        "0s",
+        "24h",
+        "168h",
+        "720h",
+        "2160h"
+      ]
     },
     {
       "path": "querylog.sink",
@@ -798,7 +1566,21 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Query log sink",
+      "group": "Query log",
+      "enum": [
+        {
+          "value": "sqlite",
+          "label": "SQLite",
+          "help": "querylog.db with rollups; required for the dashboard."
+        },
+        {
+          "value": "slog",
+          "label": "Log lines",
+          "help": "One JSON log line per query, nothing stored."
+        }
+      ]
     },
     {
       "path": "ratelimit.enabled",
@@ -809,7 +1591,9 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Rate limiting enabled",
+      "group": "Rate limiting"
     },
     {
       "path": "ratelimit.exempt",
@@ -820,7 +1604,13 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Exempt clients",
+      "group": "Rate limiting",
+      "items": {
+        "type": "string",
+        "format": "cidr"
+      }
     },
     {
       "path": "ratelimit.ipv4",
@@ -834,7 +1624,18 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "IPv4 limits (queries per minute)",
+      "group": "Rate limiting",
+      "keys": {
+        "type": "int",
+        "min": 0,
+        "max": 32
+      },
+      "values": {
+        "type": "int",
+        "min": 0
+      }
     },
     {
       "path": "ratelimit.ipv6",
@@ -849,7 +1650,18 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "IPv6 limits (queries per minute)",
+      "group": "Rate limiting",
+      "keys": {
+        "type": "int",
+        "min": 0,
+        "max": 128
+      },
+      "values": {
+        "type": "int",
+        "min": 0
+      }
     },
     {
       "path": "ratelimit.maxBuckets",
@@ -860,7 +1672,10 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Tracked prefixes",
+      "group": "Rate limiting",
+      "min": 0
     },
     {
       "path": "ratelimit.slip",
@@ -871,7 +1686,11 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Slip (percent answered TC=1)",
+      "group": "Rate limiting",
+      "min": 0,
+      "max": 100
     },
     {
       "path": "rbac.bindings",
@@ -882,7 +1701,127 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Role bindings",
+      "group": "Security",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "role",
+            "label": "Role",
+            "required": true,
+            "type": "string",
+            "enum": [
+              {
+                "value": "viewer",
+                "label": "Viewer",
+                "help": "Read zones, records, lists, policies, stats and settings."
+              },
+              {
+                "value": "auditor",
+                "label": "Auditor",
+                "help": "Viewer plus the query log and the audit log."
+              },
+              {
+                "value": "operator",
+                "label": "Operator",
+                "help": "Manage records, lists, policies, groups, clients and blocking; flush the cache."
+              },
+              {
+                "value": "zone-admin",
+                "label": "Zone admin",
+                "help": "Manage zones and their records, transfers and signing."
+              },
+              {
+                "value": "admin",
+                "label": "Admin",
+                "help": "Everything."
+              }
+            ]
+          },
+          {
+            "name": "scope",
+            "label": "Scope",
+            "type": "object",
+            "fields": [
+              {
+                "name": "kind",
+                "label": "Kind",
+                "type": "string",
+                "default": "cluster",
+                "enum": [
+                  {
+                    "value": "cluster",
+                    "label": "Cluster"
+                  },
+                  {
+                    "value": "zone",
+                    "label": "Zone"
+                  },
+                  {
+                    "value": "zonegroup",
+                    "label": "Zone group"
+                  },
+                  {
+                    "value": "clientgroup",
+                    "label": "Client group"
+                  }
+                ]
+              },
+              {
+                "name": "name",
+                "label": "Name",
+                "help": "Zone, zone group or client group name; empty for cluster scope.",
+                "type": "string"
+              }
+            ]
+          },
+          {
+            "name": "subjects",
+            "label": "Subjects",
+            "required": true,
+            "type": "list",
+            "items": {
+              "type": "object",
+              "fields": [
+                {
+                  "name": "kind",
+                  "label": "Kind",
+                  "required": true,
+                  "type": "string",
+                  "enum": [
+                    {
+                      "value": "User",
+                      "label": "User"
+                    },
+                    {
+                      "value": "Group",
+                      "label": "Group"
+                    },
+                    {
+                      "value": "ServiceAccount",
+                      "label": "Service account"
+                    }
+                  ]
+                },
+                {
+                  "name": "name",
+                  "label": "Name",
+                  "required": true,
+                  "type": "string"
+                },
+                {
+                  "name": "namespace",
+                  "label": "Namespace",
+                  "help": "Required for a ServiceAccount.",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ]
+      }
     },
     {
       "path": "settingsFile",
@@ -893,7 +1832,9 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Settings file",
+      "group": "Node"
     },
     {
       "path": "store.driver",
@@ -904,7 +1845,21 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Store driver",
+      "group": "Node",
+      "enum": [
+        {
+          "value": "sqlite",
+          "label": "SQLite",
+          "help": "state.db under node.dataDir."
+        },
+        {
+          "value": "kube",
+          "label": "Kubernetes",
+          "help": "CRDs through the apiserver."
+        }
+      ]
     },
     {
       "path": "store.kube.snapshot.maxAge",
@@ -915,7 +1870,14 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Snapshot maximum age",
+      "group": "Node",
+      "presets": [
+        "1h",
+        "24h",
+        "168h"
+      ]
     },
     {
       "path": "store.kube.startupTimeout",
@@ -926,7 +1888,15 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Kubernetes sync timeout",
+      "group": "Node",
+      "presets": [
+        "5s",
+        "15s",
+        "30s",
+        "1m"
+      ]
     },
     {
       "path": "tsigKeys",
@@ -937,7 +1907,45 @@
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
-      "writeOnly": true
+      "writeOnly": true,
+      "label": "TSIG keys",
+      "group": "Zone transfers",
+      "items": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "name",
+            "label": "Name",
+            "help": "Key name (a domain name) the zones reference in spec.policy.transferTSIGKeyRefs.",
+            "required": true,
+            "type": "string",
+            "format": "domain"
+          },
+          {
+            "name": "algorithm",
+            "label": "Algorithm",
+            "required": true,
+            "type": "string",
+            "enum": [
+              {
+                "value": "hmac-sha256",
+                "label": "HMAC-SHA256"
+              },
+              {
+                "value": "hmac-sha512",
+                "label": "HMAC-SHA512"
+              }
+            ]
+          },
+          {
+            "name": "secretFile",
+            "label": "Secret file",
+            "help": "File holding the base64 secret (tsig-keygen format).",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      }
     },
     {
       "path": "upstreams.bootstrap",
@@ -950,7 +1958,13 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Bootstrap resolvers",
+      "group": "Upstreams",
+      "items": {
+        "type": "string",
+        "format": "upstream"
+      }
     },
     {
       "path": "upstreams.conditional",
@@ -961,7 +1975,16 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Conditional forwarding",
+      "group": "Upstreams",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "string",
+        "ref": "upstreamGroup"
+      }
     },
     {
       "path": "upstreams.ecs.ipv4Prefix",
@@ -972,7 +1995,11 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "ECS IPv4 prefix length",
+      "group": "Upstreams",
+      "min": 0,
+      "max": 32
     },
     {
       "path": "upstreams.ecs.ipv6Prefix",
@@ -983,7 +2010,11 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "ECS IPv6 prefix length",
+      "group": "Upstreams",
+      "min": 0,
+      "max": 128
     },
     {
       "path": "upstreams.ecs.mode",
@@ -994,7 +2025,26 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "EDNS Client Subnet",
+      "group": "Upstreams",
+      "enum": [
+        {
+          "value": "strip",
+          "label": "Strip",
+          "help": "Never send a client subnet (privacy default)."
+        },
+        {
+          "value": "forward",
+          "label": "Forward",
+          "help": "Pass the client's own ECS option, truncated to the prefix limits."
+        },
+        {
+          "value": "add",
+          "label": "Add",
+          "help": "Forward the client's option, else derive one from a public client address."
+        }
+      ]
     },
     {
       "path": "upstreams.groups",
@@ -1014,7 +2064,70 @@
       "hostOnly": false,
       "envLocked": false,
       "restartRequired": false,
-      "writeOnly": false
+      "writeOnly": false,
+      "label": "Upstream groups",
+      "group": "Upstreams",
+      "keys": {
+        "type": "string"
+      },
+      "values": {
+        "type": "object",
+        "fields": [
+          {
+            "name": "servers",
+            "label": "Servers",
+            "help": "ip[:port], udp://, tcp://, tls://, https://, quic://, h3:// or sdns:// stamps; prefix a display name with name= (cloudflare=tls://1.1.1.1).",
+            "required": true,
+            "type": "string[]",
+            "items": {
+              "type": "string",
+              "format": "upstream"
+            }
+          },
+          {
+            "name": "strategy",
+            "label": "Strategy",
+            "help": "Which servers are asked, and in which order.",
+            "type": "string",
+            "default": "parallel_best",
+            "enum": [
+              {
+                "value": "parallel_best",
+                "label": "Parallel best",
+                "help": "Race two healthy servers picked at random and take the first usable answer; if both fail, race the rest."
+              },
+              {
+                "value": "strict",
+                "label": "Strict order",
+                "help": "Ask the servers one after another in the listed order, moving on only on failure."
+              },
+              {
+                "value": "random",
+                "label": "Random",
+                "help": "Ask one healthy server picked at random; another random one on failure."
+              },
+              {
+                "value": "rtt_weighted",
+                "label": "Fastest (RTT weighted)",
+                "help": "Pick the first server at random weighted by its inverse round-trip time, then fall back in RTT order."
+              }
+            ]
+          },
+          {
+            "name": "timeout",
+            "label": "Timeout",
+            "help": "Bound of one exchange with one server.",
+            "type": "duration",
+            "default": "2s",
+            "presets": [
+              "500ms",
+              "1s",
+              "2s",
+              "5s"
+            ]
+          }
+        ]
+      }
     }
   ]
 }
