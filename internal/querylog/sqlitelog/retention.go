@@ -36,8 +36,8 @@ func (w *Writer) Retain(ctx context.Context) (RetentionReport, error) {
 	if rep.DBBytesBefore, err = w.DBBytes(ctx); err != nil {
 		return rep, err
 	}
-	if w.opts.RawRetention > 0 {
-		cutoff := now.Add(-w.opts.RawRetention).UnixMicro()
+	if raw := w.rawRetention(); raw > 0 {
+		cutoff := now.Add(-raw).UnixMicro()
 		if rep.RawDeleted, err = w.deleteFacts(ctx, `DELETE FROM query WHERE id IN (SELECT id FROM query WHERE ts < ? LIMIT `+fmt.Sprint(w.deleteBatch)+`)`, cutoff); err != nil {
 			return rep, err
 		}
@@ -195,14 +195,15 @@ func (w *Writer) pruneDicts(ctx context.Context, now time.Time) (int64, error) {
 // enforceSize deletes the oldest fact rows while the database exceeds
 // MaxDBBytes, down to 95 % of it, and returns the rows deleted.
 func (w *Writer) enforceSize(ctx context.Context) (int64, error) {
-	if w.opts.MaxDBBytes <= 0 {
+	maxBytes := w.maxDBBytes()
+	if maxBytes <= 0 {
 		return 0, nil
 	}
 	size, err := w.DBBytes(ctx)
-	if err != nil || size <= w.opts.MaxDBBytes {
+	if err != nil || size <= maxBytes {
 		return 0, err
 	}
-	target := w.opts.MaxDBBytes / 100 * 95
+	target := maxBytes / 100 * 95
 	var total int64
 	for size > target {
 		n, err := w.deleteFactsOnce(ctx, `DELETE FROM query WHERE id IN (SELECT id FROM query ORDER BY id LIMIT `+fmt.Sprint(w.deleteBatch)+`)`)
@@ -219,7 +220,7 @@ func (w *Writer) enforceSize(ctx context.Context) (int64, error) {
 	}
 	if total > 0 {
 		w.log.Warn("querylog.db exceeded querylog.retention.maxDBBytes; deleted the oldest rows",
-			"rows", total, "maxDBBytes", w.opts.MaxDBBytes, "dbBytes", size)
+			"rows", total, "maxDBBytes", maxBytes, "dbBytes", size)
 	}
 	return total, nil
 }

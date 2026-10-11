@@ -21,10 +21,12 @@ type latencies struct {
 	mu     sync.Mutex
 	byKind map[store.Kind][]time.Duration
 	wrote  chan store.Key // zone keys whose status was written
+	// rsWrote receives the record sets whose status was written.
+	rsWrote chan store.Key
 }
 
 func newLatencies() *latencies {
-	return &latencies{byKind: map[store.Kind][]time.Duration{}, wrote: make(chan store.Key, 4096)}
+	return &latencies{byKind: map[store.Kind][]time.Duration{}, wrote: make(chan store.Key, 4096), rsWrote: make(chan store.Key, 4096)}
 }
 
 func (l *latencies) hook(key store.Key, took time.Duration, wrote bool, _ error) {
@@ -34,6 +36,12 @@ func (l *latencies) hook(key store.Key, took time.Duration, wrote bool, _ error)
 	if wrote && key.Kind == KindDNSZone {
 		select {
 		case l.wrote <- key:
+		default:
+		}
+	}
+	if wrote && key.Kind == KindDNSRecordSet {
+		select {
+		case l.rsWrote <- key:
 		default:
 		}
 	}
@@ -96,6 +104,7 @@ func TestMeasureRecordSetChanges(t *testing.T) {
 		}
 		e.settle()
 		drain(lat.wrote)
+		drain(lat.rsWrote)
 		w0 := e.st.Writes("")
 		var e2e []time.Duration
 		for i := range n {
@@ -113,6 +122,19 @@ func TestMeasureRecordSetChanges(t *testing.T) {
 				t.Fatalf("change %d: zone status not written", i)
 			}
 			e2e = append(e2e, time.Since(t1))
+			// The record set's own status write (observedGeneration) runs
+			// on another worker and may land after the zone's: wait for it
+			// too, or under -cpu 1 it slips past the next change of the
+			// same object and two generations share one write.
+			key := store.KeyOf(o)
+			for got := false; !got; {
+				select {
+				case k := <-lat.rsWrote:
+					got = k == key
+				case <-time.After(10 * time.Second):
+					t.Fatalf("change %d: record set status not written", i)
+				}
+			}
 		}
 		e.settle()
 		writes := e.st.Writes("") - w0

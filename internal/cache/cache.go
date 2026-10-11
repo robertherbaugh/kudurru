@@ -4,6 +4,7 @@ import (
 	"context"
 	"hash/maphash"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -86,9 +87,9 @@ type Cache struct {
 	shards    []shard
 	mask      uint64
 	seed      maphash.Seed
-	staleTTL  int64
-	threshold uint32
-	window    int64
+	staleTTL  atomic.Int64
+	threshold atomic.Uint32
+	window    atomic.Int64
 	now       func() time.Time
 	m         *Metrics
 	flight    singleflight.Group
@@ -126,24 +127,58 @@ func New(opts Options) *Cache {
 		n *= 2
 	}
 	c := &Cache{
-		shards:    make([]shard, n),
-		mask:      uint64(n - 1), //nolint:gosec // n is a small power of two
-		seed:      maphash.MakeSeed(),
-		staleTTL:  int64(max(opts.StaleTTL, 0)),
-		threshold: uint32(max(opts.PrefetchThreshold, 0)), //nolint:gosec // non-negative int
-		window:    int64(opts.PrefetchWindow),
-		now:       opts.Now,
-		m:         opts.Metrics,
+		shards: make([]shard, n),
+		mask:   uint64(n - 1), //nolint:gosec // n is a small power of two
+		seed:   maphash.MakeSeed(),
+		now:    opts.Now,
+		m:      opts.Metrics,
 	}
 	if c.now == nil {
 		c.now = time.Now
 	}
+	c.setLimits(opts)
 	per := (maxEntries + n - 1) / n
 	for i := range c.shards {
 		c.shards[i].m = make(map[Key]*entry)
 		c.shards[i].capacity = per
 	}
 	return c
+}
+
+func (c *Cache) setLimits(opts Options) {
+	c.staleTTL.Store(int64(max(opts.StaleTTL, 0)))
+	c.threshold.Store(uint32(max(opts.PrefetchThreshold, 0))) //nolint:gosec // non-negative int
+	c.window.Store(int64(opts.PrefetchWindow))
+}
+
+// Reconfigure applies new limits without dropping the cache (settings hot
+// reload): the stale window and prefetch rules apply to entries stored
+// from now on, and MaxEntries resizes every shard, evicting the least
+// recently used entries beyond the new bound at once. The shard count
+// chosen by New stays, so a much larger bound means larger shards.
+// MaxEntries <= 0 keeps the current size (the cache stage bypasses a
+// disabled cache instead). Now and Metrics are ignored.
+func (c *Cache) Reconfigure(opts Options) {
+	c.setLimits(opts)
+	if opts.MaxEntries <= 0 {
+		return
+	}
+	n := len(c.shards)
+	per := max((opts.MaxEntries+n-1)/n, 1)
+	for i := range c.shards {
+		sh := &c.shards[i]
+		var evicted [2]int
+		sh.mu.Lock()
+		sh.capacity = per
+		for len(sh.m) > sh.capacity && sh.tail != nil {
+			evicted[sh.tail.kind]++
+			sh.remove(sh.tail)
+		}
+		sh.mu.Unlock()
+		for kind, k := range evicted {
+			c.m.evictedN(ReasonCapacity, Kind(kind), k) //nolint:gosec // 0 or 1
+		}
+	}
 }
 
 func (c *Cache) shard(k Key) *shard {
@@ -179,13 +214,13 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 	l := Lookup{Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
 	if now < e.expires {
 		l.State = Fresh
-		if c.threshold > 0 {
-			if now-e.windowStart > c.window {
+		if threshold := c.threshold.Load(); threshold > 0 {
+			if now-e.windowStart > c.window.Load() {
 				e.windowStart, e.hits = now, 0
 			}
 			e.hits++
 			trigger := max(int64(time.Second), (e.expires-e.stored)/10)
-			if e.hits >= c.threshold && e.expires-now <= trigger && !e.prefetching {
+			if e.hits >= threshold && e.expires-now <= trigger && !e.prefetching {
 				e.prefetching = true
 				l.Prefetch = true
 			}
@@ -235,7 +270,7 @@ func (c *Cache) Set(k Key, wire []byte, kind Kind, ttl time.Duration) {
 	}
 	now := c.nanos()
 	exp := now + int64(ttl)
-	c.insert(&entry{key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: exp + c.staleTTL, windowStart: now})
+	c.insert(&entry{key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: exp + c.staleTTL.Load(), windowStart: now})
 }
 
 // insert adds or replaces e and evicts beyond capacity.

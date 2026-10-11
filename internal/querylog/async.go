@@ -20,7 +20,7 @@ type Async struct {
 	queue     chan *Event
 	batchSize int
 	interval  time.Duration
-	privacy   *Privacy
+	privacy   atomic.Pointer[Privacy]
 	tail      *Tail
 	metrics   *Metrics
 	clock     clock.WithTicker
@@ -86,7 +86,6 @@ func NewAsyncWith(o AsyncOptions) *Async {
 		queue:     make(chan *Event, o.QueueSize),
 		batchSize: o.BatchSize,
 		interval:  o.Interval,
-		privacy:   o.Privacy,
 		tail:      o.Tail,
 		metrics:   o.Metrics,
 		clock:     o.Clock,
@@ -94,6 +93,7 @@ func NewAsyncWith(o AsyncOptions) *Async {
 		logger:    o.Logger,
 		stop:      make(chan struct{}),
 	}
+	a.privacy.Store(o.Privacy)
 	ticker := a.clock.NewTicker(a.interval)
 	a.wg.Add(1)
 	go a.run(ticker)
@@ -118,6 +118,12 @@ func (a *Async) Enqueue(ev *Event) bool {
 	}
 }
 
+// SetPrivacy replaces the transform applied to events admitted from now on
+// (querylog.privacy, anonymize and exclude.* hot reload); nil logs
+// everything unchanged. Events already queued keep the old transform only
+// if admitted before the swap.
+func (a *Async) SetPrivacy(p *Privacy) { a.privacy.Store(p) }
+
 // Dropped returns the number of events dropped since start.
 func (a *Async) Dropped() uint64 { return a.dropped.Load() }
 
@@ -137,14 +143,15 @@ func (a *Async) Close(ctx context.Context) error {
 // admit applies privacy, stamps the id and publishes to the tail. It
 // returns false for excluded events.
 func (a *Async) admit(ev *Event) bool {
-	if a.privacy != nil && !a.privacy.Apply(ev) {
+	privacy := a.privacy.Load()
+	if privacy != nil && !privacy.Apply(ev) {
 		return false
 	}
 	if a.nextID != 0 {
 		ev.ID = a.nextID
 		a.nextID++
 	}
-	if a.tail != nil && (a.privacy == nil || a.privacy.Mode().StoresFacts()) {
+	if a.tail != nil && (privacy == nil || privacy.Mode().StoresFacts()) {
 		a.tail.Publish(ev)
 	}
 	return true

@@ -144,10 +144,30 @@ func (s *Server) refreshList(ctx context.Context, in *nsObjectInput) (*refreshOu
 	}
 	err := s.opts.Refresher.RefreshList(ctx, in.Namespace, in.Name)
 	s.recordAction(ctx, "blocklists.refresh", audit.Resource{Kind: "BlockList", Namespace: in.Namespace, Name: in.Name}, err, nil, nil)
-	if err != nil {
+	var apiErr *Error
+	switch {
+	case errors.As(err, &apiErr):
+		return nil, apiErr
+	case err != nil:
 		return nil, errUnavailable("refresh: %v", err)
 	}
 	return &refreshOutput{Status: http.StatusAccepted, Body: &refreshBody{List: in.Namespace + "/" + in.Name}}, nil
+}
+
+// ErrNotLeader is what a ListRefresher returns on a replica: the leader
+// fetches lists (409 conflict naming it, or 503 while none is elected).
+func ErrNotLeader(leader string) error {
+	if leader == "" {
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, "no leader is elected; lists are fetched by the leader", "retry in a few seconds")
+	}
+	return newError(http.StatusConflict, KeyConflict, "lists are fetched by the leader "+leader+", not this node",
+		"send the request to "+leader+" (any node's API serves it once leadership settles)")
+}
+
+// ErrListNotRefreshable is what a ListRefresher returns for a list the
+// fetcher does not handle (disabled with kudurru.io/enabled: "false").
+func ErrListNotRefreshable(list string) error {
+	return newError(http.StatusConflict, KeyConflict, "BlockList "+list+" is disabled and not fetched", `remove the kudurru.io/enabled: "false" annotation first`)
 }
 
 // RefreshFunc adapts a function to ListRefresher.

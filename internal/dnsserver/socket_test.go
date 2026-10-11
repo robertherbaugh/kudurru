@@ -190,8 +190,8 @@ func (d *dropStage) Serve(*pipeline.Request, pipeline.Next) (*pipeline.Response,
 	return &pipeline.Response{Status: pipeline.StatusBlockedRateLimit}, nil
 }
 
-// TestDropResponse: a pipeline drop sends nothing over UDP and SERVFAIL
-// over TCP; Resolve never returns nil.
+// TestDropResponse: a pipeline drop sends nothing over UDP and closes the
+// TCP connection; Resolve never returns nil.
 func TestDropResponse(t *testing.T) {
 	d := &dropStage{}
 	reg := runSocketRegistry(t, 1, []pipeline.Stage{d},
@@ -202,13 +202,16 @@ func TestDropResponse(t *testing.T) {
 	if resp, _, err := udp.Exchange(query("drop.example."), reg.Addr(ProtoUDP).String()); err == nil {
 		t.Fatalf("udp: dropped query was answered: %v", resp)
 	}
+	// TCP closes the connection without an answer (M5: drops never answer
+	// SERVFAIL on any transport; TestDropsSendNothing covers the others).
 	tcp := &dns.Client{Net: "tcp", Timeout: 2 * time.Second}
+	start := time.Now()
 	resp, _, err := tcp.Exchange(query("drop.example."), reg.Addr(ProtoTCP).String())
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatalf("tcp: dropped query was answered: %v", resp)
 	}
-	if resp.Rcode != dns.RcodeServerFailure {
-		t.Fatalf("tcp: rcode %s, want SERVFAIL", dns.RcodeToString[resp.Rcode])
+	if time.Since(start) > time.Second {
+		t.Fatalf("tcp: the connection must be closed at once, took %s (%v)", time.Since(start), err)
 	}
 	h := &Handler{Chain: pipeline.MustNew(d)}
 	if m := h.Resolve(context.Background(), query("drop.example."), pipeline.Client{}); m == nil || m.Rcode != dns.RcodeServerFailure {

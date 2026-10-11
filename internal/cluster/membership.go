@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -108,9 +109,17 @@ type ElectorMembership struct {
 	SelfName string
 	Elector  store.Elector
 	Resolve  ResolveFunc
+	// CacheTTL bounds how long a resolved leader address is reused; zero
+	// keeps it until the leader changes (fine for DNS names, too long for
+	// pod IPs: a leader pod that restarts under the same name gets a new
+	// address).
+	CacheTTL time.Duration
+	// Now is the clock of CacheTTL; default time.Now.
+	Now func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]string
+	mu       sync.Mutex
+	cache    map[string]string
+	cachedAt time.Time
 }
 
 // Leader implements Membership.
@@ -133,8 +142,15 @@ func (m *ElectorMembership) Leader(ctx context.Context) (Peer, error) {
 	case m.Resolve == nil:
 		return Peer{}, fmt.Errorf("%w: no resolver for leader %q", ErrNoLeader, id)
 	}
+	now := time.Now
+	if m.Now != nil {
+		now = m.Now
+	}
 	m.mu.Lock()
 	addr, ok := m.cache[id]
+	if ok && m.CacheTTL > 0 && now().Sub(m.cachedAt) >= m.CacheTTL {
+		ok = false
+	}
 	m.mu.Unlock()
 	if !ok {
 		var err error
@@ -145,6 +161,7 @@ func (m *ElectorMembership) Leader(ctx context.Context) (Peer, error) {
 		m.mu.Lock()
 		// One entry: a new leader replaces the old one.
 		m.cache = map[string]string{id: addr}
+		m.cachedAt = now()
 		m.mu.Unlock()
 	}
 	return Peer{Name: id, Address: addr}, nil

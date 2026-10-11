@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
@@ -127,6 +129,9 @@ const (
 	// ReasonInvalidSchedule: the schedule does not parse; the policy is
 	// treated as always active (fail closed).
 	ReasonInvalidSchedule = "InvalidSchedule"
+	// ReasonDisabled: a policy references a ClientGroup or BlockList
+	// annotated kudurru.io/enabled: "false"; the reference is skipped.
+	ReasonDisabled = "Disabled"
 )
 
 // Diagnosis is a configuration problem found while building the Index.
@@ -249,6 +254,25 @@ type builder struct {
 	needHosts []string // groups with hostname matchers
 	needMAC   []string
 	diag      func(kind, obj, reason, format string, args ...any)
+	// disabled holds "Kind/namespace/name" of disabled objects.
+	disabled map[string]bool
+}
+
+// enabledOnly drops the objects annotated kudurru.io/enabled: "false" and
+// records them in disabled.
+func enabledOnly[T interface {
+	*v1alpha1.ClientGroup | *v1alpha1.Policy | *v1alpha1.BlockList
+	metav1.Object
+}](objs []T, kind string, disabled map[string]bool) []T {
+	out := objs[:0:0]
+	for _, o := range objs {
+		if v1alpha1.IsDisabled(o) {
+			disabled[kind+"/"+objectID(o.GetNamespace(), o.GetName())] = true
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
 }
 
 // Build compiles in into an Index. It never fails: problems become
@@ -281,6 +305,14 @@ func Build(in Input, opts Options) *Index {
 	b.diag = func(kind, obj, reason, format string, args ...any) {
 		ix.diags = append(ix.diags, Diagnosis{Kind: kind, Object: obj, Reason: reason, Message: fmt.Sprintf(format, args...)})
 	}
+
+	// kudurru.io/enabled: "false" objects are left out as if absent; a
+	// policy naming a disabled list or group skips the reference quietly
+	// (ReasonDisabled diagnosis, not MissingReference).
+	b.disabled = map[string]bool{}
+	in.ClientGroups = enabledOnly(in.ClientGroups, "ClientGroup", b.disabled)
+	in.Policies = enabledOnly(in.Policies, "Policy", b.disabled)
+	in.BlockLists = enabledOnly(in.BlockLists, "BlockList", b.disabled)
 
 	groups := slices.Clone(in.ClientGroups)
 	slices.SortFunc(groups, func(a, b *v1alpha1.ClientGroup) int {
@@ -364,6 +396,10 @@ func (b *builder) resolveList(lists *blocking.Snapshot, polID, ns, ref, field st
 		name = ref
 	}
 	_, known := b.byObject[id]
+	if b.disabled["BlockList/"+id] {
+		b.diag("Policy", polID, ReasonDisabled, "%s %q is disabled (kudurru.io/enabled: \"false\") and skipped", field, ref)
+		return "", false
+	}
 	if name == "" {
 		if known {
 			b.ix.notLoaded = append(b.ix.notLoaded, id)
@@ -406,6 +442,10 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		}
 		for _, ref := range p.Spec.ClientGroupRefs {
 			g, ok := b.groupNum[objectID(p.Namespace, ref)]
+			if !ok && b.disabled["ClientGroup/"+objectID(p.Namespace, ref)] {
+				b.diag("Policy", id, ReasonDisabled, "clientGroupRefs %q is disabled (kudurru.io/enabled: \"false\") and skipped", ref)
+				continue
+			}
 			if !ok {
 				b.diag("Policy", id, ReasonMissingReference, "clientGroupRefs %q: no such ClientGroup in namespace %q", ref, p.Namespace)
 				continue

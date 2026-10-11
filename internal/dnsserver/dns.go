@@ -243,8 +243,10 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // serveMiekg answers one message delivered by a miekg/dns server. Requests
 // whose TSIG fails are answered NOTAUTH without running the pipeline;
 // replies to signed requests are signed (tsig.go); multi-message answers
-// (AXFR/IXFR) are streamed on TCP and DoT. Over UDP a pipeline drop sends
-// nothing; over TCP it is SERVFAIL.
+// (AXFR/IXFR) are streamed on TCP and DoT. A pipeline drop sends nothing:
+// over UDP nothing is written, over TCP and DoT the connection is closed
+// (other queries pipelined on it are abandoned, as a client that is being
+// dropped deserves).
 func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
 	client := clientFrom(w.RemoteAddr(), proto)
 	sig, ok := verifyTSIG(h, e, w, r, &client)
@@ -253,10 +255,10 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 	}
 	m, stream := h.resolve(context.Background(), r, client)
 	if m == nil {
-		if proto == pipeline.ProtoUDP {
-			return
+		if proto != pipeline.ProtoUDP {
+			_ = w.Close()
 		}
-		m = servfail(r)
+		return
 	}
 	if stream != nil && proto != pipeline.ProtoUDP {
 		writeStream(h, w, stream, sig)

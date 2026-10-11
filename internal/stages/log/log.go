@@ -5,6 +5,7 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -17,6 +18,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
+
+// RcodeNone is the rcode label of kudurru_dns_responses_total for queries
+// that were dropped without a response (rate-limit drops, control-stage
+// drops; the transports send nothing).
+const RcodeNone = "none"
 
 // Observer implements pipeline.Observer.
 type Observer struct {
@@ -44,10 +50,17 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	} else if err != nil {
 		status = pipeline.StatusDropped
 	}
+	// What the transport sends: nothing for a drop (dnsserver.IsDrop and
+	// pipeline.ErrDrop), so the rcode label is "none", not SERVFAIL.
+	rcodeLabel := metrics.RcodeLabel(rcode)
+	if errors.Is(err, pipeline.ErrDrop) || (err == nil && resp != nil && resp.Msg == nil &&
+		(resp.Status == pipeline.StatusDropped || resp.Status == pipeline.StatusBlockedRateLimit)) {
+		rcodeLabel = RcodeNone
+	}
 
 	if o.Metrics != nil {
 		o.Metrics.Requests.WithLabelValues(proto, metrics.QTypeLabel(q.Qtype)).Inc()
-		o.Metrics.Responses.WithLabelValues(proto, metrics.RcodeLabel(rcode), status.String()).Inc()
+		o.Metrics.Responses.WithLabelValues(proto, rcodeLabel, status.String()).Inc()
 		o.Metrics.Duration.WithLabelValues(proto, string(status.Class())).Observe(latency.Seconds())
 	}
 

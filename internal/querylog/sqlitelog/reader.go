@@ -398,7 +398,7 @@ func (r *Reader) clientSource(s *snapshot) keyedSource {
 }
 
 func (r *Reader) factTier() tier {
-	return tier{table: "query", res: 1, done: forever, keep: r.w.opts.RawRetention, facts: true}
+	return tier{table: "query", res: 1, done: forever, keep: r.w.rawRetention(), facts: true}
 }
 
 func (r *Reader) domainSource(s *snapshot) keyedSource {

@@ -91,14 +91,14 @@ func TestRetentionSizeCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.opts.MaxDBBytes = size / 2
+	w.SetRetention(w.rawRetention(), size/2)
 	deleted, err := w.enforceSize(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	after, _ := w.DBBytes(ctx)
-	if after > w.opts.MaxDBBytes || deleted == 0 {
-		t.Errorf("size cap: %d → %d bytes (cap %d), %d rows deleted", size, after, w.opts.MaxDBBytes, deleted)
+	if after > w.maxDBBytes() || deleted == 0 {
+		t.Errorf("size cap: %d → %d bytes (cap %d), %d rows deleted", size, after, w.maxDBBytes(), deleted)
 	}
 	if lo := queryInt(t, w.w, `SELECT min(id) FROM query`); lo != deleted+1 {
 		t.Errorf("oldest rows must go first: min id %d after deleting %d", lo, deleted)
@@ -106,7 +106,7 @@ func TestRetentionSizeCap(t *testing.T) {
 	if deleted%int64(w.deleteBatch) != 0 {
 		t.Errorf("deleted %d, not a multiple of the %d-row batch", deleted, w.deleteBatch)
 	}
-	t.Logf("size cap %d B: %d → %d B, %d rows deleted", w.opts.MaxDBBytes, size, after, deleted)
+	t.Logf("size cap %d B: %d → %d B, %d rows deleted", w.maxDBBytes(), size, after, deleted)
 
 	// Maintain enforces the cap on its own schedule. (The cap stays above
 	// the dictionaries and rollups, which the size cap never deletes.)
@@ -114,7 +114,7 @@ func TestRetentionSizeCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, _ = w.DBBytes(ctx)
-	w.opts.MaxDBBytes = after / 5 * 4
+	w.SetRetention(w.rawRetention(), after/5*4)
 	w.lastSizeCheck = time.Time{}
 	if err := w.Maintain(ctx); err != nil {
 		t.Fatal(err)
@@ -122,8 +122,8 @@ func TestRetentionSizeCap(t *testing.T) {
 	// The cap deletes fact rows only: it either gets under the cap or runs
 	// out of rows (dictionaries and rollups stay).
 	rows := queryInt(t, w.w, `SELECT count(*) FROM query`)
-	if now, _ := w.DBBytes(ctx); now > w.opts.MaxDBBytes && rows > 0 {
-		t.Errorf("Maintain left %d bytes over a %d cap with %d rows still deletable", now, w.opts.MaxDBBytes, rows)
+	if now, _ := w.DBBytes(ctx); now > w.maxDBBytes() && rows > 0 {
+		t.Errorf("Maintain left %d bytes over a %d cap with %d rows still deletable", now, w.maxDBBytes(), rows)
 	}
 	if rows >= int64(n)-deleted {
 		t.Errorf("Maintain deleted nothing: %d rows left", rows)

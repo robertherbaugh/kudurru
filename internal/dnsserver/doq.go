@@ -246,6 +246,12 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 	}
 
 	resp := l.env.handler.resolveFreshID(st.Context(), req, clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ))
+	if resp == nil {
+		// A pipeline drop: reset the stream without a response.
+		st.CancelRead(DoQRequestCancelled)
+		st.CancelWrite(DoQRequestCancelled)
+		return
+	}
 	out, err := resp.Pack()
 	if err != nil {
 		fail := new(dns.Msg)

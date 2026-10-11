@@ -92,6 +92,10 @@ type ServerOptions struct {
 	Status func(ctx context.Context) Status
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
+	// Zones fills GET /internal/zones (the primary and secondary zones
+	// this node serves with their serials); nil answers 404, which
+	// Client.Zones reports as ErrZonesUnsupported.
+	Zones func(ctx context.Context) ZoneList
 	// RateLimit and Burst bound requests per client address; defaults
 	// DefaultRateLimit and DefaultBurst.
 	RateLimit rate.Limit
@@ -164,6 +168,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
+	if opts.Zones != nil {
+		mux.HandleFunc("GET "+PathZones, s.handleZones)
+	}
 	s.handler = s.guard(mux)
 	return s, nil
 }
@@ -247,6 +254,8 @@ func routeOf(p string) string {
 	switch {
 	case p == PathStatus:
 		return "status"
+	case p == PathZones:
+		return "zones"
 	case len(p) > len(PathLists) && p[:len(PathLists)] == PathLists:
 		return "lists"
 	}
@@ -318,6 +327,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(st)
+}
+
+func (s *Server) handleZones(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(statusWriteTimeout))
+	zl := s.opts.Zones(r.Context())
+	if zl.Zones == nil {
+		zl.Zones = []Zone{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(zl)
 }
 
 // ValidDigest reports whether d is a lowercase hex sha256.

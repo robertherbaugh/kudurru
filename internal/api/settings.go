@@ -46,8 +46,8 @@ type SettingsBody struct {
 	// ones that only apply after a restart.
 	Changed         []string `json:"changed,omitempty"`
 	RestartRequired []string `json:"restartRequired,omitempty"`
-	// Persisted is false when the change lives in memory only (no
-	// settings writer is wired yet; it is lost on restart).
+	// Persisted is false when the change lives in memory only (node
+	// scope, or no settings file is configured; it is lost on restart).
 	Persisted *bool `json:"persisted,omitempty"`
 	Took
 }
@@ -266,16 +266,22 @@ func (s *Server) patchSettings(ctx context.Context, scope config.Scope, patch ma
 		}
 	}
 	persisted := false
-	if s.opts.Settings != nil {
+	if s.opts.Settings != nil && scope == config.ScopeCluster {
 		if err := s.opts.Settings.WriteSettings(ctx, next, paths); err != nil {
 			s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
 			return nil, storeError(err)
 		}
 		persisted = true
 	}
-	s.cfgMu.Lock()
-	s.cfg = next
-	s.cfgMu.Unlock()
+	if s.opts.Reload != nil {
+		next.SettingsFile = cur.SettingsFile
+		next.Node.Name = cur.Node.Name
+		s.opts.Reload.Set(next)
+	} else {
+		s.cfgMu.Lock()
+		s.cfg = next
+		s.cfgMu.Unlock()
+	}
 	action := "settings.write"
 	if scope == config.ScopeNode {
 		action = "node.config"
@@ -300,6 +306,14 @@ func decodeSettings(flat map[string]any) (*config.Config, error) {
 		return nil, errInvalid("settings: %v", err)
 	}
 	return &cfg, nil
+}
+
+// ErrSettingsManaged is the error a SettingsWriter returns when the
+// cluster settings are not owned by this process (409 managed_by): in
+// Kubernetes they are the kudurru-settings ConfigMap, so a PATCH would be
+// overwritten by the next Helm upgrade and never reach the other pods.
+func ErrSettingsManaged(owner, hint string) error {
+	return newError(http.StatusConflict, KeyManagedBy, "cluster settings are managed by "+owner+"; change them there", hint)
 }
 
 // SettingsFunc adapts a function to SettingsWriter.

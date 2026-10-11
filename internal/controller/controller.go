@@ -363,8 +363,8 @@ func (c *Controller) fanOut(prev, next store.Object) {
 			}
 		}
 	case *v1alpha1.BlockList, *v1alpha1.ClientGroup:
-		if prev != nil && next != nil {
-			return // existence is all a Policy checks
+		if prev != nil && next != nil && v1alpha1.IsDisabled(prev) == v1alpha1.IsDisabled(next) {
+			return // existence and kudurru.io/enabled are all a Policy checks
 		}
 		for _, o := range c.cache.list(KindPolicy, key.Namespace) {
 			if p, ok := o.(*v1alpha1.Policy); ok && policyRefers(p, key) {
