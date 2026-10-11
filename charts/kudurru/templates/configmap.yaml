@@ -22,4 +22,4 @@ metadata:
     {{- include "kudurru.labels" . | nindent 4 }}
 data:
   settings.yaml: |
-    {{- toYaml (.Values.config.settings | default dict) | nindent 4 }}
+    {{- include "kudurru.settings" . | nindent 4 }}

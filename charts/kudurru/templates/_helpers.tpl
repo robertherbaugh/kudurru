@@ -199,6 +199,11 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if $s.doh.enabled }}{{ $_ := set $listeners "doh" (list (dict "address" (printf "0.0.0.0:%d" (int $s.doh.port)) "path" "/dns-query" "tls" $tls)) }}{{ end -}}
 {{- if $s.doh3.enabled }}{{ $_ := set $listeners "doh3" (list (dict "address" (printf "0.0.0.0:%d" (int $s.doh3.port)) "path" "/dns-query" "tls" $tls)) }}{{ end -}}
 {{- end -}}
+{{- if .Values.blockPage.enabled -}}
+{{- $bp := dict "http" (printf ":%d" (int .Values.blockPage.httpPort)) -}}
+{{- if .Values.blockPage.https.enabled }}{{ $_ := set $bp "https" (printf ":%d" (int .Values.blockPage.https.port)) }}{{ end -}}
+{{- $_ := set $listeners "blockPage" $bp -}}
+{{- end -}}
 {{- if eq $edgeMode "sidecar" -}}
 {{- $_ := set $listeners "proxyProtocolFrom" (list "127.0.0.1/32") -}}
 {{- else if $edgeMode -}}
@@ -264,6 +269,24 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if and $v.edge.enabled (eq (int $v.edge.backendPort) 53) -}}
 {{- fail "edge.backendPort must not be 53: the edge owns :53" -}}
 {{- end -}}
+{{- if and $v.blockPage.enabled (not (or $v.blockPage.ipv4 $v.blockPage.ipv6)) -}}
+{{- fail "blockPage.enabled needs blockPage.ipv4 or blockPage.ipv6: the address of the block page Service that blocked names resolve to" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The settings file (/etc/kudurru/settings/settings.yaml): config.settings,
+over the blockPage keys the blockPage values imply.
+*/}}
+{{- define "kudurru.settings" -}}
+{{- $base := dict -}}
+{{- if .Values.blockPage.enabled -}}
+{{- $bp := dict "enabled" true -}}
+{{- with .Values.blockPage.ipv4 }}{{ $_ := set $bp "ipv4" . }}{{ end -}}
+{{- with .Values.blockPage.ipv6 }}{{ $_ := set $bp "ipv6" . }}{{ end -}}
+{{- $_ := set $base "blockPage" $bp -}}
+{{- end -}}
+{{- toYaml (mergeOverwrite $base (deepCopy (.Values.config.settings | default dict))) -}}
 {{- end -}}
 
 {{/* A map rendered as a label selector string: k1=v1,k2=v2 (sorted keys). */}}

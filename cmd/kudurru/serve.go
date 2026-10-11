@@ -681,7 +681,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	subscribeReload(ctx, reload, reloadTargets{
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		blocking: bs, blockPage: blockPage, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
+		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
 	})
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {

@@ -13,6 +13,9 @@ listeners:
   api: { address: "0.0.0.0:8080" }
   ops: { address: "0.0.0.0:8081" }
   metrics: { address: "0.0.0.0:9153" }
+  # Block page listener (blockPage.enabled below; the ports in
+  # docker-compose.yml). :8090 in the container is published on host :80.
+  # blockPage: { http: "0.0.0.0:8090", https: "0.0.0.0:8493" }
 upstreams:
   groups:
     default:
@@ -25,6 +28,13 @@ cache:
 blocking:
   enabled: true
   defaultResponse: zeroIP
+  # defaultResponse: blockPage   # with blockPage.enabled below
+# The block page (docs/deploy/blocking-page.md). ipv4 is the Docker host's
+# LAN address: the container's own address is not reachable by clients.
+# blockPage:
+#   enabled: true
+#   ipv4: 192.168.1.10
+#   contact: admin@example.net
 querylog:
   enabled: true
   privacy: full
