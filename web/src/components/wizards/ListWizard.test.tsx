@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { BlockList, Policy } from '../api/types';
+import type { BlockList, Policy } from '../../api/types';
 import { mockDB } from '../mocks/handlers';
 import { renderWithApp } from '../test/utils';
 import ListWizardPage, { withListRef, wizardSources } from './ListWizardPage';

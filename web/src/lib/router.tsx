@@ -6,6 +6,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useSyncExternalStore,
   type AnchorHTMLAttributes,
@@ -176,4 +177,37 @@ export function Link({ href, to, replace, onClick, target, download, ...rest }: 
     navigate(dest, replace ? { replace } : undefined);
   };
   return <a {...rest} href={resolved} target={target} download={download} onClick={handle} />;
+}
+
+/**
+ * The `?new=1` flag of a list page: whether its creation wizard is open,
+ * and a setter. Closing drops the flag and the wizard's own parameter
+ * (`namespace`), replacing the history entry, so Back does not reopen a
+ * wizard the user closed.
+ */
+export function useNewParam(): [boolean, (open: boolean) => void] {
+  const [sp, setParams] = useSearchParams();
+  const open = sp.get('new') === '1';
+  const set = useCallback((on: boolean) => setParams(on ? { new: '1' } : { new: null, namespace: null }), [setParams]);
+  return [open, set];
+}
+
+/**
+ * The page of an old wizard route (`/policies/new`): it replaces itself
+ * with the list page and the wizard open (`/policies?new=1`), keeping the
+ * other parameters, so bookmarks and links into the wizards keep working.
+ */
+export function newRedirect(listPath: string): () => null {
+  return function NewRedirect() {
+    const loc = useLocation();
+    const navigate = useNavigate();
+    useEffect(() => {
+      const next = new URLSearchParams(loc.search);
+      next.set('new', '1');
+      navigate(`${listPath}?${next.toString()}`, { replace: true });
+      // Once, on arrival.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return null;
+  };
 }

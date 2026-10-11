@@ -1,26 +1,40 @@
-// /groups/new: a client group in four steps (Name → Members → Policies →
-// Review). Members are typed matchers, with the clients seen in the last
-// 24 hours offered as one-click additions; the optional Policies step adds
-// the new group to existing policies (their clientGroupRefs), so the
-// group does something the moment it exists.
+// New group, in a WizardDialog over the Groups page (?new=1): a client
+// group in four steps (Name → Members → Policies → Review). Members are
+// typed matchers, with the clients seen in the last 24 hours offered as
+// one-click additions; the optional Policies step adds the new group to
+// existing policies (their clientGroupRefs), so the group does something
+// the moment it exists. Create closes the dialog and opens the group's page.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { ClientGroup, ClientMatcher, Policy } from '../api/types';
-import { errorText, useNotify } from '../components/Feedback';
-import { cleanMatchers, describeMatcher, matcherFor, MatchersField, matchersError, matcherValue } from '../components/fields/MatchersField';
-import { Wizard, useWizardNav, type WizardStep } from '../components/Wizard';
-import { formatExact } from '../lib/format';
-import { COMMENT, objectOwnership } from '../lib/managedBy';
-import { nameError } from '../lib/objectSchemas';
-import { DEFAULT_NAMESPACE, sortByPriority } from '../lib/policies';
-import { useNavigate, useSearchParams } from '../lib/router';
-import { useGroups, usePolicies } from '../lib/usePolicyData';
+import { qk, useApi, useCan, useScopeParams } from '../../api/context';
+import type { ClientGroup, ClientMatcher, Policy } from '../../api/types';
+import { errorText, useNotify } from '../Feedback';
+import { cleanMatchers, describeMatcher, matcherFor, MatchersField, matchersError, matcherValue } from '../fields/MatchersField';
+import { Wizard, WizardDialog, useWizardNav, type WizardStep } from '../Wizard';
+import { formatExact } from '../../lib/format';
+import { COMMENT, objectOwnership } from '../../lib/managedBy';
+import { nameError } from '../../lib/objectSchemas';
+import { DEFAULT_NAMESPACE, sortByPriority } from '../../lib/policies';
+import { useNavigate, useSearchParams } from '../../lib/router';
+import { useGroups, usePolicies } from '../../lib/usePolicyData';
 
-export default function GroupWizardPage() {
+export interface GroupWizardProps {
+  /** Closes the dialog without asking (after the group was created). */
+  onClose: () => void;
+}
+
+export function GroupWizardDialog({ isOpen, onClose }: GroupWizardProps & { isOpen: boolean }) {
+  return (
+    <WizardDialog isOpen={isOpen} onClose={onClose} title="New group" subtitle="A set of clients that policies can target." what="group">
+      <GroupWizard onClose={onClose} />
+    </WizardDialog>
+  );
+}
+
+function GroupWizard({ onClose }: GroupWizardProps) {
   const api = useApi();
   const can = useCan();
   const scope = useScopeParams();
@@ -81,6 +95,7 @@ export default function GroupWizardPage() {
       await qc.invalidateQueries({ queryKey: qk.objects('policies') });
       notify.success(`Created group ${obj.metadata.name}`);
       for (const f of failed) notify.error(new Error(f), 'Could not add the group to a policy');
+      onClose();
       navigate(`/groups/${encodeURIComponent(namespace)}/${encodeURIComponent(obj.metadata.name)}`);
     } catch (err) {
       setError(errorText(err));
@@ -176,24 +191,16 @@ export default function GroupWizardPage() {
   ];
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>New group</h1>
-          <p className="k-muted k-small">A set of clients that policies can target.</p>
-        </div>
-      </div>
-      {!can('clientgroups', 'write') && !groups.isLoading ? <Banner status="warning" title="Read-only" description="Creating groups needs clientgroups.write." /> : null}
-      <Wizard
-        label="New group"
-        steps={steps}
-        finishLabel="Create group"
-        onFinish={create}
-        isFinishing={busy}
-        onCancel={() => navigate('/groups')}
-        error={error ? <Banner status="error" title="The server rejected the group" description={error} /> : null}
-      />
-    </div>
+    <Wizard
+      label="New group"
+      steps={steps}
+      finishLabel="Create group"
+      onFinish={create}
+      isFinishing={busy}
+      isDirty={name !== '' || comment !== '' || matchers.length > 0 || attach.length > 0}
+      notice={!can('clientgroups', 'write') && !groups.isLoading ? <Banner status="warning" title="Read-only" description="Creating groups needs clientgroups.write." /> : null}
+      error={error ? <Banner status="error" title="The server rejected the group" description={error} /> : null}
+    />
   );
 }
 

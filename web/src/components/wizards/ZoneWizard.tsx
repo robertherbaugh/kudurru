@@ -1,28 +1,32 @@
-// New zone (/zones/new, docs/m3/ui.md "Pages, wizards and dialogs"): type
-// (primary or forward, with what each does) → apex → the type's settings
-// (primary: name servers, default TTL, SOA timers, who may query; forward:
-// the upstream group) → review → PUT /objects/dnszones/{name}, then the
-// zone's page. Every value is a typed control; empty optional values keep
-// the CRD defaults and are left out of the object.
+// New zone, in a WizardDialog over the Zones page (?new=1; docs/m3/ui.md
+// "Pages, wizards and dialogs"): type (primary or forward, with what each
+// does) → apex → the type's settings (primary: name servers, default TTL,
+// SOA timers, who may query; forward: the upstream group) → review → PUT
+// /objects/dnszones/{name}, then the dialog closes and the zone's page
+// opens. Every value is a typed control; empty optional values keep the
+// CRD defaults and are left out of the object.
 import { Banner } from '@astryxdesign/core/Banner';
+import { Button } from '@astryxdesign/core/Button';
+import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
-import type { AccessMode, DNSZone, DNSZoneSpec } from '../api/types';
-import { errorText, useNotify } from '../components/Feedback';
-import { ChoiceCards } from '../components/fields/ChoiceCards';
-import { secondsLabel } from '../components/fields/DurationField';
-import { EnumSelect } from '../components/fields/EnumSelect';
-import { formatError } from '../components/fields/formats';
-import { SecondsField, secondsError } from '../components/fields/SecondsField';
-import { cleanList, listError, StringListField } from '../components/fields/StringListField';
-import { UpstreamGroupSelect } from '../components/UpstreamGroupSelect';
-import { Wizard, type WizardStep } from '../components/Wizard';
-import { Link, useNavigate } from '../lib/router';
-import { hostError } from '../lib/rr';
-import { DEFAULT_GROUP } from '../lib/upstreams';
-import { aclEntryError, apexError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, usesACL, zoneObjectName } from '../lib/zones';
+import { qk, useApi, useCan } from '../../api/context';
+import type { AccessMode, DNSZone, DNSZoneSpec } from '../../api/types';
+import { errorText, useNotify } from '../Feedback';
+import { DialogForm } from '../FormDialog';
+import { ChoiceCards } from '../fields/ChoiceCards';
+import { secondsLabel } from '../fields/DurationField';
+import { EnumSelect } from '../fields/EnumSelect';
+import { formatError } from '../fields/formats';
+import { SecondsField, secondsError } from '../fields/SecondsField';
+import { cleanList, listError, StringListField } from '../fields/StringListField';
+import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
+import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
+import { useNavigate } from '../../lib/router';
+import { hostError } from '../../lib/rr';
+import { DEFAULT_GROUP } from '../../lib/upstreams';
+import { aclEntryError, apexError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, usesACL, zoneObjectName } from '../../lib/zones';
 
 type Kind = 'primary' | 'forward';
 
@@ -100,9 +104,34 @@ export function zoneFromDraft(d: Draft): DNSZone {
 
 const cidr = (v: string) => formatError('cidr', v);
 
-export default function ZoneWizardPage() {
-  const api = useApi();
+export interface ZoneWizardProps {
+  /** Closes the dialog without asking (after the zone was created). */
+  onClose: () => void;
+}
+
+export function ZoneWizardDialog({ isOpen, onClose }: ZoneWizardProps & { isOpen: boolean }) {
   const can = useCan();
+  return (
+    <WizardDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title="New zone"
+      subtitle="To bring records from another server, use Import zone file on the Zones page instead."
+      what="zone"
+    >
+      {can('zones', 'write') ? (
+        <ZoneWizard onClose={onClose} />
+      ) : (
+        <DialogForm footer={<Button label="Close" variant="secondary" onClick={onClose} />}>
+          <Banner status="info" title="Not permitted" description="Creating zones needs the zones.write permission." />
+        </DialogForm>
+      )}
+    </WizardDialog>
+  );
+}
+
+function ZoneWizard({ onClose }: ZoneWizardProps) {
+  const api = useApi();
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
@@ -117,6 +146,7 @@ export default function ZoneWizardPage() {
     onSuccess: () => {
       notify.success(`Created zone ${name}`);
       void qc.invalidateQueries({ queryKey: qk.zones });
+      onClose();
       navigate(`/zones/${encodeURIComponent(name)}`);
     },
   });
@@ -256,9 +286,9 @@ export default function ZoneWizardPage() {
           content: (
             <>
               <UpstreamGroupSelect value={d.upstreamGroup} onChange={(v) => set('upstreamGroup', v)} help="The servers of this group answer for the zone." />
-              <p className="k-small">
-                Need a group for this zone? <Link href="/upstreams/new">Create one</Link> first; it takes effect without a restart.
-              </p>
+              <Text type="supporting" as="p">
+                Need a group for this zone? Create one on the Upstreams page first; it takes effect without a restart.
+              </Text>
               <EnumSelect label="DNSSEC validation" value={d.dnssec} options={DNSSEC} onChange={(v) => set('dnssec', v as Draft['dnssec'])} />
             </>
           ),
@@ -270,35 +300,16 @@ export default function ZoneWizardPage() {
     },
   ];
 
-  if (!can('zones', 'write')) {
-    return (
-      <div className="k-page">
-        <h1>New zone</h1>
-        <Banner status="info" title="Not permitted" description="Creating zones needs the zones.write permission." />
-      </div>
-    );
-  }
-
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>New zone</h1>
-          <p className="k-muted k-small">
-            <Link href="/zones">Zones</Link> / new. To bring records from another server, use <Link href="/zones?import=1">Import zone file</Link> instead.
-          </p>
-        </div>
-      </div>
-      <Wizard
-        label="New zone"
-        steps={steps}
-        finishLabel="Create zone"
-        isFinishing={create.isPending}
-        onFinish={() => create.mutate()}
-        onCancel={() => navigate('/zones')}
-        error={create.error ? <Banner status="error" title="The zone could not be created" description={errorText(create.error)} /> : null}
-      />
-    </div>
+    <Wizard
+      label="New zone"
+      steps={steps}
+      finishLabel="Create zone"
+      isFinishing={create.isPending}
+      onFinish={() => create.mutate()}
+      isDirty={d !== EMPTY}
+      error={create.error ? <Banner status="error" title="The zone could not be created" description={errorText(create.error)} /> : null}
+    />
   );
 }
 

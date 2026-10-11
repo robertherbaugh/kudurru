@@ -1,8 +1,10 @@
-// New list (/lists/new): Type → Sources → Options → Review. Sources are URL
-// rows (format detected from the URL), pasted entries, or well-known public
-// lists the user opts into (names and URLs only; kudurru embeds none of
-// them). The finished list is created with POST /objects/blocklists and,
-// when policies are chosen, referenced from them so it takes effect.
+// New list, in a WizardDialog over the Lists page (?new=1): Type → Sources
+// → Options → Review. Sources are URL rows (format detected from the URL),
+// pasted entries, or well-known public lists the user opts into (names and
+// URLs only; kudurru embeds none of them). The finished list is created
+// with POST /objects/blocklists and, when policies are chosen, referenced
+// from them so it takes effect; then the dialog closes and the list's page
+// opens.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -11,23 +13,23 @@ import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
-import type { BlockList, BlockListSpec, BlockResponse, ListFormat, ListSource, Policy } from '../api/types';
-import { DurationField } from '../components/fields/DurationField';
-import { EnumSelect } from '../components/fields/EnumSelect';
-import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
-import { errorText, useNotify } from '../components/Feedback';
-import { slugName, suggestName } from '../components/lists/SourceDialog';
-import { Wizard } from '../components/Wizard';
-import { applyable } from '../components/YamlDialog';
-import { formatExact } from '../lib/format';
-import { CURATED_LISTS, entriesProblem, FORMAT_OPTIONS, formatLabel, guessFormat, isHTTPURL, listPath, parseEntries, RESPONSE_OPTIONS } from '../lib/lists';
-import { COMMENT, ENABLED, objectOwnership } from '../lib/managedBy';
-import { durationError, nameError } from '../lib/objectSchemas';
-import { useNavigate } from '../lib/router';
-import { isIPv4, isIPv6 } from '../lib/rr';
-import { toYAML } from '../lib/yaml';
-import { REFRESH_PRESETS } from './ListDetailPage';
+import { qk, useApi, useCan } from '../../api/context';
+import type { BlockList, BlockListSpec, BlockResponse, ListFormat, ListSource, Policy } from '../../api/types';
+import { DurationField } from '../fields/DurationField';
+import { EnumSelect } from '../fields/EnumSelect';
+import { ObjectRefPicker } from '../fields/ObjectRefPicker';
+import { errorText, useNotify } from '../Feedback';
+import { slugName, suggestName } from '../lists/SourceDialog';
+import { Wizard, WizardDialog } from '../Wizard';
+import { applyable } from '../YamlDialog';
+import { formatExact } from '../../lib/format';
+import { CURATED_LISTS, entriesProblem, FORMAT_OPTIONS, formatLabel, guessFormat, isHTTPURL, listPath, parseEntries, RESPONSE_OPTIONS } from '../../lib/lists';
+import { COMMENT, ENABLED, objectOwnership } from '../../lib/managedBy';
+import { durationError, nameError } from '../../lib/objectSchemas';
+import { useNavigate } from '../../lib/router';
+import { isIPv4, isIPv6 } from '../../lib/rr';
+import { toYAML } from '../../lib/yaml';
+import { REFRESH_PRESETS } from '../../pages/ListDetailPage';
 
 interface UrlRow {
   id: number;
@@ -122,7 +124,20 @@ export function withListRef(p: Policy, list: BlockList): Policy {
   return { ...p, spec: { ...p.spec, [field]: [...refs, ref] } };
 }
 
-export default function ListWizardPage() {
+export interface ListWizardProps {
+  /** Closes the dialog without asking (after the list was created). */
+  onClose: () => void;
+}
+
+export function ListWizardDialog({ isOpen, onClose }: ListWizardProps & { isOpen: boolean }) {
+  return (
+    <WizardDialog isOpen={isOpen} onClose={onClose} title="New list" subtitle="A block or allow list from public lists, URLs or your own entries." what="list">
+      <ListWizard onClose={onClose} />
+    </WizardDialog>
+  );
+}
+
+function ListWizard({ onClose }: ListWizardProps) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -192,6 +207,7 @@ export default function ListWizardPage() {
       void qc.invalidateQueries({ queryKey: qk.objects('policies') });
       notify.success(`Created ${created.metadata.name}`);
       for (const f of failed) notify.error(new Error(f), 'Could not add the list to a policy');
+      onClose();
       navigate(listPath(created));
     } catch (e) {
       setError(errorText(e));
@@ -406,21 +422,14 @@ export default function ListWizardPage() {
   );
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>New list</h1>
-          <p className="k-muted k-small">A block or allow list from public lists, URLs or your own entries.</p>
-        </div>
-      </div>
-      <Wizard
-        label="New list"
-        finishLabel="Create list"
-        isFinishing={finishing}
-        onCancel={() => navigate('/lists')}
-        onFinish={finish}
-        error={error ? <Banner status="error" title="Could not create the list" description={error} /> : null}
-        steps={[
+    <Wizard
+      label="New list"
+      finishLabel="Create list"
+      isFinishing={finishing}
+      onFinish={finish}
+      isDirty={s !== EMPTY}
+      error={error ? <Banner status="error" title="Could not create the list" description={error} /> : null}
+      steps={[
           { id: 'type', label: 'Type', description: 'What the entries of the list do.', content: typeStep },
           { id: 'sources', label: 'Sources', description: 'Where the entries come from. You can add, turn off and remove sources later.', content: sourcesStep, validate: validateSources },
           {
@@ -434,7 +443,6 @@ export default function ListWizardPage() {
           },
           { id: 'review', label: 'Review', description: 'Nothing is saved until you create the list.', content: reviewStep },
         ]}
-      />
-    </div>
+    />
   );
 }

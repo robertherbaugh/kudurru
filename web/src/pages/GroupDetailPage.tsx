@@ -15,6 +15,7 @@ import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { cleanMatchers, kindLabel, matcherKind, matchersError, matcherValue, MatchersField } from '../components/fields/MatchersField';
 import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
+import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 import { YamlDialog } from '../components/YamlDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
@@ -35,6 +36,7 @@ export default function GroupDetailPage({ params }: PageProps) {
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [yaml, setYaml] = useState(false);
+  const [newPolicy, setNewPolicy] = useState(false);
 
   const q = useQuery({ queryKey: [...qk.objects('clientgroups'), ns, name], queryFn: () => api.objects.get<ClientGroup>('clientgroups', name, ns) });
   const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000, enabled: can('clients', 'read') });
@@ -184,7 +186,14 @@ export default function GroupDetailPage({ params }: PageProps) {
       <section className="k-panel k-section" aria-labelledby="sec-pols">
         <div className="k-panel-title">
           <h2 id="sec-pols">Policies that apply</h2>
-          <Link href="/policies/new">New policy</Link>
+          <Button
+            label="New policy"
+            size="sm"
+            variant="secondary"
+            isDisabled={!can('policies', 'write')}
+            tooltip={can('policies', 'write') ? 'A policy for this group' : 'Needs policies.write'}
+            onClick={() => setNewPolicy(true)}
+          />
         </div>
         {applied.length ? (
           <>
@@ -209,6 +218,7 @@ export default function GroupDetailPage({ params }: PageProps) {
       </section>
 
       <YamlDialog obj={group} open={yaml} onClose={() => setYaml(false)} />
+      <PolicyWizardDialog isOpen={newPolicy} onClose={() => setNewPolicy(false)} namespace={ns} groups={[name]} />
       <FormDialog
         isOpen={confirmDelete}
         onClose={() => setConfirmDelete(false)}

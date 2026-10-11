@@ -1,27 +1,46 @@
-// /policies/new: a policy in six steps (Who → What → Safe search → How →
-// When → Review), each with the same typed editors the policy page uses.
-// The review lists every choice with a link back to its step; Create
-// checks the name again (another tab may have taken it), writes the
-// Policy and opens its page. ?namespace= creates it in another namespace.
+// New policy, in a WizardDialog over the Policies page (?new=1) or a
+// group's page: six steps (Who → What → Safe search → How → When →
+// Review), each with the same typed editors the policy page uses. The
+// review lists every choice with a link back to its step; Create checks
+// the name again (another tab may have taken it), writes the Policy, closes
+// the dialog and opens the policy's page. ?namespace= (or the namespace
+// prop) creates it in another namespace; `groups` preselects client groups.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
-import type { Policy, PolicySpec } from '../api/types';
-import { errorText, useNotify } from '../components/Feedback';
-import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
-import { ServiceIcon } from '../components/ServiceIcon';
-import { useCatalogueServices } from '../components/ServiceGrid';
-import { Wizard, useWizardNav, type WizardStep } from '../components/Wizard';
-import { COMMENT } from '../lib/managedBy';
-import { nameError } from '../lib/objectSchemas';
-import { blockResponseLabel, DEFAULT_NAMESPACE, scheduleSummary } from '../lib/policies';
-import { useNavigate, useSearchParams } from '../lib/router';
-import { usePolicies } from '../lib/usePolicyData';
+import { qk, useApi, useCan } from '../../api/context';
+import type { Policy, PolicySpec } from '../../api/types';
+import { errorText, useNotify } from '../Feedback';
+import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../PolicyFields';
+import { ServiceIcon } from '../ServiceIcon';
+import { useCatalogueServices } from '../ServiceGrid';
+import { Wizard, WizardDialog, useWizardNav, type WizardStep } from '../Wizard';
+import { COMMENT } from '../../lib/managedBy';
+import { nameError } from '../../lib/objectSchemas';
+import { blockResponseLabel, DEFAULT_NAMESPACE, scheduleSummary } from '../../lib/policies';
+import { useNavigate, useSearchParams } from '../../lib/router';
+import { usePolicies } from '../../lib/usePolicyData';
 
-export default function PolicyWizardPage() {
+export interface PolicyWizardProps {
+  /** Closes the dialog without asking (after the policy was created). */
+  onClose: () => void;
+  /** The namespace to create it in (default: ?namespace=, else "default"). */
+  namespace?: string;
+  /** Client groups to start with (bare names in the namespace). */
+  groups?: string[];
+}
+
+export function PolicyWizardDialog({ isOpen, ...props }: PolicyWizardProps & { isOpen: boolean }) {
+  return (
+    <WizardDialog isOpen={isOpen} onClose={props.onClose} title="New policy" subtitle="Which lists and services apply to which clients, how blocks are answered and when." what="policy">
+      <PolicyWizard {...props} />
+    </WizardDialog>
+  );
+}
+
+function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -29,10 +48,11 @@ export default function PolicyWizardPage() {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
   const pols = usePolicies();
-  const namespace = sp.get('namespace') || DEFAULT_NAMESPACE;
+  const namespace = ns || sp.get('namespace') || DEFAULT_NAMESPACE;
   const [name, setName] = useState('');
   const [comment, setComment] = useState('');
-  const [spec, setSpec] = useState<PolicySpec>({ clientGroupRefs: [], blockListRefs: [], allowListRefs: [], blockedServices: [], priority: 100 });
+  const [initial] = useState<PolicySpec>(() => ({ clientGroupRefs: groups ?? [], blockListRefs: [], allowListRefs: [], blockedServices: [], priority: 100 }));
+  const [spec, setSpec] = useState<PolicySpec>(initial);
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +88,7 @@ export default function PolicyWizardPage() {
       await api.objects.put('policies', obj);
       await qc.invalidateQueries({ queryKey: qk.objects('policies') });
       notify.success(`Created policy ${obj.metadata.name}`);
+      onClose();
       navigate(`/policies/${encodeURIComponent(namespace)}/${encodeURIComponent(obj.metadata.name)}`);
     } catch (err) {
       setError(errorText(err));
@@ -118,24 +139,16 @@ export default function PolicyWizardPage() {
   ];
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>New policy</h1>
-          <p className="k-muted k-small">Which lists and services apply to which clients, how blocks are answered and when.</p>
-        </div>
-      </div>
-      {!can('policies', 'write') && !pols.isLoading ? <Banner status="warning" title="Read-only" description="Creating policies needs policies.write." /> : null}
-      <Wizard
-        label="New policy"
-        steps={steps}
-        finishLabel="Create policy"
-        onFinish={create}
-        isFinishing={busy}
-        onCancel={() => navigate('/policies')}
-        error={error ? <Banner status="error" title="The server rejected the policy" description={error} /> : null}
-      />
-    </div>
+    <Wizard
+      label="New policy"
+      steps={steps}
+      finishLabel="Create policy"
+      onFinish={create}
+      isFinishing={busy}
+      isDirty={name !== '' || comment !== '' || spec !== initial}
+      notice={!can('policies', 'write') && !pols.isLoading ? <Banner status="warning" title="Read-only" description="Creating policies needs policies.write." /> : null}
+      error={error ? <Banner status="error" title="The server rejected the policy" description={error} /> : null}
+    />
   );
 }
 
