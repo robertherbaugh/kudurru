@@ -142,6 +142,16 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="blockPage.dashboardURL"></a>`blockPage.dashboardURL` | `string` | (empty) | cluster | **Dashboard URL.** Dashboard URL the block page links administrators to (&lt;url&gt;/queries?domain=...); empty derives it from the block page address and listeners.api.<br>Allowed: format url.<br>Environment: `KUDURRU_BLOCKPAGE__DASHBOARDURL` |
 | <a id="blockPage.rateLimit"></a>`blockPage.rateLimit` | `int` | `120` | cluster | **Requests per minute per client.** Block page requests per minute per client address (bursts up to the same number); over the limit the listener answers 429. 0 disables the limit.<br>Allowed: range 0-100000.<br>Environment: `KUDURRU_BLOCKPAGE__RATELIMIT` |
 
+## unblockRequests
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="unblockRequests.enabled"></a>`unblockRequests.enabled` | `bool` | `true` | cluster | **Unblock requests.** Show a Request access form on the block page (blockPage.enabled): the user's request for the blocked name lands on the dashboard's Requests page, where administrators approve or deny it.<br>Environment: `KUDURRU_UNBLOCKREQUESTS__ENABLED` |
+| <a id="unblockRequests.rateLimit"></a>`unblockRequests.rateLimit` | `int` | `5` | cluster | **Unblock requests per hour per client.** Unblock requests per hour one client address (IPv6 per /64) may submit; a repeated request for the same name updates the pending one.<br>Allowed: range 1-100.<br>Environment: `KUDURRU_UNBLOCKREQUESTS__RATELIMIT` |
+| <a id="unblockRequests.maxPending"></a>`unblockRequests.maxPending` | `int` | `1000` | cluster | **Most pending unblock requests.** Most undecided unblock requests kept cluster-wide; beyond it the block page says requests are paused until administrators decide some.<br>Allowed: range 1-10000.<br>Environment: `KUDURRU_UNBLOCKREQUESTS__MAXPENDING` |
+| <a id="unblockRequests.pendingExpiry"></a>`unblockRequests.pendingExpiry` | `duration` | `336h` | cluster | **Pending requests expire after.** Undecided unblock requests expire after this long (at least 1h).<br>Environment: `KUDURRU_UNBLOCKREQUESTS__PENDINGEXPIRY` |
+| <a id="unblockRequests.retention"></a>`unblockRequests.retention` | `duration` | `720h` | cluster | **Keep decided requests for.** Decided and expired unblock requests are deleted this long after their decision (at least 1h); time-limited approvals are kept until they end.<br>Environment: `KUDURRU_UNBLOCKREQUESTS__RETENTION` |
+
 ## querylog
 
 | Key | Type | Default | Scope | Description |

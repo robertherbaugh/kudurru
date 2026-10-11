@@ -456,7 +456,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 
 	// Block page (docs/deploy/blocking-page.md): the renderer always exists
 	// for the API preview; its listener runs when blockPage.enabled.
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, reg, logger)
+	// Unblock requests (the block page's form, /unblockrequests): the book
+	// indexes them on every node; the leader expires and prunes them.
+	unblockBook := newUnblockBook(st, reload, cfg.Node.Name, logger)
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, unblockBook, reg, logger)
 	if err != nil {
 		return err
 	}
@@ -593,6 +596,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		DefaultNamespace: bootstrap.DefaultNamespace,
 		Catalogue:        catalogueAPI(catalogues, catRefresher),
 		BlockPage:        blockPage,
+		Unblock:          unblockBook,
 	})
 	if err != nil {
 		return err
@@ -669,6 +673,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		{"listresolver", false, listResolver.Run},
 		{"identity", false, ids.Run},
 		{"api", false, apiSrv.Run},
+		{"unblock", false, unblockBook.Run},
+		{"unblock-janitor", true, unblockBook.RunJanitor},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
 			return err

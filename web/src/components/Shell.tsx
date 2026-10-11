@@ -17,6 +17,7 @@ import { AccountMenu } from './AccountMenu';
 import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
+import { UnblockBadge } from './UnblockBadge';
 
 function Brand() {
   return (
@@ -44,7 +45,7 @@ export function Shell() {
                 label={r.label}
                 icon={<Icon size={16} aria-hidden="true" />}
                 isSelected={match?.route.navKey === r.navKey}
-                endContent={r.path === '/messages' ? <MessagesBadge compact /> : undefined}
+                endContent={r.path === '/messages' ? <MessagesBadge compact /> : r.path === '/requests' ? <UnblockBadge /> : undefined}
               />
             );
           })}

@@ -9,10 +9,39 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
+	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/unblock"
 )
+
+// querylogPrivacy reads querylog.privacy and whether querylog.anonymize is
+// pseudonym from the live settings; an unknown mode reads as the
+// strictest.
+func querylogPrivacy(reload *config.Reloadable) func() (querylog.Mode, bool) {
+	return func() (querylog.Mode, bool) {
+		q := reload.Current().Querylog
+		m, err := querylog.ParseMode(q.Privacy)
+		if err != nil {
+			m = querylog.PrivacyNothing
+		}
+		return m, q.Anonymize == querylog.AnonymizePseudonym
+	}
+}
+
+// newUnblockBook is the unblock request book (internal/unblock): requests
+// in the default namespace, the client recorded as querylog.privacy
+// allows.
+func newUnblockBook(st store.Store, reload *config.Reloadable, node string, logger *slog.Logger) *unblock.Service {
+	return unblock.New(unblock.Options{
+		Store: st, Namespace: bootstrap.DefaultNamespace, Node: node,
+		Settings: func() config.UnblockRequests { return reload.Current().UnblockRequests },
+		Privacy:  querylogPrivacy(reload),
+		Logger:   logger,
+	})
+}
 
 // Self-signed block page certificate under <node.dataDir>/keys/ when
 // listeners.blockPage.https has no tls.certFile.
@@ -27,22 +56,18 @@ const (
 // Reasons come from the query log (live tail, then querylog.db) and, when
 // it has none, from the client's current policy.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
 		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
-		Privacy: func() (querylog.Mode, bool) {
-			q := reload.Current().Querylog
-			m, err := querylog.ParseMode(q.Privacy)
-			if err != nil {
-				m = querylog.PrivacyNothing
-			}
-			return m, q.Anonymize == querylog.AnonymizePseudonym
-		},
+		Privacy: querylogPrivacy(reload),
 	}
 	o := blockpage.Options{
-		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy,
+		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,
 		Settings: blockpage.SettingsFrom(cfg), Registerer: reg, Logger: logger,
+	}
+	if book != nil {
+		o.Requests = book
 	}
 	if cfg.BlockPage.Enabled {
 		l := cfg.Listeners.BlockPage

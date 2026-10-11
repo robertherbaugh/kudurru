@@ -62,6 +62,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
 
     process.env.KUDURRU_E2E_URL = server.url;
     process.env.KUDURRU_E2E_DNS = server.dns;
+    process.env.KUDURRU_E2E_BLOCKPAGE = server.blockPage;
     process.env.KUDURRU_E2E_NODE = server.node;
     process.env.KUDURRU_E2E_UPSTREAM = upstream.address;
     process.env.KUDURRU_E2E_ADMIN_PASSWORD = adminPassword;

@@ -49,6 +49,7 @@ import (
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -191,6 +192,9 @@ type Options struct {
 	Roles func(ctx context.Context, p auth.Principal) []string
 	// Catalogue backs /catalogue; a nil Holder serves the embedded one.
 	Catalogue CatalogueSource
+	// Unblock is the unblock request book (internal/unblock) behind
+	// /unblockrequests; nil serves the store without an index.
+	Unblock *unblock.Service
 	// BlockPage renders GET /blockpage/preview (internal/blockpage); nil
 	// answers 503.
 	BlockPage BlockPagePreviewer
@@ -235,6 +239,10 @@ type Server struct {
 
 	// streams is the semaphore of the live-tail streams (maxQueryStreams).
 	streams chan struct{}
+
+	// unblockFallback serves /unblockrequests without Options.Unblock.
+	unblockOnce     sync.Once
+	unblockFallback *unblock.Service
 }
 
 // New builds the server and registers every route.

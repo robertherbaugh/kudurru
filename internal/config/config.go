@@ -32,11 +32,13 @@ type Config struct {
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
 	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
-	Querylog  Querylog    `koanf:"querylog" json:"querylog"`
-	RateLimit RateLimit   `koanf:"ratelimit" json:"ratelimit"`
-	Log       Log         `koanf:"log" json:"log"`
-	Auth      Auth        `koanf:"auth" json:"auth"`
-	RBAC      RBAC        `koanf:"rbac" json:"rbac"`
+	// UnblockRequests configures the block page's request form.
+	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
+	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
+	RateLimit       RateLimit       `koanf:"ratelimit" json:"ratelimit"`
+	Log             Log             `koanf:"log" json:"log"`
+	Auth            Auth            `koanf:"auth" json:"auth"`
+	RBAC            RBAC            `koanf:"rbac" json:"rbac"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
 	// NOTIFY; secrets stay in files and never pass through the API.
@@ -466,6 +468,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Cache.validate()...)
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
+	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))

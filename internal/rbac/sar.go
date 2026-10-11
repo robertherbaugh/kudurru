@@ -53,6 +53,7 @@ var SARResources = map[string]string{
 	"cluster":           "clusters",
 	"edge":              "edges",
 	"audit":             "audits",
+	"unblockrequests":   "unblockrequests",
 }
 
 // SARVerb maps a kudurru verb to the Kubernetes verb: read is get for a

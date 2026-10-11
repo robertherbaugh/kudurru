@@ -70,7 +70,7 @@ func TestHandlerServesThePage(t *testing.T) {
 	hd := w.Header()
 	for k, v := range map[string]string{
 		"Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP, "X-Frame-Options": "DENY",
-		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "X-Kudurru-Block": "1", "Referrer-Policy": "no-referrer",
+		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "X-Kudurru-Block": "1", "Referrer-Policy": "same-origin",
 	} {
 		if got := hd.Get(k); got != v {
 			t.Errorf("%s = %q, want %q", k, got, v)
@@ -236,7 +236,7 @@ func TestRateLimit(t *testing.T) {
 
 func TestLimiterSweep(t *testing.T) {
 	now := time.Now()
-	l := newLimiter(1, func() time.Time { return now })
+	l := newLimiter(1, time.Minute, func() time.Time { return now })
 	for i := range maxLimited {
 		l.allow(netip.AddrFrom4([4]byte{10, byte(i >> 16), byte(i >> 8), byte(i)}))
 	}

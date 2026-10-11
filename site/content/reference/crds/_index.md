@@ -20,3 +20,4 @@ validator in Docker mode, enforce.
 | [DNSRecordSet](dnsrecordset.md) | Namespaced | `rrset` | DNSRecordSet is a set of records that belong to a DNSZone. |
 | [DNSZone](dnszone.md) | Cluster | `zone` | DNSZone is a recorded grant of authority over a name space: the stone kept in the temple. |
 | [Policy](policy.md) | Namespaced | `pol` | Policy applies lists, schedules and resolver settings to client groups. |
+| [UnblockRequest](unblockrequest.md) | Namespaced | `ubr` | UnblockRequest is a user's request, made on the block page, to allow a blocked name. |

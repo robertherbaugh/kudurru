@@ -237,6 +237,7 @@ func TestRestartRequired(t *testing.T) {
 		"blocking.enabled", "blocking.defaultResponse", "blocking.blockTTL", "blocking.customIP.v4", "blocking.customIP.v6",
 		"blockPage.ipv4", "blockPage.ipv6", "blockPage.title", "blockPage.message", "blockPage.contact", "blockPage.showDetails",
 		"blockPage.dashboardURL", "blockPage.rateLimit",
+		"unblockRequests.enabled", "unblockRequests.rateLimit", "unblockRequests.maxPending", "unblockRequests.pendingExpiry", "unblockRequests.retention",
 		"querylog.privacy", "querylog.anonymize", "querylog.retention.raw", "querylog.retention.maxDBBytes",
 		"querylog.exclude.domains", "querylog.exclude.clients", "querylog.exclude.sudn",
 		"ratelimit.enabled", "ratelimit.ipv4", "ratelimit.ipv6", "ratelimit.slip", "ratelimit.maxBuckets", "ratelimit.exempt",

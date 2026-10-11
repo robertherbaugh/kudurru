@@ -55,6 +55,7 @@ import type {
   ListEntriesPatch,
 } from './types';
 import type { CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
+import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -239,6 +240,17 @@ export function endpoints(c: ApiClient) {
     // (its CSP allows frame-ancestors 'self').
     blockPage: {
       previewURL: (domain?: string) => c.url('/blockpage/preview', domain ? { domain } : undefined),
+    },
+
+    // Unblock requests from the block page: the list (newest first, with
+    // the counts of every state), one request, and the decisions.
+    unblock: {
+      list: (q: { state?: UnblockState | undefined; limit?: number; continue?: string | undefined } = {}) => c.get<UnblockRequestList>('/unblockrequests', q),
+      get: (namespace: string, name: string) => c.get<UnblockRequest>(`/unblockrequests/${enc(namespace)}/${enc(name)}`),
+      approve: (namespace: string, name: string, body: UnblockApproval) =>
+        c.post<UnblockDecisionResult>(`/unblockrequests/${enc(namespace)}/${enc(name)}/approve`, body),
+      deny: (namespace: string, name: string, body: UnblockDenial) => c.post<UnblockDecisionResult>(`/unblockrequests/${enc(namespace)}/${enc(name)}/deny`, body),
+      delete: (namespace: string, name: string) => c.delete(`/unblockrequests/${enc(namespace)}/${enc(name)}`),
     },
   };
 }

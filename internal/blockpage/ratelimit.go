@@ -8,19 +8,21 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// maxLimited bounds the clients tracked by the rate limiter; when full,
-// clients idle for a minute are forgotten, and if none is, the table is
+// maxLimited bounds the clients tracked by a rate limiter; when full,
+// clients idle for a period are forgotten, and if none is, the table is
 // reset (every client starts again with a full bucket).
 const maxLimited = 16384
 
-// limiter is the per-client token bucket of the block page: perMinute
-// requests per minute with bursts of the same size. IPv6 clients are
-// limited per /64 so address rotation within a network does not escape it.
+// limiter is a per-client token bucket: n requests per period with bursts
+// of the same size. IPv6 clients are limited per /64 so address rotation
+// within a network does not escape it. The page uses n per minute, the
+// unblock request form n per hour.
 type limiter struct {
-	mu        sync.Mutex
-	perMinute int
-	clients   map[netip.Addr]*clientBucket
-	now       func() time.Time
+	mu      sync.Mutex
+	n       int
+	per     time.Duration
+	clients map[netip.Addr]*clientBucket
+	now     func() time.Time
 }
 
 type clientBucket struct {
@@ -28,16 +30,16 @@ type clientBucket struct {
 	seen time.Time
 }
 
-func newLimiter(perMinute int, now func() time.Time) *limiter {
-	return &limiter{perMinute: perMinute, clients: map[netip.Addr]*clientBucket{}, now: now}
+func newLimiter(n int, per time.Duration, now func() time.Time) *limiter {
+	return &limiter{n: n, per: per, clients: map[netip.Addr]*clientBucket{}, now: now}
 }
 
 // setRate changes the limit; existing buckets are dropped.
-func (l *limiter) setRate(perMinute int) {
+func (l *limiter) setRate(n int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if perMinute != l.perMinute {
-		l.perMinute = perMinute
+	if n != l.n {
+		l.n = n
 		l.clients = map[netip.Addr]*clientBucket{}
 	}
 }
@@ -46,7 +48,7 @@ func (l *limiter) setRate(perMinute int) {
 func (l *limiter) allow(client netip.Addr) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.perMinute <= 0 || !client.IsValid() {
+	if l.n <= 0 || !client.IsValid() {
 		return true
 	}
 	key := client.Unmap()
@@ -59,7 +61,7 @@ func (l *limiter) allow(client netip.Addr) bool {
 		if len(l.clients) >= maxLimited {
 			l.sweep(now)
 		}
-		b = &clientBucket{lim: rate.NewLimiter(rate.Every(time.Minute/time.Duration(l.perMinute)), l.perMinute)}
+		b = &clientBucket{lim: rate.NewLimiter(rate.Every(l.per/time.Duration(l.n)), l.n)}
 		l.clients[key] = b
 	}
 	b.seen = now
@@ -69,7 +71,7 @@ func (l *limiter) allow(client netip.Addr) bool {
 // sweep forgets idle clients, or everyone when nobody is idle.
 func (l *limiter) sweep(now time.Time) {
 	for k, b := range l.clients {
-		if now.Sub(b.seen) > time.Minute {
+		if now.Sub(b.seen) > l.per {
 			delete(l.clients, k)
 		}
 	}

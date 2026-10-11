@@ -123,7 +123,9 @@ anything else (an IP literal, markup) is shown as "no domain". It shows:
   plus a link for administrators to `<dashboard>/queries?domain=<name>`
   (`blockPage.dashboardURL`, else the API listener at the block page address);
 - "Ask your administrator", with `blockPage.contact` as a `mailto:` or http(s)
-  link.
+  link;
+- a Request access form (`unblockRequests.enabled`, see "Unblock requests"
+  below).
 
 The reason is the most recent block of that name for that client within ten
 minutes: first the query log's in-memory tail (which has the query even before
@@ -137,7 +139,8 @@ blocks are not visible that way). Without either, the page says why no reason
 is shown.
 
 `/favicon.ico`, `/robots.txt` (`Disallow: /`) and `/health` (`ok`) are served
-too. GET and HEAD answer 200, every other method 405. Each client address
+too. GET and HEAD answer 200; POST is accepted only on `/.kudurru/request` (the
+request form), every other method and path answers 405. Each client address
 (IPv6 per /64) gets `blockPage.rateLimit` requests per minute (default 120,
 0 disables it); beyond it the page answers 429 with `Retry-After`. `/health`
 is never limited. The listener never proxies or fetches anything.
@@ -145,13 +148,151 @@ is never limited. The listener never proxies or fetches anything.
 The page is self-contained: the logo is inlined, the style sheet is allowed by
 its hash, nothing loads from elsewhere and nothing runs:
 `Content-Security-Policy: default-src 'none'; style-src 'sha256-...';
-img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors
+img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors
 'none'`, `X-Frame-Options: DENY`, `Cache-Control: no-store`, `Referrer-Policy:
-no-referrer`. Every value (Host, settings, list names, rules) is escaped by
-`html/template`.
+same-origin` (no referrer leaves for other sites; the form's POST carries its
+`Origin`). Every value (Host, settings, list names, rules, request text and
+notes) is HTML-escaped; the page is written by a small hand-written renderer,
+not `html/template`, whose reflection would cost the binary megabytes.
 
-Metrics: `kudurru_blockpage_requests_total{scheme}` (http, https) and
-`kudurru_blockpage_rate_limited_total{scheme}`.
+Metrics: `kudurru_blockpage_requests_total{scheme}` (http, https),
+`kudurru_blockpage_rate_limited_total{scheme}` and
+`kudurru_blockpage_unblock_requests_total{result}` (sent, limited, paused,
+invalid, error, cross_origin).
+
+## Unblock requests
+
+The page offers a **Request access** form under the explanation, so a user can
+ask for the name instead of finding the administrator, and administrators get
+one place, the dashboard's **Requests** page, to fix what blocks people.
+
+### User flow
+
+1. The user opens a blocked name and lands on the block page.
+2. They may give a name and a way to reach them (both optional) and a short
+   reason (at most 500 characters, plain text), and press **Request access**.
+   The form is a plain HTML POST to `/.kudurru/request` on the same host;
+   the page answers with a redirect back to itself (no script).
+3. The page then shows the request's state for that device and name, on every
+   later visit too:
+   - **pending**: when it was sent; sending the form again updates the reason
+     of the same request instead of filing another;
+   - **approved**: no form; "try again in a moment", with how long the device
+     may still remember the blocked answer (the block TTL counted from the
+     decision; the browser or the operating system cache the answer, not
+     kudurru);
+   - **denied**: the administrator's note, and the form to ask again;
+   - **ended** (a time-limited approval ran out, or nobody decided in time):
+     the form to ask again.
+
+The blocked name is always the Host header (or TLS server name) of the
+request, never a form field, so a request can only be filed for the name the
+browser was sent to the block page for.
+
+### Administrator flow
+
+The dashboard's **Requests** page (`/requests`, under Filtering, with a badge
+counting the pending requests; the Dashboard shows a notice while some wait)
+lists the requests newest first: the name, the requester (name and contact as
+typed, the client and its group), when, the reason, and why the name is
+blocked (list and rule, blocked service, safe search or allow-only policy,
+with links to the list and policy pages). The detail page
+(`/requests/<namespace>/<name>`) adds the client's recent queries for the name
+(from the query log of the node that took the request) and the decision
+history.
+
+- **Approve** adds an allow entry and attaches its list to the policies
+  concerned:
+  - *everyone*: the UI allow list `ui-allow` (the Domains page's list),
+    attached to the `default` policy and to the policies that applied to the
+    requester;
+  - *group*: `ui-allow-<group>` in the group's namespace, created on demand
+    (managed by the API) and attached to every policy whose `clientGroupRefs`
+    names the group; refused when no policy covers the group.
+
+  *exact* allows the name only, *subdomains* the name and every name below it
+  (`||name^`). A duration (1 h, 8 h, a day, a week, any Go duration up to a
+  year) makes the approval time-limited; empty is permanent. Policies managed
+  by a file or an integration are left alone and listed in the answer as
+  skipped. There is no per-client scope: policies apply to ClientGroups, and a
+  group of one client would take that client out of its own group's policy.
+- **Deny** records the decision and the note shown to the user; denying an
+  approval in force revokes it (its entry is removed).
+- **Delete** removes the request. A permanent approval's entry stays on its
+  list; a time-limited approval in force must be denied first, so its entry
+  does not outlive its link.
+
+Every decision writes an audit event (`unblockrequests.approve`, `.deny`,
+`.delete`) and flushes the name from the node's response cache. The list write
+makes every node recompile its lists, which also flushes the local edge
+(dnsdist) cache; clients and downstream resolvers keep the block answer until
+its TTL ends, which is what the approved page tells the user.
+
+The leader removes the entry of a time-limited approval when it ends, only if
+that approval added it (an entry that was on the list before stays) and no
+other approval in force needs the same entry (that approval then inherits it).
+The link from request to entry is in the request's `status.allow`, so removal
+survives restarts and leader changes.
+
+API: `GET /api/v1/unblockrequests?state=&limit=&continue=`,
+`GET /api/v1/unblockrequests/{namespace}/{name}`,
+`POST …/{namespace}/{name}/approve` (`{scope, match, group?, duration?, note?}`),
+`POST …/deny` (`{note?}`) and `DELETE …/{namespace}/{name}`.
+
+### Storage
+
+Requests are `UnblockRequest` objects (`kudurru.io/v1alpha1`, namespaced, in
+`default`): CRDs in Kubernetes (`kubectl get unblockrequests`, short name
+`ubr`), rows of state.db with the sqlite store, so every node and every
+administrator sees the same requests. The spec is what the block page
+recorded; the status holds the state (`Pending`, `Approved`, `Denied`,
+`Expired`), `decidedBy`, `decidedAt`, the note, the allow entry and the earlier
+decisions of a request asked again. One object exists per recorded client and
+name. The serving snapshot does not include them, so a request never rebuilds
+it. Install the new CRD (the `kudurru-crds` chart, or `kubectl apply -f
+crds.yaml`) before upgrading the server.
+
+### Privacy
+
+The client is recorded as `querylog.privacy` allows: the address under `full`
+and `hide_domains`; the /24 or /48 network address under `anonymize_client`
+with `anonymize: prefix` (the Requests page says the client is anonymised, and
+devices of the same network share one request per name); nothing under
+`anonymize: pseudonym`, `hide_domains_clients` and `nothing` ("hidden"; every
+anonymous device shares one request per name). The client's groups and
+policies are recorded in every mode. The name, contact and reason are what the
+user chose to type.
+
+### Limits
+
+| Limit | Default | Key |
+|---|---|---|
+| requests per client (IPv6 per /64) per hour | 5 | `unblockRequests.rateLimit` |
+| pending requests cluster-wide; beyond it the page says requests are paused | 1000 | `unblockRequests.maxPending` |
+| requests one node stores per minute | 30 | fixed |
+| form body | 8 KiB | fixed |
+| name, contact, reason | 100, 254, 500 characters | fixed |
+| pending requests expire after | 14 days | `unblockRequests.pendingExpiry` |
+| decided and expired requests are deleted after | 30 days | `unblockRequests.retention` |
+
+A repeated request of the same client for the same name updates the pending
+one. A hidden honeypot field catches form-filling bots: such posts look
+accepted and store nothing. Cross-site posts are refused: when the browser
+sends `Origin` or `Sec-Fetch-Site`, it must be the block page's own origin. The
+block page sets no cookies and asks for no credentials; the per-client and
+per-node rate limits and the cap bound what an unauthenticated page can write
+to the apiserver or state.db.
+
+### Kubernetes RBAC
+
+The server's ClusterRole may create, patch and delete `unblockrequests` and
+update their status. For people: the resource `unblockrequests` has the verbs
+`read`, `decide` and `delete`; `auditor` reads, `operator` (aggregated into
+`edit`) reads, decides and deletes, `admin` has all. `viewer` (aggregated into
+`view`) does not see them: requests carry client addresses and free text, like
+the query log. A Kubernetes identity needs `get`/`list` on
+`unblockrequests.kudurru.io` to read and the custom verb `decide` to approve or
+deny (`kubectl auth can-i decide unblockrequests.kudurru.io`).
 
 ## HTTPS: why browsers warn
 
@@ -216,6 +357,11 @@ guarantee: apps and HTTPS-only sites show their own errors.
 | `blockPage.showDetails` | `true` | list, rule, service, policy, dashboard link |
 | `blockPage.dashboardURL` | (derived) | base URL of the dashboard |
 | `blockPage.rateLimit` | `120` | per client per minute; 0 disables |
+| `unblockRequests.enabled` | `true` | the Request access form |
+| `unblockRequests.rateLimit` | `5` | requests per client per hour |
+| `unblockRequests.maxPending` | `1000` | cluster-wide cap |
+| `unblockRequests.pendingExpiry` | `336h` | undecided requests expire |
+| `unblockRequests.retention` | `720h` | decided requests are deleted |
 | `listeners.blockPage.http` | `:80` | host only |
 | `listeners.blockPage.https` | (off) | host only |
 | `listeners.blockPage.tls.certFile`, `keyFile` | (self-signed) | host only |

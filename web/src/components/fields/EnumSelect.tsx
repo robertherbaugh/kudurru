@@ -8,6 +8,8 @@ export interface EnumOption {
   value: string;
   label: string;
   help?: string;
+  /** Listed but not selectable (e.g. a scope the object cannot use). */
+  disabled?: boolean;
 }
 
 export interface EnumSelectProps {
@@ -48,7 +50,7 @@ export function EnumSelect({ label, isLabelHidden, value, options, onChange, emp
       >
         {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
         {all.map((o) => (
-          <option key={o.value} value={o.value}>
+          <option key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
           </option>
         ))}

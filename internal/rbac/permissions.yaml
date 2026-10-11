@@ -28,6 +28,7 @@ resources:
   cluster: [read, join, promote, drain]
   edge: [read, write]
   audit: [read, export]
+  unblockrequests: [read, decide, delete]
 
 roles:
   viewer:
@@ -56,6 +57,7 @@ roles:
     - querylog.read
     - querylog.export
     - audit.read
+    - unblockrequests.read
     - tokens.own
   operator:
     - zones.read
@@ -72,6 +74,7 @@ roles:
     - blocking.*
     - settings.read
     - querylog.read
+    - unblockrequests.*
     - tokens.own
   zone-admin:
     - zones.read

@@ -22,6 +22,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 import { matchPath } from './lib/router';
 
 export interface PageProps {
@@ -73,6 +74,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
 const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
+const Requests = lazy(() => import('./pages/RequestsPage'));
+const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
 
 export const ROUTES: RouteDef[] = [
   { path: '/', navKey: 'dashboard', label: 'Dashboard', section: 'Overview', icon: Gauge, page: Dashboard, scoped: true },
@@ -101,6 +104,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
   { path: '/messages', navKey: 'messages', label: 'Diagnosis', section: 'System', icon: Siren, page: Messages },
   { path: '/access', navKey: 'access', label: 'Access & audit', section: 'System', icon: BookLock, page: Access },
+  { path: '/requests', navKey: 'requests', label: 'Requests', section: 'Filtering', icon: Inbox, page: Requests },
+  { path: '/requests/:ns/:name', navKey: 'requests', label: 'Request', section: 'Filtering', icon: Inbox, page: RequestDetail, hidden: true },
 ];
 
 /** Icons reused by pages for the same concepts. */

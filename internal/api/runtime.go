@@ -11,7 +11,6 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
-	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 )
@@ -205,23 +204,17 @@ func (s *Server) flushCache(ctx context.Context, in *flushInput) (*flushOutput, 
 	if in.Body != nil && in.Body.Name != "" {
 		name = in.Body.Name
 	}
-	before := s.opts.ResponseCache.Len()
+	var flushed int
 	if name == "" {
+		before := s.opts.ResponseCache.Len()
 		s.opts.ResponseCache.Flush()
+		flushed = max(before-s.opts.ResponseCache.Len(), 0)
 	} else {
-		fq := dns.Fqdn(strings.ToLower(strings.TrimSpace(name)))
-		if _, ok := dns.IsDomainName(fq); !ok {
+		if _, ok := dns.IsDomainName(dns.Fqdn(strings.TrimSpace(name))); !ok {
 			return nil, errInvalid("name: %q is not a domain name", name)
 		}
-		for _, t := range flushTypes {
-			for _, do := range []bool{false, true} {
-				for _, cd := range []bool{false, true} {
-					s.opts.ResponseCache.Delete(cache.MakeKey(fq, t, dns.ClassINET, do, cd, netip.Prefix{}))
-				}
-			}
-		}
+		flushed = s.flushName(name)
 	}
-	flushed := max(before-s.opts.ResponseCache.Len(), 0)
 	s.recordAction(ctx, "cache.flush", audit.Resource{Kind: "cache", Name: name}, nil, nil, map[string]any{"flushed": flushed})
 	return &flushOutput{Body: &FlushResult{Flushed: flushed, Name: name, Node: s.opts.NodeName}}, nil
 }

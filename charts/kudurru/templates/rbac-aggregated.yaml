@@ -32,7 +32,7 @@ metadata:
     {{- include "kudurru.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["kudurru.io"]
-    resources: ["audits", "blocking", "blocklists", "caches", "clientgroups", "clients", "dnsrecordsets", "dnszones", "policies", "settings", "stats"]
+    resources: ["audits", "blocking", "blocklists", "caches", "clientgroups", "clients", "dnsrecordsets", "dnszones", "policies", "settings", "stats", "unblockrequests"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kudurru.io"]
     resources: ["querylogs"]
@@ -62,6 +62,9 @@ rules:
   - apiGroups: ["kudurru.io"]
     resources: ["blocklists"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "refresh"]
+  - apiGroups: ["kudurru.io"]
+    resources: ["unblockrequests"]
+    verbs: ["get", "list", "watch", "delete", "decide"]
   - apiGroups: ["kudurru.io"]
     resources: ["caches"]
     verbs: ["get", "list", "watch", "flush"]

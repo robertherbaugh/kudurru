@@ -76,6 +76,7 @@ export const qk = {
   version: ['version'] as const,
   cluster: ['cluster'] as const,
   audit: (...rest: unknown[]) => ['audit', ...rest] as const,
+  unblock: (...rest: unknown[]) => ['unblockrequests', ...rest] as const,
 };
 
 /** The signed-in session; `data` is undefined while signed out. */
