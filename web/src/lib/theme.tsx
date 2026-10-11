@@ -1,17 +1,16 @@
-// Appearance: Astryx themes delivered as prebuilt CSS (D69) with
-// auto/light/dark modes, a high-contrast overlay and one fun theme.
-// The default, Kudurru, is the Neutral theme with the brand palette of
-// docs/brand laid over it (styles.css, keyed on <html data-k-theme>):
-// Paper and Ink surfaces, the Clay accent. Neutral ships in the initial
-// bundle; Stone and Y2K are separate chunks loaded on first use. No theme
-// injects <style> at runtime (built themes only), so the strict CSP holds.
+// Appearance: the Astryx themes of src/themes with auto/light/dark modes
+// and a high-contrast setting. The default, Kudurru, is Astryx Neutral
+// with the docs/brand palette (src/themes/kudurru); Neutral, Stone and the
+// fun Y2K are the Astryx themes with kudurru's query status colours. All
+// four are built themes wired through the generated src/astryx-themes.ts
+// (`bun run astryx -- theme add <slug> --import`), so no theme injects
+// <style> at runtime and the strict CSP holds.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { Theme } from '@astryxdesign/core/theme';
-import type { DefinedTheme } from '@astryxdesign/core/theme';
-import { neutralTheme } from '@astryxdesign/theme-neutral/built';
+import { defaultThemeSlug, themes, type ThemeSlug } from '../astryx-themes';
 
 export type Mode = 'system' | 'light' | 'dark';
-export type ThemeName = 'kudurru' | 'neutral' | 'stone' | 'y2k';
+export type ThemeName = ThemeSlug;
 export type Contrast = 'normal' | 'more';
 
 export const THEMES: { id: ThemeName; label: string }[] = [
@@ -38,7 +37,7 @@ const STORAGE_KEY = 'kudurru.appearance';
 const STORAGE_VERSION = 2;
 
 function load(): { mode: Mode; theme: ThemeName; contrast: Contrast } {
-  const fallback = { mode: 'system' as Mode, theme: 'kudurru' as ThemeName, contrast: 'normal' as Contrast };
+  const fallback = { mode: 'system' as Mode, theme: defaultThemeSlug, contrast: 'normal' as Contrast };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
@@ -46,26 +45,11 @@ function load(): { mode: Mode; theme: ThemeName; contrast: Contrast } {
     const picked = v.theme === 'stone' || v.theme === 'y2k' || (v.theme === 'neutral' && v.v === STORAGE_VERSION);
     return {
       mode: v.mode === 'light' || v.mode === 'dark' ? v.mode : 'system',
-      theme: picked ? (v.theme as ThemeName) : 'kudurru',
+      theme: picked ? (v.theme as ThemeName) : defaultThemeSlug,
       contrast: v.contrast === 'more' ? 'more' : 'normal',
     };
   } catch {
     return fallback;
-  }
-}
-
-async function loadTheme(name: ThemeName): Promise<DefinedTheme> {
-  switch (name) {
-    case 'stone': {
-      const [mod] = await Promise.all([import('@astryxdesign/theme-stone/built'), import('@astryxdesign/theme-stone/theme.css')]);
-      return mod.stoneTheme;
-    }
-    case 'y2k': {
-      const [mod] = await Promise.all([import('@astryxdesign/theme-y2k/built'), import('@astryxdesign/theme-y2k/theme.css')]);
-      return mod.y2kTheme;
-    }
-    default:
-      return neutralTheme;
   }
 }
 
@@ -74,21 +58,6 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<Mode>(initial.mode);
   const [theme, setThemeName] = useState<ThemeName>(initial.theme);
   const [contrast, setContrast] = useState<Contrast>(initial.contrast);
-  const [defined, setDefined] = useState<DefinedTheme>(neutralTheme);
-
-  useEffect(() => {
-    let live = true;
-    loadTheme(theme)
-      .then((t) => {
-        if (live) setDefined(t);
-      })
-      .catch(() => {
-        if (live) setDefined(neutralTheme);
-      });
-    return () => {
-      live = false;
-    };
-  }, [theme]);
 
   useEffect(() => {
     try {
@@ -97,12 +66,13 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       // private mode: appearance just does not persist
     }
   }, [mode, theme, contrast]);
-  // Before the first paint, so the brand palette never flashes in late.
+  // High contrast switches the query colours to the themes' -strong
+  // variants and strengthens borders and secondary text (styles.css,
+  // keyed on <html data-contrast>). Before the first paint, so it never
+  // flashes in late.
   useLayoutEffect(() => {
-    const root = document.documentElement;
-    root.dataset.contrast = contrast;
-    root.dataset.kTheme = theme;
-  }, [theme, contrast]);
+    document.documentElement.dataset.contrast = contrast;
+  }, [contrast]);
 
   const setTheme = useCallback((t: ThemeName) => setThemeName(t), []);
   const value = useMemo(
@@ -111,7 +81,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   );
   return (
     <AppearanceContext.Provider value={value}>
-      <Theme theme={defined} mode={mode}>
+      <Theme theme={themes[theme]} mode={mode}>
         {children}
       </Theme>
     </AppearanceContext.Provider>

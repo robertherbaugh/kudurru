@@ -31,8 +31,10 @@ Branch `worktree-wf_287eb68b-e67-3`, on top of 3e52e5a. Everything lives in
 
 Bun 1.4.3 + Vite 8 (rolldown) + React 19.3 + TypeScript 6 strict
 (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`) + Astryx 0.6.8
-(`@astryxdesign/core`, themes neutral, stone and the fun y2k; prebuilt CSS,
-built themes only, pinned exactly) + TanStack Query 5 / Table 8 / Virtual 3 +
+(`@astryxdesign/core`; the Kudurru brand theme and neutral, stone and the
+fun y2k as local themes in `web/src/themes`, built with `astryx theme build`
+and wired through the generated `src/astryx-themes.ts`; prebuilt CSS, built
+themes only, pinned exactly) + TanStack Query 5 / Table 8 / Virtual 3 +
 uPlot 1.6.32 + ECharts 6.1 (tree-shaken, dynamically imported) + lucide icons.
 No CDN, no inline script, relative asset URLs.
 
@@ -62,10 +64,12 @@ Cross-cutting:
   stats/log request sends `scope=cluster` or `scope=node&node=<name>`; the
   `scope` block of responses is shown under each page title.
 - **Colour code** (principle 4): `q-permitted / q-cached / q-blocked /
-  q-error` classes and `--q-*` custom properties mapped onto Astryx tokens;
-  charts resolve the CSS colours at draw time and redraw on theme, mode,
-  contrast or OS scheme changes. Auto/light/dark modes, a high-contrast
-  overlay, neutral (initial chunk), stone and y2k themes (separate chunks).
+  q-error` classes reading the `--q-*` theme tokens (the same values in
+  every theme, D131); charts resolve the CSS colours at draw time and redraw
+  on theme, mode, contrast or OS scheme changes. Auto/light/dark modes, a
+  high-contrast setting (the themes' `--q-*-strong` tokens, borders in the
+  text colour), the Kudurru (default), neutral, stone and y2k themes, all in
+  the initial load.
 - **Path prefix**: `<base href>` rewritten by the handler; the router,
   API base, downloads and OIDC links derive from it; API URLs are never
   treated as client routes.

@@ -107,6 +107,15 @@ a real server instead of its mocks.
   and the `unblockrequests` RBAC resource; `unblockRequests.*` settings.
   **Kubernetes: install the new CRD (`kudurru-crds` chart) before upgrading
   the server.**
+- Themes built the Astryx way instead of CSS overrides on `:root`: the
+  default Kudurru theme is a `defineTheme` theme over Astryx Neutral whose
+  colours are stops of a palette generated from docs/brand
+  (`astryx theme palette generate`), Neutral, Stone and Y2K extend the Astryx
+  packages, and all four are built themes wired through the generated
+  `src/astryx-themes.ts`; the query status colours are theme tokens. Same
+  look; the themes name only system fonts (the packages' Google Fonts never
+  loaded under the CSP) and the Astryx reset stylesheet is loaded, which
+  evens out some spacing.
 
 ### DNS serving
 
