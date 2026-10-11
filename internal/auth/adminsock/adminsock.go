@@ -105,6 +105,10 @@ func (s *Server) Handler() http.Handler {
 	return auth.Middleware(steps)(inner)
 }
 
+// ErrBusy is returned by Listen when another process serves the socket
+// (a second kudurru on the same host with the default auth.adminSocket.path).
+var ErrBusy = errors.New("adminsock: socket is in use by another process")
+
 // Listen creates the socket at path: the directory is created 0750, a
 // stale socket left by a crashed process is removed (a live one is an
 // error), and the socket is chmod 0660 and, when gid >= 0, chgrp gid.
@@ -118,7 +122,7 @@ func Listen(path string, gid int) (net.Listener, error) {
 		}
 		if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 			_ = c.Close()
-			return nil, fmt.Errorf("adminsock: %s is in use by another process", path)
+			return nil, fmt.Errorf("%w: %s", ErrBusy, path)
 		}
 		if err := os.Remove(path); err != nil {
 			return nil, fmt.Errorf("adminsock: remove stale socket: %w", err)

@@ -24,6 +24,7 @@ import (
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
@@ -667,7 +668,17 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 	if p := cfg.Auth.AdminSocket.Path; p != "" {
-		if err := add("adminsock", false, func(ctx context.Context) error { return ids.AdminSocket().ListenAndServe(ctx, p) }); err != nil {
+		if err := add("adminsock", false, func(ctx context.Context) error {
+			err := ids.AdminSocket().ListenAndServe(ctx, p)
+			if errors.Is(err, adminsock.ErrBusy) {
+				// Another kudurru on this host owns the default socket: keep
+				// serving without `kudurru admin` instead of failing startup.
+				logger.Warn("admin socket is in use by another process; `kudurru admin` will not reach this node (set auth.adminSocket.path)", "path", p)
+				<-ctx.Done()
+				return nil
+			}
+			return err
+		}); err != nil {
 			return err
 		}
 	}
