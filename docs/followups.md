@@ -11,6 +11,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
+| zonecache `TestDebounce` "two spaced changes produced 1 rebuilds, want 2" failed once in a full `go test ./...` at a load average of ~40 (eight agents) and passed 10/10 alone; the 300 ms spacing assumes the first rebuild publishes promptly: derive the spacing from the debounce window or use a fake clock | v0.1 fix round | v0.1.x |
 | Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
 | sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in docs/m5/burndown-server.md) | store-sqlite report | v0.2 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
