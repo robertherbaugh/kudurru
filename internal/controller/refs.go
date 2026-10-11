@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -34,9 +37,28 @@ func (c *Controller) reconcileBlockList(ctx context.Context, key store.Key) (boo
 		v.Degraded, v.DegradedRsn = true, v1alpha1.ReasonFetchFailed
 		v.DegradedMsg = joinLimited(failed, 5)
 	}
-	v.observedGen, v.transitionNow = cur.Generation, c.opts.Now()
-	v.apply(&next.Status.Conditions)
+	c.applyEnabled(cur, &v, &next.Status.Conditions)
 	return c.writeIfChanged(ctx, &cur.Status, &next.Status, next)
+}
+
+// applyEnabled applies v, or the disabled verdict when obj carries
+// kudurru.io/enabled: "false": Ready False and Disabled True, both with
+// reason Disabled, and Degraded False (switching an object off is not a
+// fault). An enabled object carries no Disabled condition.
+func (c *Controller) applyEnabled(obj metav1.Object, v *verdict, conds *[]metav1.Condition) {
+	v.observedGen, v.transitionNow = obj.GetGeneration(), c.opts.Now()
+	if !v1alpha1.IsDisabled(obj) {
+		v.apply(conds)
+		meta.RemoveStatusCondition(conds, v1alpha1.ConditionDisabled)
+		return
+	}
+	msg := "disabled by the annotation " + v1alpha1.EnabledAnnotation + `: "false"; not applied`
+	off := verdict{ReadyReason: v1alpha1.ReasonDisabled, ReadyMessage: msg, observedGen: v.observedGen, transitionNow: v.transitionNow}
+	off.apply(conds)
+	meta.SetStatusCondition(conds, metav1.Condition{
+		Type: v1alpha1.ConditionDisabled, Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonDisabled, Message: msg,
+		ObservedGeneration: v.observedGen, LastTransitionTime: metav1.NewTime(v.transitionNow.Truncate(time.Second)),
+	})
 }
 
 // reconcileClientGroup reports the member count. Integration-sourced
@@ -51,8 +73,7 @@ func (c *Controller) reconcileClientGroup(ctx context.Context, key store.Key) (b
 	next.Status.ObservedGeneration = cur.Generation
 	next.Status.Members = len(cur.Spec.Clients)
 	v := serving(fmt.Sprintf("%d client matchers", len(cur.Spec.Clients)))
-	v.observedGen, v.transitionNow = cur.Generation, c.opts.Now()
-	v.apply(&next.Status.Conditions)
+	c.applyEnabled(cur, &v, &next.Status.Conditions)
 	return c.writeIfChanged(ctx, &cur.Status, &next.Status, next)
 }
 
@@ -65,11 +86,14 @@ func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, 
 	if !ok || cur == nil {
 		return false, nil
 	}
-	var missing []string
+	var missing, disabled []string
 	check := func(kind store.Kind, field string, names []string) {
 		for _, n := range names {
-			if c.cache.get(store.Key{Kind: kind, Namespace: cur.Namespace, Name: n}) == nil {
+			switch o := c.cache.get(store.Key{Kind: kind, Namespace: cur.Namespace, Name: n}); {
+			case o == nil:
 				missing = append(missing, fmt.Sprintf("%s %q (%s)", kind, n, field))
+			case v1alpha1.IsDisabled(o):
+				disabled = append(disabled, fmt.Sprintf("%s %q", kind, n))
 			}
 		}
 	}
@@ -85,8 +109,10 @@ func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, 
 		v.Degraded, v.DegradedRsn = true, ReasonMissingReference
 		v.DegradedMsg = "missing " + joinLimited(missing, 10)
 	}
-	v.observedGen, v.transitionNow = cur.Generation, c.opts.Now()
-	v.apply(&next.Status.Conditions)
+	if len(disabled) > 0 {
+		v.ReadyMessage += "; skipped (disabled): " + joinLimited(disabled, 10)
+	}
+	c.applyEnabled(cur, &v, &next.Status.Conditions)
 	return c.writeIfChanged(ctx, &cur.Status, &next.Status, next)
 }
 

@@ -62,9 +62,30 @@ func (o *ZoneCacheObjects) notify() {
 	}
 }
 
-// BlockLists implements Objects.
+// BlockLists implements Objects. BlockLists annotated kudurru.io/enabled:
+// "false" are left out: the leader stops fetching them and every node
+// unloads them as if they were deleted (their cached bodies are collected
+// once the store is live; enabling the list fetches it again).
 func (o *ZoneCacheObjects) BlockLists() []*v1alpha1.BlockList {
-	return o.zc.Snapshot().Objects.BlockLists()
+	return EnabledBlockLists(o.zc.Snapshot().Objects.BlockLists())
+}
+
+// EnabledBlockLists returns bls without the disabled ones
+// (v1alpha1.IsDisabled); it returns bls itself when none is disabled.
+func EnabledBlockLists(bls []*v1alpha1.BlockList) []*v1alpha1.BlockList {
+	for i, bl := range bls {
+		if !v1alpha1.IsDisabled(bl) {
+			continue
+		}
+		out := append(make([]*v1alpha1.BlockList, 0, len(bls)-1), bls[:i]...)
+		for _, rest := range bls[i+1:] {
+			if !v1alpha1.IsDisabled(rest) {
+				out = append(out, rest)
+			}
+		}
+		return out
+	}
+	return bls
 }
 
 // Subscribe implements Objects.
