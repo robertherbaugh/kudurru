@@ -91,11 +91,11 @@ export const kudurruTheme = defineTheme({
     '--color-text-primary': [inkColor, paper],
     '--color-text-secondary': [ink.light[37.5], sand.light[70]],
     '--color-text-disabled': [ink.light[60], ink.dark[47.5]],
-    '--color-text-accent': [clay.light[40], clay.dark[65]],
+    '--color-text-accent': [clay.light[40], clay.dark[67.5]],
     '--color-icon-primary': [inkColor, paper],
     '--color-icon-secondary': [ink.light[42.5], sand.light[65]],
     '--color-icon-disabled': [ink.light[60], ink.dark[47.5]],
-    '--color-icon-accent': [clay.light[40], clay.dark[65]],
+    '--color-icon-accent': [clay.light[40], clay.dark[67.5]],
 
     // Borders: Stone dividers; input borders keep 3:1 against their surface.
     '--color-border': [sand.light[85], withAlpha(paper, '1F')],
