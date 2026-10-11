@@ -10,6 +10,8 @@
 # FUZZTIME     per-target budget (go test -fuzztime), default 60s
 # FUZZ_JOBS    targets fuzzed at the same time, default 1
 # FUZZ_PARALLEL workers per target (go test -parallel), default 2
+# FUZZ_MINIMIZE -fuzzminimizetime, default 5s: minimizing every new
+#              interesting input for go's default 60 s stalls a one-worker run
 #
 # Each target runs from its seed corpus (f.Add plus testdata/fuzz/<target>/)
 # and writes new crashers to testdata/fuzz/<target>/ in its package: commit
@@ -47,12 +49,13 @@ fi
 fuzztime="${FUZZTIME:-60s}"
 jobs="${FUZZ_JOBS:-1}"
 parallel="${FUZZ_PARALLEL:-2}"
+minimize="${FUZZ_MINIMIZE:-5s}"
 mkdir -p bin/fuzz
 
 run_one() {
 	local pkg="$1" target="$2" log="bin/fuzz/$2-$(basename "$1").log"
 	local start=$SECONDS
-	if go test -run '^$' -fuzz "^${target}\$" -fuzztime "$fuzztime" -parallel "$parallel" "$pkg" >"$log" 2>&1; then
+	if go test -run '^$' -fuzz "^${target}\$" -fuzztime "$fuzztime" -fuzzminimizetime "$minimize" -parallel "$parallel" "$pkg" >"$log" 2>&1; then
 		echo "ok    $pkg $target ($((SECONDS - start))s, $(grep -Eo 'execs: [0-9]+' "$log" | tail -1))"
 	else
 		echo "FAIL  $pkg $target ($((SECONDS - start))s): see $log"
