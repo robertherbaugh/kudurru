@@ -97,7 +97,7 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 				t.edgeFlush.BlockResponsesChanged()
 			}
 		}
-		if config.ChangedUnder(changed, "blockPage", "listeners.api") && t.blockPage != nil {
+		if config.ChangedUnder(changed, "blockPage", "listeners.api", "unblockRequests", "blocking.blockTTL") && t.blockPage != nil {
 			t.blockPage.Reconfigure(blockpage.SettingsFrom(next))
 		}
 		if config.ChangedUnder(changed, "ratelimit") && t.limiter != nil {

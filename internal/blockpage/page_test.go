@@ -116,7 +116,7 @@ func TestRenderEscapes(t *testing.T) {
 // the strict CSP admits it, and the page has no inline script, handler or
 // external URL.
 func TestCSPHashMatchesStyle(t *testing.T) {
-	html := render(t, Page{Domain: "ads.example"})
+	html := render(t, Page{Domain: "ads.example", Request: &RequestView{Form: true, Flash: "sent", Status: "pending", Note: "n"}})
 	m := regexp.MustCompile(`(?s)<style>(.*?)</style>`).FindStringSubmatch(html)
 	if m == nil {
 		t.Fatal("no style element")
@@ -125,7 +125,7 @@ func TestCSPHashMatchesStyle(t *testing.T) {
 	if want := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; !strings.Contains(CSP, want) {
 		t.Errorf("CSP %q does not allow the style (%s)", CSP, want)
 	}
-	for _, directive := range []string{"default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'"} {
+	for _, directive := range []string{"default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'"} {
 		if !strings.Contains(CSP, directive) {
 			t.Errorf("CSP lacks %s", directive)
 		}
@@ -138,7 +138,7 @@ func TestCSPHashMatchesStyle(t *testing.T) {
 			t.Errorf("page contains %q", bad)
 		}
 	}
-	if !strings.Contains(PreviewCSP, "frame-ancestors 'self'") {
+	if !strings.Contains(PreviewCSP, "frame-ancestors 'self'") || !strings.Contains(PreviewCSP, "form-action 'none'") {
 		t.Errorf("preview CSP: %s", PreviewCSP)
 	}
 }

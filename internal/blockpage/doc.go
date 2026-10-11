@@ -8,7 +8,7 @@
 // or the TLS server name), why it was blocked (looked up in the recent query
 // log by client address and name, else evaluated against the client's
 // current policy), the client address, the node, the time and the
-// administrator contact. Every value is plain text escaped by html/template;
+// administrator contact. Every value is plain text, HTML-escaped by Render;
 // the page loads nothing but its favicon (the logos are inlined data: URIs,
 // the style sheet is allowed by its hash), runs no script and cannot be
 // framed.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/tlsreload"
@@ -31,6 +32,12 @@ type Settings struct {
 	DashboardURL string
 	// RateLimit is requests per minute per client; 0 disables it.
 	RateLimit int
+	// Requests shows the unblock request form (unblockRequests.enabled)
+	// and RequestRate is the requests per hour per client it accepts.
+	Requests    bool
+	RequestRate int
+	// BlockTTL is blocking.blockTTL, for the retry hint of an approval.
+	BlockTTL time.Duration
 }
 
 // SettingsFrom maps the blockPage.* keys onto Settings, deriving the
@@ -38,7 +45,8 @@ type Settings struct {
 // blockPage.dashboardURL is empty.
 func SettingsFrom(c *config.Config) Settings {
 	b := c.BlockPage
-	s := Settings{Title: b.Title, Message: b.Message, Contact: strings.TrimSpace(b.Contact), ShowDetails: b.ShowDetails, RateLimit: b.RateLimit}
+	s := Settings{Title: b.Title, Message: b.Message, Contact: strings.TrimSpace(b.Contact), ShowDetails: b.ShowDetails, RateLimit: b.RateLimit,
+		Requests: c.UnblockRequests.Enabled, RequestRate: c.UnblockRequests.RateLimit, BlockTTL: c.Blocking.BlockTTL.Std()}
 	s.ContactURL, _ = config.BlockPageContactURL(b.Contact)
 	s.DashboardURL = strings.TrimSuffix(b.DashboardURL, "/")
 	if s.DashboardURL == "" {
@@ -88,6 +96,11 @@ type Options struct {
 	Finder Finder
 	// Policy names the policy that applies to a client now; nil omits it.
 	Policy func(client netip.Addr, now time.Time) string
+	// Membership returns the client's groups and policies now, recorded
+	// with an unblock request; nil records none.
+	Membership func(client netip.Addr, now time.Time) (groups, policies []string)
+	// Requests stores unblock requests; nil hides the form.
+	Requests RequestBook
 	// Settings are the initial page settings (Reconfigure replaces them).
 	Settings Settings
 	// Registerer receives the metrics; nil leaves them unregistered.
@@ -102,14 +115,17 @@ type Options struct {
 // other methods 405) except /favicon.ico, /robots.txt (disallow all) and
 // /health; nothing is ever proxied or fetched.
 type Server struct {
-	opts     Options
-	settings atomic.Pointer[Settings]
-	limiter  *limiter
-	certs    *tlsreload.Store
-	cert     *tlsreload.Reloader
+	opts       Options
+	settings   atomic.Pointer[Settings]
+	limiter    *limiter
+	reqLimiter *limiter      // unblock requests per client per hour
+	writes     *rate.Limiter // unblock requests this node stores per minute
+	certs      *tlsreload.Store
+	cert       *tlsreload.Reloader
 
-	requests    *prometheus.CounterVec
-	rateLimited *prometheus.CounterVec
+	requests        *prometheus.CounterVec
+	rateLimited     *prometheus.CounterVec
+	unblockRequests *prometheus.CounterVec
 
 	httpLn, httpsLn net.Listener
 }
@@ -125,8 +141,10 @@ func New(o Options) (*Server, error) {
 		o.Now = time.Now
 	}
 	s := &Server{
-		opts:    o,
-		limiter: newLimiter(o.Settings.RateLimit, o.Now),
+		opts:       o,
+		limiter:    newLimiter(o.Settings.RateLimit, time.Minute, o.Now),
+		reqLimiter: newLimiter(o.Settings.RequestRate, time.Hour, o.Now),
+		writes:     rate.NewLimiter(rate.Every(time.Minute/nodeWrites), nodeWrites),
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_blockpage_requests_total",
 			Help: "Requests to the block page listeners, by scheme (http, https).",
@@ -135,11 +153,15 @@ func New(o Options) (*Server, error) {
 			Name: "kudurru_blockpage_rate_limited_total",
 			Help: "Block page requests answered 429 because the client exceeded blockPage.rateLimit, by scheme.",
 		}, []string{"scheme"}),
+		unblockRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_blockpage_unblock_requests_total",
+			Help: "Unblock request form posts, by result (sent, limited, paused, invalid, error, cross_origin).",
+		}, []string{"result"}),
 	}
 	settings := o.Settings
 	s.settings.Store(&settings)
 	if o.Registerer != nil {
-		for _, c := range []prometheus.Collector{s.requests, s.rateLimited} {
+		for _, c := range []prometheus.Collector{s.requests, s.rateLimited, s.unblockRequests} {
 			if err := o.Registerer.Register(c); err != nil {
 				return nil, err
 			}
@@ -153,6 +175,7 @@ func New(o Options) (*Server, error) {
 func (s *Server) Reconfigure(st Settings) {
 	s.settings.Store(&st)
 	s.limiter.setRate(st.RateLimit)
+	s.reqLimiter.setRate(st.RequestRate)
 }
 
 // Listen binds the configured listeners (fail fast on port conflicts) and
@@ -268,12 +291,18 @@ func (s *Server) Handler(scheme string) http.Handler {
 		s.requests.WithLabelValues(scheme).Inc()
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Referrer-Policy", "no-referrer")
+		// same-origin, not no-referrer: a form POST then carries its
+		// Origin (sameOrigin), and nothing leaks to other sites.
+		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Kudurru-Block", "1")
 		// Never Strict-Transport-Security: the page answers for the blocked
 		// names, and HSTS would pin them to HTTPS in the browser.
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		post := r.Method == http.MethodPost && r.URL.Path == RequestPath
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !post {
 			h.Set("Allow", "GET, HEAD")
+			if r.URL.Path == RequestPath {
+				h.Set("Allow", "GET, HEAD, POST")
+			}
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -290,6 +319,11 @@ func (s *Server) Handler(scheme string) http.Handler {
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}
+		if post {
+			h.Set("Cache-Control", "no-store")
+			s.handleRequest(w, r)
+			return
+		}
 		switch r.URL.Path {
 		case "/robots.txt":
 			h.Set("Content-Type", "text/plain; charset=utf-8")
@@ -303,7 +337,7 @@ func (s *Server) Handler(scheme string) http.Handler {
 			return
 		}
 		domain := requestDomain(r)
-		body, reason := s.render(r.Context(), domain, client, false)
+		body, reason := s.render(r.Context(), domain, client, r.URL.Query().Get(flashParam), false)
 		h.Set("Content-Type", "text/html; charset=utf-8")
 		h.Set("Content-Security-Policy", CSP)
 		h.Set("X-Frame-Options", "DENY")
@@ -312,7 +346,7 @@ func (s *Server) Handler(scheme string) http.Handler {
 		h.Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodGet {
-			_, _ = w.Write(body) //nolint:gosec // html/template output: every value is escaped (TestHandlerHostileHost)
+			_, _ = w.Write(body) //nolint:gosec // Render escapes every value (TestHandlerHostileHost)
 		}
 		kind := ""
 		if reason != nil {
@@ -331,7 +365,7 @@ func (s *Server) Preview(ctx context.Context, domain string, client netip.Addr) 
 	if d == "" {
 		d = "blocked.example"
 	}
-	body, _ := s.render(ctx, d, client, true)
+	body, _ := s.render(ctx, d, client, "", true)
 	return body
 }
 
@@ -341,7 +375,7 @@ func previewReason(domain string) *Reason {
 }
 
 // render builds the page for domain and client.
-func (s *Server) render(ctx context.Context, domain string, client netip.Addr, preview bool) ([]byte, *Reason) {
+func (s *Server) render(ctx context.Context, domain string, client netip.Addr, flash string, preview bool) ([]byte, *Reason) {
 	st := s.settings.Load()
 	now := s.opts.Now()
 	p := Page{
@@ -351,6 +385,7 @@ func (s *Server) render(ctx context.Context, domain string, client netip.Addr, p
 	if client.IsValid() {
 		p.Client = client.String()
 	}
+	p.Request = s.requestView(st, client, domain, flash, now, preview)
 	if st.ShowDetails {
 		switch {
 		case domain == "":

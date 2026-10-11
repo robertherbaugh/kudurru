@@ -52,6 +52,20 @@ func (f PolicyFinder) Policy(client netip.Addr, now time.Time) string {
 	return ""
 }
 
+// Membership returns the client's groups and the policies that apply to
+// it now (highest priority first), as an unblock request records them.
+func (f PolicyFinder) Membership(client netip.Addr, now time.Time) (groups, policies []string) {
+	if f.Source == nil || !client.IsValid() {
+		return nil, nil
+	}
+	ix := f.Source.Index()
+	if ix == nil {
+		return nil, nil
+	}
+	m := ix.Identify(pipeline.Client{Addr: netip.AddrPortFrom(client.Unmap(), 0)})
+	return m.GroupIDs, ix.Select(m, now).Policies
+}
+
 func (f PolicyFinder) decision(client netip.Addr, now time.Time) *policy.Decision {
 	if f.Source == nil || !client.IsValid() {
 		return nil
