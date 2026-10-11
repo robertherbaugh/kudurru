@@ -16,22 +16,22 @@ test('the policy wizard creates a policy that blocks a service', async ({ page }
 
   await page.goto('/policies');
   await settle(page);
-  await main(page).getByRole('link', { name: 'New policy' }).click();
-  await expect(page).toHaveURL((u) => u.pathname === '/policies/new');
-  await settle(page);
+  await main(page).getByRole('button', { name: 'New policy' }).click();
+  await expect(page).toHaveURL((u) => u.pathname === '/policies' && u.searchParams.get('new') === '1');
+  await expect(page.getByRole('dialog', { name: 'New policy' })).toBeVisible();
 
   // Who
   await main(page).getByRole('textbox', { name: /^Name/ }).fill(name);
   await main(page).getByRole('checkbox', { name: /^default/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
   // What: a blocked service from the catalogue.
-  await expect(main(page).getByRole('heading', { level: 2, name: 'What' })).toBeVisible();
+  await expect(main(page).getByRole('heading', { level: 3, name: 'What' })).toBeVisible();
   const tiktok = main(page).getByRole('button', { name: /TikTok/ });
   await tiktok.click();
   await expect(tiktok).toHaveAttribute('aria-pressed', 'true');
   for (const step of ['Safe search', 'How', 'When', 'Review']) {
     await main(page).getByRole('button', { name: 'Next' }).click();
-    await expect(main(page).getByRole('heading', { level: 2, name: step })).toBeVisible();
+    await expect(main(page).getByRole('heading', { level: 3, name: step })).toBeVisible();
   }
   const review = main(page).getByTestId('policy-review');
   await expect(review).toContainText(name);
@@ -106,11 +106,13 @@ test('the group page shows matchers, recent members and the policies that apply'
 
 test('the group wizard creates a group with typed matchers', async ({ page }) => {
   const name = `e2e-grp-${unique()}`;
+  // The old wizard route still works: it opens the wizard over the Groups page.
   await page.goto('/groups/new');
-  await settle(page);
+  await expect(page).toHaveURL((u) => u.pathname === '/groups' && u.searchParams.get('new') === '1');
+  await expect(page.getByRole('dialog', { name: 'New group' })).toBeVisible();
   await main(page).getByRole('textbox', { name: /^Name/ }).fill(name);
   await main(page).getByRole('button', { name: 'Next' }).click();
-  await expect(main(page).getByRole('heading', { level: 2, name: 'Members' })).toBeVisible();
+  await expect(main(page).getByRole('heading', { level: 3, name: 'Members' })).toBeVisible();
   await main(page).getByRole('button', { name: 'Add matcher' }).click();
   await main(page).getByRole('combobox', { name: 'Matcher 1 kind' }).selectOption('cidr');
   const value = main(page).getByRole('textbox', { name: 'Matcher 1 CIDR range' });
@@ -120,7 +122,7 @@ test('the group wizard creates a group with typed matchers', async ({ page }) =>
   await value.fill('10.99.0.0/16');
   for (const step of ['Policies', 'Review']) {
     await main(page).getByRole('button', { name: 'Next' }).click();
-    await expect(main(page).getByRole('heading', { level: 2, name: step })).toBeVisible();
+    await expect(main(page).getByRole('heading', { level: 3, name: step })).toBeVisible();
   }
   await main(page).getByRole('button', { name: 'Create group' }).click();
   await expect(page).toHaveURL((u) => u.pathname === `/groups/default/${name}`);
@@ -156,6 +158,7 @@ test.describe('dark scheme', () => {
     for (const path of ['/policies/default/e2e-blocking', '/policies/new']) {
       await page.goto(path);
       await settle(page);
+      if (path.endsWith('/new')) await expect(page.getByRole('dialog', { name: 'New policy' })).toBeVisible();
       await expectRendered(page);
     }
   });

@@ -1,6 +1,6 @@
-// The creation wizards of spa-settings against the real API: a forward
-// zone through /zones/new and an upstream group from a provider preset
-// through /upstreams/new. Each test removes what it created.
+// The creation wizards of spa-settings against the real API, in their
+// dialogs over the list page (?new=1): a forward zone and an upstream
+// group from a provider preset. Each test removes what it created.
 import { expect, expectRendered, main, settle, test } from './fixtures';
 
 test('the zone wizard creates a forward zone', async ({ page }) => {
@@ -8,8 +8,8 @@ test('the zone wizard creates a forward zone', async ({ page }) => {
   await page.goto('/zones');
   await settle(page);
   await main(page).getByRole('button', { name: 'New zone' }).click();
-  await expect(page).toHaveURL(/\/zones\/new$/);
-  await settle(page);
+  await expect(page).toHaveURL(/\/zones\?new=1$/);
+  await expect(page.getByRole('dialog', { name: 'New zone' })).toBeVisible();
   await main(page).getByRole('radio', { name: /^Forward/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('textbox', { name: /^Zone name/ }).fill(apex);
@@ -38,8 +38,8 @@ test('the upstream wizard creates a group from a provider preset', async ({ page
   await page.goto('/upstreams');
   await settle(page);
   await main(page).getByRole('button', { name: 'New group' }).click();
-  await expect(page).toHaveURL(/\/upstreams\/new$/);
-  await settle(page);
+  await expect(page).toHaveURL(/\/upstreams\?new=1$/);
+  await expect(page.getByRole('dialog', { name: 'New upstream group' })).toBeVisible();
   await main(page).getByRole('radio', { name: /^Quad9/ }).check();
   await main(page).getByRole('button', { name: 'Next' }).click();
   await main(page).getByRole('combobox', { name: 'Transport' }).selectOption('dot');

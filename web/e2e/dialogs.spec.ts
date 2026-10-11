@@ -1,7 +1,8 @@
 // Dialogs and wizards on a short viewport: a visible close button, a body
 // that scrolls so the footer's buttons can be reached, and closing or
-// cancelling through them. "New list" is a wizard page (/lists/new) since
-// the UX round 2; "Add domains" stays a dialog.
+// cancelling through them. "New list" is a wizard in a dialog over the
+// Lists page (?new=1) that asks before discarding what was entered; "Add
+// domains" is a plain dialog.
 import type { Locator, Page } from '@playwright/test';
 import { expect, settle, test } from './fixtures';
 
@@ -19,29 +20,63 @@ async function wheelUntilVisible(page: Page, box: Locator, target: Locator): Pro
   }
 }
 
-test('Lists → New list: the wizard page keeps Next and Cancel reachable, Cancel goes back', async ({ page }) => {
+test('Lists → New list: the wizard dialog keeps Next, Back and Cancel in view, Cancel closes it', async ({ page }) => {
   await page.goto('/lists');
   await settle(page);
-  await page.getByRole('link', { name: 'New list' }).click();
-  await expect(page).toHaveURL(/\/lists\/new$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'New list' })).toBeVisible();
+  await page.getByRole('button', { name: 'New list' }).click();
+  await expect(page).toHaveURL(/\/lists\?new=1$/);
+  const dialog = page.getByRole('dialog', { name: 'New list' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /^close/i }).first(), 'the dialog has a visible close button').toBeInViewport();
 
-  // The Sources step is the longest: the sticky footer stays reachable.
-  await page.getByRole('button', { name: 'Next' }).click();
-  await expect(page.getByRole('group', { name: 'Well-known lists' })).toBeVisible();
-  const next = page.getByRole('button', { name: 'Next' });
-  const cancel = page.getByRole('button', { name: 'Cancel' });
-  await wheelUntilVisible(page, page.locator('.k-wizard'), next);
-  await expect(next, 'the Next button scrolls into view').toBeInViewport({ ratio: 1 });
-  await expect(cancel, 'the Cancel button scrolls into view').toBeInViewport({ ratio: 1 });
+  // The Sources step is the longest: its body scrolls, the footer stays put.
+  await dialog.getByRole('button', { name: 'Next' }).click();
+  await expect(dialog.getByRole('heading', { level: 3, name: 'Sources' })).toBeFocused();
+  await expect(dialog.getByRole('group', { name: 'Well-known lists' })).toBeVisible();
+  const next = dialog.getByRole('button', { name: 'Next' });
+  for (const name of ['Next', 'Back', 'Cancel']) {
+    await expect(dialog.getByRole('button', { name }), `${name} is in view without scrolling`).toBeInViewport({ ratio: 1 });
+  }
+  const last = dialog.getByRole('checkbox').last();
+  await wheelUntilVisible(page, dialog, last);
+  await expect(last, 'the end of the step scrolls into view').toBeInViewport();
+  await expect(next, 'Next is still in view after scrolling').toBeInViewport({ ratio: 1 });
 
   // Next without a source stays on the step and says why.
   await next.click();
-  await expect(page.getByText(/Add at least one source/)).toBeVisible();
-  await page.getByRole('button', { name: 'Back' }).click();
-  await expect(page.getByRole('radio', { name: /Block list/ })).toBeVisible();
+  await expect(dialog.getByText(/Add at least one source/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Back' }).click();
+  await expect(dialog.getByRole('radio', { name: /Block list/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  // Nothing entered: Cancel closes without asking.
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/lists$/);
+});
+
+test('Lists → New list: ✕ on a dirty wizard asks before discarding; the backdrop does not close it', async ({ page }) => {
+  await page.goto('/lists?new=1');
+  const dialog = page.getByRole('dialog', { name: 'New list' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('radio', { name: /Allow list/ }).check();
+
+  // A click on the backdrop (outside the dialog box) keeps it open.
+  await page.mouse.click(5, 5);
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole('button', { name: /^close/i }).first().click();
+  const confirm = page.getByRole('alertdialog', { name: 'Discard the new list?' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(dialog.getByRole('radio', { name: /Allow list/ })).toBeChecked();
+
+  // Escape asks too; Discard closes the wizard and drops ?new=1.
+  await page.keyboard.press('Escape');
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Discard' }).click();
+  await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/lists$/);
 });
 
