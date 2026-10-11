@@ -446,9 +446,9 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
   white-space: pre;
 }
 
-.k-setting { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 2fr); gap: 8px 16px; padding: 12px 0; border-block-end: 1px solid var(--color-border); }
+/* The row's 60/40 columns are the Astryx Grid of SettingRow; this is the separator only. */
+.k-setting { padding-block: var(--spacing-3, 12px); border-block-end: 1px solid var(--color-border); }
 .k-setting[data-locked='true'] .k-setting-value { opacity: 0.9; }
-@media (max-width: 720px) { .k-setting { grid-template-columns: 1fr; } }
 
 .k-login {
   min-block-size: 100vh;
@@ -486,7 +486,6 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-checklist label { display: flex; align-items: center; gap: 8px; font-weight: normal; }
 
 /* Typed settings, fields and wizards (spa-settings, UX round 2) */
-.k-setting-label { font-weight: var(--font-weight-semibold, 600); }
 .k-setting .k-setting-key { font-weight: normal; }
 .k-setting[data-changed='true'] .k-setting-label::after { content: ''; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--color-text-accent, var(--q-cached)); margin-inline-start: 6px; vertical-align: middle; }
 .k-number { inline-size: 12ch; }

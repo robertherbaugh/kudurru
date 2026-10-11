@@ -66,11 +66,11 @@ export function valueOf(combo: HTMLElement): string | null {
   return combo.getAttribute('data-value');
 }
 
-/** Types into a NumberInput and commits the draft (blur). */
-export function typeNumber(input: HTMLElement, text: string): void {
+/** Types into a NumberInput (NumberField reports each input event) and commits the draft (blur). */
+export function typeNumber(input: HTMLElement, text: string, opts: { blur?: boolean } = {}): void {
   fireEvent.focus(input);
-  fireEvent.change(input, { target: { value: text } });
-  fireEvent.blur(input);
+  fireEvent.input(input, { target: { value: text } });
+  if (opts.blur !== false) fireEvent.blur(input);
 }
 
 /** Types into a Typeahead and commits the typed text with Enter once the results are in. */

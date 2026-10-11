@@ -86,5 +86,21 @@ export async function expectRendered(page: Page): Promise<void> {
   expect(badLines(await main(page).innerText()), 'lines of the main content showing undefined, NaN or [object Object]').toEqual([]);
 }
 
+/**
+ * An Astryx Selector by its label: a combobox, or a button that opens a
+ * listbox when the Selector has a search box. SelectField puts the value
+ * on the trigger as data-value.
+ */
+export function selector(root: Page | Locator, name: string | RegExp): Locator {
+  return root.getByRole('combobox', { name }).or(root.getByRole('button', { name }).and(root.locator('[aria-haspopup="listbox"]')));
+}
+
+/** Opens a Selector and clicks the option whose name starts with `option` (or matches the regex). */
+export async function pick(trigger: Locator, option: string | RegExp): Promise<void> {
+  await trigger.click();
+  const name = typeof option === 'string' ? new RegExp(`^${option.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) : option;
+  await trigger.page().getByRole('listbox').getByRole('option', { name }).first().click();
+}
+
 /** The 401 of GET /auth/me before sign-in is expected on the login page. */
 export const SIGNED_OUT_401 = /status of 401/;

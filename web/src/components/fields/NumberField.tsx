@@ -1,9 +1,10 @@
 // A whole number with optional bounds and unit (settings `min`/`max`, ECS
 // prefixes, percentages, TTLs): an Astryx NumberInput with the help and
 // the allowed range under it. The form keeps the value as text ("" = not
-// set); NumberInput keeps a half-typed number as its own draft and commits
-// it on Enter or blur, clamped to the bounds. A value from elsewhere that
-// is out of range (the saved setting, a server answer) is reported inline.
+// set) and gets every keystroke (the input event), so a Save button can
+// appear while typing and an out-of-range number is reported inline
+// rather than silently clamped: the bounds are checked here and not passed
+// to NumberInput, which would clamp on blur.
 import { NumberInput } from '@astryxdesign/core/NumberInput';
 import type { ReactNode } from 'react';
 import { FieldShell } from './FieldHelp';
@@ -73,8 +74,7 @@ export function NumberField({ label, isLabelHidden, value, onChange, min, max, u
           value={n === null || Number.isNaN(n) ? null : n}
           hasClear
           onChange={(v) => onChange(v === null ? '' : String(v))}
-          min={min ?? null}
-          max={max ?? null}
+          onInput={(e) => onChange((e.target as HTMLInputElement).value)}
           units={unit ?? null}
           isIntegerOnly={!allowFraction}
           isWheelEnabled={false}

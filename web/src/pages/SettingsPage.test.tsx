@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
 import type { SettingKey } from '../api/types';
 import { mockDB } from '../mocks/handlers';
+import { getSelector, optionLabels, pick, typeNumber, valueOf } from '../test/controls';
 import { renderWithApp, settingKey } from '../test/utils';
 import SettingsPage, { SettingsList } from './SettingsPage';
 
@@ -62,6 +63,8 @@ describe('SettingsList', () => {
     expect(r.querySelector('.k-setting-label')).toHaveTextContent('Maximum entries');
     expect(within(r).getByRole('spinbutton', { name: 'Maximum entries' })).toBeInTheDocument();
     expect(within(r).getByText('cache.maxEntries')).toHaveClass('k-mono');
+    // A thin server help is completed from the shape.
+    expect(within(r).getByTestId('help-cache.maxEntries')).toHaveTextContent('Cache size. A whole number, 0–1000000.');
     expect(screen.getByRole('heading', { name: 'Cache' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Query log' })).toBeInTheDocument();
   });
@@ -71,13 +74,13 @@ describe('SettingsList', () => {
     const r = row('cache.maxEntries');
     expect(r).toHaveAttribute('data-locked', 'false');
     const input = within(r).getByRole('spinbutton');
-    expect(input).toHaveValue(50000);
-    fireEvent.change(input, { target: { value: '2000000' } });
+    expect(input).toHaveValue('50000');
+    typeNumber(input, '2000000', { blur: false });
     expect(within(r).getByText('Between 0 and 1000000')).toBeInTheDocument();
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
-    expect(await within(r).findByRole('alert')).toHaveTextContent('Between 0 and 1000000');
+    expect(await within(r).findByTestId('setting-error')).toHaveTextContent('Between 0 and 1000000');
     expect(onSave).not.toHaveBeenCalled();
-    fireEvent.change(input, { target: { value: '250000' } });
+    typeNumber(input, '250000');
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(keys[2], 250000));
   });
@@ -97,11 +100,13 @@ describe('SettingsList', () => {
     });
     const onSave = list([k], { blocking: { defaultResponse: 'zeroIP' } });
     const r = row('blocking.defaultResponse');
-    const sel = within(r).getByRole('combobox', { name: 'Default block response' });
-    expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['Zero IP', 'NXDOMAIN']);
-    expect(within(r).getByText('Unspecified address.')).toBeInTheDocument();
-    fireEvent.change(sel, { target: { value: 'nxdomain' } });
+    const sel = getSelector('Default block response', r);
+    expect(optionLabels(sel)).toEqual(['Zero IP', 'NXDOMAIN']);
+    expect(sel).toHaveAccessibleDescription('Unspecified address.');
+    pick(sel, 'NXDOMAIN');
     expect(within(r).getByText('The name does not exist.')).toBeInTheDocument();
+    // The option help is under the control; the row's help is on the left.
+    expect(within(r).getByTestId('help-blocking.defaultResponse')).toHaveTextContent('One of 2 choices');
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(k, 'nxdomain'));
   });
@@ -114,7 +119,8 @@ describe('SettingsList', () => {
     ];
     list(ks, { blocking: { defaultResponse: 'nxdomain' }, querylog: { retention: { raw: '168h0m0s' } }, future: { table: [{ a: 1 }] } });
     expect(within(row('blocking.defaultResponse')).getByRole('textbox', { name: 'Default response' })).toHaveValue('nxdomain');
-    expect(within(row('querylog.retention.raw')).getByRole('combobox', { name: 'Retention raw' })).toHaveValue('168h');
+    expect(valueOf(getSelector('Retention raw', row('querylog.retention.raw')))).toBe('168h');
+    expect(within(row('querylog.retention.raw')).getByTestId('help-querylog.retention.raw')).toHaveTextContent('A duration such as 30s, 10m or 1h.');
     expect(within(row('future.table')).getByRole<HTMLTextAreaElement>('textbox', { name: 'Table (JSON)' }).value).toContain('"a": 1');
     // Sections come from the path without a group.
     expect(screen.getByRole('heading', { name: 'Blocking' })).toBeInTheDocument();
@@ -137,7 +143,7 @@ describe('SettingsList', () => {
     const r = row('dns.forwarders');
     fireEvent.change(within(r).getByRole('textbox', { name: 'strategy' }), { target: { value: 'fastest' } });
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
-    expect(await within(r).findByRole('alert')).toHaveTextContent('(at corp › strategy)');
+    expect(await within(r).findByTestId('setting-error')).toHaveTextContent('(at corp › strategy)');
   });
 
   it('edits string lists row by row with inline format errors', async () => {
@@ -148,7 +154,7 @@ describe('SettingsList', () => {
     fireEvent.change(within(r).getByRole('textbox', { name: 'Exempt clients 2' }), { target: { value: '300.1.1.1' } });
     expect(within(r).getAllByText('Not an IP address or CIDR prefix').length).toBeGreaterThan(0);
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
-    expect(await within(r).findByRole('alert')).toHaveTextContent('300.1.1.1');
+    expect(await within(r).findByTestId('setting-error')).toHaveTextContent('300.1.1.1');
     fireEvent.change(within(r).getByRole('textbox', { name: 'Exempt clients 2' }), { target: { value: '192.168.1.0/24' } });
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(k, ['10.0.0.0/8', '192.168.1.0/24']));
@@ -185,7 +191,7 @@ describe('SettingsPage', () => {
     // Host-only keys from the real schema render locked.
     expect(row('listeners.api.address')).toHaveAttribute('data-locked', 'true');
     const r = row('cache.maxEntries');
-    fireEvent.change(within(r).getByRole('spinbutton'), { target: { value: '123456' } });
+    typeNumber(within(r).getByRole('spinbutton'), '123456');
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect((mockDB().settings.cache as Record<string, unknown>).maxEntries).toBe(123456));
   });
@@ -197,17 +203,17 @@ describe('SettingsPage', () => {
     expect(within(summary).getByRole('link', { name: 'Edit on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
     expect(within(row('blocking.enabled')).getByRole('switch')).toBeChecked();
     expect(within(row('querylog.enabled')).getByRole('switch')).toBeChecked();
-    expect(within(row('cache.maxEntries')).getByRole('spinbutton')).toHaveValue(100000);
-    expect(within(row('blocking.blockTTL')).getByRole('combobox', { name: 'Block response TTL' })).toHaveValue('1m');
+    expect(within(row('cache.maxEntries')).getByRole('spinbutton')).toHaveValue('100000');
+    expect(valueOf(getSelector('Block response TTL', row('blocking.blockTTL')))).toBe('1m');
   });
 
   it('saves an enum choice and shows the new value', async () => {
     renderWithApp(<SettingsPage />, { route: '/settings' });
-    const sel = await waitFor(() => within(row('querylog.privacy')).getByRole('combobox', { name: 'Query log privacy' }));
-    fireEvent.change(sel, { target: { value: 'hide_domains' } });
+    const sel = await waitFor(() => getSelector('Query log privacy', row('querylog.privacy')));
+    pick(sel, /^Hide domains/);
     fireEvent.click(within(row('querylog.privacy')).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect((mockDB().settings.querylog as Record<string, unknown>).privacy).toBe('hide_domains'));
-    await waitFor(() => expect(within(row('querylog.privacy')).getByRole('combobox', { name: 'Query log privacy' })).toHaveValue('hide_domains'));
+    await waitFor(() => expect(valueOf(getSelector('Query log privacy', row('querylog.privacy')))).toBe('hide_domains'));
     expect(within(row('querylog.privacy')).getByText('changed')).toBeInTheDocument();
   });
 
@@ -262,15 +268,15 @@ describe('SettingsPage', () => {
     expect(await within(dialog).findByTitle('Block page for tracker.example.net')).toBeInTheDocument();
     expect(within(dialog).getByRole('link', { name: 'Open in a new tab' }).getAttribute('href')).toContain('/blockpage/preview?domain=tracker.example.net');
     // The server metadata offers the blockPage response.
-    expect(within(row('blocking.defaultResponse')).getByRole('option', { name: 'Block page' })).toBeInTheDocument();
+    expect(optionLabels(getSelector('Default block response', row('blocking.defaultResponse')))).toContain('Block page');
   });
 
   it('shows the server refusing the block page response without the block page inline', async () => {
     renderWithApp(<SettingsPage />, { route: '/settings' });
     const r = await waitFor(() => row('blocking.defaultResponse'));
-    fireEvent.change(within(r).getByRole('combobox', { name: 'Default block response' }), { target: { value: 'blockPage' } });
+    pick(getSelector('Default block response', r), 'Block page');
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
-    expect(await within(r).findByRole('alert')).toHaveTextContent('blocking.defaultResponse blockPage needs blockPage.enabled: true');
+    expect(await within(r).findByTestId('setting-error')).toHaveTextContent('blocking.defaultResponse blockPage needs blockPage.enabled: true');
     expect((mockDB().settings.blocking as Record<string, unknown>).defaultResponse).toBe('zeroIP');
   });
 
