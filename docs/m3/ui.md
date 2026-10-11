@@ -192,7 +192,7 @@ them or tell the integrator so `types.ts` can follow:
 | Whole bundle | 1,780 KiB raw, 530 KiB gzip (ECharts chunk 182 KiB gzip, loaded with the first donut) |
 | Dashboard / query-log chunks (gzip) | 27.4 KiB / 24.7 KiB |
 | Binary size impact (embed is uncompressed) | +1,822,720 bytes (`go test -c` of ./web with the bundle vs the placeholder); kudurru today 47,808,672 bytes stripped, so about 49.6 MB of the 51,234,000-byte D75 budget once wired |
-| Tests | vitest: 8 files, 135 tests, ~10 s on the shared machine; Go: `go test -race ./web` 6 tests; full module `CGO_ENABLED=1 go test -race ./...` green (48 packages) |
+| Tests | vitest: 9 files, 183 tests, ~10 s on the shared machine; Go: `go test -race ./web` 7 tests; full module `CGO_ENABLED=1 go test -race ./...` green (48 packages) |
 | Lint | `eslint --max-warnings 0` (typescript-eslint type-checked + react-hooks) clean, `tsc --noEmit` clean, `golangci-lint run ./web/...` 0 issues, gofmt/vet clean |
 | CSP check | production bundle served with `web.DefaultCSP` in headless Chrome: no CSP violations logged |
 | Source | ~10,100 lines of TypeScript outside tests (incl. ~1,800 lines of mocks/fixtures) |
