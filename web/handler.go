@@ -43,8 +43,8 @@ type Options struct {
 
 // Handler serves the dashboard: files of the bundle with long-lived caching
 // for the content-hashed assets/ directory, index.html (no-cache) for every
-// other path that does not look like a file so client-side routes survive
-// a reload, gzip for compressible files when the client accepts it, and
+// other path that is not a missing bundle file (missingFile) so client-side
+// routes survive a reload, gzip for compressible files when the client accepts it, and
 // strict security headers. Paths under api/ are never answered with the
 // SPA; mount the API before this handler.
 func Handler(o Options) http.Handler {
@@ -139,13 +139,32 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serve(w, r, f, cache)
 		return
 	}
-	// A missing file (anything whose last segment has an extension) is a
-	// 404, never index.html: a stale script URL must not get HTML back.
-	if strings.Contains(path.Base(name), ".") {
+	// A missing file is a 404, never index.html: a stale script URL must
+	// not get HTML back. Every other path is a client-side route, dots
+	// included (/zones/home.example., /zones/example.js).
+	if h.missingFile(name) {
 		http.NotFound(w, r)
 		return
 	}
 	h.serve(w, r, h.index, "no-cache")
+}
+
+// missingFile reports whether name, which is not in the bundle, is a
+// bundle file by its location: anything under assets/ or another
+// directory of the bundle, or a top-level name with an extension
+// (favicon.ico, robots.txt). Deeper paths are client routes whatever their
+// last segment looks like: zone and domain names end in a trailing dot or
+// in TLDs that read like extensions (.js, .map, .zip).
+func (h *handler) missingFile(name string) bool {
+	dir, _, nested := strings.Cut(name, "/")
+	if !nested {
+		return len(path.Ext(name)) > 1
+	}
+	if dir == "assets" {
+		return true
+	}
+	st, err := fs.Stat(h.fs, dir)
+	return err == nil && st.IsDir()
 }
 
 func (h *handler) lookup(name string) *file {
