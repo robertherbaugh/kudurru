@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -39,6 +40,7 @@ type edgeFlags struct {
 	poolResolver, poolAuthoritative string
 	tlsDir                          string
 	listen, protocols               []string
+	frontendAddrs                   map[edge.Protocol]*string
 	api, console                    string
 	apiKeyOut, apiKeyGroup          string
 	proxySecretFile                 string
@@ -73,6 +75,11 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.tlsDir, "tls-dir", "", "directory with tls.crt+tls.key (or fullchain.pem+privkey.pem): enables DoT/DoH/DoQ/DoH3, watched for rotation")
 	fl.StringSliceVar(&f.listen, "listen", []string{"0.0.0.0"}, "addresses every frontend binds")
 	fl.StringSliceVar(&f.protocols, "protocols", nil, "frontends (do53,dot,doh,doq,doh3); default do53 plus all TLS ones when --tls-dir is set")
+	f.frontendAddrs = map[edge.Protocol]*string{}
+	for _, p := range []edge.Protocol{edge.DoT, edge.DoH, edge.DoQ, edge.DoH3} {
+		f.frontendAddrs[p] = fl.String(strings.ToLower(string(p)), "", fmt.Sprintf("enable the %s frontend on host:port (the host must be a --listen address; the chart's form); "+
+			"with any of --dot/--doh/--doq/--doh3 the frontends are do53 plus those given", p))
+	}
 	fl.StringVar(&f.api, "api", "127.0.0.1:8083", "dnsdist webserver/API address (loopback only)")
 	fl.StringVar(&f.console, "console", "127.0.0.1:5199", "dnsdist console address (loopback only)")
 	fl.StringVar(&f.apiKeyOut, "api-key-out", "", "write the per-start dnsdist API key here (0640), e.g. /run/kudurru/dnsdist-api.key")
@@ -95,6 +102,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
 		fl.StringVar(&f.configDir, "config-dir", "/etc/dnsdist", "directory for the rendered configuration")
 		fl.StringVar(&f.healthAddr, "health-address", ":8084", "supervisor listener: /healthz/ready, /healthz/live, /status, /metrics")
+		fl.StringVar(&f.healthAddr, "readiness-address", ":8084", "alias of --health-address (the chart's form)")
 		fl.DurationVar(&f.debounce, "debounce", 5*time.Second, "delay before re-rendering after membership or certificate changes")
 		fl.DurationVar(&f.drain, "drain", time.Second, "readiness 503 period before a restart")
 		fl.DurationVar(&f.zonePoll, "zone-poll", 5*time.Second, "interval of the /internal/zones serial poll")
@@ -157,6 +165,9 @@ func (f *edgeFlags) options() (edge.Options, error) {
 			return o, err
 		}
 		o.Protocols = append(o.Protocols, proto)
+	}
+	if err := f.applyFrontendAddrs(&o); err != nil {
+		return o, err
 	}
 	if f.tlsDir != "" {
 		cert, key, err := edge.FindTLS(f.tlsDir)
@@ -423,4 +434,44 @@ func isLoopbackHostPort(hp string) bool {
 	}
 	a, err := netip.ParseAddr(host)
 	return err == nil && a.IsLoopback()
+}
+
+// applyFrontendAddrs maps --dot/--doh/--doq/--doh3 host:port onto
+// Options.Protocols and Options.Ports. Without --protocols the frontends
+// become do53 plus the ones given.
+func (f *edgeFlags) applyFrontendAddrs(o *edge.Options) error {
+	given := false
+	for _, p := range []edge.Protocol{edge.DoT, edge.DoH, edge.DoQ, edge.DoH3} {
+		addr := f.frontendAddrs[p]
+		if addr == nil || *addr == "" {
+			continue
+		}
+		host, port, err := net.SplitHostPort(*addr)
+		if err != nil {
+			return fmt.Errorf("--%s %q: want host:port", strings.ToLower(string(p)), *addr)
+		}
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("--%s %q: bad port", strings.ToLower(string(p)), *addr)
+		}
+		listen := o.Listen
+		if len(listen) == 0 {
+			listen = []string{"0.0.0.0"}
+		}
+		if host != "" && !slices.Contains(listen, host) {
+			return fmt.Errorf("--%s %q: host %s is not a --listen address (%s)", strings.ToLower(string(p)), *addr, host, strings.Join(listen, ","))
+		}
+		if !given && len(f.protocols) == 0 {
+			o.Protocols = []edge.Protocol{edge.Do53}
+		}
+		given = true
+		if !slices.Contains(o.Protocols, p) {
+			o.Protocols = append(o.Protocols, p)
+		}
+		if o.Ports == nil {
+			o.Ports = map[edge.Protocol]int{}
+		}
+		o.Ports[p] = n
+	}
+	return nil
 }
