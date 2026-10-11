@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -126,7 +127,12 @@ type auditOutput struct{ Body *AuditPage }
 func (s *Server) registerAuth() {
 	public := perm{public: true}
 	authed := perm{authenticated: true}
-	tokens := perm{resource: "tokens", verb: "own"}
+	// Own tokens: every built-in role holds tokens.own, including the
+	// zone-scoped zone-admin, whose binding cannot satisfy a cluster-scope
+	// check; the routes therefore need a principal only, and the auth
+	// handler scopes them to the caller. A token never carries more than
+	// its owner's bindings (§8.6).
+	tokens := authed
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
 	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, Me{})
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth"), public, nil, nil)
@@ -178,6 +184,9 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 		resp.Content = map[string]*huma.MediaType{"application/json": {Schema: reg.Schema(reflect.TypeOf(respExample), true, "")}}
 	}
 	op.Responses = map[string]*huma.Response{strconv.Itoa(status): resp}
+	for _, m := range pathParamRE.FindAllStringSubmatch(op.Path, -1) {
+		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
+	}
 	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
 		if s.opts.AuthHandler == nil {
 			return nil, errNotImplemented("authentication (no auth handler is configured)")
@@ -188,6 +197,9 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 		}}, nil
 	})
 }
+
+// pathParamRE finds the {name} wildcards of a route path.
+var pathParamRE = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 
 // me answers GET /auth/me.
 func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {

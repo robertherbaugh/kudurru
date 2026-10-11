@@ -1,0 +1,14 @@
+# oapi-codegen configuration for the generated kudurru API client
+# (make client-go). Input: api/openapi-3.0.json (the OpenAPI 3.0
+# downgrade of the huma document; oapi-codegen does not read 3.1).
+package: openapi
+output: internal/apiclient/openapi/zz_generated.client.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: false
+compatibility:
+  # Enum constants carry their type name (QuerySuggestionsParamsFieldClient),
+  # so values shared by several enums cannot collide with Client.
+  always-prefix-enum-values: true

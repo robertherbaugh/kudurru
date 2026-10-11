@@ -3652,6 +3652,16 @@
     "/auth/oidc/{idp}/callback": {
       "get": {
         "operationId": "oidcCallback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3677,6 +3687,16 @@
     "/auth/oidc/{idp}/start": {
       "get": {
         "operationId": "oidcStart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "idp",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3780,11 +3800,7 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-permission": {
-          "resource": "tokens",
-          "scope": "cluster",
-          "verb": "own"
-        }
+        "x-kudurru-permission": "authenticated"
       },
       "post": {
         "operationId": "createToken",
@@ -3854,16 +3870,22 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-permission": {
-          "resource": "tokens",
-          "scope": "cluster",
-          "verb": "own"
-        }
+        "x-kudurru-permission": "authenticated"
       }
     },
     "/auth/tokens/{id}": {
       "delete": {
         "operationId": "deleteToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -3903,14 +3925,20 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-permission": {
-          "resource": "tokens",
-          "scope": "cluster",
-          "verb": "own"
-        }
+        "x-kudurru-permission": "authenticated"
       },
       "get": {
         "operationId": "getToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3957,11 +3985,7 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-permission": {
-          "resource": "tokens",
-          "scope": "cluster",
-          "verb": "own"
-        }
+        "x-kudurru-permission": "authenticated"
       }
     },
     "/blocklists": {
