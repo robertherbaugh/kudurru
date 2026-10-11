@@ -130,7 +130,7 @@ func TestDoctorLocalTLSListener(t *testing.T) {
 	}
 	cfg := doctorConfig(t, t.TempDir(), l)
 	_ = l.Close()
-	b, _ := os.ReadFile(cfg) //nolint:gosec // G304: the test's temp file
+	b, _ := os.ReadFile(cfg)                                                                     //nolint:gosec // G304: the test's temp file
 	_ = os.WriteFile(cfg, []byte(strings.Replace(string(b), l.Addr().String(), addr, 1)), 0o600) //nolint:gosec // G703: the test's temp file
 	out, _, _ := h.run("--config", cfg, "doctor", "--skip-ports")
 	if !strings.Contains(out, "api: OK https://"+addr+" (kudurru v0.1.0-test") {
