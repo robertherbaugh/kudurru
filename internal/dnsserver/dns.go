@@ -97,6 +97,10 @@ func (l *dnsListener) Bind() error {
 		}
 		idle := lim.IdleTimeout
 		srv.IdleTimeout = func() time.Duration { return idle }
+		srv.MaxTCPQueries = -1
+		if lim.MaxTCPQueries > 0 {
+			srv.MaxTCPQueries = lim.MaxTCPQueries
+		}
 		srv.Listener = lis
 		l.setBound(srv, ln.Addr(), ln.Close)
 	default:

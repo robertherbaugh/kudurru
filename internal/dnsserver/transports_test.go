@@ -474,6 +474,40 @@ func TestDoTALPNAndPlainTLSClient(t *testing.T) {
 	}
 }
 
+// TestLongLivedStreamConnections: a TCP or DoT connection is not closed
+// after miekg's default 128 queries, unless Limits.MaxTCPQueries asks for
+// it.
+func TestLongLivedStreamConnections(t *testing.T) {
+	for _, limit := range []int{0, 10} {
+		f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoTCP}, {Protocol: ProtoDoT}}, stages: []pipeline.Stage{localAnswer{}}, limits: Limits{MaxTCPQueries: limit}})
+		for _, p := range []Protocol{ProtoTCP, ProtoDoT} {
+			c := &dns.Client{Net: "tcp", Timeout: 2 * time.Second}
+			if p == ProtoDoT {
+				c.Net, c.TLSConfig = "tcp-tls", (&tlsPool{f.cert}).client("dot")
+			}
+			co, err := c.Dial(f.addr(p))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 300
+			if limit > 0 {
+				want = limit
+			}
+			served := 0
+			for range 300 {
+				if _, _, err := c.ExchangeWithConn(query("example.com"), co); err != nil {
+					break
+				}
+				served++
+			}
+			_ = co.Close()
+			if served != want {
+				t.Fatalf("%s with MaxTCPQueries=%d: %d queries served on one connection, want %d", p, limit, served, want)
+			}
+		}
+	}
+}
+
 func TestUDPLargeQueryNotTruncated(t *testing.T) {
 	f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoUDP}}, stages: []pipeline.Stage{localAnswer{}}})
 	q := query("example.com")

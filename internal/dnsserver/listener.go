@@ -148,6 +148,10 @@ type Limits struct {
 	WriteTimeout time.Duration
 	// IdleTimeout closes idle TCP, DoT and DoH connections. Default 10s.
 	IdleTimeout time.Duration
+	// MaxTCPQueries caps the queries served on one TCP or DoT connection;
+	// zero means unlimited, as in CoreDNS. (miekg/dns's own default of 128
+	// makes long-lived DoT clients such as Android Private DNS reconnect.)
+	MaxTCPQueries int
 	// QUICIdleTimeout is the QUIC max idle timeout for DoQ and DoH3.
 	// Default 30s.
 	QUICIdleTimeout time.Duration
