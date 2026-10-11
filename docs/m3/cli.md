@@ -327,6 +327,11 @@ its worktree) already settles it, that is noted.
   Kubernetes behaviour, so it is left alone; the tests use other names.
 - The global `-n` and `-o` shorthands rule them out for every subcommand,
   hence `stats top --top` and `logs --limit`.
+- In the full `make test` run (48 packages ok), only
+  `internal/controller` failed: `TestMeasureRecordSetChanges/resync_of_1000_converged_record_sets`
+  saw 948 status writes. That is the timing-sensitive measurement already
+  listed in docs/followups.md. It passes when run alone (23 s), and the
+  controller package depends on none of the packages this work touched.
 - `logs --follow` resumes from the newest paged id. Without that, rows
   logged between the page fetch and the stream connect would be lost or
   duplicated. The client also drops ids at or below the last printed id.
