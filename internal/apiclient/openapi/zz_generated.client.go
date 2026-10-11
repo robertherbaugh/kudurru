@@ -572,6 +572,144 @@ func (e TokenOwnerKind) Valid() bool {
 	}
 }
 
+// Defines values for UnblockAllowMatch.
+const (
+	UnblockAllowMatchExact      UnblockAllowMatch = "exact"
+	UnblockAllowMatchSubdomains UnblockAllowMatch = "subdomains"
+)
+
+// Valid indicates whether the value is a known member of the UnblockAllowMatch enum.
+func (e UnblockAllowMatch) Valid() bool {
+	switch e {
+	case UnblockAllowMatchExact:
+		return true
+	case UnblockAllowMatchSubdomains:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockAllowScope.
+const (
+	UnblockAllowScopeEveryone UnblockAllowScope = "everyone"
+	UnblockAllowScopeGroup    UnblockAllowScope = "group"
+)
+
+// Valid indicates whether the value is a known member of the UnblockAllowScope enum.
+func (e UnblockAllowScope) Valid() bool {
+	switch e {
+	case UnblockAllowScopeEveryone:
+		return true
+	case UnblockAllowScopeGroup:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockApprovalMatch.
+const (
+	UnblockApprovalMatchExact      UnblockApprovalMatch = "exact"
+	UnblockApprovalMatchSubdomains UnblockApprovalMatch = "subdomains"
+)
+
+// Valid indicates whether the value is a known member of the UnblockApprovalMatch enum.
+func (e UnblockApprovalMatch) Valid() bool {
+	switch e {
+	case UnblockApprovalMatchExact:
+		return true
+	case UnblockApprovalMatchSubdomains:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockApprovalScope.
+const (
+	UnblockApprovalScopeEveryone UnblockApprovalScope = "everyone"
+	UnblockApprovalScopeGroup    UnblockApprovalScope = "group"
+)
+
+// Valid indicates whether the value is a known member of the UnblockApprovalScope enum.
+func (e UnblockApprovalScope) Valid() bool {
+	switch e {
+	case UnblockApprovalScopeEveryone:
+		return true
+	case UnblockApprovalScopeGroup:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockDecisionState.
+const (
+	UnblockDecisionStateApproved UnblockDecisionState = "Approved"
+	UnblockDecisionStateDenied   UnblockDecisionState = "Denied"
+	UnblockDecisionStateExpired  UnblockDecisionState = "Expired"
+)
+
+// Valid indicates whether the value is a known member of the UnblockDecisionState enum.
+func (e UnblockDecisionState) Valid() bool {
+	switch e {
+	case UnblockDecisionStateApproved:
+		return true
+	case UnblockDecisionStateDenied:
+		return true
+	case UnblockDecisionStateExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockRequestClientPrivacy.
+const (
+	UnblockRequestClientPrivacyFull   UnblockRequestClientPrivacy = "full"
+	UnblockRequestClientPrivacyHidden UnblockRequestClientPrivacy = "hidden"
+	UnblockRequestClientPrivacyPrefix UnblockRequestClientPrivacy = "prefix"
+)
+
+// Valid indicates whether the value is a known member of the UnblockRequestClientPrivacy enum.
+func (e UnblockRequestClientPrivacy) Valid() bool {
+	switch e {
+	case UnblockRequestClientPrivacyFull:
+		return true
+	case UnblockRequestClientPrivacyHidden:
+		return true
+	case UnblockRequestClientPrivacyPrefix:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UnblockRequestState.
+const (
+	UnblockRequestStateApproved UnblockRequestState = "Approved"
+	UnblockRequestStateDenied   UnblockRequestState = "Denied"
+	UnblockRequestStateExpired  UnblockRequestState = "Expired"
+	UnblockRequestStatePending  UnblockRequestState = "Pending"
+)
+
+// Valid indicates whether the value is a known member of the UnblockRequestState enum.
+func (e UnblockRequestState) Valid() bool {
+	switch e {
+	case UnblockRequestStateApproved:
+		return true
+	case UnblockRequestStateDenied:
+		return true
+	case UnblockRequestStateExpired:
+		return true
+	case UnblockRequestStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAuditParamsOrder.
 const (
 	ListAuditParamsOrderAsc  ListAuditParamsOrder = "asc"
@@ -875,6 +1013,30 @@ func (e StatsUpstreamsParamsScope) Valid() bool {
 	case StatsUpstreamsParamsScopeEmpty:
 		return true
 	case StatsUpstreamsParamsScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListUnblockRequestsParamsState.
+const (
+	ListUnblockRequestsParamsStateApproved ListUnblockRequestsParamsState = "Approved"
+	ListUnblockRequestsParamsStateDenied   ListUnblockRequestsParamsState = "Denied"
+	ListUnblockRequestsParamsStateExpired  ListUnblockRequestsParamsState = "Expired"
+	ListUnblockRequestsParamsStatePending  ListUnblockRequestsParamsState = "Pending"
+)
+
+// Valid indicates whether the value is a known member of the ListUnblockRequestsParamsState enum.
+func (e ListUnblockRequestsParamsState) Valid() bool {
+	switch e {
+	case ListUnblockRequestsParamsStateApproved:
+		return true
+	case ListUnblockRequestsParamsStateDenied:
+		return true
+	case ListUnblockRequestsParamsStateExpired:
+		return true
+	case ListUnblockRequestsParamsStatePending:
 		return true
 	default:
 		return false
@@ -2413,6 +2575,178 @@ type TopItem struct {
 	Total    int64      `json:"total"`
 }
 
+// UnblockAllow defines model for UnblockAllow.
+type UnblockAllow struct {
+	// Added The approval added the entry (it was not on the list); only then does its end remove it.
+	Added bool `json:"added"`
+
+	// Entry The line in the list's inline source ui.
+	Entry string `json:"entry"`
+
+	// ExpiresAt End of a time-limited approval; absent is permanent.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Group The ClientGroup of a group approval, ns/name.
+	Group *string `json:"group,omitempty"`
+
+	// List The allow BlockList, ns/name (ui-allow or ui-allow-<group>).
+	List     string            `json:"list"`
+	Match    UnblockAllowMatch `json:"match"`
+	Policies []string          `json:"policies"`
+
+	// Removed When the entry was released (expiry or revocation).
+	Removed *time.Time        `json:"removed,omitempty"`
+	Scope   UnblockAllowScope `json:"scope"`
+}
+
+// UnblockAllowMatch defines model for UnblockAllow.Match.
+type UnblockAllowMatch string
+
+// UnblockAllowScope defines model for UnblockAllow.Scope.
+type UnblockAllowScope string
+
+// UnblockApproval defines model for UnblockApproval.
+type UnblockApproval struct {
+	// Duration Go duration (1h, 24h, 168h); empty is permanent. The entry is removed when it ends.
+	Duration *string `json:"duration,omitempty"`
+
+	// Group The ClientGroup of a group approval (ns/name or a name in the request's namespace); default the request's first group.
+	Group *string `json:"group,omitempty"`
+
+	// Match exact: the name only; subdomains: the name and every name below it (||name^). Default exact.
+	Match *UnblockApprovalMatch `json:"match,omitempty"`
+
+	// Note Shown to the user on the block page.
+	Note *string `json:"note,omitempty"`
+
+	// Scope everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+	Scope *UnblockApprovalScope `json:"scope,omitempty"`
+}
+
+// UnblockApprovalMatch exact: the name only; subdomains: the name and every name below it (||name^). Default exact.
+type UnblockApprovalMatch string
+
+// UnblockApprovalScope everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+type UnblockApprovalScope string
+
+// UnblockBlock defines model for UnblockBlock.
+type UnblockBlock struct {
+	// Kind list, service, safesearch, policy (allow-only) or cname.
+	Kind string `json:"kind"`
+
+	// List The deciding list: ns/name, service:<id> or safesearch:<engine>.
+	List *string `json:"list,omitempty"`
+
+	// Policy The client's policy, ns/name.
+	Policy *string `json:"policy,omitempty"`
+	Rule   *string `json:"rule,omitempty"`
+}
+
+// UnblockCounts defines model for UnblockCounts.
+type UnblockCounts struct {
+	Approved int64 `json:"approved"`
+	Denied   int64 `json:"denied"`
+	Expired  int64 `json:"expired"`
+	Pending  int64 `json:"pending"`
+}
+
+// UnblockDecision defines model for UnblockDecision.
+type UnblockDecision struct {
+	Allow     *UnblockAllow        `json:"allow,omitempty"`
+	DecidedAt *time.Time           `json:"decidedAt,omitempty"`
+	DecidedBy *string              `json:"decidedBy,omitempty"`
+	Note      *string              `json:"note,omitempty"`
+	State     UnblockDecisionState `json:"state"`
+}
+
+// UnblockDecisionState defines model for UnblockDecision.State.
+type UnblockDecisionState string
+
+// UnblockDecisionResult defines model for UnblockDecisionResult.
+type UnblockDecisionResult struct {
+	Attached []string       `json:"attached"`
+	Flushed  int64          `json:"flushed"`
+	Request  UnblockRequest `json:"request"`
+
+	// Skipped Policies that should reference the list but are managed elsewhere; add the list there.
+	Skipped []string `json:"skipped"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// UnblockDenial defines model for UnblockDenial.
+type UnblockDenial struct {
+	// Note Shown to the user on the block page.
+	Note *string `json:"note,omitempty"`
+}
+
+// UnblockRequest defines model for UnblockRequest.
+type UnblockRequest struct {
+	Allow *UnblockAllow `json:"allow,omitempty"`
+	Block *UnblockBlock `json:"block,omitempty"`
+
+	// Client The client address (full), its /24 or /48 network address (prefix), or absent (hidden).
+	Client *string `json:"client,omitempty"`
+
+	// ClientPrivacy How the client was recorded under querylog.privacy.
+	ClientPrivacy UnblockRequestClientPrivacy `json:"clientPrivacy"`
+
+	// Contact Plain text the user typed.
+	Contact   *string    `json:"contact,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	DecidedAt *time.Time `json:"decidedAt,omitempty"`
+	DecidedBy *string    `json:"decidedBy,omitempty"`
+	Domain    string     `json:"domain"`
+
+	// ExpiresAt When a pending request expires undecided (unblockRequests.pendingExpiry).
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Groups The client's ClientGroups at request time, ns/name.
+	Groups    []string          `json:"groups"`
+	History   []UnblockDecision `json:"history"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+
+	// Node The node whose block page took the request.
+	Node *string `json:"node,omitempty"`
+
+	// Note The administrator's note, shown on the block page.
+	Note *string `json:"note,omitempty"`
+
+	// Policies The client's policies at request time, highest priority first.
+	Policies []string `json:"policies"`
+
+	// Reason Plain text the user typed (at most 500 characters).
+	Reason *string `json:"reason,omitempty"`
+
+	// RequestedAt The latest submission.
+	RequestedAt time.Time `json:"requestedAt"`
+
+	// RequesterName Plain text the user typed.
+	RequesterName   *string             `json:"requesterName,omitempty"`
+	ResourceVersion string              `json:"resourceVersion"`
+	State           UnblockRequestState `json:"state"`
+	Submissions     int64               `json:"submissions"`
+}
+
+// UnblockRequestClientPrivacy How the client was recorded under querylog.privacy.
+type UnblockRequestClientPrivacy string
+
+// UnblockRequestState defines model for UnblockRequest.State.
+type UnblockRequestState string
+
+// UnblockRequestList defines model for UnblockRequestList.
+type UnblockRequestList struct {
+	// Continue Token for the next page; empty on the last page.
+	Continue *string          `json:"continue,omitempty"`
+	Counts   UnblockCounts    `json:"counts"`
+	Items    []UnblockRequest `json:"items"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
 // UpstreamItem defines model for UpstreamItem.
 type UpstreamItem struct {
 	Addr     string  `json:"addr"`
@@ -2989,6 +3323,19 @@ type StatsUpstreamsParams struct {
 // StatsUpstreamsParamsScope defines parameters for StatsUpstreams.
 type StatsUpstreamsParamsScope string
 
+// ListUnblockRequestsParams defines parameters for ListUnblockRequests.
+type ListUnblockRequestsParams struct {
+	// State Only requests in this state.
+	State *ListUnblockRequestsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListUnblockRequestsParamsState defines parameters for ListUnblockRequests.
+type ListUnblockRequestsParamsState string
+
 // ImportZoneParams defines parameters for ImportZone.
 type ImportZoneParams struct {
 	// Origin Zone apex when the DNSZone does not exist yet (it is created).
@@ -3089,6 +3436,12 @@ type QueryActionJSONRequestBody = QueryActionInputBody
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody PatchSettingsJSONBody
+
+// ApproveUnblockRequestJSONRequestBody defines body for ApproveUnblockRequest for application/json ContentType.
+type ApproveUnblockRequestJSONRequestBody = UnblockApproval
+
+// DenyUnblockRequestJSONRequestBody defines body for DenyUnblockRequest for application/json ContentType.
+type DenyUnblockRequestJSONRequestBody = UnblockDenial
 
 // UpsertZoneRecordJSONRequestBody defines body for UpsertZoneRecord for application/json ContentType.
 type UpsertZoneRecordJSONRequestBody = Endpoint
@@ -3852,6 +4205,57 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 	StatsUpstreams(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListUnblockRequests List the unblock requests users made on the block page, newest first
+	//
+	// Cluster-wide: the requests are UnblockRequest objects in the store. counts covers every request, so ?state=Pending&limit=1 is the pending count.
+	//
+	// Corresponds with GET /unblockrequests (the `ListUnblockRequests` operationId).
+	ListUnblockRequests(ctx context.Context, params *ListUnblockRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteUnblockRequest Delete an unblock request
+	//
+	// A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry.
+	//
+	// Corresponds with DELETE /unblockrequests/{namespace}/{name} (the `DeleteUnblockRequest` operationId).
+	DeleteUnblockRequest(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUnblockRequest Get an unblock request
+	//
+	// Corresponds with GET /unblockrequests/{namespace}/{name} (the `GetUnblockRequest` operationId).
+	GetUnblockRequest(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveUnblockRequestWithBody Approve an unblock request: add the allow entry
+	//
+	// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+	ApproveUnblockRequestWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveUnblockRequest Approve an unblock request: add the allow entry
+	//
+	// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+	ApproveUnblockRequest(ctx context.Context, namespace string, name string, body ApproveUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DenyUnblockRequestWithBody Deny an unblock request (revokes an approval in force)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+	DenyUnblockRequestWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DenyUnblockRequest Deny an unblock request (revokes an approval in force)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+	DenyUnblockRequest(ctx context.Context, namespace string, name string, body DenyUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetVersion Build information of this node
 	//
@@ -5706,6 +6110,127 @@ func (c *Client) StatsTop(ctx context.Context, params *StatsTopParams, reqEditor
 // Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 func (c *Client) StatsUpstreams(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStatsUpstreamsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListUnblockRequests List the unblock requests users made on the block page, newest first
+//
+// Cluster-wide: the requests are UnblockRequest objects in the store. counts covers every request, so ?state=Pending&limit=1 is the pending count.
+//
+// Corresponds with GET /unblockrequests (the `ListUnblockRequests` operationId).
+func (c *Client) ListUnblockRequests(ctx context.Context, params *ListUnblockRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListUnblockRequestsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteUnblockRequest Delete an unblock request
+//
+// A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry.
+//
+// Corresponds with DELETE /unblockrequests/{namespace}/{name} (the `DeleteUnblockRequest` operationId).
+func (c *Client) DeleteUnblockRequest(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteUnblockRequestRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUnblockRequest Get an unblock request
+//
+// Corresponds with GET /unblockrequests/{namespace}/{name} (the `GetUnblockRequest` operationId).
+func (c *Client) GetUnblockRequest(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUnblockRequestRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApproveUnblockRequestWithBody Approve an unblock request: add the allow entry
+//
+// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+func (c *Client) ApproveUnblockRequestWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveUnblockRequestRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApproveUnblockRequest Approve an unblock request: add the allow entry
+//
+// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+func (c *Client) ApproveUnblockRequest(ctx context.Context, namespace string, name string, body ApproveUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveUnblockRequestRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DenyUnblockRequestWithBody Deny an unblock request (revokes an approval in force)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+func (c *Client) DenyUnblockRequestWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDenyUnblockRequestRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DenyUnblockRequest Deny an unblock request (revokes an approval in force)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+func (c *Client) DenyUnblockRequest(ctx context.Context, namespace string, name string, body DenyUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDenyUnblockRequestRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10848,6 +11373,274 @@ func NewStatsUpstreamsRequest(server string, params *StatsUpstreamsParams) (*htt
 	return req, nil
 }
 
+// NewListUnblockRequestsRequest constructs an http.Request for the ListUnblockRequests method
+func NewListUnblockRequestsRequest(server string, params *ListUnblockRequestsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unblockrequests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteUnblockRequestRequest constructs an http.Request for the DeleteUnblockRequest method
+func NewDeleteUnblockRequestRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unblockrequests/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetUnblockRequestRequest constructs an http.Request for the GetUnblockRequest method
+func NewGetUnblockRequestRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unblockrequests/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveUnblockRequestRequest calls the generic ApproveUnblockRequest builder with application/json body
+func NewApproveUnblockRequestRequest(server string, namespace string, name string, body ApproveUnblockRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApproveUnblockRequestRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewApproveUnblockRequestRequestWithBody constructs an http.Request for the ApproveUnblockRequest method, with any body, and a specified content type
+func NewApproveUnblockRequestRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unblockrequests/%s/%s/approve", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDenyUnblockRequestRequest calls the generic DenyUnblockRequest builder with application/json body
+func NewDenyUnblockRequestRequest(server string, namespace string, name string, body DenyUnblockRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDenyUnblockRequestRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewDenyUnblockRequestRequestWithBody constructs an http.Request for the DenyUnblockRequest method, with any body, and a specified content type
+func NewDenyUnblockRequestRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unblockrequests/%s/%s/deny", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetVersionRequest constructs an http.Request for the GetVersion method
 func NewGetVersionRequest(server string) (*http.Request, error) {
 	var err error
@@ -12135,6 +12928,63 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /stats/upstreams (the `StatsUpstreams` operationId).
 	StatsUpstreamsWithResponse(ctx context.Context, params *StatsUpstreamsParams, reqEditors ...RequestEditorFn) (*StatsUpstreamsResponse, error)
+
+	// ListUnblockRequestsWithResponse List the unblock requests users made on the block page, newest first
+	//
+	// Cluster-wide: the requests are UnblockRequest objects in the store. counts covers every request, so ?state=Pending&limit=1 is the pending count.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unblockrequests (the `ListUnblockRequests` operationId).
+	ListUnblockRequestsWithResponse(ctx context.Context, params *ListUnblockRequestsParams, reqEditors ...RequestEditorFn) (*ListUnblockRequestsResponse, error)
+
+	// DeleteUnblockRequestWithResponse Delete an unblock request
+	//
+	// A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /unblockrequests/{namespace}/{name} (the `DeleteUnblockRequest` operationId).
+	DeleteUnblockRequestWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeleteUnblockRequestResponse, error)
+
+	// GetUnblockRequestWithResponse Get an unblock request
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unblockrequests/{namespace}/{name} (the `GetUnblockRequest` operationId).
+	GetUnblockRequestWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetUnblockRequestResponse, error)
+
+	// ApproveUnblockRequestWithBodyWithResponse Approve an unblock request: add the allow entry
+	//
+	// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+	ApproveUnblockRequestWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveUnblockRequestResponse, error)
+
+	// ApproveUnblockRequestWithResponse Approve an unblock request: add the allow entry
+	//
+	// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+	ApproveUnblockRequestWithResponse(ctx context.Context, namespace string, name string, body ApproveUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveUnblockRequestResponse, error)
+
+	// DenyUnblockRequestWithBodyWithResponse Deny an unblock request (revokes an approval in force)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+	DenyUnblockRequestWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DenyUnblockRequestResponse, error)
+
+	// DenyUnblockRequestWithResponse Deny an unblock request (revokes an approval in force)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+	DenyUnblockRequestWithResponse(ctx context.Context, namespace string, name string, body DenyUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DenyUnblockRequestResponse, error)
 
 	// GetVersionWithResponse Build information of this node
 	//
@@ -20169,6 +21019,477 @@ func (r StatsUpstreamsResponse) ContentType() string {
 	return ""
 }
 
+type ListUnblockRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UnblockRequestList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON200() *UnblockRequestList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListUnblockRequestsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListUnblockRequestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListUnblockRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListUnblockRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListUnblockRequestsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteUnblockRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteUnblockRequestResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteUnblockRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteUnblockRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteUnblockRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteUnblockRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetUnblockRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UnblockRequest
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON200() *UnblockRequest {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetUnblockRequestResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUnblockRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUnblockRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUnblockRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUnblockRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ApproveUnblockRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UnblockDecisionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON200() *UnblockDecisionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ApproveUnblockRequestResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ApproveUnblockRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveUnblockRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveUnblockRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApproveUnblockRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DenyUnblockRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UnblockDecisionResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON200() *UnblockDecisionResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DenyUnblockRequestResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DenyUnblockRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DenyUnblockRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DenyUnblockRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DenyUnblockRequestResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -22470,6 +23791,105 @@ func (c *ClientWithResponses) StatsUpstreamsWithResponse(ctx context.Context, pa
 		return nil, err
 	}
 	return ParseStatsUpstreamsResponse(rsp)
+}
+
+// ListUnblockRequestsWithResponse List the unblock requests users made on the block page, newest first
+//
+// Cluster-wide: the requests are UnblockRequest objects in the store. counts covers every request, so ?state=Pending&limit=1 is the pending count.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unblockrequests (the `ListUnblockRequests` operationId).
+func (c *ClientWithResponses) ListUnblockRequestsWithResponse(ctx context.Context, params *ListUnblockRequestsParams, reqEditors ...RequestEditorFn) (*ListUnblockRequestsResponse, error) {
+	rsp, err := c.ListUnblockRequests(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListUnblockRequestsResponse(rsp)
+}
+
+// DeleteUnblockRequestWithResponse Delete an unblock request
+//
+// A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /unblockrequests/{namespace}/{name} (the `DeleteUnblockRequest` operationId).
+func (c *ClientWithResponses) DeleteUnblockRequestWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeleteUnblockRequestResponse, error) {
+	rsp, err := c.DeleteUnblockRequest(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteUnblockRequestResponse(rsp)
+}
+
+// GetUnblockRequestWithResponse Get an unblock request
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unblockrequests/{namespace}/{name} (the `GetUnblockRequest` operationId).
+func (c *ClientWithResponses) GetUnblockRequestWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetUnblockRequestResponse, error) {
+	rsp, err := c.GetUnblockRequest(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUnblockRequestResponse(rsp)
+}
+
+// ApproveUnblockRequestWithBodyWithResponse Approve an unblock request: add the allow entry
+//
+// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+func (c *ClientWithResponses) ApproveUnblockRequestWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveUnblockRequestResponse, error) {
+	rsp, err := c.ApproveUnblockRequestWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveUnblockRequestResponse(rsp)
+}
+
+// ApproveUnblockRequestWithResponse Approve an unblock request: add the allow entry
+//
+// Adds the name to the allow list of the scope (creating the list and attaching it to the policies concerned), records the decision and flushes the name from this node's response cache. Every node recompiles its lists and flushes its local edge cache. A time-limited approval's entry is removed by the leader when it ends. There is no per-client scope: a policy applies to ClientGroups, and a one-client group would take the client out of its own group's policy.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/approve (the `ApproveUnblockRequest` operationId).
+func (c *ClientWithResponses) ApproveUnblockRequestWithResponse(ctx context.Context, namespace string, name string, body ApproveUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveUnblockRequestResponse, error) {
+	rsp, err := c.ApproveUnblockRequest(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveUnblockRequestResponse(rsp)
+}
+
+// DenyUnblockRequestWithBodyWithResponse Deny an unblock request (revokes an approval in force)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+func (c *ClientWithResponses) DenyUnblockRequestWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DenyUnblockRequestResponse, error) {
+	rsp, err := c.DenyUnblockRequestWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDenyUnblockRequestResponse(rsp)
+}
+
+// DenyUnblockRequestWithResponse Deny an unblock request (revokes an approval in force)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unblockrequests/{namespace}/{name}/deny (the `DenyUnblockRequest` operationId).
+func (c *ClientWithResponses) DenyUnblockRequestWithResponse(ctx context.Context, namespace string, name string, body DenyUnblockRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*DenyUnblockRequestResponse, error) {
+	rsp, err := c.DenyUnblockRequest(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDenyUnblockRequestResponse(rsp)
 }
 
 // GetVersionWithResponse Build information of this node
@@ -29556,6 +30976,405 @@ func ParseStatsUpstreamsResponse(rsp *http.Response) (*StatsUpstreamsResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListUnblockRequestsResponse parses an HTTP response from a ListUnblockRequestsWithResponse call
+func ParseListUnblockRequestsResponse(rsp *http.Response) (*ListUnblockRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListUnblockRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UnblockRequestList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteUnblockRequestResponse parses an HTTP response from a DeleteUnblockRequestWithResponse call
+func ParseDeleteUnblockRequestResponse(rsp *http.Response) (*DeleteUnblockRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteUnblockRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetUnblockRequestResponse parses an HTTP response from a GetUnblockRequestWithResponse call
+func ParseGetUnblockRequestResponse(rsp *http.Response) (*GetUnblockRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUnblockRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UnblockRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveUnblockRequestResponse parses an HTTP response from a ApproveUnblockRequestWithResponse call
+func ParseApproveUnblockRequestResponse(rsp *http.Response) (*ApproveUnblockRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveUnblockRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UnblockDecisionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDenyUnblockRequestResponse parses an HTTP response from a DenyUnblockRequestWithResponse call
+func ParseDenyUnblockRequestResponse(rsp *http.Response) (*DenyUnblockRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DenyUnblockRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UnblockDecisionResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error

@@ -178,6 +178,16 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/stats/top` | Top domains, clients, upstreams, lists or zones | `stats.read` (cluster) |
 | GET | `/api/v1/stats/upstreams` | Traffic and health per upstream | `stats.read` (cluster) |
 
+## unblockrequests
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/unblockrequests` | List the unblock requests users made on the block page, newest first | `unblockrequests.read` (cluster) |
+| GET | `/api/v1/unblockrequests/{namespace}/{name}` | Get an unblock request | `unblockrequests.read` (cluster) |
+| DELETE | `/api/v1/unblockrequests/{namespace}/{name}` | Delete an unblock request | `unblockrequests.delete` (cluster) |
+| POST | `/api/v1/unblockrequests/{namespace}/{name}/approve` | Approve an unblock request: add the allow entry | `unblockrequests.decide` (cluster) |
+| POST | `/api/v1/unblockrequests/{namespace}/{name}/deny` | Deny an unblock request (revokes an approval in force) | `unblockrequests.decide` (cluster) |
+
 ## zones
 
 | Method | Path | Summary | Permission |
