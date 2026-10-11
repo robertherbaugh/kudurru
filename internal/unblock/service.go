@@ -17,6 +17,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -64,7 +65,8 @@ type Options struct {
 // Service is the request book. Build it with New and Run it on every
 // node; RunJanitor on the leader.
 type Service struct {
-	opts Options
+	opts  Options
+	lists *domainlist.Service
 
 	mu     sync.RWMutex
 	items  map[store.Key]*v1alpha1.UnblockRequest
@@ -84,7 +86,10 @@ func New(o Options) *Service {
 		o.Logger = slog.Default()
 	}
 	o.Logger = o.Logger.With("component", "unblock")
-	return &Service{opts: o, items: map[store.Key]*v1alpha1.UnblockRequest{}, synced: make(chan struct{})}
+	return &Service{
+		opts: o, items: map[store.Key]*v1alpha1.UnblockRequest{}, synced: make(chan struct{}),
+		lists: domainlist.New(domainlist.Options{Store: o.Store, Now: o.Now, Logger: o.Logger}),
+	}
 }
 
 // Namespace is where the requests are created.

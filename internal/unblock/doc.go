@@ -16,12 +16,14 @@
 // another; a request asked again after a decision returns to Pending and
 // keeps the earlier decision in status.history.
 //
-// Approve adds the allow entry (the ui-allow list for everyone, the
-// ui-allow-<group> list for one ClientGroup) and attaches the list to the
-// policies concerned; Deny revokes an approval. The leader's janitor
-// (RunJanitor) removes time-limited entries when they end, expires pending
-// requests after unblockRequests.pendingExpiry and deletes decided ones
-// after unblockRequests.retention. Every entry is linked to its request in
+// Approve adds the allow entry through the Allowlist (internal/domainlist:
+// a structured entry of the ui-allow list for everyone, of the
+// ui-allow-<group> list for one ClientGroup, with origin unblock and the
+// request) and attaches the list to the policies concerned; Deny revokes
+// an approval. The leader's janitor (RunJanitor) removes time-limited
+// entries when they end, expires pending requests after
+// unblockRequests.pendingExpiry and deletes decided ones after
+// unblockRequests.retention. Every entry is linked to its request in
 // status.allow, so removal survives restarts and removes only what an
 // approval added.
 package unblock
