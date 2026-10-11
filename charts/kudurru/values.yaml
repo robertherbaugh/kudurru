@@ -345,6 +345,18 @@ auth:
     enabled: false
     # -- Existing Secret with the key "token"; empty generates one.
     existingSecret: ""
+  oidc:
+    # -- OpenID Providers for UI login and bearer ID tokens (§8.3), rendered
+    # into the settings key auth.identityProviders. Each entry: id (required,
+    # unique), issuer, clientID, clientSecretRef {name, key} (a Secret in the
+    # release namespace; mode=kubernetes) or clientSecretFile (mode=standalone,
+    # mounted with extraVolumes), redirectURL
+    # (https://<host>/api/v1/auth/oidc/<id>/callback), scopes, claimMappings,
+    # claimValidationRules, provisioning. Example:
+    #   - {id: corp, issuer: https://login.example.com, clientID: kudurru,
+    #      clientSecretRef: {name: kudurru-oidc, key: client-secret},
+    #      redirectURL: https://dns.example.com/api/v1/auth/oidc/corp/callback}
+    providers: []
 
 serviceMonitor:
   enabled: false

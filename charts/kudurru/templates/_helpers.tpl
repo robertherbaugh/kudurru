@@ -217,6 +217,9 @@ the binary reads the settings file (D25, docs/followups.md).
 {{- if .Values.externalDNS.webhook.enabled -}}
 {{- $_ := set $base "externalDNS" (dict "webhook" (dict "listen" (printf ":%d" (int .Values.externalDNS.webhook.port)))) -}}
 {{- end -}}
+{{- with .Values.auth.oidc.providers -}}
+{{- $_ := set $base "auth" (dict "identityProviders" .) -}}
+{{- end -}}
 {{- $cfg := mergeOverwrite $base (deepCopy (.Values.config.node | default dict)) -}}
 {{- $cfg = mergeOverwrite $cfg (deepCopy (.Values.config.settings | default dict)) -}}
 {{- toYaml $cfg -}}
@@ -253,6 +256,10 @@ the binary reads the settings file (D25, docs/followups.md).
 {{- end -}}
 {{- if and $v.ingress.enabled (not $v.ingress.host) -}}
 {{- fail "ingress.host is required when ingress.enabled" -}}
+{{- end -}}
+{{- range $i, $p := $v.auth.oidc.providers -}}
+{{- if not $p.id }}{{ fail (printf "auth.oidc.providers[%d].id is required" $i) }}{{ end -}}
+{{- if and $p.clientSecretRef (include "kudurru.standalone" $) }}{{ fail (printf "auth.oidc.providers[%d]: clientSecretRef needs mode=kubernetes; use clientSecretFile with extraVolumes" $i) }}{{ end -}}
 {{- end -}}
 {{- if and $v.edge.enabled (eq (int $v.edge.backendPort) 53) -}}
 {{- fail "edge.backendPort must not be 53: the edge owns :53" -}}

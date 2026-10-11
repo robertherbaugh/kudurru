@@ -26,9 +26,7 @@ var reservedEnv = map[string]string{ //nolint:gosec // variable names, not crede
 // pendingKeys are settings keys the deployment assets already render whose
 // metadata row lands with another M3 package. The strict key check accepts
 // them; config.Load ignores unknown file keys. Each has a docs/followups.md row.
-var pendingKeys = map[string]string{
-	"externalDNS.webhook.listen": "external-dns webhook listener (API package, §5.6)",
-}
+var pendingKeys = map[string]string{}
 
 // checkEnvName fails for a KUDURRU_* variable that neither maps onto a
 // settings key (KUDURRU_<SECTION>__<KEY>[_FILE]) nor is reserved; the binary

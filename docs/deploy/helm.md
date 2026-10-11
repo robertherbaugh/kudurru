@@ -164,10 +164,14 @@ The kudurru ServiceAccount gets (D77, §5.3): create/patch/delete/get/list/
 watch on the five `kudurru.io` kinds, update/patch on their status,
 read-only `dnsendpoints`, `services`, `namespaces` and `endpointslices`,
 create on events, `tokenreviews` and `subjectaccessreviews`; in the release
-namespace only, `leases` (get/create/update), `secrets` and `configmaps`
+namespace only, `leases` (get/create/update), `secrets`
+(get/list/watch/create/update/patch/delete: token revocation and user or
+RoleBinding deletion delete Secrets) and `configmaps`
 (get/list/watch/create/update). `rbac.aggregateToDefaultRoles` adds
 `<release>-viewer|editor|admin` aggregated into `view|edit|admin` and
-`<release>-auditor`.
+`<release>-auditor` (aggregated nowhere: it reads the query log). They are
+generated from `internal/rbac/permissions.yaml` by `make rbac-manifests`
+into `templates/rbac-aggregated.yaml`.
 
 ## Values
 
@@ -178,6 +182,8 @@ the chart added beyond §5.2: `tls.secretName`, `edge.backendPort`,
 `vip.keepalived.keepalivedVersion`, `auth.encryptionKeyPreviousSecret`,
 `auth.bootstrapToken`, `podMonitor`, `probes`, `lameduckSeconds`,
 `clusterDomain` (default `cluster.local`), `persistence.standalone.enabled`,
-`extraEnv`, `extraVolumes`, `extraVolumeMounts`. `auth.oidc` and `webhook`
-from the §5.2 outline are not in the chart yet: the OIDC settings keys and
-the validating webhook do not exist in the binary.
+`extraEnv`, `extraVolumes`, `extraVolumeMounts`. `auth.oidc.providers` is
+a list of OpenID Providers rendered into the settings key
+`auth.identityProviders` (the §5.2 outline's single-issuer `auth.oidc`
+became a list). `webhook` from the §5.2 outline is not in the chart: the
+validating webhook does not exist in the binary.

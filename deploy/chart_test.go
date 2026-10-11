@@ -239,6 +239,14 @@ var chartCases = []chartCase{
 			}
 		}
 	}},
+	{name: "oidc", values: "auth: {oidc: {providers: [{id: corp, issuer: 'https://login.example.com', clientID: kudurru, clientSecretRef: {name: kudurru-oidc, key: client-secret}, redirectURL: 'https://dns.example.com/api/v1/auth/oidc/corp/callback'}]}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		node := r.nodeFile(t)
+		for _, want := range []string{"identityProviders:", "issuer: https://login.example.com", "name: kudurru-oidc"} {
+			if !strings.Contains(node, want) {
+				t.Errorf("node file lacks %q:\n%s", want, node)
+			}
+		}
+	}},
 	{name: "bootstrap-token", values: "auth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		r.wantObject(t, "Secret", "kudurru-bootstrap-token")
 	}},
