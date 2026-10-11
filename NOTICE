@@ -16,6 +16,17 @@ licences. Attributions are added to this file as the dependencies land:
   secondary-transfer flow, test helpers.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
+- Kubernetes client libraries (https://github.com/kubernetes/client-go,
+  k8s.io/api, k8s.io/apimachinery, k8s.io/apiextensions-apiserver),
+  Apache-2.0: dependencies of the kube store driver (informers, server-side
+  apply, coordination.k8s.io Lease leader election).
+- controller-runtime (https://github.com/kubernetes-sigs/controller-runtime),
+  Apache-2.0: client, informer cache and envtest used by the kube store
+  driver and its tests; the Watch catch-up barrier is informed by its
+  read-your-writes consistency client, and the envtest binary layout
+  (bin/k8s/<version>-<os>-<arch>) follows its setup-envtest tool.
+- modernc.org/sqlite (https://gitlab.com/cznic/sqlite), BSD-3-Clause: cgo-free
+  SQLite used for local.db.
 
 dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
 They are distributed unmodified as separate programs in their own container
