@@ -3,16 +3,16 @@
 // today and the cluster-wide Publisher once replication lands; the UI
 // only shows what the server reports back.
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCan } from '../api/context';
 import { useBlocking, useSetBlocking } from '../api/hooks';
 import type { BlockingState } from '../api/types';
 import { formatCountdown, parseDuration } from '../lib/format';
 import { useCountdown } from '../lib/useCountdown';
 import { useNotify } from './Feedback';
+import { FormDialog } from './FormDialog';
 
 /** The preset durations offered when disabling, in seconds (0 = indefinite). */
 export const BLOCKING_PRESETS: { label: string; seconds: number }[] = [
@@ -50,7 +50,6 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
   const [customError, setCustomError] = useState<string | undefined>();
   const until = useMemo(() => resumeAt(state, fetchedAt), [state, fetchedAt]);
   const left = useCountdown(until, onExpire);
-  const titleId = useId();
 
   if (!state) {
     return <span className="k-muted k-small">Blocking state unknown</span>;
@@ -104,42 +103,39 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
           onClick={() => onSet({ blocking: true })}
         />
       )}
-      <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={420} maxHeight="90dvh" aria-labelledby={titleId}>
-        <div className="k-stack-lg">
-          <h2 id={titleId} className="k-dialog-title">
-            Disable blocking
-          </h2>
-          <p className="k-muted k-small">
-            Queries are answered without block lists until blocking re-enables. Allow lists, zones and policies keep working.
-          </p>
-          <div className="k-row" role="group" aria-label="Disable for">
-            {BLOCKING_PRESETS.map((p) => (
-              <Button key={p.label} label={p.label} variant="secondary" onClick={() => disable(p.seconds)} />
-            ))}
-          </div>
-          <form
-            className="k-row-end"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submitCustom();
-            }}
-          >
-            <TextInput
-              label="Custom duration"
-              description="Minutes, or a duration such as 90s or 1h30m"
-              value={custom}
-              onChange={(v) => setCustom(v)}
-              status={customError ? { type: 'error', message: customError } : undefined}
-              placeholder="15"
-            />
-            <Button type="submit" label="Disable" variant="primary" />
-          </form>
-          <div className="k-row">
-            <span className="k-spacer" />
-            <Button label="Cancel" variant="ghost" onClick={() => setOpen(false)} />
-          </div>
+      <FormDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        title="Disable blocking"
+        width={420}
+        footer={<Button label="Cancel" variant="ghost" onClick={() => setOpen(false)} />}
+      >
+        <p className="k-muted k-small">
+          Queries are answered without block lists until blocking re-enables. Allow lists, zones and policies keep working.
+        </p>
+        <div className="k-row" role="group" aria-label="Disable for">
+          {BLOCKING_PRESETS.map((p) => (
+            <Button key={p.label} label={p.label} variant="secondary" onClick={() => disable(p.seconds)} />
+          ))}
         </div>
-      </Dialog>
+        <form
+          className="k-row-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitCustom();
+          }}
+        >
+          <TextInput
+            label="Custom duration"
+            description="Minutes, or a duration such as 90s or 1h30m"
+            value={custom}
+            onChange={(v) => setCustom(v)}
+            status={customError ? { type: 'error', message: customError } : undefined}
+            placeholder="15"
+          />
+          <Button type="submit" label="Disable" variant="primary" />
+        </form>
+      </FormDialog>
     </div>
   );
 }

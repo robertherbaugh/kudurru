@@ -3,7 +3,6 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +10,7 @@ import { useId, useMemo, useState, type ChangeEvent } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
+import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { RecordEditor } from '../components/RecordEditor';
 import { ownership, readOnlyReason } from '../lib/managedBy';
@@ -23,7 +23,6 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
   const api = useApi();
   const qc = useQueryClient();
   const notify = useNotify();
-  const titleId = useId();
   const fileId = useId();
   const [text, setText] = useState('');
   const [result, setResult] = useState<ZoneImportResult | null>(null);
@@ -42,60 +41,58 @@ function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
     if (f) void f.text().then(setText);
   };
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="form" width={720} maxHeight="90dvh" aria-labelledby={titleId}>
-      <form
-        className="k-stack-lg"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (text.trim()) m.mutate();
-        }}
-      >
-        <h2 id={titleId} className="k-dialog-title">
-          Import a BIND zone file into {zone}
-        </h2>
-        <label className="k-label" htmlFor={fileId}>
-          Zone file
-          <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
-        </label>
-        <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN example.internal.\nwww 300 IN A 192.0.2.10'} />
-        <p className="k-muted k-small">Records land in one record set managed by the API; SOA and apex NS are taken from the zone object.</p>
-        {result ? (
-          <Banner
-            status={result.skipped?.length ? 'warning' : 'success'}
-            title={`${result.imported} records imported${result.recordSet ? ` into ${result.recordSet}` : ''}`}
-            description={result.skipped?.length ? result.skipped.map((s) => `line ${s.line}: ${s.error}`).join('; ') : undefined}
-          />
-        ) : null}
-        <div className="k-row">
-          <span className="k-spacer" />
+    <FormDialog
+      isOpen={open}
+      onClose={onClose}
+      title={`Import a BIND zone file into ${zone}`}
+      width={720}
+      onSubmit={() => {
+        if (text.trim()) m.mutate();
+      }}
+      footer={
+        <>
           <Button label="Close" variant="ghost" onClick={onClose} />
           <Button type="submit" label="Import" variant="primary" isDisabled={!text.trim()} isLoading={m.isPending} />
-        </div>
-      </form>
-    </Dialog>
+        </>
+      }
+    >
+      <label className="k-label" htmlFor={fileId}>
+        Zone file
+        <input id={fileId} type="file" accept=".zone,.db,.txt,text/plain,text/dns" onChange={onFile} />
+      </label>
+      <TextArea label="Or paste the zone text" value={text} onChange={setText} rows={12} hasSpellCheck={false} placeholder={'$ORIGIN example.internal.\nwww 300 IN A 192.0.2.10'} />
+      <p className="k-muted k-small">Records land in one record set managed by the API; SOA and apex NS are taken from the zone object.</p>
+      {result ? (
+        <Banner
+          status={result.skipped?.length ? 'warning' : 'success'}
+          title={`${result.imported} records imported${result.recordSet ? ` into ${result.recordSet}` : ''}`}
+          description={result.skipped?.length ? result.skipped.map((s) => `line ${s.line}: ${s.error}`).join('; ') : undefined}
+        />
+      ) : null}
+    </FormDialog>
   );
 }
 
 function ExportDialog({ zone, open, onClose }: { zone: string; open: boolean; onClose: () => void }) {
   const api = useApi();
-  const titleId = useId();
   const q = useQuery({ queryKey: [...qk.zone(zone), 'export'], queryFn: () => api.zones.exportText(zone), enabled: open });
   return (
-    <Dialog isOpen={open} onOpenChange={(o) => !o && onClose()} purpose="info" width={760} aria-labelledby={titleId}>
-      <div className="k-stack-lg">
-        <h2 id={titleId} className="k-dialog-title">
-          {zone} as a BIND zone file
-        </h2>
-        {q.error ? <ErrorBanner error={q.error} /> : null}
-        {q.isLoading ? <Loading /> : null}
-        {q.data ? <pre className="k-pre">{q.data}</pre> : null}
-        <div className="k-row">
-          <span className="k-spacer" />
+    <FormDialog
+      isOpen={open}
+      onClose={onClose}
+      title={`${zone} as a BIND zone file`}
+      width={760}
+      footer={
+        <>
           <Button label="Download" variant="secondary" href={api.zones.exportURL(zone)} target="_blank" rel="noopener" />
           <Button label="Close" variant="primary" onClick={onClose} />
-        </div>
-      </div>
-    </Dialog>
+        </>
+      }
+    >
+      {q.error ? <ErrorBanner error={q.error} /> : null}
+      {q.isLoading ? <Loading /> : null}
+      {q.data ? <pre className="k-pre">{q.data}</pre> : null}
+    </FormDialog>
   );
 }
 
@@ -109,7 +106,6 @@ export default function ZoneDetailPage({ params }: PageProps) {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filter, setFilter] = useState('');
-  const editorTitle = useId();
 
   const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone) });
   const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone) });
@@ -268,31 +264,31 @@ export default function ZoneDetailPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      <Dialog isOpen={editing !== null} onOpenChange={(o) => !o && setEditing(null)} purpose="form" width={720} maxHeight="90dvh" aria-labelledby={editorTitle}>
+      <FormDialog
+        isOpen={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}`}
+        width={720}
+      >
         {editing !== null ? (
-          <div className="k-stack-lg">
-            <h2 id={editorTitle} className="k-dialog-title">
-              {editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}`}
-            </h2>
-            <RecordEditor
-              zoneName={zoneName}
-              initial={editing === 'new' ? undefined : editing}
-              defaultRecordSet={`api-${zone}`}
-              onCancel={() => setEditing(null)}
-              onSubmit={async (ep, recordSet) => {
-                try {
-                  await api.zones.upsertRecord(zone, ep, recordSet);
-                } catch (err) {
-                  throw new Error(errorText(err), { cause: err });
-                }
-                notify.success(`Saved ${ep.dnsName} ${ep.recordType}`);
-                setEditing(null);
-                invalidate();
-              }}
-            />
-          </div>
+          <RecordEditor
+            zoneName={zoneName}
+            initial={editing === 'new' ? undefined : editing}
+            defaultRecordSet={`api-${zone}`}
+            onCancel={() => setEditing(null)}
+            onSubmit={async (ep, recordSet) => {
+              try {
+                await api.zones.upsertRecord(zone, ep, recordSet);
+              } catch (err) {
+                throw new Error(errorText(err), { cause: err });
+              }
+              notify.success(`Saved ${ep.dnsName} ${ep.recordType}`);
+              setEditing(null);
+              invalidate();
+            }}
+          />
         ) : null}
-      </Dialog>
+      </FormDialog>
       <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} />
       <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} />
     </div>

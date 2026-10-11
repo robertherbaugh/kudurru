@@ -5,13 +5,13 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
-import { Dialog } from '@astryxdesign/core/Dialog';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ClientGroup, ClientInventoryItem } from '../api/types';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { FormDialog } from '../components/FormDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
 import { Link, useSearchParams } from '../lib/router';
@@ -28,7 +28,6 @@ export default function ClientsPage() {
   const [assigning, setAssigning] = useState(false);
   const [group, setGroup] = useState('');
   const [comment, setComment] = useState('');
-  const titleId = useId();
   const groupId = useId();
 
   const inv = useQuery({ queryKey: ['clients', scope], queryFn: () => api.clients.inventory({ window: '24h' }), refetchInterval: 60_000 });
@@ -145,35 +144,31 @@ export default function ClientsPage() {
           </table>
         </div>
       ) : null}
-      <Dialog isOpen={assigning} onOpenChange={setAssigning} purpose="form" width={460} maxHeight="90dvh" aria-labelledby={titleId}>
-        <form
-          className="k-stack-lg"
-          onSubmit={(e) => {
-            e.preventDefault();
-            assign.mutate();
-          }}
-        >
-          <h2 id={titleId} className="k-dialog-title">
-            Add {selected.size} client{selected.size === 1 ? '' : 's'} to a group
-          </h2>
-          <label className="k-label" htmlFor={groupId}>
-            Group
-            <select id={groupId} className="k-native-select" value={group} onChange={(e) => setGroup(e.target.value)}>
-              {writable.map((g) => (
-                <option key={g.metadata.name} value={g.metadata.name}>
-                  {g.metadata.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
-          <div className="k-row">
-            <span className="k-spacer" />
+      <FormDialog
+        isOpen={assigning}
+        onClose={() => setAssigning(false)}
+        title={`Add ${selected.size} client${selected.size === 1 ? '' : 's'} to a group`}
+        width={460}
+        onSubmit={() => assign.mutate()}
+        footer={
+          <>
             <Button label="Cancel" variant="ghost" onClick={() => setAssigning(false)} />
             <Button type="submit" label="Add" variant="primary" isLoading={assign.isPending} isDisabled={!group} />
-          </div>
-        </form>
-      </Dialog>
+          </>
+        }
+      >
+        <label className="k-label" htmlFor={groupId}>
+          Group
+          <select id={groupId} className="k-native-select" value={group} onChange={(e) => setGroup(e.target.value)}>
+            {writable.map((g) => (
+              <option key={g.metadata.name} value={g.metadata.name}>
+                {g.metadata.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextInput label="Comment" value={comment} onChange={setComment} isOptional />
+      </FormDialog>
     </div>
   );
 }
