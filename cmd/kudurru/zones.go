@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -111,7 +112,9 @@ func (o *cliOpts) completeZones(cmd *cobra.Command, args []string, _ string) ([]
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	zs, _, err := listItems[zoneSummary](cmd.Context(), c, "/zones", nil)
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+	defer cancel()
+	zs, _, err := listItems[zoneSummary](ctx, c, "/zones", nil)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

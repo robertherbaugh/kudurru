@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/robertherbaugh/kudurru/internal/apiclient"
 )
 
 func run(t *testing.T, args ...string) string {
@@ -50,5 +54,24 @@ func TestExplicitMissingConfigIsAnError(t *testing.T) {
 	root.SetArgs([]string{"--config", filepath.Join(t.TempDir(), "nope.yaml"), "config", "show"})
 	if err := root.Execute(); err == nil {
 		t.Fatal("an explicitly given missing config file must be an error")
+	}
+}
+
+func TestErrorHint(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{&apiclient.Error{StatusCode: 401, Key: "unauthenticated"}, "kudurru login"},
+		{&apiclient.Error{StatusCode: 403, Key: "forbidden"}, "RoleBinding"},
+		{fmt.Errorf("wrapped: %w", &apiclient.Error{StatusCode: 503, Key: "read_only"}), "ha-static"},
+		{&apiclient.Error{StatusCode: 404, Key: "not_found"}, ""},
+		{errors.New("plain"), ""},
+	}
+	for _, tc := range cases {
+		got := errorHint(tc.err)
+		if (tc.want == "" && got != "") || !strings.Contains(got, tc.want) {
+			t.Errorf("errorHint(%v) = %q, want %q", tc.err, got, tc.want)
+		}
 	}
 }

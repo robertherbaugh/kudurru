@@ -70,6 +70,12 @@ func TestGetErrors(t *testing.T) {
 	if _, _, err := h.run("get", "zones", "-o", "toml"); err == nil || !strings.Contains(err.Error(), "unknown output format") {
 		t.Fatalf("bad -o: %v", err)
 	}
+	if _, _, err := h.run("get", "rrset", "web", "-A"); err == nil || !strings.Contains(err.Error(), "across all namespaces") {
+		t.Fatalf("-A with a name: %v", err)
+	}
+	if out := h.mustRun("get", "zone", "home-example-com", "-A", "-o", "name"); out != "dnszones/home-example-com\n" {
+		t.Fatalf("-A with a cluster-scoped name: %q", out)
+	}
 }
 
 func TestDescribe(t *testing.T) {

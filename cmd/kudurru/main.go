@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
+	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
@@ -22,8 +24,24 @@ var defaultConfigPath = "/etc/kudurru/kudurru.yaml"
 func main() {
 	if err := newRoot().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if hint := errorHint(err); hint != "" {
+			fmt.Fprintln(os.Stderr, "hint:", hint)
+		}
 		os.Exit(1)
 	}
+}
+
+// errorHint suggests the next step for common API failures.
+func errorHint(err error) string {
+	switch {
+	case apiclient.IsStatus(err, http.StatusUnauthorized):
+		return "the server rejected the credentials; run `kudurru login` (or check KUDURRU_TOKEN / --token)"
+	case apiclient.IsStatus(err, http.StatusForbidden):
+		return "the token lacks the permission named above; ask an admin for a RoleBinding"
+	case apiclient.IsKey(err, "read_only"):
+		return "this deployment is read-only through the API (ha-static); edit objects.d on every node"
+	}
+	return ""
 }
 
 func newRoot() *cobra.Command {

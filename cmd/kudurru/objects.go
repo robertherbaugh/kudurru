@@ -8,6 +8,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +44,9 @@ func newGetCmd(o *cliOpts) *cobra.Command {
 			k, err := cli.LookupKind(args[0])
 			if err != nil {
 				return err
+			}
+			if all && len(args) > 1 && k.Namespaced {
+				return fmt.Errorf("a %s cannot be fetched by name across all namespaces; use -n", k.Kind)
 			}
 			c, r, err := o.client()
 			if err != nil {
@@ -111,6 +115,10 @@ func newGetCmd(o *cliOpts) *cobra.Command {
 	return cmd
 }
 
+// completionTimeout bounds API calls made while the shell waits for
+// completions.
+const completionTimeout = 3 * time.Second
+
 // completeObjects completes the kind, then object names from the API.
 func (o *cliOpts) completeObjects(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) == 0 {
@@ -128,7 +136,9 @@ func (o *cliOpts) completeObjects(cmd *cobra.Command, args []string, _ string) (
 	if k.Namespaced {
 		ns = o.nsFor(r)
 	}
-	items, err := c.ListObjects(cmd.Context(), k.Resource, apiclient.ListOptions{Namespace: ns})
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+	defer cancel()
+	items, err := c.ListObjects(ctx, k.Resource, apiclient.ListOptions{Namespace: ns})
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
