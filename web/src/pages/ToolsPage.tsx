@@ -146,6 +146,7 @@ function Dig() {
             {r.node ? <span className="k-muted k-small">node {r.node}</span> : null}
           </p>
           {r.error ? <Banner status="warning" title="The pipeline reported an error" description={r.error} /> : null}
+          {r.list || r.rule || r.upstream ? (
           <dl className="k-why-grid">
             {r.list ? (
               <div>
@@ -166,6 +167,7 @@ function Dig() {
               </div>
             ) : null}
           </dl>
+          ) : null}
           <DigSection title="ANSWER" rows={r.answer} />
           <DigSection title="AUTHORITY" rows={r.authority} />
           <DigSection title="ADDITIONAL" rows={r.additional} />
