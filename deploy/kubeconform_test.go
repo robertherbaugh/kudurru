@@ -102,7 +102,7 @@ func runKubeconform(t *testing.T, files ...string) {
 		"-schema-location", "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
 	}
 	if cache := os.Getenv("KUBECONFORM_CACHE"); cache != "" {
-		if err := os.MkdirAll(cache, 0o750); err != nil {
+		if err := os.MkdirAll(cache, 0o750); err != nil { //nolint:gosec // cache directory chosen by the operator
 			t.Fatal(err)
 		}
 		args = append(args, "-cache", cache)

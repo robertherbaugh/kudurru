@@ -14,7 +14,7 @@ import (
 
 // reservedEnv are the KUDURRU_* variables without "__" that the binary (or
 // a package landing in M3) reads directly; config.Load ignores them.
-var reservedEnv = map[string]string{
+var reservedEnv = map[string]string{ //nolint:gosec // variable names, not credentials
 	"KUDURRU_CONFIG":                       "cmd/kudurru/main.go: path of kudurru.yaml",
 	"KUDURRU_HEADLESS_SERVICE":             "cmd/kudurru/serve.go: <pod>.<headless> for the leader's internal listener",
 	"KUDURRU_ENCRYPTION_KEY_FILE":          "cmd/kudurru/serve.go readEncryptionKeys",

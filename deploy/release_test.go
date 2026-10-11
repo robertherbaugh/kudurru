@@ -2,6 +2,7 @@ package deploy_test
 
 import (
 	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,10 +19,7 @@ import (
 // cosign signatures. `goreleaser check` in CI validates the schema.
 func TestGoreleaserConfig(t *testing.T) {
 	root := repoRoot(t)
-	b, err := os.ReadFile(filepath.Join(root, ".goreleaser.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	b := readRepoFile(t, ".goreleaser.yaml")
 	var cfg map[string]any
 	if err := yamlv3.Unmarshal(b, &cfg); err != nil {
 		t.Fatalf(".goreleaser.yaml does not parse: %v", err)
@@ -105,15 +103,9 @@ func TestGoreleaserConfig(t *testing.T) {
 // TestSystemdUnit checks the unit's ExecStart against the package layout and
 // loads the packaged kudurru.yaml through config.Load.
 func TestSystemdUnit(t *testing.T) {
-	root := repoRoot(t)
-	f, err := os.Open(filepath.Join(root, "deploy/systemd/kudurru.service"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = f.Close() }()
 	sections := map[string]map[string]string{}
 	var cur string
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(bytes.NewReader(readRepoFile(t, "deploy/systemd/kudurru.service")))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -144,18 +136,12 @@ func TestSystemdUnit(t *testing.T) {
 	if sections["Install"]["WantedBy"] != "multi-user.target" {
 		t.Errorf("unit is not installable")
 	}
-	body, err := os.ReadFile(filepath.Join(root, "deploy/systemd/kudurru.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	body := readRepoFile(t, "deploy/systemd/kudurru.yaml")
 	cfg := checkConfig(t, "deploy/systemd/kudurru.yaml", body, nil)
 	if cfg.Node.DataDir != "/var/lib/kudurru" {
 		t.Errorf("packaged dataDir %s is not the unit's StateDirectory", cfg.Node.DataDir)
 	}
-	env, err := os.ReadFile(filepath.Join(root, "deploy/systemd/kudurru.env"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	env := readRepoFile(t, "deploy/systemd/kudurru.env")
 	for _, line := range strings.Split(string(env), "\n") {
 		line = strings.TrimPrefix(strings.TrimSpace(line), "#")
 		if name, _, ok := strings.Cut(line, "="); ok && strings.HasPrefix(name, "KUDURRU_") {
@@ -168,11 +154,7 @@ func TestSystemdUnit(t *testing.T) {
 
 // TestDockerfile keeps the local image equivalent to the release image.
 func TestDockerfile(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(repoRoot(t), "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(b)
+	s := string(readRepoFile(t, "Dockerfile"))
 	for _, want := range []string{"CGO_ENABLED=0", "FROM gcr.io/distroless/static:nonroot AS release", "FROM gcr.io/distroless/static:debug-nonroot AS debug", "USER 65532:65532", `"kudurru", "health", "--ready"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("Dockerfile lacks %q", want)

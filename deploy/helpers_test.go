@@ -164,6 +164,17 @@ func mapOf(v any) map[string]any {
 	return m
 }
 
+// readRepoFile reads a file of the repository by its path relative to the
+// module root.
+func readRepoFile(t testing.TB, rel string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), rel)) //nolint:gosec // repository file named by the test
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 // writeOrCompare writes want to path under -update, otherwise fails when the
 // file differs.
 func writeOrCompare(t *testing.T, path string, want []byte, regen string) {

@@ -2,7 +2,6 @@ package deploy_test
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -266,10 +265,7 @@ func TestGrafanaDashboard(t *testing.T) {
 // panel ids are unique, and every kudurru_* metric it queries is registered
 // by the binary. dnsdist_* series come from dnsdist's own exporter.
 func TestDashboardMetricsExist(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(repoRoot(t), dashboardPath))
-	if err != nil {
-		t.Fatal(err)
-	}
+	b := readRepoFile(t, dashboardPath)
 	var dash map[string]any
 	if err := json.Unmarshal(b, &dash); err != nil {
 		t.Fatalf("dashboard JSON does not parse: %v", err)
@@ -313,10 +309,7 @@ func TestDashboardMetricsExist(t *testing.T) {
 // only use metrics the binary registers; the chart copy is identical.
 func TestPrometheusRules(t *testing.T) {
 	root := repoRoot(t)
-	b, err := os.ReadFile(filepath.Join(root, "deploy/prometheus/rules.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	b := readRepoFile(t, "deploy/prometheus/rules.yaml")
 	docs := decodeDocs(t, b)
 	if len(docs) != 1 || docs[0]["kind"] != "PrometheusRule" {
 		t.Fatalf("rules.yaml must hold exactly one PrometheusRule")
