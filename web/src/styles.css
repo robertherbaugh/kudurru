@@ -553,6 +553,14 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 /* Service logos: tiles (toggle buttons), stacks and lists. Monogram tones
    keep white text above 4.5:1 in both schemes. */
 .k-service-icon { display: block; flex: none; border-radius: 6px; object-fit: contain; }
+.k-service-icon-pair { display: contents; }
+.k-icon-on-dark { display: none; }
+:root[data-theme='dark'] .k-icon-on-light { display: none; }
+:root[data-theme='dark'] .k-icon-on-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .k-icon-on-light { display: none; }
+  :root:not([data-theme='light']) .k-icon-on-dark { display: block; }
+}
 .k-monogram {
   display: inline-grid;
   place-items: center;

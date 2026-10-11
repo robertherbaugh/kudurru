@@ -1438,10 +1438,12 @@ export const handlers = [
   }),
 
   // blocked-services and safe-search catalogue (D60) ----------------------
-  http.get(`${B}/catalogue/icons`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: Object.keys(MOCK_ICONS).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg` })) })),
+  http.get(`${B}/catalogue/icons`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: Object.keys(MOCK_ICONS).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { onDark: `/api/v1/catalogue/icons/${id}-light.svg` } : {}) })) })),
   http.get(`${B}/catalogue/icons/:file`, ({ params }) => {
-    const id = String(params.file).replace(/\.svg$/, '');
-    const icon = MOCK_ICONS[id];
+    const file = String(params.file).replace(/\.svg$/, '');
+    const light = file.endsWith('-light') && ON_DARK.has(file.slice(0, -'-light'.length));
+    const id = light ? file.slice(0, -'-light'.length) : file;
+    const icon = light && MOCK_ICONS[id] ? (['#f2f2f2', MOCK_ICONS[id][1]] as [string, string]) : MOCK_ICONS[id];
     if (!icon) return fail(404, 'not_found', `no icon ${id}`);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${icon[0]}"/><text x="16" y="21.5" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">${icon[1]}</text></svg>`;
     return new HttpResponse(svg, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400, immutable' } });
@@ -1555,7 +1557,11 @@ const MOCK_ICONS: Record<string, [string, string]> = {
   duckduckgo: ['#de5833', 'D'],
 };
 
-const icon = (id: string) => (MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg` } : {});
+/** Logos drawn dark on transparent get a light variant for dark backgrounds (GET /catalogue/icons onDark). */
+const ON_DARK = new Set(['tiktok']);
+
+const icon = (id: string) =>
+  MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { iconOnDark: `/api/v1/catalogue/icons/${id}-light.svg` } : {}) } : {};
 
 const svc = (id: string, name: string, category: string, domains: string[]) => ({
   id,
@@ -1609,13 +1615,15 @@ function policyState(p: Policy) {
   const scale = 20;
   return {
     ...st,
+    // The server fills in blocking.defaultResponse when the policy sets none.
+    blockMode: st.blockMode || ((getPath(db.settings, 'blocking.defaultResponse') as string | undefined) ?? 'zeroIP'),
     // The upstream group exists when upstreams.groups names it.
     ...(st.upstreamGroup ? { upstreamGroup: { name: st.upstreamGroup.name, exists: st.upstreamGroup.name in upstreamGroups() } } : {}),
-    groups: st.groups.map((g) => ({ ...g, seen24h: new Set(db.queries.filter((q) => `default/${q.client.group ?? ''}` === g.ref).map((q) => q.client.ip)).size })),
+    groups: st.groups.map((g) => ({ ...g, seen24h: new Set(db.queries.filter((q) => q.client.group === g.ref).map((q) => q.client.ip)).size })),
     stats24h: {
       queries: rows.length * scale,
       blocked: blocked.length * scale,
-      blockedPercent: rows.length ? (blocked.length / rows.length) * 100 : 0,
+      blockedPercent: rows.length ? Math.round((blocked.length * 1000) / rows.length) / 10 : 0,
       topBlocked: count(blocked.map((q) => q.domain)).map(([domain, n]) => ({ domain, count: n * scale })),
       topClients: count(rows.map((q) => q.client.ip)).map(([key, n]) => ({ key, ...(names.get(key) ? { name: names.get(key) } : {}), count: n * scale })),
     },

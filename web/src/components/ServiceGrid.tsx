@@ -86,7 +86,7 @@ export function ServiceGrid({ label, value, onChange, isDisabled, description, i
                 onClick={() => toggle(s.id)}
                 title={`${s.name}: ${s.rules} rule${s.rules === 1 ? '' : 's'} (${s.domains.slice(0, 3).join(', ')}${s.domains.length > 3 ? ', …' : ''})`}
               >
-                <ServiceIcon id={s.id} name={s.name} icon={s.icon} />
+                <ServiceIcon id={s.id} name={s.name} icon={s.icon} iconOnDark={s.iconOnDark} />
                 <span className="k-logo-name">{s.name}</span>
                 <span className="k-logo-meta">{on ? 'Blocked' : `${categoryLabel(category)} · ${s.rules} rule${s.rules === 1 ? '' : 's'}`}</span>
               </button>
@@ -114,12 +114,12 @@ export function ServiceGrid({ label, value, onChange, isDisabled, description, i
 }
 
 /** The engines safe search rewrites, with their logos. */
-export function EngineList({ engines, mode }: { engines: (Pick<SafeSearchEngine, 'id' | 'name' | 'icon'> & Partial<Pick<SafeSearchEngine, 'target' | 'moderateTarget'>>)[]; mode?: string }) {
+export function EngineList({ engines, mode }: { engines: (Pick<SafeSearchEngine, 'id' | 'name' | 'icon' | 'iconOnDark'> & Partial<Pick<SafeSearchEngine, 'target' | 'moderateTarget'>>)[]; mode?: string }) {
   return (
     <ul className="k-logo-list" aria-label="Safe-search engines">
       {engines.map((e) => (
         <li key={e.id}>
-          <ServiceIcon id={e.id} name={e.name} icon={e.icon} size={24} />
+          <ServiceIcon id={e.id} name={e.name} icon={e.icon} iconOnDark={e.iconOnDark} size={24} />
           <span>{e.name}</span>
           {mode === 'moderate' && e.moderateTarget ? <span className="k-muted k-small">moderate</span> : e.target ? <span className="k-muted k-small">strict</span> : null}
         </li>

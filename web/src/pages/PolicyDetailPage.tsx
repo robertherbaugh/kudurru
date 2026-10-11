@@ -127,7 +127,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
         value={spec}
         readOnlyReason={roReason}
         testId="section-who"
-        view={<GroupsView state={state} />}
+        view={<GroupsView state={state} ns={ns} />}
         edit={(d, set, showErrors) => <WhoFields spec={d} onChange={set} showErrors={showErrors} {...fieldProps} />}
         validate={whoError}
         onSave={(d) => saveSpec(d, 'the groups')}
@@ -138,7 +138,7 @@ export default function PolicyDetailPage({ params }: PageProps) {
         value={spec}
         readOnlyReason={roReason}
         testId="section-what"
-        view={<ListsView state={state} allowOnly={spec.allowOnly === true} />}
+        view={<ListsView state={state} ns={ns} allowOnly={spec.allowOnly === true} />}
         edit={(d, set) => <WhatFields spec={d} onChange={set} {...fieldProps} />}
         onSave={(d) => saveSpec(d, 'the lists')}
       />
@@ -247,6 +247,7 @@ function StatePanel({ state, derived, loading, error }: { state: PolicyState | u
         <dd>
           {state.schedule ? (
             <>
+              {state.schedule.error ? <span className="k-error-text">{state.schedule.error}; the policy applies at all times. </span> : null}
               {state.schedule.summary} · {state.schedule.now ? 'on now' : 'off now'}
               {next ? (
                 <span className="k-muted">
@@ -294,7 +295,7 @@ function StatePanel({ state, derived, loading, error }: { state: PolicyState | u
   );
 }
 
-function GroupsView({ state }: { state: PolicyState | undefined }) {
+function GroupsView({ state, ns }: { state: PolicyState | undefined; ns: string }) {
   if (!state) return null;
   if (!state.groups.length) return <p className="k-muted">No groups: the policy applies to nobody.</p>;
   return (
@@ -315,10 +316,10 @@ function GroupsView({ state }: { state: PolicyState | undefined }) {
           {state.groups.map((g) => (
             <tr key={g.ref}>
               <td>
-                <Link href={objectHref('groups', g.ref)}>{shortRef(g.ref)}</Link> {g.exists ? null : <Badge variant="error" label="missing" />}
+                <Link href={objectHref('groups', g.ref, ns)}>{shortRef(g.ref)}</Link> {!g.exists ? <Badge variant="error" label="missing" /> : !g.enabled ? <Badge variant="neutral" label="disabled, skipped" /> : null}
               </td>
               <td className="num">{formatExact(g.clients)}</td>
-              <td className="num">{formatExact(g.seen24h)}</td>
+              <td className="num">{g.seen24h === undefined ? <span className="k-muted" title="No query log on this server">–</span> : formatExact(g.seen24h)}</td>
             </tr>
           ))}
         </tbody>
@@ -327,7 +328,7 @@ function GroupsView({ state }: { state: PolicyState | undefined }) {
   );
 }
 
-function ListsView({ state, allowOnly }: { state: PolicyState | undefined; allowOnly: boolean }) {
+function ListsView({ state, ns, allowOnly }: { state: PolicyState | undefined; ns: string; allowOnly: boolean }) {
   if (!state) return null;
   return (
     <div className="k-stack">
@@ -338,7 +339,7 @@ function ListsView({ state, allowOnly }: { state: PolicyState | undefined; allow
             <thead>
               <tr>
                 <th scope="col">List</th>
-                <th scope="col">Mode</th>
+                <th scope="col">Used as</th>
                 <th scope="col" className="num">
                   Entries
                 </th>
@@ -350,18 +351,29 @@ function ListsView({ state, allowOnly }: { state: PolicyState | undefined; allow
             </thead>
             <tbody>
               {state.lists.map((l) => (
-                <tr key={`${l.mode}-${l.ref}`}>
+                <tr key={`${l.role}-${l.ref}`} className={l.exists && !l.enabled ? 'k-row-off' : undefined}>
                   <td>
-                    <Link href={objectHref('lists', l.ref)}>{shortRef(l.ref)}</Link>
+                    <Link href={objectHref('lists', l.ref, ns)}>{shortRef(l.ref)}</Link>
                   </td>
                   <td>
-                    <Badge variant={l.mode === 'allow' ? 'green' : 'red'} label={l.mode === 'allow' ? 'allow' : 'block'} />
+                    <Badge variant={l.role === 'allow' ? 'green' : 'red'} label={l.role} />
+                    {l.exists && l.mode !== l.role ? <span className="k-muted k-small"> (an {l.mode} list)</span> : null}
                   </td>
                   <td className="num">{formatExact(l.entries)}</td>
                   <td className="num">
                     {l.sourcesEnabled} of {l.sourcesTotal}
                   </td>
-                  <td>{!l.exists ? <Badge variant="error" label="missing" /> : l.ready ? <Badge variant="success" label="ready" /> : <Badge variant="warning" label="not ready" />}</td>
+                  <td>
+                    {!l.exists ? (
+                      <Badge variant="error" label="missing" />
+                    ) : !l.enabled ? (
+                      <Badge variant="neutral" label="disabled" />
+                    ) : l.ready ? (
+                      <Badge variant="success" label="ready" />
+                    ) : (
+                      <Badge variant="warning" label="not ready" />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -391,7 +403,7 @@ function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy
           <ul className="k-logo-stack" aria-label="Blocked now">
             {blocked.map((s) => (
               <li key={s.id} title={s.known ? `${s.name}: ${s.rules} rules` : `${s.id}: not in the catalogue`}>
-                <ServiceIcon id={s.id} name={s.name} icon={s.icon} size={24} />
+                <ServiceIcon id={s.id} name={s.name} icon={s.icon} iconOnDark={s.iconOnDark} size={24} />
               </li>
             ))}
           </ul>
@@ -446,10 +458,12 @@ function ActivitySection({ policyRef, state, derived }: { policyRef: string; sta
     <section className="k-panel k-section" aria-labelledby="sec-activity" data-testid="section-activity">
       <div className="k-panel-title">
         <h2 id="sec-activity">Last 24 hours</h2>
-        {!derived ? <Link href={log}>Open in the query log</Link> : null}
+        {!derived && s ? <Link href={log}>Open in the query log</Link> : null}
       </div>
-      {derived || !s ? (
+      {!state ? null : derived ? (
         <p className="k-muted">This server does not attribute queries to policies yet; the statistics appear once it serves GET /policies/{'{namespace}'}/{'{name}'}/state.</p>
+      ) : !s ? (
+        <p className="k-muted">No query log on this server (querylog is off), so there are no statistics.</p>
       ) : (
         <div className="k-stack-lg">
           <dl className="k-stat-row">

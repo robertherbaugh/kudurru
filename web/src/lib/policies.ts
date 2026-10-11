@@ -7,7 +7,7 @@
 import type { EnumOption } from '../components/fields/EnumSelect';
 import type { BlockList, CatalogueService, ClientGroup, ClientMatcher, Policy, PolicySpec, PolicyState, SafeSearchEngine } from '../api/types';
 import { listPath, RESPONSE_OPTIONS } from './lists';
-import { objectEnabled } from './managedBy';
+import { MANAGED_BY, objectEnabled } from './managedBy';
 import { isIPv4, isIPv6 } from './rr';
 
 export const DEFAULT_NAMESPACE = 'default';
@@ -36,8 +36,8 @@ export function shortRef(ref: string): string {
 }
 
 /** The detail page of a policy, list or group ref ("ns/name"). */
-export function objectHref(kind: 'policies' | 'lists' | 'groups', ref: string): string {
-  const { namespace, name } = splitRef(ref);
+export function objectHref(kind: 'policies' | 'lists' | 'groups', ref: string, ns = DEFAULT_NAMESPACE): string {
+  const { namespace, name } = splitRef(ref, ns);
   if (kind === 'lists') return listPath({ metadata: { name, namespace } });
   return `/${kind}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
 }
@@ -197,6 +197,8 @@ export interface DeriveContext {
   lists: BlockList[];
   services?: CatalogueService[];
   engines?: SafeSearchEngine[];
+  /** The configured upstream group names, when known. */
+  upstreamGroups?: string[];
   now: Date;
 }
 
@@ -205,12 +207,16 @@ export function policyActive(p: Policy, now: Date): boolean {
   return objectEnabled(p) && scheduleActive(p.spec.schedule, now);
 }
 
-/** Policies that share a group with p and rank above it (priority, then namespace/name). */
-export function shadowingPolicies(p: Policy, all: Policy[], now: Date): string[] {
+/**
+ * Enabled policies that share a group with p and rank above it (priority,
+ * then namespace/name), as internal/policy ShadowedBy: schedules are not
+ * considered.
+ */
+export function shadowingPolicies(p: Policy, all: Policy[]): string[] {
   const ns = p.metadata.namespace ?? DEFAULT_NAMESPACE;
   const groups = new Set(p.spec.clientGroupRefs ?? []);
   return sortByPriority(all)
-    .filter((o) => o !== p && (o.metadata.namespace ?? DEFAULT_NAMESPACE) === ns && policyActive(o, now))
+    .filter((o) => refOfObject(o) !== refOfObject(p) && (o.metadata.namespace ?? DEFAULT_NAMESPACE) === ns && objectEnabled(o))
     .filter((o) => (o.spec.clientGroupRefs ?? []).some((g) => groups.has(g)))
     .filter((o) => ranksAbove(o, p))
     .map(refOfObject);
@@ -235,59 +241,67 @@ export function policiesOfGroup(g: ClientGroup, policies: Policy[]): Policy[] {
 
 /**
  * A PolicyState computed from the objects, for servers without
- * GET /policies/{ns}/{name}/state: no query-log statistics and group
- * sightings, everything else as the server would answer it.
+ * GET /policies/{ns}/{name}/state: the server's rules (internal/api
+ * policies.go) without the query-log parts (stats24h, seen24h) and with
+ * the block response left empty when the policy does not set one. Group
+ * and list refs are the spec's names, as the server answers them.
  */
 export function derivePolicyState(p: Policy, ctx: DeriveContext): PolicyState {
   const ns = p.metadata.namespace ?? DEFAULT_NAMESPACE;
   const s = p.spec;
   const enabled = objectEnabled(p);
+  const schedErr = s.schedule ? scheduleError(s.schedule) : null;
   const schedOn = scheduleActive(s.schedule, ctx.now);
   const next = nextScheduleChange(s.schedule, ctx.now);
   const findIn = <T extends { metadata: { name: string; namespace?: string } }>(xs: T[], name: string) =>
     xs.find((x) => x.metadata.name === name && (x.metadata.namespace ?? DEFAULT_NAMESPACE) === ns);
-  const listState = (name: string, mode: 'block' | 'allow') => {
+  const listState = (name: string, role: 'block' | 'allow'): PolicyState['lists'][number] => {
     const l = findIn(ctx.lists, name);
-    const total = l?.spec.sources.length ?? 0;
-    const enabledSources = (l?.spec.sources ?? []).filter((src) => (src as { enabled?: boolean }).enabled !== false).length;
+    if (!l) return { ref: name, role, mode: role, exists: false, enabled: false, ready: false, entries: 0, sourcesEnabled: 0, sourcesTotal: 0 };
+    const on = objectEnabled(l);
     return {
-      ref: `${ns}/${name}`,
-      mode: l?.spec.mode ?? mode,
-      exists: !!l,
-      ready: (l?.status?.conditions ?? []).some((c) => c.type === 'Ready' && c.status === 'True'),
-      entries: l?.status?.entries ?? 0,
-      sourcesEnabled: enabledSources,
-      sourcesTotal: total,
+      ref: name,
+      role,
+      mode: l.spec.mode ?? 'block',
+      exists: true,
+      enabled: on,
+      ready: on && (l.status?.conditions ?? []).some((c) => c.type === 'Ready' && c.status === 'True'),
+      entries: l.status?.entries ?? 0,
+      sourcesEnabled: l.spec.sources.filter((src) => src.enabled !== false).length,
+      sourcesTotal: l.spec.sources.length,
     };
   };
-  const shadowed = enabled && schedOn ? shadowingPolicies(p, ctx.policies, ctx.now) : [];
+  const shadowed = shadowingPolicies(p, ctx.policies);
   const svc = new Map((ctx.services ?? []).map((x) => [x.id, x]));
+  const icons = (x: { icon?: string; iconOnDark?: string } | undefined) => ({ ...(x?.icon ? { icon: x.icon } : {}), ...(x?.iconOnDark ? { iconOnDark: x.iconOnDark } : {}) });
   return {
     policy: `${ns}/${p.metadata.name}`,
     enabled,
     active: enabled && schedOn,
-    ...(s.schedule ? { schedule: { now: schedOn, ...(next ? { nextChange: next.toISOString() } : {}), summary: scheduleSummary(s.schedule) } } : {}),
+    ...(s.schedule
+      ? { schedule: schedErr ? { now: true, summary: 'invalid schedule', error: schedErr } : { now: schedOn, ...(next ? { nextChange: next.toISOString() } : {}), summary: scheduleSummary(s.schedule) } }
+      : {}),
     priority: s.priority ?? 0,
     ...(shadowed.length ? { shadowedBy: shadowed } : {}),
+    ...(p.metadata.annotations?.[MANAGED_BY] ? { managedBy: p.metadata.annotations[MANAGED_BY] } : {}),
     groups: (s.clientGroupRefs ?? []).map((name) => {
       const g = findIn(ctx.groups, name);
-      return { ref: `${ns}/${name}`, exists: !!g, clients: g?.spec.clients?.length ?? 0, seen24h: g?.status?.members ?? 0 };
+      return { ref: name, exists: !!g, enabled: !!g && objectEnabled(g), clients: g?.spec.clients?.length ?? 0 };
     }),
     lists: [...(s.blockListRefs ?? []).map((n) => listState(n, 'block')), ...(s.allowListRefs ?? []).map((n) => listState(n, 'allow'))],
     services: (s.blockedServices ?? []).map((id) => {
       const c = svc.get(id);
-      return { id, name: c?.name ?? id, known: !!c, rules: c?.rules ?? 0, ...(c?.icon ? { icon: c.icon } : {}) };
+      return { id, name: c?.name ?? id, known: !!c, rules: c?.rules ?? 0, ...icons(c) };
     }),
     safeSearch: {
       enabled: s.safeSearch === true,
-      mode: s.safeSearchMode ?? 'strict',
-      engines: s.safeSearch ? (ctx.engines ?? []).map((e) => ({ id: e.id, name: e.name, ...(e.icon ? { icon: e.icon } : {}) })) : [],
+      mode: s.safeSearchMode === 'moderate' ? 'moderate' : 'strict',
+      engines: (ctx.engines ?? []).map((e) => ({ id: e.id, name: e.name, ...icons(e) })),
     },
-    ...(s.upstreamGroup ? { upstreamGroup: { name: s.upstreamGroup, exists: true } } : {}),
+    ...(s.upstreamGroup ? { upstreamGroup: { name: s.upstreamGroup, exists: ctx.upstreamGroups ? ctx.upstreamGroups.includes(s.upstreamGroup) : true } } : {}),
     blockMode: s.blockMode ?? '',
     ...(s.blockTTL ? { blockTTL: s.blockTTL } : {}),
     conditions: p.status?.conditions ?? [],
-    stats24h: { queries: 0, blocked: 0, blockedPercent: 0, topBlocked: [], topClients: [] },
   };
 }
 

@@ -1,8 +1,9 @@
 // The logo of a blocked service or safe-search engine: the SVG the
-// catalogue names (`icon`, an API path served from the binary, ux-plan C4,
-// from homarr-labs/dashboard-icons) or, when there is none or it fails to
-// load, a monogram on a colour picked from the ID. The name is always text
-// next to it, so the image itself is decorative.
+// catalogue names (`icon`, a public API path served from the binary,
+// ux-plan C4, from homarr-labs/dashboard-icons; `iconOnDark` replaces it
+// on dark backgrounds, switched in CSS like the brand logo) or, when there
+// is none or it fails to load, a monogram on a colour picked from the ID.
+// The name is always text next to it, so the image is decorative.
 import { useState } from 'react';
 import { useApi } from '../api/context';
 
@@ -10,6 +11,8 @@ export interface ServiceIconProps {
   id: string;
   name: string;
   icon?: string | undefined;
+  /** The variant for dark backgrounds (dark artwork such as TikTok's or X's). */
+  iconOnDark?: string | undefined;
   /** Edge length in pixels (default 32). */
   size?: number;
 }
@@ -29,12 +32,21 @@ export function toneOf(id: string): number {
   return h % 8;
 }
 
-export function ServiceIcon({ id, name, icon, size = 32 }: ServiceIconProps) {
+export function ServiceIcon({ id, name, icon, iconOnDark, size = 32 }: ServiceIconProps) {
   const api = useApi();
   const [failed, setFailed] = useState(false);
   const style = { inlineSize: size, blockSize: size };
   if (icon && !failed) {
-    return <img className="k-service-icon" src={api.catalogue.iconURL(icon)} alt="" aria-hidden="true" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} data-testid={`icon-${id}`} />;
+    const img = (src: string, cls: string, testId: string) => (
+      <img className={`k-service-icon ${cls}`} src={api.catalogue.iconURL(src)} alt="" aria-hidden="true" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} data-testid={testId} />
+    );
+    if (!iconOnDark) return img(icon, '', `icon-${id}`);
+    return (
+      <span className="k-service-icon-pair" aria-hidden="true">
+        {img(icon, 'k-icon-on-light', `icon-${id}`)}
+        {img(iconOnDark, 'k-icon-on-dark', `icon-${id}-dark`)}
+      </span>
+    );
   }
   return (
     <span className="k-monogram" data-tone={toneOf(id)} aria-hidden="true" style={{ ...style, fontSize: Math.round(size * 0.42) }} data-testid={`monogram-${id}`}>

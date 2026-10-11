@@ -130,7 +130,12 @@ describe('client identification and policy selection', () => {
     const def = derivePolicyState(byName('default'), ctx);
     expect(def).toMatchObject({ policy: 'default/default', enabled: true, active: true, shadowedBy: ['default/social-media'], priority: 0 });
     expect(policyBadge(def).key).toBe('shadowed');
-    expect(def.lists.find((l) => l.ref === 'default/ui-allow')).toMatchObject({ mode: 'allow', exists: true, ready: true, entries: 2, sourcesTotal: 1 });
+    expect(def.lists.find((l) => l.ref === 'ui-allow')).toMatchObject({ role: 'allow', mode: 'allow', exists: true, enabled: true, ready: true, entries: 2, sourcesTotal: 1 });
+    expect(def.lists.find((l) => l.ref === 'gone')).toBeUndefined();
+    expect(def.groups).toEqual([{ ref: 'default', exists: true, enabled: true, clients: 2 }]);
+    // Schedules do not count for shadowing (internal/policy ShadowedBy).
+    const night = { ...byName('kids-bedtime'), metadata: { ...byName('kids-bedtime').metadata, name: 'kids-night' }, spec: { ...byName('kids-bedtime').spec, priority: 1 } };
+    expect(derivePolicyState(night, { ...ctx, policies: [...db.policies, night] }).shadowedBy).toEqual(['default/kids-bedtime']);
     expect(policyBadge(derivePolicyState(byName('streaming-off'), ctx)).key).toBe('disabled');
     expect(policyBadge(derivePolicyState(byName('kids-bedtime'), ctx))).toMatchObject({ key: 'scheduled-off', label: 'Scheduled off' });
     expect(policyBadge(derivePolicyState(byName('social-media'), ctx)).key).toBe('active');

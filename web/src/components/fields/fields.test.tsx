@@ -30,6 +30,13 @@ describe('ServiceIcon', () => {
     expect([monogram('X (Twitter)'), monogram('9GAG'), monogram('Riot Games (League of Legends)'), monogram('Disney+')]).toEqual(['X', '9G', 'RG', 'D']);
     expect(toneOf('roblox')).toBe(toneOf('roblox'));
   });
+
+  it('carries the dark-background variant next to the default logo', () => {
+    renderWithApp(<ServiceIcon id="tiktok" name="TikTok" icon="/api/v1/catalogue/icons/tiktok.svg" iconOnDark="/api/v1/catalogue/icons/tiktok-light.svg" />);
+    expect(screen.getByTestId('icon-tiktok')).toHaveClass('k-icon-on-light');
+    expect(screen.getByTestId('icon-tiktok-dark')).toHaveAttribute('src', expect.stringMatching(/tiktok-light\.svg$/));
+    expect(screen.getByTestId('icon-tiktok-dark')).toHaveClass('k-icon-on-dark');
+  });
 });
 
 describe('ServiceGrid', () => {

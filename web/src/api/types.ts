@@ -773,8 +773,10 @@ export interface CatalogueService {
   rules: number;
   domains: string[];
   source: string;
-  /** API path of the service's logo (/api/v1/catalogue/icons/{id}.svg); absent: no logo, show a monogram. */
+  /** API path of the service's logo (/api/v1/catalogue/icons/{slug}.svg); absent: no logo, show a monogram. */
   icon?: string;
+  /** The logo for dark backgrounds, when the default one is dark artwork. */
+  iconOnDark?: string;
 }
 
 /** One safe-search engine of GET /catalogue/safesearch. */
@@ -790,6 +792,7 @@ export interface SafeSearchEngine {
   source: string;
   /** API path of the engine's logo; absent when the binary has none. */
   icon?: string;
+  iconOnDark?: string;
 }
 
 /** GET /catalogue. */
@@ -805,40 +808,18 @@ export interface CatalogueInfo {
   refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
 }
 
-/** GET /catalogue/icons: the logos the binary embeds (ux-plan C4). */
-export interface CatalogueIcon {
-  id: string;
-  /** API path, /api/v1/catalogue/icons/{id}.svg. */
-  path: string;
-}
+/** GET /catalogue/icons row: a logo the binary embeds (ux-plan C4). */
+export type CatalogueIcon = S['CatalogueIcon'];
 
 // Policy current state (ux-plan C3) ------------------------------------------
 
-/** GET /policies/{namespace}/{name}/state. Refs are "namespace/name". */
-export interface PolicyState {
-  policy: string;
-  enabled: boolean;
-  /** enabled and the schedule allows it now. */
-  active: boolean;
-  schedule?: { now: boolean; nextChange?: string; summary: string };
-  priority: number;
-  /** Higher-priority policies matching the same groups. */
-  shadowedBy?: string[];
-  /** clients: matchers of the group; seen24h: distinct clients in the query log. */
-  groups: { ref: string; exists: boolean; clients: number; seen24h: number }[];
-  lists: { ref: string; mode: 'block' | 'allow'; exists: boolean; ready: boolean; entries: number; sourcesEnabled: number; sourcesTotal: number }[];
-  services: { id: string; name: string; known: boolean; rules: number; icon?: string }[];
-  safeSearch: { enabled: boolean; mode: string; engines: { id: string; name: string; icon?: string }[] };
-  upstreamGroup?: { name: string; exists: boolean };
-  blockMode: string;
-  blockTTL?: string;
-  /** status.conditions of the Policy. */
+/**
+ * GET /policies/{namespace}/{name}/state. Refs are "namespace/name";
+ * shadowedBy ignores schedules; stats24h and groups[].seen24h are absent
+ * without a query log.
+ */
+export type PolicyState = Omit<S['PolicyState'], 'took_ms' | 'conditions' | 'shadowedBy'> & {
   conditions: Condition[];
-  stats24h: {
-    queries: number;
-    blocked: number;
-    blockedPercent: number;
-    topBlocked: { domain: string; count: number }[];
-    topClients: { key: string; name?: string; count: number }[];
-  };
-}
+  shadowedBy?: string[] | null;
+  took_ms?: number;
+};

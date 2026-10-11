@@ -171,7 +171,7 @@ function Review({ name, namespace, comment, spec }: { name: string; namespace: s
           <ul className="k-logo-list" aria-label="Blocked services">
             {spec.blockedServices.map((id) => (
               <li key={id}>
-                <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} size={20} />
+                <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} iconOnDark={byId.get(id)?.iconOnDark} size={20} />
                 <span>{byId.get(id)?.name ?? id}</span>
               </li>
             ))}

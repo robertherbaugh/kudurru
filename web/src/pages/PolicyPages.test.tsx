@@ -139,6 +139,25 @@ describe('PolicyDetailPage', () => {
     expect(screen.queryByRole('link', { name: 'Open in the query log' })).toBeNull();
   });
 
+  it('says so when the server has no query log (no stats24h)', async () => {
+    server.use(
+      http.get(`${API}/policies/:ns/:name/state`, () =>
+        HttpResponse.json({
+          policy: 'default/default', enabled: true, active: true, priority: 0, groups: [{ ref: 'default', exists: true, enabled: true, clients: 2 }],
+          lists: [{ ref: 'ui-deny', role: 'block', mode: 'block', exists: true, enabled: false, ready: false, entries: 1, sourcesEnabled: 1, sourcesTotal: 1 }],
+          services: [], safeSearch: { enabled: false, mode: 'strict', engines: [] }, blockMode: 'zeroIP', conditions: [], took_ms: 1,
+        }),
+      ),
+    );
+    renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'default' }} />, { route: '/policies/default/default' });
+    expect(await screen.findByText(/No query log on this server/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open in the query log' })).toBeNull();
+    const lists = await within(screen.getByTestId('section-what')).findByRole('table', { name: 'Lists of the policy' });
+    expect(within(lists).getByText('disabled')).toBeInTheDocument();
+    expect(within(lists).getByRole('link', { name: 'ui-deny' })).toHaveAttribute('href', '/lists/default/ui-deny');
+    expect(within(screen.getByTestId('section-how')).getByText('0.0.0.0 / ::')).toBeInTheDocument();
+  });
+
   it('names a missing policy', async () => {
     renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'nope' }} />, { route: '/policies/default/nope' });
     expect(await screen.findByText(/Policy nope not found/)).toBeInTheDocument();

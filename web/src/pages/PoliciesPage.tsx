@@ -82,7 +82,7 @@ export default function PoliciesPage() {
               <ul className="k-logo-stack" aria-label={`Services blocked by ${p.metadata.name}`}>
                 {blocked.slice(0, SHOWN_SERVICES).map((id) => (
                   <li key={id} title={byId.get(id)?.name ?? id}>
-                    <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} size={22} />
+                    <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} iconOnDark={byId.get(id)?.iconOnDark} size={22} />
                     <span className="k-visually-hidden">{byId.get(id)?.name ?? id}</span>
                   </li>
                 ))}
