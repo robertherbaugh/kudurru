@@ -1,104 +1,22 @@
-// Block and allow lists: health, counts and last update per list, refresh,
-// multi-add of exact or regex domains into the ui-allow / ui-deny lists
-// (POST /domains/{allow|deny}/{exact|regex}, processed{success,errors}),
-// and "which lists contain this domain" (GET /blocklists/_search).
+// Block and allow lists: one row per list with its enable switch, mode,
+// sources ("3 of 4 enabled"), entries, health and last update; rows open
+// the list page (/lists/:ns/:name) and "New list" the wizard (/lists/new).
+// Also the multi-add of exact or regex domains into the ui-allow / ui-deny
+// lists and "which lists contain this domain" (GET /blocklists/_search).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
-import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
-import type { BlockList, ListSource, Processed } from '../api/types';
+import type { BlockList, ListSource } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
-import { FormDialog } from '../components/FormDialog';
+import { AddDomainsDialog } from '../components/lists/AddDomainsDialog';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
-import { listEntryError, SCHEMAS } from '../lib/objectSchemas';
-
-function AddDomainsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const api = useApi();
-  const qc = useQueryClient();
-  const notify = useNotify();
-  const [action, setAction] = useState<'deny' | 'allow'>('deny');
-  const [kind, setKind] = useState<'exact' | 'regex'>('exact');
-  const [text, setText] = useState('');
-  const [result, setResult] = useState<Processed['processed'] | null>(null);
-  const domains = text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
-  const localErrors = domains
-    .map((d) => [d, kind === 'regex' ? listEntryError(d.startsWith('/') ? d : `/${d}/`) : listEntryError(d)] as const)
-    .filter(([, e]) => e);
-  const m = useMutation({
-    mutationFn: () => api.lists.addDomains(action, kind, domains),
-    onSuccess: (r) => {
-      setResult(r.processed);
-      if (r.processed.success.length) notify.success(`Added ${r.processed.success.length} to ui-${action}`);
-      void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
-    },
-    onError: (err) => notify.error(err, 'Could not add domains'),
-  });
-  return (
-    <FormDialog
-      isOpen={open}
-      onClose={() => {
-        setResult(null);
-        onClose();
-      }}
-      title="Add domains"
-      width={560}
-      onSubmit={() => {
-        if (domains.length && localErrors.length === 0) m.mutate();
-      }}
-      footer={
-        <>
-          <Button label="Close" variant="ghost" onClick={onClose} />
-          <Button type="submit" label={`Add ${domains.length || ''}`.trim()} variant="primary" isDisabled={!domains.length || localErrors.length > 0} isLoading={m.isPending} />
-        </>
-      }
-    >
-      <div className="k-row">
-        <SegmentedControl label="List" value={action} onChange={(v) => setAction(v as 'allow' | 'deny')}>
-          <SegmentedControlItem value="deny" label="Deny (block)" />
-          <SegmentedControlItem value="allow" label="Allow" />
-        </SegmentedControl>
-        <SegmentedControl label="Match" value={kind} onChange={(v) => setKind(v as 'exact' | 'regex')}>
-          <SegmentedControlItem value="exact" label="Exact" />
-          <SegmentedControlItem value="regex" label="Regex" />
-        </SegmentedControl>
-      </div>
-      <TextArea
-        label="Domains"
-        description={`One per line or separated by spaces; they go into the "ui-${action}" list (created on demand).`}
-        value={text}
-        onChange={(v) => {
-          setText(v);
-          setResult(null);
-        }}
-        rows={6}
-        hasSpellCheck={false}
-        status={localErrors.length ? { type: 'error', message: `${localErrors[0]?.[0]}: ${localErrors[0]?.[1]}` } : undefined}
-      />
-      {result ? (
-        <div className="k-stack" role="status">
-          <p>
-            {result.success.length} added, {result.errors.length} rejected.
-          </p>
-          {result.errors.length ? (
-            <ul className="k-small">
-              {result.errors.map((e) => (
-                <li key={e.item}>
-                  <code>{e.item}</code>: {e.error}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-    </FormDialog>
-  );
-}
+import { listPath, sourceEnabled, sourcesSummary } from '../lib/lists';
+import { SCHEMAS } from '../lib/objectSchemas';
 
 function ListSearch() {
   const api = useApi();
@@ -146,6 +64,16 @@ export function inlineOnly(sources: ListSource[] | undefined): boolean {
 /** How long the page polls list status after a create or refresh. */
 export const STATUS_POLL_MS = 20_000;
 
+/** The sources one by one, for the Sources cell's tooltip. */
+function describeSources(sources: ListSource[]): string {
+  return sources
+    .map((s) => {
+      const what = s.url ?? (s.configMapRef ? `ConfigMap ${s.configMapRef.name}` : `${s.inline?.length ?? 0} inline entries`);
+      return sourceEnabled(s) ? what : `${what} (off)`;
+    })
+    .join('\n');
+}
+
 export default function ListsPage() {
   const api = useApi();
   const can = useCan();
@@ -182,9 +110,11 @@ export default function ListsPage() {
       description="Block and allow lists from URLs, inline entries or ConfigMaps. Policies decide which client groups use them."
       schema={SCHEMAS.blocklists}
       onSaved={pollStatus}
+      detailPath={listPath}
+      createPath="/lists/new"
       headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} onClick={() => setAdding(true)} />}
       rowActions={(l) =>
-        l.spec.sources.some((s) => s.url) ? (
+        l.spec.sources.some((s) => s.url && sourceEnabled(s)) ? (
           <Button label="Refresh" size="sm" variant="ghost" isDisabled={!can('blocklists', 'refresh')} isLoading={refresh.isPending && refresh.variables === l} onClick={() => refresh.mutate(l)} />
         ) : null
       }
@@ -193,8 +123,8 @@ export default function ListsPage() {
         {
           header: 'Sources',
           cell: (l) => (
-            <span className="k-small k-break">
-              {l.spec.sources.map((s) => s.url ?? (s.inline ? `${s.inline.length} inline` : s.configMapRef ? `ConfigMap ${s.configMapRef.name}` : s.name)).join(', ')}
+            <span className="k-small k-nowrap" title={describeSources(l.spec.sources)}>
+              {sourcesSummary(l.spec.sources)}
             </span>
           ),
         },
