@@ -57,8 +57,28 @@ type PolicySpec struct {
 	Priority int `json:"priority,omitempty"`
 	// +optional
 	Rewrites []Rewrite `json:"rewrites,omitempty"`
+	// BlockedServices names services of the blocked-services catalogue
+	// (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains
+	// this policy blocks like a block list; the query log names the
+	// service as the list, "service:<id>". IDs are checked against the
+	// catalogue in service, which can change at runtime, so an unknown ID
+	// is reported as Degraded{UnknownService} rather than refused.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
+	BlockedServices []string `json:"blockedServices,omitempty"`
+	// SafeSearch true answers the search engines' and YouTube's host names
+	// with their vendor's safe-search target (a CNAME to
+	// forcesafesearch.google.com, strict.bing.com, ...; see the catalogue).
 	// +optional
 	SafeSearch *bool `json:"safeSearch,omitempty"`
+	// SafeSearchMode is the level for engines that offer two: strict (the
+	// default) or moderate. Only YouTube has two levels (Strict or
+	// Moderate Restricted Mode); every other engine is always strict.
+	// +kubebuilder:validation:Enum=strict;moderate
+	// +optional
+	SafeSearchMode string `json:"safeSearchMode,omitempty"`
 }
 
 // PolicyStatus is the observed state of a policy.
