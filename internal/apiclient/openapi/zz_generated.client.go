@@ -206,6 +206,177 @@ func (e RoleBindingInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for SettingFieldFormat.
+const (
+	SettingFieldFormatCidr     SettingFieldFormat = "cidr"
+	SettingFieldFormatDomain   SettingFieldFormat = "domain"
+	SettingFieldFormatEmail    SettingFieldFormat = "email"
+	SettingFieldFormatHostport SettingFieldFormat = "hostport"
+	SettingFieldFormatIp       SettingFieldFormat = "ip"
+	SettingFieldFormatIpv4     SettingFieldFormat = "ipv4"
+	SettingFieldFormatIpv6     SettingFieldFormat = "ipv6"
+	SettingFieldFormatUpstream SettingFieldFormat = "upstream"
+	SettingFieldFormatUrl      SettingFieldFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldFormat enum.
+func (e SettingFieldFormat) Valid() bool {
+	switch e {
+	case SettingFieldFormatCidr:
+		return true
+	case SettingFieldFormatDomain:
+		return true
+	case SettingFieldFormatEmail:
+		return true
+	case SettingFieldFormatHostport:
+		return true
+	case SettingFieldFormatIp:
+		return true
+	case SettingFieldFormatIpv4:
+		return true
+	case SettingFieldFormatIpv6:
+		return true
+	case SettingFieldFormatUpstream:
+		return true
+	case SettingFieldFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingFieldRef.
+const (
+	SettingFieldRefBlockList     SettingFieldRef = "blockList"
+	SettingFieldRefClientGroup   SettingFieldRef = "clientGroup"
+	SettingFieldRefPolicy        SettingFieldRef = "policy"
+	SettingFieldRefUpstreamGroup SettingFieldRef = "upstreamGroup"
+	SettingFieldRefZone          SettingFieldRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldRef enum.
+func (e SettingFieldRef) Valid() bool {
+	switch e {
+	case SettingFieldRefBlockList:
+		return true
+	case SettingFieldRefClientGroup:
+		return true
+	case SettingFieldRefPolicy:
+		return true
+	case SettingFieldRefUpstreamGroup:
+		return true
+	case SettingFieldRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingFieldType.
+const (
+	SettingFieldTypeBool     SettingFieldType = "bool"
+	SettingFieldTypeBytes    SettingFieldType = "bytes"
+	SettingFieldTypeDuration SettingFieldType = "duration"
+	SettingFieldTypeInt      SettingFieldType = "int"
+	SettingFieldTypeList     SettingFieldType = "list"
+	SettingFieldTypeMap      SettingFieldType = "map"
+	SettingFieldTypeObject   SettingFieldType = "object"
+	SettingFieldTypeString   SettingFieldType = "string"
+	SettingFieldTypeString1  SettingFieldType = "string[]"
+)
+
+// Valid indicates whether the value is a known member of the SettingFieldType enum.
+func (e SettingFieldType) Valid() bool {
+	switch e {
+	case SettingFieldTypeBool:
+		return true
+	case SettingFieldTypeBytes:
+		return true
+	case SettingFieldTypeDuration:
+		return true
+	case SettingFieldTypeInt:
+		return true
+	case SettingFieldTypeList:
+		return true
+	case SettingFieldTypeMap:
+		return true
+	case SettingFieldTypeObject:
+		return true
+	case SettingFieldTypeString:
+		return true
+	case SettingFieldTypeString1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingKeyFormat.
+const (
+	SettingKeyFormatCidr     SettingKeyFormat = "cidr"
+	SettingKeyFormatDomain   SettingKeyFormat = "domain"
+	SettingKeyFormatEmail    SettingKeyFormat = "email"
+	SettingKeyFormatHostport SettingKeyFormat = "hostport"
+	SettingKeyFormatIp       SettingKeyFormat = "ip"
+	SettingKeyFormatIpv4     SettingKeyFormat = "ipv4"
+	SettingKeyFormatIpv6     SettingKeyFormat = "ipv6"
+	SettingKeyFormatUpstream SettingKeyFormat = "upstream"
+	SettingKeyFormatUrl      SettingKeyFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingKeyFormat enum.
+func (e SettingKeyFormat) Valid() bool {
+	switch e {
+	case SettingKeyFormatCidr:
+		return true
+	case SettingKeyFormatDomain:
+		return true
+	case SettingKeyFormatEmail:
+		return true
+	case SettingKeyFormatHostport:
+		return true
+	case SettingKeyFormatIp:
+		return true
+	case SettingKeyFormatIpv4:
+		return true
+	case SettingKeyFormatIpv6:
+		return true
+	case SettingKeyFormatUpstream:
+		return true
+	case SettingKeyFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingKeyRef.
+const (
+	SettingKeyRefBlockList     SettingKeyRef = "blockList"
+	SettingKeyRefClientGroup   SettingKeyRef = "clientGroup"
+	SettingKeyRefPolicy        SettingKeyRef = "policy"
+	SettingKeyRefUpstreamGroup SettingKeyRef = "upstreamGroup"
+	SettingKeyRefZone          SettingKeyRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingKeyRef enum.
+func (e SettingKeyRef) Valid() bool {
+	switch e {
+	case SettingKeyRefBlockList:
+		return true
+	case SettingKeyRefClientGroup:
+		return true
+	case SettingKeyRefPolicy:
+		return true
+	case SettingKeyRefUpstreamGroup:
+		return true
+	case SettingKeyRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SettingKeyScope.
 const (
 	SettingKeyScopeCluster SettingKeyScope = "cluster"
@@ -218,6 +389,111 @@ func (e SettingKeyScope) Valid() bool {
 	case SettingKeyScopeCluster:
 		return true
 	case SettingKeyScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeFormat.
+const (
+	SettingShapeFormatCidr     SettingShapeFormat = "cidr"
+	SettingShapeFormatDomain   SettingShapeFormat = "domain"
+	SettingShapeFormatEmail    SettingShapeFormat = "email"
+	SettingShapeFormatHostport SettingShapeFormat = "hostport"
+	SettingShapeFormatIp       SettingShapeFormat = "ip"
+	SettingShapeFormatIpv4     SettingShapeFormat = "ipv4"
+	SettingShapeFormatIpv6     SettingShapeFormat = "ipv6"
+	SettingShapeFormatUpstream SettingShapeFormat = "upstream"
+	SettingShapeFormatUrl      SettingShapeFormat = "url"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeFormat enum.
+func (e SettingShapeFormat) Valid() bool {
+	switch e {
+	case SettingShapeFormatCidr:
+		return true
+	case SettingShapeFormatDomain:
+		return true
+	case SettingShapeFormatEmail:
+		return true
+	case SettingShapeFormatHostport:
+		return true
+	case SettingShapeFormatIp:
+		return true
+	case SettingShapeFormatIpv4:
+		return true
+	case SettingShapeFormatIpv6:
+		return true
+	case SettingShapeFormatUpstream:
+		return true
+	case SettingShapeFormatUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeRef.
+const (
+	SettingShapeRefBlockList     SettingShapeRef = "blockList"
+	SettingShapeRefClientGroup   SettingShapeRef = "clientGroup"
+	SettingShapeRefPolicy        SettingShapeRef = "policy"
+	SettingShapeRefUpstreamGroup SettingShapeRef = "upstreamGroup"
+	SettingShapeRefZone          SettingShapeRef = "zone"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeRef enum.
+func (e SettingShapeRef) Valid() bool {
+	switch e {
+	case SettingShapeRefBlockList:
+		return true
+	case SettingShapeRefClientGroup:
+		return true
+	case SettingShapeRefPolicy:
+		return true
+	case SettingShapeRefUpstreamGroup:
+		return true
+	case SettingShapeRefZone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingShapeType.
+const (
+	SettingShapeTypeBool     SettingShapeType = "bool"
+	SettingShapeTypeBytes    SettingShapeType = "bytes"
+	SettingShapeTypeDuration SettingShapeType = "duration"
+	SettingShapeTypeInt      SettingShapeType = "int"
+	SettingShapeTypeList     SettingShapeType = "list"
+	SettingShapeTypeMap      SettingShapeType = "map"
+	SettingShapeTypeObject   SettingShapeType = "object"
+	SettingShapeTypeString   SettingShapeType = "string"
+	SettingShapeTypeString1  SettingShapeType = "string[]"
+)
+
+// Valid indicates whether the value is a known member of the SettingShapeType enum.
+func (e SettingShapeType) Valid() bool {
+	switch e {
+	case SettingShapeTypeBool:
+		return true
+	case SettingShapeTypeBytes:
+		return true
+	case SettingShapeTypeDuration:
+		return true
+	case SettingShapeTypeInt:
+		return true
+	case SettingShapeTypeList:
+		return true
+	case SettingShapeTypeMap:
+		return true
+	case SettingShapeTypeObject:
+		return true
+	case SettingShapeTypeString:
+		return true
+	case SettingShapeTypeString1:
 		return true
 	default:
 		return false
@@ -1610,22 +1886,101 @@ type SetBlockingInputBody struct {
 	Until    *time.Time `json:"until,omitempty"`
 }
 
+// SettingField defines model for SettingField.
+type SettingField struct {
+	Default  interface{}         `json:"default,omitempty"`
+	Enum     *[]SettingOption    `json:"enum,omitempty"`
+	Fields   *[]SettingField     `json:"fields,omitempty"`
+	Format   *SettingFieldFormat `json:"format,omitempty"`
+	Help     *string             `json:"help,omitempty"`
+	Items    *SettingShape       `json:"items,omitempty"`
+	Keys     *SettingShape       `json:"keys,omitempty"`
+	Label    *string             `json:"label,omitempty"`
+	Max      *int64              `json:"max,omitempty"`
+	Min      *int64              `json:"min,omitempty"`
+	Name     string              `json:"name"`
+	Presets  *[]string           `json:"presets,omitempty"`
+	Ref      *SettingFieldRef    `json:"ref,omitempty"`
+	Required *bool               `json:"required,omitempty"`
+	Type     SettingFieldType    `json:"type"`
+	Values   *SettingShape       `json:"values,omitempty"`
+}
+
+// SettingFieldFormat defines model for SettingField.Format.
+type SettingFieldFormat string
+
+// SettingFieldRef defines model for SettingField.Ref.
+type SettingFieldRef string
+
+// SettingFieldType defines model for SettingField.Type.
+type SettingFieldType string
+
 // SettingKey defines model for SettingKey.
 type SettingKey struct {
-	Default         interface{}     `json:"default"`
-	EnvLocked       bool            `json:"envLocked"`
-	Help            string          `json:"help"`
-	HostOnly        bool            `json:"hostOnly"`
-	Path            string          `json:"path"`
-	RestartRequired bool            `json:"restartRequired"`
-	Scope           SettingKeyScope `json:"scope"`
-	Type            string          `json:"type"`
-	Value           interface{}     `json:"value"`
-	WriteOnly       bool            `json:"writeOnly"`
+	Default         interface{}       `json:"default"`
+	Enum            *[]SettingOption  `json:"enum,omitempty"`
+	EnvLocked       bool              `json:"envLocked"`
+	Fields          *[]SettingField   `json:"fields,omitempty"`
+	Format          *SettingKeyFormat `json:"format,omitempty"`
+	Group           *string           `json:"group,omitempty"`
+	Help            string            `json:"help"`
+	HostOnly        bool              `json:"hostOnly"`
+	Items           *SettingShape     `json:"items,omitempty"`
+	Keys            *SettingShape     `json:"keys,omitempty"`
+	Label           *string           `json:"label,omitempty"`
+	Max             *int64            `json:"max,omitempty"`
+	Min             *int64            `json:"min,omitempty"`
+	Path            string            `json:"path"`
+	Presets         *[]string         `json:"presets,omitempty"`
+	Ref             *SettingKeyRef    `json:"ref,omitempty"`
+	RestartRequired bool              `json:"restartRequired"`
+	Scope           SettingKeyScope   `json:"scope"`
+	Type            string            `json:"type"`
+	Value           interface{}       `json:"value"`
+	Values          *SettingShape     `json:"values,omitempty"`
+	WriteOnly       bool              `json:"writeOnly"`
 }
+
+// SettingKeyFormat defines model for SettingKey.Format.
+type SettingKeyFormat string
+
+// SettingKeyRef defines model for SettingKey.Ref.
+type SettingKeyRef string
 
 // SettingKeyScope defines model for SettingKey.Scope.
 type SettingKeyScope string
+
+// SettingOption defines model for SettingOption.
+type SettingOption struct {
+	Help  *string `json:"help,omitempty"`
+	Label string  `json:"label"`
+	Value string  `json:"value"`
+}
+
+// SettingShape defines model for SettingShape.
+type SettingShape struct {
+	Default interface{}         `json:"default,omitempty"`
+	Enum    *[]SettingOption    `json:"enum,omitempty"`
+	Fields  *[]SettingField     `json:"fields,omitempty"`
+	Format  *SettingShapeFormat `json:"format,omitempty"`
+	Items   *SettingShape       `json:"items,omitempty"`
+	Keys    *SettingShape       `json:"keys,omitempty"`
+	Max     *int64              `json:"max,omitempty"`
+	Min     *int64              `json:"min,omitempty"`
+	Presets *[]string           `json:"presets,omitempty"`
+	Ref     *SettingShapeRef    `json:"ref,omitempty"`
+	Type    SettingShapeType    `json:"type"`
+	Values  *SettingShape       `json:"values,omitempty"`
+}
+
+// SettingShapeFormat defines model for SettingShape.Format.
+type SettingShapeFormat string
+
+// SettingShapeRef defines model for SettingShape.Ref.
+type SettingShapeRef string
+
+// SettingShapeType defines model for SettingShape.Type.
+type SettingShapeType string
 
 // SettingsBody defines model for SettingsBody.
 type SettingsBody struct {

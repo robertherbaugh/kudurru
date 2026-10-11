@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../api/client';
 import type { SettingKey } from '../api/types';
 import { mockDB } from '../mocks/handlers';
 import { renderWithApp, settingKey } from '../test/utils';
@@ -8,7 +9,7 @@ import SettingsPage, { SettingsList } from './SettingsPage';
 const keys: SettingKey[] = [
   settingKey({ path: 'node.dataDir', type: 'string', scope: 'node', default: '/var/lib/kudurru', help: 'Data directory.', hostOnly: true, restartRequired: true }),
   settingKey({ path: 'log.level', type: 'string', scope: 'node', default: 'info', help: 'Log level.', envLocked: true }),
-  settingKey({ path: 'cache.maxEntries', type: 'int', scope: 'cluster', default: 100000, help: 'Cache size.', min: 0, max: 1000000 }),
+  settingKey({ path: 'cache.maxEntries', type: 'int', scope: 'cluster', default: 100000, help: 'Cache size.', min: 0, max: 1000000, label: 'Maximum entries', group: 'Cache' }),
   settingKey({ path: 'querylog.enabled', type: 'bool', scope: 'cluster', default: true, help: 'Log queries.' }),
 ];
 
@@ -105,26 +106,42 @@ describe('SettingsList', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(k, 'nxdomain'));
   });
 
-  it('falls back to the built-in metadata when the server sends none, and to text for unknown keys', () => {
+  it('falls back to the bare type when the server sends no metadata', () => {
     const ks = [
       settingKey({ path: 'blocking.defaultResponse', type: 'string', scope: 'cluster', default: 'zeroIP' }),
       settingKey({ path: 'querylog.retention.raw', type: 'duration', scope: 'cluster', default: '720h' }),
-      settingKey({ path: 'future.thing', type: 'string', scope: 'cluster', default: 'x', help: 'Not known to this UI.' }),
       settingKey({ path: 'future.table', type: 'list', scope: 'cluster', default: [] }),
     ];
-    list(ks, { blocking: { defaultResponse: 'nxdomain' }, querylog: { retention: { raw: '168h0m0s' } }, future: { thing: 'y', table: [{ a: 1 }] } });
-    const sel = within(row('blocking.defaultResponse')).getByRole('combobox', { name: 'Default block response' });
-    expect(sel).toHaveValue('nxdomain');
-    // No block page keys on this server: the blockPage response is not offered.
-    expect(within(sel).queryByRole('option', { name: 'Block page' })).toBeNull();
-    const dur = within(row('querylog.retention.raw')).getByRole('combobox', { name: 'Keep query rows for' });
-    expect(dur).toHaveValue('168h');
-    expect(within(row('future.thing')).getByRole('textbox', { name: 'Thing' })).toHaveValue('y');
+    list(ks, { blocking: { defaultResponse: 'nxdomain' }, querylog: { retention: { raw: '168h0m0s' } }, future: { table: [{ a: 1 }] } });
+    expect(within(row('blocking.defaultResponse')).getByRole('textbox', { name: 'Default response' })).toHaveValue('nxdomain');
+    expect(within(row('querylog.retention.raw')).getByRole('combobox', { name: 'Retention raw' })).toHaveValue('168h');
     expect(within(row('future.table')).getByRole<HTMLTextAreaElement>('textbox', { name: 'Table (JSON)' }).value).toContain('"a": 1');
+    // Sections come from the path without a group.
+    expect(screen.getByRole('heading', { name: 'Blocking' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Other' })).toBeInTheDocument();
+  });
+
+  it('names the failing parts of a rejected value (error.fields)', async () => {
+    const k = settingKey({
+      path: 'dns.forwarders',
+      type: 'map',
+      scope: 'cluster',
+      default: {},
+      values: { type: 'object', fields: [{ name: 'strategy', type: 'string' }] },
+    });
+    const err = new Error('settings: upstreams.groups.corp.strategy: "fastest" is not allowed', {
+      cause: new ApiError(400, 'invalid', 'x', undefined, undefined, ['dns.forwarders.corp.strategy']),
+    });
+    const onSave = vi.fn().mockRejectedValue(err);
+    renderWithApp(<SettingsList keys={[k]} cluster={{ dns: { forwarders: { corp: { strategy: 'strict' } } } }} node={{}} canWriteCluster canWriteNode onSave={onSave} />, { user: null });
+    const r = row('dns.forwarders');
+    fireEvent.change(within(r).getByRole('textbox', { name: 'strategy' }), { target: { value: 'fastest' } });
+    fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
+    expect(await within(r).findByRole('alert')).toHaveTextContent('(at corp › strategy)');
   });
 
   it('edits string lists row by row with inline format errors', async () => {
-    const k = settingKey({ path: 'ratelimit.exempt', type: 'string[]', scope: 'cluster', default: [] });
+    const k = settingKey({ path: 'ratelimit.exempt', type: 'string[]', scope: 'cluster', default: [], label: 'Exempt clients', items: { type: 'string', format: 'cidr' } });
     const onSave = list([k], { ratelimit: { exempt: ['10.0.0.0/8'] } });
     const r = row('ratelimit.exempt');
     fireEvent.click(within(r).getByRole('button', { name: 'Add' }));
@@ -138,7 +155,14 @@ describe('SettingsList', () => {
   });
 
   it('offers reset to default for changed values and an Edit as JSON escape hatch', async () => {
-    const k = settingKey({ path: 'ratelimit.ipv4', type: 'map', scope: 'cluster', default: { '24': 6000, '32': 600 } });
+    const k = settingKey({
+      path: 'ratelimit.ipv4',
+      type: 'map',
+      scope: 'cluster',
+      default: { '24': 6000, '32': 600 },
+      keys: { type: 'int', min: 0, max: 32 },
+      values: { type: 'int', min: 0 },
+    });
     const onSave = list([k], { ratelimit: { ipv4: { '24': 9000, '32': 600 } } });
     const r = row('ratelimit.ipv4');
     expect(r).toHaveAttribute('data-changed', 'true');
@@ -179,11 +203,11 @@ describe('SettingsPage', () => {
 
   it('saves an enum choice and shows the new value', async () => {
     renderWithApp(<SettingsPage />, { route: '/settings' });
-    const sel = await waitFor(() => within(row('querylog.privacy')).getByRole('combobox', { name: 'Privacy' }));
+    const sel = await waitFor(() => within(row('querylog.privacy')).getByRole('combobox', { name: 'Query log privacy' }));
     fireEvent.change(sel, { target: { value: 'hide_domains' } });
     fireEvent.click(within(row('querylog.privacy')).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect((mockDB().settings.querylog as Record<string, unknown>).privacy).toBe('hide_domains'));
-    await waitFor(() => expect(within(row('querylog.privacy')).getByRole('combobox', { name: 'Privacy' })).toHaveValue('hide_domains'));
+    await waitFor(() => expect(within(row('querylog.privacy')).getByRole('combobox', { name: 'Query log privacy' })).toHaveValue('hide_domains'));
     expect(within(row('querylog.privacy')).getByText('changed')).toBeInTheDocument();
   });
 

@@ -7,7 +7,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import type { ObjectKind, SettingRef } from '../../api/types';
-import { emptyDraft, isMapDraft, str, type MapDraft } from '../../lib/shapes';
+import { emptyDraft, isMapDraft, keyError, str, type MapDraft } from '../../lib/shapes';
 import type { UiShape } from '../../lib/settingsMeta';
 import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
 import { BytesField } from './BytesField';
@@ -77,7 +77,7 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
           description={description}
           value={Array.isArray(value) ? (value as string[]) : []}
           onChange={onChange}
-          options={shape.items?.enum}
+          options={shape.items?.enum ?? undefined}
           placeholder={shape.items?.format ? `e.g. ${FORMAT_EXAMPLES[shape.items.format]}` : undefined}
           itemError={shape.items?.format ? (v) => formatError(shape.items?.format, v) : undefined}
           isDisabled={isDisabled}
@@ -175,6 +175,7 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
   const rows = isMapDraft(value) ? value.__rows : [];
   const vshape = shape.values as UiShape;
   const keyLabel = shape.keyLabel ?? 'Key';
+  const keyErr = (k: string) => (k.trim() && shape.keys ? keyError(shape.keys, k.trim()) : null);
   const emit = (r: [string, unknown][]) => onChange({ __rows: r } satisfies MapDraft);
   const counts = new Map<string, number>();
   for (const [k] of rows) counts.set(k.trim(), (counts.get(k.trim()) ?? 0) + 1);
@@ -187,15 +188,29 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
         const dup = k.trim() && (counts.get(k.trim()) ?? 0) > 1;
         return (
           <div key={i} className="k-map-row" data-testid="map-row">
-            <TextInput
-              label={keyLabel}
-              isLabelHidden={i > 0}
-              value={k}
-              placeholder={shape.keyPlaceholder}
-              onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
-              isDisabled={isDisabled}
-              status={dup ? { type: 'error', message: 'Listed twice' } : undefined}
-            />
+            {shape.keys?.type === 'int' ? (
+              <NumberField
+                label={keyLabel}
+                isLabelHidden={i > 0}
+                value={k}
+                placeholder={shape.keyPlaceholder}
+                min={shape.keys.min}
+                max={shape.keys.max}
+                onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
+                isDisabled={isDisabled}
+                error={dup ? 'Listed twice' : undefined}
+              />
+            ) : (
+              <TextInput
+                label={keyLabel}
+                isLabelHidden={i > 0}
+                value={k}
+                placeholder={shape.keyPlaceholder}
+                onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
+                isDisabled={isDisabled}
+                status={dup ? { type: 'error', message: 'Listed twice' } : keyErr(k) ? { type: 'error', message: keyErr(k) ?? '' } : undefined}
+              />
+            )}
             <ShapeField
               label={vshape.type === 'object' ? (k || `${keyLabel} ${i + 1}`) : 'Value'}
               isLabelHidden={vshape.type !== 'object' && i > 0}

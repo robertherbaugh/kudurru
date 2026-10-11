@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -110,6 +111,73 @@ func TestSettingsPatch(t *testing.T) {
 	}
 	if !seen {
 		t.Fatal("settings change not audited")
+	}
+}
+
+// TestSettingsSchemaMetadata: GET /settings/_schema serves the typed
+// metadata (C1) and PATCH rejects what it excludes, naming the key, the
+// allowed values and the field path.
+func TestSettingsSchemaMetadata(t *testing.T) {
+	h := newHarness(t)
+	var schema struct {
+		Items []SettingKey `json:"items"`
+	}
+	h.do(http.MethodGet, "/api/v1/settings/_schema", "viewer", nil).want(http.StatusOK).json(&schema)
+	byPath := map[string]SettingKey{}
+	for _, k := range schema.Items {
+		if k.Label == "" || k.Group == "" {
+			t.Errorf("%s: label %q group %q", k.Path, k.Label, k.Group)
+		}
+		byPath[k.Path] = k
+	}
+	dr := byPath["blocking.defaultResponse"]
+	var values []string
+	for _, o := range dr.Enum {
+		values = append(values, o.Value)
+	}
+	if dr.Label != "Default block response" || dr.Group != "Blocking" || strings.Join(values, ",") != "zeroIP,nxdomain,customIP,refused,blockPage" {
+		t.Fatalf("blocking.defaultResponse %+v", dr)
+	}
+	if p := byPath["upstreams.ecs.ipv4Prefix"]; p.Min == nil || *p.Min != 0 || p.Max == nil || *p.Max != 32 {
+		t.Fatalf("ipv4Prefix %+v", p)
+	}
+	g := byPath["upstreams.groups"].Values
+	if g == nil || g.Type != "object" || len(g.Fields) != 3 {
+		t.Fatalf("upstreams.groups values %+v", g)
+	}
+	servers, strategy := g.Fields[0], g.Fields[1]
+	if servers.Name != "servers" || !servers.Required || servers.Items == nil || servers.Items.Format != "upstream" {
+		t.Fatalf("servers %+v", servers)
+	}
+	if strategy.Name != "strategy" || len(strategy.Enum) != 4 || strategy.Enum[0].Help == "" || strategy.Default != "parallel_best" {
+		t.Fatalf("strategy %+v", strategy)
+	}
+	if c := byPath["upstreams.conditional"].Values; c == nil || c.Ref != "upstreamGroup" {
+		t.Fatalf("conditional values %+v", c)
+	}
+
+	for _, tc := range []struct {
+		patch       map[string]any
+		field, want string
+	}{
+		{map[string]any{"querylog": map[string]any{"privacy": "everything"}}, "querylog.privacy", "full, anonymize_client, hide_domains, hide_domains_clients, nothing"},
+		{map[string]any{"upstreams": map[string]any{"ecs": map[string]any{"ipv4Prefix": 33}}}, "upstreams.ecs.ipv4Prefix", "outside 0-32"},
+		{map[string]any{"upstreams": map[string]any{"groups": map[string]any{"lan": map[string]any{"servers": []string{"10.0.0.1"}, "strategy": "fastest"}}}}, "upstreams.groups[lan].strategy", "parallel_best, strict, random, rtt_weighted"},
+		{map[string]any{"blocking": map[string]any{"customIP": map[string]any{"v4": "::1"}}}, "blocking.customIP.v4", "not an IPv4 address"},
+		{map[string]any{"ratelimit": map[string]any{"slip": 101}}, "ratelimit.slip", "outside 0-100"},
+	} {
+		r := h.do(http.MethodPatch, "/api/v1/settings", "admin", tc.patch).want(http.StatusBadRequest)
+		var env struct {
+			Error ErrorBody `json:"error"`
+		}
+		r.json(&env)
+		if env.Error.Key != KeyInvalid || !strings.Contains(env.Error.Message, tc.field) || !strings.Contains(env.Error.Message, tc.want) ||
+			len(env.Error.Fields) != 1 || env.Error.Fields[0] != tc.field {
+			t.Errorf("PATCH %v: %+v", tc.patch, env.Error)
+		}
+		if strings.HasPrefix(tc.want, "full") && env.Error.Hint != "querylog.privacy must be one of: "+tc.want {
+			t.Errorf("hint %v", env.Error.Hint)
+		}
 	}
 }
 

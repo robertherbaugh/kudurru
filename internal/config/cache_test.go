@@ -55,7 +55,7 @@ cache: { maxEntries: -1, minTTL: 2h, maxTTL: 1h, negativeTTL: -1s, prefetch: { t
 		t.Fatal("invalid cache/ecs config must be rejected")
 	}
 	for _, want := range []string{
-		`upstreams.ecs.mode: unknown mode "leak"`,
+		`upstreams.ecs.mode: unknown value "leak" (strip, forward, add)`,
 		"upstreams.ecs.ipv4Prefix: 33",
 		"upstreams.ecs.ipv6Prefix: -1",
 		"cache.maxEntries: -1 is negative",

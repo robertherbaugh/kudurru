@@ -54,7 +54,7 @@ export function emptyDraft(s: UiShape): unknown {
     case 'map':
       return { __rows: [] } satisfies MapDraft;
     case 'object':
-      return Object.fromEntries((s.fields ?? []).map((f) => [f.name, f.enum?.[0]?.value ?? emptyDraft(f)]));
+      return Object.fromEntries((s.fields ?? []).map((f) => [f.name, f.default !== undefined && f.default !== null ? toDraft(f, f.default) : (f.enum?.[0]?.value ?? emptyDraft(f))]));
     default:
       return s.enum?.[0]?.value ?? '';
   }
@@ -160,6 +160,8 @@ export function shapeError(s: UiShape, d: unknown, where = ''): string | null {
         const key = k.trim();
         if (!key) return at(`${s.keyLabel ?? 'A key'} is empty`);
         if (seen.has(key)) return at(`${key} is listed twice`);
+        const ke = s.keys ? keyError(s.keys, key) : null;
+        if (ke) return at(`${key}: ${ke}`);
         seen.add(key);
         const e = shapeError(s.values, v, `${where ? `${where} ` : ''}${key}`);
         if (e) return e;
@@ -169,7 +171,9 @@ export function shapeError(s: UiShape, d: unknown, where = ''): string | null {
     case 'object': {
       if (!isRecord(d)) return null;
       for (const f of s.fields ?? []) {
-        const e = shapeError(f, d[f.name], `${where ? `${where} ` : ''}${f.label ?? f.name}`);
+        const name = `${where ? `${where} ` : ''}${f.label ?? f.name}`;
+        if (f.required && isEmpty(fromDraft(f, d[f.name]))) return `${name} is required`;
+        const e = shapeError(f, d[f.name], name);
         if (e) return e;
       }
       return null;
@@ -177,6 +181,17 @@ export function shapeError(s: UiShape, d: unknown, where = ''): string | null {
     default:
       return null;
   }
+}
+
+/** The problem with a map key of a key shape (C1 `keys`). */
+export function keyError(k: UiShape, key: string): string | null {
+  if (k.type === 'int') return numberError(key, { min: k.min, max: k.max });
+  if (k.enum?.length && !k.enum.some((o) => o.value === key)) return `One of ${k.enum.map((o) => o.value).join(', ')}`;
+  return formatError(k.format, key);
+}
+
+function isEmpty(v: unknown): boolean {
+  return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0) || (isRecord(v) && Object.keys(v).length === 0);
 }
 
 /** Whether two API values are the same (durations and sizes by meaning, not spelling). */

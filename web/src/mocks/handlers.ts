@@ -59,9 +59,9 @@ function ok(body: Record<string, unknown> | unknown[], init?: ResponseInit) {
   return HttpResponse.json(payload as JsonBodyType, init);
 }
 
-function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>) {
+function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>, fields?: string[]) {
   return HttpResponse.json(
-    { error: { key, message, ...(hint !== undefined ? { hint } : {}) }, took_ms: 0.4 } as JsonBodyType,
+    { error: { key, message, ...(hint !== undefined ? { hint } : {}), ...(fields?.length ? { fields } : {}) }, took_ms: 0.4 } as JsonBodyType,
     { status, ...(headers ? { headers } : {}) },
   );
 }
@@ -1205,7 +1205,9 @@ export const handlers = [
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
     const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
-    const invalid = validateSchema(next, changed) ?? validateUpstreams(next);
+    const bad1 = validateSchema(next, changed);
+    if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
+    const invalid = validateUpstreams(next);
     if (invalid) return fail(400, 'invalid', invalid);
     db.settings = next;
     return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
@@ -1220,7 +1222,7 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const next = withDefaults(mergePatch(db.nodeConfig, patch), patch, changed);
     const invalid = validateSchema(next, changed);
-    if (invalid) return fail(400, 'invalid', invalid);
+    if (invalid) return fail(400, 'invalid', invalid.message, invalid.hint, undefined, [invalid.field]);
     db.nodeConfig = next;
     // Node-scope changes live in memory only.
     return ok({ ...settingsBody('node', changed), persisted: false });
@@ -1412,17 +1414,18 @@ function withDefaults(next: Record<string, unknown>, patch: Record<string, unkno
   return next;
 }
 
-/** The C1 checks the server makes from the schema metadata: enum and bounds. */
-function validateSchema(next: Record<string, unknown>, changed: string[]): string | null {
+/** The C1 checks the server makes from the schema metadata (enum and bounds), with error.fields and the allowed values as the hint. */
+function validateSchema(next: Record<string, unknown>, changed: string[]): { message: string; field: string; hint?: string } | null {
   for (const p of changed) {
     const k = db.schema.find((x) => x.path === p);
     const v = getPath(next, p);
     if (!k) continue;
     if (k.enum?.length && typeof v === 'string' && !k.enum.some((o) => o.value === v)) {
-      return `settings: ${p}: "${v}" is not one of ${k.enum.map((o) => o.value).join(', ')}`;
+      const allowed = k.enum.map((o) => o.value);
+      return { message: `settings: ${p}: "${v}" is not allowed`, field: p, hint: `${p} must be one of: ${allowed.join(', ')}` };
     }
-    if (typeof v === 'number' && ((k.min !== undefined && v < k.min) || (k.max !== undefined && v > k.max))) {
-      return `settings: ${p}: ${v} is outside ${k.min ?? '-∞'}..${k.max ?? '∞'}`;
+    if (typeof v === 'number' && ((typeof k.min === 'number' && v < k.min) || (typeof k.max === 'number' && v > k.max))) {
+      return { message: `settings: ${p}: ${v} is outside ${k.min ?? '-∞'}..${k.max ?? '∞'}`, field: p };
     }
   }
   return null;

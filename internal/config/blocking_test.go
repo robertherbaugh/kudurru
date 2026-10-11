@@ -46,7 +46,7 @@ blocking: { defaultResponse: sinkhole, blockTTL: -1s, customIP: { v4: "::1", v6:
 		t.Fatal("invalid blocking config must be rejected")
 	}
 	for _, want := range []string{
-		`blocking.defaultResponse: unknown response "sinkhole"`,
+		`blocking.defaultResponse: unknown value "sinkhole" (zeroIP, nxdomain, customIP, refused, blockPage)`,
 		"blocking.blockTTL: -1s is negative",
 		`blocking.customIP.v4: "::1" is not an IPv4 address`,
 		`blocking.customIP.v6: "10.0.0.1" is not an IPv6 address`,

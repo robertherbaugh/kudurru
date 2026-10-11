@@ -9,6 +9,7 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { ApiError } from '../api/client';
 import type { SettingKey } from '../api/types';
 import { displayValue, lockFor, parseValue } from '../lib/settings';
 import { labelOf, metaFor, shapeOf, type UiMeta, type UiShape } from '../lib/settingsMeta';
@@ -28,6 +29,14 @@ export interface SettingRowProps {
   extra?: ReactNode;
   /** Replaces the structured editor (upstreams.groups shows a summary and a link). */
   summary?: ReactNode;
+}
+
+/** The parts of a key a 400 named (error.fields), relative to the key: "corp › strategy". */
+export function failedParts(k: SettingKey, err: unknown): string[] {
+  const api = err instanceof ApiError ? err : err instanceof Error && err.cause instanceof ApiError ? err.cause : undefined;
+  return (api?.fields ?? [])
+    .filter((f) => f.startsWith(`${k.path}.`))
+    .map((f) => f.slice(k.path.length + 1).split('.').join(' › '));
 }
 
 /** A value in words for the "Default:" line: enum labels, durations, lists. */
@@ -57,6 +66,7 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
   const [text, setText] = useState(shownText);
   const [asJSON, setAsJSON] = useState(!structured && composite);
   const [error, setError] = useState<string | undefined>();
+  const [parts, setParts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const valueKey = JSON.stringify(value ?? null);
   useEffect(() => {
@@ -72,12 +82,14 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
 
   const run = async (v: unknown): Promise<boolean> => {
     setError(undefined);
+    setParts([]);
     setBusy(true);
     try {
       await onSave(k, v);
       return true;
     } catch (e) {
       setError((e as Error).message);
+      setParts(failedParts(k, e));
       return false;
     } finally {
       setBusy(false);
@@ -193,6 +205,7 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
             {error ? (
               <span className="k-error-text" role="alert">
                 {error}
+                {parts.length ? <span className="k-error-parts"> (at {parts.join(', ')})</span> : null}
               </span>
             ) : null}
             <span className="k-row">

@@ -27,6 +27,13 @@ const configIntro = `Every settings key of ` + "`kudurru.yaml`" + `, generated f
 **Scope.** ` + "`node`" + ` keys belong to one host. ` + "`cluster`" + ` keys are shared by every
 node of a deployment.
 
+**Allowed values.** The bold label is the name the UI shows. The *Allowed*
+line lists what a key accepts: a closed set, a range, a format (` + "`ip`" + `,
+` + "`cidr`" + ` for a CIDR or a single address, ` + "`hostport`" + `, ` + "`url`" + `, ` + "`domain`" + `,
+` + "`upstream`" + ` for a server in dnsproxy syntax), the object a value names (` + "`ref`" + `)
+and the members of list and map values. The config file, the environment and
+the API reject anything else with an error naming the key.
+
 **Flags.** *host-only* keys can only be set in the file or the environment
 on the host, never through the API or the UI (they name listeners, files and
 privileged behaviour). *restart* keys take effect after a restart (in
@@ -88,9 +95,17 @@ func defaultCell(k config.Key) string {
 	return code(flow(k.Default))
 }
 
-// describeKey is the help text, the flags and the environment variable.
+// describeKey is the UI label and help text, the allowed values, the
+// flags and the environment variable.
 func describeKey(k config.Key) string {
-	parts := []string{text(k.Help)}
+	help := text(k.Help)
+	if k.Label != "" {
+		help = "**" + text(k.Label) + ".** " + help
+	}
+	parts := []string{help}
+	if d := k.Shape().Describe(); d != "" {
+		parts = append(parts, "Allowed: "+text(d)+".")
+	}
 	var flags []string
 	if k.HostOnly {
 		flags = append(flags, "host-only")

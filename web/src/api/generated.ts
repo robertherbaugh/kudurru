@@ -2180,18 +2180,81 @@ export interface components {
             /** Format: date-time */
             until?: string;
         };
+        SettingField: {
+            default?: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            help?: string;
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            label?: string;
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
+            name: string;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
+            required?: boolean;
+            /** @enum {string} */
+            type: "string" | "int" | "bool" | "duration" | "bytes" | "string[]" | "list" | "map" | "object";
+            values?: components["schemas"]["SettingShape"];
+        };
         SettingKey: {
             default: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
             envLocked: boolean;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            group?: string;
             help: string;
             hostOnly: boolean;
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            label?: string;
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
             path: string;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
             restartRequired: boolean;
             /** @enum {string} */
             scope: "node" | "cluster";
             type: string;
             value: unknown;
+            values?: components["schemas"]["SettingShape"];
             writeOnly: boolean;
+        };
+        SettingOption: {
+            help?: string;
+            label: string;
+            value: string;
+        };
+        SettingShape: {
+            default?: unknown;
+            enum?: components["schemas"]["SettingOption"][] | null;
+            fields?: components["schemas"]["SettingField"][] | null;
+            /** @enum {string} */
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            items?: components["schemas"]["SettingShape"];
+            keys?: components["schemas"]["SettingShape"];
+            /** Format: int64 */
+            max?: number;
+            /** Format: int64 */
+            min?: number;
+            presets?: string[] | null;
+            /** @enum {string} */
+            ref?: "upstreamGroup" | "clientGroup" | "blockList" | "policy" | "zone";
+            /** @enum {string} */
+            type: "string" | "int" | "bool" | "duration" | "bytes" | "string[]" | "list" | "map" | "object";
+            values?: components["schemas"]["SettingShape"];
         };
         SettingsBody: {
             changed?: string[] | null;

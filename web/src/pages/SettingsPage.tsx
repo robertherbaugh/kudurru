@@ -83,7 +83,7 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
   const sections = useMemo(() => {
     const m = new Map<string, SettingKey[]>();
     for (const k of keys) {
-      const s = grouped ? groupOf(k, metaFor(k, keys)) : '';
+      const s = grouped ? groupOf(k, metaFor(k)) : '';
       m.set(s, [...(m.get(s) ?? []), k]);
     }
     return [...m].sort(([a], [b]) => compareGroups(a, b));
@@ -103,7 +103,7 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
             <SettingRow
               key={k.path}
               k={k}
-              meta={metaFor(k, keys)}
+              meta={metaFor(k)}
               value={valueOf(k, cluster, node)}
               canWrite={k.scope === 'node' ? canWriteNode : canWriteCluster}
               onSave={onSave}
@@ -142,7 +142,7 @@ export default function SettingsPage() {
     const s = search.trim().toLowerCase();
     return s
       ? all.filter((k) => {
-          const m = metaFor(k, all);
+          const m = metaFor(k);
           return [k.path, k.help, labelOf(k, m), groupOf(k, m)].some((t) => t.toLowerCase().includes(s));
         })
       : all;
