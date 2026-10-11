@@ -81,7 +81,12 @@ func TestRetentionRawAndVacuum(t *testing.T) {
 func TestRetentionSizeCap(t *testing.T) {
 	w, _ := newWriter(t, t0, func(o *Options) { o.RawRetention = 0 })
 	ctx := context.Background()
-	seed(t, w, t0.Add(-2*time.Hour), 2*time.Hour, scale(w, 40000))
+	n := 40000
+	if raceEnabled {
+		// Keep facts well above the dictionaries, which the cap never deletes.
+		n, w.deleteBatch = 12000, DeleteBatch/10
+	}
+	seed(t, w, t0.Add(-2*time.Hour), 2*time.Hour, n)
 	size, err := w.DBBytes(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -105,13 +110,23 @@ func TestRetentionSizeCap(t *testing.T) {
 
 	// Maintain enforces the cap on its own schedule. (The cap stays above
 	// the dictionaries and rollups, which the size cap never deletes.)
+	if err := w.Flush(ctx); err != nil { // rollups first, so the cap is measured against them
+		t.Fatal(err)
+	}
+	after, _ = w.DBBytes(ctx)
 	w.opts.MaxDBBytes = after / 5 * 4
 	w.lastSizeCheck = time.Time{}
 	if err := w.Maintain(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if now, _ := w.DBBytes(ctx); now > w.opts.MaxDBBytes {
-		t.Errorf("Maintain left %d bytes over a %d cap", now, w.opts.MaxDBBytes)
+	// The cap deletes fact rows only: it either gets under the cap or runs
+	// out of rows (dictionaries and rollups stay).
+	rows := queryInt(t, w.w, `SELECT count(*) FROM query`)
+	if now, _ := w.DBBytes(ctx); now > w.opts.MaxDBBytes && rows > 0 {
+		t.Errorf("Maintain left %d bytes over a %d cap with %d rows still deletable", now, w.opts.MaxDBBytes, rows)
+	}
+	if rows >= int64(n)-deleted {
+		t.Errorf("Maintain deleted nothing: %d rows left", rows)
 	}
 }
 
