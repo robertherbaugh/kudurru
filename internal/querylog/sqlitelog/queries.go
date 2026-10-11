@@ -89,6 +89,7 @@ func (r *Reader) filterSQL(ctx context.Context, tx *sql.Tx, f QueryFilter) ([]st
 		{f.Upstream, "dict_upstream", "addr", "upstream"},
 		{f.List, "dict_list", "name", "list"},
 		{f.Zone, "dict_zone", "name", "zone"},
+		{f.Policy, "dict_policy", "name", "policy"},
 	} {
 		if x.v != "" {
 			where = append(where, `q.`+x.field+` = (SELECT id FROM `+x.table+` WHERE `+x.col+`=?)`)
@@ -175,11 +176,12 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		// rows and their dictionary joins for one page only.
 		rows, err := tx.QueryContext(ctx, `SELECT q.id, q.ts, q.latency_us, coalesce(n.name,''), q.proto, coalesce(c.ip,''), coalesce(c.name,''), coalesce(c.grp,''),
 			coalesce(d.name,''), coalesce(cn.name,''), q.qtype, q.qclass, q.status, q.rcode, q.reply_type, coalesce(u.addr,''), coalesce(z.name,''),
-			coalesce(l.name,''), coalesce(q.rule,''), q.dnssec, q.ede, q.flags, coalesce(q.ecs,''), q.trace_id, coalesce(q.answer,'')
+			coalesce(l.name,''), coalesce(q.rule,''), q.dnssec, q.ede, q.flags, coalesce(q.ecs,''), q.trace_id, coalesce(q.answer,''), coalesce(p.name,'')
 			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY q.id DESC LIMIT ?) page JOIN query q ON q.id=page.id
 			LEFT JOIN dict_node n ON n.id=q.node LEFT JOIN dict_client c ON c.id=q.client
 			LEFT JOIN dict_domain d ON d.id=q.domain LEFT JOIN dict_domain cn ON cn.id=q.cname
 			LEFT JOIN dict_upstream u ON u.id=q.upstream LEFT JOIN dict_zone z ON z.id=q.zone LEFT JOIN dict_list l ON l.id=q.list
+			LEFT JOIN dict_policy p ON p.id=q.policy
 			ORDER BY q.id DESC`, append(pageArgs, limit+1)...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: queries: %w", err)
@@ -233,7 +235,7 @@ func scanQueryRow(rows *sql.Rows) (QueryRow, error) {
 	)
 	if err := rows.Scan(&id, &ts, &latency, &row.Node, &proto, &row.Client.IP, &row.Client.Name, &row.Client.Group,
 		&row.Domain, &row.CNAME, &qtype, &qclass, &st, &rc, &rt, &row.Upstream, &row.Zone,
-		&row.List, &row.Rule, &sec, &ede, &flags, &row.ECS, &trace, &row.Reply.Answer); err != nil {
+		&row.List, &row.Rule, &sec, &ede, &flags, &row.ECS, &trace, &row.Reply.Answer, &row.Policy); err != nil {
 		return row, err
 	}
 	status := pipeline.Status(st) //nolint:gosec // status column holds a uint8
@@ -282,6 +284,8 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 		q = `SELECT name FROM dict_list WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
 	case FieldZone:
 		q = `SELECT name FROM dict_zone WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
+	case FieldPolicy:
+		q = `SELECT name FROM dict_policy WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
 	default:
 		return nil, fmt.Errorf("sqlitelog: unknown suggestion field %q", field)
 	}

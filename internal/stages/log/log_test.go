@@ -10,6 +10,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
@@ -82,6 +83,24 @@ func TestObserverEvent(t *testing.T) {
 	}
 	if ev.ECS != netip.MustParsePrefix("192.168.1.0/24") || !ev.Flags.ECS || !ev.Flags.DO || !ev.Flags.RD || !ev.Flags.Cached || !ev.Flags.Stale {
 		t.Errorf("ecs %v flags %+v", ev.ECS, ev.Flags)
+	}
+}
+
+// TestObserverPolicy: the deciding policy of the identify stage's
+// decision reaches the event; no decision leaves it empty.
+func TestObserverPolicy(t *testing.T) {
+	rec := &recorder{}
+	o := &Observer{Node: "n", Collector: rec}
+	req := request("a.example.", dns.TypeA)
+	req.Policy = &policy.Decision{Policy: "home/kids", Policies: []string{"home/kids", "default/default"}}
+	o.Observe(req, &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded}, nil, time.Millisecond)
+	req = request("b.example.", dns.TypeA)
+	o.Observe(req, &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded}, nil, time.Millisecond)
+	if got := rec.events[0].Policy; got != "home/kids" {
+		t.Errorf("policy %q, want the deciding policy home/kids", got)
+	}
+	if got := rec.events[1].Policy; got != "" {
+		t.Errorf("no decision: policy %q", got)
 	}
 }
 

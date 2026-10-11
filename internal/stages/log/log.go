@@ -15,6 +15,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
@@ -89,6 +90,9 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	ev.ClientName = req.Client.ClientID
 	if len(req.Client.GroupIDs) > 0 {
 		ev.ClientGroup = req.Client.GroupIDs[0]
+	}
+	if d := policy.FromRequest(req); d != nil {
+		ev.Policy = d.Policy
 	}
 	ev.Zone = zoneName(req.Zone)
 	if req.Msg != nil {

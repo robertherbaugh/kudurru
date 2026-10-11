@@ -49,13 +49,17 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
   const [confirm, setConfirm] = useState(false);
   const [rejected, setRejected] = useState<{ item: string; error: string }[]>([]);
 
+  // Debounced search; only a changed query goes back to the first page (the
+  // mount-time run used to reset a page turned within the first 250 ms).
   useEffect(() => {
+    const next = search.trim();
+    if (next === query) return;
     const t = window.setTimeout(() => {
-      setQuery(search.trim());
+      setQuery(next);
       setCursors(['']);
     }, 250);
     return () => window.clearTimeout(t);
-  }, [search]);
+  }, [search, query]);
 
   const cursor = cursors[page] ?? '';
   const q = useQuery({

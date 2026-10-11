@@ -302,8 +302,8 @@ func (w *Writer) prepare(ctx context.Context) error {
 		return err
 	}
 	if w.ins, err = w.w.PrepareContext(ctx, `INSERT INTO query(id, ts, latency_us, node, proto, client, domain, qtype, qclass, status, rcode,
-		reply_type, upstream, zone, list, rule, cname, dnssec, ede, flags, ecs, trace_id, answer)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`); err != nil {
+		reply_type, upstream, zone, list, rule, cname, dnssec, ede, flags, ecs, trace_id, answer, policy)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`); err != nil {
 		return fmt.Errorf("sqlitelog: prepare insert: %w", err)
 	}
 	upsert := func(table string, keys []string, cols []string) (*sql.Stmt, error) {
@@ -520,7 +520,7 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	if err != nil {
 		return 0, err
 	}
-	var zoneID, listID, cnameID int64
+	var zoneID, listID, cnameID, policyID int64
 	if ev.Zone != "" {
 		if zoneID, err = w.dicts.zone.nameID(ctx, tx, storedName(ev.Zone)); err != nil {
 			return 0, err
@@ -533,6 +533,11 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	}
 	if ev.CNAME != "" {
 		if cnameID, err = w.dicts.domainID(ctx, tx, storedName(ev.CNAME), sec); err != nil {
+			return 0, err
+		}
+	}
+	if ev.Policy != "" {
+		if policyID, err = w.dicts.policy.nameID(ctx, tx, ev.Policy); err != nil {
 			return 0, err
 		}
 	}
@@ -562,7 +567,7 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	res, err := ins.ExecContext(ctx, id, ev.Time.UnixMicro(), latency, w.nodeID, protoCode(ev.Proto), clientID, domainID,
 		int64(ev.QType), int64(qclass(ev.QClass)), int64(ev.Status), int64(ev.Rcode), int64(ev.ReplyType),
 		nullID(upID), nullID(zoneID), nullID(listID), rule, nullID(cnameID), int64(ev.DNSSEC), ede,
-		int64(ev.Flags.Bits()), ecs, trace, answer)
+		int64(ev.Flags.Bits()), ecs, trace, answer, nullID(policyID))
 	if err != nil {
 		return 0, fmt.Errorf("sqlitelog: insert: %w", err)
 	}

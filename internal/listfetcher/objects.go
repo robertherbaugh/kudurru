@@ -123,8 +123,12 @@ type plannedSource struct {
 	format parser.Format
 	// subdomains is spec.sources[].subdomains.
 	subdomains bool
-	inline     []string
-	cm         *ConfigMapRef
+	// disabled is spec.sources[].enabled: false. A disabled source is
+	// neither downloaded nor compiled; its cache entry stays (it is still
+	// referenced) so that switching it back on needs no download.
+	disabled bool
+	inline   []string
+	cm       *ConfigMapRef
 	// status is the published status entry for this source, if any.
 	status *v1alpha1.SourceStatus
 }
@@ -171,7 +175,7 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 		pl.statusBy[s.Name] = s
 	}
 	for i, src := range bl.Spec.Sources {
-		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains}
+		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains, disabled: !src.IsEnabled()}
 		switch {
 		case len(src.Inline) > 0:
 			ps.inline = src.Inline
@@ -192,4 +196,47 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 		pl.sources = append(pl.sources, ps)
 	}
 	return pl
+}
+
+// allDisabled reports whether the list has sources and every one of them
+// is switched off (spec.sources[].enabled: false). Such a list compiles
+// empty: it is loaded with 0 entries instead of waiting for a body.
+func (pl *plannedList) allDisabled() bool {
+	if len(pl.sources) == 0 {
+		return false
+	}
+	for i := range pl.sources {
+		if !pl.sources[i].disabled {
+			return false
+		}
+	}
+	return true
+}
+
+// AllSourcesDisabled is the name of the empty source an all-disabled list
+// compiles from.
+const AllSourcesDisabled = "all sources disabled"
+
+// emptySource is the source of a list whose sources are all disabled.
+func emptySource() blocking.Source {
+	return blocking.LinesSource(AllSourcesDisabled, parser.FormatDomains, nil)
+}
+
+// disabledStatus is the status entry of a disabled source: the digest,
+// etag, fetch time and counts of its last fetch, enabled: false and no
+// error.
+func disabledStatus(ps *plannedSource) v1alpha1.SourceStatus {
+	off := false
+	ss := v1alpha1.SourceStatus{Name: ps.name, Enabled: &off}
+	if ps.key == "" {
+		ss.Digest = inlineDigest(ps.inline)
+	}
+	if p := ps.status; p != nil {
+		if ps.key != "" {
+			ss.Digest, ss.ETag = p.Digest, p.ETag
+		}
+		ss.Entries, ss.Invalid = p.Entries, p.Invalid
+		ss.LastFetched = p.LastFetched.DeepCopy()
+	}
+	return ss
 }
