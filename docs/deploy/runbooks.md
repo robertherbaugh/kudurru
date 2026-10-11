@@ -119,7 +119,12 @@ across a schema change are therefore not supported: back up first.
    The Deployment rolls with `maxUnavailable: 0, maxSurge: 1`; each pod
    sleeps `lameduckSeconds` in preStop, then drains (readiness 503) on
    SIGTERM. The PDB keeps at least one replica serving; the edge restarts
-   its dnsdist once per surge batch.
+   its dnsdist once per surge batch. A preStop `sleep` only covers the
+   Service endpoints: dnsdist keeps sending queries until the process stops
+   answering `health.kudurru.internal.`. `kudurru lameduck <seconds>s` as
+   the preStop command (readiness 503 *and* the health name SERVFAIL, so
+   every dnsdist drains the pod within its 2 s check window, D51) closes
+   that gap; the chart switches to it in a follow-up (docs/followups.md).
 3. Watch `kubectl -n kudurru-system rollout status` and the
    `KudurruServfailRatio` alert.
 

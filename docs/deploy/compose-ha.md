@@ -56,8 +56,9 @@ docker compose exec keepalived kudurru health --vrrp
 curl -s http://10.0.0.11:8081/healthz | jq
 ```
 
-(`kudurru health --vrrp`, `kudurru lameduck` and `kudurru vip drain` arrive
-with the M4 supervisors.) Stop kudurru on the VIP holder: the VIP stays, its dnsdist sends the
+(`kudurru lameduck [5s]` drains the local node: run it with
+`docker compose exec kudurru kudurru lameduck 5s` before stopping the
+container; `kudurru lameduck --cancel` undoes it.) Stop kudurru on the VIP holder: the VIP stays, its dnsdist sends the
 queries to the other two nodes. Stop dnsdist (or the host): the VIP moves
 within `fall 3` seconds. `kudurru lameduck` drains a node from every
 dnsdist's pool without moving the VIP; `kudurru vip drain` moves it (D51).
