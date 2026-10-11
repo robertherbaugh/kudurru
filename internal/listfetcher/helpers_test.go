@@ -220,7 +220,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dl := NewDownloader(cache, DownloadOptions{Now: clk.Now, MaxHTTPSize: 1 << 20})
+	dl := NewDownloader(cache, DownloadOptions{Now: clk.Now, MaxHTTPSize: 1 << 20, AllowLocalAddresses: true})
 	dl.sleep = func(context.Context, time.Duration) error { return nil }
 	f, err := New(Options{Store: st, Objects: newStoreObjects(st), Cache: cache, Downloader: dl, Logger: quiet(), Now: clk.Now})
 	if err != nil {

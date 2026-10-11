@@ -28,6 +28,10 @@ type Blocking struct {
 	InitStrategy string `koanf:"initStrategy" json:"initStrategy"`
 	// ListsDir is the list body cache; "" means <node.dataDir>/lists.
 	ListsDir string `koanf:"listsDir" json:"listsDir"`
+	// AllowLocalListURLs lets BlockList URLs reach loopback, link-local
+	// (cloud metadata), unspecified and multicast addresses; off by default
+	// so a BlockList writer cannot use the node for SSRF.
+	AllowLocalListURLs bool `koanf:"allowLocalListURLs" json:"allowLocalListURLs"`
 }
 
 // BlockingCustomIP is the customIP block response.

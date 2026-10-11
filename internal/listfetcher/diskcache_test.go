@@ -128,14 +128,14 @@ func TestDownloaderValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body = tc.body
-			d := NewDownloader(c, DownloadOptions{MaxErrorsPerSource: tc.maxErrs})
+			d := NewDownloader(c, DownloadOptions{MaxErrorsPerSource: tc.maxErrs, AllowLocalAddresses: true})
 			_, err := d.Fetch(ctx, Source{Key: srv.URL + "/" + strings.ReplaceAll(tc.name, " ", "-")}, OriginFetch)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
 	}
-	d := NewDownloader(c, DownloadOptions{})
+	d := NewDownloader(c, DownloadOptions{AllowLocalAddresses: true})
 	if _, err := d.Fetch(ctx, Source{Key: "file:///etc/passwd"}, OriginFetch); !errors.Is(err, ErrUnsupportedURL) {
 		t.Errorf("file URL: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestDownloaderRetries(t *testing.T) {
 	}))
 	defer srv.Close()
 	c, _ := OpenDiskCache(t.TempDir(), quiet())
-	d := NewDownloader(c, DownloadOptions{Attempts: 3})
+	d := NewDownloader(c, DownloadOptions{Attempts: 3, AllowLocalAddresses: true})
 	var slept []time.Duration
 	d.sleep = func(_ context.Context, dur time.Duration) error { slept = append(slept, dur); return nil }
 	if _, err := d.Fetch(context.Background(), Source{Key: srv.URL}, OriginFetch); err != nil {
