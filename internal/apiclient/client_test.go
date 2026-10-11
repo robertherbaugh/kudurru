@@ -172,7 +172,7 @@ func TestAuthHeaders(t *testing.T) {
 	if !me.Can("zones", "write") || me.Can("zones", "delete") {
 		t.Errorf("permissions %v", me.Permissions)
 	}
-	tok, err := c.CreateToken(ctx, CreateTokenRequest{Name: "cli"})
+	tok, err := c.CreateToken(ctx, CreateTokenRequest{Description: "cli"})
 	if err != nil || tok.Secret != "kdr_abc_def" || tok.ID != "abc" {
 		t.Fatalf("token %+v %v", tok, err)
 	}

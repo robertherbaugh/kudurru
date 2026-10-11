@@ -265,13 +265,13 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			f.writeErr(w, 400, "invalid", "test expects a session here", "")
 			return
 		}
-		var req struct{ Name string }
+		var req struct{ Description string }
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		tok := "kdr_minted000001_" + strings.Repeat("m", 43)
 		f.mu.Lock()
 		f.tokens[tok] = f.sessions["sess-1"]
 		f.mu.Unlock()
-		f.writeJSON(w, 201, map[string]any{"id": "minted000001", "name": req.Name, "token": tok})
+		f.writeJSON(w, 201, map[string]any{"id": "minted000001", "description": req.Description, "token": tok})
 	})
 
 	mux.HandleFunc("GET /api/v1/objects/{kind}", f.listObjects)

@@ -139,7 +139,7 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 					host, _ := os.Hostname()
 					tokenName = "kudurru-cli@" + firstNonEmpty(host, "unknown")
 				}
-				tok, err := c.CreateToken(cmd.Context(), apiclient.CreateTokenRequest{Name: tokenName, ExpiresIn: expiresIn})
+				tok, err := c.CreateToken(cmd.Context(), apiclient.CreateTokenRequest{Description: tokenName, ExpiresIn: expiresIn})
 				if err != nil {
 					return fmt.Errorf("mint a CLI token: %w", err)
 				}

@@ -50,12 +50,13 @@ type AuthStatus struct {
 // Token is one API token (POST|GET /auth/tokens). Secret is only present
 // in the POST response.
 type Token struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name,omitempty"`
-	Secret     string     `json:"-"`
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
-	CreatedAt  *time.Time `json:"createdAt,omitempty"`
-	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Secret      string     `json:"-"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	LastUsedAt  *time.Time `json:"lastUsedAt,omitempty"`
 }
 
 // UnmarshalJSON accepts the secret under "token", "secret" or "value"
@@ -83,7 +84,8 @@ func (t *Token) UnmarshalJSON(b []byte) error {
 
 // CreateTokenRequest is the POST /auth/tokens body.
 type CreateTokenRequest struct {
-	Name string `json:"name"`
+	// Description labels the token (the server field is "description").
+	Description string `json:"description,omitempty"`
 	// ExpiresIn is a Go duration string ("720h"); empty uses the server
 	// default (auth.tokens.maxLifetime).
 	ExpiresIn string `json:"expiresIn,omitempty"`
