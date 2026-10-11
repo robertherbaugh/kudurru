@@ -35,7 +35,7 @@ func TestProtocolTable(t *testing.T) {
 		{ProtoDoT, "tcp", true, []string{"dot"}, pipeline.ProtoDoT},
 		{ProtoDoH, "tcp", true, []string{"h2", "http/1.1"}, pipeline.ProtoDoH},
 		{ProtoDoQ, "udp", true, []string{"doq"}, pipeline.ProtoDoQ},
-		{ProtoDoH3, "udp", true, []string{"h3"}, pipeline.ProtoDoH},
+		{ProtoDoH3, "udp", true, []string{"h3"}, pipeline.ProtoDoH3},
 	}
 	if len(tests) != len(Protocols()) || len(factories) != len(Protocols()) {
 		t.Fatal("every protocol needs a factory and a row here")

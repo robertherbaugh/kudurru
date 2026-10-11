@@ -18,10 +18,14 @@ type Component struct {
 	Since   time.Time `json:"since"`
 }
 
+// ReadyFunc is a live readiness source (e.g. the DNS listener registry).
+type ReadyFunc func() (ok bool, unready []string)
+
 // Checker aggregates component readiness and serves the probes.
 type Checker struct {
 	mu         sync.RWMutex
 	components map[string]Component
+	funcs      map[string]ReadyFunc
 	started    bool
 	lameduck   bool
 	lastLive   time.Time
@@ -30,7 +34,14 @@ type Checker struct {
 
 // New returns an empty checker.
 func New(info map[string]any) *Checker {
-	return &Checker{components: map[string]Component{}, lastLive: time.Now(), info: info}
+	return &Checker{components: map[string]Component{}, funcs: map[string]ReadyFunc{}, lastLive: time.Now(), info: info}
+}
+
+// Register adds a live readiness source evaluated on every probe.
+func (c *Checker) Register(name string, fn ReadyFunc) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.funcs[name] = fn
 }
 
 // Set records a component's readiness.
@@ -77,6 +88,11 @@ func (c *Checker) Ready() (bool, []string) {
 	for name, comp := range c.components {
 		if !comp.Ready {
 			bad = append(bad, name)
+		}
+	}
+	for name, fn := range c.funcs {
+		if ok, unready := fn(); !ok {
+			bad = append(bad, name+"("+join(unready)+")")
 		}
 	}
 	sort.Strings(bad)

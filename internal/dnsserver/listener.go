@@ -38,16 +38,17 @@ func Protocols() []Protocol {
 }
 
 // Pipeline maps a listener protocol onto the transport recorded in
-// pipeline.Client.Proto. pipeline has no separate HTTP/3 value yet, so DoH3
-// reports ProtoDoH (both are RFC 8484; see docs/spikes/dnsserver-quic.md).
+// pipeline.Client.Proto.
 func (p Protocol) Pipeline() pipeline.Proto {
 	switch p {
 	case ProtoTCP:
 		return pipeline.ProtoTCP
 	case ProtoDoT:
 		return pipeline.ProtoDoT
-	case ProtoDoH, ProtoDoH3:
+	case ProtoDoH:
 		return pipeline.ProtoDoH
+	case ProtoDoH3:
+		return pipeline.ProtoDoH3
 	case ProtoDoQ:
 		return pipeline.ProtoDoQ
 	default:

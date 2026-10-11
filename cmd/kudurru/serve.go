@@ -20,6 +20,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
@@ -106,9 +107,31 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreams", fwd.Servers)
 
 	checker := health.New(map[string]any{"version": info.Version, "node": cfg.Node.Name})
-	for _, l := range cfg.Listeners.DNS {
-		checker.Set("dns:"+l.Address, false, "binding")
+
+	// DNS listeners: one registry for udp/tcp/dot/doh/doq/doh3 with the shared
+	// certificate store and the authenticated PROXYv2 policy (D45, D56, D67).
+	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
+	if err != nil {
+		return err
 	}
+	if proxyPolicy != nil {
+		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
+	}
+	registry, err := dnsserver.NewRegistry(dnsserver.Options{
+		Handler: &dnsserver.Handler{Chain: chain, Logger: logger},
+		Logger:  logger,
+		Proxy:   proxyPolicy,
+	})
+	if err != nil {
+		return err
+	}
+	if err := registry.Add(dnsserver.SpecsFromConfig(cfg.Listeners)...); err != nil {
+		return err
+	}
+	if err := registry.Bind(); err != nil { // fail fast on port conflicts
+		return err
+	}
+	checker.Register("dns", registry.Ready)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -125,26 +148,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}()
 	}
 
-	for _, l := range cfg.Listeners.DNS {
-		srv := dnsserver.New(l.Address, l.Protocols, chain, logger)
-		name := "dns:" + l.Address
-		run(name, func(ctx context.Context) error {
-			// Start returns a bind error immediately; readiness flips once bound.
-			ready := make(chan struct{})
-			go func() {
-				deadline := time.Now().Add(5 * time.Second)
-				for time.Now().Before(deadline) {
-					if len(srv.Addrs()) == len(l.Protocols) {
-						checker.Set(name, true, "")
-						close(ready)
-						return
-					}
-					time.Sleep(20 * time.Millisecond)
-				}
-			}()
-			return srv.Start(ctx)
-		})
-	}
+	run("dns", registry.Run)
 	run("ops", func(ctx context.Context) error {
 		return serveHTTP(ctx, cfg.Listeners.Ops.Address, checker.Handler(), logger, "ops")
 	})

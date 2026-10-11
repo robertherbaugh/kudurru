@@ -37,6 +37,7 @@ const (
 	ProtoDoT
 	ProtoDoH
 	ProtoDoQ
+	ProtoDoH3
 )
 
 func (p Proto) String() string {
@@ -51,6 +52,8 @@ func (p Proto) String() string {
 		return "doh"
 	case ProtoDoQ:
 		return "doq"
+	case ProtoDoH3:
+		return "doh3"
 	}
 	return "unknown"
 }

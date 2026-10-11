@@ -50,7 +50,7 @@ func TestTransportsEndToEnd(t *testing.T) {
 		{proto: ProtoDoH, versions: []upstream.HTTPVersion{upstream.HTTPVersion2}, want: pipeline.ProtoDoH, fixedID: true, wantLabel: "doh"},
 		{proto: ProtoDoH, versions: []upstream.HTTPVersion{upstream.HTTPVersion11}, want: pipeline.ProtoDoH, fixedID: true, wantLabel: "doh"},
 		{proto: ProtoDoQ, want: pipeline.ProtoDoQ, fixedID: true, wantLabel: "doq"},
-		{proto: ProtoDoH3, want: pipeline.ProtoDoH, fixedID: true, wantLabel: "doh"},
+		{proto: ProtoDoH3, want: pipeline.ProtoDoH3, fixedID: true, wantLabel: "doh3"},
 	}
 	for _, tt := range tests {
 		name := string(tt.proto)

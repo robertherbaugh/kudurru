@@ -14,6 +14,7 @@ type DNS struct {
 	Responses *prometheus.CounterVec
 	Duration  *prometheus.HistogramVec
 	Inflight  *prometheus.GaugeVec
+	Dropped   *prometheus.CounterVec
 }
 
 // NewDNS registers the DNS metrics with reg.
@@ -36,8 +37,12 @@ func NewDNS(reg prometheus.Registerer) *DNS {
 			Name: "kudurru_dns_inflight_requests",
 			Help: "Requests currently being processed.",
 		}, []string{"proto"}),
+		Dropped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_dns_dropped_total",
+			Help: "Queries dropped before the pipeline, by reason (proxy_unauthenticated, proxy_untrusted_peer, proxy_malformed, ...).",
+		}, []string{"reason"}),
 	}
-	reg.MustRegister(d.Requests, d.Responses, d.Duration, d.Inflight)
+	reg.MustRegister(d.Requests, d.Responses, d.Duration, d.Inflight, d.Dropped)
 	return d
 }
 
