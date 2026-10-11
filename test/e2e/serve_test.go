@@ -384,17 +384,17 @@ func TestConfigValidationFails(t *testing.T) {
 		env    []string // extra environment
 		want   string
 	}{
-		{name: "unknown store driver", mutate: func(c map[string]any) { c["store"] = map[string]any{"driver": "etcd"} }, want: `store.driver: unknown driver "etcd"`},
+		{name: "unknown store driver", mutate: func(c map[string]any) { c["store"] = map[string]any{"driver": "etcd"} }, want: `store.driver: unknown value "etcd" (sqlite, kube)`},
 		{name: "unknown upstream strategy", mutate: func(c map[string]any) {
 			c["upstreams"].(map[string]any)["groups"] = map[string]any{"default": map[string]any{"servers": []any{"127.0.0.1:9"}, "strategy": "fastest"}}
-		}, want: `upstreams.groups.default: unknown strategy "fastest"`},
+		}, want: `upstreams.groups[default].strategy: unknown value "fastest" (parallel_best, strict, random, rtt_weighted)`},
 		{name: "conditional to unknown group", mutate: func(c map[string]any) {
 			c["upstreams"].(map[string]any)["conditional"] = map[string]any{"corp.example.": "nope"}
 		}, want: `unknown group "nope"`},
 		{name: "bad DNS protocol", mutate: func(c map[string]any) {
 			c["listeners"].(map[string]any)["dns"] = []any{map[string]any{"address": spec.Ports.DNS, "protocols": []any{"sctp"}}}
-		}, want: `unsupported protocol "sctp"`},
-		{name: "bad log level", mutate: func(c map[string]any) { c["log"] = map[string]any{"level": "loud"} }, want: `log.level: unknown level "loud"`},
+		}, want: `listeners.dns[0].protocols[0]: unknown value "sctp" (udp, tcp)`},
+		{name: "bad log level", mutate: func(c map[string]any) { c["log"] = map[string]any{"level": "loud"} }, want: `log.level: unknown value "loud" (debug, info, warn, error)`},
 		{name: "tsig key without algorithm", mutate: func(c map[string]any) {
 			c["tsigKeys"] = []any{map[string]any{"name": "k", "algorithm": "hmac-md5", "secretFile": secretMissing}}
 		}, want: `tsigKeys[0].algorithm`},
