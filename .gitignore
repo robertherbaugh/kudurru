@@ -13,6 +13,9 @@ coverage.*
 /web/dist/third-party-licenses.txt
 /web/node_modules/
 /web/coverage/
+/web/e2e/.auth/
+/web/playwright-report/
+/web/test-results/
 
 # local state
 /.context/
