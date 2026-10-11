@@ -119,21 +119,13 @@ func specificHost(hostport string) (netip.Addr, bool) {
 	return a.Unmap(), true
 }
 
-// validateBlockPage checks the blockPage keys and their listener; it needs
-// the whole Config because the default addresses come from the listeners.
+// validateBlockPage checks what the metadata cannot express (the address
+// formats, the listener syntax, the URL scheme and the rate bound are
+// checked from the schema); it needs the whole Config because the default
+// addresses come from the listeners.
 func (c *Config) validateBlockPage() []error {
 	var errs []error
 	b, l := c.BlockPage, c.Listeners.BlockPage
-	if v := b.IPv4; v != "" {
-		if a, err := netip.ParseAddr(v); err != nil || !a.Is4() {
-			errs = append(errs, fmt.Errorf("blockPage.ipv4: %q is not an IPv4 address", v))
-		}
-	}
-	if v := b.IPv6; v != "" {
-		if a, err := netip.ParseAddr(v); err != nil || !a.Is6() || a.Is4In6() || a.Zone() != "" {
-			errs = append(errs, fmt.Errorf("blockPage.ipv6: %q is not an IPv6 address", v))
-		}
-	}
 	if utf8.RuneCountInString(b.Title) > blockPageMaxTitle {
 		errs = append(errs, fmt.Errorf("blockPage.title: longer than %d characters", blockPageMaxTitle))
 	}
@@ -144,19 +136,8 @@ func (c *Config) validateBlockPage() []error {
 		errs = append(errs, err)
 	}
 	if u := b.DashboardURL; u != "" {
-		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" || p.RawQuery != "" || p.Fragment != "" {
-			errs = append(errs, fmt.Errorf("blockPage.dashboardURL: %q is not an http or https URL without query", u))
-		}
-	}
-	if b.RateLimit < 0 {
-		errs = append(errs, fmt.Errorf("blockPage.rateLimit: %d is negative", b.RateLimit))
-	}
-	for _, x := range []struct{ key, v string }{{"listeners.blockPage.http", l.HTTP}, {"listeners.blockPage.https", l.HTTPS}} {
-		if x.v == "" {
-			continue
-		}
-		if _, _, err := net.SplitHostPort(x.v); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %q is not host:port (e.g. :80)", x.key, x.v))
+		if p, err := url.Parse(u); err == nil && (p.RawQuery != "" || p.Fragment != "") {
+			errs = append(errs, fmt.Errorf("blockPage.dashboardURL: %q must not carry a query or fragment", u))
 		}
 	}
 	if l.HTTP != "" && l.HTTP == l.HTTPS {

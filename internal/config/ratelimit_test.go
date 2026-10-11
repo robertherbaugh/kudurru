@@ -89,11 +89,11 @@ ratelimit:
 		"listeners.sockets: -1 is negative",
 		"ratelimit.slip: 101 is outside 0-100",
 		"ratelimit.maxBuckets: -5 is negative",
-		`ratelimit.ipv4: prefix length "33" is not a number in 0-32`,
-		`ratelimit.ipv4: prefix length "abc" is not a number in 0-32`,
-		"ratelimit.ipv4[8]: -1 queries per minute is negative",
-		`ratelimit.ipv6: prefix length "129" is not a number in 0-128`,
-		`ratelimit.exempt: "not-an-address" is neither a CIDR nor an address`,
+		`ratelimit.ipv4: key "33" is not a number in 0-32`,
+		`ratelimit.ipv4: key "abc" is not a number in 0-32`,
+		"ratelimit.ipv4[8]: -1 is negative",
+		`ratelimit.ipv6: key "129" is not a number in 0-128`,
+		`ratelimit.exempt[1]: "not-an-address" is neither a CIDR nor an address`,
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q: %v", want, err)

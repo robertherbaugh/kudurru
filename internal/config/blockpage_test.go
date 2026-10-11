@@ -74,7 +74,7 @@ func TestBlockPageValidation(t *testing.T) {
 		{"contact query", "blockPage: {contact: 'a@b.example?subject=x'}\n", "blockPage.contact"},
 		{"dashboard", "blockPage: {dashboardURL: 'ftp://x'}\n", "blockPage.dashboardURL"},
 		{"title", "blockPage: {title: '" + strings.Repeat("x", 201) + "'}\n", "blockPage.title: longer than 200"},
-		{"rate", "blockPage: {rateLimit: -1}\n", "blockPage.rateLimit: -1 is negative"},
+		{"rate", "blockPage: {rateLimit: -1}\n", "blockPage.rateLimit: -1 is outside 0-100000"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := loadYAML(t, tc.doc)

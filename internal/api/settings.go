@@ -30,8 +30,81 @@ type SettingKey struct {
 	EnvLocked       bool   `json:"envLocked"`
 	RestartRequired bool   `json:"restartRequired"`
 	WriteOnly       bool   `json:"writeOnly"`
+	// Label is the human name ("Default block response"); Group the UI
+	// section ("Blocking").
+	Label string `json:"label,omitempty"`
+	Group string `json:"group,omitempty"`
+	SettingConstraints
 	// Value is the effective value (Redacted for writeOnly keys).
 	Value any `json:"value"`
+}
+
+// SettingConstraints is the typed-control metadata of a key or a nested
+// value: PATCH /settings rejects values outside it (400 invalid).
+type SettingConstraints struct {
+	// Enum is the closed set of a string value.
+	Enum []SettingOption `json:"enum,omitempty"`
+	// Min and Max bound an int value (inclusive).
+	Min *int `json:"min,omitempty"`
+	Max *int `json:"max,omitempty"`
+	// Presets are suggested values (durations, byte sizes).
+	Presets []string `json:"presets,omitempty"`
+	// Format is the syntax of a string value; empty values are not checked.
+	Format string `json:"format,omitempty" enum:"ip,ipv4,ipv6,cidr,hostport,url,domain,upstream,email"`
+	// Ref is the kind of object the value names.
+	Ref string `json:"ref,omitempty" enum:"upstreamGroup,clientGroup,blockList,policy,zone"`
+	// Items is the element shape of a list or string[]; Keys and Values
+	// the key and value shapes of a map.
+	Items  *SettingShape `json:"items,omitempty"`
+	Keys   *SettingShape `json:"keys,omitempty"`
+	Values *SettingShape `json:"values,omitempty"`
+	// Fields are the members of an object.
+	Fields []SettingField `json:"fields,omitempty"`
+}
+
+// SettingOption is one value of a closed set.
+type SettingOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Help  string `json:"help,omitempty"`
+}
+
+// SettingShape describes a value nested in a key (a list element, a map
+// key or value, an object member).
+type SettingShape struct {
+	Type string `json:"type" enum:"string,int,bool,duration,bytes,string[],list,map,object"`
+	// Default is what an omitted or empty value means.
+	Default any `json:"default,omitempty"`
+	SettingConstraints
+}
+
+// SettingField is one member of an object shape.
+type SettingField struct {
+	Name  string `json:"name"`
+	Label string `json:"label,omitempty"`
+	Help  string `json:"help,omitempty"`
+	// Required members must be present and non-empty.
+	Required bool `json:"required,omitempty"`
+	SettingShape
+}
+
+func settingConstraints(s config.Shape) SettingConstraints {
+	out := SettingConstraints{Min: s.Min, Max: s.Max, Presets: s.Presets, Format: string(s.Format), Ref: string(s.Ref),
+		Items: settingShape(s.Items), Keys: settingShape(s.Keys), Values: settingShape(s.Values)}
+	for _, o := range s.Enum {
+		out.Enum = append(out.Enum, SettingOption{Value: o.Value, Label: o.Label, Help: o.Help})
+	}
+	for _, f := range s.Fields {
+		out.Fields = append(out.Fields, SettingField{Name: f.Name, Label: f.Label, Help: f.Help, Required: f.Required, SettingShape: *settingShape(&f.Shape)})
+	}
+	return out
+}
+
+func settingShape(s *config.Shape) *SettingShape {
+	if s == nil {
+		return nil
+	}
+	return &SettingShape{Type: string(s.Type), Default: s.Default, SettingConstraints: settingConstraints(*s)}
 }
 
 type schemaOutput struct{ Body *List[SettingKey] }
@@ -160,7 +233,7 @@ func (s *Server) settingsSchema(context.Context, *struct{}) (*schemaOutput, erro
 		items = append(items, SettingKey{
 			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: k.Help,
 			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: k.RestartRequired,
-			WriteOnly: k.WriteOnly, Value: v,
+			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
@@ -303,9 +376,27 @@ func decodeSettings(flat map[string]any) (*config.Config, error) {
 		return nil, errInvalid("settings: %v", err)
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, errInvalid("settings: %v", err)
+		return nil, settingsInvalid(err)
 	}
 	return &cfg, nil
+}
+
+// settingsInvalid is the 400 invalid of a settings value that fails
+// validation: the message names every key, Fields lists the paths that
+// violate their metadata and Hint the allowed values when one closed set
+// was missed.
+func settingsInvalid(err error) *Error {
+	e := errInvalid("settings: %v", err)
+	fes := config.FieldErrors(err)
+	for _, fe := range fes {
+		if !slices.Contains(e.Body.Fields, fe.Path) {
+			e.Body.Fields = append(e.Body.Fields, fe.Path)
+		}
+	}
+	if len(fes) == 1 && len(fes[0].Allowed) > 0 {
+		e.Body.Hint = fes[0].Path + " must be one of: " + strings.Join(fes[0].Allowed, ", ")
+	}
+	return e
 }
 
 // ErrSettingsManaged is the error a SettingsWriter returns when the
