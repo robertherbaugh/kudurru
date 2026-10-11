@@ -178,3 +178,58 @@ PASS
 ok  	github.com/robertherbaugh/kudurru/internal/blocking/matcher	0.003s
 PASS
 ok  	github.com/robertherbaugh/kudurru/internal/blocking/parser	0.002s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.90GHz
+BenchmarkLookup100k/hit-6         	 2750632	       458.6 ns/op	       367.0 p50-ns	       784.0 p99-ns	      47 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1726699	       716.3 ns/op	       628.0 p50-ns	      1140 p99-ns	      71 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 2328992	       521.1 ns/op	       418.0 p50-ns	      1068 p99-ns	     121 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 3361575	       356.6 ns/op	       287.0 p50-ns	       496.0 p99-ns	      35 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 4532768	       273.7 ns/op	       214.0 p50-ns	       343.0 p99-ns	      34 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.335s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.90GHz
+BenchmarkLookup100k/hit-6         	 2752741	       458.3 ns/op	       367.0 p50-ns	       744.0 p99-ns	      47 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1728284	       711.2 ns/op	       621.0 p50-ns	      1181 p99-ns	      71 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 2344216	       516.2 ns/op	       410.0 p50-ns	      1099 p99-ns	     121 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 3631572	       351.3 ns/op	       283.0 p50-ns	       453.0 p99-ns	      32 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 4277133	       283.7 ns/op	       217.0 p50-ns	       400.0 p99-ns	      37 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.433s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.90GHz
+BenchmarkLookup100k/hit-6         	 2796148	       447.5 ns/op	       365.0 p50-ns	       720.0 p99-ns	      46 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1712859	       703.7 ns/op	       616.0 p50-ns	      1128 p99-ns	      71 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 2353209	       516.1 ns/op	       411.0 p50-ns	      1049 p99-ns	     121 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 3518575	       346.7 ns/op	       282.0 p50-ns	       465.0 p99-ns	      33 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 4503464	       279.2 ns/op	       214.0 p50-ns	       347.0 p99-ns	      35 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.354s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.90GHz
+BenchmarkLookup100k/hit-6         	 2837163	       445.0 ns/op	       363.0 p50-ns	       720.0 p99-ns	      46 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1708008	       712.6 ns/op	       639.0 p50-ns	      1098 p99-ns	      71 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 2447466	       495.4 ns/op	       395.0 p50-ns	      1029 p99-ns	     120 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 3548779	       347.2 ns/op	       286.0 p50-ns	       458.0 p99-ns	      33 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 4459351	       276.2 ns/op	       215.0 p50-ns	       352.0 p99-ns	      35 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.398s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.90GHz
+BenchmarkLookup100k/hit-6         	 2887777	       434.5 ns/op	       354.0 p50-ns	       687.0 p99-ns	      45 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1627797	       754.5 ns/op	       625.0 p50-ns	      1123 p99-ns	      62 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 2353812	       510.4 ns/op	       386.0 p50-ns	       993.0 p99-ns	     121 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 3401070	       368.2 ns/op	       280.0 p50-ns	       462.0 p99-ns	      34 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 4265337	       294.2 ns/op	       211.0 p50-ns	       356.0 p99-ns	      37 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.402s

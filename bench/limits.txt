@@ -28,3 +28,11 @@ ignore ^BenchmarkLatency/                       p999-ns
 ignore ^BenchmarkLatency/timer$                 ns/op
 ignore ^BenchmarkLatency/timer$                 p50-ns
 ignore ^BenchmarkLatency/timer$                 p99-ns
+
+# Zone lookups (docs/m1/zone.md, docs/m2/xfr.md): a 100k-record zone answers
+# every result kind in well under 2 µs at p99 with at most three
+# allocations (wildcard synthesis).
+limit  ^BenchmarkLookup100k/                    p99-ns     2000
+limit  ^BenchmarkLookup100k/                    allocs/op  3
+# B/op is the benchmark's own latency recorder growing, not the lookup.
+ignore ^BenchmarkLookup100k/                    B/op

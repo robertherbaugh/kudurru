@@ -96,11 +96,16 @@ $(DEX_BIN):
 test-auth-e2e: $(DEX_BIN)
 	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
 
-## bench: blocking benchmarks gated against bench/baseline.txt (+20 %) and the
-## absolute limits in bench/limits.txt (docs/architecture.md §7.3). The
-## baseline is machine-specific: refresh it with `make bench-baseline` on the
-## runner class that enforces it (docs/spikes/blocking.md, "Refreshing").
+## bench: blocking benchmarks and the zone lookup benchmark gated against
+## bench/baseline.txt (+20 %) and the absolute limits in bench/limits.txt
+## (docs/architecture.md §7.3, docs/m2/xfr.md). The baseline is
+## machine-specific: refresh it with `make bench-baseline` on the runner
+## class that enforces it (docs/spikes/blocking.md, "Refreshing").
 BENCH_PKGS      ?= ./internal/blocking/...
+# Only the 100k-record lookup benchmark of internal/zone is gated; its
+# build and export benchmarks are reported in docs/m1/zone.md.
+BENCH_ZONE_PKGS ?= ./internal/zone
+BENCH_ZONE      ?= ^BenchmarkLookup100k$$
 BENCH_COUNT     ?= 5
 BENCH_BASELINE  ?= bench/baseline.txt
 BENCH_LIMITS    ?= bench/limits.txt
@@ -110,6 +115,7 @@ BENCH_OUT       ?= bin/bench-current.txt
 # run-to-run variance of memory layout, which -count inside one process hides.
 BENCH_RUN        = for i in $$(seq $(BENCH_COUNT)); do \
 	  go test -run '^$$' -bench . -benchmem -count 1 -timeout 30m $(BENCH_PKGS) 2>&1 || echo "FAIL: go test exited non-zero"; \
+	  go test -run '^$$' -bench '$(BENCH_ZONE)' -benchmem -count 1 -timeout 30m $(BENCH_ZONE_PKGS) 2>&1 || echo "FAIL: go test exited non-zero"; \
 	done
 
 bench:
