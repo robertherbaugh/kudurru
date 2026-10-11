@@ -1,6 +1,10 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
-VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# RELEASE_VERSION is what a build without a reachable tag reports (a
+# tarball, a shallow clone, a fork without tags); bump it together with the
+# charts' version when preparing the next release (docs/release-checklist.md).
+RELEASE_VERSION := 0.1.0-rc.1
+VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(MODULE)/internal/version.Version=$(VERSION) -X $(MODULE)/internal/version.Commit=$(COMMIT) -X $(MODULE)/internal/version.Date=$(DATE)
