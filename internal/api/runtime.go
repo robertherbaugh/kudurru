@@ -269,7 +269,9 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 	start := time.Now()
 	preq := &pipeline.Request{
 		Ctx: qctx, Msg: m, Received: start, Deadline: start.Add(5 * time.Second),
-		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig"},
+		// Synthetic: the caller chooses the client address, so the log
+		// stage must not record this as that client's traffic.
+		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
 	}
 	resp, err := s.opts.Chain.Serve(preq)
 	out := &DNSQueryResult{

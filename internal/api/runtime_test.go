@@ -137,3 +137,24 @@ func TestDNSQuery(t *testing.T) {
 	h.do(http.MethodPost, "/api/v1/dns/query", "viewer", map[string]any{"name": "x", "type": "NOPE"}).want(http.StatusBadRequest)
 	h.do(http.MethodPost, "/api/v1/dns/query", "viewer", map[string]any{"name": "x", "client": "nope"}).want(http.StatusBadRequest)
 }
+
+// syntheticStage records whether the pipeline saw a synthetic request.
+type syntheticStage struct{ seen *bool }
+
+func (syntheticStage) Name() string { return "ingress" }
+
+func (c syntheticStage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	*c.seen = req.Client.Synthetic
+	return next(req)
+}
+
+// TestDNSQueryIsSynthetic: the built-in dig marks its requests so the log
+// stage does not record them as the (caller-chosen) client's traffic.
+func TestDNSQueryIsSynthetic(t *testing.T) {
+	var synthetic bool
+	h := newHarness(t, func(o *Options) { o.Chain = pipeline.MustNew(syntheticStage{&synthetic}, answerStage{}) })
+	h.do(http.MethodPost, "/api/v1/dns/query", "viewer", map[string]any{"name": "www.example.com", "client": "192.168.1.20"}).want(http.StatusOK)
+	if !synthetic {
+		t.Fatal("POST /dns/query ran an ordinary client request")
+	}
+}
