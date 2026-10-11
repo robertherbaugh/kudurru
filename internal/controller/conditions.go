@@ -9,21 +9,21 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
-// Condition reasons the controller adds to those in api/v1alpha1. They are
-// candidates for api/v1alpha1/common_types.go (docs/m1/controller.md).
+// Condition reasons the controller uses besides the generic ones; they
+// live in api/v1alpha1 and are aliased here for the existing callers.
 const (
 	// ReasonAsExpected is the reason of a False Degraded condition.
-	ReasonAsExpected = "AsExpected"
+	ReasonAsExpected = v1alpha1.ReasonAsExpected
 	// ReasonZoneNotFound: a DNSRecordSet's zoneRef names no DNSZone.
-	ReasonZoneNotFound = "ZoneNotFound"
+	ReasonZoneNotFound = v1alpha1.ReasonZoneNotFound
 	// ReasonNotSelected: the zone's recordSetSelector does not admit the
 	// record set.
-	ReasonNotSelected = "NotSelected"
+	ReasonNotSelected = v1alpha1.ReasonNotSelected
 	// ReasonMissingReference: a Policy names a ClientGroup or BlockList
 	// that does not exist.
-	ReasonMissingReference = "MissingReference"
+	ReasonMissingReference = v1alpha1.ReasonMissingReference
 	// ReasonUnsupported: the zone type is not served by this version.
-	ReasonUnsupported = "Unsupported"
+	ReasonUnsupported = v1alpha1.ReasonUnsupported
 )
 
 // verdict is the desired Ready and Degraded pair for one object.

@@ -2,14 +2,19 @@ package controller
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 // defaultTTL applies when neither the endpoint nor the zone sets a TTL; it
@@ -29,10 +34,54 @@ type rrsetVerdict struct {
 	// set holds. Both are dropped from the zone.
 	Outside    []string
 	Duplicates []string
+	// Conflicts are endpoints the zone model refused although they are
+	// valid and in the zone: CNAME exclusivity (Duplicated against another
+	// object, Invalid within one), data below a DNAME (Occluded), apex
+	// CNAME/NS and records in a forward zone (Invalid). They are dropped
+	// from the zone. They come from the zone build (withConflicts), not
+	// from buildZoneView.
+	Conflicts []conflict
 	// Endpoints and Kept count the endpoints in the spec and those that
 	// survive (served, or disabled on purpose).
 	Endpoints int
 	Kept      int
+}
+
+// conflict is one endpoint the zone model refused.
+type conflict struct {
+	Index  int    // the endpoint's index in spec.endpoints
+	Reason string // v1alpha1.ReasonDuplicated, ReasonOccluded or ReasonInvalid
+	Text   string
+}
+
+// conflicts returns the texts of the conflicts with reason.
+func (v *rrsetVerdict) conflicts(reason string) []string {
+	var out []string
+	for _, c := range v.Conflicts {
+		if c.Reason == reason {
+			out = append(out, c.Text)
+		}
+	}
+	return out
+}
+
+// withConflicts returns v with the zone build's conflicts for its record
+// set applied: a copy when there are any (views are shared), v otherwise.
+// Blocked record sets were not built, so they have none.
+func (v *rrsetVerdict) withConflicts(cs []conflict) *rrsetVerdict {
+	if len(cs) == 0 || v.Blocked != "" {
+		return v
+	}
+	c := *v
+	c.Conflicts = cs
+	dropped := map[int]bool{}
+	for _, x := range cs {
+		if !dropped[x.Index] {
+			dropped[x.Index] = true
+			c.Kept--
+		}
+	}
+	return &c
 }
 
 // problem returns the verdict's condition reason, or "" when the record
@@ -43,28 +92,143 @@ func (v *rrsetVerdict) problem() string {
 		return v.Blocked
 	case len(v.Outside) > 0:
 		return v1alpha1.ReasonOutsideZone
-	case len(v.Duplicates) > 0:
+	case len(v.Duplicates) > 0 || len(v.conflicts(v1alpha1.ReasonDuplicated)) > 0:
 		return v1alpha1.ReasonDuplicated
+	case len(v.conflicts(v1alpha1.ReasonOccluded)) > 0:
+		return v1alpha1.ReasonOccluded
+	case len(v.Conflicts) > 0:
+		return v1alpha1.ReasonInvalid
 	}
 	return ""
 }
 
-// zoneView is the zone as served: the winning tuples, their hash, and a
-// verdict for every record set that references the zone.
+// zoneView is the zone as the controller sees it: the winning tuples and
+// a verdict for every record set that references the zone. It is cheap to
+// build (no record parsing) and rebuilt on every change; the zone model's
+// build (zoneBuild) supplies the hash, the record count and the conflicts.
 type zoneView struct {
 	Zone        *v1alpha1.DNSZone // nil when the zone does not exist
 	Origin      string
 	SelectorErr error
 	Records     []RecordTuple
-	RecordCount int // individual RRs (targets) across Records
-	Hash        string
 	Verdicts    map[store.Key]*rrsetVerdict
 }
 
-// identity is the duplicate-detection key of an endpoint within a zone.
-func identity(ep v1alpha1.Endpoint) string {
-	return canonicalName(ep.DNSName) + " " + strings.ToUpper(ep.RecordType) + " " + ep.SetIdentifier
+// zoneBuild is the zone model's verdict on a zone: the zone every replica
+// builds from the same objects (ZoneContentHash).
+type zoneBuild struct {
+	// Hash is zone.Zone.ContentHash, "" when there is no zone or it does
+	// not build.
+	Hash string
+	// RecordCount is the number of RRs the zone serves besides the SOA
+	// (zone.Zone.RecordCount, apex NS included).
+	RecordCount int
+	// ZoneErr is set when the DNSZone itself does not build (a bad ACL,
+	// notify target or nameserver): no replica serves it.
+	ZoneErr error
+	// Conflicts holds, per record set, the endpoints the zone model
+	// refused that the controller's own rules do not report.
+	Conflicts map[store.Key][]conflict
 }
+
+// buildZone builds zone from rrsets with the zone model. A nil zone has
+// an empty build.
+func buildZone(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet) *zoneBuild {
+	b := &zoneBuild{}
+	if zone == nil {
+		return b
+	}
+	z, errs := ZoneContentHash(zone, rrsets, time.Time{})
+	if z != nil {
+		b.Hash, b.RecordCount = z.ContentHash(), z.RecordCount()
+	} else {
+		b.ZoneErr = errs.Zone.ToAggregate()
+	}
+	byKey := make(map[string]*v1alpha1.DNSRecordSet, len(rrsets))
+	for _, rs := range rrsets {
+		byKey[rs.Namespace+"/"+rs.Name] = rs
+	}
+	for src, list := range errs.RecordSets {
+		rs := byKey[src]
+		if rs == nil {
+			continue
+		}
+		var cs []conflict
+		for _, e := range list {
+			if c, ok := conflictOf(rs, e); ok {
+				cs = append(cs, c)
+			}
+		}
+		if len(cs) > 0 {
+			if b.Conflicts == nil {
+				b.Conflicts = map[store.Key][]conflict{}
+			}
+			b.Conflicts[store.KeyOf(rs)] = cs
+		}
+	}
+	return b
+}
+
+// ZoneContentHash builds the zone exactly as the zone cache does on every
+// replica (zone.ServedRecordSets, then zone.Build at now; zero means the
+// current time) and returns it with the build errors. Its ContentHash is
+// status.contentHash (D12), so the serial moves exactly when what is
+// served changes, SOA and apex NS fields included. The zone is nil when
+// the DNSZone itself does not build.
+func ZoneContentHash(dz *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, now time.Time) (*zonemodel.Zone, zonemodel.Errors) {
+	return zonemodel.Build(dz, zonemodel.ServedRecordSets(dz, rrsets), zonemodel.BuildOptions{Now: now})
+}
+
+// endpointIndex extracts i from a field path "spec.endpoints[i]...".
+var endpointIndex = regexp.MustCompile(`^spec\.endpoints\[(\d+)\]`)
+
+// conflictOf turns a zone-model error into a conflict, unless the
+// controller's own rules already report it: identity duplicates (the only
+// errors of type field.ErrorTypeDuplicate) and OutsideZone.
+func conflictOf(rs *v1alpha1.DNSRecordSet, e *field.Error) (conflict, bool) {
+	reason := zonemodel.ErrorReason(e)
+	if e.Type == field.ErrorTypeDuplicate || reason == v1alpha1.ReasonOutsideZone {
+		return conflict{}, false
+	}
+	text := e.Detail
+	for _, p := range []string{v1alpha1.ReasonDuplicated, v1alpha1.ReasonOccluded, v1alpha1.ReasonInvalid} {
+		text = strings.TrimPrefix(text, p+": ")
+	}
+	c := conflict{Index: -1, Reason: reason, Text: e.Field + " (" + text + ")"}
+	if m := endpointIndex.FindStringSubmatch(e.Field); m != nil {
+		if i, err := strconv.Atoi(m[1]); err == nil && i < len(rs.Spec.Endpoints) {
+			c.Index = i
+			c.Text = describe(rs.Spec.Endpoints[i]) + " (" + text + ")"
+		}
+	}
+	return c, true
+}
+
+// conflictsChanged returns the record sets whose conflicts differ between
+// two builds of a zone (prev may be nil).
+func conflictsChanged(prev, next *zoneBuild) []store.Key {
+	var out []store.Key
+	var before map[store.Key][]conflict
+	if prev != nil {
+		before = prev.Conflicts
+	}
+	for k, cs := range next.Conflicts {
+		if !slices.Equal(before[k], cs) {
+			out = append(out, k)
+		}
+	}
+	for k := range before {
+		if _, ok := next.Conflicts[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// identity is the duplicate-detection key of an endpoint within a zone; it
+// is the zone model's (zone.EndpointIdentity), so both agree on what a
+// duplicate is.
+func identity(ep v1alpha1.Endpoint) string { return zonemodel.EndpointIdentity(ep) }
 
 // describe renders an identity for messages: "www.example.com. A" or
 // "www.example.com. A/eu".
@@ -77,16 +241,9 @@ func describe(ep v1alpha1.Endpoint) string {
 }
 
 // olderFirst orders record sets by creationTimestamp, then namespace and
-// name, so the earlier object keeps a contested identity.
-func olderFirst(a, b *v1alpha1.DNSRecordSet) int {
-	if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
-		return c
-	}
-	if c := strings.Compare(a.Namespace, b.Namespace); c != 0 {
-		return c
-	}
-	return strings.Compare(a.Name, b.Name)
-}
+// name, so the earlier object keeps a contested identity. It is the zone
+// model's order (zone.CompareRecordSets).
+func olderFirst(a, b *v1alpha1.DNSRecordSet) int { return zonemodel.CompareRecordSets(a, b) }
 
 // buildZoneView evaluates every record set that references zone (which
 // may be nil). It is a pure function of its inputs; rrsets is not
@@ -103,9 +260,12 @@ func olderFirst(a, b *v1alpha1.DNSRecordSet) int {
 //     (Duplicated, on the later object); disabled endpoints still hold
 //     their identity so toggling them never moves ownership;
 //  6. the rest, minus disabled endpoints, are the zone's records.
+//
+// The zone model's own refusals (CNAME exclusivity, data below a DNAME,
+// apex CNAME/NS) come from buildZone and are applied with withConflicts.
 func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, validate EndpointValidator) *zoneView {
 	if validate == nil {
-		validate = ValidateEndpoint
+		validate = zonemodel.ValidateEndpoint
 	}
 	v := &zoneView{Zone: zone, Verdicts: make(map[store.Key]*rrsetVerdict, len(rrsets))}
 	var sel labels.Selector
@@ -175,10 +335,8 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 				t.TTL = ep.RecordTTL
 			}
 			v.Records = append(v.Records, t)
-			v.RecordCount += len(t.Targets)
 		}
 	}
-	v.Hash = ContentHash(v.Records)
 	return v
 }
 

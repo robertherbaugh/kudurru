@@ -26,6 +26,9 @@ func (c *Controller) reconcileRecordSet(ctx context.Context, key store.Key) (boo
 	if rv == nil {
 		return false, fmt.Errorf("%s is not in the view of zone %q yet", key, cur.Spec.ZoneRef.Name)
 	}
+	// The zone model's conflicts come from the latest zone build; the zone
+	// reconcile re-queues this record set when they change.
+	rv = rv.withConflicts(c.cache.latestBuild(cur.Spec.ZoneRef.Name).Conflicts[key])
 
 	next := cur.DeepCopy()
 	next.Status.ObservedGeneration = cur.Generation
@@ -72,6 +75,11 @@ func recordSetVerdict(view *zoneView, rv *rrsetVerdict) (verdict, []segment) {
 	if len(rv.Duplicates) > 0 {
 		segs = append(segs, segment{EventDuplicated, "duplicated: " + joinLimited(rv.Duplicates, 10)})
 	}
+	for _, reason := range []string{v1alpha1.ReasonDuplicated, v1alpha1.ReasonOccluded, v1alpha1.ReasonInvalid} {
+		if texts := rv.conflicts(reason); len(texts) > 0 {
+			segs = append(segs, segment{conflictEvent[reason], conflictLabel[reason] + ": " + joinLimited(texts, 10)})
+		}
+	}
 	if len(segs) == 0 {
 		return serving(fmt.Sprintf("%d endpoints in zone %s", rv.Kept, view.Origin)), nil
 	}
@@ -90,6 +98,21 @@ func recordSetVerdict(view *zoneView, rv *rrsetVerdict) (verdict, []segment) {
 	}
 	return v, segs
 }
+
+// conflictEvent and conflictLabel name the Event reason and the message
+// prefix of each kind of zone-model conflict.
+var (
+	conflictEvent = map[string]string{
+		v1alpha1.ReasonDuplicated: EventDuplicated,
+		v1alpha1.ReasonOccluded:   EventOccluded,
+		v1alpha1.ReasonInvalid:    EventInvalid,
+	}
+	conflictLabel = map[string]string{
+		v1alpha1.ReasonDuplicated: "conflicting",
+		v1alpha1.ReasonOccluded:   "occluded",
+		v1alpha1.ReasonInvalid:    "rejected by the zone",
+	}
+)
 
 // conditionText concatenates the condition messages, for transition
 // detection.

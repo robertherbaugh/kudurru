@@ -163,8 +163,12 @@ func TestBuildZoneView(t *testing.T) {
 			if !reflect.DeepEqual(v.Records, tt.records) {
 				t.Errorf("records\n got %+v\nwant %+v", v.Records, tt.records)
 			}
-			if v.Hash != ContentHash(tt.records) {
-				t.Errorf("hash %s does not match the expected records", v.Hash)
+			want := ""
+			if tt.zone != nil {
+				want = zoneHash(t, tt.zone.Spec.ZoneName, tt.records)
+			}
+			if got := buildZone(tt.zone, tt.rrsets).Hash; got != want {
+				t.Errorf("hash %s does not match the expected records (%s)", got, want)
 			}
 			if len(v.Verdicts) != len(tt.want) {
 				t.Fatalf("%d verdicts, want %d", len(v.Verdicts), len(tt.want))

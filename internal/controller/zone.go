@@ -39,18 +39,24 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		return false, nil // deleted
 	}
 	view := c.cache.view(key.Name, c.opts.Validate)
+	build, prev := c.cache.build(key.Name)
+	// Record sets whose zone-model conflicts changed re-check their
+	// conditions against this build.
+	for _, k := range conflictsChanged(prev, build) {
+		c.queues[KindDNSRecordSet].Add(k)
+	}
 	now := c.opts.Now()
 
 	next := cur.DeepCopy()
 	st := &next.Status
 	st.ObservedGeneration = cur.Generation
-	st.RecordCount = view.RecordCount
-	bumped := st.ContentHash != view.Hash
+	st.RecordCount = build.RecordCount
+	bumped := st.ContentHash != build.Hash
 	if bumped {
 		st.Serial = NextSerial(cur.Status.Serial, now)
-		st.ContentHash = view.Hash
+		st.ContentHash = build.Hash
 	}
-	v := zoneVerdict(cur, view)
+	v := zoneVerdict(cur, view, build)
 	v.observedGen, v.transitionNow = cur.Generation, now
 	v.apply(&st.Conditions)
 
@@ -67,22 +73,24 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	return true, nil
 }
 
-// zoneVerdict derives a zone's conditions from its view.
-func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView) verdict {
+// zoneVerdict derives a zone's conditions from its view and build.
+func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView, build *zoneBuild) verdict {
 	var v verdict
 	switch {
 	case view.SelectorErr != nil:
 		v = verdict{ReadyReason: v1alpha1.ReasonInvalid, ReadyMessage: "spec.recordSetSelector: " + view.SelectorErr.Error()}
 	case z.Spec.Type != v1alpha1.ZoneTypePrimary && z.Spec.Type != v1alpha1.ZoneTypeForward:
 		v = verdict{ReadyReason: ReasonUnsupported, ReadyMessage: fmt.Sprintf("zone type %q is not served by this version", z.Spec.Type)}
+	case build.ZoneErr != nil:
+		v = verdict{ReadyReason: v1alpha1.ReasonInvalid, ReadyMessage: "the zone is not served: " + build.ZoneErr.Error()}
 	default:
-		v = serving(fmt.Sprintf("%d records", view.RecordCount))
+		v = serving(fmt.Sprintf("%d records", build.RecordCount))
 	}
 	// Degraded summarises the record sets that are not fully served.
 	type issue struct{ key, reason string }
 	var issues []issue
 	for k, rv := range view.Verdicts {
-		if p := rv.problem(); p != "" {
+		if p := rv.withConflicts(build.Conflicts[k]).problem(); p != "" {
 			issues = append(issues, issue{k.Namespace + "/" + k.Name, p})
 		}
 	}
@@ -97,7 +105,7 @@ func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView) verdict {
 		reasons[is.reason] = true
 		items = append(items, fmt.Sprintf("%s (%s)", is.key, is.reason))
 	}
-	for _, r := range []string{v1alpha1.ReasonDuplicated, v1alpha1.ReasonOutsideZone, v1alpha1.ReasonInvalid, ReasonNotSelected, ReasonZoneNotFound} {
+	for _, r := range []string{v1alpha1.ReasonDuplicated, v1alpha1.ReasonOutsideZone, v1alpha1.ReasonOccluded, v1alpha1.ReasonInvalid, ReasonNotSelected, ReasonZoneNotFound} {
 		if reasons[r] {
 			v.DegradedRsn = r
 			break

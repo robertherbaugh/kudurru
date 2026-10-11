@@ -8,13 +8,15 @@ import (
 	"strings"
 )
 
-// This file is the single definition of a zone's contentHash in the
-// controller. The canonical definition is "sha256 over the sorted canonical
-// RRs", and internal/zone owns the canonical RR form; until the controller
-// can call it, the hash is computed over the record tuples below. Swapping
-// in internal/zone means replacing ContentHash (and RecordTuple's
-// canonicalisation in zoneview.go) and nothing else; the first reconcile
-// after the swap stamps one new serial per zone, which is harmless.
+// status.contentHash is the zone model's canonical hash: ZoneContentHash
+// (zoneview.go) builds the zone exactly as every replica's zone cache does
+// and takes zone.Zone.ContentHash, sha256 over the served RRs in canonical
+// form with the SOA serial zeroed (D12). The first reconcile after the M2
+// upgrade from the tuple hash below stamps one new serial per zone, which
+// is harmless.
+//
+// The tuple hash is kept as a stable, miekg-free digest of the winning
+// endpoints (zoneView.Records); it no longer feeds status.
 
 // RecordTuple is one served RRset of a zone as the controller sees it: the
 // owner name (lower-case, fully qualified), the record type, the external-
@@ -28,7 +30,8 @@ type RecordTuple struct {
 	Targets       []string
 }
 
-// ContentHash returns the hex sha256 over the sorted tuples. Each tuple is
+// ContentHash returns the hex sha256 over the sorted tuples (the M1
+// contentHash, see above). Each tuple is
 // one line of Go-quoted fields "name" "type" "setIdentifier" ttl "target"...
 // with the targets sorted, so the encoding is unambiguous (TXT targets may
 // hold any byte) and the hash does not depend on the order of record sets,

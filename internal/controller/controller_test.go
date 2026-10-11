@@ -23,7 +23,7 @@ func TestZoneStatus(t *testing.T) {
 	e.apply(rrsetObj("apps", "elsewhere", "other", 0, ep("www.other.org", "A", "192.0.2.3")))
 	e.start()
 
-	want := ContentHash([]RecordTuple{
+	want := zoneHash(t, "example.com.", []RecordTuple{
 		{Name: "www.example.com.", Type: "A", TTL: 300, Targets: []string{"192.0.2.1", "192.0.2.2"}},
 		{Name: "example.com.", Type: "MX", TTL: 300, Targets: []string{"10 mail.example.com"}},
 	})
@@ -142,7 +142,7 @@ func TestDuplicateOrdering(t *testing.T) {
 	if n := e.eventCount(EventDuplicated, key(KindDNSRecordSet, "team-b", "web")); n != 1 {
 		t.Fatalf("Duplicated events %d", n)
 	}
-	want := ContentHash([]RecordTuple{
+	want := zoneHash(t, "example.com.", []RecordTuple{
 		{Name: "www.example.com.", Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}},
 		{Name: "b.example.com.", Type: "A", TTL: 300, Targets: []string{"192.0.2.2"}},
 	})
@@ -448,7 +448,7 @@ func TestZoneCoalescing(t *testing.T) {
 		e.apply(rrsetObj("apps", "rs-"+name, "example", 0, ep(name, "A", "192.0.2.1")))
 		tuples = append(tuples, RecordTuple{Name: name + ".", Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}})
 	}
-	want := ContentHash(tuples)
+	want := zoneHash(t, "example.com.", tuples)
 	e.eventually("converged", func() bool { return e.zone("example").Status.ContentHash == want })
 	e.settle()
 	if n := e.st.Writes(KindDNSZone) - zw; n > 2 {

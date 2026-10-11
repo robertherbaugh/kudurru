@@ -159,7 +159,7 @@ func burst(t *testing.T, n int, coalesce time.Duration) {
 		tuples = append(tuples, RecordTuple{Name: name + ".", Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}})
 	}
 	applied := time.Since(start)
-	want := ContentHash(tuples)
+	want := zoneHash(t, "example.com.", tuples)
 	e.eventually("zone converged", func() bool { return e.zone("example").Status.ContentHash == want })
 	took := time.Since(start)
 	e.settle()
@@ -204,7 +204,7 @@ func TestMeasureKube(t *testing.T) {
 		tuples = append(tuples, RecordTuple{Name: name, Type: "A", TTL: 300, Targets: []string{"192.0.2.1"}})
 	}
 	applied := time.Since(start)
-	want := ContentHash(tuples)
+	want := zoneHash(t, origin, tuples)
 	e.eventually("zone converged", func() bool { return e.zone(zn).Status.ContentHash == want })
 	took := time.Since(start)
 	e.settle()
