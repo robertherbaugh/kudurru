@@ -583,8 +583,9 @@ function buildNodeConfig(): Record<string, unknown> {
 
 function withEnvLocks(schema: SettingKey[]): SettingKey[] {
   // Mirrors config_test.go: these keys come from the environment in the
-  // standard compose file.
-  const locked = new Set(['listeners.api.address', 'listeners.proxyProtocolFrom', 'node.name']);
+  // standard compose file; log.level is env-locked here too so the UI has
+  // an env-locked key that is not also host-only.
+  const locked = new Set(['listeners.api.address', 'listeners.proxyProtocolFrom', 'node.name', 'log.level']);
   return schema.map((k) => (locked.has(k.path) ? { ...k, envLocked: true } : k));
 }
 

@@ -66,6 +66,9 @@ export function objectPath(kind: ObjectKind, name: string, namespace?: string): 
 
 export function endpoints(c: ApiClient) {
   return {
+    /** Download URL of a whole object collection (JSON list envelope). */
+    objectsURL: (kind: ObjectKind) => c.url(`/objects/${kind}`),
+
     auth: {
       status: () => c.get<AuthStatus>('/auth/status'),
       me: () => c.get<Me>('/auth/me'),

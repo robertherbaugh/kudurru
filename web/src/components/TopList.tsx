@@ -35,7 +35,11 @@ export function TopList({ title, dim, blocked = false, data, isLoading, error, e
     <section className="k-panel" aria-labelledby={headingId}>
       <div className="k-panel-title">
         <h2 id={headingId}>{title}</h2>
-        {data?.approximate ? <Badge variant="warning" label="approximate" title="Merged from top-N rollups; ranks beyond the cutoff may be missing" /> : null}
+        {data?.approximate ? (
+          <span title="Merged from top-N rollups; ranks beyond the cutoff may be missing">
+            <Badge variant="warning" label="approximate" />
+          </span>
+        ) : null}
       </div>
       {error ? <ErrorBanner error={error} /> : null}
       {isLoading && !data ? <Loading /> : null}
