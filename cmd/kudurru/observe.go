@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
+	"os/signal"
 	"path"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/miekg/dns"
@@ -518,17 +521,20 @@ func newLogsCmd(o *cliOpts) *cobra.Command {
 			if !follow {
 				return nil
 			}
+			// Ctrl-C ends the stream with exit status 0.
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
 			opts := apiclient.SubscribeOptions{Reconnect: true}
 			if lastID > 0 {
 				opts.LastEventID = strconv.FormatUint(lastID, 10)
 			}
-			return c.Subscribe(cmd.Context(), "/queries/stream", q, opts, func(ev apiclient.Event) error {
-				if ev.Event != "" && ev.Event != "message" && ev.Event != "query" {
-					return nil
-				}
+			return c.Subscribe(ctx, "/queries/stream", q, opts, func(ev apiclient.Event) error {
+				// The contract does not name the event type; anything that
+				// decodes to a row with a domain is a query, the rest
+				// (notices, lag reports) is skipped.
 				var r logRow
-				if err := json.Unmarshal(ev.Data, &r); err != nil {
-					return nil //nolint:nilerr // skip events that are not query rows (keep-alives, notices)
+				if err := json.Unmarshal(ev.Data, &r); err != nil || r.Domain == "" {
+					return nil //nolint:nilerr // not a query row
 				}
 				if r.ID != 0 && r.ID <= lastID {
 					return nil // already printed from the page

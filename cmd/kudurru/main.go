@@ -4,13 +4,10 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
@@ -23,10 +20,7 @@ import (
 var defaultConfigPath = "/etc/kudurru/kudurru.yaml"
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := newRoot().ExecuteContext(ctx)
-	stop()
-	if err != nil {
+	if err := newRoot().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}

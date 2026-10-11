@@ -23,6 +23,7 @@ func newLoginCmd(o *cliOpts) *cobra.Command {
 		username      string
 		password      string
 		passwordStdin bool
+		tokenStdin    bool
 		tokenName     string
 		expiresIn     string
 		namespace     string
@@ -41,6 +42,7 @@ are kept in the config file, which is written with mode 0600. Set
 KUDURRU_KEYRING=file to skip the keyring.`,
 		Example: `  kudurru login --server https://dns.example --token kdr_abc123def456_…
   kudurru login --server https://dns.example --username admin
+  kudurru login --server https://dns.example --token-stdin < token.txt
   echo "$PW" | kudurru login --server http://127.0.0.1:8080 --username admin --password-stdin --name local`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -91,6 +93,18 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 			}
 			r := cli.Resolved{Server: server, InsecureSkipVerify: ctx.InsecureSkipVerify, CAFile: ctx.CAFile}
 			token := o.token
+			if tokenStdin {
+				if token != "" || passwordStdin {
+					return errors.New("--token-stdin cannot be combined with --token or --password-stdin")
+				}
+				line, err := bufio.NewReader(o.stdin).ReadString('\n')
+				if err != nil && !errors.Is(err, io.EOF) {
+					return err
+				}
+				if token = strings.TrimSpace(line); token == "" {
+					return errors.New("empty token on stdin")
+				}
+			}
 			if token == "" && username == "" {
 				token = o.getenv(cli.EnvToken)
 			}
@@ -163,6 +177,7 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 	f.StringVarP(&username, "username", "u", "", "local account to log in with")
 	f.StringVarP(&password, "password", "p", "", "password (prefer the prompt or --password-stdin)")
 	f.BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin")
+	f.BoolVar(&tokenStdin, "token-stdin", false, "read the API token from stdin (keeps it out of the process list)")
 	f.StringVar(&tokenName, "token-name", "", "name of the token minted for the CLI (default kudurru-cli@<hostname>)")
 	f.StringVar(&expiresIn, "token-expires-in", "", "lifetime of the minted token, e.g. 720h (default: the server's)")
 	f.StringVar(&namespace, "default-namespace", "", "default namespace stored in the context")

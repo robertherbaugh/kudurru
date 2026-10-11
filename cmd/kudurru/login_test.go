@@ -43,6 +43,19 @@ func TestLoginWithTokenStoresItInTheKeyring(t *testing.T) {
 	}
 }
 
+func TestLoginWithTokenOnStdin(t *testing.T) {
+	h := newHarness(t)
+	h.stdin = fakeToken + "\n"
+	h.mustRun("login", "--server", h.api.URL(), "--token-stdin", "--name", "stdin")
+	if got, _ := h.keyring.Get(cli.KeyringService, "stdin"); got != fakeToken {
+		t.Fatalf("keyring holds %q", got)
+	}
+	h.stdin = ""
+	if _, _, err := h.run("login", "--server", h.api.URL(), "--token-stdin"); err == nil || !strings.Contains(err.Error(), "empty token") {
+		t.Fatalf("empty stdin: %v", err)
+	}
+}
+
 func TestLoginFallsBackToTheFileWithoutAKeyring(t *testing.T) {
 	h := newHarness(t)
 	h.keyring.failing = true
