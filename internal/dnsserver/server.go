@@ -1,23 +1,34 @@
-// Package dnsserver binds the UDP and TCP listeners and hands every message
-// to the pipeline (docs/architecture.md §3.3). DoT/DoH listeners, PROXYv2
-// parsing and multi-socket reuse port land in milestone M1.
+// Package dnsserver owns the DNS listeners and hands every message to the
+// pipeline (docs/architecture.md §3.3).
+//
+// A Registry holds the listeners of a node keyed by protocol (udp, tcp,
+// dot, doh, doq, doh3) and shares one certificate-reload path
+// (tlsreload) between all TLS listeners (decision D67). Do53 and DoT run on
+// miekg/dns servers, DoH on net/http (HTTP/1.1 and HTTP/2), DoQ and DoH3 on
+// quic-go; all of them feed the same pipeline.Chain through Handler and set
+// pipeline.Client.Proto. The udp, tcp and dot listeners accept PROXY
+// protocol v2 headers only from listeners.proxyProtocolFrom peers carrying
+// the shared-secret TLV (proxyproto; D45, D56).
+//
+// miekg/dns types stay inside this package (§2); quic-go types never leave
+// it.
 package dnsserver
 
 import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
-	"net/netip"
 	"sync"
 	"time"
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
-// Server serves one address over UDP and/or TCP.
+// Server serves one address over UDP and/or TCP. It predates Registry and
+// is kept for callers that only need Do53; it runs the same listeners.
 type Server struct {
 	Address   string
 	Protocols []string // "udp", "tcp"
@@ -25,9 +36,11 @@ type Server struct {
 	Logger    *slog.Logger
 	// QueryTimeout bounds the whole pipeline for one query.
 	QueryTimeout time.Duration
+	// Proxy, when enabled, authenticates PROXYv2 headers on these sockets.
+	Proxy *proxyproto.Policy
 
-	mu      sync.Mutex
-	servers []*dns.Server
+	mu        sync.Mutex
+	listeners []*dnsListener
 }
 
 // New returns a server for address with the given protocols.
@@ -38,33 +51,64 @@ func New(address string, protocols []string, chain *pipeline.Chain, logger *slog
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{Address: address, Protocols: protocols, Chain: chain, Logger: logger, QueryTimeout: 5 * time.Second}
+	return &Server{Address: address, Protocols: protocols, Chain: chain, Logger: logger, QueryTimeout: DefaultQueryTimeout}
+}
+
+func (s *Server) handler() *Handler {
+	return &Handler{Chain: s.Chain, Logger: s.Logger, QueryTimeout: s.QueryTimeout}
 }
 
 // Start binds the listeners and serves until ctx is cancelled. It returns
 // once every listener has shut down. Bind errors are returned immediately.
 func (s *Server) Start(ctx context.Context) error {
-	errCh := make(chan error, len(s.Protocols))
-	for _, proto := range s.Protocols {
-		srv, err := s.listen(proto)
+	logger := s.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	e := &env{handler: s.handler(), logger: logger, proxy: s.Proxy, limits: Limits{}.withDefaults()}
+	var ls []*dnsListener
+	for _, p := range s.Protocols {
+		if p != string(ProtoUDP) && p != string(ProtoTCP) {
+			closeAll(ls)
+			return errors.New("dnsserver: unsupported protocol " + p)
+		}
+		l, err := newDNSListener(Spec{Protocol: Protocol(p), Address: s.Address}, e)
 		if err != nil {
-			s.shutdown()
+			closeAll(ls)
 			return err
 		}
-		s.mu.Lock()
-		s.servers = append(s.servers, srv)
-		s.mu.Unlock()
-		go func() { errCh <- srv.ActivateAndServe() }()
+		dl := l.(*dnsListener)
+		if err := dl.Bind(); err != nil {
+			closeAll(ls)
+			return err
+		}
+		ls = append(ls, dl)
 	}
-	s.Logger.Info("dns listener started", "address", s.Address, "protocols", s.Protocols)
+	s.mu.Lock()
+	s.listeners = ls
+	s.mu.Unlock()
+	logger.Info("dns listener started", "address", s.Address, "protocols", s.Protocols)
 
-	select {
-	case <-ctx.Done():
-		s.shutdown()
-		return nil
-	case err := <-errCh:
-		s.shutdown()
-		return err
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errCh := make(chan error, len(ls))
+	var wg sync.WaitGroup
+	for _, l := range ls {
+		wg.Go(func() {
+			if err := l.Serve(ctx); err != nil {
+				errCh <- err
+				cancel()
+			}
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	return <-errCh
+}
+
+func closeAll(ls []*dnsListener) {
+	for _, l := range ls {
+		_ = l.Close()
 	}
 }
 
@@ -73,98 +117,19 @@ func (s *Server) Addrs() map[string]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := map[string]string{}
-	for _, srv := range s.servers {
-		if srv.PacketConn != nil {
-			out["udp"] = srv.PacketConn.LocalAddr().String()
-		}
-		if srv.Listener != nil {
-			out["tcp"] = srv.Listener.Addr().String()
+	for _, l := range s.listeners {
+		if a := l.Addr(); a != nil {
+			out[string(l.spec.Protocol)] = a.String()
 		}
 	}
 	return out
 }
 
-func (s *Server) listen(proto string) (*dns.Server, error) {
-	srv := &dns.Server{Handler: s, ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second}
-	switch proto {
-	case "udp":
-		pc, err := net.ListenPacket("udp", s.Address)
-		if err != nil {
-			return nil, err
-		}
-		srv.PacketConn = pc
-		srv.Net = "udp"
-	case "tcp":
-		l, err := net.Listen("tcp", s.Address)
-		if err != nil {
-			return nil, err
-		}
-		srv.Listener = l
-		srv.Net = "tcp"
-	default:
-		return nil, errors.New("dnsserver: unsupported protocol " + proto)
-	}
-	return srv, nil
-}
-
-func (s *Server) shutdown() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, srv := range s.servers {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = srv.ShutdownContext(ctx)
-		cancel()
-	}
-	s.servers = nil
-}
-
 // ServeDNS implements dns.Handler.
 func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.QueryTimeout)
-	defer cancel()
-
-	req := &pipeline.Request{
-		Ctx:      ctx,
-		Msg:      r,
-		Received: time.Now(),
-		Client:   clientFrom(w.RemoteAddr()),
+	proto := pipeline.ProtoUDP
+	if a := w.RemoteAddr(); a != nil && a.Network() == "tcp" {
+		proto = pipeline.ProtoTCP
 	}
-	req.Deadline = req.Received.Add(s.QueryTimeout)
-
-	resp, err := s.Chain.Serve(req)
-	if err != nil || resp == nil || resp.Msg == nil {
-		if err != nil && !errors.Is(err, pipeline.ErrNoAnswer) {
-			s.Logger.Debug("pipeline error", "err", err, "q", req.Question().Name)
-		}
-		m := new(dns.Msg)
-		m.SetRcode(r, dns.RcodeServerFailure)
-		_ = w.WriteMsg(m)
-		return
-	}
-	m := resp.Msg
-	m.Id = r.Id
-	if req.Client.Proto == pipeline.ProtoUDP {
-		size := dns.MinMsgSize
-		if opt := r.IsEdns0(); opt != nil && int(opt.UDPSize()) > size {
-			size = int(opt.UDPSize())
-		}
-		m.Truncate(size)
-	}
-	if err := w.WriteMsg(m); err != nil {
-		s.Logger.Debug("write failed", "err", err)
-	}
-}
-
-func clientFrom(addr net.Addr) pipeline.Client {
-	c := pipeline.Client{Proto: pipeline.ProtoUDP}
-	if addr == nil {
-		return c
-	}
-	if addr.Network() == "tcp" {
-		c.Proto = pipeline.ProtoTCP
-	}
-	if ap, err := netip.ParseAddrPort(addr.String()); err == nil {
-		c.Addr = netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
-	}
-	return c
+	serveMiekg(s.handler(), proto, w, r)
 }
