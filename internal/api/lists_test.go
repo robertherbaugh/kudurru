@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -115,4 +116,18 @@ func TestRefreshList(t *testing.T) {
 	if len(refreshed) != 1 || refreshed[0] != "default/ads" {
 		t.Fatalf("refreshed %v", refreshed)
 	}
+}
+
+func TestRefreshListOnReplica(t *testing.T) {
+	leader := "node-b"
+	h := newHarness(t, func(o *Options) {
+		o.Refresher = RefreshFunc(func(context.Context, string, string) error { return ErrNotLeader(leader) })
+	})
+	h.seed("api", &v1alpha1.BlockList{ObjectMeta: objectMeta("default", "ads"), Spec: v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{{URL: "https://lists.example/ads.txt"}}}})
+	r := h.do(http.MethodPost, "/api/v1/blocklists/default/ads/refresh", "operator", nil).want(http.StatusConflict)
+	if r.errKey() != KeyConflict || !strings.Contains(r.Body.String(), "node-b") {
+		t.Fatalf("replica: %s", r.Body.String())
+	}
+	leader = ""
+	h.do(http.MethodPost, "/api/v1/blocklists/default/ads/refresh", "operator", nil).want(http.StatusServiceUnavailable)
 }

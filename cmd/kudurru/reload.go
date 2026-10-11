@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
@@ -118,6 +121,30 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 			log.Warn("settings changed that take effect after a restart", "keys", restart)
 		}
 	})
+}
+
+// listRefresher backs POST /blocklists/{ns}/{name}/refresh: the leader's
+// fetcher downloads the list now; a replica answers 409 naming the leader.
+func listRefresher(m cluster.Membership, f *listfetcher.Fetcher) api.ListRefresher {
+	return api.RefreshFunc(func(ctx context.Context, namespace, name string) error {
+		leader, err := m.Leader(ctx)
+		if err != nil || !leader.Self {
+			return api.ErrNotLeader(leader.Name)
+		}
+		err = f.RefreshNow(namespace, name)
+		if errors.Is(err, listfetcher.ErrUnknownList) {
+			return api.ErrListNotRefreshable(namespace + "/" + name)
+		}
+		return err
+	})
+}
+
+// querylogPurger backs DELETE /querylog with the sqlite writer (nil: 501).
+func querylogPurger(w *sqlitelog.Writer) api.QuerylogPurger {
+	if w == nil {
+		return nil
+	}
+	return w
 }
 
 // parseLevel maps log.level (its first element: "info,dns=debug") onto a

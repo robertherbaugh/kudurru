@@ -544,6 +544,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
+		Refresher:    listRefresher(membership, fetcher),
+		Purger:       querylogPurger(qlWriter),
 		Audit:        recorders,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
 		AuthHandler: authMux,

@@ -95,6 +95,46 @@ type Fetcher struct {
 	state   map[string]*sourceState // by cache key
 	stats   map[string]listStats    // by list name
 	metered map[string]bool
+	forced  map[string]bool // cache keys RefreshNow asked for
+
+	kick chan struct{}
+}
+
+// ErrUnknownList is returned by RefreshNow for a BlockList the fetcher
+// does not see: it does not exist or is disabled (kudurru.io/enabled).
+var ErrUnknownList = errors.New("listfetcher: no such enabled BlockList")
+
+// RefreshNow asks the running fetcher to download every URL and ConfigMap
+// source of the BlockList namespace/name now, ignoring its refresh
+// interval and a failure cooldown (POST /blocklists/{ns}/{name}/refresh).
+// It returns at once; the fetch, the status write and the replicas' pull
+// follow asynchronously. Only the leader runs the fetcher, so callers
+// route the request there. A list made only of inline sources has nothing
+// to fetch and returns nil.
+func (f *Fetcher) RefreshNow(namespace, name string) error {
+	var found *v1alpha1.BlockList
+	for _, bl := range f.opts.Objects.BlockLists() {
+		if bl.Namespace == namespace && bl.Name == name {
+			found = bl
+			break
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("%w: %s/%s", ErrUnknownList, namespace, name)
+	}
+	pl := plan(found, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
+	f.mu.Lock()
+	for _, ps := range pl.sources {
+		if ps.key != "" {
+			f.forced[ps.key] = true
+		}
+	}
+	f.mu.Unlock()
+	select {
+	case f.kick <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 // New returns a Fetcher. It does no I/O.
@@ -137,6 +177,7 @@ func New(opts Options) (*Fetcher, error) {
 	return &Fetcher{
 		opts: opts, log: opts.Logger.With("component", "listfetcher"), m: m,
 		state: map[string]*sourceState{}, stats: map[string]listStats{}, metered: map[string]bool{},
+		forced: map[string]bool{}, kick: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -166,6 +207,7 @@ func (f *Fetcher) Run(ctx context.Context) error {
 			t.Stop()
 			return nil
 		case <-changes:
+		case <-f.kick:
 		case <-t.C:
 		}
 		t.Stop()
@@ -278,8 +320,11 @@ func (f *Fetcher) dueAt(key string, kp *keyPlan, now time.Time) time.Time {
 		at = last.Add(kp.refresh - jitter(key, kp.refresh))
 	}
 	f.mu.Lock()
-	st := f.state[key]
+	st, forced := f.state[key], f.forced[key]
 	f.mu.Unlock()
+	if forced {
+		return now
+	}
 	if st != nil && st.nextTry.After(at) {
 		at = st.nextTry
 	}
@@ -302,6 +347,7 @@ func (f *Fetcher) fetch(ctx context.Context, kp *keyPlan) {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	delete(f.forced, kp.src.Key)
 	st := f.state[kp.src.Key]
 	if st == nil {
 		st = &sourceState{}
