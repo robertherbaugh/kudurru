@@ -105,6 +105,11 @@ func TestStatsRoutes(t *testing.T) {
 	if len(clients.Items) != 3 {
 		t.Fatalf("clients %+v", clients)
 	}
+	for _, c := range clients.Items {
+		if c.LastSeen == nil || time.Since(*c.LastSeen) > 3*time.Minute {
+			t.Fatalf("client %s last_seen %v", c.Key, c.LastSeen)
+		}
+	}
 }
 
 func TestQueryLogRoutes(t *testing.T) {

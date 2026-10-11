@@ -193,6 +193,8 @@ type ClientItem struct {
 	Group   string `json:"group,omitempty"`
 	Count   int64  `json:"count"`
 	Blocked int64  `json:"blocked"`
+	// LastSeen is the client's newest query on this node.
+	LastSeen *time.Time `json:"last_seen,omitempty" doc:"The newest query from the client on this node (hour precision once its query rows aged out)."`
 }
 
 type clientsOutput struct{ Body *List[ClientItem] }
@@ -469,6 +471,9 @@ func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOut
 			}
 			c := byKey[it.Key]
 			c.Count, c.Blocked = max(c.Count, it.Total), max(c.Blocked, it.Blocked)
+			if it.LastSeen != nil && (c.LastSeen == nil || it.LastSeen.After(*c.LastSeen)) {
+				c.LastSeen = it.LastSeen
+			}
 		}
 	}
 	items := make([]ClientItem, 0, len(order))

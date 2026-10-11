@@ -19,56 +19,22 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 )
 
-// The request and response shapes of the auth routes the auth package
-// serves (Options.AuthHandler). They are documented here so the OpenAPI
-// document and the generated clients cover them.
-type (
-	// AuthStatus is GET /auth/status.
-	AuthStatus struct {
-		// LocalLogin is enabled, admins-only or disabled.
-		LocalLogin            string         `json:"localLogin"`
-		Providers             []AuthProvider `json:"providers"`
-		HasDefaultCredentials bool           `json:"hasDefaultCredentials"`
-	}
-	// AuthProvider is one OIDC login option.
-	AuthProvider struct {
-		ID          string `json:"id"`
-		DisplayName string `json:"displayName"`
-	}
-	// LoginRequest is the body of POST /auth/login.
-	LoginRequest struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	// TokenRequest is the body of POST /auth/tokens.
-	TokenRequest struct {
-		Name string `json:"name"`
-		// ExpiresIn is a Go duration ("720h"); empty is the server default.
-		ExpiresIn string `json:"expiresIn,omitempty"`
-	}
-	// Token is one personal API token; its token field (the kdr_ secret)
-	// is only in the POST response, once.
-	Token struct {
-		ID         string     `json:"id"`
-		Name       string     `json:"name"`
-		Token      string     `json:"token,omitempty"`
-		CreatedAt  *time.Time `json:"createdAt,omitempty"`
-		ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
-		LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
-	}
-)
-
 // Me is GET /auth/me.
 type Me struct {
 	Principal MePrincipal `json:"principal"`
-	// Roles are the principal's grants: role, or role@kind:name for
-	// scoped grants (the session's roles snapshot, or Options.Roles).
-	Roles []string `json:"roles" nullable:"false"`
+	// Roles are the principal's effective grants: role, or role@kind:name
+	// for scoped grants (Options.Roles; without it the session's roles
+	// snapshot).
+	Roles []string `json:"roles" nullable:"false" doc:"Effective grants: role, or role@kind:name for scoped grants."`
 	// CSRF is the X-Kudurru-CSRF value of a cookie session.
 	CSRF string `json:"csrf,omitempty"`
 	// Permissions maps every resource to the verbs granted at cluster
 	// scope.
 	Permissions map[string][]string `json:"permissions"`
+	// MustChangePassword is set for a local user whose password was
+	// generated or reset: every route but /auth/* answers 403
+	// password_change_required until POST /auth/password.
+	MustChangePassword bool `json:"mustChangePassword,omitempty" doc:"The local user must change the password (POST /auth/password) before using the API."`
 	Took
 }
 
@@ -84,17 +50,6 @@ type MePrincipal struct {
 
 type meOutput struct{ Body *Me }
 
-// IAMItem is one identity or binding of the read-only IAM routes.
-type IAMItem = map[string]any
-
-// IAMList is the list envelope of the IAM routes.
-type IAMList struct {
-	Items []IAMItem `json:"items" nullable:"false"`
-	Took
-}
-
-type iamOutput struct{ Body *IAMList }
-
 // AuditEvent is one row of GET /audit.
 type AuditEvent = audit.Event
 
@@ -104,10 +59,14 @@ type auditInput struct {
 	Actor  string `query:"actor" doc:"Actor name or <kind>:<name>."`
 	Since  string `query:"since" doc:"RFC 3339."`
 	Limit  int    `query:"limit" minimum:"0" maximum:"1000"`
-	Cursor string `query:"cursor"`
+	Cursor string `query:"cursor" doc:"cursor_next (or continue) of the previous page, read with the same order."`
+	// Continue is the list-envelope name of Cursor.
+	Continue string `query:"continue" doc:"Same as cursor."`
+	Order    string `query:"order" enum:"asc,desc" default:"asc" doc:"asc: oldest first (the default); desc: newest first."`
 }
 
-// AuditPage is GET /audit: oldest first, keyset cursor on the event id.
+// AuditPage is GET /audit: oldest first (newest first with order=desc),
+// keyset cursor on the event id.
 type AuditPage struct {
 	Items      []AuditEvent `json:"items" nullable:"false"`
 	CursorNext string       `json:"cursor_next,omitempty"`
@@ -128,29 +87,30 @@ func (s *Server) registerAuth() {
 	// its owner's bindings (§8.6).
 	tokens := authed
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
-	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, Me{})
-	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth"), public, nil, nil)
+	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, SessionInfo{})
+	start := operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth")
+	start.Parameters = append(start.Parameters, &huma.Param{Name: "next", In: "query", Description: "Same-origin path to return to after the login.", Schema: &huma.Schema{Type: "string"}})
+	s.forward(start, public, nil, nil)
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
-	s.forward(withStatus(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password", "auth"), http.StatusNoContent), authed, PasswordChangeRequest{}, nil)
-	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, TokenRequest{}, Token{})
-	s.forward(operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth"), tokens, nil, List[Token]{})
-	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one own API token", "auth"), tokens, nil, Token{})
-	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one own API token", "auth"), http.StatusNoContent), tokens, nil, nil)
+	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
+	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
+	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
+	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})
+	s.forward(list, tokens, nil, AuthList[TokenInfo]{})
+	s.forward(operation(http.MethodGet, "/auth/tokens/{id}", "getToken", "Get one API token (someone else's needs tokens.read)", "auth"), tokens, nil, TokenInfo{})
+	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one API token (someone else's needs tokens.delete)", "auth"), http.StatusNoContent), tokens, nil, nil)
 	register(s, operation(http.MethodGet, "/auth/me", "me", "The authenticated principal, roles, permissions and CSRF token", "auth"), authed, s.me)
 
-	for _, r := range []struct{ path, resource, id string }{
-		{"/iam/users", "users", "listUsers"},
-		{"/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts"},
-		{"/iam/rolebindings", "rolebindings", "listRoleBindings"},
-		{"/iam/identityproviders", "identityproviders", "listIdentityProviders"},
-	} {
-		r := r
-		register(s, operation(http.MethodGet, r.path, r.id, "List "+r.resource+" (read-only; the write API is v0.2)", "iam"),
-			perm{resource: r.resource, verb: "read"}, func(ctx context.Context, _ *struct{}) (*iamOutput, error) {
-				return s.iamList(ctx, r.resource)
-			})
+	// IAM, read-only (the write API is v0.2): served by the auth stack.
+	iam := func(path, resource, id string, resp any) {
+		s.forward(operation(http.MethodGet, path, id, "List "+resource+" (read-only; the write API is v0.2)", "iam"),
+			perm{resource: resource, verb: "read"}, nil, resp)
 	}
+	iam("/iam/users", "users", "listUsers", AuthList[IAMUser]{})
+	iam("/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts", AuthList[ServiceAccountInfo]{})
+	iam("/iam/rolebindings", "rolebindings", "listRoleBindings", AuthList[RoleBindingInfo]{})
+	iam("/iam/identityproviders", "identityproviders", "listIdentityProviders", AuthList[IdentityProviderInfo]{})
 }
 
 func withRateLimit(op huma.Operation) huma.Operation {
@@ -160,7 +120,8 @@ func withRateLimit(op huma.Operation) huma.Operation {
 }
 
 // forward registers a route served by Options.AuthHandler: the operation
-// is documented (request and response schemas from the given examples)
+// is documented (request and response schemas from the given examples,
+// the mirrors of authtypes.go)
 // and authorized like any other, then the original request is handed to
 // the auth handler untouched.
 func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any) {
@@ -209,9 +170,35 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 			}
 			return serve(in.RawBody)
 		})
+		// huma documents a RawBody as a binary string: put the schema of
+		// the body the auth handler decodes back.
+		if doc := documented(s.api.OpenAPI(), op.Method, op.Path); doc != nil {
+			doc.RequestBody.Content["application/json"] = &huma.MediaType{Schema: reg.Schema(reflect.TypeOf(reqExample), true, "")}
+		}
 		return
 	}
 	register(s, op, p, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) { return serve(nil) })
+}
+
+// documented returns the OpenAPI operation registered for method and path.
+func documented(oapi *huma.OpenAPI, method, path string) *huma.Operation {
+	item := oapi.Paths[path]
+	if item == nil {
+		return nil
+	}
+	switch method {
+	case http.MethodGet:
+		return item.Get
+	case http.MethodPost:
+		return item.Post
+	case http.MethodPut:
+		return item.Put
+	case http.MethodPatch:
+		return item.Patch
+	case http.MethodDelete:
+		return item.Delete
+	}
+	return nil
 }
 
 // maxAuthBodyBytes caps the bodies of the forwarded auth routes (the auth
@@ -233,18 +220,31 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		return nil, errUnauthenticated()
 	}
 	out := &Me{
-		Principal:   MePrincipal{Kind: string(p.Kind), ID: p.ID, Name: p.Name, Groups: p.Groups, Auth: p.AuthMethod},
-		Roles:       []string{},
-		Permissions: map[string][]string{},
+		Principal:          MePrincipal{Kind: string(p.Kind), ID: p.ID, Name: p.Name, Groups: p.Groups, Auth: p.AuthMethod},
+		Roles:              []string{},
+		Permissions:        map[string][]string{},
+		MustChangePassword: p.MustChangePassword,
 	}
 	if out.Principal.Groups == nil {
 		out.Principal.Groups = []string{}
 	}
-	if sess, ok := auth.SessionFrom(ctx); ok {
+	sess, hasSession := auth.SessionFrom(ctx)
+	if hasSession {
 		out.CSRF = sess.CSRF
-		out.Roles = append(out.Roles, sess.RolesSnapshot...)
-	} else if s.opts.Roles != nil {
+	}
+	// A local user's session carries no roles snapshot (only OIDC sessions
+	// freeze their grants, D48), so the live grants are the answer for
+	// every principal; Options.Roles honours a snapshot while its bindings
+	// still provide it.
+	switch {
+	case s.opts.Roles != nil:
 		out.Roles = append(out.Roles, s.opts.Roles(ctx, p)...)
+	case hasSession:
+		out.Roles = append(out.Roles, sess.RolesSnapshot...)
+	}
+	if p.MustChangePassword {
+		// Every permission route answers 403 password_change_required.
+		return &meOutput{Body: out}, nil
 	}
 	for _, res := range s.perms.ResourceNames() {
 		for _, verb := range s.perms.Resources[res] {
@@ -257,32 +257,8 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 	return &meOutput{Body: out}, nil
 }
 
-func (s *Server) iamList(ctx context.Context, resource string) (*iamOutput, error) {
-	var items []IAMItem
-	var err error
-	if s.opts.IAM != nil {
-		switch resource {
-		case "users":
-			items, err = s.opts.IAM.Users(ctx)
-		case "serviceaccounts":
-			items, err = s.opts.IAM.ServiceAccounts(ctx)
-		case "rolebindings":
-			items, err = s.opts.IAM.RoleBindings(ctx)
-		case "identityproviders":
-			items, err = s.opts.IAM.IdentityProviders(ctx)
-		}
-	}
-	if err != nil {
-		return nil, storeError(err)
-	}
-	if items == nil {
-		items = []IAMItem{}
-	}
-	return &iamOutput{Body: &IAMList{Items: items}}, nil
-}
-
 func (s *Server) registerAudit() {
-	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first)", "audit"),
+	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first; order=desc for newest first)", "audit"),
 		perm{resource: "audit", verb: "read"}, s.listAudit)
 	exportOp := operation(http.MethodGet, "/audit/export", "exportAudit", "Audit events as JSON lines", "audit")
 	exportOp.Responses = map[string]*huma.Response{"200": {Description: "application/x-ndjson, one AuditEvent per line",
@@ -299,7 +275,7 @@ func (s *Server) auditReader() (audit.Reader, error) {
 }
 
 func auditQuery(in *auditInput) (audit.Query, error) {
-	q := audit.Query{Kind: in.Kind, Name: in.Name, Actor: in.Actor, Limit: in.Limit}
+	q := audit.Query{Kind: in.Kind, Name: in.Name, Actor: in.Actor, Limit: in.Limit, Desc: in.Order == "desc"}
 	if in.Since != "" {
 		t, err := time.Parse(time.RFC3339, in.Since)
 		if err != nil {
@@ -307,14 +283,27 @@ func auditQuery(in *auditInput) (audit.Query, error) {
 		}
 		q.Since = t
 	}
-	if in.Cursor != "" {
-		id, err := strconv.ParseInt(in.Cursor, 10, 64)
-		if err != nil || id < 0 {
+	cursor := in.Cursor
+	if cursor == "" {
+		cursor = in.Continue
+	}
+	if cursor != "" {
+		id, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil || id < 0 || q.Desc && id == 0 {
 			return q, errInvalid("cursor: not a cursor returned by this API")
 		}
-		q.AfterID = id
+		advance(&q, id)
 	}
 	return q, nil
+}
+
+// advance moves q past the event id last (the last one of a page).
+func advance(q *audit.Query, last int64) {
+	if q.Desc {
+		q.BeforeID = last
+	} else {
+		q.AfterID = last
+	}
 }
 
 func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, error) {
@@ -374,14 +363,7 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 			if len(evs) < q.Limit {
 				return
 			}
-			q.AfterID = evs[len(evs)-1].ID
+			advance(&q, evs[len(evs)-1].ID)
 		}
 	}}, nil
-}
-
-// PasswordChangeRequest is the POST /auth/password body served by the auth
-// stack (local users; clears mustChangePassword).
-type PasswordChangeRequest struct {
-	Current string `json:"current" doc:"The current password"`
-	Next    string `json:"next" doc:"The new password (at least 12 characters)"`
 }

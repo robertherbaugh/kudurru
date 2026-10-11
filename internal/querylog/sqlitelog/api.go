@@ -164,6 +164,9 @@ type TopItem struct {
 	Total   int64   `json:"total"`
 	Blocked int64   `json:"blocked"`
 	Percent float64 `json:"percent"`
+	// LastSeen is the client's newest query on this node (clients only;
+	// at hour precision once its fact rows have aged out).
+	LastSeen *time.Time `json:"last_seen,omitempty" doc:"Clients only: the newest query from the client on this node (hour precision once its query rows aged out)."`
 }
 
 // UpstreamTop is GET /stats/upstreams.

@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
@@ -127,6 +128,21 @@ func TestAuditWithSQLite(t *testing.T) {
 	if len(page.Items) != 1 || page.Items[0].Result != "denied" {
 		t.Fatalf("page 2 %+v", page)
 	}
+	// Newest first, paged with continue.
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1", "auditor", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].Result != "denied" || page.Continue == "" {
+		t.Fatalf("desc page %+v", page)
+	}
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1&continue="+page.Continue, "auditor", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].ID != w.ID {
+		t.Fatalf("desc page 2 %+v", page)
+	}
+	var last AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?order=desc&limit=1&continue="+page.Continue, "auditor", nil).want(http.StatusOK).json(&last)
+	if len(last.Items) != 0 || last.Continue != "" {
+		t.Fatalf("desc page 3 %+v", last)
+	}
+	h.do(http.MethodGet, "/api/v1/audit?order=sideways", "auditor", nil).want(http.StatusBadRequest)
 	h.do(http.MethodGet, "/api/v1/audit/export", "auditor", nil).want(http.StatusForbidden) // audit.export is admin-only
 	r := h.do(http.MethodGet, "/api/v1/audit/export", "admin", nil).want(http.StatusOK)
 	lines := strings.Split(strings.TrimSpace(r.Body.String()), "\n")
@@ -203,7 +219,7 @@ func TestAuthForwarding(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/auth/status":
-			_, _ = io.WriteString(w, `{"localLogin":"enabled","providers":[],"hasDefaultCredentials":true}`)
+			_, _ = io.WriteString(w, `{"localLogin":true,"localLoginMode":"enabled","providers":[],"hasDefaultCredentials":true}`)
 		case "/api/v1/auth/login":
 			body, _ := io.ReadAll(r.Body)
 			http.SetCookie(w, &http.Cookie{Name: "kudurru_session", Value: "x", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
@@ -231,7 +247,7 @@ func TestAuthForwarding(t *testing.T) {
 	})
 	var st AuthStatus
 	h.do(http.MethodGet, "/api/v1/auth/status", "", nil).want(http.StatusOK).json(&st)
-	if st.LocalLogin != "enabled" || !st.HasDefaultCredentials {
+	if !st.LocalLogin || st.LocalLoginMode != "enabled" || !st.HasDefaultCredentials {
 		t.Fatalf("status %+v", st)
 	}
 	r := h.do(http.MethodPost, "/api/v1/auth/login", "", map[string]string{"username": "admin", "password": "pw"}).want(http.StatusOK)
@@ -287,6 +303,40 @@ func TestMeWithBearerRoles(t *testing.T) {
 	h.do(http.MethodGet, "/api/v1/auth/me", "admin", nil).want(http.StatusOK).json(&me)
 	if len(me.Permissions) != 22 {
 		t.Fatalf("admin permissions %d: %v", len(me.Permissions), me.Permissions)
+	}
+}
+
+// A local user's cookie session has no roles snapshot: /auth/me answers
+// the live grants of Options.Roles, as the login answer does.
+func TestMeCookieSessionLiveRoles(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Roles = func(_ context.Context, p auth.Principal) []string { return []string{"admin"} }
+	})
+	r := h.req(http.MethodGet, "/api/v1/auth/me", "", nil)
+	r.AddCookie(&http.Cookie{Name: apitest.CookieName, Value: "admin"})
+	var me Me
+	h.serve(r).want(http.StatusOK).json(&me)
+	if len(me.Roles) != 1 || me.Roles[0] != "admin" || me.CSRF != apitest.CSRFToken || me.MustChangePassword {
+		t.Fatalf("me %+v", me)
+	}
+}
+
+func TestMeMustChangePassword(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Authenticate = func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				p := auth.Principal{Kind: auth.KindUser, ID: "admin", Name: "admin", AuthMethod: "cookie", MustChangePassword: true}
+				next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), p)))
+			})
+		}
+	})
+	var me Me
+	h.do(http.MethodGet, "/api/v1/auth/me", "", nil).want(http.StatusOK).json(&me)
+	if !me.MustChangePassword || len(me.Permissions) != 0 {
+		t.Fatalf("me %+v", me)
+	}
+	if r := h.do(http.MethodGet, "/api/v1/zones", "", nil).want(http.StatusForbidden); r.errKey() != "password_change_required" {
+		t.Fatalf("zones: %s", r.Body.String())
 	}
 }
 

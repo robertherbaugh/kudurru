@@ -78,6 +78,9 @@ func TestAuditRowsPerMutation(t *testing.T) {
 	if got, _ := s.ReadAudit(ctx, AuditQuery{AfterID: entries[1].ID, Limit: 1}); len(got) != 1 || got[0].ID != entries[2].ID {
 		t.Fatalf("cursor: %+v", got)
 	}
+	if got, _ := s.ReadAudit(ctx, AuditQuery{Desc: true, BeforeID: entries[2].ID, Limit: 1}); len(got) != 1 || got[0].ID != entries[1].ID {
+		t.Fatalf("desc cursor: %+v", got)
+	}
 	if got, _ := s.ReadAudit(ctx, AuditQuery{Kind: "Policy"}); len(got) != 0 {
 		t.Fatalf("kind filter: %d rows", len(got))
 	}

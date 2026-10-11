@@ -389,6 +389,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return err
 			}
 			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
+			opts.DomainsOnLists = func() int64 {
+				if sn := zc.Snapshot(); sn != nil {
+					return domainsOnLists(sn.Objects.Lists())
+				}
+				return 0
+			}
 			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
 				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
@@ -823,4 +829,22 @@ type flushingListSink struct {
 func (s flushingListSink) SetLists(sn *blocking.Snapshot) {
 	s.next.SetLists(sn)
 	s.flush.ListsChanged()
+}
+
+// domainsOnLists is the dashboard's "domains on lists" tile: the compiled
+// block entries of every block-mode list, without the lists' own @@
+// exceptions. Allow lists do not count. nil (no lists compiled yet) is 0.
+func domainsOnLists(sn *blocking.Snapshot) int64 {
+	if sn == nil {
+		return 0
+	}
+	var n int64
+	for _, l := range sn.Lists() {
+		if l.Mode() != blocking.ModeBlock {
+			continue
+		}
+		st := l.Stats()
+		n += int64(st.Entries - st.Exceptions)
+	}
+	return n
 }

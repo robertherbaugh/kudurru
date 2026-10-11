@@ -70,17 +70,21 @@ func reasonWithContext(ev Event) string {
 // pages through the table until the page is full.
 func (s SQLite) Read(ctx context.Context, q Query) ([]Event, error) {
 	limit := clampLimit(q.Limit)
-	after := q.AfterID
+	after, before := q.AfterID, q.BeforeID
 	out := []Event{}
 	for {
 		rows, err := s.Store.ReadAudit(ctx, sqlite.AuditQuery{
-			Kind: store.Kind(q.Kind), Name: q.Name, AfterID: after, Since: q.Since, Limit: limit,
+			Kind: store.Kind(q.Kind), Name: q.Name, AfterID: after, BeforeID: before, Since: q.Since, Limit: limit, Desc: q.Desc,
 		})
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			after = r.ID
+			if q.Desc {
+				before = r.ID
+			} else {
+				after = r.ID
+			}
 			ev := fromEntry(r)
 			if q.Actor != "" && ev.Actor.String() != q.Actor && ev.Actor.Name != q.Actor {
 				continue

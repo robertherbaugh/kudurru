@@ -16,29 +16,30 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-// TestLoginLockoutCountsClientsBehindTrustedProxy is the regression test of
-// the M5 security finding "login lockouts count the reverse proxy, not the
-// client": serve.go built the identity stack without ClientIP, so behind
-// listeners.api.trustedProxies every login came from the proxy address and
-// five failed logins by anyone locked every user out for five minutes.
-// The test wires the stack and the API server the way serve.go does.
-func TestLoginLockoutCountsClientsBehindTrustedProxy(t *testing.T) {
+// authAPI wires the identity stack and the API server the way serve.go
+// does, over a memory store, with the bootstrap admin's password
+// admin-password-1. mod adjusts the configuration first.
+func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.Store) {
+	t.Helper()
 	cfg, err := config.Load("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.Node.DataDir = t.TempDir()
-	cfg.Listeners.API.TrustedProxies = []string{"127.0.0.1/32", "::1/128"}
 	cfg.Auth.Session.Secure = "never"
+	if mod != nil {
+		mod(cfg)
+	}
 	st := authtest.Memory(t)
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	logger := slog.New(slog.DiscardHandler)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(cancel)
 	opts := identityOptions(cfg, st, keys.Keys{Current: key}, logger)
 	opts.Out = io.Discard
 	opts.Getenv = func(k string) string {
@@ -51,18 +52,34 @@ func TestLoginLockoutCountsClientsBehindTrustedProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	done := make(chan struct{})
+	go func() { _ = ids.Run(ctx); close(done) }() // the "identity" runnable: object caches
+	t.Cleanup(func() { cancel(); <-done })
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), AuthHandler: authMux,
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), AuthHandler: authMux, Roles: ids.Roles,
 		Logger: logger, NodeName: "node-a",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(srv)
-	defer ts.Close()
+	t.Cleanup(ts.Close)
+	return ts, st
+}
+
+// TestLoginLockoutCountsClientsBehindTrustedProxy is the regression test of
+// the M5 security finding "login lockouts count the reverse proxy, not the
+// client": serve.go built the identity stack without ClientIP, so behind
+// listeners.api.trustedProxies every login came from the proxy address and
+// five failed logins by anyone locked every user out for five minutes.
+// The test wires the stack and the API server the way serve.go does.
+func TestLoginLockoutCountsClientsBehindTrustedProxy(t *testing.T) {
+	ts, _ := authAPI(t, func(cfg *config.Config) {
+		cfg.Listeners.API.TrustedProxies = []string{"127.0.0.1/32", "::1/128"}
+	})
 
 	login := func(client, password string) int {
 		t.Helper()
