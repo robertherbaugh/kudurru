@@ -77,6 +77,18 @@ Close an item by deleting its row and citing the commit.
 | Wire `Registry.Register`, `session.Authenticator`, `ValidAfter` from the store snapshot, keys from `KUDURRU_ENCRYPTION_KEY[_PREVIOUS][_FILE]` into the API server | auth spike | M3 |
 | `autoProvision: never` and `syncGroups` once the user store exists; RP-initiated logout | auth spike | v0.2 |
 
+## Dashboard (web/)
+
+| Item | Source | Target |
+|---|---|---|
+| api package: serve the shapes the SPA assumes (docs/m3/ui.md "API routes and shapes"; settings schema JSON names, SSE event `query` + `?lastEventId=`, `transfer` on zone rows, `managedBy` on record rows, `/clients` inventory); then `bun run gen:api` and alias `web/src/api/types.ts` to the generated schemas | ui report | M3 (api + ui) |
+| Honour `kudurru.io/enabled: "false"` on BlockList/ClientGroup/Policy (controller, policy compiler, list resolver) or add `comment`/`enabled` spec fields to v1alpha1 (decision row) | ui report | M3 |
+| Config key for the URL prefix (e.g. `listeners.api.pathPrefix`) feeding `web.Options.BasePath` and the API mount | ui report | M3 (config + integrator) |
+| `GET /api/v1/doctor` so Tools shows the same checks as `kudurru doctor` | ui report | M4 |
+| Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | M4 |
+| Playwright end-to-end run of the dashboard against `kudurru serve` in CI | ui report | M4 |
+| Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | M4 |
+
 ## Build, CI, docs
 
 | Item | Source | Target |
