@@ -28,6 +28,7 @@ type Config struct {
 	Store     StoreConfig `koanf:"store" json:"store"`
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
+	RateLimit RateLimit   `koanf:"ratelimit" json:"ratelimit"`
 	Log       Log         `koanf:"log" json:"log"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
@@ -62,6 +63,9 @@ type Listeners struct {
 	// ProxyProtocolSecretFile holds the PROXYv2 TLV 0xE0 secret shared with
 	// the dnsdist supervisor (docs/architecture.md §3.3, D56).
 	ProxyProtocolSecretFile string `koanf:"proxyProtocolSecretFile" json:"proxyProtocolSecretFile"`
+	// Sockets is how many SO_REUSEPORT sockets each udp and tcp listener
+	// binds (Linux; one elsewhere); 0 means GOMAXPROCS.
+	Sockets int `koanf:"sockets" json:"sockets"`
 }
 
 // DNSListener is one DNS bind.
@@ -287,6 +291,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("upstreams.ecs.ipv6Prefix: %d is outside 0-128", p))
 	}
 	errs = append(errs, c.Cache.validate()...)
+	errs = append(errs, c.RateLimit.validate()...)
+	if c.Listeners.Sockets < 0 {
+		errs = append(errs, fmt.Errorf("listeners.sockets: %d is negative", c.Listeners.Sockets))
+	}
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))

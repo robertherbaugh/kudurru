@@ -15,8 +15,10 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
-// dnsListener serves Do53 over UDP or TCP, or DoT (tcp-tls), on a
-// miekg/dns server. With an enabled PROXYv2 policy the socket is wrapped so
+// dnsListener serves Do53 over UDP or TCP, or DoT (tcp-tls), on miekg/dns
+// servers. A udp or tcp listener binds env.sockets sockets with
+// SO_REUSEPORT (socket.go), one miekg server and read loop each; DoT binds
+// one. With an enabled PROXYv2 policy every socket is wrapped so
 // authenticated headers are stripped and forged ones dropped before miekg
 // sees the bytes.
 type dnsListener struct {
@@ -26,10 +28,11 @@ type dnsListener struct {
 	tls   *tls.Config // DoT only
 
 	mu      sync.Mutex
-	srv     *dns.Server
+	srvs    []*dns.Server
 	addr    net.Addr
 	closer  func() error
-	started chan struct{}
+	started chan struct{} // closed once every server has started
+	pending atomic.Int32  // servers not yet started
 	ready   atomic.Bool
 }
 
@@ -55,6 +58,21 @@ func (l *dnsListener) Addr() net.Addr {
 
 func (l *dnsListener) Ready() bool { return l.ready.Load() }
 
+// Sockets returns how many sockets the listener has bound (0 before Bind).
+func (l *dnsListener) Sockets() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.srvs)
+}
+
+// socketCount is the number of sockets this listener binds.
+func (l *dnsListener) socketCount() int {
+	if l.spec.Protocol == ProtoDoT || l.env.sockets < 1 {
+		return 1
+	}
+	return l.env.sockets
+}
+
 func (l *dnsListener) Bind() error {
 	lim := l.env.limits
 	srv := &dns.Server{
@@ -63,37 +81,38 @@ func (l *dnsListener) Bind() error {
 		WriteTimeout: lim.WriteTimeout,
 		// miekg's default UDP read buffer is 512 bytes, which truncates
 		// EDNS queries (and a PROXYv2 header plus query) silently.
-		UDPSize:           dns.DefaultMsgSize,
-		NotifyStartedFunc: func() { close(l.started) },
+		UDPSize: dns.DefaultMsgSize,
 	}
 	proxied := l.env.proxy.Enabled()
 	switch l.spec.Protocol {
 	case ProtoUDP:
-		pc, err := net.ListenPacket("udp", l.spec.Address)
+		pcs, err := listenPackets(l.spec.Address, l.socketCount())
 		if err != nil {
 			return err
 		}
 		srv.Net = "udp"
-		srv.PacketConn = pc
 		if proxied {
-			srv.PacketConn = &proxyproto.PacketConn{PacketConn: pc, Policy: l.env.proxy}
 			srv.UDPSize += proxyproto.MaxHeaderLen
 		}
-		l.setBound(srv, pc.LocalAddr(), pc.Close)
+		srvs := make([]*dns.Server, len(pcs))
+		for i, pc := range pcs {
+			s := l.socketServer(srv)
+			s.PacketConn = pc
+			if proxied {
+				s.PacketConn = &proxyproto.PacketConn{PacketConn: pc, Policy: l.env.proxy}
+			}
+			srvs[i] = s
+		}
+		l.setBound(srvs, pcs[0].LocalAddr(), closeAllFunc(pcs))
 	case ProtoTCP, ProtoDoT:
-		ln, err := net.Listen("tcp", l.spec.Address)
+		lns, err := listenStreams(l.spec.Address, l.socketCount())
 		if err != nil {
 			return err
-		}
-		lis := ln
-		if proxied {
-			lis = &proxyproto.Listener{Listener: ln, Policy: l.env.proxy, HeaderTimeout: lim.ProxyHeaderTimeout}
 		}
 		srv.Net = "tcp"
 		if l.spec.Protocol == ProtoDoT {
 			srv.Net = "tcp-tls"
 			srv.TLSConfig = l.tls
-			lis = tls.NewListener(lis, l.tls)
 		}
 		idle := lim.IdleTimeout
 		srv.IdleTimeout = func() time.Duration { return idle }
@@ -101,18 +120,59 @@ func (l *dnsListener) Bind() error {
 		if lim.MaxTCPQueries > 0 {
 			srv.MaxTCPQueries = lim.MaxTCPQueries
 		}
-		srv.Listener = lis
-		l.setBound(srv, ln.Addr(), ln.Close)
+		srvs := make([]*dns.Server, len(lns))
+		for i, ln := range lns {
+			lis := ln
+			if proxied {
+				lis = &proxyproto.Listener{Listener: ln, Policy: l.env.proxy, HeaderTimeout: lim.ProxyHeaderTimeout}
+			}
+			if l.spec.Protocol == ProtoDoT {
+				lis = tls.NewListener(lis, l.tls)
+			}
+			s := l.socketServer(srv)
+			s.Listener = lis
+			srvs[i] = s
+		}
+		l.setBound(srvs, lns[0].Addr(), closeAllFunc(lns))
 	default:
 		return errors.New("dnsserver: unsupported protocol " + string(l.spec.Protocol))
 	}
 	return nil
 }
 
-func (l *dnsListener) setBound(srv *dns.Server, addr net.Addr, closer func() error) {
+// socketServer returns a fresh miekg server for one socket with the
+// configuration of tmpl. miekg servers carry per-instance state (a lock,
+// the connection set, a buffer pool), so each socket needs its own; every
+// exported setting is copied so options set on tmpl reach all sockets.
+func (l *dnsListener) socketServer(tmpl *dns.Server) *dns.Server {
+	l.pending.Add(1)
+	return &dns.Server{
+		Net:            tmpl.Net,
+		TLSConfig:      tmpl.TLSConfig,
+		Handler:        tmpl.Handler,
+		UDPSize:        tmpl.UDPSize,
+		ReadTimeout:    tmpl.ReadTimeout,
+		WriteTimeout:   tmpl.WriteTimeout,
+		IdleTimeout:    tmpl.IdleTimeout,
+		TsigProvider:   tmpl.TsigProvider,
+		TsigSecret:     tmpl.TsigSecret,
+		DecorateReader: tmpl.DecorateReader,
+		DecorateWriter: tmpl.DecorateWriter,
+		MaxTCPQueries:  tmpl.MaxTCPQueries,
+		MsgAcceptFunc:  tmpl.MsgAcceptFunc,
+		MsgInvalidFunc: tmpl.MsgInvalidFunc,
+		NotifyStartedFunc: func() {
+			if l.pending.Add(-1) == 0 {
+				close(l.started)
+			}
+		},
+	}
+}
+
+func (l *dnsListener) setBound(srvs []*dns.Server, addr net.Addr, closer func() error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.srv, l.addr, l.closer = srv, addr, closer
+	l.srvs, l.addr, l.closer = srvs, addr, closer
 }
 
 func (l *dnsListener) Close() error {
@@ -128,33 +188,49 @@ func (l *dnsListener) Close() error {
 
 func (l *dnsListener) Serve(ctx context.Context) error {
 	l.mu.Lock()
-	srv := l.srv
+	srvs := l.srvs
 	l.mu.Unlock()
-	if srv == nil {
+	if len(srvs) == 0 {
 		return errors.New("dnsserver: Serve before Bind")
 	}
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ActivateAndServe() }()
+	errCh := make(chan error, len(srvs))
+	for _, srv := range srvs {
+		go func() { errCh <- srv.ActivateAndServe() }()
+	}
+	running := len(srvs)
+	// stop shuts every server down, waits for the read loops still
+	// running and releases the sockets; first is the error that ended
+	// serving, if any.
+	stop := func(first error) error {
+		sctx, cancel := context.WithTimeout(context.Background(), l.env.limits.ShutdownTimeout)
+		defer cancel()
+		var wg sync.WaitGroup
+		for _, srv := range srvs {
+			wg.Go(func() { _ = srv.ShutdownContext(sctx) })
+		}
+		wg.Wait()
+		for ; running > 0; running-- {
+			<-errCh
+		}
+		_ = l.Close()
+		return first
+	}
 
 	select {
 	case <-l.started:
 		l.ready.Store(true)
 	case err := <-errCh:
-		return err
+		running--
+		return stop(err)
 	}
 	defer l.ready.Store(false)
 
 	select {
 	case <-ctx.Done():
-		sctx, cancel := context.WithTimeout(context.Background(), l.env.limits.ShutdownTimeout)
-		defer cancel()
-		_ = srv.ShutdownContext(sctx)
-		<-errCh
-		_ = l.Close()
-		return nil
+		return stop(nil)
 	case err := <-errCh:
-		_ = l.Close()
-		return err
+		running--
+		return stop(err)
 	}
 }
 
@@ -163,9 +239,16 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	serveMiekg(l.env.handler, l.proto, w, r)
 }
 
-// serveMiekg answers one message delivered by a miekg/dns server.
+// serveMiekg answers one message delivered by a miekg/dns server. Over UDP
+// a pipeline drop (see Handler) sends nothing; over TCP it is SERVFAIL.
 func serveMiekg(h *Handler, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
-	m := h.Resolve(context.Background(), r, clientFrom(w.RemoteAddr(), proto))
+	m := h.resolve(context.Background(), r, clientFrom(w.RemoteAddr(), proto))
+	if m == nil {
+		if proto == pipeline.ProtoUDP {
+			return
+		}
+		m = servfail(r)
+	}
 	if proto == pipeline.ProtoUDP {
 		size := dns.MinMsgSize
 		if opt := r.IsEdns0(); opt != nil && int(opt.UDPSize()) > size {

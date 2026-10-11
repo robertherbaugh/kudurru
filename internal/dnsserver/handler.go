@@ -45,7 +45,33 @@ func (h *Handler) timeout() time.Duration {
 // chain fails or produces nothing the answer is SERVFAIL. The response ID
 // equals r.Id. ctx carries transport cancellation (an HTTP/2 or QUIC stream
 // reset); Resolve adds the query deadline.
+//
+// A stage may ask the transport to send nothing at all (the ingress rate
+// limiter's drop, docs/architecture.md §7.1 step 2) by answering with a
+// Response whose Msg is nil and whose Status is pipeline.StatusDropped or
+// pipeline.StatusBlockedRateLimit. The udp listener honours that by not
+// writing; every other transport, and Resolve itself, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
+	if m := h.resolve(ctx, r, client); m != nil {
+		return m
+	}
+	return servfail(r)
+}
+
+// IsDrop reports whether resp asks the transport to send nothing.
+func IsDrop(resp *pipeline.Response) bool {
+	return resp != nil && resp.Msg == nil &&
+		(resp.Status == pipeline.StatusDropped || resp.Status == pipeline.StatusBlockedRateLimit)
+}
+
+func servfail(r *dns.Msg) *dns.Msg {
+	m := new(dns.Msg)
+	m.SetRcode(r, dns.RcodeServerFailure)
+	return m
+}
+
+// resolve is Resolve that returns nil when the pipeline dropped the query.
+func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
 	timeout := h.timeout()
 	if ctx == nil {
 		ctx = context.Background()
@@ -57,13 +83,14 @@ func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 	req.Deadline = req.Received.Add(timeout)
 
 	resp, err := h.Chain.Serve(req)
+	if err == nil && IsDrop(resp) {
+		return nil
+	}
 	if err != nil || resp == nil || resp.Msg == nil {
 		if err != nil && !errors.Is(err, pipeline.ErrNoAnswer) {
 			h.logger().Debug("pipeline error", "err", err, "q", req.Question().Name, "proto", client.Proto.String())
 		}
-		m := new(dns.Msg)
-		m.SetRcode(r, dns.RcodeServerFailure)
-		return m
+		return servfail(r)
 	}
 	m := resp.Msg
 	m.Id = r.Id

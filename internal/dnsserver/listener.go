@@ -233,6 +233,11 @@ type Options struct {
 	// listeners. Nil or disabled means headers are not inspected.
 	Proxy  *proxyproto.Policy
 	Limits Limits
+	// Sockets is how many SO_REUSEPORT sockets every udp and tcp listener
+	// binds, each with its own read loop (listeners.sockets). Zero means
+	// runtime.GOMAXPROCS(0) and 1 a single plain socket; platforms other
+	// than Linux always bind one. See SocketCount.
+	Sockets int
 }
 
 // env is what every listener constructor receives.
@@ -242,6 +247,7 @@ type env struct {
 	certs   *tlsreload.Store
 	proxy   *proxyproto.Policy
 	limits  Limits
+	sockets int // resolved Options.Sockets, at least 1
 }
 
 // factories is the protocol-keyed constructor table behind the registry.
@@ -285,6 +291,7 @@ func NewRegistry(opts Options) (*Registry, error) {
 		certs:   certs,
 		proxy:   opts.Proxy,
 		limits:  opts.Limits.withDefaults(),
+		sockets: SocketCount(opts.Sockets),
 	}}, nil
 }
 
