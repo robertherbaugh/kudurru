@@ -232,6 +232,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
     <form className="k-dialog-frame" onSubmit={onSubmit} onInput={markDirty} onChange={markDirty} noValidate aria-label={label}>
       <Layout
         height="fill"
+        padding={4}
         defaultHasDividers
         header={
           <>
@@ -254,7 +255,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
         }
         content={
           <LayoutContent>
-            <VStack gap={4} role="group" aria-labelledby={headingId} data-step={step.id}>
+            <VStack gap={4} paddingBlockStart={2} role="group" aria-labelledby={headingId} data-step={step.id}>
               <VStack gap={1}>
                 <HStack gap={2} vAlign="center">
                   <Heading level={3} id={headingId} ref={headingRef} tabIndex={-1}>

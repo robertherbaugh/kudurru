@@ -192,7 +192,7 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
               },
             ]}
           />
-          <Text type="supporting">Secondary, stub and catalog zones are declared in YAML (`kudurru apply`) in this release.</Text>
+          <Text type="supporting">Secondary, stub and catalog zones are declared in YAML (<Text type="code">kudurru apply</Text>) in this release.</Text>
         </>
       ),
     },
