@@ -77,6 +77,16 @@ Close an item by deleting its row and citing the commit.
 | Wire `Registry.Register`, `session.Authenticator`, `ValidAfter` from the store snapshot, keys from `KUDURRU_ENCRYPTION_KEY[_PREVIOUS][_FILE]` into the API server | auth spike | M3 |
 | `autoProvision: never` and `syncGroups` once the user store exists; RP-initiated logout | auth spike | v0.2 |
 
+## CLI
+
+| Item | Source | Target |
+|---|---|---|
+| `--context` selecting a kubeconfig so CRD verbs go straight to the apiserver (§3.5); a context is always a kudurru API endpoint today | docs/m3/cli.md | M4 |
+| Remaining §3.5 verbs: `import pihole\|adguard\|blocky\|technitium`, `lameduck`, `health --vrrp`, `cluster status\|promote\|join-token`, `integrations …`, zone option writes (`PUT/PATCH /zones/{zone}`) | docs/m3/cli.md | M4 / v0.2 |
+| Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | docs/m3/cli.md | v0.2 |
+| Put the generated `internal/apiclient/openapi` client under `apiclient.Client` (surface listed in docs/m3/cli.md) | docs/m3/cli.md | M4 |
+| CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in architecture.md §10 | docs/m3/cli.md | M3 (integrator) |
+
 ## Build, CI, docs
 
 | Item | Source | Target |
