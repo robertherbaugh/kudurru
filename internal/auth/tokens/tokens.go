@@ -401,6 +401,12 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	switch owner.Kind {
 	case internalv1.OwnerUser:
 		p.Kind, p.ID, p.Name, p.Provider = auth.KindUser, owner.ID, owner.Name, owner.Provider
+		if p.Provider == "" && strings.HasPrefix(owner.ID, "local:") {
+			// Tokens minted from a session that did not carry the provider
+			// still belong to the local user store (LoadPrincipal re-reads
+			// the builtin-admin flag, groups and the disabled state).
+			p.Provider = "local"
+		}
 		if len(tok.Spec.Grants) > 0 {
 			p.Grants = slices.Clone(tok.Spec.Grants)
 			p.GrantsIssuedAt = tok.CreationTimestamp.Time

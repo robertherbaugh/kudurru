@@ -189,7 +189,7 @@ var farFuture = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
 // groups, builtin-admin and mustChangePassword flags replace whatever the
 // session or token carried. Other principals pass unchanged.
 func (u *Users) LoadPrincipal(_ context.Context, p auth.Principal) (auth.Principal, error) {
-	if p.Kind != auth.KindUser || p.Provider != Provider {
+	if p.Kind != auth.KindUser || (p.Provider != Provider && !strings.HasPrefix(p.ID, PrincipalIDPrefix)) {
 		return p, nil
 	}
 	usr, ok := u.Get(p.Name)

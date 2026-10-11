@@ -2,6 +2,7 @@ package stack
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -471,4 +472,16 @@ func remoteHost(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// Roles lists p's effective grants in their wire form (role or
+// role@kind:name), for api.Options.Roles.
+func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
+	grants := s.effectiveGrants(p)
+	out := make([]string, 0, len(grants))
+	for _, g := range grants {
+		out = append(out, g.String())
+	}
+	slices.Sort(out)
+	return out
 }
