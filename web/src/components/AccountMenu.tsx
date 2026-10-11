@@ -58,8 +58,10 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
       } else {
         void qc.invalidateQueries({ queryKey: qk.me });
       }
-      // The default-credentials banner reads /auth/status.
-      void qc.invalidateQueries({ queryKey: qk.authStatus });
+      // Everything else asked while the session had to change its password
+      // was answered 403 (and 4xx answers are not retried): refetch it all,
+      // the default-credentials banner's /auth/status included.
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
       notify.success('Password changed; other sessions were signed out');
       reset();
       onClose();

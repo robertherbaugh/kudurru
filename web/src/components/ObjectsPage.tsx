@@ -1,8 +1,8 @@
-// The shared list page of Lists, Groups and Policies (§10 principle 6):
+// The generic object list page (Lists, Groups, Policies; §10 principle 6):
 // search, enabled switches and comments on every row, "managed by" badges,
 // multi-select with :batchDelete, and the generated create/edit form in a
 // dialog. Objects managed elsewhere are listed but not selectable and open
-// read-only. Kinds with their own page and wizard (Lists) pass detailPath
+// read-only. Kinds with their own page and wizard (all three) pass detailPath
 // and createPath: names link to the page and "New" opens the wizard.
 import { Button } from '@astryxdesign/core/Button';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
@@ -43,13 +43,15 @@ export interface ObjectsPageProps<T extends AnyObject> {
   detailPath?: (obj: T) => string;
   /** The create wizard's route: "New" goes there instead of opening the form dialog. */
   createPath?: string;
+  /** Row order (default: the server's, by name). */
+  sort?: (a: T, b: T) => number;
 }
 
 function key(o: AnyObject): string {
   return `${o.metadata.namespace ?? ''}/${o.metadata.name}`;
 }
 
-export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, createPath }: ObjectsPageProps<T>) {
+export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, createPath, sort }: ObjectsPageProps<T>) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -64,11 +66,11 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
 
   const q = useQuery({ queryKey: qk.objects(schema.kind), queryFn: () => api.objects.list<T>(schema.kind) });
   const items = useMemo(() => {
-    const all = q.data?.items ?? [];
+    const all = sort ? [...(q.data?.items ?? [])].sort(sort) : (q.data?.items ?? []);
     const s = search.trim().toLowerCase();
     if (!s) return all;
     return all.filter((o) => o.metadata.name.toLowerCase().includes(s) || objectComment(o).toLowerCase().includes(s));
-  }, [q.data, search]);
+  }, [q.data, search, sort]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: qk.objects(schema.kind) });
 

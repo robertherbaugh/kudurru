@@ -13,6 +13,9 @@ import { qk, useApi, useCan, useSession } from '../api/context';
 import type { AuditEvent, CreatedToken, IamRoleBinding, RbacScope } from '../api/types';
 import { ChangePasswordButton } from '../components/AccountMenu';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { DurationField, durationPresets } from '../components/fields/DurationField';
+import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
+import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { formatDateTime, formatRelative } from '../lib/format';
 import { useSearchParams } from '../lib/router';
 
@@ -49,6 +52,29 @@ function Me() {
   );
 }
 
+/** Token lifetimes offered; "" asks for the server maximum (auth.tokens.maxLifetime). */
+const TOKEN_LIFETIMES = durationPresets(['24h', '168h', '720h', '2160h', '8760h']);
+
+/** The roles of internal/rbac (the rbac.bindings role enum of the settings schema). */
+export const ROLES: EnumOption[] = [
+  { value: 'viewer', label: 'Viewer', help: 'Read zones, records, lists, policies, stats and settings.' },
+  { value: 'auditor', label: 'Auditor', help: 'Viewer plus the query log and the audit log.' },
+  { value: 'operator', label: 'Operator', help: 'Manage records, lists, policies, groups, clients and blocking; flush the cache.' },
+  { value: 'zone-admin', label: 'Zone admin', help: 'Manage zones and their records, transfers and signing.' },
+  { value: 'admin', label: 'Admin', help: 'Everything.' },
+];
+
+const SCOPE_KINDS: EnumOption[] = [
+  { value: 'cluster', label: 'Everything', help: 'The role applies to every object.' },
+  { value: 'zone', label: 'One zone', help: 'The role applies to one zone and its records.' },
+];
+
+/** The scope string of a token restricted to a role: "viewer" or "zone-admin@zone:home-arpa". */
+export function scopeString(role: string, kind: string, name: string): string {
+  if (!role) return '';
+  return kind === 'zone' && name.trim() ? `${role}@zone:${name.trim()}` : role;
+}
+
 /** Scopes typed as "viewer, zone-admin@zone:home-example-com". */
 export function parseScopes(s: string): string[] {
   return s
@@ -64,7 +90,10 @@ function Tokens() {
   const can = useCan();
   const [description, setDescription] = useState('');
   const [expires, setExpires] = useState('720h');
-  const [scopes, setScopes] = useState('');
+  const [role, setRole] = useState('');
+  const [scopeKind, setScopeKind] = useState('cluster');
+  const [scopeZone, setScopeZone] = useState('');
+  const scopes = scopeString(role, scopeKind, scopeZone);
   const [created, setCreated] = useState<CreatedToken | null>(null);
   const q = useQuery({ queryKey: qk.tokens, queryFn: () => api.auth.tokens() });
   const create = useMutation({
@@ -79,7 +108,7 @@ function Tokens() {
     onSuccess: (t) => {
       setCreated(t);
       setDescription('');
-      setScopes('');
+      setRole('');
       void qc.invalidateQueries({ queryKey: qk.tokens });
     },
     onError: (err) => notify.error(err, 'Could not create the token'),
@@ -110,8 +139,12 @@ function Tokens() {
         }}
       >
         <TextInput label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
-        <TextInput label="Expires in" value={expires} onChange={setExpires} placeholder="720h" description="Go duration; empty for the server maximum" />
-        <TextInput label="Scopes" value={scopes} onChange={setScopes} placeholder="viewer" description="Optional roles, e.g. viewer or zone-admin@zone:home-arpa" isOptional />
+        <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
+        <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
+        {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
+        {role && scopeKind === 'zone' ? (
+          <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
+        ) : null}
         <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
       </form>
       {created ? (
@@ -362,6 +395,12 @@ export function resourceText(r: AuditEvent['resource']): string {
   return name ? `${r.kind} ${name}` : r.kind;
 }
 
+/** Resource kinds the audit log records (objects and runtime actions). */
+const AUDIT_KINDS: EnumOption[] = ['DNSZone', 'DNSRecordSet', 'BlockList', 'ClientGroup', 'Policy', 'settings', 'blocking', 'cache', 'querylog', 'audit'].map((k) => ({
+  value: k,
+  label: k,
+}));
+
 function Audit() {
   const api = useApi();
   const [actor, setActor] = useState('');
@@ -385,7 +424,7 @@ function Audit() {
       </div>
       <div className="k-row-end">
         <TextInput label="Actor" value={actor} onChange={setActor} hasClear />
-        <TextInput label="Kind" value={kind} onChange={setKind} placeholder="BlockList" hasClear />
+        <EnumSelect label="Kind" value={kind} options={AUDIT_KINDS} onChange={setKind} emptyLabel="Any kind" />
       </div>
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}

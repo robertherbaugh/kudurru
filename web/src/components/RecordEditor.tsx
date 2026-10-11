@@ -8,10 +8,12 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
 import { TextInput } from '@astryxdesign/core/TextInput';
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import type { Endpoint, ZoneRecord } from '../api/types';
 import { compose, dnsNameToOwner, ownerError, ownerToDNSName, parse, RECORD_TYPES, typeSpec, validate, type Errors, type Values } from '../lib/rr';
 import { errorText } from './Feedback';
+import { EnumSelect, type EnumOption } from './fields/EnumSelect';
+import { SecondsField } from './fields/SecondsField';
 import { DialogForm } from './FormDialog';
 
 export interface RecordEditorProps {
@@ -23,6 +25,27 @@ export interface RecordEditorProps {
   onSubmit: (ep: Endpoint, recordSet: string) => Promise<void>;
   onCancel: () => void;
 }
+
+/** What each record type is for, under the Type select. */
+const TYPE_HELP: Record<string, string> = {
+  A: 'Points a name at an IPv4 address.',
+  AAAA: 'Points a name at an IPv6 address.',
+  CNAME: 'Makes the name an alias of another; it cannot have other records.',
+  MX: 'Where mail for the name is delivered, lowest preference first.',
+  SRV: 'Where a service (_sip._udp, _ldap._tcp) runs: host, port, priority and weight.',
+  TXT: 'Free text: SPF, DKIM, site verification.',
+  CAA: 'Which certificate authorities may issue for the name.',
+  HTTPS: 'Connection hints for browsers (ALPN, ports, ECH).',
+  SVCB: 'Service binding for other protocols (DoT, DoH discovery).',
+  NS: 'Delegates the name to other name servers.',
+  PTR: 'Reverse lookup: the name of an address.',
+  TLSA: 'DANE: the certificate a TLS service must present.',
+  SSHFP: 'SSH host key fingerprints.',
+  NAPTR: 'Rewrite rules (ENUM, SIP).',
+  raw: 'Any other type as presentation-format rdata.',
+};
+
+const TYPE_OPTIONS: EnumOption[] = RECORD_TYPES.map((t) => ({ value: t.type, label: t.label, help: TYPE_HELP[t.type] }));
 
 interface Draft {
   type: string;
@@ -64,7 +87,6 @@ export function hasErrors(e: EditorErrors): boolean {
 }
 
 export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, onCancel }: RecordEditorProps) {
-  const typeId = useId();
   const [owner, setOwner] = useState(initial ? dnsNameToOwner(initial.dnsName, zoneName) : '');
   const [ttl, setTTL] = useState(initial?.recordTTL !== undefined ? String(initial.recordTTL) : '');
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial));
@@ -128,33 +150,17 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
           isReadOnly={!!initial}
           status={shown.owner ? { type: 'error', message: shown.owner } : undefined}
         />
-        <label className="k-label" htmlFor={typeId}>
-          Type
-          <select
-            id={typeId}
-            className="k-native-select"
-            value={draft.type}
-            disabled={!!initial}
-            onChange={(e) => {
-              setDraft({ type: e.target.value, targets: [{}] });
-              setErrors(null);
-            }}
-          >
-            {RECORD_TYPES.map((t) => (
-              <option key={t.type} value={t.type}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextInput
-          label="TTL (seconds)"
-          placeholder="zone default"
-          value={ttl}
-          onChange={setTTL}
-          isOptional
-          status={shown.ttl ? { type: 'error', message: shown.ttl } : undefined}
+        <EnumSelect
+          label="Type"
+          value={draft.type}
+          options={TYPE_OPTIONS}
+          isDisabled={!!initial}
+          onChange={(v) => {
+            setDraft({ type: v, targets: [{}] });
+            setErrors(null);
+          }}
         />
+        <SecondsField label="TTL" value={ttl} onChange={setTTL} emptyLabel="Zone default" error={shown.ttl} />
       </div>
 
       {draft.targets.map((t, i) => (
@@ -165,7 +171,15 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
           <div className="k-form-grid">
             {spec.fields.map((f) =>
               f.kind === 'enum' && f.options && f.options.length > 0 ? (
-                <EnumField key={f.key} label={f.label} options={f.options} value={t[f.key] ?? ''} error={shown.targets[i]?.[f.key]} onChange={(v) => setTarget(i, f.key, v)} />
+                <EnumSelect
+                  key={f.key}
+                  label={f.label}
+                  options={f.options.map((o) => ({ value: o, label: o }))}
+                  emptyLabel="Choose…"
+                  value={t[f.key] ?? ''}
+                  error={shown.targets[i]?.[f.key]}
+                  onChange={(v) => setTarget(i, f.key, v)}
+                />
               ) : (
                 <TextInput
                   key={f.key}
@@ -207,20 +221,3 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
   );
 }
 
-function EnumField({ label, options, value, error, onChange }: { label: string; options: string[]; value: string; error?: string; onChange: (v: string) => void }) {
-  const id = useId();
-  return (
-    <label className="k-label" htmlFor={id}>
-      {label}
-      <select id={id} className="k-native-select" value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={!!error}>
-        <option value="">Choose…</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-      {error ? <span className="k-error-text">{error}</span> : null}
-    </label>
-  );
-}

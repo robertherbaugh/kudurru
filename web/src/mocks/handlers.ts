@@ -28,9 +28,10 @@ import type {
   ZoneRecord,
   ZoneSummary,
 } from '../api/types';
-import { createDB, CLIENTS, makeQueryRow, type MockDB } from './fixtures';
+import { createDB, CLIENTS, makeQueryRow, setPath, type MockDB } from './fixtures';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
+import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 
 let db: MockDB = createDB();
@@ -61,9 +62,9 @@ function ok(body: Record<string, unknown> | unknown[], init?: ResponseInit) {
   return HttpResponse.json(payload as JsonBodyType, init);
 }
 
-function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>) {
+function fail(status: number, key: string, message: string, hint?: unknown, headers?: Record<string, string>, fields?: string[]) {
   return HttpResponse.json(
-    { error: { key, message, ...(hint !== undefined ? { hint } : {}) }, took_ms: 0.4 } as JsonBodyType,
+    { error: { key, message, ...(hint !== undefined ? { hint } : {}), ...(fields?.length ? { fields } : {}) }, took_ms: 0.4 } as JsonBodyType,
     { status, ...(headers ? { headers } : {}) },
   );
 }
@@ -408,7 +409,7 @@ function filterQueries(url: URL): QueryRow[] {
   if (status.length) rows = rows.filter((r) => status.includes(r.status));
   const cls = p.get('status_class') as StatusClass | null;
   if (cls) rows = rows.filter((r) => r.status_class === cls);
-  for (const f of ['qtype', 'upstream', 'list', 'zone'] as const) {
+  for (const f of ['qtype', 'upstream', 'list', 'zone', 'policy'] as const) {
     const v = p.get(f);
     if (v) rows = rows.filter((r) => (r[f] ?? '').toLowerCase() === v.toLowerCase());
   }
@@ -1315,8 +1316,10 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
-    const next = mergePatch(db.settings, patch);
-    const invalid = validateUpstreams(next);
+    const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    const bad1 = validateSchema(next, changed);
+    if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
+    const invalid = validateUpstreams(next) ?? validateBlockPage(next);
     if (invalid) return fail(400, 'invalid', invalid);
     db.settings = next;
     return ok({ ...settingsBody('cluster', changed), persisted: db.settingsPersisted });
@@ -1329,7 +1332,10 @@ export const handlers = [
     const changed = changedKeys(patch);
     const bad = changed.find((p) => db.schema.find((k) => k.path === p)?.hostOnly);
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
-    db.nodeConfig = mergePatch(db.nodeConfig, patch);
+    const next = withDefaults(mergePatch(db.nodeConfig, patch), patch, changed);
+    const invalid = validateSchema(next, changed);
+    if (invalid) return fail(400, 'invalid', invalid.message, invalid.hint, undefined, [invalid.field]);
+    db.nodeConfig = next;
     // Node-scope changes live in memory only.
     return ok({ ...settingsBody('node', changed), persisted: false });
   }),
@@ -1427,18 +1433,49 @@ export const handlers = [
     return ok({ items: page, node: 'kudurru-0', ...(next ? { cursor_next: next, continue: next } : {}) });
   }),
 
+  // policy state (ux-plan C3) ----------------------------------------------
+  http.get(`${B}/policies/:ns/:name/state`, ({ request, params }) => {
+    const g = guard(request, 'policies', 'read');
+    if (g) return g;
+    const p = db.policies.find((x) => x.metadata.name === params.name && (x.metadata.namespace ?? 'default') === params.ns);
+    if (!p) return fail(404, 'not_found', `Policy ${String(params.ns)}/${String(params.name)} not found`);
+    return ok(policyState(p));
+  }),
+
+  // block page (C5) -------------------------------------------------------
+  http.get(`${B}/blockpage/preview`, ({ request }) => {
+    const g = guard(request, 'settings', 'read');
+    if (g) return g;
+    const domain = new URL(request.url).searchParams.get('domain') || 'example.com';
+    const esc = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const t = getPath(db.settings, 'blockPage.title');
+    const title = esc(typeof t === 'string' && t ? t : 'This site is blocked');
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f5f2;color:#1d1b18}main{max-width:36rem;padding:2rem;border-radius:12px;background:#fff;box-shadow:0 1px 4px #0002}code{font-size:1.1em}dl{display:grid;grid-template-columns:auto 1fr;gap:.25rem 1rem}@media (prefers-color-scheme:dark){body{background:#1b1a18;color:#eee}main{background:#26241f}}</style></head><body><main><p>kudurru</p><h1>${title}</h1><p><code>${esc(domain)}</code> is blocked on this network.</p><dl><dt>Why</dt><dd>list default/ads (rule ||${esc(domain)}^)</dd><dt>Client</dt><dd>192.168.1.30</dd><dt>Node</dt><dd>kudurru-0</dd></dl><p>Ask your administrator if you think this is a mistake.</p></main></body></html>`;
+    return new HttpResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }),
+
   // blocked-services and safe-search catalogue (D60) ----------------------
+  // The icon routes are public (plain <img src>).
+  http.get(`${B}/catalogue/icons`, () => ok({ items: Object.keys(MOCK_ICONS).map((id) => ({ id, path: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { onDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) })) })),
+  http.get(`${B}/catalogue/icons/:file`, ({ params }) => {
+    const file = String(params.file).replace(/\.svg$/, '');
+    const light = file.endsWith('-dark') && ON_DARK.has(file.slice(0, -'-dark'.length));
+    const id = light ? file.slice(0, -'-dark'.length) : file;
+    const icon = light && MOCK_ICONS[id] ? (['#f2f2f2', MOCK_ICONS[id][1]] as [string, string]) : MOCK_ICONS[id];
+    if (!icon) return fail(404, 'not_found', `no icon ${id}`);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${icon[0]}"/><text x="16" y="21.5" font-family="system-ui,sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="${light ? '#111' : '#fff'}">${icon[1]}</text></svg>`;
+    return new HttpResponse(svg, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400, immutable' } });
+  }),
   http.get(`${B}/catalogue`, ({ request }) =>
     guard(request, 'policies', 'read') ??
-    ok({ schemaVersion: 1, version: '2026.10.11', license: 'Apache-2.0', origin: 'embedded', digest: '0'.repeat(64), services: MOCK_SERVICES.length, safeSearchEngines: 2 }),
+    ok({ schemaVersion: 1, version: '2026.10.11', license: 'Apache-2.0', origin: 'embedded', digest: '0'.repeat(64), services: MOCK_SERVICES.length, safeSearchEngines: MOCK_ENGINES.length }),
   ),
   http.get(`${B}/catalogue/services`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: MOCK_SERVICES })),
   http.get(`${B}/catalogue/safesearch`, ({ request }) =>
     guard(request, 'policies', 'read') ??
     ok({
       items: [
-        { id: 'google', name: 'Google Search', list: 'safesearch:google', target: 'forcesafesearch.google.com', domains: 187, source: 'https://support.google.com/websearch/answer/186669' },
-        { id: 'youtube', name: 'YouTube', list: 'safesearch:youtube', target: 'restrict.youtube.com', moderateTarget: 'restrictmoderate.youtube.com', domains: 5, source: 'https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users' },
+        ...MOCK_ENGINES,
       ],
     }),
   ),
@@ -1486,6 +1523,41 @@ function changedKeys(patch: Record<string, unknown>): string[] {
   return [...out];
 }
 
+/** A null at a key resets it to its default (internal/api patchSettings). */
+function withDefaults(next: Record<string, unknown>, patch: Record<string, unknown>, changed: string[]): Record<string, unknown> {
+  for (const p of changed) {
+    if (getPath(patch, p) !== null) continue;
+    const k = db.schema.find((x) => x.path === p);
+    if (k) setPath(next, p, structuredClone(k.default));
+  }
+  return next;
+}
+
+/** The C1 checks the server makes from the schema metadata (enum and bounds), with error.fields and the allowed values as the hint. */
+function validateSchema(next: Record<string, unknown>, changed: string[]): { message: string; field: string; hint?: string } | null {
+  for (const p of changed) {
+    const k = db.schema.find((x) => x.path === p);
+    const v = getPath(next, p);
+    if (!k) continue;
+    if (k.enum?.length && typeof v === 'string' && !k.enum.some((o) => o.value === v)) {
+      const allowed = k.enum.map((o) => o.value);
+      return { message: `settings: ${p}: "${v}" is not allowed`, field: p, hint: `${p} must be one of: ${allowed.join(', ')}` };
+    }
+    if (typeof v === 'number' && ((typeof k.min === 'number' && v < k.min) || (typeof k.max === 'number' && v > k.max))) {
+      return { message: `settings: ${p}: ${v} is outside ${k.min ?? '-∞'}..${k.max ?? '∞'}`, field: p };
+    }
+  }
+  return null;
+}
+
+/** What internal/config/blockpage.go refuses (the node's listener has an address in the mock). */
+function validateBlockPage(settings: Record<string, unknown>): string | null {
+  if (getPath(settings, 'blocking.defaultResponse') === 'blockPage' && getPath(settings, 'blockPage.enabled') !== true) {
+    return 'settings: blocking.defaultResponse blockPage needs blockPage.enabled: true (the block page listener)';
+  }
+  return null;
+}
+
 const STRATEGIES = ['', 'parallel_best', 'strict', 'random', 'rtt_weighted'];
 
 /** What internal/upstream Config.Validate refuses, in its words. */
@@ -1521,10 +1593,99 @@ export function mergePatch(target: Record<string, unknown>, patch: Record<string
 
 export type { Policy };
 
-/** A few entries of the embedded catalogue for GET /catalogue/services. */
+/** Logos the mock serves (GET /catalogue/icons): a brand colour and a glyph. */
+const MOCK_ICONS: Record<string, [string, string]> = {
+  youtube: ['#ff0000', 'Y'],
+  netflix: ['#141414', 'N'],
+  tiktok: ['#010101', 'T'],
+  facebook: ['#1877f2', 'f'],
+  instagram: ['#c13584', 'I'],
+  twitch: ['#9146ff', 'T'],
+  discord: ['#5865f2', 'D'],
+  spotify: ['#1db954', 'S'],
+  steam: ['#1b2838', 'S'],
+  chatgpt: ['#10a37f', 'G'],
+  google: ['#4285f4', 'G'],
+  bing: ['#008373', 'b'],
+  duckduckgo: ['#de5833', 'D'],
+  // Upstream providers (UpstreamWizardPage presets).
+  cloudflare: ['#f38020', 'C'],
+  'adguard-home': ['#68bc71', 'A'],
+  nextdns: ['#007bff', 'N'],
+  mullvad: ['#294d73', 'M'],
+  cisco: ['#049fd9', 'C'],
+  'control-d': ['#1a1a1a', 'D'],
+};
+
+/** Logos drawn dark on transparent get a light variant for dark backgrounds (GET /catalogue/icons onDark). */
+const ON_DARK = new Set(['tiktok', 'control-d']);
+
+const icon = (id: string) =>
+  MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { iconOnDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) } : {};
+
+const svc = (id: string, name: string, category: string, domains: string[]) => ({
+  id,
+  name,
+  category,
+  list: `service:${id}`,
+  rules: domains.length,
+  domains: domains.map((d) => `||${d}^`),
+  source: 'first-party domains of the service',
+  ...icon(id),
+});
+
+/** Entries of the embedded catalogue for GET /catalogue/services (roblox, fortnite and 9gag have no logo). */
 const MOCK_SERVICES = [
-  { id: 'youtube', name: 'YouTube', category: 'video', list: 'service:youtube', rules: 2, domains: ['||youtube.com^', '||ytimg.com^'], source: 'first-party domains of the service' },
-  { id: 'netflix', name: 'Netflix', category: 'video', list: 'service:netflix', rules: 1, domains: ['||netflix.com^'], source: 'first-party domains of the service' },
-  { id: 'tiktok', name: 'TikTok', category: 'social', list: 'service:tiktok', rules: 1, domains: ['||tiktok.com^'], source: 'first-party domains of the service' },
-  { id: 'roblox', name: 'Roblox', category: 'gaming', list: 'service:roblox', rules: 1, domains: ['||roblox.com^'], source: 'first-party domains of the service' },
+  svc('youtube', 'YouTube', 'video', ['youtube.com', 'ytimg.com']),
+  svc('netflix', 'Netflix', 'video', ['netflix.com']),
+  svc('twitch', 'Twitch', 'video', ['twitch.tv', 'ttvnw.net']),
+  svc('tiktok', 'TikTok', 'social', ['tiktok.com']),
+  svc('facebook', 'Facebook', 'social', ['facebook.com', 'fbcdn.net']),
+  svc('instagram', 'Instagram', 'social', ['instagram.com', 'cdninstagram.com']),
+  svc('9gag', '9GAG', 'social', ['9gag.com']),
+  svc('discord', 'Discord', 'messaging', ['discord.com', 'discord.gg']),
+  svc('spotify', 'Spotify', 'music', ['spotify.com']),
+  svc('roblox', 'Roblox', 'gaming', ['roblox.com']),
+  svc('fortnite', 'Fortnite', 'gaming', ['fortnite.com']),
+  svc('steam', 'Steam', 'gaming', ['steampowered.com', 'steamcommunity.com']),
+  svc('chatgpt', 'ChatGPT', 'ai', ['chatgpt.com', 'openai.com']),
 ];
+
+/** GET /catalogue/safesearch (pixabay has no logo). */
+const MOCK_ENGINES = [
+  { id: 'google', name: 'Google Search', list: 'safesearch:google', target: 'forcesafesearch.google.com', domains: 187, source: 'https://support.google.com/websearch/answer/186669', ...icon('google') },
+  { id: 'youtube', name: 'YouTube', list: 'safesearch:youtube', target: 'restrict.youtube.com', moderateTarget: 'restrictmoderate.youtube.com', domains: 5, source: 'https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users', ...icon('youtube') },
+  { id: 'bing', name: 'Bing', list: 'safesearch:bing', target: 'strict.bing.com', domains: 2, source: 'https://help.bing.microsoft.com/', ...icon('bing') },
+  { id: 'duckduckgo', name: 'DuckDuckGo', list: 'safesearch:duckduckgo', target: 'safe.duckduckgo.com', domains: 1, source: 'https://duckduckgo.com/duckduckgo-help-pages/', ...icon('duckduckgo') },
+  { id: 'pixabay', name: 'Pixabay', list: 'safesearch:pixabay', target: 'safesearch.pixabay.com', domains: 1, source: 'https://pixabay.com/' },
+];
+
+/** GET /policies/{ns}/{name}/state: the objects' state plus the query log of the last 24 hours. */
+function policyState(p: Policy) {
+  const st = derivePolicyState(p, { policies: db.policies, groups: db.groups, lists: db.lists, services: MOCK_SERVICES, engines: MOCK_ENGINES, now: new Date() });
+  const ref = st.policy;
+  const rows = db.queries.filter((q) => q.policy === ref);
+  const blocked = rows.filter((q) => q.status_class === 'blocked');
+  const count = (keys: string[]) => {
+    const m = new Map<string, number>();
+    for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  };
+  const names = new Map(rows.map((q) => [q.client.ip, q.client.name]));
+  const scale = 20;
+  return {
+    ...st,
+    // The server fills in blocking.defaultResponse when the policy sets none.
+    blockMode: st.blockMode || ((getPath(db.settings, 'blocking.defaultResponse') as string | undefined) ?? 'zeroIP'),
+    // The upstream group exists when upstreams.groups names it.
+    ...(st.upstreamGroup ? { upstreamGroup: { name: st.upstreamGroup.name, exists: st.upstreamGroup.name in upstreamGroups() } } : {}),
+    groups: st.groups.map((g) => ({ ...g, seen24h: new Set(db.queries.filter((q) => q.client.group === g.ref).map((q) => q.client.ip)).size })),
+    stats24h: {
+      queries: rows.length * scale,
+      blocked: blocked.length * scale,
+      blockedPercent: rows.length ? Math.round((blocked.length * 1000) / rows.length) / 10 : 0,
+      topBlocked: count(blocked.map((q) => q.domain)).map(([domain, n]) => ({ domain, count: n * scale })),
+      topClients: count(rows.map((q) => q.client.ip)).map(([key, n]) => ({ key, ...(names.get(key) ? { name: names.get(key) } : {}), count: n * scale })),
+    },
+  };
+}

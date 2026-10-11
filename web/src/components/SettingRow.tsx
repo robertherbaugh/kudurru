@@ -1,130 +1,240 @@
-// One settings key rendered from its metadata (§10 principle 10): a typed
-// editor bound by data-configkey, or the value read-only with the reason
-// when the key is host-only, set by the environment, or not writable for
-// this principal.
+// One settings key rendered from its metadata (§10 principle 10, C1): the
+// human label with the path small underneath, a typed control chosen by the
+// key's shape (lib/settingsMeta.ts, lib/shapes.ts), a "changed" badge and
+// "Reset to default" when the value differs from the default, and "Edit as
+// JSON" as the escape hatch for lists and maps. Host-only,
+// environment-set and not-permitted keys show the value read-only with the
+// reason. Rows are bound by data-configkey.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { ApiError } from '../api/client';
 import type { SettingKey } from '../api/types';
 import { displayValue, lockFor, parseValue } from '../lib/settings';
+import { labelOf, metaFor, shapeOf, type UiMeta, type UiShape } from '../lib/settingsMeta';
+import { editable, fromDraft, sameValue, shapeError, toDraft } from '../lib/shapes';
+import { durationLabel } from './fields/DurationField';
+import { ShapeField } from './fields/ShapeField';
 
 export interface SettingRowProps {
   k: SettingKey;
   value: unknown;
   canWrite: boolean;
-  /** Saves a parsed value; rejects with a user-facing error. */
+  /** Saves a value (null resets the key to its default); rejects with a user-facing error. */
   onSave: (k: SettingKey, value: unknown) => Promise<void>;
+  /** Metadata (default: metaFor(k)). */
+  meta?: UiMeta;
   /** Shown under the help text (e.g. a link to a dedicated editor). */
   extra?: ReactNode;
+  /** Replaces the structured editor (upstreams.groups shows a summary and a link). */
+  summary?: ReactNode;
 }
 
-export function SettingRow({ k, value, canWrite, onSave, extra }: SettingRowProps) {
-  const id = useId();
-  const lock = lockFor(k, canWrite);
-  const shown = k.writeOnly ? '' : displayValue(k, value);
-  const [text, setText] = useState(shown);
-  const [error, setError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
-  useEffect(() => setText(shown), [shown]);
-  const dirty = text !== shown;
-  const multiline = k.type === 'list' || k.type === 'map' || k.type === 'string[]';
+/** The parts of a key a 400 named (error.fields), relative to the key: "corp › strategy". */
+export function failedParts(k: SettingKey, err: unknown): string[] {
+  const api = err instanceof ApiError ? err : err instanceof Error && err.cause instanceof ApiError ? err.cause : undefined;
+  return (api?.fields ?? [])
+    .filter((f) => f !== k.path)
+    .map((f) => (f.startsWith(`${k.path}.`) ? f.slice(k.path.length + 1).split('.').join(' › ') : f));
+}
 
-  const save = async (raw: string) => {
-    let parsed: unknown;
-    try {
-      parsed = parseValue(k, raw);
-    } catch (e) {
-      setError((e as Error).message);
-      return;
-    }
+/** A value in words for the "Default:" line: enum labels, durations, lists. */
+export function describeValue(k: SettingKey, shape: UiShape, v: unknown): string {
+  if (v === undefined || v === null || v === '') return '(empty)';
+  if (typeof v === 'string' && shape.enum?.length) return shape.enum.find((o) => o.value === v)?.label ?? v;
+  if (k.type === 'duration' && typeof v === 'string') return `${durationLabel(v)} (${v})`;
+  if (k.type === 'bool') return v === true ? 'on' : 'off';
+  if (Array.isArray(v)) return v.length ? v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ') : '(none)';
+  if (typeof v === 'object') return Object.keys(v).length ? JSON.stringify(v) : '(none)';
+  return displayValue(k, v);
+}
+
+export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }: SettingRowProps) {
+  const id = useId();
+  const m = useMemo(() => meta ?? metaFor(k), [meta, k]);
+  const shape = useMemo(() => shapeOf(k, m), [k, m]);
+  const label = labelOf(k, m);
+  const lock = lockFor(k, canWrite);
+  const structured = !k.writeOnly && editable(shape);
+  const composite = k.type === 'list' || k.type === 'map' || k.type === 'string[]';
+
+  // The structured draft and the JSON/text fallback.
+  const baseline = useMemo(() => (structured ? fromDraft(shape, toDraft(shape, value)) : value), [structured, shape, value]);
+  const shownText = k.writeOnly ? '' : displayValue(k, value);
+  const [draft, setDraft] = useState<unknown>(() => toDraft(shape, value));
+  const [text, setText] = useState(shownText);
+  const [asJSON, setAsJSON] = useState(!structured && composite);
+  const [error, setError] = useState<string | undefined>();
+  const [parts, setParts] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const valueKey = JSON.stringify(value ?? null);
+  useEffect(() => {
+    setDraft(toDraft(shape, value));
+    setText(k.writeOnly ? '' : displayValue(k, value));
     setError(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the saved value changes
+  }, [valueKey, shape]);
+
+  const jsonMode = asJSON || (!structured && composite);
+  const dirty = jsonMode || !structured ? text !== shownText : !sameValue(k.type, fromDraft(shape, draft), baseline);
+  const changed = !k.writeOnly && !sameValue(k.type, value, k.default);
+
+  const run = async (v: unknown): Promise<boolean> => {
+    setError(undefined);
+    setParts([]);
     setBusy(true);
     try {
-      await onSave(k, parsed);
+      await onSave(k, v);
+      return true;
     } catch (e) {
-      setError((e as Error).message);
+      // The key is on screen already; "settings: " says nothing here.
+      setError((e as Error).message.replace(/^settings: /, ''));
+      setParts(failedParts(k, e));
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
+  const save = async () => {
+    if (jsonMode || !structured) {
+      let parsed: unknown;
+      try {
+        parsed = parseValue(k, text);
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      }
+      await run(parsed);
+      return;
+    }
+    const e = shapeError(shape, draft);
+    if (e) {
+      setError(e);
+      return;
+    }
+    await run(fromDraft(shape, draft));
+  };
+
+  const cancel = () => {
+    setDraft(toDraft(shape, value));
+    setText(shownText);
+    setError(undefined);
+  };
+
+  const control = () => {
+    if (lock.locked) {
+      if (structured && composite) return <ShapeField label={label} isLabelHidden shape={shape} value={toDraft(shape, value)} onChange={() => {}} isDisabled />;
+      return composite ? (
+        <pre id={id} className="k-pre" aria-readonly="true" tabIndex={0}>
+          {k.writeOnly ? '(hidden)' : shownText || '(empty)'}
+        </pre>
+      ) : (
+        <input id={id} className="k-native-input" aria-label={label} readOnly aria-readonly="true" value={k.writeOnly ? '(hidden)' : shownText} />
+      );
+    }
+    if (k.type === 'bool') {
+      return (
+        <Switch
+          label={label}
+          isLabelHidden
+          value={draft === true}
+          isLoading={busy}
+          onChange={(on) => {
+            setDraft(on);
+            void run(on).then((ok) => {
+              if (!ok) setDraft(!on);
+            });
+          }}
+        />
+      );
+    }
+    if (jsonMode) {
+      return (
+        <textarea
+          id={id}
+          aria-label={`${label} (JSON)`}
+          className="k-native-input k-mono"
+          rows={Math.min(14, Math.max(3, text.split('\n').length))}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          spellCheck={false}
+          aria-invalid={!!error}
+        />
+      );
+    }
+    if (k.writeOnly) {
+      return <input id={id} className="k-native-input" aria-label={label} type="password" value={text} placeholder="unchanged" onChange={(e) => setText(e.target.value)} />;
+    }
+    if (summary) return summary;
+    return (
+      <ShapeField
+        label={label}
+        isLabelHidden
+        shape={shape}
+        value={draft}
+        onChange={setDraft}
+        placeholder={k.type === 'string' ? displayValue(k, k.default) : undefined}
+      />
+    );
+  };
+
   return (
-    <div className="k-setting" data-configkey={k.path} data-locked={lock.locked ? 'true' : 'false'}>
-      <div className="k-stack">
-        <label htmlFor={id} className="k-mono k-setting-key">
-          {k.path}
-        </label>
+    <div className="k-setting" data-configkey={k.path} data-locked={lock.locked ? 'true' : 'false'} data-changed={changed ? 'true' : 'false'}>
+      <div className="k-stack-sm">
+        <span className="k-setting-label">{label}</span>
+        <span className="k-mono k-small k-muted k-setting-key">{k.path}</span>
         <span className="k-small">{k.help}</span>
         {extra}
         <span className="k-row">
           <Badge variant="neutral" label={k.scope} />
-          <Badge variant="neutral" label={k.type} />
+          {changed ? <Badge variant="blue" label="changed" /> : null}
           {k.hostOnly ? <Badge variant="orange" label="host only" /> : null}
           {k.envLocked ? <Badge variant="purple" label="environment" /> : null}
           {k.restartRequired ? <Badge variant="warning" label="restart" /> : null}
         </span>
       </div>
       <div className="k-stack k-setting-value">
+        {control()}
         {lock.locked ? (
-          <>
-            {multiline ? (
-              <pre id={id} className="k-pre" aria-readonly="true" tabIndex={0}>
-                {k.writeOnly ? '(hidden)' : shown || '(empty)'}
-              </pre>
-            ) : (
-              <input id={id} className="k-native-input" readOnly aria-readonly="true" value={k.writeOnly ? '(hidden)' : shown} />
-            )}
-            <p className="k-small k-muted" data-testid={`lock-${k.path}`}>
-              {lock.reason}
-            </p>
-          </>
-        ) : k.type === 'bool' ? (
-          <Switch
-            label={k.path}
-            isLabelHidden
-            value={text === 'true'}
-            isLoading={busy}
-            onChange={(on) => {
-              setText(String(on));
-              void save(String(on));
-            }}
-          />
+          <p className="k-small k-muted" data-testid={`lock-${k.path}`}>
+            {lock.reason}
+          </p>
         ) : (
-          <form
-            className="k-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void save(text);
-            }}
-          >
-            {multiline ? (
-              <textarea id={id} className="k-native-input k-mono" rows={Math.min(10, Math.max(3, text.split('\n').length))} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-invalid={!!error} />
-            ) : (
-              <input
-                id={id}
-                className="k-native-input"
-                type={k.writeOnly ? 'password' : 'text'}
-                value={text}
-                placeholder={k.writeOnly ? 'unchanged' : displayValue(k, k.default)}
-                onChange={(e) => setText(e.target.value)}
-                aria-invalid={!!error}
-              />
-            )}
+          <>
             {error ? (
               <span className="k-error-text" role="alert">
                 {error}
+                {parts.length ? <span className="k-error-parts"> (at {parts.join(', ')})</span> : null}
               </span>
             ) : null}
-            {dirty ? (
-              <span className="k-row">
-                <Button type="submit" label="Save" size="sm" variant="primary" isLoading={busy} />
-                <Button label="Reset" size="sm" variant="ghost" onClick={() => setText(shown)} />
-              </span>
-            ) : (
-              <span className="k-small k-muted">Default: {displayValue(k, k.default) || '(empty)'}</span>
-            )}
-          </form>
+            <span className="k-row">
+              {dirty && k.type !== 'bool' ? (
+                <>
+                  <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
+                  <Button label="Cancel" size="sm" variant="ghost" onClick={cancel} />
+                </>
+              ) : (
+                <span className="k-small k-muted">Default: {describeValue(k, shape, k.default)}</span>
+              )}
+              <span className="k-spacer" />
+              {structured && composite && !summary ? (
+                <Button
+                  label={asJSON ? 'Edit as form' : 'Edit as JSON'}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    cancel();
+                    setAsJSON(!asJSON);
+                  }}
+                />
+              ) : summary ? (
+                <Button label={asJSON ? 'Show summary' : 'Edit as JSON'} size="sm" variant="ghost" onClick={() => setAsJSON(!asJSON)} />
+              ) : null}
+              {changed && !dirty ? <Button label="Reset to default" size="sm" variant="ghost" isLoading={busy} onClick={() => void run(null)} /> : null}
+            </span>
+          </>
         )}
       </div>
     </div>

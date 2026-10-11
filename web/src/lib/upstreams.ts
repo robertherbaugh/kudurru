@@ -19,6 +19,11 @@ export const STRATEGIES = [
   { value: 'rtt_weighted', label: 'Fastest first', help: 'Pick by smoothed round-trip time, weighted at random.' },
 ] as const;
 
+/** The label of a strategy ("" is the default, parallel_best). */
+export function strategyLabelOf(s: string): string {
+  return STRATEGIES.find((x) => x.value === (s || 'parallel_best'))?.label ?? s;
+}
+
 export const ECS_MODES = [
   { value: 'strip', label: 'Strip (never send a client subnet)' },
   { value: 'forward', label: "Forward the client's own option" },
