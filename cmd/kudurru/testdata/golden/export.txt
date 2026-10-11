@@ -1,0 +1,27 @@
+---
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata:
+  name: ads
+  namespace: default
+spec:
+  mode: block
+  refreshInterval: 24h
+  sources:
+  - name: stevenblack
+    url: https://lists.example/hosts?token=REDACTED
+  - inline:
+    - ads.example.net
+    name: local
+---
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata:
+  name: allow
+  namespace: default
+spec:
+  mode: allow
+  sources:
+  - inline:
+    - good.example.com
+    name: inline

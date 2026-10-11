@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
+	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
@@ -22,11 +24,33 @@ var defaultConfigPath = "/etc/kudurru/kudurru.yaml"
 func main() {
 	if err := newRoot().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if hint := errorHint(err); hint != "" {
+			fmt.Fprintln(os.Stderr, "hint:", hint)
+		}
 		os.Exit(1)
 	}
 }
 
+// errorHint suggests the next step for common API failures.
+func errorHint(err error) string {
+	switch {
+	case apiclient.IsStatus(err, http.StatusUnauthorized):
+		return "the server rejected the credentials; run `kudurru login` (or check KUDURRU_TOKEN / --token)"
+	case apiclient.IsStatus(err, http.StatusForbidden):
+		return "the token lacks the permission named above; ask an admin for a RoleBinding"
+	case apiclient.IsKey(err, "read_only"):
+		return "this deployment is read-only through the API (ha-static); edit objects.d on every node"
+	}
+	return ""
+}
+
 func newRoot() *cobra.Command {
+	return newRootWith(newCLIOpts())
+}
+
+// newRootWith builds the command tree around o, the client options the
+// API verbs share (tests inject the environment through it).
+func newRootWith(o *cliOpts) *cobra.Command {
 	var configPath string
 	root := &cobra.Command{
 		Use:           "kudurru",
@@ -34,15 +58,28 @@ func newRoot() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&configPath, "config", envOr("KUDURRU_CONFIG", defaultConfigPath), "path to kudurru.yaml")
-
-	root.AddCommand(
-		newServeCmd(&configPath),
-		newVersionCmd(),
-		newHealthCmd(),
-		newDoctorCmd(&configPath),
-		newConfigCmd(&configPath),
+	root.PersistentFlags().StringVar(&configPath, "config", envOr("KUDURRU_CONFIG", defaultConfigPath), "path to the server's kudurru.yaml")
+	o.addFlags(root)
+	root.AddGroup(
+		&cobra.Group{ID: "server", Title: "Server:"},
+		&cobra.Group{ID: "objects", Title: "Objects:"},
+		&cobra.Group{ID: "dns", Title: "DNS and lists:"},
+		&cobra.Group{ID: "observe", Title: "Observe:"},
+		&cobra.Group{ID: "admin", Title: "Setup and administration:"},
 	)
+	add := func(group string, cmds ...*cobra.Command) {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
+	add("server", newServeCmd(&configPath), newHealthCmd(), newDoctorCmd(&configPath, o), newVersionCmd())
+	add("objects", newGetCmd(o), newApplyCmd(o), newDeleteCmd(o), newDescribeCmd(o), newExportCmd(o), newBackupCmd(o), newRestoreCmd(o), newImportCmd(o))
+	add("dns", newZonesCmd(o), newRecordsCmd(o), newListsCmd(o), newBlockingCmd(o), newCacheCmd(o), newQueryCmd(o))
+	add("observe", newStatsCmd(o), newLogsCmd(o), newNodesCmd(o), newAuditCmd(o))
+	add("admin", newLoginCmd(o), newLogoutCmd(o), newConfigCmd(&configPath, o), newSettingsCmd(o), newAdminCmd(o), newAPICmd(o), newCompletionCmd())
+	root.SetHelpCommandGroupID("admin")
+	root.SetCompletionCommandGroupID("admin")
 	return root
 }
 
@@ -78,8 +115,9 @@ func newVersionCmd() *cobra.Command {
 	return cmd
 }
 
-func newConfigCmd(configPath *string) *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "Inspect configuration"}
+func newConfigCmd(configPath *string, o *cliOpts) *cobra.Command {
+	cmd := &cobra.Command{Use: "config", Short: "Inspect the server configuration and manage CLI contexts"}
+	cmd.AddCommand(contextCmds(o)...)
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "show",
@@ -122,47 +160,6 @@ func newConfigCmd(configPath *string) *cobra.Command {
 		},
 	)
 	return cmd
-}
-
-func newDoctorCmd(configPath *string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Check the local configuration and environment",
-		RunE: func(c *cobra.Command, _ []string) error {
-			w := c.OutOrStdout()
-			info := version.Get()
-			say := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
-			say("kudurru %s (%s)\n", info.Version, info.Platform)
-			cfg, err := loadConfig(c, *configPath)
-			if err != nil {
-				say("config: FAIL %v\n", err)
-				return err
-			}
-			src := cfg.Source
-			if src == "" {
-				src = "built-in defaults (no file at " + *configPath + ")"
-			}
-			say("config: OK (%s)\n", src)
-			say("node: %s  dataDir: %s\n", cfg.Node.Name, cfg.Node.DataDir)
-			for _, l := range cfg.Listeners.DNS {
-				say("dns listener: %s %v\n", l.Address, l.Protocols)
-			}
-			for name, g := range cfg.Upstreams.Groups {
-				say("upstream group %s: %v (%s, %s)\n", name, g.Servers, g.Strategy, g.Timeout)
-			}
-			if len(cfg.EnvLocked) > 0 {
-				say("env-locked keys: %v\n", cfg.EnvLocked)
-			}
-			if st, err := os.Stat(cfg.Node.DataDir); err != nil {
-				say("dataDir: WARN %v\n", err)
-			} else if !st.IsDir() {
-				say("dataDir: WARN %s is not a directory\n", cfg.Node.DataDir)
-			} else {
-				say("dataDir: OK\n")
-			}
-			return nil
-		},
-	}
 }
 
 func envOr(name, def string) string {

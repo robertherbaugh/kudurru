@@ -1,0 +1,3 @@
+NAME     READY   LEADER   STATE          VERSION
+node-a   True    true     live           v0.1.0
+node-b   False   false    fromSnapshot   v0.1.0

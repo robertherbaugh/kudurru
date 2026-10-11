@@ -1,0 +1,11 @@
+- current: false
+  name: home
+  server: SERVER
+  tokenStore: keyring
+  user: admin
+- current: true
+  name: lab
+  namespace: apps
+  server: OTHER
+  tokenStore: keyring
+  user: admin

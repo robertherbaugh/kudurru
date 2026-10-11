@@ -1,0 +1,2 @@
+NAMESPACE   NAME   ZONE               NAMES   READY     AGE
+apps        api    home-example-com   1       Unknown   5m

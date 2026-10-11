@@ -1,0 +1,3 @@
+NAME    MODE    ENTRIES   LAST-FETCH   READY   AGE
+ads     block   81234     120m         True    30d
+allow   allow   1         -            True    30d

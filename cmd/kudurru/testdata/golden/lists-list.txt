@@ -1,0 +1,3 @@
+NAMESPACE   NAME    MODE    ENTRIES   LAST-FETCH   READY   AGE
+default     ads     block   81234     120m         True    30d
+default     allow   allow   1         -            True    30d
