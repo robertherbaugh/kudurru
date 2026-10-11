@@ -226,15 +226,15 @@ func TestReleaseTagScript(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "hack"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "hack"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "hack", "release-tag.sh"), readRepoFile(t, "hack/release-tag.sh"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "hack", "release-tag.sh"), readRepoFile(t, "hack/release-tag.sh"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
+		cmd := exec.Command("git", args...) //nolint:gosec // the test drives git in its scratch repository with its own arguments
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
@@ -244,11 +244,11 @@ func TestReleaseTagScript(t *testing.T) {
 	}
 	commit := func(version, file string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte(version+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte(version+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if file != "" {
-			if err := os.WriteFile(filepath.Join(dir, file), []byte(file), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, file), []byte(file), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -258,7 +258,7 @@ func TestReleaseTagScript(t *testing.T) {
 	// run returns the key=value output, or the error message with ok false.
 	run := func(mode string) (map[string]string, string, bool) {
 		t.Helper()
-		cmd := exec.Command("bash", "hack/release-tag.sh", mode)
+		cmd := exec.Command("bash", "hack/release-tag.sh", mode) //nolint:gosec // mode is one of the test's own literals
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GITHUB_OUTPUT=")
 		var stdout, stderr bytes.Buffer
