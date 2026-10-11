@@ -126,9 +126,15 @@ func (h *harness) run(args ...string) (string, string, error) {
 
 func (h *harness) mustRun(args ...string) string {
 	h.t.Helper()
+	return h.mustRunT(h.t, args...)
+}
+
+// mustRunT is mustRun failing t (a subtest) instead of the harness's test.
+func (h *harness) mustRunT(t *testing.T, args ...string) string {
+	t.Helper()
 	out, errOut, err := h.run(args...)
 	if err != nil {
-		h.t.Fatalf("kudurru %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, out, errOut)
+		t.Fatalf("kudurru %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, out, errOut)
 	}
 	return out
 }

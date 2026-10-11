@@ -1,0 +1,2 @@
+NAMESPACE   NAME   MODE    RULE                 SOURCE
+default     ads    block   ||ads.example.net^   local

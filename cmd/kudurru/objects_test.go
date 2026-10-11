@@ -30,7 +30,7 @@ func TestGetTables(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.golden, func(t *testing.T) {
-			golden(t, h, tc.golden, h.mustRun(tc.args...))
+			golden(t, h, tc.golden, h.mustRunT(t, tc.args...))
 		})
 	}
 	if n := len(h.api.requested("GET /api/v1/objects/dnszones?continue=")); n < 1 {

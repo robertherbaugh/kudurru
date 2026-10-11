@@ -1,0 +1,3 @@
+RANK   DOMAIN                COUNT   PERCENT   NAME   BLOCKED
+1      ads.example.net       900     5.0%      -      900
+2      tracker.example.org   450     2.5%      -      450

@@ -313,6 +313,14 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		f.mu.Unlock()
 		f.writeJSON(w, 200, map[string]any{"items": items, "took_ms": 0.2})
 	})
+	mux.HandleFunc("GET /api/v1/zones/{zone}", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("zone") != "home-example-com" {
+			f.writeErr(w, 404, "not_found", "zone "+r.PathValue("zone")+" not found", "")
+			return
+		}
+		f.writeJSON(w, 200, map[string]any{"name": "home-example-com", "zoneName": "home.example.com.", "type": "primary", "serial": 2026100101,
+			"recordCount": 12, "ready": "True", "managedBy": "api", "took_ms": 0.1})
+	})
 	mux.HandleFunc("GET /api/v1/zones/{zone}/records", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 200, map[string]any{"items": f.records})
 	})

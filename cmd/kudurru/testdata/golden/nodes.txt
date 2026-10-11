@@ -1,0 +1,2 @@
+NAME     READY   ROLES     LEADER   VERSION
+node-a   True    dns,api   true     v0.1.0
