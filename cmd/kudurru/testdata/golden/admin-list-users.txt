@@ -1,0 +1,3 @@
+NAME     DISABLED   MUST-CHANGE-PASSWORD   ROLES
+admin    false      true                   admin
+viewer   true       false                  -

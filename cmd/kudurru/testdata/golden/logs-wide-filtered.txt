@@ -1,0 +1,2 @@
+TIME                 CLIENT                 TYPE   DOMAIN                                    STATUS              RCODE         MS  UPSTREAM/LIST  NODE PROTO ANSWER
+2026-10-11 11:59:04  laptop(192.168.1.24)   A      host4.example.com                         blocked_list        NOERROR      6.0  ads: ||host4.example.com^  node-a udp 93.184.216.34
