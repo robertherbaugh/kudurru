@@ -403,22 +403,35 @@ func TestChartLint(t *testing.T) {
 	}
 }
 
-// TestCRDChartMatchesBases keeps charts/kudurru-crds/templates a verbatim
-// copy of config/crd/bases (make manifests is the source).
+// TestCRDChartMatchesBases keeps charts/kudurru-crds/templates equal to
+// config/crd/bases (make manifests is the source) plus the
+// helm.sh/resource-policy: keep annotation that stops `helm uninstall` from
+// deleting the CRDs and with them every kudurru.io object.
 func TestCRDChartMatchesBases(t *testing.T) {
 	root := repoRoot(t)
 	bases, err := filepath.Glob(filepath.Join(root, "config/crd/bases/*.yaml"))
 	if err != nil || len(bases) == 0 {
 		t.Fatalf("no CRD bases: %v", err)
 	}
+	const marker = "    controller-gen.kubebuilder.io/version:"
 	for _, b := range bases {
-		want, err := os.ReadFile(b) //nolint:gosec // repository file
+		base, err := os.ReadFile(b) //nolint:gosec // repository file
 		if err != nil {
 			t.Fatal(err)
 		}
+		var want bytes.Buffer
+		for _, line := range strings.SplitAfter(string(base), "\n") {
+			want.WriteString(line)
+			if strings.HasPrefix(line, marker) {
+				want.WriteString("    helm.sh/resource-policy: keep\n")
+			}
+		}
 		got, err := os.ReadFile(filepath.Join(root, "charts/kudurru-crds/templates", filepath.Base(b))) //nolint:gosec // repository file
-		if err != nil || !bytes.Equal(got, want) {
+		if err != nil || !bytes.Equal(got, want.Bytes()) {
 			t.Errorf("charts/kudurru-crds/templates/%s differs from config/crd/bases; run make manifests", filepath.Base(b))
+		}
+		if !strings.Contains(string(got), "helm.sh/resource-policy: keep") {
+			t.Errorf("charts/kudurru-crds/templates/%s lacks helm.sh/resource-policy: keep", filepath.Base(b))
 		}
 	}
 }

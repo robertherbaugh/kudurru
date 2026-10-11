@@ -72,7 +72,11 @@ generate: manifests
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/... output:crd:artifacts:config=config/crd/bases
 	mkdir -p charts/kudurru-crds/templates
-	cp config/crd/bases/*.yaml charts/kudurru-crds/templates/
+	@# The chart copies carry helm.sh/resource-policy: keep so that
+	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
+	for f in config/crd/bases/*.yaml; do \
+		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
+	done
 	$(MAKE) --no-print-directory validator-crds
 
 ## validator-crds: copy the CRDs into the store validator's go:embed directory (D34)

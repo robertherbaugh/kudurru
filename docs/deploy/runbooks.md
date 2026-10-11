@@ -33,8 +33,9 @@ but not rescheduling.
 **During an outage:**
 
 1. `kubectl` may be down too; probe the pods directly:
-   `curl -s http://<pod-ip>:8081/healthz | jq .snapshotAge` or the metrics
-   `kudurru_store_snapshot_serving` and `kudurru_store_snapshot_age_seconds`
+   `curl -s http://<pod-ip>:8081/healthz | jq .components.zonecache` and the
+   metrics `kudurru_store_snapshot_serving` and
+   `kudurru_store_snapshot_age_seconds` on `:9153/metrics`
    (alerts `KudurruServingFromSnapshot` after 15 min, `KudurruSnapshotStale`
    at 12 h).
 2. Do not delete kudurru pods: a rescheduled pod without a PVC has no

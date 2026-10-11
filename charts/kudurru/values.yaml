@@ -24,6 +24,9 @@ imagePullSecrets: []
 
 nameOverride: ""
 fullnameOverride: ""
+# -- Cluster DNS domain, used for KUDURRU_HEADLESS_SERVICE
+# (<headless>.<namespace>.svc.<clusterDomain>).
+clusterDomain: cluster.local
 
 serviceAccount:
   create: true
