@@ -147,8 +147,16 @@ type Limits struct {
 	// ReadTimeout bounds reading the first query of a TCP/DoT connection,
 	// a DoQ stream and DoH request headers. Default 2s.
 	ReadTimeout time.Duration
-	// WriteTimeout bounds writing a response. Default 2s.
+	// WriteTimeout bounds writing a response on DoQ and DoH. Default 2s.
 	WriteTimeout time.Duration
+	// StreamWriteTimeout bounds each message written on a TCP or DoT
+	// connection, zone transfer streams included: a client that accepts
+	// no data for this long loses the connection. It is longer than
+	// WriteTimeout because the kernel wakes a blocked writer only once
+	// its send buffer has drained to a third, which takes two thirds of
+	// the buffer (megabytes once autotuned) divided by the client's read
+	// rate. Default 30s.
+	StreamWriteTimeout time.Duration
 	// IdleTimeout closes idle TCP, DoT and DoH connections. Default 10s.
 	IdleTimeout time.Duration
 	// MaxTCPQueries caps the queries served on one TCP or DoT connection;
@@ -183,15 +191,16 @@ type Limits struct {
 
 // Default limits.
 const (
-	DefaultReadTimeout     = 2 * time.Second
-	DefaultWriteTimeout    = 2 * time.Second
-	DefaultIdleTimeout     = 10 * time.Second
-	DefaultQUICIdleTimeout = 30 * time.Second
-	DefaultQUICMaxStreams  = 256
-	DefaultQUICWorkers     = 1024
-	DefaultMaxHeaderBytes  = 16 << 10
-	DefaultShutdownTimeout = 5 * time.Second
-	maxDNSMessage          = 65535
+	DefaultReadTimeout        = 2 * time.Second
+	DefaultWriteTimeout       = 2 * time.Second
+	DefaultStreamWriteTimeout = 30 * time.Second
+	DefaultIdleTimeout        = 10 * time.Second
+	DefaultQUICIdleTimeout    = 30 * time.Second
+	DefaultQUICMaxStreams     = 256
+	DefaultQUICWorkers        = 1024
+	DefaultMaxHeaderBytes     = 16 << 10
+	DefaultShutdownTimeout    = 5 * time.Second
+	maxDNSMessage             = 65535
 )
 
 func (l Limits) withDefaults() Limits {
@@ -202,6 +211,7 @@ func (l Limits) withDefaults() Limits {
 	}
 	def(&l.ReadTimeout, DefaultReadTimeout)
 	def(&l.WriteTimeout, DefaultWriteTimeout)
+	def(&l.StreamWriteTimeout, DefaultStreamWriteTimeout)
 	def(&l.IdleTimeout, DefaultIdleTimeout)
 	def(&l.QUICIdleTimeout, DefaultQUICIdleTimeout)
 	def(&l.ProxyHeaderTimeout, proxyproto.DefaultHeaderTimeout)
