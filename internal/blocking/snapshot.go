@@ -3,6 +3,7 @@ package blocking
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -210,6 +211,13 @@ func Rebuild(prev *Snapshot, specs []Spec, opts CompileOptions) (*Snapshot, []Li
 			l, r.KeptOld = old, true
 		case err == nil && l == old:
 			r.Reused = true
+		}
+		if !r.Reused && len(specs) > 1 {
+			// A compile leaves its builders' garbage (about twice the list's
+			// final size) behind; collecting it before the next list keeps
+			// the peak near "compiled so far + one list in flight" instead of
+			// letting garbage from several lists pile up.
+			runtime.GC()
 		}
 		if l != nil {
 			lists = append(lists, l)

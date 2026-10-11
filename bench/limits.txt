@@ -1,0 +1,30 @@
+# Benchmark gate rules for `make bench` (internal/blocking/benchgate).
+#
+#   limit  <benchmark name regexp>  <unit>  <max>   absolute ceiling on the median
+#   ignore <benchmark name regexp>  <unit>          not compared with bench/baseline.txt
+#
+# Every other metric in bench/baseline.txt fails the gate when its median is
+# more than 20 % worse (and worse by more than the per-unit noise floor).
+
+# docs/architecture.md §7.3 performance gate.
+limit  ^BenchmarkLatency/suffix-1M/(hit|miss)$  p99-ns   2000
+limit  ^BenchmarkMemory/3M$                     rss-MB   150
+limit  ^BenchmarkCompile/(adblock|hosts)-1M$    ns/op    5e9
+# Lookups must stay allocation-free.
+limit  ^BenchmarkEvaluate/                      allocs/op  0
+
+# The memory benchmark's ns/op and allocations are those of spawning the
+# child process; compile time is reported as compile-s instead.
+ignore ^BenchmarkMemory/                        ns/op
+ignore ^BenchmarkMemory/                        B/op
+ignore ^BenchmarkMemory/                        allocs/op
+# Informational counters.
+ignore .                                        entries
+ignore ^BenchmarkMemory/                        base-rss-MB
+# p99.9 of a ~1 s run is a handful of samples: too noisy for a 20 % gate on
+# shared runners. It is still recorded for the report.
+ignore ^BenchmarkLatency/                       p999-ns
+# The timer benchmark only documents measurement overhead.
+ignore ^BenchmarkLatency/timer$                 ns/op
+ignore ^BenchmarkLatency/timer$                 p50-ns
+ignore ^BenchmarkLatency/timer$                 p99-ns
