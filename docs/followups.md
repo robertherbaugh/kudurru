@@ -11,12 +11,8 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| zonecache: refresh the local.db timestamp (`Touch`) from `store.Info().LastContact` instead of the wall clock when it is non-zero; the kube driver exports it since M2 (docs/m2/hardening.md) | hardening report | M2 (zonecache owner) |
 | Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
 | sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in docs/m5/burndown-server.md) | store-sqlite report | v0.2 |
-| Enforce the 1.5 MiB object cap (etcd) in the sqlite driver (the API refuses larger objects with 413 since docs/m3/api.md) | validator spike | M3 |
-| Enforce the 1.5 MiB object cap (etcd) in the sqlite driver and the API | validator spike | M3 |
-| Enforce the 1.5 MiB object cap (etcd) in the sqlite driver (the API refuses larger objects with 413 since docs/m3/api.md) | validator spike | M3 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
 | conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | v0.2 (moved from M2: test-only, both drivers already pass the conformance suite) |
 
@@ -24,20 +20,13 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| `expiresAt`: the zone hash now leaves expired records out, but only a reconcile after the expiry moves the serial; requeue the zone at `Zone.NextExpiry()` | controller report, docs/m2/xfr.md | M2 |
 | Controller zone builds parse every record per zone reconcile (paced Apply → status p50 0.4 ms → 2-3 ms at 1,000 record sets); cache parsed endpoints per record-set object and copy RRs into each build | docs/m2/xfr.md | v0.2 (moved from M3: performance only; status writes stay in the low milliseconds at 1,000 record sets) |
 | A NOTIFY key field in `ZonePolicy` (NOTIFY is signed with the first `transferTSIGKeyRefs` key today) and a `notifySource` per zone | docs/m2/xfr.md | v0.2 |
 | Store-backed internal `TSIGKey` kind behind `dnsserver.TSIGKeyring` (encrypted at rest, §4.1); TSIG on DoH/DoQ/DoH3 (signed requests are treated as unsigned there) | docs/m2/xfr.md | v0.2 (moved from M3 / v0.2: the node-config `tsigKeys` keyring covers v0.1) |
 | `kudurru doctor` self-NOTIFY round trip reporting the egress address (§4.6) | docs/m2/xfr.md | v0.2 (moved from M4: a diagnostic, NOTIFY itself works) |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
-| Builder could reject data below a DNAME owner with a condition (RFC 6672 §2.4) | zone report | M2 |
-| `make bench` gate for `BenchmarkLookup100k` after re-recording the baseline | zone report | M2 |
-| api/v1alpha1: `BlockListStatus.unsupported`; `ListSource.subdomains` (the condition reasons moved to api/v1alpha1 in docs/m2/xfr.md) | controller, blocking reports | M2 |
-| BlockList status ownership: controller owns Ready/Degraded, listfetcher writes only sources/entries/digests | controller report | M2 (listfetcher) |
 | Per-integration Leases: one Runner per elector name or an elector per runnable | controller report | v0.2 |
 | objects: reload inline objects without a restart; bootstrap `Policy/default` priority as an explicit fallback (the starter blocklist is seeded through `bootstrap.Options.StarterBlockList`, cmd/kudurru/serve.go:198; `cluster.role` moved to v0.2 with the static membership in fdd6dc5) | objects report | v0.2 (moved from M2/M3: a restart applies inline changes; merged rows) |
-| controller `TestKubeDriver` (envtest) reads the SerialBumped events right after the serial moves; under full-suite load the last Event can lag the status write (failed once in the M2 hardening run, passed alone 3/3): wait for the Event too. Likewise `TestMeasureRecordSetChanges/paced_updates` asserts exactly 2,000 status writes and sees 2,001-2,003 with `-cpu 1,2` (reproduced at e56cbea with the M1 memory driver, so not caused by the M2 changes) | hardening report | M2 |
-| controller `TestMeasureRecordSetChanges/resync_of_1000_converged_record_sets` expects zero status writes after a new term; under a load average of 13-15 on 8 CPUs (four agents) it saw 949 writes once in the full M5 race run and passed alone (the record sets carry `expiresAt` 0-999 s ahead, so a slow settle lets expiries move statuses): derive the expiries from a fake clock or set them far ahead | burndown-edge-release | v0.1.0 (controller owner) |
 
 ## Dataplane
 
@@ -49,7 +38,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Blocking: conformance corpus black-box against an AdGuard Home container (needs Docker); move benchgate to hack/; lazy-DFA regex engine for regex-heavy users | blocking spike | v0.2 (moved from M2: the AdGuard Home corpus can run on a GitHub Docker runner) |
 | Upstream: `upstreams.importFile` for dnsmasq import; cache inspect over REST (`Set.Status()` is in GET /stats/upstreams and flush in POST /cache/flush since docs/m3/api.md); cache and strategy benchmarks in `bench/limits.txt` | cache-upstream report | v0.2 (moved from M3: additions, nothing in v0.1 depends on them) |
 | dnsserver: config keys for `Limits.QUICMaxConns`, `MaxTCPQueries`, idle timeouts; DoH `Alt-Svc`; RFC 8467 padding; DoH path client IDs | dnsserver spike | v0.2 (moved from M2/M3: the limits have code defaults) |
-| dnsserver: per-message write deadline on transfer streams (miekg sets none; a client that stops reading holds the connection until the kernel gives up); needs the TCP conn wrapper in the listener code | docs/m2/xfr.md | M2 (hardening) |
 | Transfer chunks are budgeted by uncompressed size (69 messages of ~42 KB for 100k records); budget by compressed size for fewer, fuller messages | docs/m2/xfr.md | later |
 | D60 blocked-services and safe-search catalogue in a separate public data repository: v0.1 embeds a kudurru-authored catalogue (`internal/listdata/catalogue`) that `blocking.catalogue.url` can replace at runtime (D120); move the data to its own repository once the project owner creates it | D120 | v0.2 (the owner creates and publishes the repository) |
 | ratelimit: a slip counter next to `kudurru_dns_dropped_total{reason="ratelimit"}`; exemptions per ClientGroup (`ratelimit.*` reload without a restart landed in docs/m5/burndown-server.md) | hardening report | v0.2 |
@@ -62,12 +50,11 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 |---|---|---|
 | `PATCH /node/config` changes stay in memory (log.level applies at once; nothing persists them, the node file is the operator's): persist node-scope API changes somewhere (a `node.d/` overlay?) or drop the route's write half | docs/m5/burndown-server.md | v0.2 |
 | Scatter-gather over the internal listener for `scope=cluster` stats/log calls, `GET /nodes` peer readiness and `GET /nodes/{name}/health` of other nodes (501 today) | api report | v0.2 (moved from M4: the routes answer 501 explicitly) |
-| `IAMReader` backed by the auth store for the read-only `/iam/*` routes (empty lists until wired) | api report | M3 |
 | `GET /auth/me` permissions are evaluated at cluster scope; zone-scoped grants show only in `roles` | api report | v0.2 |
 | external-dns: read `DNSEndpoint` CRs directly (§5.6) and a `kudurru externaldns-webhook` sidecar subcommand; the webhook has no authentication (loopback or NetworkPolicy) | api report | v0.2 (moved from M4: the webhook provider covers external-dns in v0.1) |
 | Object list routes read the store (an apiserver round trip in kube mode); serve them from the zonecache snapshot when it is live | api report | v0.2 (moved from M4: performance only) |
 | CLI: switch from the hand-written `internal/apiclient` transport to the generated `internal/apiclient/openapi` client and put it under `apiclient.Client` (surface listed in docs/m3/cli.md) | api report, docs/m3/cli.md | v0.2 (moved from M3/M4: internal refactor, no user-visible change; merged rows) |
-| Audit: the sqlite recorder folds authz path, request id and client address into `reason` until audit migration 2 adds columns | api report | M3 |
+| Audit: the sqlite recorder folds authz path, request id and client address into `reason` until audit migration 2 adds columns | api report | v0.2 (moved from M3: the reason field carries the values until migration 2) |
 ## Edge and VIP
 
 | Item | Source | Target |
@@ -96,15 +83,14 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Token `lastUsedIP` records `RemoteAddr` (the reverse proxy behind `listeners.api.trustedProxies`); give `tokens.Options` the API's ClientIP like the stack (`apiClientIP` in serve.go) | docs/m5/security.md | v0.1.x |
 | external-dns webhook: optional shared-secret header (`externalDNS.webhook.tokenFile`, the external-dns webhook provider can send custom headers) so the listener can leave loopback without relying on a NetworkPolicy | docs/m5/security.md | v0.2 |
 | A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | docs/m5/security.md | v0.2 |
-| `TestSupervisorPeersFile` (internal/edge/keepalived) passes with `-race` (what `make test` runs) but times out without it, waiting for the HUP after the peers file changes: the log shows the supervisor checking and starting the fake keepalived again instead. Reproduced 3/3 with the package and its only kudurru dependency (internal/edge) as on 347f4c7, so it predates M5; a timing assumption in the test or a restart path that wins the race when the code runs fast | M5 security run | M5 |
 
 ## Dashboard (web/)
 
 | Item | Source | Target |
 |---|---|---|
-| api package: serve the shapes the SPA assumes (docs/m3/ui.md "API routes and shapes"; settings schema JSON names, SSE event `query` + `?lastEventId=`, `transfer` on zone rows, `managedBy` on record rows, `/clients` inventory); then `bun run gen:api` and alias `web/src/api/types.ts` to the generated schemas | ui report | M3 (api + ui) |
-| Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | M4 |
-| Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | M4 |
+| Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | v0.1.x (moved from M4: size headroom only, the binary is within its budget) |
+| Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
+| BlockList form and Lists page: show `status.unsupported` and edit `spec.sources[].subdomains` (the API fields landed with the v0.1 fix round; the SPA types and form do not carry them yet) | v0.1 fix round | v0.1.x |
 ## CLI
 
 | Item | Source | Target |
@@ -143,8 +129,5 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 
 | Item | Source | Target |
 |---|---|---|
-| keepalived `Config.Validate` accepts the unspecified address (`0.0.0.0`) as the unicast source and peers such as `0.0.0.1` | FuzzKeepalivedRender | v0.2 |
 | E2E-2: sqlite nodes cannot form a cluster. serve.go hard-codes `cluster.Self` membership for the sqlite driver, so node B cannot be pointed at node A's internal listener for list bodies, and every sqlite node reports itself as leader. The two-node test drives `/internal/status` and `/internal/lists/{digest}` with the derived credentials instead. Needs a `cluster.static` setting (peers, leader) feeding `cluster.Static` | docs/m5/e2e.md | v0.2 (compose HA) |
 | e2e still missing from §13.1: the apiserver-outage test (kill the control plane, restart a pod, answers from local.db; envtest can stop the apiserver, spike 3 did), the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). kind + Helm with MetalLB is the kind workflow (hack/kind-e2e.sh) | docs/m5/e2e.md | v0.2 (moved from M5: apiserver-outage on envtest, AdGuard Home and Knot on a Docker runner); the 2-VM failover stays a GA gate (docs/release-checklist.md §3) |
-| `FuzzImportBIND` spends most of its budget on `$GENERATE` inputs near the 1,000,000-record import cap (single inputs stall 20-30 s; 190k execs in 60 s against 1.9M for the PROXYv2 targets). Lower `importLimit` inside the fuzz target as `TestImportLimit` does | docs/m5/e2e.md | M5 (zone owner) |
-| `edge.Build` accepts a listen host that is not an address (`--listen '!'` renders `setLocal("!:53")`) and backend hosts such as `[0]:1`; quoting keeps the Lua safe and `dnsdist --check-config` refuses it at render time, but validating with `netip` would fail earlier | FuzzDNSDistRender | v0.2 (edge owner) |
