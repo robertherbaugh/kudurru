@@ -1,8 +1,9 @@
-// Entry point. Styles are prebuilt CSS files (Astryx core, the default
-// theme, uPlot) plus styles.css; nothing is injected inline, so the page
-// runs under the strict CSP web.Handler sends.
+// Entry point. Styles are prebuilt CSS files (the Astryx reset and core,
+// uPlot; the built themes come with src/astryx-themes.ts) plus
+// styles.css; nothing is injected inline, so the page runs under the
+// strict CSP web.Handler sends.
+import '@astryxdesign/core/reset.css';
 import '@astryxdesign/core/astryx.css';
-import '@astryxdesign/theme-neutral/theme.css';
 import 'uplot/dist/uPlot.min.css';
 import './styles.css';
 import { StrictMode } from 'react';

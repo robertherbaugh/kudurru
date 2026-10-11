@@ -1,12 +1,13 @@
 /*
- * Dashboard layout, the brand palette and the one colour code (§10
- * principle 4).
+ * Dashboard layout and the one colour code (§10 principle 4).
  *
- * Components come from Astryx (prebuilt CSS, D69); this file lays pages
- * out, lays the kudurru brand over the Neutral theme (the default
- * "Kudurru" theme) and defines the semantic query classes every table,
- * badge and chart reads. Charts read the --q-* custom properties at draw
- * time (lib/colors.ts), so switching mode or contrast recolours them.
+ * Components come from Astryx (prebuilt CSS, D69) and every colour from
+ * the active theme (src/themes: Kudurru, the brand default, and Neutral,
+ * Stone and Y2K); this file lays pages out and defines the semantic query
+ * classes every table, badge and chart reads. The query status colours
+ * are theme tokens (--q-*, the same in every theme); charts read them at
+ * draw time (lib/colors.ts), so switching theme, mode or contrast
+ * recolours them.
  *
  * Colour rules: hover and selection are translucent overlays
  * (--color-overlay-hover/-pressed) drawn over whatever background the
@@ -16,20 +17,6 @@
  */
 
 :root {
-  /*
-   * Query status colours: kudurru's own, the same in every theme. The
-   * themes' --color-success/-error are fills (pastels in Y2K, greys in
-   * Stone) and unreadable as text on a card; these keep 4.5:1 as text on
-   * the white or near-black cards of every theme and stay apart from the
-   * brand's Clay (docs/brand/README.md).
-   */
-  --q-permitted: light-dark(#1d7a35, #6fd08a);
-  --q-cached: light-dark(#2459c7, #86aeff);
-  --q-blocked: light-dark(#c42b3a, #ff8a8a);
-  --q-error: light-dark(#8a5a00, #f2c14e);
-  --q-forwarded: light-dark(#0b7566, #5ccfbf);
-  --q-authoritative: light-dark(#6e45c8, #b79cff);
-  --q-other: light-dark(#5f6b76, #9aa5b1);
   --k-hover: var(--color-overlay-hover, rgb(128 128 128 / 8%));
   --k-selected: var(--color-overlay-pressed, rgb(128 128 128 / 16%));
   --k-focus: var(--focus-outline-color, var(--color-accent));
@@ -39,56 +26,20 @@
 }
 
 /*
- * The Kudurru theme: docs/brand/tokens.css on top of Neutral. Ink #182522,
- * Clay #b65c3a, Paper #f7f3ea, Stone #d9d1c2. Clay fills the primary
- * actions (white on Clay 4.6:1); as text it is darkened (#9c4a2b, 5.1:1
- * on the muted surface) or lightened on Ink (#e08a66, 5.2:1). Input
- * borders keep 3:1 against their surface. Theme CSS sits in Astryx's
- * cascade layers, so these unlayered declarations win on the same
- * elements (<html> and the Theme wrapper both carry data-astryx-theme).
+ * High contrast (Appearance, <html data-contrast="more">): the themes'
+ * stronger query colours, borders in the text colour and secondary text
+ * as strong as primary. Astryx theme adaptations only follow the OS
+ * contrast preference, so the setting re-points theme tokens here: on
+ * <html> and every Theme wrapper (both carry data-astryx-theme), where
+ * the theme declares them; these unlayered rules win over the theme
+ * layer.
  */
-:root[data-k-theme='kudurru'],
-:root[data-k-theme='kudurru'] [data-astryx-theme] {
-  --color-background-body: light-dark(#f7f3ea, #182522);
-  --color-background-card: light-dark(#ffffff, #1d2b28);
-  --color-background-popover: light-dark(#ffffff, #22312e);
-  --color-background-surface: light-dark(#f7f3ea, #182522);
-  --color-background-muted: light-dark(#efe9dc, #263632);
-  --color-background-gray: light-dark(#e6dfd1, #2b3b37);
-  --color-neutral: light-dark(#1825220f, #f7f3ea1a);
-  --color-overlay: light-dark(#18252280, #0b1110cc);
-  --color-overlay-hover: light-dark(#1825220d, #f7f3ea12);
-  --color-overlay-pressed: light-dark(#1825221a, #f7f3ea21);
-  --color-tint-hover: light-dark(#182522, #f7f3ea);
-  --color-accent: #b65c3a;
-  --color-accent-muted: light-dark(#f4e4dc, #b65c3a40);
-  --color-on-accent: #ffffff;
-  --color-text-primary: light-dark(#182522, #f7f3ea);
-  --color-text-secondary: light-dark(#4f5b57, #b3ab9d);
-  --color-text-disabled: light-dark(#8a918e, #66736f);
-  --color-text-accent: light-dark(#9c4a2b, #e08a66);
-  --color-icon-primary: light-dark(#182522, #f7f3ea);
-  --color-icon-secondary: light-dark(#5f6a66, #a39c8f);
-  --color-icon-accent: light-dark(#9c4a2b, #e08a66);
-  --color-border: light-dark(#d9d1c2, #f7f3ea1f);
-  --color-border-emphasized: light-dark(#9a9182, #6e7b77);
-  --color-skeleton: light-dark(#efe9dc, #2b3b37);
-  --color-syntax-background: light-dark(#ffffff, #131e1c);
-  --shadow-inset-hover: inset 0 0 0 2px #b65c3a4d;
-  --shadow-inset-selected: inset 0 0 0 2px #b65c3a80;
-  --font-family-body: var(--kudurru-font-sans);
-  --font-family-heading: var(--kudurru-font-sans);
-  --font-family-code: var(--kudurru-font-mono);
-  --kudurru-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --kudurru-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
-}
-
-/* High contrast overlay (Appearance → contrast "more"). */
-:root[data-contrast='more'] {
-  --q-permitted: light-dark(#05631a, #5fe07a);
-  --q-cached: light-dark(#0b3fa8, #8ab4ff);
-  --q-blocked: light-dark(#a3001c, #ff7a8a);
-  --q-error: light-dark(#7a5600, #ffd54a);
+:root[data-contrast='more'],
+:root[data-contrast='more'] [data-astryx-theme] {
+  --q-permitted: var(--q-permitted-strong);
+  --q-cached: var(--q-cached-strong);
+  --q-blocked: var(--q-blocked-strong);
+  --q-error: var(--q-error-strong);
 }
 :root[data-contrast='more'] .k-app {
   --color-border: currentColor;
