@@ -1,38 +1,25 @@
 /*
- * Dashboard layout and the one colour code (§10 principle 4).
+ * The dashboard's own CSS: documented exceptions only (followups row
+ * "Astryx conformance pass", web/AGENTS.md).
  *
- * Components come from Astryx (prebuilt CSS, D69) and every colour from
- * the active theme (src/themes: Kudurru, the brand default, and Neutral,
- * Stone and Y2K); this file lays pages out and defines the semantic query
- * classes every table, badge and chart reads. The query status colours
- * are theme tokens (--q-*, the same in every theme); charts read them at
- * draw time (lib/colors.ts), so switching theme, mode or contrast
- * recolours them.
- *
- * Colour rules: hover and selection are translucent overlays
- * (--color-overlay-hover/-pressed) drawn over whatever background the
- * element has, never --color-tint-hover (a solid black/white that Astryx
- * only mixes into other colours). Text on a surface uses text tokens
- * (--color-text-*), never fill tokens.
+ * Layout, spacing, type and colour come from Astryx components and their
+ * props (prebuilt CSS, D69) and from the active theme's tokens (src/themes:
+ * Kudurru, the brand default, and Neutral, Stone and Y2K). Each rule below
+ * covers something no component prop or token does, and says why. Values
+ * are tokens; px appear only as structural sizes (logo artwork, borders).
+ * The query status colours are theme tokens (--q-*, the same in every
+ * theme) that components and charts read directly (lib/colors.ts at draw
+ * time), so switching theme, mode or contrast recolours them.
  */
-
-:root {
-  --k-hover: var(--color-overlay-hover, rgb(128 128 128 / 8%));
-  --k-selected: var(--color-overlay-pressed, rgb(128 128 128 / 16%));
-  --k-focus: var(--focus-outline-color, var(--color-accent));
-  --k-gap: var(--spacing-4, 16px);
-  --k-gap-sm: var(--spacing-2, 8px);
-  --k-mono: var(--font-family-code, ui-monospace, monospace);
-}
 
 /*
  * High contrast (Appearance, <html data-contrast="more">): the themes'
  * stronger query colours, borders in the text colour and secondary text
  * as strong as primary. Astryx theme adaptations only follow the OS
- * contrast preference, so the setting re-points theme tokens here: on
- * <html> and every Theme wrapper (both carry data-astryx-theme), where
- * the theme declares them; these unlayered rules win over the theme
- * layer.
+ * contrast preference (no runtime switch), so the setting re-points theme
+ * tokens here: on <html> and every Theme wrapper (both carry
+ * data-astryx-theme), where the theme declares them; these unlayered rules
+ * win over the theme layer.
  */
 :root[data-contrast='more'],
 :root[data-contrast='more'] [data-astryx-theme] {
@@ -45,427 +32,89 @@
 }
 
 /*
- * The Astryx reset (main.tsx) strips list markers and link underlines.
- * Lists and links in running text keep the browser's: these rules sit in
- * the reset's own layer, so the layout lists here that set list-style and
- * every Astryx component (higher layers) are unaffected.
+ * The document behind the AppShell (overscroll, the sign-in screen, the
+ * page-load spinner): Astryx styles its components, not <html>/<body>.
  */
-@layer reset {
-  :where(ol, ul) { list-style: revert-layer; margin: revert-layer; padding: revert-layer; }
-  :where(a) { text-decoration: revert-layer; }
-}
-
 html,
 body,
 #root {
   margin: 0;
   min-height: 100%;
 }
-
 body {
   font-family: var(--font-family-body, system-ui, sans-serif);
   background-color: var(--color-background-surface, Canvas);
   color: var(--color-text-primary, CanvasText);
 }
 
-/* Plain links (the router's <Link>) instead of the browser's blue and
- * purple; Astryx components style their own, and k-* classes that set a
- * colour win over this zero-specificity rule. */
-a:where(:not([class*='astryx-'])) { color: var(--color-text-accent, inherit); }
-a:where(:not([class*='astryx-'])):focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; border-radius: 2px; }
-
-.q-permitted { color: var(--q-permitted); }
-.q-cached { color: var(--q-cached); }
-.q-blocked { color: var(--q-blocked); }
-.q-error { color: var(--q-error); }
-
-.q-dot {
-  display: inline-block;
-  inline-size: 0.6em;
-  block-size: 0.6em;
-  border-radius: 50%;
-  background: currentColor;
-  margin-inline-end: 0.4em;
-  vertical-align: 0.05em;
-}
-
-/* Page frame ------------------------------------------------------------ */
-
-.k-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-gap);
-  padding: var(--k-gap);
-  max-inline-size: 1600px;
-  margin-inline: auto;
-  box-sizing: border-box;
-  inline-size: 100%;
-}
-
-.k-page-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--k-gap-sm);
-}
-.k-page-header h1 { margin: 0; font-size: var(--font-size-2xl, 1.5rem); line-height: 1.2; }
-.k-page-header .k-actions { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: center; }
-
-.k-row { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: center; }
-.k-row-end { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: flex-end; }
-.k-spacer { flex: 1 1 auto; }
-.k-stack { display: flex; flex-direction: column; gap: var(--k-gap-sm); }
-.k-stack-lg { display: flex; flex-direction: column; gap: var(--k-gap); }
-
-.k-grid { display: grid; gap: var(--k-gap); }
-.k-grid-tiles { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.k-grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
-.k-grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
-
-.k-muted { color: var(--color-text-secondary); }
-.k-mono { font-family: var(--k-mono); font-size: 0.92em; }
-.k-mono input, .k-mono textarea { font-family: var(--k-mono); }
-.k-nowrap { white-space: nowrap; }
-.k-break { overflow-wrap: anywhere; }
-.k-right { text-align: end; }
-.k-small { font-size: var(--font-size-sm, 0.875rem); }
-/* Inline code follows the size of the sentence it sits in (the Astryx
- * reset gives every <code> the body size, too big in small print). */
-:not(pre) > code { font-size: 0.92em; }
-.k-panel summary { font-size: var(--text-body-size, 0.875rem); cursor: pointer; }
-
-/* Stat tiles ------------------------------------------------------------ */
-
-.k-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--k-gap);
-  border-radius: var(--radius-container, 12px);
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  text-decoration: none;
-  color: inherit;
-  border-inline-start: 6px solid var(--k-tile-accent, var(--color-border));
-  min-block-size: 96px;
-  box-sizing: border-box;
-}
-a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover)); }
-.k-tile:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
-.k-tile-label { font-size: var(--font-size-sm, 0.875rem); color: var(--color-text-secondary); }
-.k-tile-value { font-size: var(--font-size-3xl, 2rem); font-weight: var(--font-weight-semibold, 600); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.k-tile-foot { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
+/*
+ * Stat tiles (StatTiles, the long-term page): the coloured start edge
+ * names the tile's query class. Card variants are background tints for
+ * categories, with no edge colour, and the --q-* query colours are not
+ * Card variants.
+ */
+.k-tile { border-inline-start: var(--spacing-1-5) solid var(--k-tile-accent, var(--color-border)); }
 .k-tile[data-tone='total'] { --k-tile-accent: var(--q-cached); }
 .k-tile[data-tone='blocked'] { --k-tile-accent: var(--q-blocked); }
 .k-tile[data-tone='percent'] { --k-tile-accent: var(--q-error); }
 .k-tile[data-tone='lists'] { --k-tile-accent: var(--q-permitted); }
 
-/* Panels and charts ------------------------------------------------------ */
-
-.k-panel {
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-container, 12px);
-  padding: var(--k-gap);
-  min-inline-size: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-gap-sm);
-}
-.k-panel-title { display: flex; align-items: center; gap: var(--k-gap-sm); justify-content: space-between; flex-wrap: wrap; }
-.k-panel-title h2, .k-panel-title h3 { margin: 0; font-size: var(--font-size-lg, 1.125rem); }
-
-.k-chart { inline-size: 100%; min-block-size: 220px; position: relative; }
-.k-chart-sm { min-block-size: 240px; }
-.k-chart .u-legend { font-size: var(--font-size-xs, 0.75rem); }
+/*
+ * uPlot draws its own DOM (legend table, cursor overlay) inside the chart
+ * mount node (charts/StackedBars.tsx); no component reaches it.
+ */
+.k-chart .u-legend { font-size: var(--font-size-xs); }
 .k-chart .u-over { cursor: pointer; }
-.k-chart-empty { display: grid; place-items: center; min-block-size: 160px; color: var(--color-text-secondary); }
 
-.k-bar {
-  block-size: 6px;
-  border-radius: 3px;
-  background: var(--k-selected);
-  overflow: hidden;
-}
-.k-bar > span { display: block; block-size: 100%; background: var(--k-bar-color, var(--q-permitted)); }
-.k-bar[data-tone='blocked'] > span { --k-bar-color: var(--q-blocked); }
-
-/* Simple tables (top lists, settings) ------------------------------------ */
-
-.k-table { inline-size: 100%; border-collapse: collapse; font-size: var(--font-size-sm, 0.875rem); }
-.k-table th, .k-table td { padding: 6px 8px; border-block-end: 1px solid var(--color-border); text-align: start; vertical-align: middle; }
-.k-table th { font-weight: var(--font-weight-semibold, 600); color: var(--color-text-secondary); white-space: nowrap; }
-.k-table td.num, .k-table th.num { text-align: end; font-variant-numeric: tabular-nums; }
-.k-table tbody tr:hover { background: var(--k-hover); }
-.k-table a { color: inherit; }
-.k-table-wrap { overflow-x: auto; }
-
-/* Query log (virtualised) ------------------------------------------------ */
-
-.k-log {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-container, 12px);
-  background: var(--color-background-card);
-  overflow: auto;
-  block-size: min(70vh, 900px);
-  position: relative;
-}
-.k-log table { inline-size: 100%; border-collapse: collapse; font-size: var(--font-size-sm, 0.875rem); table-layout: fixed; }
-.k-log thead th {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 1;
-  background: var(--color-background-card);
-  text-align: start;
-  padding: 8px;
-  border-block-end: 1px solid var(--color-border);
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-}
-.k-log td { padding: 6px 8px; border-block-end: 1px solid var(--color-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.k-log tr.k-log-row { cursor: pointer; }
-.k-log tr.k-log-row:hover { background: var(--k-hover); }
-.k-log tr.k-log-row:focus-visible { background: var(--k-hover); outline: 2px solid var(--k-focus); outline-offset: -2px; }
-.k-log tr.k-log-row[aria-expanded='true'] { background: var(--k-selected); }
-.k-log tr.k-log-row.k-new { animation: k-flash 1.2s ease-out; }
-.k-log td.k-why { white-space: normal; background: var(--k-hover); }
-@keyframes k-flash { from { background: var(--color-accent-muted, rgb(0 100 224 / 15%)); } to { background: transparent; } }
-@media (prefers-reduced-motion: reduce) { .k-log tr.k-log-row.k-new { animation: none; } }
-
-.k-why-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; padding: 4px 0; }
-.k-why-grid dt { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
-.k-why-grid dd { margin: 0; overflow-wrap: anywhere; }
-
-/* A search box in a toolbar row: room for its placeholder, shrinks on phones. */
-.k-search { inline-size: min(400px, calc(100vw - 2 * var(--k-gap))); }
-
-
-/* Sidebar status block --------------------------------------------------- */
-
-.k-status {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: var(--font-size-sm, 0.875rem);
-}
-.k-status-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-.k-node-dots { display: flex; gap: 6px; flex-wrap: wrap; }
-
-/* Brand logo (components/BrandLogo.tsx) ------------------------------------
- * The Ink-wordmark artwork on light surfaces, the Paper one on dark; the
- * resolved scheme is <html data-theme> when the mode is set, else the OS.
- * Sizes keep the brand minimums (logo 180 px wide, tagline logo 360 px)
- * and the clear space built into the artwork. */
-
-.k-brand { display: inline-flex; align-items: center; text-decoration: none; color: inherit; border-radius: var(--radius-element, 8px); }
-.k-brand:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
-.k-logo { display: block; inline-size: 180px; block-size: 60px; margin-block: -12px; }
-.k-logo-tagline { display: block; inline-size: 360px; max-inline-size: 100%; block-size: auto; aspect-ratio: 360 / 150; margin-inline: auto; }
-.k-logo-on-dark { display: none; }
-:root[data-theme='dark'] .k-logo-on-light { display: none; }
-:root[data-theme='dark'] .k-logo-on-dark { display: block; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .k-logo-on-light { display: none; }
-  :root:not([data-theme='light']) .k-logo-on-dark { display: block; }
+/*
+ * Query log rows (components/QueryLogTable.tsx) are focusable and toggle
+ * their "why" row; the Table has no focus style for a focusable row.
+ */
+.k-log-row:focus-visible {
+  outline: var(--focus-outline-width, 2px) var(--focus-outline-style, solid) var(--focus-outline-color, var(--color-accent));
+  outline-offset: calc(-1 * var(--focus-outline-width, 2px));
 }
 
-/* Shell ------------------------------------------------------------------ */
+/*
+ * Monospace inputs (TextField/TextAreaField `mono`: domain names,
+ * addresses, keys): TextInput and TextArea have no font prop.
+ */
+.k-mono input,
+.k-mono textarea { font-family: var(--font-family-code, ui-monospace, monospace); }
 
-.k-app { min-block-size: 100dvh; }
-/* Astryx sets the selected nav item's colour only under forced colours, so
- * the <a> fell back to the browser's link blue. */
-.astryx-side-nav-item.selected { color: var(--color-text-primary); }
-.k-topnav-title { font-weight: var(--font-weight-semibold, 600); }
-.k-account { gap: 4px; }
-.k-account-name { color: inherit; text-decoration: none; font-size: var(--font-size-sm, 0.875rem); }
-.k-account-name:hover { text-decoration: underline; }
-.k-badge-link { text-decoration: none; }
-
-/* Dialogs (components/FormDialog.tsx): the frame fills the dialog so the
- * Layout's content scrolls and its footer stays in view. */
-.k-dialog-frame { display: flex; flex-direction: column; flex: 1 1 auto; min-block-size: 0; }
-.k-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); justify-content: flex-end; align-items: center; }
-.k-h3 { margin: 0; font-size: var(--font-size-lg, 1.125rem); }
-.k-login-title { margin: 0; font-size: var(--font-size-2xl, 1.5rem); }
-.k-divider-text { margin: 0; text-align: center; color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
-
-.k-linklike {
-  font: inherit;
-  color: var(--color-text-accent, inherit);
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  text-align: start;
-  font-weight: var(--font-weight-medium, 500);
-}
-.k-linklike:hover { text-decoration: underline; }
-.k-linklike:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; border-radius: 2px; }
-
-.k-col-check { inline-size: 36px; }
-.k-col-line { inline-size: 64px; }
-.k-col-bar { inline-size: 30%; min-inline-size: 80px; }
-.k-row-actions { text-align: end; overflow: visible !important; }
-.k-log-empty { padding: var(--k-gap); margin: 0; }
-
-/* Charts: data tables and pie legends ------------------------------------- */
-
-.k-chart-table summary { cursor: pointer; font-size: var(--font-size-sm, 0.875rem); color: var(--color-text-secondary); }
-.k-chart-table[open] .k-table-wrap { max-block-size: 320px; overflow: auto; }
-.k-pie { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: var(--k-gap); align-items: center; }
-.k-pie-canvas { inline-size: 100%; }
-@media (max-width: 560px) { .k-pie { grid-template-columns: 1fr; } }
-.k-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm, 0.875rem); min-inline-size: 0; }
-.k-legend li { display: flex; align-items: center; gap: 8px; min-inline-size: 0; }
-.k-legend a { color: inherit; }
-.k-swatch { inline-size: 10px; block-size: 10px; border-radius: 2px; flex: none; }
-.k-legend-pct { inline-size: 4.5em; text-align: end; }
-
-/* Lists of things ---------------------------------------------------------- */
-
-.k-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; }
-.k-array-entry { border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); padding: 8px 12px; }
-.k-array-entry > summary { cursor: pointer; padding: 2px 0; }
-.k-array-entry[open] > summary { margin-block-end: 8px; }
-.k-checks, .k-messages, .k-link-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.k-messages p { margin: 4px 0; }
-.k-link-list { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; font-size: var(--text-body-size, 0.875rem); }
-
-/* Forms ------------------------------------------------------------------ */
-
-.k-form { display: flex; flex-direction: column; gap: 12px; }
-.k-form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); align-items: start; }
-.k-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); padding: 12px; margin: 0; min-inline-size: 0; display: flex; flex-direction: column; gap: 10px; }
-.k-fieldset legend { padding: 0 4px; font-weight: 600; font-size: var(--font-size-sm, 0.875rem); }
-.k-array-item { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
-.k-array-item > :first-child { flex: 1 1 260px; }
-.k-error-text { color: var(--q-blocked); font-size: var(--font-size-sm, 0.875rem); }
-.k-setting-key { font-weight: var(--font-weight-semibold, 600); overflow-wrap: anywhere; }
-
-.k-pre {
-  font-family: var(--k-mono);
-  font-size: var(--font-size-sm, 0.875rem);
-  background: var(--color-background-muted);
-  border-radius: var(--radius-element, 8px);
-  padding: 12px;
-  overflow: auto;
-  max-block-size: 480px;
-  margin: 0;
-  white-space: pre;
-}
-
-/* The row's 60/40 columns are the Astryx Grid of SettingRow; this is the separator only. */
-.k-setting { padding-block: var(--spacing-3, 12px); border-block-end: 1px solid var(--color-border); }
-.k-setting[data-locked='true'] .k-setting-value { opacity: 0.9; }
-
-.k-login {
-  min-block-size: 100vh;
-  background-color: var(--color-background-body);
-  display: grid;
-  place-items: center;
-  padding: var(--k-gap);
-  box-sizing: border-box;
-}
-.k-login-card { inline-size: min(420px, 100%); padding: var(--spacing-6, 24px); box-sizing: border-box; }
-
-.k-visually-hidden {
-  position: absolute !important;
-  inline-size: 1px;
-  block-size: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-@media (max-width: 640px) {
-  .k-page { padding: var(--k-gap-sm); }
-  .k-tile-value { font-size: var(--font-size-2xl, 1.5rem); }
-  .k-log { block-size: 65vh; }
-}
-
-/* Wizard (components/Wizard.tsx) ---------------------------------------- */
-
-.k-wizard { display: flex; flex-direction: column; gap: var(--spacing-4, 16px); max-inline-size: 960px; }
-.k-wizard-body { display: flex; flex-direction: column; gap: var(--spacing-3, 12px); outline: none; }
-.k-wizard-body:focus-visible { outline: 2px solid var(--color-focus, var(--color-accent)); outline-offset: 2px; }
-.k-wizard-footer { display: flex; align-items: center; gap: var(--spacing-2, 8px); position: sticky; inset-block-end: 0; padding-block: var(--spacing-3, 12px); background: var(--color-background-body, var(--color-background)); border-block-start: 1px solid var(--color-border); }
-.k-stack-sm { display: flex; flex-direction: column; gap: 6px; }
-
-/* Typed settings, fields and wizards (spa-settings, UX round 2) */
-.k-setting .k-setting-key { font-weight: normal; font-size: var(--text-supporting-size); }
-.k-setting[data-changed='true'] .k-setting-label::after { content: ''; display: inline-block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--color-text-accent, var(--q-cached)); margin-inline-start: 6px; vertical-align: middle; }
-.k-map-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto; gap: 8px; align-items: end; }
-.k-map-row > .k-fieldset { grid-column: 1 / -1; }
-@media (max-width: 720px) { .k-map-row { grid-template-columns: 1fr; } }
-.k-preview-frame { inline-size: 100%; block-size: min(60dvh, 560px); border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); background: #fff; }
-.k-provider-icon { inline-size: 28px; block-size: 28px; flex: none; border-radius: 6px; display: inline-grid; place-items: center; font-size: 0.8rem; font-weight: 600; background: var(--color-background-muted); color: var(--color-text-secondary); overflow: hidden; }
-.k-provider-icon img { inline-size: 100%; block-size: 100%; object-fit: contain; }
-.k-review { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
-.k-review dt { color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
-.k-review dd { margin: 0; overflow-wrap: anywhere; }
-.k-header-state { display: flex; flex-wrap: wrap; gap: var(--k-gap-sm); align-items: center; }
-/* Lists, list page, new-list wizard, Domains ---------------------------- */
-
-/* Current-state facts of an object page: label over value, as many per row as fit. */
-.k-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 20px; margin: 0; }
-.k-facts dt { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
-.k-facts dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-/* A disabled source or list keeps its row, in secondary text. */
-.k-table tr.k-row-off td { color: var(--color-text-secondary); }
-.k-source-kind { display: inline-flex; color: var(--color-text-secondary); }
-.k-grow { flex: 1 1 320px; min-inline-size: 0; }
-.k-panel.k-ui-list { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px 12px; }
-.k-row-link { font-weight: var(--font-weight-semibold, 600); text-decoration: none; }
-.k-row-link:hover { text-decoration: underline; }
-/* Radio and checkbox choices as cards (wizard type and curated lists). */
-.k-curated { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--k-gap-sm); }
-
-/* Policy, group and client pages (pages/Polic*, Group*, ClientDetail) --- */
-
-.k-section { display: flex; flex-direction: column; gap: var(--k-gap-sm); }
-.k-section h2 { margin: 0; font-size: var(--font-size-lg, 1.125rem); }
-.k-kv { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 6px 16px; margin: 0; font-size: var(--font-size-sm, 0.875rem); }
-.k-kv dt { color: var(--color-text-secondary); }
-.k-kv dd { margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 560px) { .k-kv { grid-template-columns: 1fr; } .k-kv dd { margin-block-end: 6px; } }
-.k-stat-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--k-gap) calc(2 * var(--k-gap)); margin: 0; }
-.k-stat-row dt { font-size: var(--font-size-sm, 0.875rem); color: var(--color-text-secondary); }
-.k-stat-row dd { margin: 0; font-size: var(--font-size-2xl, 1.5rem); font-weight: var(--font-weight-semibold, 600); font-variant-numeric: tabular-nums; }
-.k-rank { margin: 0; padding-inline-start: 1.5em; display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm, 0.875rem); }
-.k-rank li { display: flex; gap: 8px; justify-content: space-between; }
-.k-rank .num { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
-.k-policy-order { margin: 0; padding-inline-start: 1.5em; display: flex; flex-direction: column; gap: 6px; }
-.k-review { display: grid; grid-template-columns: minmax(130px, max-content) 1fr auto; gap: 8px 16px; align-items: center; margin: 0; }
-.k-review dt { color: var(--color-text-secondary); font-size: var(--font-size-sm, 0.875rem); }
-.k-review dd { margin: 0; overflow-wrap: anywhere; }
-.k-review dd.k-review-edit { justify-self: end; }
-
-/* Weekday toggles of the schedule editor. */
-
-/* Client matchers editor. */
-.k-matchers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.k-matcher { display: grid; grid-template-columns: minmax(150px, 200px) minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(130px, 1fr) auto; gap: 8px; align-items: start; padding-block-end: 10px; border-block-end: 1px solid var(--color-border); }
-@media (max-width: 900px) { .k-matcher { grid-template-columns: 1fr 1fr; } }
-
-/* Service logos (ServiceIcon, ServiceGrid). A logo is an image in a fixed
-   square (ServiceIcon sets the size inline; object-fit keeps the artwork's
-   aspect ratio inside it), swapped for its dark-background variant like
-   the brand logo. A monogram fills the same square on one of eight theme
-   hues (each a background and text token pair, toneOf()). A tile is a
-   native toggle button (aria-pressed): the square, the name and the state
-   line one line each, and, while the catalogue holds AdGuard imports
-   (data-token-row on the grid), a reserved row for their licence token,
-   so every tile is equally tall. */
+/*
+ * Light and dark artwork (BrandLogo, the service logos of ServiceIcon):
+ * the resolved scheme is <html data-theme> when the mode is set, else the
+ * OS. <picture> media queries only see the OS preference, and no Astryx
+ * component swaps images by theme. The brand logo keeps the brand
+ * minimums (logo 180 px wide, tagline logo 360 px) and the clear space
+ * built into the artwork. A service logo is an image in a fixed square
+ * (ServiceIcon sets the size inline; object-fit keeps the artwork's aspect
+ * ratio inside it). These display rules come first so the swap rules after
+ * them win.
+ */
 .k-service-icon { display: block; flex: none; max-inline-size: none; border-radius: var(--radius-inner); object-fit: contain; }
+.k-logo { display: block; inline-size: 180px; block-size: 60px; margin-block: calc(-1 * var(--spacing-3)); }
+.k-logo-tagline { display: block; inline-size: 360px; max-inline-size: 100%; block-size: auto; aspect-ratio: 360 / 150; margin-inline: auto; }
+.k-logo-on-dark,
 .k-icon-on-dark { display: none; }
+:root[data-theme='dark'] .k-logo-on-light,
 :root[data-theme='dark'] .k-icon-on-light { display: none; }
+:root[data-theme='dark'] .k-logo-on-dark,
 :root[data-theme='dark'] .k-icon-on-dark { display: block; }
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .k-logo-on-light,
   :root:not([data-theme='light']) .k-icon-on-light { display: none; }
+  :root:not([data-theme='light']) .k-logo-on-dark,
   :root:not([data-theme='light']) .k-icon-on-dark { display: block; }
 }
+
+/*
+ * Service monograms (ServiceIcon, when a service has no logo or it fails
+ * to load): a monogram fills the logo's square on one of
+ * eight theme hues (each a background and text token pair, toneOf()):
+ * Avatar is round and neutral-only, Token and Badge are pills.
+ */
 .k-monogram {
   display: inline-grid;
   place-items: center;
@@ -485,6 +134,16 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-monogram[data-tone='5'] { background: var(--color-background-purple); color: var(--color-text-purple); }
 .k-monogram[data-tone='6'] { background: var(--color-background-pink); color: var(--color-text-pink); }
 .k-monogram[data-tone='7'] { background: var(--color-background-gray); color: var(--color-text-gray); }
+
+/*
+ * Service tiles (ServiceGrid): a native toggle button (aria-pressed) laid
+ * out as a card. SelectableCard is a checkbox (role and keyboard model)
+ * and ToggleButton a single-line button, so neither holds the logo, name
+ * and state lines. The square, the name and the state line take one row
+ * each and, while the catalogue holds AdGuard imports (data-token-row on
+ * the grid), a reserved row for their licence token, so every tile is
+ * equally tall whether it shows a logo or a monogram.
+ */
 .k-logo-tile {
   font: inherit;
   display: grid;
@@ -495,20 +154,16 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
   min-inline-size: 0;
   padding: var(--spacing-3) var(--spacing-2);
   border-radius: var(--radius-element);
-  border: 1px solid var(--color-border);
+  border: var(--border-width, 1px) solid var(--color-border);
   background: var(--color-background-card, transparent);
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: center;
 }
 .k-logo-tile > * { max-inline-size: 100%; }
-[data-token-row] > .k-logo-tile { grid-template-rows: auto auto auto calc(var(--size-element-sm) - 8px); }
-.k-logo-tile:hover { background: var(--k-hover); border-color: var(--color-border-emphasized, var(--color-border)); }
-.k-logo-tile:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
+[data-token-row] > .k-logo-tile { grid-template-rows: auto auto auto calc(var(--size-element-sm) - var(--spacing-2)); }
+.k-logo-tile:hover { background-image: linear-gradient(var(--color-overlay-hover), var(--color-overlay-hover)); border-color: var(--color-border-emphasized, var(--color-border)); }
+.k-logo-tile:focus-visible { outline: var(--focus-outline-width, 2px) var(--focus-outline-style, solid) var(--focus-outline-color, var(--color-accent)); outline-offset: 2px; }
 .k-logo-tile[aria-pressed='true'] { border-color: var(--color-accent); background: var(--color-accent-muted); box-shadow: inset 0 0 0 1px var(--color-accent); }
 .k-logo-tile:disabled { cursor: default; }
 .k-logo-tile:disabled:not([aria-pressed='true']) { opacity: 0.75; }
-
-/* Unblock requests: what the requester typed keeps its line breaks. */
-.k-reason { white-space: pre-wrap; overflow-wrap: anywhere; max-inline-size: 48ch; }
-.k-requests-table td { vertical-align: top; }

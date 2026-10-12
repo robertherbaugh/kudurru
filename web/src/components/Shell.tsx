@@ -3,6 +3,7 @@
 // (node scope, diagnosis badge, appearance, account) and the sidebar
 // status block fed by GET /stats/summary (§10 principle 1).
 import { AppShell } from '@astryxdesign/core/AppShell';
+import { Link as BrandLink } from '@astryxdesign/core/Link';
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
 import { TopNav } from '@astryxdesign/core/TopNav';
 import { HStack } from '@astryxdesign/core/Stack';
@@ -24,9 +25,9 @@ import { Page, PageHeader } from './layout/Page';
 
 function Brand() {
   return (
-    <Link href="/" className="k-brand" aria-label="kudurru dashboard home">
+    <BrandLink href="/" label="kudurru dashboard home">
       <BrandLogo alt="" />
-    </Link>
+    </BrandLink>
   );
 }
 

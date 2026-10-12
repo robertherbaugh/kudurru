@@ -154,11 +154,11 @@ export function DenyDialog({ request: r, onClose, onDone }: { request: UnblockRe
           The approval is in force.{' '}
           {r.allow.added ? (
             <>
-              <Code>{r.allow.entry}</Code> leaves {shortRef(r.allow.list)} and the name is blocked again.
+              <Code size="inherit">{r.allow.entry}</Code> leaves {shortRef(r.allow.list)} and the name is blocked again.
             </>
           ) : (
             <>
-              <Code>{r.allow.entry}</Code> was on {shortRef(r.allow.list)} before the approval, so it stays there.
+              <Code size="inherit">{r.allow.entry}</Code> was on {shortRef(r.allow.list)} before the approval, so it stays there.
             </>
           )}
         </Text>

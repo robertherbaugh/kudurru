@@ -44,7 +44,7 @@ function Me() {
   return (
     <Panel title={`Signed in as ${data.principal.name}`} headingId="me-title" actions={<ChangePasswordButton />}>
       <Text type="supporting" color="primary" as="p">
-        {data.principal.kind} <Code>{data.principal.id}</Code>
+        {data.principal.kind} <Code size="inherit">{data.principal.id}</Code>
         {data.principal.groups?.length ? `, groups ${data.principal.groups.join(', ')}` : ''}
       </Text>
       <HStack gap={2} vAlign="center" wrap="wrap" role="group" aria-label="Roles">
@@ -196,8 +196,8 @@ function Tokens() {
       headingId="tok-title"
       description={
         <>
-          Tokens act as you with your roles, or with the narrower scopes you give them. Use them as <Code>Authorization: Bearer kdr_…</Code> or with{' '}
-          <Code>kudurru login --token</Code>.
+          Tokens act as you with your roles, or with the narrower scopes you give them. Use them as <Code size="inherit">Authorization: Bearer kdr_…</Code> or with{' '}
+          <Code size="inherit">kudurru login --token</Code>.
         </>
       }
     >

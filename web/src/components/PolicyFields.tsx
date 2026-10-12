@@ -119,7 +119,7 @@ export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, s
           {others.map((p, i) => (
             <Text key={p.metadata.name} type="inherit">
               {i ? ', ' : ''}
-              <Code color="inherit">{p.metadata.name}</Code> ({p.spec.priority ?? 0})
+              <Code color="inherit" size="inherit">{p.metadata.name}</Code> ({p.spec.priority ?? 0})
             </Text>
           ))}
           .

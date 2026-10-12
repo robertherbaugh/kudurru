@@ -4,7 +4,7 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { usePendingUnblockCount } from '../api/hooks';
-import { Link } from '../lib/router';
+import { Link } from '@astryxdesign/core/Link';
 import { requestsLabel } from '../lib/unblock';
 
 export function UnblockBadge() {

@@ -122,7 +122,7 @@ export default function ClientDetailPage({ params }: PageProps) {
         back={{ href: '/clients', label: 'Clients' }}
         meta={
           <>
-            {display ? <Code>{key}</Code> : null}
+            {display ? <Code size="inherit">{key}</Code> : null}
             {c?.last_seen ? (
               <Text size="sm">
                 last seen{' '}

@@ -339,7 +339,7 @@ interface LogoTileProps {
 /**
  * One toggle tile: a native toggle button (aria-pressed, so tests and
  * screen readers see a pressed button) holding the logo, the name, the
- * state line and the optional licence token. styles.css "Service logos"
+ * state line and the optional licence token. styles.css "Service tiles"
  * draws it (k-logo-tile: SelectableCard is a checkbox and ToggleButton a
  * one-line button, neither keeps this shape).
  */
@@ -408,7 +408,7 @@ export function LogoStack({ label, items, more = 0, extra, size = 22 }: { label:
   );
 }
 
-/** Lists drawn by Stacks: no markers or indent (styles.css restores the browser's for lists in running text). */
+/** Lists drawn by Stacks: no markers or indent. */
 const LIST_RESET = { listStyle: 'none', padding: 0, margin: 0 } as const;
 
 /** The engines safe search rewrites, with their logos. */

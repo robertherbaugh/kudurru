@@ -77,7 +77,7 @@ export function attachPlan(u: Pick<DomainUnattached, 'list' | 'policy'>, policy?
 export function attachWhere(managedBy: string, policy: string, field: string): { lead: ReactNode; after: string } {
   const [ns, name] = splitRef(policy);
   const o = ownership(managedBy);
-  const spec = <Code>spec.{field}</Code>;
+  const spec = <Code size="inherit">spec.{field}</Code>;
   switch (o.kind) {
     case 'file': {
       const path = o.owner.slice('file:'.length);
@@ -86,8 +86,8 @@ export function attachWhere(managedBy: string, policy: string, field: string): {
         return {
           lead: (
             <>
-              {name} is defined in <Code>{path}</Code> on the kudurru host, in the objects directory (<Code>objectsDir</Code>, <Code>/etc/kudurru/objects.d</Code> by default). In
-              its <Code>kind: Policy</Code> document named {name}, set {spec} to:
+              {name} is defined in <Code size="inherit">{path}</Code> on the kudurru host, in the objects directory (<Code size="inherit">objectsDir</Code>, <Code size="inherit">/etc/kudurru/objects.d</Code> by default). In
+              its <Code size="inherit">kind: Policy</Code> document named {name}, set {spec} to:
             </>
           ),
           after: 'kudurru watches the directory and applies the saved file within seconds, without a restart. With several nodes sharing copies of the files, change the file on every node.',
@@ -96,7 +96,7 @@ export function attachWhere(managedBy: string, policy: string, field: string): {
       return {
         lead: (
           <>
-            {name} is defined under <Code>objects:</Code> in <Code>{path}</Code>, the kudurru configuration file on the host. In that <Code>kind: Policy</Code> entry, set {spec} to:
+            {name} is defined under <Code size="inherit">objects:</Code> in <Code size="inherit">{path}</Code>, the kudurru configuration file on the host. In that <Code size="inherit">kind: Policy</Code> entry, set {spec} to:
           </>
         ),
         after: 'Objects in the configuration file are read at start: restart kudurru after saving it.',
@@ -106,7 +106,7 @@ export function attachWhere(managedBy: string, policy: string, field: string): {
       return {
         lead: (
           <>
-            {name} is a Policy resource in Kubernetes (namespace {ns}). In its manifest, or with <Code>kubectl edit policies.kudurru.io {name} -n {ns}</Code>, set {spec} to:
+            {name} is a Policy resource in Kubernetes (namespace {ns}). In its manifest, or with <Code size="inherit">kubectl edit policies.kudurru.io {name} -n {ns}</Code>, set {spec} to:
           </>
         ),
         after: 'If a GitOps tool applies the manifest, change it in the repository, or the next sync undoes the edit.',
@@ -124,7 +124,7 @@ export function attachWhere(managedBy: string, policy: string, field: string): {
       return {
         lead: (
           <>
-            {name} is managed by <Code>{o.owner || 'nobody'}</Code>. Where it is defined, set {spec} to:
+            {name} is managed by <Code size="inherit">{o.owner || 'nobody'}</Code>. Where it is defined, set {spec} to:
           </>
         ),
         after: '',

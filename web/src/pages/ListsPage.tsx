@@ -61,7 +61,7 @@ function ListSearch() {
                 label={h.list}
                 description={
                   <>
-                    matches with <Code>{h.rule}</Code>
+                    matches with <Code size="inherit">{h.rule}</Code>
                   </>
                 }
               />
