@@ -93,7 +93,7 @@ export interface Outcome {
   fallback?: boolean;
 }
 
-const FIELD_LABEL: Record<string, string> = { name: "your name", email: "your email address", use: "what you run it for" };
+const FIELD_LABEL: Record<string, string> = { name: "your name", email: "your email address", use: "what you run it for", noncommercial: "the non-commercial certification" };
 
 /** Sends a personal request; never throws. */
 export async function sendPersonal(endpoint: string, f: Fields, fetchImpl: typeof fetch = fetch): Promise<Outcome> {

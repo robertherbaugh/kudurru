@@ -94,6 +94,11 @@ describe("the personal request", () => {
     expect(out.message).toContain("check them");
   });
 
+  test("a 400 about the certification names the checkbox", async () => {
+    const out = await sendPersonal("u", personal, reply(400, { error: { key: "invalid", message: "certify", fields: ["noncommercial"] } }));
+    expect(out.message).toContain("the non-commercial certification");
+  });
+
   test("a 429 says when to try again", async () => {
     expect((await sendPersonal("u", personal, reply(429, { error: { key: "rate_limited" } }, { "Retry-After": "45" }))).message).toContain("45 seconds");
     expect((await sendPersonal("u", personal, reply(429, undefined, { "Retry-After": "600" }))).message).toContain("10 minutes");
