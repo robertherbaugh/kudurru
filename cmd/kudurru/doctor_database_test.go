@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/central/centraltest"
 	"github.com/robertherbaugh/kudurru/internal/config"
 )
@@ -32,7 +33,7 @@ func TestDoctorDatabase(t *testing.T) {
 		t.Fatalf("fresh database: %q", out)
 	}
 	centraltest.Open(t, db)
-	if rep, out := run(db); rep.failures != 0 || !strings.Contains(out, "schema 1") {
+	if rep, out := run(db); rep.failures != 0 || !strings.Contains(out, fmt.Sprintf("schema %d", central.SchemaVersion)) {
 		t.Fatalf("migrated database: %q", out)
 	}
 }

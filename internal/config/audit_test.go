@@ -20,10 +20,19 @@ func TestAuditStore(t *testing.T) {
 	if got := cfg.AuditStore(); got != AuditStoreAuditLog {
 		t.Fatalf("kube auto = %s", got)
 	}
+	cfg.Database.DSN = "postgres://db/kudurru"
+	if got := cfg.AuditStore(); got != AuditStoreDatabase {
+		t.Fatalf("kube with a database: auto = %s", got)
+	}
 	cfg.Audit.Store = AuditStoreLocal
 	if got := cfg.AuditStore(); got != AuditStoreLocal {
 		t.Fatalf("kube local = %s", got)
 	}
+	cfg.Database.DSN, cfg.Audit.Store = "", AuditStoreDatabase
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "audit.store: database needs database.dsn") {
+		t.Fatalf("database without dsn: %v", err)
+	}
+	cfg.Audit.Store = AuditStoreLocal
 	cfg.Store.Driver, cfg.Audit.Store = "sqlite", AuditStoreAuditLog
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "audit.store: auditlog needs store.driver: kube") {
 		t.Fatalf("auditlog with sqlite: %v", err)

@@ -195,6 +195,9 @@ func (s *Spool) SourceID() string { return s.sourceID }
 // Node is the node the spool records for.
 func (s *Spool) Node() string { return s.opts.Node }
 
+// Kind names the source in a cluster-wide store.
+func (s *Spool) Kind() string { return "auditspool" }
+
 // Close closes the database.
 func (s *Spool) Close() error { return s.db.Close() }
 

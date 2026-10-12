@@ -93,7 +93,8 @@ The leader deletes batches older than `audit.retention` (400 days). The
 ServiceAccount may create and delete AuditLogs but not update them; every
 batch is hash-chained and sealed with the encryption key, and every event
 is also a `"log":"audit"` line for your log pipeline. `audit.store: local`
-keeps the events on each replica only.
+keeps the events on each replica only. With a central database
+(`database.dsn`, [postgres.md](postgres.md)) the events go there instead.
 
 ### hostNetwork
 

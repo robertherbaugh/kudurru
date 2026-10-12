@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -320,4 +322,34 @@ func (s *Store) VerifyAudit(ctx context.Context) error {
 			prev, first, after = e.Hash, false, e.ID
 		}
 	}
+}
+
+// metaAuditSource is the meta key of AuditSourceID.
+const metaAuditSource = "audit_source_id"
+
+// AuditSourceID returns the UUID that names this file's audit rows when
+// they are shipped to a cluster-wide audit store (audit.Source), minting
+// it on first use. It is not cluster_id: a cluster-wide store keys rows by
+// (source, id), and this names the file, not the cluster.
+func (s *Store) AuditSourceID(ctx context.Context) (string, error) {
+	var id string
+	err := s.r.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, metaAuditSource).Scan(&id)
+	if err == nil && id != "" {
+		return id, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("store/sqlite: read %s: %w", metaAuditSource, err)
+	}
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	if s.isClosed() {
+		return "", store.ErrClosed
+	}
+	if _, err := s.w.ExecContext(ctx, `INSERT OR IGNORE INTO meta(key, value) VALUES (?, ?)`, metaAuditSource, uuid.NewString()); err != nil {
+		return "", fmt.Errorf("store/sqlite: write %s: %w", metaAuditSource, err)
+	}
+	if err := s.w.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, metaAuditSource).Scan(&id); err != nil {
+		return "", fmt.Errorf("store/sqlite: read %s: %w", metaAuditSource, err)
+	}
+	return id, nil
 }

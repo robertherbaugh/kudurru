@@ -24,6 +24,11 @@ D126 record what changed on the way.
   `AuditLog` objects (`audit.kudurru.io`, new in the `kudurru-crds` chart,
   D157), so every replica shows the same events and they survive pod
   restarts. New hostOnly keys `audit.store` and `audit.retention`.
+- Optional central PostgreSQL database (`database.dsn`, D158,
+  [postgres.md](docs/deploy/postgres.md)) for the runtime data of every
+  node. With it, the audit log of every node, Docker and compose included,
+  is kept in one hash chain there (`audit.store: database`, D159); each
+  node keeps its own copy and sends it when the database is reachable.
 - "All nodes" in the scope selector
   ([#9](https://github.com/robertherbaugh/kudurru/issues/9)): a cluster
   request answered by one replica now says so (`requested_scope`, and the

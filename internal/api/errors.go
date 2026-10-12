@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -198,6 +199,9 @@ func storeError(err error) error {
 		return e
 	case errors.Is(err, audit.ErrNotStored):
 		return errAuditNotStored()
+	case errors.Is(err, central.ErrUnavailable), errors.Is(err, central.ErrIncompatible):
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, err.Error(),
+			"the central database is not usable from this node; every node keeps its own copy and sends it when the database is back (see the Diagnosis page)")
 	case errors.Is(err, validator.ErrUnknownKind):
 		return newError(http.StatusBadRequest, KeyInvalid, err.Error(), "")
 	case errors.Is(err, store.ErrNotFound):

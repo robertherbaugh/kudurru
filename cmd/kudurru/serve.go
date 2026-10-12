@@ -34,6 +34,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
 	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/central/pgaudit"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -614,6 +615,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
 
+	// The optional central database (D158): opened here, connected and
+	// migrated in the background by its runnable; never part of readiness.
+	var centralDB *central.DB
+	var centralState api.CentralState
+	if cfg.Database.Enabled() {
+		if centralDB, err = central.Open(central.Options{DSN: cfg.Database.DSN, MaxConns: int32(cfg.Database.MaxConns), // #nosec G115 -- bounded 1-32 by the schema
+			Node: cfg.Node.Name, Version: info.Version, Registerer: reg, Logger: logger}); err != nil {
+			return err
+		}
+		defer centralDB.Close()
+		centralState = centralDB
+	}
+
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
 	// The sqlite store keeps audit events in state.db; the kube driver's
 	// are in this node's audit spool, so /audit shows the events recorded
@@ -638,17 +652,28 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			}
 		}
 	}
-	// The optional central database (D158): opened here, connected and
-	// migrated in the background by its runnable; never part of readiness.
-	var centralDB *central.DB
-	var centralState api.CentralState
-	if cfg.Database.Enabled() {
-		if centralDB, err = central.Open(central.Options{DSN: cfg.Database.DSN, MaxConns: int32(cfg.Database.MaxConns), // #nosec G115 -- bounded 1-32 by the schema
-			Node: cfg.Node.Name, Version: info.Version, Registerer: reg, Logger: logger}); err != nil {
-			return err
+	// audit.store database (D159): every node ships its own audit (the
+	// spool, or state.db) into the central chain; every replica reads it.
+	var auditShipper *audit.Shipper
+	var centralJobs []central.Job
+	if centralDB != nil && cfg.AuditStore() == config.AuditStoreDatabase {
+		var src audit.Source
+		if auditSpool != nil {
+			src = auditSpool
+		} else if ss, ok := st.(*sqlite.Store); ok {
+			if src, err = audit.NewStateSource(ctx, ss, cfg.Node.Name); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
 		}
-		defer centralDB.Close()
-		centralState = centralDB
+		if src != nil {
+			auditShipper = &audit.Shipper{Source: src, Target: &pgaudit.Target{DB: centralDB, Version: info.Version},
+				Delay: time.Second, MinGap: -1, Logger: logger}
+			auditReader = &pgaudit.Reader{DB: centralDB}
+			centralJobs = append(centralJobs, pgaudit.PruneJob(cfg.Audit.Retention.Std()))
+		}
+	}
+	if auditLogs != nil {
+		auditShipper = auditLogs.shipper
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
@@ -825,6 +850,16 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		if err := add("central", false, centralDB.Run); err != nil {
 			return err
 		}
+		if len(centralJobs) > 0 {
+			if err := add("central-janitor", true, (&central.Janitor{DB: centralDB, Jobs: centralJobs, Logger: logger}).Run); err != nil {
+				return err
+			}
+		}
+	}
+	if auditShipper != nil {
+		if err := add("audit-ship", false, auditShipper.Run); err != nil {
+			return err
+		}
 	}
 	auditRetention := cfg.Audit.Retention.Std()
 	if ss, ok := st.(*sqlite.Store); ok {
@@ -840,9 +875,6 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		}
 	}
 	if auditLogs != nil {
-		if err := add("audit-ship", false, auditLogs.shipper.Run); err != nil {
-			return err
-		}
 		if err := add("auditlog-prune", true, (&audit.Pruner{Name: "auditlog", Prune: auditLogs.prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
 			return err
 		}

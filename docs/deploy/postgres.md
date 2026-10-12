@@ -50,6 +50,20 @@ KUDURRU_DATABASE__DSN_FILE=/run/secrets/kudurru-dsn kudurru serve
 `kudurru doctor` checks that the database answers, runs PostgreSQL 15 or
 newer and has a schema the binary can use.
 
+## Audit log
+
+With a database, `audit.store: auto` keeps the audit log there
+(`audit.store: database`, D159). Each node still records every event in
+its own store first (`state.db` with the sqlite driver, `audit-spool.db` in
+Kubernetes) and sends it within a second or two. Events from all nodes form
+one hash chain: every event's hash covers the one before it, whichever node
+recorded it, so a changed, removed or truncated event is detected. Each
+node's own chain is kept beside it (`origin_hash`).
+
+While the database is away, the Audit tab answers that it is unavailable
+and the events wait on the nodes. The leader deletes events older than
+`audit.retention` (400 days) from the start of the chain.
+
 ## Upgrades and mixed versions
 
 The database records `schema_version` and `compat_version` in
