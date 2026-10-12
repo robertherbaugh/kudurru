@@ -199,15 +199,17 @@ On the owner's hardware:
       `hack/volume-check.sh` runs on the result), `ghcr.io/robertherbaugh/kudurru:<version>` and `<version>-debug`
       (linux/amd64, linux/arm64), plus `latest` and `latest-debug` for a
       release. Build provenance is attested for the
-      archives, packages and checksums.
+      archives, packages and checksums (public repository only, below).
 - [ ] publish.yml's `test` job (read-only token, no Go cache) runs `make
       test` and `make helm-check` on the tag before the `release` job starts.
       The tools are pinned: goreleaser v2.18.3, helm v4.3.0, cosign v2.6.5,
       syft v1.54.1 (goreleaser's SBOMs; the runner image has none), and
       every action by commit SHA (Dependabot, `.github/dependabot.yml`;
-      `TestWorkflowActionsPinned`). Every image gets SLSA build provenance
-      pushed next to it (`gh attestation verify oci://<image>@<digest>
-      --owner robertherbaugh`); the Dockerfile-built images (base,
+      `TestWorkflowActionsPinned`). While the repository is public, every
+      image gets SLSA build provenance pushed next to it (`gh attestation
+      verify oci://<image>@<digest> --owner robertherbaugh`); a private
+      repository skips those steps, because artifact attestations there
+      need GitHub Enterprise Cloud. The Dockerfile-built images (base,
       -hostnetwork, supervisors) also carry a BuildKit SBOM attestation, the
       ko images goreleaser's SPDX SBOM.
 - [ ] The workflow packages both charts with `--version <version>

@@ -175,7 +175,10 @@ jobs:
           done
       # SLSA build provenance for the ko images, pushed next to them (the
       # archives' provenance is the step below); goreleaser attaches their
-      # SPDX SBOMs.
+      # SPDX SBOMs. Artifact attestations in a private repository need GitHub
+      # Enterprise Cloud, so every provenance step here runs only while the
+      # repository is public; the cosign signatures and SBOMs do not depend
+      # on it.
       - name: Resolve the ko image digests
         id: ko
         env:
@@ -189,12 +192,14 @@ jobs:
             echo "${v}=${digest}" >> "$GITHUB_OUTPUT"
           done
       - name: Build provenance for ghcr.io/robertherbaugh/kudurru
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ghcr.io/robertherbaugh/kudurru
           subject-digest: ${{ steps.ko.outputs.plain }}
           push-to-registry: true
       - name: Build provenance for ghcr.io/robertherbaugh/kudurru (-debug)
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ghcr.io/robertherbaugh/kudurru
@@ -207,6 +212,7 @@ jobs:
           version="${TAG#v}"
           hack/volume-check.sh "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"
       - name: Build provenance for the release artifacts
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
@@ -305,6 +311,7 @@ jobs:
       - name: Sign the image by digest
         run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
       - name: Build provenance
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ghcr.io/robertherbaugh/kudurru
@@ -385,6 +392,7 @@ jobs:
       - name: Sign the image by digest
         run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}@${{ steps.build.outputs.digest }}"
       - name: Build provenance
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-name: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}
