@@ -2,6 +2,7 @@ package catalogue
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,6 +83,20 @@ func TestParseAdGuard(t *testing.T) {
 	}
 	if _, err := ParseAdGuard(make([]byte, MaxAdGuardBytes+1), "x"); err == nil {
 		t.Error("an oversized document was accepted")
+	}
+	// The service count is bounded like a catalogue's (maxServices): a
+	// 16 MiB file of tiny services would otherwise be ~300,000 services.
+	var many strings.Builder
+	many.WriteString(`[`)
+	for i := range maxServices + 1 {
+		if i > 0 {
+			many.WriteString(",")
+		}
+		fmt.Fprintf(&many, `{"id":"s%d","name":"S","rules":["||s%d.example^"]}`, i, i)
+	}
+	many.WriteString(`]`)
+	if _, err := ParseAdGuard([]byte(many.String()), "x"); err == nil {
+		t.Errorf("%d services were accepted", maxServices+1)
 	}
 }
 

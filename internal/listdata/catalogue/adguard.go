@@ -126,6 +126,9 @@ func ParseAdGuard(b []byte, origin string) (*Import, error) {
 		}
 		list = *doc.BlockedServices
 	}
+	if len(list) > maxServices {
+		return nil, fmt.Errorf("catalogue: AdGuard services: %d entries, over the limit of %d", len(list), maxServices)
+	}
 	imp := &Import{raw: bytes.Clone(b), digest: digestOf(b), origin: origin}
 	seen := map[string]bool{}
 	for _, a := range list {

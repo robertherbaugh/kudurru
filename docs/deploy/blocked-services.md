@@ -350,7 +350,8 @@ What the opt-in does:
   needs a restart.
 - The file's format: an object with `blocked_services`, each
   `{id, name, rules, group}` (a bare array is read too, `icon_svg` is
-  ignored and the dashboard draws a monogram), at most 16 MiB. IDs become
+  ignored and the dashboard draws a monogram), at most 16 MiB and 1000
+  entries. IDs become
   kudurru IDs with `_` replaced by `-` (`amazon_streaming` becomes
   `amazon-streaming`). Only rules of the form `||<name>^` are kept, where
   the name is below a public suffix (`||tiktok.com^`, not `||com^`,
