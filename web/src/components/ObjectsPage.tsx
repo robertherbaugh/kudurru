@@ -11,7 +11,7 @@ import { Link } from '@astryxdesign/core/Link';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
-import { proportional, Table, useTableSelection, useTableSelectionState, type ColumnWidth, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
+import { pixel, proportional, Table, useTableSelection, useTableSelectionState, type ColumnWidth, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -195,7 +195,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
     {
       key: 'managed',
       header: 'Managed by',
-      width: proportional(1.3, { minWidth: 100 }),
+      width: proportional(1.5, { minWidth: 136 }),
       renderCell: ({ obj: o }) => <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />,
     },
     {
@@ -217,7 +217,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       // Room for Open, and for a row action (Refresh) beside it.
-      width: rowActions ? proportional(2, { minWidth: 160 }) : proportional(0.9, { minWidth: 72 }),
+      width: rowActions ? proportional(2, { minWidth: 160 }) : pixel(80),
       align: 'end',
       renderCell: ({ obj: o }) => (
         <HStack gap={1} hAlign="end" vAlign="center">
