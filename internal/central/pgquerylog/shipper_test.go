@@ -271,3 +271,49 @@ func TestRollupsOnly(t *testing.T) {
 		t.Fatalf("guard %d", s.ShippedThrough())
 	}
 }
+
+// TestPurgeByPartition: whole days are truncated, the cutoff's day is
+// deleted row by row, and the counts add up.
+func TestPurgeByPartition(t *testing.T) {
+	db := centraltest.New(t)
+	fc := testclock.NewFakeClock(t0)
+	w := writer(t, "node-a", fc)
+	write(t, w,
+		ev("node-a", t0.Add(-50*time.Hour), "10.0.0.1", "two-days.example", pipeline.StatusForwarded),
+		ev("node-a", t0.Add(-26*time.Hour), "10.0.0.1", "yesterday.example", pipeline.StatusForwarded),
+		ev("node-a", t0.Add(-11*time.Hour), "10.0.0.1", "early.example", pipeline.StatusForwarded), // 01:00 today
+		ev("node-a", t0.Add(-time.Hour), "10.0.0.1", "late.example", pipeline.StatusForwarded))     // 11:00 today
+	shipAll(t, shipper(t, db, w, "node-a", fc))
+	ctx := context.Background()
+	// Before 06:00 today: two whole days and one row of today.
+	n, err := Purger{DB: db}.Purge(ctx, t0.Add(-6*time.Hour))
+	if err != nil || n != 3 {
+		t.Fatalf("purged %d: %v", n, err)
+	}
+	if left := scalar(t, db, `SELECT count(*) FROM query`); left != 1 {
+		t.Fatalf("%d rows left", left)
+	}
+	if n, err = (Purger{DB: db}).Purge(ctx, time.Time{}); err != nil || n != 1 {
+		t.Fatalf("purge all: %d: %v", n, err)
+	}
+}
+
+// TestJanitorLiftsStatementTimeout: housekeeping is not cut off by the
+// pool's 15 s read timeout.
+func TestJanitorLiftsStatementTimeout(t *testing.T) {
+	db := centraltest.New(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	var setting string
+	j := &central.Janitor{DB: db, Logger: quiet(), Jobs: []central.Job{{Name: "probe", Run: func(ctx context.Context, tx pgx.Tx, _ time.Time) (int64, error) {
+		defer cancel()
+		return 0, tx.QueryRow(ctx, `SELECT current_setting('statement_timeout')`).Scan(&setting)
+	}}}}
+	_ = j.Run(ctx)
+	if setting != "0" {
+		t.Fatalf("statement_timeout in a janitor job: %q", setting)
+	}
+	pool, _ := db.Pool()
+	if err := pool.QueryRow(context.Background(), `SELECT current_setting('statement_timeout')`).Scan(&setting); err != nil || setting != "15s" {
+		t.Fatalf("pool statement_timeout %q: %v", setting, err)
+	}
+}

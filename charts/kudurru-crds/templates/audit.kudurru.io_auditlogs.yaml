@@ -208,8 +208,9 @@ spec:
                 type: string
               stubs:
                 description: |-
-                  Stubs counts the events stored without documents and request data
-                  because the node exceeded its hourly audit budget.
+                  Stubs counts the denied or failed events stored without documents
+                  and request data because the node exceeded its hourly budget for
+                  them (successful actions are always stored in full).
                 type: integer
               until:
                 format: date-time

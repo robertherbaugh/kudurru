@@ -84,8 +84,9 @@ type AuditLogSpec struct {
 	// Seal is an HMAC-SHA256 over the batch keyed from the cluster
 	// encryption key, so an edit made without that key is detected.
 	Seal string `json:"seal,omitempty"`
-	// Stubs counts the events stored without documents and request data
-	// because the node exceeded its hourly audit budget.
+	// Stubs counts the denied or failed events stored without documents
+	// and request data because the node exceeded its hourly budget for
+	// them (successful actions are always stored in full).
 	// +optional
 	Stubs int `json:"stubs,omitempty"`
 	// Events are the events, oldest first.

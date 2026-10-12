@@ -255,3 +255,143 @@ func TestUnavailable(t *testing.T) {
 		t.Fatalf("opaque cursor: %v", err)
 	}
 }
+
+// rawSource hands out events as recorded, unsanitized (a state.db row
+// written before the API sanitized its requests).
+type rawSource struct{ evs []audit.Event }
+
+func (r *rawSource) SourceID() string { return "raw-source" }
+func (r *rawSource) Node() string     { return "node-a" }
+func (r *rawSource) ReadAfter(_ context.Context, after int64, n int) ([]audit.Event, error) {
+	var out []audit.Event
+	for _, ev := range r.evs {
+		if ev.ID > after && len(out) < n {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
+
+// TestDirtyEventsShip: a NUL in Request.Path and invalid UTF-8 in
+// Request.UA and a group do not stop shipping (the review's poison pill);
+// they are stored sanitized and the chain verifies.
+func TestDirtyEventsShip(t *testing.T) {
+	db := centraltest.New(t)
+	ctx := context.Background()
+	src := &rawSource{}
+	for i := range 3 {
+		ev := event(i, "")
+		ev.ID = int64(i + 1)
+		if i == 1 {
+			ev.Request.Path, ev.Request.UA, ev.Actor.Groups = "/api/v1/cache/flush\x00", "evil\xff\xfe", []string{"g\x00"}
+			ev.Reason = "bad \xc3"
+		}
+		src.evs = append(src.evs, ev)
+	}
+	tgt := &pgaudit.Target{DB: db}
+	ship(t, tgt, src)
+	if c, err := tgt.Cursor(ctx, src); err != nil || c != 3 {
+		t.Fatalf("cursor %d: %v", c, err)
+	}
+	evs, err := (&pgaudit.Reader{DB: db}).Read(ctx, audit.Query{})
+	if err != nil || len(evs) != 3 {
+		t.Fatalf("%d events: %v", len(evs), err)
+	}
+	if evs[1].Request.UA != "evil�" || evs[1].Request.Path != "/api/v1/cache/flush�" || evs[1].Actor.Groups[0] != "g�" {
+		t.Fatalf("stored %+v", evs[1])
+	}
+	if err := pgaudit.Verify(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	// The same through a node's spool.
+	sp := openSpool(t, "node-b")
+	if err := sp.Record(ctx, audit.Event{Action: "x.y", Resource: audit.Resource{Kind: "x"}, Result: audit.ResultDenied, Request: audit.Request{UA: "\xff"}}); err != nil {
+		t.Fatal(err)
+	}
+	ship(t, tgt, sp)
+	if err := pgaudit.Verify(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDataErrorStoresWithoutDetails: a batch the database still refuses
+// for its data (SQLSTATE class 22) is stored once more without the
+// events' free text instead of blocking the source forever. A trigger
+// stands in for the refusal.
+func TestDataErrorStoresWithoutDetails(t *testing.T) {
+	db := centraltest.New(t)
+	ctx := context.Background()
+	pool, _ := db.Pool()
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION refuse_poison() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN IF NEW.req_path LIKE '%poison%' THEN RAISE EXCEPTION 'refused' USING ERRCODE = '22023'; END IF; RETURN NEW; END $$;
+		CREATE TRIGGER refuse_poison BEFORE INSERT ON audit FOR EACH ROW EXECUTE FUNCTION refuse_poison()`); err != nil {
+		t.Fatal(err)
+	}
+	src := &rawSource{}
+	for i := range 2 {
+		ev := event(i, "")
+		ev.ID = int64(i + 1)
+		if i == 1 {
+			ev.Request.Path = "/poison"
+		}
+		src.evs = append(src.evs, ev)
+	}
+	ship(t, &pgaudit.Target{DB: db}, src)
+	evs, err := (&pgaudit.Reader{DB: db}).Read(ctx, audit.Query{})
+	if err != nil || len(evs) != 2 {
+		t.Fatalf("%d events: %v", len(evs), err)
+	}
+	for _, ev := range evs {
+		if ev.Request.Path != "" || ev.Before != nil || !strings.HasPrefix(ev.Reason, "stored without details") || ev.Action != "dnszone.update" {
+			t.Fatalf("event %+v", ev)
+		}
+	}
+	if err := pgaudit.Verify(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestVerifyWhileAppending: appends committed while Verify pages through
+// the chain are not reported as a truncated end or a gap.
+func TestVerifyWhileAppending(t *testing.T) {
+	db := centraltest.New(t)
+	ctx := context.Background()
+	src := &rawSource{}
+	tgt := &pgaudit.Target{DB: db}
+	add := func(n int) []audit.Event {
+		var out []audit.Event
+		for range n {
+			ev := event(len(src.evs), "")
+			ev.ID = int64(len(src.evs) + 1)
+			src.evs = append(src.evs, ev)
+			out = append(out, ev)
+		}
+		return out
+	}
+	if err := tgt.Append(ctx, src, add(2500)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 40 {
+			if err := tgt.Append(ctx, src, add(25)); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	for {
+		if err := pgaudit.Verify(ctx, db); err != nil {
+			t.Fatalf("verify while appending: %v", err)
+		}
+		select {
+		case <-done:
+			if err := pgaudit.Verify(ctx, db); err != nil {
+				t.Fatal(err)
+			}
+			return
+		default:
+		}
+	}
+}

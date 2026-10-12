@@ -211,6 +211,7 @@ func (s *Spool) Record(ctx context.Context, ev audit.Event) error {
 		ev.Node = s.opts.Node
 	}
 	ev.ID = 0
+	ev = audit.Sanitize(ev)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	audit.Chain(&ev, s.last)

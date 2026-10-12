@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/central"
@@ -56,8 +57,22 @@ func sourceKind(src audit.Source) string {
 
 // Append implements audit.Target: in one transaction it registers the
 // source, locks the chain head, chains and inserts the events after the
-// source's cursor and moves the cursor.
+// source's cursor and moves the cursor. Events are sanitized (canonical);
+// should the database still refuse a batch for its data (SQLSTATE class
+// 22), it is stored once more without the events' free text (documents,
+// reason, request), with a reason saying so, rather than holding every
+// later event of the source behind it forever.
 func (t *Target) Append(ctx context.Context, src audit.Source, evs []audit.Event) error {
+	err := t.append(ctx, src, evs, "")
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && strings.HasPrefix(pe.Code, "22") {
+		return t.append(ctx, src, evs, "stored without details: the database refused the event ("+pe.Code+")")
+	}
+	return err
+}
+
+// append inserts evs; stub, when set, replaces their free text.
+func (t *Target) append(ctx context.Context, src audit.Source, evs []audit.Event, stub string) error {
 	return t.DB.Tx(ctx, func(tx pgx.Tx) error {
 		sid, err := central.EnsureSource(ctx, tx, src.SourceID(), sourceKind(src), src.Node(), t.Version)
 		if err != nil {
@@ -82,6 +97,9 @@ func (t *Target) Append(ctx context.Context, src audit.Source, evs []audit.Event
 			}
 			seq++
 			c := canonical(ev, src.Node())
+			if stub != "" {
+				c.Before, c.After, c.Request, c.Reason = nil, nil, audit.Request{}, stub
+			}
 			c.PrevHash, c.Hash = head, audit.ChainHash(c, head)
 			head = c.Hash
 			last = ev.ID
@@ -112,10 +130,12 @@ var columns = []string{
 	"origin_prev_hash", "origin_hash", "prev_hash", "hash",
 }
 
-// canonical is ev as the database stores it: microsecond UTC time, the
-// source's node when the event names none, no ids or hashes.
+// canonical is ev as the database stores it: sanitized text, microsecond
+// UTC time, the source's node when the event names none, no ids or hashes.
 func canonical(ev audit.Event, node string) audit.Event {
-	c := ev
+	// Text columns take valid UTF-8 without NUL: a state.db row recorded
+	// before the API sanitized its requests may hold either.
+	c := audit.Sanitize(ev)
 	c.ID, c.UID, c.Cursor, c.Hash, c.PrevHash = 0, "", "", "", ""
 	c.Time = time.UnixMicro(ev.Time.UnixMicro()).UTC()
 	if c.Node == "" {
@@ -251,20 +271,30 @@ func clampLimit(n int) int {
 }
 
 // Verify recomputes the chain from its pruned anchor to the head and
-// names the first event that does not verify.
+// names the first event that does not verify. It reads in one read-only,
+// repeatable-read transaction, so appends and prunes running meanwhile
+// are not mistaken for gaps or a truncated end.
 func Verify(ctx context.Context, db *central.DB) error {
 	pool, err := db.Pool()
 	if err != nil {
 		return err
 	}
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := central.NoStatementTimeout(ctx, tx); err != nil {
+		return err
+	}
 	var through, seq int64
 	var anchor, head string
-	if err := pool.QueryRow(ctx, `SELECT pruned_through, pruned_hash, seq, hash FROM audit_chain`).Scan(&through, &anchor, &seq, &head); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT pruned_through, pruned_hash, seq, hash FROM audit_chain`).Scan(&through, &anchor, &seq, &head); err != nil {
 		return fmt.Errorf("pgaudit: read the chain head: %w", err)
 	}
 	prevID, prev := through, anchor
 	for {
-		evs, err := query(ctx, pool, `SELECT `+strings.Join(readColumns, ", ")+` FROM audit WHERE id > $1 ORDER BY id LIMIT 1000`, prevID)
+		evs, err := query(ctx, tx, `SELECT `+strings.Join(readColumns, ", ")+` FROM audit WHERE id > $1 ORDER BY id LIMIT 1000`, prevID)
 		if err != nil {
 			return err
 		}

@@ -48,6 +48,11 @@ func (j *Janitor) Run(ctx context.Context) error {
 		for _, job := range j.Jobs {
 			var n int64
 			err := j.DB.Tx(ctx, func(tx pgx.Tx) error {
+				// Housekeeping on a large database outlasts the pool's
+				// statement_timeout, which is meant for reads.
+				if err := NoStatementTimeout(ctx, tx); err != nil {
+					return err
+				}
 				var err error
 				n, err = job.Run(ctx, tx, now())
 				return err
@@ -73,4 +78,11 @@ func (j *Janitor) Run(ctx context.Context) error {
 			run()
 		}
 	}
+}
+
+// NoStatementTimeout lifts the pool's statement_timeout (15 s, for reads)
+// for the rest of tx: retention, purges and other bulk work.
+func NoStatementTimeout(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`)
+	return err
 }

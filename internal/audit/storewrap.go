@@ -179,7 +179,7 @@ func (w *recordingStore) record(ctx context.Context, key store.Key, verb, manage
 		ev.Before, ev.After = document(before), document(after)
 	}
 	// The write is done: a cancelled request must not lose its record.
-	if err := w.rec.Record(context.WithoutCancel(ctx), ev); err != nil {
+	if err := w.rec.Record(context.WithoutCancel(ctx), Sanitize(ev)); err != nil {
 		w.opts.Logger.Warn("audit: recording a store write failed", "action", ev.Action, "object", key.String(), "err", err)
 	}
 }

@@ -190,7 +190,7 @@ func (s *Server) record(ctx context.Context, ev audit.Event) {
 		ev.Authz = st.authz
 	}
 	ev.Request = audit.Request{ID: st.id, IP: st.clientIP.String(), Method: st.method, Path: st.path, UA: st.userAgent}
-	if err := s.opts.Audit.Record(context.WithoutCancel(ctx), ev); err != nil {
+	if err := s.opts.Audit.Record(context.WithoutCancel(ctx), audit.Sanitize(ev)); err != nil {
 		s.log.Warn("audit record failed", "action", ev.Action, "err", err)
 	}
 }

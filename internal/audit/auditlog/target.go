@@ -26,9 +26,11 @@ const (
 	// DefaultMaxBytes caps the encoded events of one batch, far below the
 	// apiserver's 1.5 MiB object limit.
 	DefaultMaxBytes = 512 << 10
-	// DefaultHourlyBudget is how many events per hour a node stores in
-	// full; the rest are stored as stubs (no documents, reason or request)
-	// so a flood of audited requests cannot fill etcd.
+	// DefaultHourlyBudget is how many denied or failed events per hour a
+	// node stores in full; the rest are stored as stubs (no documents,
+	// reason or request), so a flood of audited requests cannot fill etcd.
+	// Successful actions are always stored in full: they are bounded by
+	// real changes, and a flood of denials must not blank them.
 	DefaultHourlyBudget = 2000
 	// maxEvents is the CRD's limit on events per batch.
 	maxEvents = 1000
@@ -54,6 +56,12 @@ type Target struct {
 	mu         sync.Mutex
 	hour       time.Time
 	usedInHour int
+	// charged is the last event id charged per source, so a batch retried
+	// after a failed create is not charged again; stubFrom is the first id
+	// of a source stored as a stub this hour, so a retry gets the same
+	// answer.
+	charged  map[string]int64
+	stubFrom map[string]int64
 }
 
 var _ audit.Target = (*Target)(nil)
@@ -93,7 +101,7 @@ func (t *Target) Append(ctx context.Context, src audit.Source, evs []audit.Event
 		return err
 	}
 	for _, ev := range evs {
-		e := fromEvent(node, ev, !t.spend())
+		e := fromEvent(node, ev, !t.keep(src.SourceID(), ev))
 		b, err := json.Marshal(e)
 		if err != nil {
 			return err
@@ -112,9 +120,14 @@ func (t *Target) Append(ctx context.Context, src audit.Source, evs []audit.Event
 	return flush()
 }
 
-// spend takes one event from the hour's budget; false means the event is
-// stored as a stub.
-func (t *Target) spend() bool {
+// keep reports whether ev is stored in full. A successful action always
+// is; a denied or failed one takes one event from the hour's budget,
+// once (a retried event gets its earlier answer), and is stored as a stub
+// when the budget is spent.
+func (t *Target) keep(source string, ev audit.Event) bool {
+	if ev.Result == audit.ResultSuccess {
+		return true
+	}
 	budget := t.HourlyBudget
 	if budget <= 0 {
 		budget = DefaultHourlyBudget
@@ -126,10 +139,21 @@ func (t *Target) spend() bool {
 	hour := now().Truncate(time.Hour)
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if !hour.Equal(t.hour) {
-		t.hour, t.usedInHour = hour, 0
+	if !hour.Equal(t.hour) || t.charged == nil {
+		t.hour, t.usedInHour, t.stubFrom = hour, 0, map[string]int64{}
 	}
+	if t.charged == nil {
+		t.charged = map[string]int64{}
+	}
+	if ev.ID <= t.charged[source] {
+		from := t.stubFrom[source]
+		return from == 0 || ev.ID < from
+	}
+	t.charged[source] = ev.ID
 	if t.usedInHour >= budget {
+		if t.stubFrom[source] == 0 {
+			t.stubFrom[source] = ev.ID
+		}
 		return false
 	}
 	t.usedInHour++

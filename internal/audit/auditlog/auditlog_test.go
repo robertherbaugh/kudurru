@@ -307,18 +307,37 @@ func TestBudgetStubs(t *testing.T) {
 	ctx := context.Background()
 	sp := openSpool(t, "kudurru-0")
 	tgt := &Target{Client: env.client, Namespace: ns, HourlyBudget: 2}
+	now := time.Now()
+	// Four denied requests, then an admin's change: the budget covers the
+	// first two denials; the change is kept in full whatever was spent.
 	for i := range 4 {
-		if err := sp.Record(ctx, event(time.Now().Add(time.Duration(i)*time.Millisecond), "mallory", "blocking", "")); err != nil {
+		ev := event(now.Add(time.Duration(i)*time.Millisecond), "mallory", "blocking", "")
+		ev.Result = audit.ResultDenied
+		if err := sp.Record(ctx, ev); err != nil {
 			t.Fatal(err)
 		}
 	}
-	ship(t, tgt, sp)
-	evs, err := (&Reader{Client: env.client, Namespace: ns}).Read(ctx, audit.Query{})
-	if err != nil || len(evs) != 4 {
-		t.Fatalf("%d events: %v", len(evs), err)
+	if err := sp.Record(ctx, event(now.Add(10*time.Millisecond), "admin", "DNSZone", "example")); err != nil {
+		t.Fatal(err)
 	}
-	if evs[1].After == nil || evs[2].After != nil || evs[3].Request.IP != "" || evs[3].Actor.Name != "mallory" {
-		t.Fatalf("stubs %+v", evs)
+	evs, err := sp.ReadAfter(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A retried batch is charged once and gets the same answers.
+	for _, ev := range evs {
+		_ = tgt.keep(sp.SourceID(), ev)
+	}
+	ship(t, tgt, sp)
+	got, err := (&Reader{Client: env.client, Namespace: ns}).Read(ctx, audit.Query{})
+	if err != nil || len(got) != 5 {
+		t.Fatalf("%d events: %v", len(got), err)
+	}
+	if got[1].After == nil || got[2].After != nil || got[3].Request.IP != "" || got[3].Actor.Name != "mallory" {
+		t.Fatalf("denials %+v", got[:4])
+	}
+	if got[4].Actor.Name != "admin" || got[4].After == nil || got[4].Request.IP != "10.0.0.1" {
+		t.Fatalf("the change after the flood lost its details: %+v", got[4])
 	}
 	if err := Verify(ctx, env.client, ns, nil); err != nil {
 		t.Fatal(err)

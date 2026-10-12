@@ -3,11 +3,11 @@ package pgquerylog
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -110,18 +110,47 @@ type Purger struct {
 }
 
 // Purge implements api.QuerylogPurger.
+//
+// Whole days go with TRUNCATE (their partitions stay, for the raw
+// retention to drop); only the day the cutoff falls in is deleted row by
+// row. The pool's statement_timeout does not apply.
 func (p Purger) Purge(ctx context.Context, before time.Time) (int64, error) {
 	var n int64
 	err := p.DB.Tx(ctx, func(tx pgx.Tx) error {
-		var res pgconn.CommandTag
-		var err error
-		if before.IsZero() {
-			res, err = tx.Exec(ctx, `DELETE FROM query`)
-		} else {
-			res, err = tx.Exec(ctx, `DELETE FROM query WHERE ts < $1`, before.UnixMicro())
+		if err := central.NoStatementTimeout(ctx, tx); err != nil {
+			return err
 		}
-		n = res.RowsAffected()
-		return err
+		cutoff := int64(math.MaxInt64)
+		if !before.IsZero() {
+			cutoff = before.UnixMicro()
+		}
+		parts, err := partitions(ctx, tx)
+		if err != nil {
+			return err
+		}
+		for name, day := range parts {
+			table := pgx.Identifier{name}.Sanitize()
+			switch {
+			case day+dayUS <= cutoff:
+				var rows int64
+				if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&rows); err != nil {
+					return err
+				}
+				if rows > 0 {
+					if _, err := tx.Exec(ctx, `TRUNCATE `+table); err != nil {
+						return err
+					}
+				}
+				n += rows
+			case day < cutoff:
+				res, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE ts < $1`, cutoff)
+				if err != nil {
+					return err
+				}
+				n += res.RowsAffected()
+			}
+		}
+		return nil
 	})
 	return n, err
 }

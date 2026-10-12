@@ -124,3 +124,21 @@ func TestSchemaTooNew(t *testing.T) {
 		t.Fatalf("open newer schema: %v", err)
 	}
 }
+
+// TestDirtyRequestFields: a NUL in a path and invalid UTF-8 in a
+// User-Agent are stored sanitized, and the chain verifies.
+func TestDirtyRequestFields(t *testing.T) {
+	s := open(t, Options{})
+	ctx := context.Background()
+	if err := s.Record(ctx, audit.Event{Action: "cache.flush", Resource: audit.Resource{Kind: "cache"}, Result: audit.ResultDenied,
+		Request: audit.Request{Path: "/api/v1/cache/flush\x00", UA: "x\xff"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Verify(ctx); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := s.Read(ctx, audit.Query{})
+	if err != nil || len(evs) != 1 || evs[0].Request.UA != "x�" || strings.ContainsRune(evs[0].Request.Path, 0) {
+		t.Fatalf("%+v: %v", evs, err)
+	}
+}
