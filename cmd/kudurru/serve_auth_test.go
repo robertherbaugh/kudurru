@@ -113,7 +113,7 @@ func TestAPICookieSessionCSRFFailure(t *testing.T) {
 		{"patch", "PATCH", "/settings", `{}`, "", false, http.StatusForbidden, api.KeyCSRF},
 		{"delete", "DELETE", "/querylog", "", "wrong-token", false, http.StatusForbidden, api.KeyCSRF},
 		{"forwarded auth route", "POST", "/auth/tokens", `{"description":"csrf regression"}`, "", false, http.StatusForbidden, api.KeyCSRF},
-		{"valid header", "POST", "/dns/blocking", `{"blocking":true}`, me.CSRF, false, http.StatusNotImplemented, api.KeyNotImplemented},
+		{"valid header", "POST", "/auth/tokens", `{"description":"csrf regression"}`, me.CSRF, false, http.StatusCreated, ""},
 		{"safe method", "GET", "/auth/me", "", "", false, http.StatusOK, ""},
 		{"anonymous", "POST", "/dns/blocking", `{"blocking":true}`, "", true, http.StatusUnauthorized, api.KeyUnauthenticated},
 		{"public re-login", "POST", "/auth/login", loginBody, "", false, http.StatusOK, ""},
