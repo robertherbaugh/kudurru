@@ -73,6 +73,12 @@ licences. Attributions are added to this file as the dependencies land:
   (c) 2023-present Scalar: the browser bundle of @scalar/api-reference
   1.44.20 is embedded unmodified (gzipped) in internal/api/scalar and served
   as the /api/v1/docs page; licence and provenance in that directory.
+- Mermaid (https://github.com/mermaid-js/mermaid), MIT, Copyright (c) 2014 -
+  2022 Knut Sveidqvist: the browser bundle of mermaid 11.17.2 (with its
+  permissively licensed dependencies, licence comments kept) is stored
+  unmodified (gzipped) in site/vendor/mermaid and served by the docs site to
+  render the diagrams of docs/architecture; licence and provenance in that
+  directory. It is not part of the kudurru binary or images.
 - oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
   generates internal/apiclient/openapi from api/openapi-3.0.json at
   development time (not linked); the generated client links

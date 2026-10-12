@@ -551,6 +551,7 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
       { label: "Guide", href: docs("/guide/") },
       { label: "Deploy", href: docs("/deploy/") },
       { label: "Reference", href: docs("/reference/") },
+      { label: "Architecture", href: docs("/architecture/") },
     ],
   },
   {
@@ -565,7 +566,6 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     links: [
       { label: "Source on GitHub", href: REPO_URL },
       { label: "Releases", href: `${REPO_URL}/releases` },
-      { label: "Architecture", href: `${REPO_URL}/tree/main/docs/architecture` },
       { label: "Changelog", href: docs("/project/changelog/") },
       { label: "Security", href: docs("/project/security/") },
       { label: "Contributing", href: docs("/project/contributing/") },
