@@ -289,3 +289,34 @@ test('the Domains page shows allow and deny entries together', async ({ page }) 
     await removeEntries(api, 'deny', [denied]);
   }
 });
+
+test('the entries tables fit without scrolling sideways at 1280 and 1440 px', async ({ page }) => {
+  const api = await adminApi(page);
+  const id = suffix();
+  const allowed = `fit-allow-${id}.example`;
+  const denied = `fit-deny-${id}.example`;
+  try {
+    await api.post('/allowlist', { values: [allowed], comment: `a longer comment that explains why ${id} is allowed for everyone` });
+    await api.post('/denylist', { values: [denied], comment: `e2e ${id}` });
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const [path, name] of [
+        [`/allowlist?q=${id}`, 'Allowlist'],
+        [`/denylist?q=${id}`, 'Denylist'],
+        [`/domains?q=${id}`, 'Domains'],
+      ] as const) {
+        await page.goto(path);
+        await settle(page);
+        const table = page.getByRole('table', { name });
+        await expect(table.getByRole('row')).toHaveCount(name === 'Domains' ? 3 : 2);
+        const [scroll, client] = await table.evaluate((t) => [t.parentElement?.scrollWidth ?? 0, t.parentElement?.clientWidth ?? 0]);
+        expect(scroll, `${path} at ${width} px: the table scrolls sideways`).toBeLessThanOrEqual((client ?? 0) + 1);
+        // The row actions are on screen.
+        await expect(table.getByRole('button', { name: 'Delete' }).first()).toBeInViewport();
+      }
+    }
+  } finally {
+    await removeEntries(api, 'allow', [allowed]);
+    await removeEntries(api, 'deny', [denied]);
+  }
+});

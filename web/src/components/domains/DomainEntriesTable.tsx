@@ -3,17 +3,20 @@
 // the domain or expression, its type, the scope (everyone or group chips
 // linking to the groups), an inline-editable comment, when, by whom and
 // from where it was added (manual, query log, an unblock request, migrated),
-// the list it lives in, what it overrides, and Edit / Delete. Shared by
-// /allowlist, /denylist and /domains (DomainEntriesView).
+// the list it lives in and what it overrides (under the domain), and Edit /
+// Delete as icon buttons, so every column fits at 1280 px with the sidebar.
+// Shared by /allowlist, /denylist and /domains (DomainEntriesView).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Link } from '@astryxdesign/core/Link';
+import { StackItem } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
 import { proportional, pixel, Table, useTableSelection, useTableSelectionState, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
+import { MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DomainEntry, DomainEntryType } from '../../api/types';
 import { formatDateTime, formatRelative } from '../../lib/format';
@@ -67,8 +70,8 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
   const columns: TableColumn<DomainEntry>[] = [
     {
       key: 'enabled',
-      header: 'Enabled',
-      width: pixel(84),
+      header: 'On',
+      width: pixel(64),
       renderCell: (e) => {
         const why = lockReason(e, canWrite);
         return (
@@ -87,8 +90,8 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     },
     {
       key: 'value',
-      header: showAction ? 'Domain' : label === 'Denylist' ? 'Denied domain' : 'Domain',
-      width: proportional(3, { minWidth: 200 }),
+      header: 'Domain',
+      width: proportional(3, { minWidth: 190 }),
       renderCell: (e) => <DomainCell e={e} />,
     },
     ...(showAction
@@ -96,7 +99,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
           {
             key: 'action',
             header: 'Action',
-            width: pixel(84),
+            width: pixel(76),
             renderCell: (e: DomainEntry) => <Badge variant={e.action === 'allow' ? 'success' : 'error'} label={e.action} />,
           },
         ]
@@ -104,51 +107,37 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
     {
       key: 'type',
       header: 'Type',
-      width: pixel(104),
+      width: pixel(96),
       renderCell: (e) => <Token size="sm" color={TYPE_COLOR[e.type]} label={TYPE_LABEL[e.type]} />,
     },
     {
       key: 'scope',
       header: 'Applies to',
-      width: proportional(1.5, { minWidth: 130 }),
+      width: proportional(1.25, { minWidth: 100 }),
       renderCell: (e) => <ScopeCell e={e} />,
     },
     {
       key: 'comment',
       header: 'Comment',
-      width: proportional(2, { minWidth: 160 }),
+      width: proportional(2, { minWidth: 130 }),
       renderCell: (e) => <CommentCell e={e} locked={!!lockReason(e, canWrite)} onSave={(c) => onComment(e, c)} />,
     },
     {
       key: 'created',
       header: 'Added',
-      width: proportional(1.5, { minWidth: 150 }),
+      width: proportional(1.5, { minWidth: 120 }),
       renderCell: (e) => <AddedCell e={e} />,
-    },
-    {
-      key: 'lists',
-      header: 'List',
-      width: proportional(1, { minWidth: 120 }),
-      renderCell: (e) => (
-        <VStack gap={0.5}>
-          {e.lists.map((l) => (
-            <Link key={`${l.list}/${l.source}`} href={refPath('lists', l.list)} size="sm">
-              {shortRef(l.list, e.namespace)}
-            </Link>
-          ))}
-        </VStack>
-      ),
     },
     {
       key: 'actions',
       header: 'Actions',
-      width: pixel(150),
+      width: pixel(84),
       renderCell: (e) => {
         const why = lockReason(e, canWrite);
         return (
-          <HStack gap={1}>
-            <Button label="Edit" size="sm" variant="ghost" isDisabled={!!why} tooltip={why || `Edit ${e.value}`} onClick={() => onEdit(e)} />
-            <Button label="Delete" size="sm" variant="ghost" isDisabled={!!why} tooltip={why || `Delete ${e.value}`} onClick={() => onDelete(e)} />
+          <HStack gap={0.5}>
+            <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Edit ${e.value}`} onClick={() => onEdit(e)} />
+            <Button label="Delete" size="sm" variant="ghost" isIconOnly icon={<Trash2 size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Delete ${e.value}`} onClick={() => onDelete(e)} />
           </HStack>
         );
       },
@@ -175,6 +164,17 @@ function DomainCell({ e }: { e: DomainEntry }) {
     <VStack gap={0.5}>
       <Text type="code" wordBreak="break-all" hasStrikethrough={!e.enabled}>
         {e.value}
+      </Text>
+      <Text type="supporting" size="sm">
+        In{' '}
+        {e.lists.map((l, i) => (
+          <Text key={`${l.list}/${l.source}`} type="inherit">
+            {i ? ', ' : ''}
+            <Link href={refPath('lists', l.list)} color="inherit" hasUnderline>
+              {shortRef(l.list, e.namespace)}
+            </Link>
+          </Text>
+        ))}
       </Text>
       {e.overrides.length ? (
         <Text type="supporting" size="sm">
@@ -227,11 +227,10 @@ function AddedCell({ e }: { e: DomainEntry }) {
           <time dateTime={e.created} title={formatDateTime(e.created)}>
             {formatRelative(e.created)}
           </time>
-          {who ? ` by ${who}` : ''}
         </Text>
       ) : null}
       <Text type="supporting" size="sm">
-        from {origin}
+        {who ? `by ${who} · ` : ''}from {origin}
       </Text>
       {modified ? (
         <Text type="supporting" size="sm">
@@ -293,11 +292,23 @@ function CommentCell({ e, locked, onSave }: { e: DomainEntry; locked: boolean; o
       </VStack>
     );
   }
-  if (locked) return <Text type={e.comment ? 'body' : 'supporting'}>{e.comment || '–'}</Text>;
+  if (locked) return <Text size="sm" type={e.comment ? 'body' : 'supporting'}>{e.comment || '–'}</Text>;
   return (
     <HStack gap={1} align="start">
-      {e.comment ? <Text size="sm">{e.comment}</Text> : null}
-      <Button label={e.comment ? 'Edit comment' : 'Add comment'} size="sm" variant="ghost" tooltip={e.comment ? `Edit the comment of ${e.value}` : `Add a comment to ${e.value}`} onClick={() => setDraft(e.comment ?? '')} />
+      <StackItem size="fill">
+        <Text size="sm" type={e.comment ? 'body' : 'supporting'} wordBreak="break-word">
+          {e.comment || '–'}
+        </Text>
+      </StackItem>
+      <Button
+        label={e.comment ? 'Edit comment' : 'Add comment'}
+        size="sm"
+        variant="ghost"
+        isIconOnly
+        icon={e.comment ? <Pencil size={14} aria-hidden="true" /> : <MessageSquarePlus size={14} aria-hidden="true" />}
+        tooltip={e.comment ? 'Edit comment' : 'Add comment'}
+        onClick={() => setDraft(e.comment ?? '')}
+      />
     </HStack>
   );
 }

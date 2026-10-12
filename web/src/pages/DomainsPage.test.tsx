@@ -43,7 +43,7 @@ describe('AllowlistPage', () => {
     expect(within(yt).getByText('Everyone')).toBeInTheDocument();
     expect(within(yt).getByText('YouTube search suggestions')).toBeInTheDocument();
     expect(within(yt).getByText(/by admin/)).toBeInTheDocument();
-    expect(within(yt).getByText('from manual')).toBeInTheDocument();
+    expect(within(yt).getByText('by admin · from manual')).toBeInTheDocument();
     expect(within(yt).getByRole('link', { name: 'ui-allow' })).toHaveAttribute('href', '/lists/default/ui-allow');
 
     // Approved from the block page: links the request; the starter list blocks it.
@@ -53,7 +53,7 @@ describe('AllowlistPage', () => {
     expect(within(dc).getByRole('link', { name: 'starter' })).toHaveAttribute('href', '/lists/default/starter');
 
     expect(within(await row('*.cdn.example-video.com')).getByText('wildcard')).toBeInTheDocument();
-    expect(within(await row('clickserve.dartsearch.net')).getByText('from query log')).toBeInTheDocument();
+    expect(within(await row('clickserve.dartsearch.net')).getByText('by admin · from query log')).toBeInTheDocument();
     // Group-scoped: a chip linking to the group.
     expect(within(await row('scratch.mit.edu')).getByRole('link', { name: 'kids' })).toHaveAttribute('href', '/groups/default/kids');
     expect(within(await row('ads.partner.example')).getByRole('switch')).not.toBeChecked();
@@ -224,7 +224,7 @@ describe('DenylistPage', () => {
     renderWithApp(<DenylistPage />, { route: '/denylist' });
     expect(await row('tracking.example-shop.com')).toBeInTheDocument();
     expect(within(await row('^ads?[0-9]*\\.')).getByText('regex')).toBeInTheDocument();
-    expect(within(await row('telemetry.tv.example')).getByText('from migrated')).toBeInTheDocument();
+    expect(within(await row('telemetry.tv.example')).getByText('by system · from migrated')).toBeInTheDocument();
     expect(screen.queryByTestId('entry-s.youtube.com')).toBeNull();
     expect(
       await screen.findByText('Policy iot-strict is managed by file:objects.d/policies.yaml: add ui-deny to its blockListRefs so these entries apply to its clients.'),
