@@ -203,7 +203,8 @@ On the owner's hardware:
 - [ ] publish.yml's `test` job (read-only token, no Go cache) runs `make
       test` and `make helm-check` on the tag before the `release` job starts.
       The tools are pinned: goreleaser v2.18.3, helm v4.3.0, cosign v2.6.5,
-      and every action by commit SHA (Dependabot, `.github/dependabot.yml`;
+      syft v1.54.1 (goreleaser's SBOMs; the runner image has none), and
+      every action by commit SHA (Dependabot, `.github/dependabot.yml`;
       `TestWorkflowActionsPinned`). Every image gets SLSA build provenance
       pushed next to it (`gh attestation verify oci://<image>@<digest>
       --owner robertherbaugh`); the Dockerfile-built images (base,

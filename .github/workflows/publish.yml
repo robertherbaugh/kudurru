@@ -94,6 +94,11 @@ jobs:
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
         with:
           cosign-release: v2.6.5
+      # goreleaser's sboms run syft on the archives and packages; the runner
+      # image has no syft, and the step fails only after the builds.
+      - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          syft-version: v1.54.1
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v4.3.0
