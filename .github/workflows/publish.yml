@@ -444,6 +444,11 @@ jobs:
           pattern: supervisor-digest-${{ matrix.image }}-*
           path: ${{ runner.temp }}/digests
           merge-multiple: true
+      # The digest that gets signed comes from the index itself, not from the
+      # tag, which anything with packages: write could move between the push
+      # and a lookup (V3): --dry-run prints the exact index the push writes,
+      # whose sha256 (without the trailing newline, which $(...) strips) is
+      # its digest. The tag must point at it after the push.
       - name: Push ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }} (linux/amd64 and linux/arm64)
         id: build
         env:
@@ -456,10 +461,14 @@ jobs:
             [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
             sources+=("${REPO}@${digest}")
           done
+          index=$(docker buildx imagetools create --dry-run -t "${REPO}:${TAG}" "${sources[@]}")
+          jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]' <<<"${index}" > /dev/null
+          digest="sha256:$(printf '%s' "${index}" | sha256sum | cut -d' ' -f1)"
           docker buildx imagetools create -t "${REPO}:${TAG}" "${sources[@]}"
-          digest=$(docker buildx imagetools inspect "${REPO}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
-          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker buildx imagetools inspect "${REPO}@${digest}"
+          pushed=$(docker buildx imagetools inspect "${REPO}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
+          if [[ "${pushed}" != "${digest}" ]]; then
+            echo "::error::${REPO}:${TAG} points at ${pushed}, not the pushed index ${digest}"; exit 1
+          fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
       - name: Sign the image by digest
         run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}@${{ steps.build.outputs.digest }}"

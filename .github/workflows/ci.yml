@@ -9,7 +9,8 @@
 # this workflow. Short, network-bound or wait-bound jobs, and the fuzz matrix
 # (60 s of fuzzing a job whatever the size), stay on standard-2; the
 # supervisor images build natively on standard-2 x64 and arm64 runners
-# instead of under QEMU. 8 vCPU costs about 1.6x more for 20 % less time.
+# instead of under QEMU. 8 vCPU doubles the price per minute for 18 % less
+# time on the `go` job, about 1.6x the cost per run.
 # Pinned to Ubuntu 24.04, the image ubuntu-latest was.
 name: ci
 on:
