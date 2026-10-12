@@ -21,6 +21,7 @@ on:
       - hack/hostnetwork-check.sh
       - hack/volume-check.sh
       - hack/edge-root-check.sh
+      - internal/license/**
       - .github/workflows/edge.yml
   push:
     branches: [main]

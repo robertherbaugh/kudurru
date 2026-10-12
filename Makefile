@@ -246,7 +246,7 @@ web-dev: web-install
 ## run `cd web && bunx playwright install chromium` once); CI uses
 ## Playwright's chromium. The HTML report lands in web/playwright-report.
 web-e2e: web-build
-	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags licensetest"
+	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags=licensetest"
 	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 
 ## Docs site (site/, Hugo; site/README.md). The Hugo extended release
@@ -370,10 +370,15 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
 EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
 EDGE_SUPERVISOR_IMAGE ?= kudurru-dnsdist:edge-check
-EDGE_KUDURRU_IMAGE    ?= ghcr.io/robertherbaugh/kudurru:$(VERSION)
+EDGE_KUDURRU_IMAGE    ?= kudurru:edge-check
 EDGE_CHECK_DIR        ?= bin/edge-check
 
-edge-images: docker
+# The supervisors refuse to start without a license key that covers the edge,
+# so the kudurru image of the check is built with -tags licensetest (it trusts
+# the throwaway key of internal/license/testdata, which hack/edge-root-check.sh
+# hands to the supervisor). It is never pushed.
+edge-images:
+	docker build -t $(EDGE_KUDURRU_IMAGE) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) --build-arg GOTAGS=licensetest .
 	docker build -t $(EDGE_KEEPALIVED_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/keepalived
 	docker build -t $(EDGE_SUPERVISOR_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
 

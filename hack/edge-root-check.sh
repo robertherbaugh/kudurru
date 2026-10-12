@@ -14,12 +14,18 @@
 set -euo pipefail
 
 image=${1:?usage: hack/edge-root-check.sh <kudurru-dnsdist image>}
+# The supervisor needs a license key that covers the edge. The image of
+# `make edge-check` is built with -tags licensetest, which trusts the throwaway
+# key that signed this file (all features; the private half was discarded).
+root=$(cd "$(dirname "$0")/.." && pwd)
+license_key=$(cat "$root/internal/license/testdata/e2e-license.key")
 docker=${DOCKER:-docker}
 name=kudurru-edge-root-check-$$
 base_caps=(--cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID --cap-add KILL)
 ebpf_caps=(--cap-add BPF --cap-add SYS_ADMIN)
 common=(--security-opt no-new-privileges --read-only --sysctl net.ipv4.ip_unprivileged_port_start=1024
-	--tmpfs /etc/dnsdist:mode=1777 --tmpfs /run/kudurru:mode=1777 --tmpfs /tmp)
+	--tmpfs /etc/dnsdist:mode=1777 --tmpfs /run/kudurru:mode=1777 --tmpfs /tmp
+	-e "KUDURRU_LICENSE_KEY=$license_key")
 args=(/usr/local/bin/kudurru edge run --backends=node-a=127.0.0.1:5353
 	--api-key-out=/run/kudurru/dnsdist-api.key --poll-zones=false --log-format=text)
 trap '$docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
