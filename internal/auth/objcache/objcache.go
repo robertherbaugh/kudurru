@@ -43,6 +43,7 @@ type Cache[T store.Object] struct {
 
 	mu       sync.RWMutex
 	items    map[store.Key]T
+	gone     map[store.Key]tombstone
 	onChange []func()
 
 	syncOnce sync.Once
@@ -61,7 +62,22 @@ func New[T store.Object](st store.Store, kind store.Kind, opts Options) *Cache[T
 	if opts.MaxBackoff <= 0 {
 		opts.MaxBackoff = 10 * time.Second
 	}
-	return &Cache[T]{st: st, kind: kind, opts: opts, items: map[store.Key]T{}, synced: make(chan struct{})}
+	return &Cache[T]{st: st, kind: kind, opts: opts, items: map[store.Key]T{}, gone: map[store.Key]tombstone{}, synced: make(chan struct{})}
+}
+
+// tombstoneTTL is how long a deletion keeps refusing older versions of the
+// object. Upsert's callers read the object back right after writing it, so
+// a stale copy arrives within the store round trip, not minutes later.
+const tombstoneTTL = time.Minute
+
+// tombstone is the last resourceVersion of a deleted object. Without it a
+// write-through Upsert of a copy read just before the deletion (the
+// lastLoginAt update after a login, a token's lastUsedAt) would put the
+// deleted object back after the watch removed it, and the node would keep
+// authenticating it until its next re-watch.
+type tombstone struct {
+	rv string
+	at time.Time
 }
 
 // Kind returns the cached kind.
@@ -174,7 +190,7 @@ func (c *Cache[T]) watchOnce(ctx context.Context) error {
 				if ev.Object == nil {
 					continue
 				}
-				c.remove(store.KeyOf(ev.Object))
+				c.remove(store.KeyOf(ev.Object), ev.Object.GetResourceVersion())
 			}
 		}
 	}
@@ -184,8 +200,11 @@ func (c *Cache[T]) watchOnce(ctx context.Context) error {
 func (c *Cache[T]) prune(keep map[store.Key]bool) {
 	c.mu.Lock()
 	changed := false
-	for k := range c.items {
+	for k, old := range c.items {
 		if !keep[k] {
+			if rv := old.GetResourceVersion(); rv != "" {
+				c.gone[k] = tombstone{rv: rv, at: time.Now()}
+			}
 			delete(c.items, k)
 			changed = true
 		}
@@ -203,15 +222,35 @@ func (c *Cache[T]) put(key store.Key, t T) {
 		c.mu.Unlock()
 		return
 	}
+	if tb, ok := c.gone[key]; ok {
+		if time.Since(tb.at) < tombstoneTTL && !newer(t.GetResourceVersion(), tb.rv) {
+			c.mu.Unlock()
+			return
+		}
+		delete(c.gone, key)
+	}
 	c.items[key] = t
 	fns := c.onChange
 	c.mu.Unlock()
 	notify(fns)
 }
 
-func (c *Cache[T]) remove(key store.Key) {
+// remove drops key; rv is the deleted object's last resourceVersion when
+// known (watch events), else the cached copy's.
+func (c *Cache[T]) remove(key store.Key, rv string) {
 	c.mu.Lock()
-	_, ok := c.items[key]
+	old, ok := c.items[key]
+	if ok && (rv == "" || newer(old.GetResourceVersion(), rv)) {
+		rv = old.GetResourceVersion()
+	}
+	for k, tb := range c.gone {
+		if time.Since(tb.at) >= tombstoneTTL {
+			delete(c.gone, k)
+		}
+	}
+	if rv != "" {
+		c.gone[key] = tombstone{rv: rv, at: time.Now()}
+	}
 	delete(c.items, key)
 	fns := c.onChange
 	c.mu.Unlock()
@@ -225,7 +264,7 @@ func (c *Cache[T]) remove(key store.Key) {
 func (c *Cache[T]) Upsert(obj T) { c.put(store.KeyOf(obj), obj) }
 
 // Remove records a deletion the caller has just made.
-func (c *Cache[T]) Remove(key store.Key) { c.remove(key) }
+func (c *Cache[T]) Remove(key store.Key) { c.remove(key, "") }
 
 // Get returns the object with key.
 func (c *Cache[T]) Get(key store.Key) (T, bool) {

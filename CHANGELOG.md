@@ -187,6 +187,10 @@ pipeline.
   concurrent parses of cached list bodies per node.
 - The approve dialog and API say that an everyone approval is attached to
   every policy kudurru may edit.
+- Authentication caches: a deleted local user or token could be put back
+  into a node's cache by the background `lastLoginAt`/`lastUsedAt` update
+  that read it just before the deletion, and stayed valid there until the
+  next re-watch; a deletion now refuses older copies for a minute.
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission
