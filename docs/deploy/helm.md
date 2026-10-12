@@ -100,7 +100,7 @@ keeps the events on each replica only. With a central database
 
 `database.existingSecret` names a Secret in the release namespace whose key
 `database.dsnKey` (default `uri`, what a CloudNativePG `<cluster>-app`
-Secret holds) is a PostgreSQL 15+ connection string. Every replica then
+Secret holds) is a PostgreSQL 16+ connection string. Every replica then
 keeps the audit log, query log and statistics of all replicas there, and
 the dashboard's **All nodes** view reads them ([postgres.md](postgres.md)).
 The chart does not install PostgreSQL. A CloudNativePG cluster is enough:
