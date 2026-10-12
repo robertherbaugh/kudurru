@@ -95,8 +95,12 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 			start := time.Now()
 			nr := sqlitelog.NodeResult{Name: p.Name}
 			defer func() { nr.TookMS = float64(time.Since(start).Microseconds()) / 1000; scope.Nodes[i] = nr }()
-			peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
+			peerCtx := ctx
+			if !p.Self {
+				var cancel context.CancelFunc
+				peerCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+			}
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
@@ -180,30 +184,10 @@ func validShard(out *internalapi.QuerylogResponse, kind, name string) bool {
 		if out.Queries != nil {
 			scope = out.Queries.Scope
 		}
-	}
-	if scope.Scope != "node" || len(scope.Nodes) != 1 || scope.Nodes[0].Name != name || !scope.Nodes[0].OK {
+	default:
 		return false
 	}
-	if out == nil {
-		return false
-	}
-	switch kind {
-	case "summary":
-		return out.Summary != nil
-	case "timeseries":
-		return out.Timeseries != nil
-	case "clients", "domains", "lists", "zones":
-		return out.Top != nil
-	case "upstreams":
-		return out.Upstreams != nil
-	case "client_timeseries":
-		return out.Clients != nil
-	case "recent_blocked":
-		return out.Blocked != nil
-	case "queries":
-		return out.Queries != nil
-	}
-	return false
+	return scope.Scope == "node" && len(scope.Nodes) == 1 && scope.Nodes[0].Name == name && scope.Nodes[0].OK
 }
 
 func (r *scopedQuerylog) Summary(ctx context.Context, q sqlitelog.SummaryQuery) (*sqlitelog.Summary, error) {
@@ -545,6 +529,9 @@ func (r *scopedQuerylog) RecentBlocked(ctx context.Context, n int) (*sqlitelog.R
 	return out, nil
 }
 
+// Bound caller-controlled cursor maps before they can create peer work.
+const maxQueryCursorNodes = 64
+
 // Cluster cursors carry only emitted positions; rows fetched speculatively
 // from a peer stay eligible for the next page. A fixed upper timestamp keeps
 // inserts between pages out of this traversal.
@@ -595,6 +582,9 @@ func (r *scopedQuerylog) Queries(ctx context.Context, f sqlitelog.QueryFilter) (
 		if err := decodeQuerylogCursor(f.Cursor, &cursor); err != nil {
 			return nil, err
 		}
+		if len(cursor.Positions) > maxQueryCursorNodes {
+			return nil, errInvalid("cursor contains too many nodes")
+		}
 		if cursor.Version != 1 || cursor.Positions == nil || cursor.Filter != string(filterBytes) || cursor.Until.IsZero() {
 			return nil, errInvalid("cursor does not match these filters")
 		}
@@ -639,6 +629,9 @@ func (r *scopedQuerylog) Queries(ctx context.Context, f sqlitelog.QueryFilter) (
 		sort.Slice(peers, func(i, j int) bool { return peers[i].Name < peers[j].Name })
 		r.peers = peers
 	} else {
+		if len(r.peers) > maxQueryCursorNodes {
+			return nil, errUnavailable("too many nodes for cluster query pagination")
+		}
 		for _, p := range r.peers {
 			cursor.Positions[p.Name] = ""
 		}

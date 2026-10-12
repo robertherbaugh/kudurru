@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"sync"
@@ -200,6 +201,19 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 					}
 				}
 				remote := source.remote
+				wasOK := source.err == nil
+				setReady := func(err error) bool {
+					ready := err == nil
+					if ready == wasOK {
+						return true
+					}
+					if !sendItem(streamItem{index: i, err: err, ready: ready}) {
+						return false
+					}
+					wasOK = ready
+					return true
+				}
+				backoff := 3 * time.Second
 				for {
 					if remote != nil {
 						for {
@@ -207,7 +221,7 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 							if err != nil {
 								_ = remote.Close()
 								remote = nil
-								if !sendItem(streamItem{index: i, err: err}) {
+								if !setReady(err) {
 									return
 								}
 								break
@@ -219,13 +233,17 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 							}
 						}
 					}
-					timer := time.NewTimer(3 * time.Second)
+					// Equal jitter spreads dashboard retries while keeping the
+					// exponential delay bounded at 30 seconds.
+					delay := backoff/2 + time.Duration(rand.Int64N(int64(backoff/2))) //nolint:gosec // retry jitter, not a secret
+					timer := time.NewTimer(delay)
 					select {
 					case <-sctx.Done():
 						timer.Stop()
 						return
 					case <-timer.C:
 					}
+					backoff = min(2*backoff, 30*time.Second)
 					if s.opts.InternalClient == nil || source.peer.Address == "" {
 						continue
 					}
@@ -237,12 +255,13 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 						err = fmt.Errorf("peer stream identity does not match requested node")
 					}
 					if err != nil {
-						if !sendItem(streamItem{index: i, err: err}) {
+						if !setReady(err) {
 							return
 						}
 						continue
 					}
-					if !sendItem(streamItem{index: i, ready: true}) {
+					backoff = 3 * time.Second
+					if !setReady(nil) {
 						_ = remote.Close()
 						return
 					}
@@ -271,6 +290,9 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 			case item := <-items:
 				if item.event == nil {
 					nr := &scope.Nodes[item.index]
+					if nr.OK == item.ready {
+						continue
+					}
 					nr.OK = item.ready
 					nr.Error = ""
 					if !item.ready {

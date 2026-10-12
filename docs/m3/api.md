@@ -383,7 +383,8 @@ validate-unstructured-then-typed, `POST /dns/blocking`, REST exposure of
 `GET /queries`, `/queries/stream` and `/stats/*` honor
 `scope=cluster` and `scope=node&node=<name>`. Cluster reads contact the known
 members over the authenticated TLS internal listener, with a two-second
-per-node timeout. Responses list every requested node and set `partial: true`
+timeout for remote reads. Local reads use the request's deadline. Responses
+list every requested node and set `partial: true`
 when any node fails. A selected node is served by that node; unknown nodes are
 404, and an unavailable selected node or a cluster with no readable nodes is
 503. A coordinator without a local query log can still read its peers.
@@ -391,7 +392,10 @@ when any node fails. A selected node is served by that node; unknown nodes are
 Cluster query pages sort by timestamp, then node name and row ID. Their opaque
 cursors retain the per-node positions, original membership and an upper time
 bound, so later inserts do not displace a traversal. Keep the filters when
-following a cursor; the page size may change. Row identity is `(node, id)`.
+following a cursor; the page size may change. Historical cursor maps are limited
+to 64 nodes, including departed nodes retained as partial results; cluster query
+pagination returns 503 when initial membership exceeds this limit. Row identity
+is `(node, id)`.
 When a page is partial, restarting the search after recovery is necessary to
 obtain the missing node's complete history. Query-log storage and retention
 remain per node; aggregation cannot recover a replaced pod's lost emptyDir.
@@ -407,9 +411,10 @@ server health includes its node.
 
 Live tails multiplex privacy-transformed peer streams. Cluster SSE IDs are
 opaque per-node resume maps; node SSE IDs remain decimal. `event: scope`
-reports the initial contributing nodes and updates on peer failure or
-recovery. The dashboard displays these updates. A failed peer is retried
-every three seconds, resuming from its last received ID. Membership changes
+reports the initial contributing nodes and updates when a peer's availability
+changes. The dashboard displays these updates. Failed peers are retried with
+jittered exponential backoff up to 30 seconds, resuming from their last received
+ID; the backoff resets after a successful connection. Membership changes
 end the connection so EventSource reconnects against the current pods. Replay is bounded
 by each node's in-memory ring, as for a single-node stream. Subscribers and
 writes are bounded so slow dashboard clients cannot block DNS ingestion.

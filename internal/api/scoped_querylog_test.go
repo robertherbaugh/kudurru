@@ -33,10 +33,14 @@ type clusterLogFixture struct {
 	calls        atomic.Int64
 }
 
-func openNodeLog(t *testing.T, node string, events []*querylog.Event) (*sqlitelog.Writer, *querylog.Tail) {
+func openNodeLog(t *testing.T, node string, events []*querylog.Event, mutate ...func(*sqlitelog.Options)) (*sqlitelog.Writer, *querylog.Tail) {
 	t.Helper()
 	tail := querylog.NewTail(128, 64, nil)
-	w, err := sqlitelog.Open(t.Context(), sqlitelog.Options{Path: filepath.Join(t.TempDir(), sqlitelog.FileName), Node: node, Tail: tail, Privacy: querylog.PrivacyFull, RawRetention: 24 * time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	opts := sqlitelog.Options{Path: filepath.Join(t.TempDir(), sqlitelog.FileName), Node: node, Tail: tail, Privacy: querylog.PrivacyFull, RawRetention: 24 * time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	for _, m := range mutate {
+		m(&opts)
+	}
+	w, err := sqlitelog.Open(t.Context(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,6 +156,68 @@ func TestClusterReadsWithLocalLogDisabled(t *testing.T) {
 	f.h.do("GET", "/api/v1/queries", "operator", nil).want(503)
 	f.h.srv.opts.InternalClient = nil
 	f.h.do("GET", "/api/v1/queries?scope=cluster", "operator", nil).want(503)
+}
+
+func TestClusterQueryCursorNodeLimit(t *testing.T) {
+	for _, n := range []int{64, 65} {
+		t.Run(fmt.Sprintf("%d positions", n), func(t *testing.T) {
+			f := newClusterLogFixture(t)
+			var page QueriesBody
+			f.h.do("GET", "/api/v1/queries?scope=cluster&limit=1", "operator", nil).want(200).json(&page)
+			var cursor queryCursor
+			if err := decodeQuerylogCursor(page.CursorNext, &cursor); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; len(cursor.Positions) < n; i++ {
+				cursor.Positions[fmt.Sprintf("departed-%d", i)] = ""
+			}
+			path := "/api/v1/queries?scope=cluster&limit=1&cursor=" + url.QueryEscape(encodeQuerylogCursor(cursor))
+			before := f.calls.Load()
+			if n > 64 {
+				f.h.do("GET", path, "operator", nil).want(400)
+				if f.calls.Load() != before {
+					t.Fatal("oversized cursor reached peer reads")
+				}
+				return
+			}
+			var result QueriesBody
+			f.h.do("GET", path, "operator", nil).want(200).json(&result)
+			if !result.Partial || len(result.Nodes) != n || len(result.Queries) != 1 {
+				t.Fatalf("departed nodes were not retained as partial results: %+v", result)
+			}
+		})
+	}
+	t.Run("initial membership exceeds limit", func(t *testing.T) {
+		f := newClusterLogFixture(t)
+		peers := make([]cluster.Peer, 64)
+		for i := range peers {
+			peers[i] = cluster.Peer{Name: fmt.Sprintf("peer-%d", i)}
+		}
+		f.h.srv.opts.Membership = staticMembership{peers: peers}
+		before := f.calls.Load()
+		f.h.do("GET", "/api/v1/queries?scope=cluster&limit=1", "operator", nil).want(503)
+		if f.calls.Load() != before {
+			t.Fatal("oversized membership reached peer reads")
+		}
+	})
+}
+
+func TestClusterSummaryAllowsSlowLocalRead(t *testing.T) {
+	f := newClusterLogFixture(t)
+	local, _ := openNodeLog(t, "node-a", nil, func(o *sqlitelog.Options) {
+		o.DomainsOnLists = func() int64 {
+			// Pause before the distinct-set SQL reads, beyond the remote
+			// deadline, to reproduce a slow local summary deterministically.
+			time.Sleep(2100 * time.Millisecond)
+			return 123
+		}
+	})
+	f.h.srv.opts.Querylog = local.Reader()
+	var summary SummaryBody
+	f.h.do("GET", "/api/v1/stats/summary?scope=cluster&window=1h", "viewer", nil).want(200).json(&summary)
+	if summary.Partial || !summary.Nodes[0].OK || summary.DomainsOnLists != 123 || summary.Queries.Total != 3 {
+		t.Fatalf("slow local read was discarded: %+v", summary)
+	}
 }
 func TestClusterStatsMerge(t *testing.T) {
 	f := newClusterLogFixture(t)
@@ -425,5 +491,93 @@ func TestClusterQueriesWithEmptyServingNode(t *testing.T) {
 	f.h.do("GET", "/api/v1/queries?scope=cluster", "operator", nil).want(200).json(&page)
 	if page.Partial || page.RecordsTotal != 3 || len(page.Queries) != 3 || page.Queries[0].Node != "node-b" {
 		t.Fatalf("empty serving node hid peer queries: %+v", page)
+	}
+}
+
+func TestStreamRetryReportsOnlyAvailabilityChanges(t *testing.T) {
+	f := newClusterLogFixture(t)
+	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: bytes.Repeat([]byte{7}, 32), NodeName: "node-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer, err := internalapi.NewServer(internalapi.ServerOptions{Credentials: creds, QueryTail: func() *querylog.Tail { return f.btail }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recovered atomic.Bool
+	attempts := make(chan time.Time, 10)
+	peerServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ready := recovered.Load()
+		attempts <- time.Now()
+		if !ready {
+			http.Error(w, "offline", http.StatusServiceUnavailable)
+			return
+		}
+		peer.Handler().ServeHTTP(w, r)
+	}))
+	peerServer.TLS = creds.ServerTLS()
+	peerServer.StartTLS()
+	t.Cleanup(peerServer.Close)
+	f.h.srv.opts.Membership = staticMembership{peers: []cluster.Peer{{Name: "node-b", Address: strings.TrimPrefix(peerServer.URL, "https://")}}}
+	ts := httptest.NewServer(f.h.srv)
+	t.Cleanup(ts.Close)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", ts.URL+"/api/v1/queries/stream?scope=cluster", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", apitest.Bearer("operator"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	rd := bufio.NewReader(resp.Body)
+	initial := readEvents(t, rd, 1)[0]
+	var scope sqlitelog.Scope
+	if err := json.Unmarshal([]byte(initial.data), &scope); err != nil {
+		t.Fatal(err)
+	}
+	if initial.event != "scope" || !scope.Partial || scope.Nodes[1].OK {
+		t.Fatalf("initial availability: %+v", initial)
+	}
+	nextAttempt := func() time.Time {
+		t.Helper()
+		select {
+		case at := <-attempts:
+			return at
+		case <-ctx.Done():
+			t.Fatal("peer was not retried")
+			return time.Time{}
+		}
+	}
+	first := nextAttempt()
+	second := nextAttempt()
+	if second.Sub(first) < 1500*time.Millisecond {
+		t.Fatal("retry skipped the initial backoff")
+	}
+	recovered.Store(true)
+	notice := readEvents(t, rd, 1)[0]
+	if err := json.Unmarshal([]byte(notice.data), &scope); err != nil {
+		t.Fatal(err)
+	}
+	if notice.event != "scope" || scope.Partial || !scope.Nodes[1].OK {
+		t.Fatalf("unchanged failure emitted a scope event instead of recovery: %+v", notice)
+	}
+	if nextAttempt().Sub(second) < 3*time.Second {
+		t.Fatal("repeated failure did not increase the backoff")
+	}
+	f.btail.Publish(qev(30, time.Now(), "10.0.0.1", "recovered.test", pipeline.StatusForwarded, ""))
+	ev := readEvents(t, rd, 1)[0]
+	var row sqlitelog.QueryRow
+	if err := json.Unmarshal([]byte(ev.data), &row); err != nil {
+		t.Fatal(err)
+	}
+	if ev.event != "query" || row.Node != "node-b" || row.Domain != "recovered.test" {
+		t.Fatalf("recovered stream did not resume queries: %+v", ev)
 	}
 }
