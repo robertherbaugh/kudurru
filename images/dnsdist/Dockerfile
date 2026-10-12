@@ -39,9 +39,11 @@ COPY LICENSE.dnsdist /usr/share/doc/kudurru-dnsdist/LICENSE.dnsdist
 USER root
 # /run/kudurru is 1777: the first container to mount the empty named volume
 # seeds its mode, and kudurru (65532), dnsdist (953) and keepalived_script
-# (953) all write there.
+# (953) all write there. /etc/dnsdist is group-writable for a supervisor
+# started as root with group 953 and no CAP_DAC_OVERRIDE (--dnsdist-user:
+# eBPF, host networking).
 RUN mkdir -p /etc/dnsdist /run/kudurru /certs \
- && chown -R 953:953 /etc/dnsdist \
+ && chown -R 953:953 /etc/dnsdist && chmod 0775 /etc/dnsdist \
  && chmod 1777 /run/kudurru
 USER 953
 VOLUME ["/run/kudurru"]

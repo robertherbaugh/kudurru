@@ -95,10 +95,15 @@ spec:
           protocol: TCP
         {{- end }}
     {{- end }}
-    # Probes (kubelet) on the unauthenticated ops listener.
+    # Probes (kubelet) on the unauthenticated ops listener{{ if eq $edgeMode "sidecar" }}, and the dnsdist
+    # sidecar's supervisor (readiness, /metrics){{ end }}.
     - ports:
         - port: 8081
           protocol: TCP
+        {{- if eq $edgeMode "sidecar" }}
+        - port: 8084
+          protocol: TCP
+        {{- end }}
     # Prometheus.
     - ports:
         - port: 9153

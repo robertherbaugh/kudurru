@@ -110,6 +110,20 @@ is used as given.
 {{- end -}}
 {{- end -}}
 
+{{/*
+"true" when the dnsdist container starts as root and dnsdist drops to 953:
+eBPF DynBlocks (BPF maps need CAP_BPF/CAP_SYS_ADMIN, which Kubernetes only
+makes effective for root), or dnsdist on the host network (the edge
+DaemonSet, or the sidecar of a hostNetwork kudurru pod), where the
+ip_unprivileged_port_start sysctl that lets 953 bind :53 is not available.
+Takes (dict "root" $ "sidecar" bool).
+*/}}
+{{- define "kudurru.edge.rootStart" -}}
+{{- $v := .root.Values -}}
+{{- $hostNet := ternary $v.hostNetwork.enabled (eq (include "kudurru.edge.mode" .root) "daemonset") (eq (toString .sidecar) "true") -}}
+{{- if or $v.edge.ebpf.enabled $hostNet }}true{{ end -}}
+{{- end -}}
+
 {{/* "true" when a separate edge workload (not the sidecar) fronts kudurru. */}}
 {{- define "kudurru.edge.separate" -}}
 {{- $m := include "kudurru.edge.mode" . -}}

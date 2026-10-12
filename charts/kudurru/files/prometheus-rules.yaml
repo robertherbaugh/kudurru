@@ -4,7 +4,8 @@
 # a copy (charts/kudurru/files/prometheus-rules.yaml, `make chart-assets`).
 #
 # The edge and VIP alerts read the supervisors' metrics (`kudurru edge run`
-# :8084, `kudurru vip run` :8085); they only fire when those are scraped too.
+# :8084, `kudurru vip run` :8085); they only fire when those are scraped too
+# (the Helm chart's <release>-edge PodMonitor does).
 #
 # §11.6 alerts not shipped yet, because their metric does not exist (see
 # docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),

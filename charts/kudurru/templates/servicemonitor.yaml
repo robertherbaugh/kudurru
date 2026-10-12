@@ -50,3 +50,49 @@ spec:
       path: /metrics
       interval: {{ .Values.podMonitor.interval }}
 {{- end }}
+{{- $edgeMode := include "kudurru.edge.mode" . -}}
+{{- if and $edgeMode (or .Values.serviceMonitor.enabled .Values.podMonitor.enabled) }}
+{{- $mon := ternary .Values.podMonitor .Values.serviceMonitor .Values.podMonitor.enabled }}
+---
+# The supervisors' own listeners: `kudurru edge run` :8084 (kudurru_edge_*)
+# and, with vip.provider=keepalived, `kudurru vip run` :8085
+# (kudurru_vip_*). The edge and VIP dashboard rows and the
+# KudurruEdgeBackendDown and KudurruVIPNoMaster alerts read them. Rendered
+# with serviceMonitor or podMonitor; the sidecar lives in the kudurru pods.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+    {{- with $mon.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- if eq $edgeMode "sidecar" }}
+      {{- include "kudurru.selectorLabels" . | nindent 6 }}
+      {{- else }}
+      {{- include "kudurru.edge.selectorLabels" . | nindent 6 }}
+      {{- end }}
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace }}]
+  podMetricsEndpoints:
+    - port: edge-ready
+      path: /metrics
+      interval: {{ $mon.interval }}
+      relabelings:
+        # hostNetwork pods share the node's address; name the node.
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+    {{- if eq .Values.vip.provider "keepalived" }}
+    - port: vip-health
+      path: /metrics
+      interval: {{ $mon.interval }}
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+    {{- end }}
+{{- end }}

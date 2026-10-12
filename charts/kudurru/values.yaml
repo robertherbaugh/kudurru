@@ -123,7 +123,13 @@ edge:
   authoritativeCache: false
   dynblocks:
     enabled: false
-  # -- eBPF DynBlocks need retained capabilities (not Restricted PSS).
+  # -- eBPF DynBlocks: dnsdist creates BPF maps, which needs CAP_BPF and
+  # CAP_SYS_ADMIN. Kubernetes only makes added capabilities effective for
+  # root, so the dnsdist container then starts as root (group 953, every
+  # other capability dropped) and dnsdist switches to 953 after binding,
+  # keeping CAP_SYS_ADMIN (--dnsdist-user). Not Restricted or Baseline PSS:
+  # the namespace needs the privileged level. The host-network edge
+  # (daemonset mode) starts the same way without BPF and SYS_ADMIN.
   ebpf:
     enabled: false
   # -- PROXYv2 TLV 0xE0 secret shared by the edge and kudurru pods (at least
@@ -364,6 +370,10 @@ auth:
     #      redirectURL: https://dns.example.com/api/v1/auth/oidc/corp/callback}
     providers: []
 
+# -- serviceMonitor or podMonitor with edge.enabled also render the
+# <fullname>-edge PodMonitor on the supervisors' :8084 (and :8085 with
+# vip.provider=keepalived), with the labels and interval of podMonitor when
+# it is enabled, else of serviceMonitor.
 serviceMonitor:
   enabled: false
   interval: 30s

@@ -52,6 +52,7 @@ type edgeFlags struct {
 	dynQPS, dynNX                   int
 	ebpf                            bool
 	renderer, dnsdistBin, configDir string
+	dnsdistUser                     string
 	serverID                        string
 	threads                         int
 	// run only
@@ -100,6 +101,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.IntVar(&f.threads, "threads", 2, "Do53 listener threads")
 	if run {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
+		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
 		fl.StringVar(&f.configDir, "config-dir", "/etc/dnsdist", "directory for the rendered configuration")
 		fl.StringVar(&f.healthAddr, "health-address", ":8084", "supervisor listener: /healthz/ready, /healthz/live, /status, /metrics")
 		fl.StringVar(&f.healthAddr, "readiness-address", ":8084", "alias of --health-address (the chart's form)")
@@ -370,8 +372,11 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 	}
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	if os.Geteuid() == 0 && f.dnsdistUser == "" {
+		logger.Warn("the supervisor runs as root and --dnsdist-user is not set: dnsdist keeps running as root")
+	}
 	cfg := dnsdist.Config{
-		Options: o, Source: src, Renderer: r, ConfigDir: f.configDir, Binary: f.dnsdistBin,
+		Options: o, Source: src, Renderer: r, ConfigDir: f.configDir, Binary: f.dnsdistBin, User: f.dnsdistUser,
 		APIKeyOut: f.apiKeyOut, APIKeyGID: gid, TLSDir: f.tlsDir,
 		Debounce: f.debounce, Drain: f.drain, ZonePoll: f.zonePoll, StopTimeout: f.stopTimeout,
 		Logger: logger, Registerer: reg, Gatherer: reg,

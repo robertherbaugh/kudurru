@@ -384,6 +384,26 @@ func TestSupervisorLuaRenderer(t *testing.T) {
 	}
 }
 
+func TestSupervisorUser(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.User = "953:953" })
+	h.waitFor("ready", h.ready)
+	if got := strings.Join(h.sup.Args(), " "); got != "--supervised --disable-syslog --uid 953 --gid 953 -C "+filepath.Join(h.dir, "dnsdist.yml") {
+		t.Errorf("args %v", got)
+	}
+	for _, bad := range []string{":953", "953:", "9 53"} {
+		if _, err := New(Config{Source: &cluster.StaticSource{}, User: bad}); err == nil {
+			t.Errorf("user %q accepted", bad)
+		}
+	}
+	s, err := New(Config{Source: &cluster.StaticSource{}, User: "pdns"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(s.Args(), " "); !strings.Contains(got, "--uid pdns -C") || strings.Contains(got, "--gid") {
+		t.Errorf("uid without gid: args %v", got)
+	}
+}
+
 func testutilCounter(reg *prometheus.Registry, name, label string) float64 {
 	mfs, _ := reg.Gather()
 	for _, mf := range mfs {

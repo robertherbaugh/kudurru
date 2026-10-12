@@ -349,12 +349,13 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 ## optional edge workflow. The unit tests only check the files structurally.
 EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
 EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
+EDGE_SUPERVISOR_IMAGE ?= kudurru-dnsdist:edge-check
 EDGE_KUDURRU_IMAGE    ?= ghcr.io/robertherbaugh/kudurru:$(VERSION)
 EDGE_CHECK_DIR        ?= bin/edge-check
 
 edge-images: docker
 	docker build -t $(EDGE_KEEPALIVED_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/keepalived
-	docker build -t kudurru-dnsdist:edge-check --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
+	docker build -t $(EDGE_SUPERVISOR_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
 
 edge-check: edge-images
 	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./internal/edge/...
@@ -369,8 +370,10 @@ edge-check: edge-images
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
 	# eBPF DynBlocks: --check-config creates the BPF maps, which needs
-	# CAP_SYS_ADMIN (or CAP_BPF) as an effective capability, so root.
-	docker run --rm --user 0 --cap-add SYS_ADMIN --entrypoint /bin/sh \
+	# CAP_BPF/CAP_SYS_ADMIN as an effective capability, so root with the
+	# chart's capability set (charts/kudurru _pod.tpl, kudurru.edge.rootStart).
+	docker run --rm --user 0:953 --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
+	  --cap-add KILL --cap-add BPF --cap-add SYS_ADMIN --security-opt no-new-privileges --entrypoint /bin/sh \
 	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; for d in /golden/*-ebpf/; do \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
@@ -379,7 +382,10 @@ edge-check: edge-images
 	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; umask 077; \
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
-	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version
+	# The chart's root start at run time: dnsdist creates the maps, binds :53
+	# without the sysctl, switches to 953 keeping CAP_SYS_ADMIN, and stops.
+	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
+	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
 
 ## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
 ## UDP and TCP (split and mixed Services), rolling restart without unanswered

@@ -38,3 +38,19 @@ upstream image is pinned in the Dockerfile and bumped by the CVE tracking job.
 The webserver/API (127.0.0.1:8083) and console (127.0.0.1:5199) are bound
 to loopback with credentials generated on every start; they are never
 exposed. tini (from the upstream image) is PID 1.
+
+## Users and capabilities
+
+The image runs as `pdns` (uid 953) by default and binds :53 through the
+container's `net.ipv4.ip_unprivileged_port_start=0`. Two cases need more than
+a non-root process can get from Kubernetes or Docker, which make added
+capabilities effective only for root: eBPF DynBlocks (`--ebpf`, creating the
+BPF maps needs `CAP_BPF`/`CAP_SYS_ADMIN`) and host networking (the edge
+DaemonSet, compose HA), where the sysctl does not apply. There the container
+starts as root with group 953 (`user: "0:953"`, chart `runAsUser: 0`,
+`runAsGroup: 953`), drops every capability except `NET_BIND_SERVICE`,
+`SETUID`, `SETGID` and `KILL` (plus `BPF` and `SYS_ADMIN` for eBPF), and the
+supervisor runs dnsdist with `--dnsdist-user=953:953`: dnsdist binds its
+sockets and creates the maps as root, then switches to 953 and keeps only
+`capabilities_to_retain` (`CAP_SYS_ADMIN` with eBPF). `KILL` lets the root
+supervisor signal the switched dnsdist. `make edge-check` runs this case.

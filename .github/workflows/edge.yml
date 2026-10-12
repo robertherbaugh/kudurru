@@ -18,6 +18,7 @@ on:
       - images/**
       - Dockerfile
       - hack/hostnetwork-check.sh
+      - hack/edge-root-check.sh
       - .github/workflows/edge.yml
   push:
     branches: [main]

@@ -107,8 +107,24 @@ on `edge.backendPort` (5353) and accepts PROXYv2 only from
 `<release>-proxy-protocol` (D72). The CIDR defaults to the RFC 1918 and ULA
 ranges; narrow it to your pod CIDR. The supervisor reads the headless
 Service's EndpointSlices (`--backends-from
-endpointslice:<ns>/<release>-headless`) and exposes readiness on :8084.
-The edge image is a milestone M4 deliverable.
+endpointslice:<ns>/<release>-headless`) and exposes readiness and
+`/metrics` on :8084.
+
+The dnsdist container runs as uid 953 under the Restricted standard, and
+binds :53 through the pod's `ip_unprivileged_port_start` sysctl. Two cases
+need more than Kubernetes gives a non-root process, because added
+capabilities are only effective for root: `edge.ebpf.enabled` (creating
+the BPF maps needs `CAP_BPF`/`CAP_SYS_ADMIN`) and dnsdist on the host
+network (`edge.mode=daemonset`, `vip.provider=keepalived`, or the sidecar of
+a `hostNetwork.enabled` pod), where the sysctl is not available. There the
+container starts as root with group 953, `allowPrivilegeEscalation: false`,
+a read-only root and every capability dropped except `NET_BIND_SERVICE`,
+`SETUID`, `SETGID` and `KILL` (plus `BPF` and `SYS_ADMIN` for eBPF); the
+supervisor passes `--dnsdist-user=953:953`, so dnsdist binds its sockets
+and creates the maps as root, then switches to 953 and keeps only
+`CAP_SYS_ADMIN` (eBPF) or nothing. `make edge-check` runs both cases in the
+image. Such a namespace needs the privileged level (`SYS_ADMIN` and host
+networking are outside Baseline).
 
 `vip.provider=keepalived` runs dnsdist and keepalived in one hostNetwork
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
@@ -159,6 +175,7 @@ mode=kubernetes: created once, then owned by kubectl and the UI).
 |---|---|
 | `serviceMonitor.enabled` | ServiceMonitor on the API Service's `metrics` port (adds a `pod` label) |
 | `podMonitor.enabled` | PodMonitor on every kudurru pod |
+| either, with `edge.enabled` | PodMonitor `<release>-edge` on the supervisors: `kudurru edge run` :8084 (`edge-ready`) and, with `vip.provider=keepalived`, `kudurru vip run` :8085 (`vip-health`); labels and interval from `podMonitor` when enabled, else `serviceMonitor` |
 | `prometheusRule.enabled` | PrometheusRule from `deploy/prometheus/rules.yaml` |
 | `grafanaDashboard.enabled` | ConfigMap with `deploy/grafana/kudurru-overview.json`, label `grafana_dashboard: "1"` for the Grafana sidecar |
 
@@ -168,8 +185,8 @@ store, dnsdist, VIP); every query uses a metric the binary registers today
 (the deploy tests enforce it), including the serial-divergence panel and
 `KudurruSerialDivergence`. The edge and VIP panels and the
 `KudurruEdgeBackendDown` and `KudurruVIPNoMaster` alerts read the
-supervisors' metrics listeners (:8084, :8085), which the chart's
-ServiceMonitor and PodMonitor do not scrape yet.
+supervisors' metrics listeners (:8084, :8085), which the `<release>-edge`
+PodMonitor scrapes (a `node` label names the node of hostNetwork pods).
 
 ## Network policy
 
