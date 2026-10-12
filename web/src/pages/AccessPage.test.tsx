@@ -1,5 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { canAnyScope } from '../api/context';
+import type { Me } from '../api/types';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionsOf, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
@@ -91,5 +93,13 @@ describe('AccessPage', () => {
     expect(resourceText({ kind: 'BlockList', namespace: 'default', name: 'starter' })).toBe('BlockList default/starter');
     expect(scopeText({ kind: 'cluster' })).toBe('cluster');
     expect(scopeText({ kind: 'zone', name: 'home-arpa' })).toBe('zone home-arpa');
+  });
+
+  it('lets a zone-scoped principal manage its own tokens', () => {
+    const me: Me = { principal: { kind: 'User', id: 'local:zed', name: 'zed', groups: [] }, roles: ['zone-admin@zone:home'], permissions: {} };
+    expect(canAnyScope({ ...me }, 'tokens', 'own')).toBe(false);
+    expect(canAnyScope({ ...me, scopedPermissions: { 'zone:home': { tokens: ['own'] } } }, 'tokens', 'own')).toBe(true);
+    expect(canAnyScope({ ...me, scopedPermissions: { 'zone:home': { tokens: ['own'] } } }, 'tokens', 'read')).toBe(false);
+    expect(canAnyScope({ ...me, permissions: { tokens: ['own'] } }, 'tokens', 'own')).toBe(true);
   });
 });

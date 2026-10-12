@@ -146,9 +146,9 @@ Every path is under `/api/v1`. The declarations come from `stack.Routes()`.
 | `GET /auth/me` | authenticated | `{principal:{kind,id,name,groups,provider,authMethod,tokenID}, roles:[grant…], csrf, permissions:{<resource>:[verbs]}, scopedPermissions:{"zone:x":{…}}, mustChangePassword, expiresAt, idleExpiresAt}` |
 | `POST /auth/password` | authenticated, local users | `{currentPassword,newPassword}` → 200 me body; every earlier session is revoked and the caller gets a fresh cookie |
 | `GET /auth/oidc/{idp}/start`, `…/callback` | public | the spike's BFF login against the current registry |
-| `GET /auth/tokens` | tokens.own (`?all=true` needs tokens.read) | `{items:[{id,description,owner,createdAt,expiresAt,lastUsedAt,lastUsedIP,scopes}],continue,took_ms}` |
-| `POST /auth/tokens` | tokens.own | `{description,expiresIn,scopes}` → 201 with `token` shown once. A token-authenticated caller cannot widen scopes or outlive its token |
-| `DELETE /auth/tokens/{id}` | tokens.own (others' tokens need tokens.delete, else 404) | 204 |
+| `GET /auth/tokens` | tokens.own at any held scope (`?all=true` needs tokens.read) | `{items:[{id,description,owner,createdAt,expiresAt,lastUsedAt,lastUsedIP,scopes}],continue,took_ms}` |
+| `POST /auth/tokens` | tokens.own at any held scope | `{description,expiresIn,scopes}` → 201 with `token` shown once. A token-authenticated caller cannot widen scopes or outlive its token |
+| `DELETE /auth/tokens/{id}` | tokens.own at any held scope (others' tokens need tokens.delete, else 404) | 204 |
 | `GET /iam/users` | users.read | list envelope of users (no hashes) |
 | `GET /iam/serviceaccounts` | serviceaccounts.read | list envelope with token counts |
 | `GET /iam/rolebindings` | rolebindings.read | config bindings (`source: config`) and objects, plus `diagnoses` |

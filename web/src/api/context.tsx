@@ -122,6 +122,16 @@ export function can(me: Me, resource: string, verb: string): boolean {
   return !!verbs && (verbs.includes(verb) || verbs.includes('*'));
 }
 
+/** Whether me holds verb on resource at cluster scope or at any of its scopes
+ * (own tokens: a zone-admin holds tokens.own at its zone only). */
+export function canAnyScope(me: Me, resource: string, verb: string): boolean {
+  if (can(me, resource, verb)) return true;
+  return Object.values(me.scopedPermissions ?? {}).some((perms) => {
+    const verbs = perms[resource] ?? perms['*'];
+    return !!verbs && (verbs.includes(verb) || verbs.includes('*'));
+  });
+}
+
 export function useSignOut(): () => Promise<void> {
   const { api, setCsrf } = useApiContext();
   const qc = useQueryClient();

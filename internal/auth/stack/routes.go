@@ -29,6 +29,13 @@ const (
 	AccessAuthenticated
 	// AccessPermission routes need Resource.Verb at cluster scope.
 	AccessPermission
+	// AccessAnyScope routes need Resource.Verb at cluster scope or at the
+	// scope of one of the principal's grants (a scoped API token's scopes
+	// stand in for them, and still restrict every check). The own-token
+	// routes use it: every built-in role holds tokens.own, including the
+	// zone-scoped zone-admin, whose binding cannot satisfy a cluster-scope
+	// check.
+	AccessAnyScope
 )
 
 // Route is one API route of the identity layer with its RBAC declaration,
@@ -39,11 +46,12 @@ type Route struct {
 	// Path is relative to the API prefix ("/auth/login").
 	Path   string
 	Access Access
-	// Resource and Verb are the permission of AccessPermission routes
-	// (internal/rbac/permissions.yaml); scope is cluster.
+	// Resource and Verb are the permission of AccessPermission and
+	// AccessAnyScope routes (internal/rbac/permissions.yaml).
 	Resource, Verb string
 	// Handler serves the route; it expects the stack's Middleware to have
-	// run, but does no Authorize of its own for AccessPermission routes.
+	// run, but does no Authorize of its own for AccessPermission and
+	// AccessAnyScope routes.
 	Handler http.Handler
 }
 
@@ -56,10 +64,10 @@ type Route struct {
 //	POST   /auth/password                  authenticated (local users)
 //	GET    /auth/oidc/{idp}/start          public
 //	GET    /auth/oidc/{idp}/callback       public
-//	GET    /auth/tokens                    tokens.own
-//	POST   /auth/tokens                    tokens.own
-//	GET    /auth/tokens/{id}               tokens.own (others' tokens need tokens.read)
-//	DELETE /auth/tokens/{id}               tokens.own (others' tokens need tokens.delete)
+//	GET    /auth/tokens                    tokens.own at any held scope
+//	POST   /auth/tokens                    tokens.own at any held scope
+//	GET    /auth/tokens/{id}               tokens.own at any held scope (others' tokens need tokens.read)
+//	DELETE /auth/tokens/{id}               tokens.own at any held scope (others' tokens need tokens.delete)
 //	GET    /iam/users                      users.read
 //	GET    /iam/serviceaccounts            serviceaccounts.read
 //	GET    /iam/rolebindings               rolebindings.read
@@ -73,10 +81,10 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodPost, Path: "/auth/password", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handlePassword)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/callback", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
-		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
-		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
-		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
-		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessPermission, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
+		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
+		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
+		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
+		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
@@ -93,8 +101,50 @@ func (s *Stack) Guard(rt Route) http.Handler {
 		return auth.RequireAuthenticated(rt.Handler)
 	case AccessPermission:
 		return auth.Require(s.engine, auth.ClusterAttrs(rt.Resource, rt.Verb), rt.Handler)
+	case AccessAnyScope:
+		return s.requireAnyScope(rt.Resource, rt.Verb, rt.Handler)
 	}
 	return rt.Handler
+}
+
+// requireAnyScope is auth.Require for AccessAnyScope: resource.verb at
+// cluster scope, else at the scope of each grant the principal holds and
+// of each scope of a scoped API token. Every check goes through the
+// engine, so a token's scopes keep restricting it (both the token scope
+// and the owner's grant must cover the scope checked) and a scope the
+// principal holds nothing at grants nothing. The 403 is the
+// cluster-scope one.
+func (s *Stack) requireAnyScope(resource, verb string, next http.Handler) http.Handler {
+	cluster := auth.ClusterAttrs(resource, verb)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		d, e := auth.Authorize(ctx, s.engine, cluster(r))
+		if e != nil && e.Status == http.StatusForbidden && e.Key == "forbidden" {
+			p, _ := auth.PrincipalFrom(ctx)
+			rp := auth.RBACPrincipal(p)
+			grants := s.effectiveGrants(p)
+			if len(p.Scopes) > 0 {
+				grants = append(grants, s.shownGrants(p)...)
+			}
+			seen := map[rbac.Scope]bool{{Kind: rbac.ScopeCluster}: true}
+			for _, g := range grants {
+				if seen[g.Scope] {
+					continue
+				}
+				seen[g.Scope] = true
+				a := rbac.Attributes{Resource: resource, Verb: verb, Scope: g.Scope}
+				if sd, err := s.engine.Authorize(ctx, rp, a); err == nil && sd.Allowed {
+					d, e = sd, nil
+					break
+				}
+			}
+		}
+		if e != nil {
+			auth.WriteError(w, r, e)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(auth.WithDecision(ctx, d)))
+	})
 }
 
 // Register mounts every route on mux under the API prefix, guarded by
