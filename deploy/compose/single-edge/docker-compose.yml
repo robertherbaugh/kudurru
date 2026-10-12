@@ -12,6 +12,9 @@ services:
   dnsdist:
     image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
     restart: unless-stopped
+    environment:
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    secrets: [encryption_key]
     command:
       - kudurru
       - edge

@@ -151,6 +151,24 @@ func checkComposeService(t *testing.T, dir, name string, s, services, volumes, s
 			t.Errorf("%s: %s should point at a Compose secret under /run/secrets", name, k)
 		}
 	}
+	if name == "dnsdist" {
+		backendEnv := mapOf(dig(services, "kudurru", "environment"))
+		for _, key := range []string{"KUDURRU_ENCRYPTION_KEY_FILE", "KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE"} {
+			want := str(backendEnv[key])
+			if key == "KUDURRU_ENCRYPTION_KEY_FILE" && want == "" {
+				t.Error("kudurru: no encryption key configured for the internal API")
+			}
+			if env[key] != want {
+				t.Errorf("dnsdist: %s = %q, want the backend's %q for zone polling", key, env[key], want)
+			}
+			if want != "" {
+				secret := strings.TrimPrefix(want, "/run/secrets/")
+				if !slices.Contains(list(s["secrets"]), any(secret)) {
+					t.Errorf("dnsdist: %s references unmounted secret %s", key, secret)
+				}
+			}
+		}
+	}
 	if name == "kudurru" {
 		if configFile == "" {
 			t.Fatalf("kudurru: no ./kudurru.yaml mounted at /etc/kudurru/kudurru.yaml")
