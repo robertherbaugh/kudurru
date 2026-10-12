@@ -11,7 +11,7 @@ import { Link } from '@astryxdesign/core/Link';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
-import { pixel, proportional, Table, useTableSelection, useTableSelectionState, type ColumnWidth, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
+import { proportional, Table, useTableSelection, useTableSelectionState, type ColumnWidth, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
