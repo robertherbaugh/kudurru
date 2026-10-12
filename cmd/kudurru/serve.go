@@ -849,6 +849,7 @@ func identityOptions(cfg *config.Config, st store.Store, k keys.Keys, logger *sl
 		Config: cfg, Store: st, Keys: k,
 		TrustForwardedProto: len(cfg.Listeners.API.TrustedProxies) > 0,
 		APIPrefix:           strings.TrimSuffix(cfg.Listeners.API.PathPrefix, "/") + "/api/v1",
+		RoutePrefix:         stack.DefaultAPIPrefix,
 		ClientIP:            apiClientIP,
 		Logger:              logger,
 	}
