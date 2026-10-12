@@ -45,7 +45,9 @@ missing permission in `error.missing`.
 - **Errors** are `{error: {key, message, hint}, took_ms}`. The `key` is
   stable: `invalid`, `unauthenticated`, `forbidden`, `csrf`, `not_found`,
   `conflict`, `managed_by` (the hint names the owner, e.g.
-  `file:objects.d/zones.yaml`), `precondition_failed`, `unprocessable`,
+  `file:objects.d/zones.yaml`; `error.objects` lists every refused object
+  when there are several), `default_zone`, `zone_not_empty`,
+  `precondition_failed`, `unprocessable`,
   `too_large`, `rate_limited`, `read_only`, `host_only`, `env_locked`,
   `not_implemented`, `unavailable`, `internal`.
 - **Ownership.** Objects record who manages them (`api`, `file:<path>`,
@@ -54,7 +56,12 @@ missing permission in `error.missing`.
 - **Streams.** `GET /api/v1/queries/stream` is a Server-Sent Events feed of
   the query log; reconnect with `Last-Event-ID` to resume.
 - **Zones** import and export as zone files (`text/dns`) on
-  `/api/v1/zones/{zone}/import` and `/export`.
+  `/api/v1/zones/{zone}/import` and `/export`. `DELETE /api/v1/zones/{zone}`
+  deletes a zone with every record set that references it
+  (`?dryRun=true` reports the counts first); the generic
+  `/objects/dnszones/{name}` delete refuses a zone that record sets still
+  reference (`zone_not_empty`), and the root zone `.` cannot be deleted
+  (`default_zone`).
 
 ## Clients
 

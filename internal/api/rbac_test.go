@@ -26,6 +26,8 @@ func TestRBACMatrix(t *testing.T) {
 		{"zones read", call{"GET", "/api/v1/zones/example", nil}, set("viewer", "auditor", "operator", "admin", "zoneadmin")},
 		{"zones write", call{"PUT", "/api/v1/objects/dnszones/example", zoneDoc("example", "example.com.")}, set("admin", "zoneadmin")},
 		{"zones create", call{"PUT", "/api/v1/objects/dnszones/brandnew", zoneDoc("brandnew", "brandnew.example.")}, set("admin")},
+		{"zones delete", call{"DELETE", "/api/v1/zones/example?dryRun=true", nil}, set("admin", "zoneadmin")},
+		{"other zone delete", call{"DELETE", "/api/v1/zones/other?dryRun=true", nil}, set("admin")},
 		{"other zone write", call{"PUT", "/api/v1/objects/dnszones/other", zoneDoc("other", "other.org.")}, set("admin")},
 		{"records write", call{"POST", "/api/v1/zones/example/records", ep("www", "A", "192.0.2.1")}, set("operator", "admin", "zoneadmin")},
 		{"other records write", call{"POST", "/api/v1/zones/other/records", ep("www", "A", "192.0.2.1")}, set("operator", "admin")},

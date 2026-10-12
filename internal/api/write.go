@@ -266,17 +266,37 @@ func (s *Server) deleteObject(ctx context.Context, k kindInfo, existing store.Ob
 	key := store.KeyOf(existing)
 	key.Kind = k.kind
 	owner := store.ManagedBy(existing)
-	if owner != "" && owner != store.ManagerAPI && owner != store.ManagerBootstrap {
+	if !apiMayDelete(owner) {
 		return errManagedBy(key, owner)
 	}
 	if ifMatch != "" && ifMatch != existing.GetResourceVersion() {
 		return errPrecondition(ifMatch, existing.GetResourceVersion())
 	}
-	err := s.opts.Store.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerAPI, Force: owner == store.ManagerBootstrap})
+	if z, ok := existing.(*v1alpha1.DNSZone); ok {
+		// A zone goes alone only when nothing references it; DELETE
+		// /zones/{zone} deletes it with its record sets (D148).
+		if err := s.zoneAloneDeletable(ctx, z); err != nil {
+			return err
+		}
+	}
+	err := s.opts.Store.Delete(ctx, key, apiDeleteOptions(owner))
 	if errors.Is(err, store.ErrNotFound) {
 		return errNotFound(key.String())
 	}
 	return storeError(err)
+}
+
+// apiMayDelete reports whether the API may delete an object of owner:
+// unmanaged, API-managed and first-boot defaults; never objects of files,
+// integrations, Kubernetes or the system.
+func apiMayDelete(owner string) bool {
+	return owner == "" || owner == store.ManagerAPI || owner == store.ManagerBootstrap
+}
+
+// apiDeleteOptions are the store options of an API delete of an object of
+// owner (bootstrap defaults are taken over).
+func apiDeleteOptions(owner string) store.DeleteOptions {
+	return store.DeleteOptions{Manager: store.ManagerAPI, Force: owner == store.ManagerBootstrap}
 }
 
 // sameContent reports whether applying desired would change nothing:

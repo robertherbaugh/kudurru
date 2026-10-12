@@ -213,6 +213,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 |---|---|---|---|
 | GET | `/api/v1/zones` | List zones with serial, record count and readiness | `zones.read` (cluster or per object) |
 | GET | `/api/v1/zones/{zone}` | Get one zone | `zones.read` (zone) |
+| DELETE | `/api/v1/zones/{zone}` | Delete a zone with every record set that references it | `zones.delete` (zone) |
 | GET | `/api/v1/zones/{zone}/export` | Export the served zone as a BIND master file (text/dns) | `zones.read` (zone) |
 | POST | `/api/v1/zones/{zone}/import` | Import a BIND master file (text/dns) | `records.write` (zone) |
 | POST | `/api/v1/zones/{zone}/notify` | Send NOTIFY for the zone now | `zones.transfer` (zone) |

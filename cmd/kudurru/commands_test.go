@@ -90,6 +90,12 @@ func TestZonesImportExportNotify(t *testing.T) {
 	if out := h.mustRun("zones", "notify", "home-example-com"); out != "NOTIFY queued for zone home-example-com to 192.0.2.53\n" {
 		t.Fatalf("notify %q", out)
 	}
+	if out := h.mustRun("zones", "delete", "home-example-com", "--dry-run"); out != "zone home-example-com would be deleted (dry run) with 2 record sets (5 records)\n" {
+		t.Fatalf("delete --dry-run %q", out)
+	}
+	if out := h.mustRun("zones", "delete", "home-example-com"); out != "zone home-example-com deleted with 2 record sets (5 records)\n" {
+		t.Fatalf("delete %q", out)
+	}
 }
 
 func TestRecordsAddRemove(t *testing.T) {

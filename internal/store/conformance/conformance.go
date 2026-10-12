@@ -21,6 +21,7 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 	t.Run("ApplyRejectsOtherManager", func(t *testing.T) { testManagedBy(t, factory(t)) })
 	t.Run("ApplyOptimisticConcurrency", func(t *testing.T) { testOptimistic(t, factory(t)) })
 	t.Run("DeleteAndNotFound", func(t *testing.T) { testDelete(t, factory(t)) })
+	t.Run("DeleteAllCascade", func(t *testing.T) { testDeleteAll(t, factory(t)) })
 	t.Run("ListFiltersByKindNamespaceLabels", func(t *testing.T) { testList(t, factory(t)) })
 	t.Run("WatchDeliversInitialAndLive", func(t *testing.T) { testWatch(t, factory(t)) })
 	t.Run("UpdateStatusKeepsSpecAndManager", func(t *testing.T) { testStatus(t, factory(t)) })
@@ -168,6 +169,71 @@ func testDelete(t *testing.T, s store.Store) {
 	var got v1alpha1.DNSZone
 	if err := s.Get(ctx, key, &got); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+// testDeleteAll checks store.DeleteAll, the zone cascade: a driver with
+// DeleteMany deletes all or nothing; any other driver deletes in order and
+// stops at the first failure, reporting how many went.
+func testDeleteAll(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	rs := func(ns, name, manager string) store.Key {
+		t.Helper()
+		o := &v1alpha1.DNSRecordSet{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+			Spec:       v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "home"}, Endpoints: []v1alpha1.Endpoint{{DNSName: name + ".home.example", RecordType: "A", Targets: []string{"10.0.0.1"}}}},
+		}
+		if _, err := s.Apply(ctx, o, store.ApplyOptions{Manager: manager}); err != nil {
+			t.Fatal(err)
+		}
+		return store.KeyOf(o)
+	}
+	exists := func(key store.Key) bool {
+		t.Helper()
+		var into store.Object = &v1alpha1.DNSRecordSet{}
+		if key.Kind == "DNSZone" {
+			into = &v1alpha1.DNSZone{}
+		}
+		err := s.Get(ctx, key, into)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			t.Fatal(err)
+		}
+		return err == nil
+	}
+	api := store.DeleteOptions{Manager: store.ManagerAPI}
+
+	// Success: every object goes; a missing one is skipped.
+	a, b := rs("apps", "a", store.ManagerAPI), rs("dns", "b", store.ManagerAPI)
+	if _, err := s.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	z := store.Key{Kind: "DNSZone", Name: "home"}
+	missing := store.Key{Kind: "DNSRecordSet", Namespace: "apps", Name: "gone"}
+	reqs := []store.DeleteRequest{{Key: a, Options: api}, {Key: missing, Options: api}, {Key: b, Options: api}, {Key: z, Options: api}}
+	n, _, err := store.DeleteAll(ctx, s, reqs)
+	if err != nil || n != len(reqs) {
+		t.Fatalf("DeleteAll = %d, %v; want %d, nil", n, err, len(reqs))
+	}
+	for _, k := range []store.Key{a, b, z} {
+		if exists(k) {
+			t.Fatalf("%s survived DeleteAll", k)
+		}
+	}
+
+	// Failure: the second request is managed by another writer.
+	c, d, e := rs("apps", "c", store.ManagerAPI), rs("apps", "d", store.ManagerFile("d.yaml")), rs("apps", "e", store.ManagerAPI)
+	n, atomic, err := store.DeleteAll(ctx, s, []store.DeleteRequest{{Key: c, Options: api}, {Key: d, Options: api}, {Key: e, Options: api}})
+	if !store.IsManagedBy(err) {
+		t.Fatalf("DeleteAll over a file-managed object: %v, want ErrManagedBy", err)
+	}
+	if !exists(d) || !exists(e) {
+		t.Fatal("DeleteAll deleted past the failing request")
+	}
+	switch {
+	case atomic && (n != 0 || !exists(c)):
+		t.Fatalf("atomic DeleteAll failed but deleted %d (c exists: %v)", n, exists(c))
+	case !atomic && (n != 1 || exists(c)):
+		t.Fatalf("sequential DeleteAll reported %d deleted (c exists: %v); want 1 and c gone", n, exists(c))
 	}
 }
 

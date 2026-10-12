@@ -41,6 +41,43 @@ type ZoneSummary struct {
 	ResourceVersion string `json:"resourceVersion,omitempty"`
 	// Upstream is the upstream group of a forward zone.
 	Upstream string `json:"upstreamGroup,omitempty"`
+	// DeleteRefusal is the error key DELETE /zones/{zone} answers for this
+	// zone whatever the caller's permissions: default_zone for the root
+	// zone ".", managed_by when the zone or one of its record sets is
+	// managed by a file, an integration, Kubernetes or the system; empty
+	// when the zone can be deleted.
+	DeleteRefusal string `json:"deleteRefusal,omitempty" enum:"default_zone,managed_by"`
+}
+
+// ZoneDeleteResult is DELETE /zones/{zone}: what was deleted with the
+// zone, or with dryRun what would be.
+type ZoneDeleteResult struct {
+	// Zone is the DNSZone object name.
+	Zone     string `json:"zone"`
+	ZoneName string `json:"zoneName"`
+	Type     string `json:"type"`
+	// DryRun is set when nothing was deleted.
+	DryRun bool `json:"dryRun"`
+	// RecordSets are the DNSRecordSets that reference the zone
+	// ("<namespace>/<name>", any namespace), deleted with it.
+	RecordSets     []string `json:"recordSets" nullable:"false"`
+	RecordSetCount int      `json:"recordSetCount"`
+	// EndpointCount counts the endpoints (records) of those record sets.
+	EndpointCount int `json:"endpointCount"`
+	// Flushed is how many response-cache entries at or below the apex
+	// this node dropped (0 on a dry run; other nodes expire theirs).
+	Flushed int `json:"flushed"`
+	Took
+}
+
+type deleteZoneInput struct {
+	Zone    string `path:"zone" doc:"DNSZone object name."`
+	DryRun  bool   `query:"dryRun" doc:"Run every check and report what would be deleted, without deleting."`
+	IfMatch string `header:"If-Match" doc:"Delete only when the zone's resourceVersion equals this value (412 otherwise)."`
+}
+
+type deleteZoneOutput struct {
+	Body *ZoneDeleteResult
 }
 
 // ZoneDetail is GET /zones/{zone}: the summary plus the object.
@@ -159,6 +196,14 @@ func (s *Server) registerZones() {
 	register(s, operation(http.MethodGet, "/zones", "listZones", "List zones with serial, record count and readiness", "zones"),
 		perm{resource: "zones", verb: "read", scopable: true}, s.listZones)
 	register(s, operation(http.MethodGet, "/zones/{zone}", "getZone", "Get one zone", "zones"), zoneRead, s.getZone)
+	deleteOp := operation(http.MethodDelete, "/zones/{zone}", "deleteZone", "Delete a zone with every record set that references it", "zones")
+	deleteOp.Description = "Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one " +
+		"transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone " +
+		"and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. " +
+		"409 default_zone for the root zone \".\"; 409 managed_by (error.objects lists them) when the zone or a record set is " +
+		"managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same " +
+		"summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event."
+	register(s, deleteOp, perm{resource: "zones", verb: "delete", scope: zoneScope("zone")}, s.deleteZone)
 	register(s, operation(http.MethodGet, "/zones/{zone}/records", "listZoneRecords", "List the endpoints of a zone across record sets", "zones"),
 		perm{resource: "records", verb: "read", scope: zoneScope("zone")}, s.listZoneRecords)
 	register(s, operation(http.MethodPost, "/zones/{zone}/records", "upsertZoneRecord", "Create or replace one endpoint in a record set", "zones"),
@@ -173,11 +218,18 @@ func (s *Server) registerZones() {
 		perm{resource: "zones", verb: "transfer", scope: zoneScope("zone")}, s.notifyZone)
 }
 
-// zoneSummary derives the GET /zones row of a zone.
-func zoneSummary(z *v1alpha1.DNSZone, recordSets int) ZoneSummary {
+// zoneSummary derives the GET /zones row of a zone; managedSets counts
+// its record sets the API may not delete.
+func zoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets int) ZoneSummary {
 	out := ZoneSummary{
 		Name: z.Name, ZoneName: z.Spec.ZoneName, Type: string(z.Spec.Type), Serial: z.Status.Serial,
 		RecordCount: z.Status.RecordCount, RecordSets: recordSets, ManagedBy: store.ManagedBy(z), ResourceVersion: z.ResourceVersion,
+	}
+	switch {
+	case isRootZone(z):
+		out.DeleteRefusal = KeyDefaultZone
+	case !apiMayDelete(out.ManagedBy) || managedSets > 0:
+		out.DeleteRefusal = KeyManagedBy
 	}
 	if z.Spec.Forward != nil {
 		out.Upstream = z.Spec.Forward.UpstreamGroup
@@ -240,9 +292,12 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 	if err != nil {
 		return nil, err
 	}
-	counts := map[string]int{}
+	counts, managed := map[string]int{}, map[string]int{}
 	for _, rs := range sets {
 		counts[rs.Spec.ZoneRef.Name]++
+		if !apiMayDelete(store.ManagedBy(rs)) {
+			managed[rs.Spec.ZoneRef.Name]++
+		}
 	}
 	st := stateFrom(ctx)
 	items := make([]ZoneSummary, 0, len(zones))
@@ -250,7 +305,7 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
 			continue
 		}
-		items = append(items, zoneSummary(z, counts[z.Name]))
+		items = append(items, zoneSummary(z, counts[z.Name], managed[z.Name]))
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &zoneListOutput{Body: newList(items, "")}, nil
@@ -303,7 +358,160 @@ func (s *Server) getZone(ctx context.Context, in *zonePathInput) (*zoneDetailOut
 	if err != nil {
 		return nil, err
 	}
-	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: zoneSummary(z, len(sets)), Object: m}}, nil
+	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: zoneSummary(z, len(sets), len(managedRecordSets(sets))), Object: m}}, nil
+}
+
+// isRootZone reports whether z is the root zone ".": the bootstrap
+// forwarder every query outside the other zones is routed by.
+func isRootZone(z *v1alpha1.DNSZone) bool { return normName(z.Spec.ZoneName) == "" }
+
+// errDefaultZone is the 409 of deleting the root zone (D148).
+func errDefaultZone(z *v1alpha1.DNSZone) *Error {
+	return newError(http.StatusConflict, KeyDefaultZone,
+		fmt.Sprintf("zone %s is the root zone \".\": every query outside the other zones is routed by it (its upstream group and query access apply to every such name), so it cannot be deleted", z.Name),
+		"edit it instead: change spec.forward.upstreamGroup, or set spec.policy.queryAccess to deny to stop recursion")
+}
+
+// managedRecordSets returns the record sets the API may not delete.
+func managedRecordSets(sets []*v1alpha1.DNSRecordSet) []*v1alpha1.DNSRecordSet {
+	var out []*v1alpha1.DNSRecordSet
+	for _, rs := range sets {
+		if !apiMayDelete(store.ManagedBy(rs)) {
+			out = append(out, rs)
+		}
+	}
+	return out
+}
+
+// maxListedObjects bounds the objects an error message names (all of them
+// are in error.objects).
+const maxListedObjects = 5
+
+// listedObjects renders the first few objects for a message.
+func listedObjects(objs []ObjectOwner, withOwner bool) string {
+	parts := make([]string, 0, maxListedObjects)
+	for i, o := range objs {
+		if i == maxListedObjects {
+			parts = append(parts, fmt.Sprintf("and %d more", len(objs)-i))
+			break
+		}
+		key := store.Key{Kind: store.Kind(o.Kind), Namespace: o.Namespace, Name: o.Name}.String()
+		if withOwner {
+			key += " (" + o.ManagedBy + ")"
+		}
+		parts = append(parts, key)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func recordSetOwner(rs *v1alpha1.DNSRecordSet) ObjectOwner {
+	return ObjectOwner{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name, ManagedBy: store.ManagedBy(rs)}
+}
+
+// zoneAloneDeletable guards the object routes' delete of a DNSZone: the
+// root zone is refused, and so is a zone that record sets still reference
+// (deleting it alone would orphan them; D148).
+func (s *Server) zoneAloneDeletable(ctx context.Context, z *v1alpha1.DNSZone) error {
+	if isRootZone(z) {
+		return errDefaultZone(z)
+	}
+	sets, err := s.zoneRecordSets(ctx, z.Name)
+	if err != nil || len(sets) == 0 {
+		return err
+	}
+	objs := make([]ObjectOwner, len(sets))
+	for i, rs := range sets {
+		objs[i] = recordSetOwner(rs)
+	}
+	e := newError(http.StatusConflict, KeyZoneNotEmpty,
+		fmt.Sprintf("zone %s is referenced by %d record sets (%s); deleting the DNSZone alone would orphan them", z.Name, len(sets), listedObjects(objs, false)),
+		"DELETE "+BasePath+"/zones/"+z.Name+" deletes the zone with its record sets (?dryRun=true lists them first)")
+	e.Body.Objects = objs
+	return e
+}
+
+// deleteZone is DELETE /zones/{zone} (D148): the zone and every record
+// set that references it, all or nothing where the store has
+// transactions, record sets first and the zone last where it does not.
+func (s *Server) deleteZone(ctx context.Context, in *deleteZoneInput) (*deleteZoneOutput, error) {
+	if err := s.readOnly(); err != nil {
+		return nil, err
+	}
+	z, err := s.zoneObject(ctx, in.Zone)
+	if err != nil {
+		return nil, err
+	}
+	if in.IfMatch != "" && in.IfMatch != z.ResourceVersion {
+		return nil, errPrecondition(in.IfMatch, z.ResourceVersion)
+	}
+	if isRootZone(z) {
+		return nil, errDefaultZone(z)
+	}
+	sets, err := s.zoneRecordSets(ctx, z.Name)
+	if err != nil {
+		return nil, err
+	}
+	sc := rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}
+	if len(sets) > 0 {
+		if err := s.require(ctx, "records", "delete", sc, z.Name); err != nil {
+			return nil, err
+		}
+	}
+	var managed []ObjectOwner
+	if owner := store.ManagedBy(z); !apiMayDelete(owner) {
+		managed = append(managed, ObjectOwner{Kind: "DNSZone", Name: z.Name, ManagedBy: owner})
+	}
+	for _, rs := range managedRecordSets(sets) {
+		managed = append(managed, recordSetOwner(rs))
+	}
+	if len(managed) > 0 {
+		e := newError(http.StatusConflict, KeyManagedBy,
+			fmt.Sprintf("zone %s cannot be deleted: managed by another writer: %s; change or remove them there",
+				z.Name, listedObjects(managed, true)),
+			managed[0].ManagedBy)
+		e.Body.Objects = managed
+		return nil, e
+	}
+
+	res := &ZoneDeleteResult{Zone: z.Name, ZoneName: z.Spec.ZoneName, Type: string(z.Spec.Type), DryRun: in.DryRun,
+		RecordSets: make([]string, 0, len(sets)), RecordSetCount: len(sets)}
+	reqs := make([]store.DeleteRequest, 0, len(sets)+1)
+	for _, rs := range sets {
+		res.RecordSets = append(res.RecordSets, rs.Namespace+"/"+rs.Name)
+		res.EndpointCount += len(rs.Spec.Endpoints)
+		reqs = append(reqs, store.DeleteRequest{Key: store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, Options: apiDeleteOptions(store.ManagedBy(rs))})
+	}
+	if in.DryRun {
+		return &deleteZoneOutput{Body: res}, nil
+	}
+	reqs = append(reqs, store.DeleteRequest{Key: store.Key{Kind: "DNSZone", Name: z.Name}, Options: apiDeleteOptions(store.ManagedBy(z))})
+
+	before := map[string]any{"zoneName": z.Spec.ZoneName, "type": z.Spec.Type, "recordSetCount": len(sets), "endpointCount": res.EndpointCount}
+	if len(res.RecordSets) <= 50 {
+		before["recordSets"] = res.RecordSets
+	}
+	deleted, atomic, err := store.DeleteAll(ctx, s.opts.Store, reqs)
+	if err != nil {
+		out := storeError(err)
+		var e *Error
+		if !atomic && deleted > 0 && errors.As(out, &e) {
+			e.Body.Message += fmt.Sprintf(" (%d of %d record sets were deleted before the failure; the zone and the rest were kept: retry the delete)", deleted, len(sets))
+			before["deleted"] = deleted
+		}
+		s.recordAction(ctx, "zones.delete", audit.Resource{Kind: "DNSZone", Name: z.Name}, out, before, nil)
+		return nil, out
+	}
+	res.Flushed = s.flushZone(z.Spec.ZoneName)
+	s.recordAction(ctx, "zones.delete", audit.Resource{Kind: "DNSZone", Name: z.Name}, nil, before, nil)
+	return &deleteZoneOutput{Body: res}, nil
+}
+
+// flushZone drops this node's cached answers at or below apex.
+func (s *Server) flushZone(apex string) int {
+	if s.opts.ResponseCache == nil {
+		return 0
+	}
+	return s.opts.ResponseCache.FlushZone(apex)
 }
 
 func recordOf(rs *v1alpha1.DNSRecordSet, ep v1alpha1.Endpoint) ZoneRecord {
@@ -471,7 +679,7 @@ func (s *Server) deleteZoneRecord(ctx context.Context, in *deleteRecordInput) (*
 			continue
 		}
 		found = true
-		if owner := store.ManagedBy(rs); owner != "" && owner != store.ManagerAPI && owner != store.ManagerBootstrap {
+		if owner := store.ManagedBy(rs); !apiMayDelete(owner) {
 			return nil, errManagedBy(store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, owner)
 		}
 		if len(keep) == 0 {

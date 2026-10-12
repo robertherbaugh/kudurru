@@ -275,6 +275,18 @@ func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*
 // resourceVersion, the objects row, the change-feed row and the audit row.
 // It then publishes the change. The caller holds wmu.
 func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, error) {
+	out, err := s.commitAllLocked(ctx, []*mutation{m})
+	if err != nil {
+		return nil, err
+	}
+	return out[0], nil
+}
+
+// commitAllLocked writes every mutation of ms in one transaction (each
+// with its own resourceVersion, change-feed row and audit row, in order)
+// and publishes the changes after the commit: all of them or none. The
+// caller holds wmu.
+func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Object, error) {
 	if s.isClosed() {
 		return nil, store.ErrClosed
 	}
@@ -285,37 +297,76 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 	defer func() { _ = tx.Rollback() }()
 	q := cachedTx{tx: tx, c: s.ws}
 
+	rvs := make([]uint64, len(ms))
+	for i, m := range ms {
+		if rvs[i], err = s.writeMutation(ctx, q, m); err != nil {
+			return nil, err
+		}
+	}
+	rv := rvs[len(rvs)-1]
+
+	compactTo := uint64(0)
+	s.sinceCompacted += len(ms)
+	if s.sinceCompacted >= s.compactEvery {
+		retention := uint64(s.opts.FeedRetention) // #nosec G115 -- positive by setDefaults
+		if rv > retention && rv-retention > s.compacted.Load() {
+			compactTo = rv - retention
+			if err := compactFeed(ctx, q, compactTo); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("store/sqlite: commit %s: %w", ms[0].key, err)
+	}
+	if compactTo > 0 {
+		s.compacted.Store(compactTo)
+		s.sinceCompacted = 0
+	}
+	s.head.Store(rv)
+	out := make([]store.Object, len(ms))
+	for i, m := range ms {
+		s.bus.publish(change{seq: rvs[i], typ: m.typ, key: m.key, obj: m.obj})
+		out[i] = m.obj.DeepCopyObject().(store.Object)
+	}
+	return out, nil
+}
+
+// writeMutation writes one mutation inside the transaction q: the
+// precondition check, the new resourceVersion (returned), the objects row,
+// the change-feed row and the audit row.
+func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uint64, error) {
 	var curRV int64
-	err = q.QueryRowContext(ctx, sqlCurrentRV,
+	err := q.QueryRowContext(ctx, sqlCurrentRV,
 		string(m.key.Kind), m.key.Namespace, m.key.Name).Scan(&curRV)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		if m.prev != nil {
-			return nil, errRaced
+			return 0, errRaced
 		}
 	case err != nil:
-		return nil, fmt.Errorf("store/sqlite: read %s: %w", m.key, err)
+		return 0, fmt.Errorf("store/sqlite: read %s: %w", m.key, err)
 	default:
 		if m.prev == nil || uint64(curRV) != m.prev.rv { // #nosec G115 -- resourceVersions are positive
-			return nil, errRaced
+			return 0, errRaced
 		}
 	}
 
 	var rvText string
 	if err := q.QueryRowContext(ctx, sqlNextRV, metaResourceVersion).Scan(&rvText); err != nil {
-		return nil, fmt.Errorf("store/sqlite: next resourceVersion: %w", err)
+		return 0, fmt.Errorf("store/sqlite: next resourceVersion: %w", err)
 	}
 	rv, err := strconv.ParseUint(rvText, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("store/sqlite: bad resourceVersion %q: %w", rvText, err)
+		return 0, fmt.Errorf("store/sqlite: bad resourceVersion %q: %w", rvText, err)
 	}
 	m.obj.SetResourceVersion(rvText)
 	data, err := json.Marshal(m.obj)
 	if err != nil {
-		return nil, fmt.Errorf("store/sqlite: encode %s: %w", m.key, err)
+		return 0, fmt.Errorf("store/sqlite: encode %s: %w", m.key, err)
 	}
 	if m.typ != store.Deleted && len(data) > store.MaxObjectBytes {
-		return nil, fmt.Errorf("%w: %s encodes to %d bytes; the limit is %d (the etcd request cap)",
+		return 0, fmt.Errorf("%w: %s encodes to %d bytes; the limit is %d (the etcd request cap)",
 			store.ErrTooLarge, m.key, len(data), store.MaxObjectBytes)
 	}
 	now := s.opts.Now()
@@ -324,7 +375,7 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 	if m.typ == store.Deleted {
 		if _, err := q.ExecContext(ctx, sqlDeleteObject,
 			string(m.key.Kind), m.key.Namespace, m.key.Name); err != nil {
-			return nil, fmt.Errorf("store/sqlite: delete %s: %w", m.key, err)
+			return 0, fmt.Errorf("store/sqlite: delete %s: %w", m.key, err)
 		}
 		tombstone = string(data)
 	} else {
@@ -332,7 +383,7 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 		if l := m.obj.GetLabels(); len(l) > 0 {
 			b, err := json.Marshal(l)
 			if err != nil {
-				return nil, err
+				return 0, err
 			}
 			labels = string(b)
 		}
@@ -344,12 +395,12 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 		if _, err := q.ExecContext(ctx, sqlUpsertObject,
 			string(m.key.Kind), m.key.Namespace, m.key.Name, string(m.obj.GetUID()), m.obj.GetGeneration(), int64(rv), // #nosec G115 -- bounded by SQLite's int64 counter
 			store.ManagedBy(m.obj), ct.UTC().Format(time.RFC3339), now.UnixNano(), specHash(m.obj), labels, deleting, string(data)); err != nil {
-			return nil, fmt.Errorf("store/sqlite: write %s: %w", m.key, err)
+			return 0, fmt.Errorf("store/sqlite: write %s: %w", m.key, err)
 		}
 	}
 	if _, err := q.ExecContext(ctx, sqlInsertChange,
 		int64(rv), string(m.key.Kind), m.key.Namespace, m.key.Name, string(m.typ), rvText, tombstone); err != nil { // #nosec G115 -- see above
-		return nil, fmt.Errorf("store/sqlite: change feed %s: %w", m.key, err)
+		return 0, fmt.Errorf("store/sqlite: change feed %s: %w", m.key, err)
 	}
 
 	entry := AuditEntry{
@@ -369,30 +420,9 @@ func (s *Store) commitLocked(ctx context.Context, m *mutation) (store.Object, er
 		entry.After = json.RawMessage(data)
 	}
 	if err := insertAudit(ctx, q, &entry); err != nil {
-		return nil, err
+		return 0, err
 	}
-
-	compactTo := uint64(0)
-	s.sinceCompacted++
-	if s.sinceCompacted >= s.compactEvery {
-		retention := uint64(s.opts.FeedRetention) // #nosec G115 -- positive by setDefaults
-		if rv > retention && rv-retention > s.compacted.Load() {
-			compactTo = rv - retention
-			if err := compactFeed(ctx, q, compactTo); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("store/sqlite: commit %s: %w", m.key, err)
-	}
-	if compactTo > 0 {
-		s.compacted.Store(compactTo)
-		s.sinceCompacted = 0
-	}
-	s.head.Store(rv)
-	s.bus.publish(change{seq: rv, typ: m.typ, key: m.key, obj: m.obj})
-	return m.obj.DeepCopyObject().(store.Object), nil
+	return rv, nil
 }
 
 // compactFeed drops change-feed rows at or below seq.
@@ -565,35 +595,91 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		if prev == nil {
 			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
 		}
-		manager := opts.Manager
-		m := &mutation{ki: ki, key: key, prev: prev, manager: manager, action: "delete"}
-		if owner := store.ManagedBy(prev.obj); owner != "" && manager != "" && owner != manager {
-			if !opts.Force {
-				return nil, &store.ErrManagedBy{Key: key, Owner: owner}
-			}
-			m.reason = fmt.Sprintf("force: owner was %q", owner)
-		}
-		if m.manager == "" {
-			m.manager = store.ManagedBy(prev.obj)
-		}
-		next := prev.obj.DeepCopyObject().(store.Object)
-		if len(next.GetFinalizers()) > 0 {
-			if next.GetDeletionTimestamp() != nil {
-				m.noop = true
-				return m, nil
-			}
-			// Second precision, as stored: the Modified event then carries
-			// exactly what Get returns.
-			now := storedTime(s.opts.Now())
-			next.SetDeletionTimestamp(&now)
-			m.typ, m.obj = store.Modified, next
-			m.reason = strings.TrimPrefix(m.reason+"; waiting for finalizers", "; ")
-			return m, nil
-		}
-		m.typ, m.obj = store.Deleted, next
-		return m, nil
+		return s.planDelete(ki, key, prev, opts)
 	})
 	return err
+}
+
+// planDelete prepares the delete of the stored object prev: the managedBy
+// check, then a tombstone, or a deletionTimestamp while finalizers remain.
+func (s *Store) planDelete(ki *kindInfo, key store.Key, prev *stored, opts store.DeleteOptions) (*mutation, error) {
+	manager := opts.Manager
+	m := &mutation{ki: ki, key: key, prev: prev, manager: manager, action: "delete"}
+	if owner := store.ManagedBy(prev.obj); owner != "" && manager != "" && owner != manager {
+		if !opts.Force {
+			return nil, &store.ErrManagedBy{Key: key, Owner: owner}
+		}
+		m.reason = fmt.Sprintf("force: owner was %q", owner)
+	}
+	if m.manager == "" {
+		m.manager = store.ManagedBy(prev.obj)
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	if len(next.GetFinalizers()) > 0 {
+		if next.GetDeletionTimestamp() != nil {
+			m.noop = true
+			return m, nil
+		}
+		// Second precision, as stored: the Modified event then carries
+		// exactly what Get returns.
+		now := storedTime(s.opts.Now())
+		next.SetDeletionTimestamp(&now)
+		m.typ, m.obj = store.Modified, next
+		m.reason = strings.TrimPrefix(m.reason+"; waiting for finalizers", "; ")
+		return m, nil
+	}
+	m.typ, m.obj = store.Deleted, next
+	return m, nil
+}
+
+// DeleteMany implements store.MultiDeleter: every request is planned like
+// Delete while the write lock is held and the deletes are committed in one
+// transaction (one change-feed row and audit row each), so all of them
+// happen or none. Objects that do not exist are skipped.
+func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err error) {
+	defer s.observe(opDelete, time.Now(), &err)
+	if s.isClosed() {
+		return store.ErrClosed
+	}
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	var ms []*mutation
+	seen := map[store.Key]bool{}
+	for _, r := range reqs {
+		if seen[r.Key] {
+			continue
+		}
+		seen[r.Key] = true
+		ki, err := s.kinds.get(r.Key.Kind)
+		if err != nil {
+			return err
+		}
+		prev, err := s.load(ctx, s.rq, ki, r.Key)
+		if err != nil {
+			return err
+		}
+		if prev == nil {
+			continue
+		}
+		m, err := s.planDelete(ki, r.Key, prev, r.Options)
+		if err != nil {
+			return err
+		}
+		if !m.noop {
+			ms = append(ms, m)
+		}
+	}
+	if len(ms) == 0 {
+		return nil
+	}
+	if _, err := s.commitAllLocked(ctx, ms); err != nil {
+		if errors.Is(err, errRaced) {
+			// Cannot happen while wmu is held; never retried silently.
+			return fmt.Errorf("%w: an object changed during the delete", store.ErrConflict)
+		}
+		return err
+	}
+	return nil
 }
 
 // UpdateStatus implements store.Store like the status subresource: status

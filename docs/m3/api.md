@@ -22,7 +22,9 @@ The REST API server under `/api/v1` and the external-dns webhook
   the field path, 422 stays for semantic errors. Keys: `invalid`,
   `unauthenticated`, `forbidden` (hint `{"missing":{resource,verb,scope}}`,
   repeated as `error.missing`), `csrf`, `not_found`, `conflict`, `managed_by`
-  (hint = owner, e.g. `file:objects.d/zones.yaml`), `precondition_failed`
+  (hint = owner, e.g. `file:objects.d/zones.yaml`; `error.objects` lists
+  `{kind, namespace, name, managedBy}` when several objects are refused),
+  `default_zone`, `zone_not_empty`, `precondition_failed`
   (412), `unprocessable`, `too_large`, `rate_limited`, `read_only` (503,
   ha-static), `host_only`, `env_locked`, `not_implemented`, `unavailable`,
   `internal`. Kubernetes-shaped object bodies stay pure objects (re-appliable
@@ -70,8 +72,19 @@ The REST API server under `/api/v1` and the external-dns webhook
     namespace, name, result, error, errorKey, hint, resourceVersion}`),
     `POST /{kind}:batchDelete` for all five kinds (the mux cannot match a
     wildcard followed by a literal in one segment, so each kind has a
-    literal route).
-  - zones: `GET /zones`, `GET /zones/{zone}`, `GET|POST
+    literal route). A DNSZone that record sets still reference is not
+    deleted alone (409 `zone_not_empty`, `error.objects` lists them), and
+    the root zone `.` not at all (409 `default_zone`; D148).
+  - zones: `GET /zones` (`deleteRefusal`: `default_zone` or `managed_by`
+    when a delete is refused whatever the caller's permissions), `GET
+    /zones/{zone}`, `DELETE /zones/{zone}` (the zone and every record set
+    whose zoneRef names it, any namespace; `zones.delete` on the zone plus
+    `records.delete` when record sets exist; `?dryRun=true` runs every
+    check and answers the same `{zone, zoneName, type, dryRun, recordSets,
+    recordSetCount, endpointCount, flushed}` without deleting; one sqlite
+    transaction, on the kube driver record sets first and the zone last;
+    409 `default_zone` for `.`, 409 `managed_by` with `error.objects`;
+    D148), `GET|POST
     /zones/{zone}/records` (`?recordSet=` default `api-<zone>`,
     `?namespace=`; names relative to the zone, absolute, or `@` are stored
     absolute without the trailing dot), `DELETE

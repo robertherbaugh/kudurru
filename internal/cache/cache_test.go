@@ -219,6 +219,28 @@ func TestSweep(t *testing.T) {
 	}
 }
 
+func TestFlushZone(t *testing.T) {
+	c := New(Options{MaxEntries: 1000})
+	ecs := netip.MustParsePrefix("198.51.100.0/24")
+	for _, k := range []Key{
+		key("example.com."), key("WWW.Example.com."), MakeKey("a.b.example.com.", 28, 1, true, true, ecs),
+		key("notexample.com."), key("example.org."), key("com."),
+	} {
+		c.Set(k, []byte("x"), Positive, time.Minute)
+	}
+	if n := c.FlushZone("Example.COM"); n != 3 {
+		t.Fatalf("flushed %d, want 3", n)
+	}
+	for _, name := range []string{"notexample.com.", "example.org.", "com."} {
+		if _, ok := c.Peek(key(name)); !ok {
+			t.Fatalf("%s was flushed", name)
+		}
+	}
+	if n := c.FlushZone("."); n != 3 || c.Len() != 0 {
+		t.Fatalf("root flush: %d, left %d", n, c.Len())
+	}
+}
+
 func TestPrefetchClaim(t *testing.T) {
 	clk := newClock()
 	c := New(Options{MaxEntries: 10, PrefetchThreshold: 3, PrefetchWindow: time.Hour, Now: clk.Now})
