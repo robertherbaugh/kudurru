@@ -43,6 +43,11 @@ the dnsdist API, whose key the supervisor writes to the shared
   stable name. Its EndpointSlice is how replicas find the leader on `:8082`,
   how the Nodes page lists every replica (and fetches each one's status),
   and how the edge builds its backend list.
+- Audit events are kept in `AuditLog` objects (`audit.kudurru.io`, from the
+  `kudurru-crds` chart) that every replica reads, so the per-pod `emptyDir`
+  can go. With `database.existingSecret` the replicas keep the audit log,
+  query log and statistics in a PostgreSQL database instead
+  ([postgres.md](../deploy/postgres.md)); DNS never waits for it.
 - Probes use the ops port: startup, readiness and liveness on
   `/healthz/*` (:8081). `preStop` runs `kudurru lameduck`, so a pod fails
   readiness and drains before it stops.

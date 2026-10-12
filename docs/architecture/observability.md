@@ -58,8 +58,24 @@ answer in one line.
 Names, clients, upstreams, zones, lists and policies are stored once in
 `dict_*` tables and referenced by ID. Charts read the rollups, so a 30-day
 chart does not scan 30 days of rows. The database is per node: in a
-multi-node install each node logs what it answered (scatter-gather across
-nodes is planned).
+multi-node install each node logs what it answered. **All nodes**
+(`scope=cluster`) asks every replica over `:8082` and merges the answers;
+a replica that is down makes the answer partial. With a central PostgreSQL
+database (`database.dsn`), every node also copies its rows and rollups
+there, and **All nodes** reads the database instead
+([postgres.md](../deploy/postgres.md)):
+
+```mermaid
+flowchart LR
+    QL[("querylog.db<br/>(written first)")] --> SH["query-log shipper<br/>facts by id every 1 s,<br/>rollups every 30 s"]
+    SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
+    PG --> CR["central reader<br/>(the node reader's code,<br/>PostgreSQL dialect)"]
+    CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
+```
+
+A node keeps the rows it has not shipped, even past its own retention, so
+an outage of the database delays the cluster view but loses nothing the
+node still holds.
 
 ## Metrics
 
@@ -113,10 +129,30 @@ of rotation would make things worse.
 
 ## Audit
 
-| Driver | Where audit records go |
+| Store | Where audit records go |
 |---|---|
-| sqlite | the `audit` table in `state.db`, hash-chained, written in the same transaction as the change; `GET /api/v1/audit` reads it; pruned after 400 days by the leader |
-| kube | a JSON line on stdout (`"log":"audit"`) for the cluster's log pipeline; the apiserver's own audit log covers CRD writes |
+| sqlite | the `audit` table in `state.db`, hash-chained, written in the same transaction as the change; `GET /api/v1/audit` reads it; pruned after `audit.retention` (400 days) by the leader |
+| kube | the store is wrapped so every successful write is recorded; each pod keeps its events in `audit-spool.db` (hash-chained) and ships them into immutable `AuditLog` objects (`audit.kudurru.io`) in the release namespace, which every replica reads; the leader deletes batches after `audit.retention` |
+| either, with `database.dsn` | the node's own store (`state.db` or the spool) is shipped into one hash chain in the central database, which every replica reads |
+
+Every event is also a JSON line on stdout (`"log":"audit"`) for the
+cluster's log pipeline, and the apiserver's own audit log covers CRD
+writes. Client-controlled text is sanitized (valid UTF-8, no NUL) before an
+event is hashed.
+
+```mermaid
+flowchart LR
+    W["store write<br/>or API action"] --> REC{"store"}
+    REC -- "sqlite" --> SDB[("state.db audit table")]
+    REC -- "kube" --> SP[("audit-spool.db")]
+    SDB -- "database.dsn" --> SHIP["audit shipper<br/>(in order, at least once,<br/>cursor in the target)"]
+    SP --> SHIP
+    SHIP -- "database.dsn" --> PGA[("PostgreSQL audit<br/>one chain, all nodes")]
+    SHIP -- "kube, no database" --> AL[("AuditLog batches<br/>create/delete only, sealed")]
+    PGA --> GET["GET /api/v1/audit"]
+    AL --> GET
+    SDB -. "no database" .-> GET
+```
 
 Store writes are audited by the driver. The API adds what no store write
 covers: denied requests, the blocking toggle, cache flushes, query-log
