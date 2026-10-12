@@ -240,6 +240,10 @@ export interface PolicySpec {
   rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
   /** Catalogue service IDs (GET /catalogue/services) blocked like a list. */
   blockedServices?: string[];
+  /** Catalogue category IDs (GET /catalogue/categories): every service in them, including ones added later. */
+  blockedCategories?: string[];
+  /** Exceptions to blockedCategories (services of a blocked category this policy does not block). */
+  allowedServices?: string[];
   safeSearch?: boolean;
   /** strict (default) or moderate; only YouTube has two levels. */
   safeSearchMode?: 'strict' | 'moderate';
@@ -782,7 +786,18 @@ export interface IamList<T> extends ListEnvelope<T> {
 export interface CatalogueService {
   id: string;
   name: string;
+  /** The category ID (GET /catalogue/categories). */
   category: string;
+  /** kudurru, or adguard for a service of the opt-in AdGuard import (GPL-3.0). */
+  origin?: 'kudurru' | 'adguard';
+  /** SPDX licence of the entry. */
+  license?: string;
+  /** Services this one also needs: block them too to stop it (Fortnite requires epicgames). */
+  requires?: string[];
+  /** Services of the same vendor or closely tied to it. */
+  related?: string[];
+  /** A caveat about blocking the service. */
+  note?: string;
   /** The list name the query log records, "service:<id>". */
   list: string;
   rules: number;
@@ -810,6 +825,12 @@ export interface SafeSearchEngine {
   iconOnDark?: string;
 }
 
+/** One category of GET /catalogue/categories. */
+export type CatalogueCategory = S['CatalogueCategory'];
+
+/** One active source of services (GET /catalogue sources). */
+export type CatalogueSourceInfo = Omit<S['CatalogueSourceInfo'], 'refresh'> & { refresh?: CatalogueInfo['refresh'] };
+
 /** GET /catalogue. */
 export interface CatalogueInfo {
   schemaVersion: number;
@@ -819,8 +840,11 @@ export interface CatalogueInfo {
   origin: string;
   digest: string;
   services: number;
+  categories?: number;
   safeSearchEngines: number;
   refresh?: { url: string; lastAttempt?: string; lastSuccess?: string; lastError?: string };
+  /** The active sources of services and their licences (kudurru always, AdGuard when opted in). */
+  sources?: CatalogueSourceInfo[];
 }
 
 /** GET /catalogue/icons (C4): the icons this binary embeds. */

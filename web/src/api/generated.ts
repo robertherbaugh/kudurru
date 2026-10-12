@@ -448,6 +448,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalogue/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Categories Policy.spec.blockedCategories can block */
+        get: operations["listCatalogueCategories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalogue/icons": {
         parameters: {
             query?: never;
@@ -1676,6 +1693,24 @@ export interface components {
             /** Format: date-time */
             until?: string;
         };
+        CatalogueCategory: {
+            description?: string;
+            /** @description A Lucide icon name (kebab-case). */
+            icon?: string;
+            /** @description The ID Policy.spec.blockedCategories names. */
+            id: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Sort order (ascending).
+             */
+            order: number;
+            /**
+             * Format: int64
+             * @description Services in the category.
+             */
+            services: number;
+        };
         CatalogueIcon: {
             /** @description The icon slug (the homarr-labs/dashboard-icons file name). */
             id: string;
@@ -1685,6 +1720,8 @@ export interface components {
             path: string;
         };
         CatalogueInfo: {
+            /** Format: int64 */
+            categories: number;
             /** @description SHA-256 of the catalogue document. */
             digest: string;
             homepage?: string;
@@ -1702,6 +1739,7 @@ export interface components {
             schemaVersion: number;
             /** Format: int64 */
             services: number;
+            sources: components["schemas"]["CatalogueSourceInfo"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -1719,7 +1757,7 @@ export interface components {
             url: string;
         };
         CatalogueService: {
-            /** @description video, social, messaging, gaming, music, ai, dating, ... */
+            /** @description The category ID (GET /catalogue/categories): ai, social, video, ... */
             category: string;
             /** @description The service's rules as list text (||domain^). */
             domains: string[];
@@ -1729,16 +1767,65 @@ export interface components {
             iconOnDark?: string;
             /** @description The ID Policy.spec.blockedServices names. */
             id: string;
+            /** @description SPDX licence of the entry (Apache-2.0, or GPL-3.0 for imported services). */
+            license: string;
             /** @description The list name the query log records for this service's blocks (service:<id>). */
             list: string;
             name: string;
+            /** @description A caveat about blocking the service. */
+            note?: string;
+            /**
+             * @description kudurru, or adguard for a service of the opt-in AdGuard import.
+             * @enum {string}
+             */
+            origin: "kudurru" | "adguard";
+            /** @description Services of the same vendor or closely tied to it. */
+            related?: string[] | null;
+            /** @description Services this one also depends on: block them too to stop it (Fortnite requires epicgames). */
+            requires?: string[] | null;
             /**
              * Format: int64
              * @description Number of rules (||domain^).
              */
             rules: number;
-            /** @description Where the entry comes from: a vendor documentation URL or "first-party domains of the service". */
+            /** @description Where the entry comes from: a vendor documentation URL or "first-party domains of the service"; adguard-hostlists-registry for imported services. */
             source: string;
+        };
+        CatalogueSourceInfo: {
+            /** @description SHA-256 of the document in service; absent before the first successful download. */
+            digest?: string;
+            /**
+             * Format: int64
+             * @description Imported rules left out because they are not plain block rules.
+             */
+            droppedRules?: number;
+            /**
+             * @description kudurru: the catalogue document (embedded or blocking.catalogue.url). adguard: the opt-in import of blocking.catalogue.adguardServicesURL.
+             * @enum {string}
+             */
+            id: "kudurru" | "adguard";
+            /** @description SPDX licence of the source's data (Apache-2.0 for kudurru, GPL-3.0 for AdGuard's). */
+            license: string;
+            /** @description A document of this source is in service. */
+            loaded: boolean;
+            name: string;
+            origin: string;
+            refresh?: components["schemas"]["CatalogueRefresh"];
+            /**
+             * Format: int64
+             * @description Services this source contributes to the catalogue in service.
+             */
+            services: number;
+            /**
+             * Format: int64
+             * @description Imported services left out because the kudurru catalogue has the same ID (kudurru's entry wins).
+             */
+            shadowed?: number;
+            /**
+             * Format: int64
+             * @description Imported entries left out: an ID kudurru cannot use, a duplicate, no name, or no usable rule.
+             */
+            skipped?: number;
         };
         ClientItem: {
             /** Format: int64 */
@@ -2215,6 +2302,16 @@ export interface components {
              */
             took_ms: number;
         };
+        ListCatalogueCategory: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["CatalogueCategory"][];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
         ListCatalogueIcon: {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
@@ -2427,6 +2524,25 @@ export interface components {
             /** Format: date-time */
             ts: string;
         };
+        PolicyCategory: {
+            /**
+             * Format: int64
+             * @description Of those, the ones allowedServices excepts.
+             */
+            allowed: number;
+            /** @description A Lucide icon name. */
+            icon?: string;
+            id: string;
+            /** @description The catalogue in service has the category. */
+            known: boolean;
+            /** @description The catalogue name; the ID when unknown. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Services in the category now.
+             */
+            services: number;
+        };
         PolicyClient: {
             /** Format: int64 */
             count: number;
@@ -2437,6 +2553,25 @@ export interface components {
             /** Format: int64 */
             count: number;
             domain: string;
+        };
+        PolicyEffectiveService: {
+            category?: string;
+            /** @description Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none. */
+            icon?: string;
+            /** @description The logo drawn for dark backgrounds, when the default one is dark artwork. */
+            iconOnDark?: string;
+            id: string;
+            known: boolean;
+            name: string;
+            /** @enum {string} */
+            origin: "kudurru" | "adguard";
+            /** Format: int64 */
+            rules: number;
+            /**
+             * @description service: named in blockedServices; category: a service of a blocked category.
+             * @enum {string}
+             */
+            via: "service" | "category";
         };
         PolicyGroup: {
             /**
@@ -2516,10 +2651,16 @@ export interface components {
         PolicyState: {
             /** @description enabled and the schedule allows it now (an invalid schedule applies at all times). */
             active: boolean;
+            /** @description The spec.allowedServices entries: services of a blocked category this policy does not block. */
+            allowedServices: components["schemas"]["PolicyService"][];
             /** @description spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list. */
             blockMode: string;
             blockTTL?: string;
+            /** @description The spec.blockedCategories entries. */
+            categories: components["schemas"]["PolicyCategory"][];
             conditions: components["schemas"]["Condition"][];
+            /** @description Every service the policy blocks with the catalogue in service: blockedServices, then the services of blockedCategories minus allowedServices. */
+            effectiveServices: components["schemas"]["PolicyEffectiveService"][];
             /** @description false while the kudurru.io/enabled annotation is "false". */
             enabled: boolean;
             groups: components["schemas"]["PolicyGroup"][];
@@ -2531,6 +2672,7 @@ export interface components {
             priority: number;
             safeSearch: components["schemas"]["PolicySafeSearch"];
             schedule?: components["schemas"]["PolicySchedule"];
+            /** @description The spec.blockedServices entries. */
             services: components["schemas"]["PolicyService"][];
             /** @description Enabled policies (namespace/name, rank order) that outrank this one for at least one of its client groups: they decide for those clients and their settings win; the lists of all active policies still apply. */
             shadowedBy?: string[] | null;
@@ -6360,6 +6502,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogueInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCatalogueCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCatalogueCategory"];
                 };
             };
             /** @description Bad Request */

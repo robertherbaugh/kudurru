@@ -18,6 +18,7 @@ import type { SettingKey, SettingsBody } from '../api/types';
 import { AppearanceControls } from '../components/AppearanceButton';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { BlockPageIntro } from '../components/BlockPagePreview';
+import { AdGuardImportNote } from '../components/CatalogueSources';
 import { SettingRow } from '../components/SettingRow';
 import { Link, useSearchParams } from '../lib/router';
 import { BASIC_KEYS, getPath, mergePatchFor } from '../lib/settings';
@@ -113,6 +114,8 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
                   <Link href="/upstreams" className="k-small">
                     Also on the Upstreams page
                   </Link>
+                ) : k.path === 'blocking.catalogue.adguardServicesURL' ? (
+                  <AdGuardImportNote />
                 ) : undefined
               }
             />

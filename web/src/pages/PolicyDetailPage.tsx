@@ -2,8 +2,9 @@
 // scheduled off, disabled or shadowed, the next schedule change, priority,
 // conditions) from GET /policies/{ns}/{name}/state (ux-plan C3), and one
 // section per concept, each with its own Edit and Save: who, what, blocked
-// services (logo toggles saved in place), safe search, how, when, and the
-// last 24 hours of activity. Enable/disable, delete and "View as YAML" sit
+// services (logo toggles and category switches saved in place), content
+// categories (Block List Project lists, created on demand), safe search,
+// how, when, and the last 24 hours of activity. Enable/disable, delete and "View as YAML" sit
 // in the header; objects managed elsewhere show the same page read-only.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -16,14 +17,16 @@ import { EditableSection } from '../components/EditableSection';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { ManagedBadge } from '../components/ManagedBadge';
-import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
+import { cleanPolicySpec, ContentCategoryFields, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
 import { EngineList } from '../components/ServiceGrid';
 import { ServiceIcon } from '../components/ServiceIcon';
 import { YamlDialog } from '../components/YamlDialog';
+import { contentCategoryOfList, ensureContentLists } from '../lib/contentCategories';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { blockResponseLabel, clientHref, objectHref, policyBadge, shortRef } from '../lib/policies';
 import { Link, useNavigate } from '../lib/router';
+import { sameSelection, selectionOf, withSelection, type ServiceSelection } from '../lib/serviceCatalogue';
 import { usePolicyState } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
 
@@ -52,8 +55,11 @@ export default function PolicyDetailPage({ params }: PageProps) {
   };
   const saveSpec = async (spec: PolicySpec, what: string) => {
     if (!policy) return;
+    // Content categories are BlockLists created the first time a policy names them.
+    const created = await ensureContentLists(api, ns, spec.blockListRefs);
+    if (created.length) await qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
     await put({ ...policy, spec: cleanPolicySpec(spec) });
-    notify.success(`Saved ${what} of ${name}`);
+    notify.success(`Saved ${what} of ${name}${created.length ? ` and created ${created.join(', ')}` : ''}`);
   };
 
   const toggle = useMutation({
@@ -142,7 +148,17 @@ export default function PolicyDetailPage({ params }: PageProps) {
         edit={(d, set) => <WhatFields spec={d} onChange={set} {...fieldProps} />}
         onSave={(d) => saveSpec(d, 'the lists')}
       />
-      <ServicesSection policy={policy} state={state} readOnlyReason={roReason} onSave={(ids) => saveSpec({ ...spec, blockedServices: ids }, 'the blocked services')} />
+      <ServicesSection policy={policy} state={state} readOnlyReason={roReason} onSave={(sel) => saveSpec(withSelection(spec, sel), 'the blocked services')} />
+      <EditableSection<PolicySpec>
+        title="Content categories"
+        description="Topic lists of the Block List Project, downloaded by URL and refreshed like any list."
+        value={spec}
+        readOnlyReason={roReason}
+        testId="section-content"
+        view={<ContentView state={state} ns={ns} />}
+        edit={(d, set) => <ContentCategoryFields spec={d} onChange={set} {...fieldProps} />}
+        onSave={(d) => saveSpec(d, 'the content categories')}
+      />
       <EditableSection<PolicySpec>
         title="Safe search"
         value={spec}
@@ -386,30 +402,60 @@ function ListsView({ state, ns, allowOnly }: { state: PolicyState | undefined; n
   );
 }
 
-/** Blocked services: the logo grid, toggled in place and saved with one click. */
-function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy: Policy; state: PolicyState | undefined; readOnlyReason: string; onSave: (ids: string[]) => Promise<void> }) {
-  const current = policy.spec.blockedServices ?? [];
-  const [draft, setDraft] = useState<string[] | null>(null);
+/** The content categories the policy turned on, with the health of their lists. */
+function ContentView({ state, ns }: { state: PolicyState | undefined; ns: string }) {
+  if (!state) return null;
+  const on = state.lists.filter((l) => l.role === 'block' && contentCategoryOfList(l.ref));
+  if (!on.length) return <p className="k-muted">None: no topic list applies.</p>;
+  return (
+    <ul className="k-link-list k-stack-sm" aria-label="Content categories on">
+      {on.map((l) => (
+        <li key={l.ref}>
+          <Link href={objectHref('lists', l.ref, ns)}>{contentCategoryOfList(l.ref)?.name ?? l.ref}</Link>{' '}
+          {!l.exists ? (
+            <Badge variant="error" label="missing" />
+          ) : !l.enabled ? (
+            <Badge variant="neutral" label="disabled" />
+          ) : l.ready ? (
+            <span className="k-muted k-small">{formatExact(l.entries)} names</span>
+          ) : (
+            <Badge variant="warning" label="not ready" />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Blocked services: the logo grid and category switches, toggled in place and saved with one click. */
+function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy: Policy; state: PolicyState | undefined; readOnlyReason: string; onSave: (sel: ServiceSelection) => Promise<void> }) {
+  const current = selectionOf(policy.spec);
+  const [draft, setDraft] = useState<ServiceSelection | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const value = draft ?? current;
-  const dirty = draft !== null && (draft.length !== current.length || draft.some((d) => !current.includes(d)));
-  const blocked = state?.services ?? [];
+  const dirty = draft !== null && !sameSelection(draft, current);
+  const blocked = state?.effectiveServices ?? state?.services ?? [];
   return (
     <section className="k-panel k-section" aria-labelledby="sec-services" data-testid="section-services">
       <div className="k-panel-title">
         <h2 id="sec-services">Blocked services</h2>
         {blocked.length ? (
           <ul className="k-logo-stack" aria-label="Blocked now">
-            {blocked.map((s) => (
+            {blocked.slice(0, 12).map((s) => (
               <li key={s.id} title={s.known ? `${s.name}: ${s.rules} rules` : `${s.id}: not in the catalogue`}>
                 <ServiceIcon id={s.id} name={s.name} icon={s.icon} iconOnDark={s.iconOnDark} size={24} />
               </li>
             ))}
+            {blocked.length > 12 ? (
+              <li>
+                <span className="k-muted k-small">+{blocked.length - 12} more</span>
+              </li>
+            ) : null}
           </ul>
         ) : null}
       </div>
-      <ServicesFields spec={{ ...policy.spec, blockedServices: value }} onChange={(s) => setDraft(s.blockedServices ?? [])} namespace={policy.metadata.namespace ?? 'default'} isDisabled={!!ro || saving} isLabelHidden />
+      <ServicesFields spec={withSelection(policy.spec, value)} onChange={(s) => setDraft(selectionOf(s))} namespace={policy.metadata.namespace ?? 'default'} isDisabled={!!ro || saving} isLabelHidden />
       {error ? <ErrorBanner error={error} title="Could not save the blocked services" /> : null}
       {dirty ? (
         <div className="k-row">
@@ -427,7 +473,10 @@ function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy
             }}
           />
           <Button label="Discard" variant="ghost" onClick={() => setDraft(null)} />
-          <span className="k-muted k-small">{value.length} selected (was {current.length})</span>
+          <span className="k-muted k-small">
+            {value.blocked.length} service{value.blocked.length === 1 ? '' : 's'}, {value.categories.length} categor{value.categories.length === 1 ? 'y' : 'ies'}
+            {value.allowed.length ? `, ${value.allowed.length} exception${value.allowed.length === 1 ? '' : 's'}` : ''}
+          </span>
         </div>
       ) : null}
     </section>

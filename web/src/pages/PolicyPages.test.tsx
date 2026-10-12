@@ -100,9 +100,35 @@ describe('PolicyDetailPage', () => {
     await waitFor(() => expect(netflix).not.toBeDisabled());
     fireEvent.click(netflix);
     fireEvent.click(within(sec).getByRole('button', { name: /TikTok/ }));
-    expect(within(sec).getByText('4 selected (was 4)')).toBeInTheDocument();
+    expect(within(sec).getByText(/4 services, 0 categories/)).toBeInTheDocument();
     fireEvent.click(within(sec).getByRole('button', { name: 'Save services' }));
     await waitFor(() => expect(policy('social-media')?.spec.blockedServices).toEqual(['facebook', 'instagram', '9gag', 'netflix']));
+  });
+
+  it('blocks a whole category with an exception and saves the three fields', async () => {
+    renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'social-media' }} />, { route: '/policies/default/social-media' });
+    const sec = await screen.findByTestId('section-services');
+    const ai = within(await within(sec).findByTestId('category-ai'));
+    const sw = ai.getByRole('switch', { name: 'Block the whole category' });
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    fireEvent.click(sw);
+    fireEvent.click(ai.getByRole('button', { name: /Perplexity/ }));
+    expect(within(sec).getByText(/1 category, 1 exception/)).toBeInTheDocument();
+    fireEvent.click(within(sec).getByRole('button', { name: 'Save services' }));
+    await waitFor(() => expect(policy('social-media')?.spec.blockedCategories).toEqual(['ai']));
+    expect(policy('social-media')?.spec.allowedServices).toEqual(['perplexity']);
+  });
+
+  it('turns a content category on, creating its block list', async () => {
+    renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'social-media' }} />, { route: '/policies/default/social-media' });
+    const sec = await screen.findByTestId('section-content');
+    expect(await within(sec).findByText(/None: no topic list applies/)).toBeInTheDocument();
+    await clickWhenEnabled('Edit Content categories');
+    fireEvent.click(within(sec).getByRole('checkbox', { name: 'Gambling' }));
+    fireEvent.click(within(sec).getByRole('button', { name: 'Save Content categories' }));
+    await waitFor(() => expect(policy('social-media')?.spec.blockListRefs).toContain('blp-gambling'));
+    const list = mockDB().lists.find((l) => l.metadata.name === 'blp-gambling');
+    expect(list?.spec.sources[0]).toMatchObject({ url: 'https://blocklistproject.github.io/Lists/alt-version/gambling-nl.txt', format: 'domains' });
   });
 
   it('disables, shows YAML and deletes after confirmation', async () => {

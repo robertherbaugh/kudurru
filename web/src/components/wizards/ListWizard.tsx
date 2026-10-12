@@ -32,6 +32,7 @@ import { slugName, suggestName } from '../lists/SourceDialog';
 import { Wizard, WizardDialog } from '../Wizard';
 import { applyable } from '../YamlDialog';
 import { formatExact } from '../../lib/format';
+import { BLP_LICENCE_NOTE } from '../../lib/contentCategories';
 import { CURATED_LISTS, entriesProblem, FORMAT_OPTIONS, formatLabel, guessFormat, isHTTPURL, listPath, parseEntries, RESPONSE_OPTIONS } from '../../lib/lists';
 import { COMMENT, ENABLED, objectOwnership } from '../../lib/managedBy';
 import { durationError, nameError } from '../../lib/objectSchemas';
@@ -249,30 +250,42 @@ function ListWizard({ onClose }: ListWizardProps) {
   const sourcesStep = (
     <VStack gap={5}>
       {s.mode === 'block' ? (
-        <FieldShell help="Published by their maintainers under their own licences; kudurru only fetches the URL you opt into." describes="group">
-          {() => (
-            <CheckboxList label="Well-known lists" value={s.curated} onChange={(v) => set({ curated: v })} hasDividers>
-              {CURATED_LISTS.map((c) => (
-                <CheckboxListItem
-                  key={c.id}
-                  value={c.id}
-                  label={`${c.publisher} ${c.name}`}
-                  endContent={<Badge variant="neutral" label={c.licence} />}
-                  description={
-                    <VStack gap={0.5}>
-                      <Text type="supporting">
-                        {c.size}, {formatLabel(c.format).toLowerCase()}. {c.description}
-                      </Text>
-                      <Text type="code" size="sm" color="secondary" wordBreak="break-all">
-                        {c.url}
-                      </Text>
-                    </VStack>
-                  }
-                />
-              ))}
-            </CheckboxList>
-          )}
-        </FieldShell>
+        <VStack gap={4}>
+          {([
+            ['Well-known lists', CURATED_LISTS.filter((c) => !c.group), 'Published by their maintainers under their own licences; kudurru only fetches the URL you opt into.'],
+            ['Block List Project topic lists', CURATED_LISTS.filter((c) => c.group === 'blp'), `One list per topic (also offered as content categories on a policy). ${BLP_LICENCE_NOTE}`],
+          ] as const).map(([title, lists, help]) => (
+            <FieldShell key={title} help={help} describes="group">
+              {() => (
+                <CheckboxList
+                  label={title}
+                  value={s.curated.filter((id) => lists.some((c) => c.id === id))}
+                  onChange={(v) => set({ curated: [...s.curated.filter((id) => !lists.some((c) => c.id === id)), ...v] })}
+                  hasDividers
+                >
+                  {lists.map((c) => (
+                    <CheckboxListItem
+                      key={c.id}
+                      value={c.id}
+                      label={`${c.publisher} ${c.name}`}
+                      endContent={<Badge variant="neutral" label={c.licence} />}
+                      description={
+                        <VStack gap={0.5}>
+                          <Text type="supporting">
+                            {c.size}, {formatLabel(c.format).toLowerCase()}. {c.description}
+                          </Text>
+                          <Text type="code" size="sm" color="secondary" wordBreak="break-all">
+                            {c.url}
+                          </Text>
+                        </VStack>
+                      }
+                    />
+                  ))}
+                </CheckboxList>
+              )}
+            </FieldShell>
+          ))}
+        </VStack>
       ) : null}
 
       <VStack gap={2} role="group" aria-labelledby={urlsId}>

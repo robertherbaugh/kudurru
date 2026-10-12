@@ -5,10 +5,11 @@
 // client identification and policy selection of internal/policy (doc.go:
 // tiers, priority order, merge, fallback) for the client page's "why".
 import type { EnumOption } from '../components/fields/EnumSelect';
-import type { BlockList, CatalogueService, ClientGroup, ClientMatcher, Policy, PolicySpec, PolicyState, SafeSearchEngine } from '../api/types';
+import type { BlockList, CatalogueCategory, CatalogueService, ClientGroup, ClientMatcher, Policy, PolicySpec, PolicyState, SafeSearchEngine } from '../api/types';
 import { listPath, RESPONSE_OPTIONS } from './lists';
 import { MANAGED_BY, objectEnabled } from './managedBy';
 import { isIPv4, isIPv6 } from './rr';
+import { effectiveServices, selectionOf } from './serviceCatalogue';
 
 export const DEFAULT_NAMESPACE = 'default';
 /** The bootstrap fallback policy (internal/policy DefaultPolicyName). */
@@ -196,6 +197,7 @@ export interface DeriveContext {
   groups: ClientGroup[];
   lists: BlockList[];
   services?: CatalogueService[];
+  categories?: CatalogueCategory[];
   engines?: SafeSearchEngine[];
   /** The configured upstream group names, when known. */
   upstreamGroups?: string[];
@@ -274,6 +276,11 @@ export function derivePolicyState(p: Policy, ctx: DeriveContext): PolicyState {
   const shadowed = shadowingPolicies(p, ctx.policies);
   const svc = new Map((ctx.services ?? []).map((x) => [x.id, x]));
   const icons = (x: { icon?: string; iconOnDark?: string } | undefined) => ({ ...(x?.icon ? { icon: x.icon } : {}), ...(x?.iconOnDark ? { iconOnDark: x.iconOnDark } : {}) });
+  const cats = new Map((ctx.categories ?? []).map((x) => [x.id, x]));
+  const serviceState = (id: string) => {
+    const c = svc.get(id);
+    return { id, name: c?.name ?? id, known: !!c, rules: c?.rules ?? 0, ...icons(c) };
+  };
   return {
     policy: `${ns}/${p.metadata.name}`,
     enabled,
@@ -289,9 +296,26 @@ export function derivePolicyState(p: Policy, ctx: DeriveContext): PolicyState {
       return { ref: name, exists: !!g, enabled: !!g && objectEnabled(g), clients: g?.spec.clients?.length ?? 0 };
     }),
     lists: [...(s.blockListRefs ?? []).map((n) => listState(n, 'block')), ...(s.allowListRefs ?? []).map((n) => listState(n, 'allow'))],
-    services: (s.blockedServices ?? []).map((id) => {
+    services: (s.blockedServices ?? []).map(serviceState),
+    allowedServices: (s.allowedServices ?? []).map(serviceState),
+    categories: (s.blockedCategories ?? []).map((id) => {
+      const c = cats.get(id);
+      const members = (ctx.services ?? []).filter((x) => x.category === id);
+      const allowed = members.filter((x) => (s.allowedServices ?? []).includes(x.id)).length;
+      return { id, name: c?.name ?? id, known: !!c, services: members.length, allowed, ...(c?.icon ? { icon: c.icon } : {}) };
+    }),
+    effectiveServices: effectiveServices(selectionOf(s), ctx.services ?? []).map((id) => {
       const c = svc.get(id);
-      return { id, name: c?.name ?? id, known: !!c, rules: c?.rules ?? 0, ...icons(c) };
+      return {
+        id,
+        name: c?.name ?? id,
+        known: !!c,
+        rules: c?.rules ?? 0,
+        via: (s.blockedServices ?? []).includes(id) ? ('service' as const) : ('category' as const),
+        origin: c?.origin ?? 'kudurru',
+        ...(c ? { category: c.category } : {}),
+        ...icons(c),
+      };
     }),
     safeSearch: {
       enabled: s.safeSearch === true,

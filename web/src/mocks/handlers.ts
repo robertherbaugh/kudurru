@@ -1536,9 +1536,25 @@ export const handlers = [
   }),
   http.get(`${B}/catalogue`, ({ request }) =>
     guard(request, 'policies', 'read') ??
-    ok({ schemaVersion: 1, version: '2026.10.11', license: 'Apache-2.0', origin: 'embedded', digest: '0'.repeat(64), services: MOCK_SERVICES.length, safeSearchEngines: MOCK_ENGINES.length }),
+    ok({
+      schemaVersion: 2,
+      version: '2026.10.12',
+      license: 'Apache-2.0',
+      origin: 'embedded',
+      digest: '0'.repeat(64),
+      services: MOCK_SERVICES.length,
+      categories: MOCK_CATEGORIES.length,
+      safeSearchEngines: MOCK_ENGINES.length,
+      sources: [
+        { id: 'kudurru', name: 'kudurru catalogue', license: 'Apache-2.0', origin: 'embedded', digest: '0'.repeat(64), loaded: true, services: MOCK_SERVICES.filter((s) => s.origin === 'kudurru').length },
+        { id: 'adguard', name: 'AdGuard HostlistsRegistry services (opt-in)', license: 'GPL-3.0', origin: 'https://mirror.example/services.json', digest: '1'.repeat(64), loaded: true, services: 1, shadowed: 3 },
+      ],
+    }),
   ),
   http.get(`${B}/catalogue/services`, ({ request }) => guard(request, 'policies', 'read') ?? ok({ items: MOCK_SERVICES })),
+  http.get(`${B}/catalogue/categories`, ({ request }) =>
+    guard(request, 'policies', 'read') ?? ok({ items: MOCK_CATEGORIES.map((c) => ({ ...c, services: MOCK_SERVICES.filter((s) => s.category === c.id).length })) }),
+  ),
   http.get(`${B}/catalogue/safesearch`, ({ request }) =>
     guard(request, 'policies', 'read') ??
     ok({
@@ -1694,32 +1710,53 @@ const ON_DARK = new Set(['tiktok', 'control-d']);
 const icon = (id: string) =>
   MOCK_ICONS[id] ? { icon: `/api/v1/catalogue/icons/${id}.svg`, ...(ON_DARK.has(id) ? { iconOnDark: `/api/v1/catalogue/icons/${id}-dark.svg` } : {}) } : {};
 
-const svc = (id: string, name: string, category: string, domains: string[]) => ({
+const svc = (id: string, name: string, category: string, domains: string[], extra: { requires?: string[]; related?: string[]; note?: string; origin?: 'kudurru' | 'adguard' } = {}) => ({
   id,
   name,
   category,
   list: `service:${id}`,
   rules: domains.length,
   domains: domains.map((d) => `||${d}^`),
-  source: 'first-party domains of the service',
+  source: extra.origin === 'adguard' ? 'adguard-hostlists-registry' : 'first-party domains of the service',
+  origin: extra.origin ?? ('kudurru' as const),
+  license: extra.origin === 'adguard' ? 'GPL-3.0' : 'Apache-2.0',
+  ...(extra.requires ? { requires: extra.requires } : {}),
+  ...(extra.related ? { related: extra.related } : {}),
+  ...(extra.note ? { note: extra.note } : {}),
   ...icon(id),
 });
 
-/** Entries of the embedded catalogue for GET /catalogue/services (roblox, fortnite and 9gag have no logo). */
+/** GET /catalogue/categories (the counts are filled in by the handler). */
+const MOCK_CATEGORIES = [
+  { id: 'ai', name: 'AI', description: 'Chatbots and assistants, and image, video, music and voice generators.', icon: 'sparkles', order: 10 },
+  { id: 'social', name: 'Social media', description: 'Social networks, short video and photo sharing.', icon: 'users', order: 20 },
+  { id: 'messaging', name: 'Messaging', description: 'Chat apps with voice and video calls.', icon: 'message-circle', order: 30 },
+  { id: 'video', name: 'Video and streaming', description: 'Streaming services, video sites and live streaming.', icon: 'tv', order: 40 },
+  { id: 'music', name: 'Music and audio', description: 'Music streaming and audio platforms.', icon: 'music', order: 50 },
+  { id: 'gaming', name: 'Gaming', description: 'Game stores, console networks and online games.', icon: 'gamepad-2', order: 60 },
+  { id: 'other', name: 'Other', description: 'Services without a matching category, such as imported ones.', icon: 'shapes', order: 1000 },
+];
+
+/** Entries of the embedded catalogue for GET /catalogue/services (roblox, fortnite and 9gag have no logo; example-tool is an AdGuard import). */
 const MOCK_SERVICES = [
   svc('youtube', 'YouTube', 'video', ['youtube.com', 'ytimg.com']),
   svc('netflix', 'Netflix', 'video', ['netflix.com']),
   svc('twitch', 'Twitch', 'video', ['twitch.tv', 'ttvnw.net']),
   svc('tiktok', 'TikTok', 'social', ['tiktok.com']),
-  svc('facebook', 'Facebook', 'social', ['facebook.com', 'fbcdn.net']),
-  svc('instagram', 'Instagram', 'social', ['instagram.com', 'cdninstagram.com']),
+  svc('facebook', 'Facebook', 'social', ['facebook.com', 'fbcdn.net'], { related: ['instagram'] }),
+  svc('instagram', 'Instagram', 'social', ['instagram.com', 'cdninstagram.com'], { related: ['facebook'] }),
   svc('9gag', '9GAG', 'social', ['9gag.com']),
   svc('discord', 'Discord', 'messaging', ['discord.com', 'discord.gg']),
   svc('spotify', 'Spotify', 'music', ['spotify.com']),
   svc('roblox', 'Roblox', 'gaming', ['roblox.com']),
-  svc('fortnite', 'Fortnite', 'gaming', ['fortnite.com']),
+  svc('epicgames', 'Epic Games', 'gaming', ['epicgames.com']),
+  svc('fortnite', 'Fortnite', 'gaming', ['fortnite.com'], { requires: ['epicgames'], note: 'Fortnite signs in through Epic Games.' }),
   svc('steam', 'Steam', 'gaming', ['steampowered.com', 'steamcommunity.com']),
-  svc('chatgpt', 'ChatGPT', 'ai', ['chatgpt.com', 'openai.com']),
+  svc('chatgpt', 'ChatGPT', 'ai', ['chatgpt.com', 'openai.com', 'sora.com']),
+  svc('claude', 'Claude', 'ai', ['claude.ai', 'anthropic.com']),
+  svc('gemini', 'Google Gemini', 'ai', ['gemini.google.com', 'aistudio.google.com']),
+  svc('perplexity', 'Perplexity', 'ai', ['perplexity.ai']),
+  svc('example-tool', 'Example Tool', 'other', ['tool.example'], { origin: 'adguard' }),
 ];
 
 /** GET /catalogue/safesearch (pixabay has no logo). */
@@ -1733,7 +1770,7 @@ const MOCK_ENGINES = [
 
 /** GET /policies/{ns}/{name}/state: the objects' state plus the query log of the last 24 hours. */
 function policyState(p: Policy) {
-  const st = derivePolicyState(p, { policies: db.policies, groups: db.groups, lists: db.lists, services: MOCK_SERVICES, engines: MOCK_ENGINES, now: new Date() });
+  const st = derivePolicyState(p, { policies: db.policies, groups: db.groups, lists: db.lists, services: MOCK_SERVICES, categories: MOCK_CATEGORIES.map((c) => ({ ...c, services: 0 })), engines: MOCK_ENGINES, now: new Date() });
   const ref = st.policy;
   const rows = db.queries.filter((q) => q.policy === ref);
   const blocked = rows.filter((q) => q.status_class === 'blocked');
