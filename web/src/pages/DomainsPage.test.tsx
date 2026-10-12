@@ -313,13 +313,15 @@ describe('list exceptions on the Allowlist', () => {
   it('shows entries switched off in a block list as their own rows', async () => {
     renderWithApp(<AllowlistPage />, { route: '/allowlist' });
     const r = await row('ads.unified.example');
-    expect(within(r).getByText('list exception')).toBeInTheDocument();
-    expect(within(r).getByRole('link', { name: 'Only list stevenblack' })).toHaveAttribute('href', '/lists/default/stevenblack');
+    expect(within(r).getByText('exception')).toBeInTheDocument();
+    expect(within(r).getByText('Only list')).toBeInTheDocument();
+    for (const link of within(r).getAllByRole('link', { name: 'stevenblack' })) expect(link).toHaveAttribute('href', '/lists/default/stevenblack');
     expect(within(r).getByText(/used by default, kids-bedtime, iot-strict/)).toBeInTheDocument();
     expect(within(r).getByText('source unified')).toBeInTheDocument();
     expect(within(r).getByRole('switch')).toBeChecked();
     // Only the switch and Delete: nothing else of an exception can be edited.
-    expect(within(r).getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+    expect(within(r).queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(within(r).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
     expect(within(r).queryByRole('button', { name: 'Add comment' })).toBeNull();
     // The stale exclude (no longer in the body) is not an exception.
     expect(screen.queryByTestId('entry-gone.tracker.example')).toBeNull();

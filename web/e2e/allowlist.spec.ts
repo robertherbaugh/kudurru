@@ -338,8 +338,13 @@ test('an entry switched off in a URL list shows on the Allowlist as a list excep
     await expect(page).toHaveURL(new RegExp(`/allowlist\\?kind=exception&scope=list%3Adefault%2F${f.name}$`));
     await settle(page);
     const row = page.getByTestId(`entry-${host}`);
-    await expect(row).toContainText('list exception');
-    await expect(row.getByRole('link', { name: `Only list ${f.name}` })).toHaveAttribute('href', `/lists/default/${f.name}`);
+    await expect(row).toContainText('exception');
+    await expect(row).toContainText(`Only list${f.name}`);
+    await expect(row.getByRole('link', { name: f.name, exact: true }).first()).toHaveAttribute('href', `/lists/default/${f.name}`);
+    await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    // Its badges are not cut off at the default 1280 px.
+    const clipped = await row.evaluate((tr) => [...tr.querySelectorAll<HTMLElement>('.astryx-token, .astryx-token *, .astryx-badge, .astryx-badge *')].filter((t) => t.scrollWidth > t.clientWidth + 1).map((t) => t.textContent));
+    expect(clipped, 'truncated badges').toEqual([]);
     await expect(page.getByTestId(`entry-${f.hosts[1]}`)).toHaveCount(0);
 
     const sw = row.getByRole('switch', { name: `${host} switched off in ${f.name}` });

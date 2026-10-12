@@ -91,7 +91,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       renderCell: (e) =>
         e.kind === 'exception' ? (
           <VStack gap={0.5} align="start">
-            <Token size="sm" color="orange" label="list exception" />
+            <Token size="sm" color="orange" label="exception" description="list exception: an entry switched off in one list" />
             <Token size="sm" color={TYPE_COLOR[e.type]} label={TYPE_LABEL[e.type]} />
           </VStack>
         ) : (
@@ -144,16 +144,9 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
         const why = lockReason(e, canWrite);
         return (
           <HStack gap={0.5}>
-            <Button
-              label="Edit"
-              size="sm"
-              variant="ghost"
-              isIconOnly
-              icon={<Pencil size={16} aria-hidden="true" />}
-              isDisabled={!!why || e.kind === 'exception'}
-              tooltip={why || (e.kind === 'exception' ? 'A list exception has only its switch; edit the list on its page' : `Edit ${e.value}`)}
-              onClick={() => onEdit(e)}
-            />
+            {e.kind === 'exception' ? null : (
+              <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Edit ${e.value}`} onClick={() => onEdit(e)} />
+            )}
             <Button
               label="Delete"
               size="sm"
@@ -245,7 +238,10 @@ function ScopeCell({ e }: { e: DomainEntry }) {
   if (e.kind === 'exception' && own) {
     return (
       <VStack gap={0.5} align="start">
-        <Token size="sm" color="orange" label={`Only list ${shortRef(own.list, e.namespace)}`} href={refPath('lists', own.list)} description={`Only the list ${own.list}`} />
+        <Text size="sm">Only list</Text>
+        <Link href={refPath('lists', own.list)} size="sm">
+          {shortRef(own.list, e.namespace)}
+        </Link>
         <Text type="supporting" size="sm">
           {e.policies.length ? `used by ${e.policies.map((p) => shortRef(p, e.namespace)).join(', ')}` : 'used by no policy'}
         </Text>
