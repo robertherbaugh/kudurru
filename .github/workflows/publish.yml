@@ -39,6 +39,19 @@ jobs:
       id-token: write        # cosign keyless signing, provenance
       attestations: write    # SLSA build provenance
     steps:
+      # The tag must be a release tag, and a hand-run publish must start from
+      # a release branch: the signing identity (publish.yml@<branch>) is what
+      # `cosign verify` checks (docs/release-checklist.md, section 5).
+      - name: Check the tag and the branch
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "${TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::tag ${TAG} is not v<MAJOR.MINOR.PATCH> or v<MAJOR.MINOR.PATCH>-rc.<N>"; exit 1
+          fi
+          if [[ "${GITHUB_REF}" != refs/heads/release && "${GITHUB_REF}" != refs/heads/release-candidate ]]; then
+            echo "::error::publish runs from the release or release-candidate branch, not ${GITHUB_REF}"; exit 1
+          fi
       # refs/tags/: a bare name would check out a branch of the same name
       # first. No credentials stay in .git/config for the build and tests.
       - uses: actions/checkout@v5
@@ -80,7 +93,7 @@ jobs:
           version="${TAG#v}"
           for ref in "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"; do
             cosign verify "${ref}" \
-              --certificate-identity-regexp '^https://github.com/robertherbaugh/kudurru/' \
+              --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
             echo "verified ${ref}"
           done

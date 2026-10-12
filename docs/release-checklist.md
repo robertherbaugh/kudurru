@@ -40,7 +40,10 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
   `promotion` check (or the `release` workflow).
 
 Re-running a workflow at the same commit reuses its tag. To re-publish an
-existing tag by hand, run `publish` with workflow_dispatch and the tag.
+existing tag by hand, run `publish` with workflow_dispatch and the tag, on
+the `release` branch (a final tag) or `release-candidate` (a candidate);
+publish refuses other branches, because the branch is part of the signing
+identity that `cosign verify` checks (section 5).
 
 The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
 workflow, which is why the branch workflows call `publish.yml` and
@@ -201,9 +204,12 @@ On the owner's hardware:
 
 - [ ] Checksums: `cosign verify-blob --certificate checksums.txt.pem
       --signature checksums.txt.sig --certificate-identity-regexp
-      'https://github.com/robertherbaugh/kudurru/' --certificate-oidc-issuer
-      https://token.actions.githubusercontent.com checksums.txt`, then
-      `sha256sum -c checksums.txt` on the downloaded artifacts.
+      '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$'
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      checksums.txt`, then `sha256sum -c checksums.txt` on the downloaded
+      artifacts. The identity is publish.yml run from a release branch;
+      a looser pattern (the whole repository) would also accept a signature
+      made by any other workflow or branch of the repository.
 - [ ] Images: `cosign verify ghcr.io/robertherbaugh/kudurru:<version>` with the
       same identity flags (`publish.yml` already ran this for both ko
       images: `docker_signs` with `artifacts: manifests` signs the ko index

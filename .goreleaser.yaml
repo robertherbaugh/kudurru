@@ -226,7 +226,7 @@ release:
     Container images: `ghcr.io/robertherbaugh/kudurru:{{ .Version }}` (and `-debug`).
     Helm: `helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version {{ .Version }}`, then
     `helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version {{ .Version }}`.
-    Verify: `cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig --certificate-identity-regexp 'https://github.com/robertherbaugh/kudurru/' --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`.
+    Verify: `cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`.
 
 changelog:
   use: github
