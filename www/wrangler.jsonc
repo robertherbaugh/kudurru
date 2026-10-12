@@ -7,6 +7,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kudurru-www",
   "compatibility_date": "2026-10-01",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "assets": {
     "directory": "./dist",
     // Unknown paths get dist/404.html with status 404.
