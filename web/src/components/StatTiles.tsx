@@ -3,7 +3,11 @@
 // is a link into the pre-filtered query log (or the lists page).
 import type { Summary } from '../api/types';
 import { formatCount, formatExact, formatPercent } from '../lib/format';
-import { Link } from '../lib/router';
+import { ClickableCard } from '@astryxdesign/core/ClickableCard';
+import { Grid } from '@astryxdesign/core/Grid';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 
 export interface Tile {
   key: 'total' | 'blocked' | 'percent' | 'lists';
@@ -59,16 +63,21 @@ export function tilesFor(s: Summary | undefined, window = '24h'): Tile[] {
 export function StatTiles({ summary, window = '24h' }: { summary: Summary | undefined; window?: string }) {
   const tiles = tilesFor(summary, window);
   return (
-    <div className="k-grid k-grid-tiles" role="list" aria-label="Summary">
+    <Grid columns={{ minWidth: 200, repeat: 'fit' }} gap={4} role="list" aria-label="Summary">
       {tiles.map((t) => (
-        <Link key={t.key} href={t.href} className="k-tile" data-tone={t.key} role="listitem" aria-label={`${t.label}: ${t.title}`}>
-          <span className="k-tile-label">{t.label}</span>
-          <span className="k-tile-value" title={t.title} data-testid={`tile-${t.key}`}>
-            {summary ? t.value : '…'}
-          </span>
-          <span className="k-tile-foot">{t.foot}</span>
-        </Link>
+        // The coloured start edge names the tile's query class (styles.css .k-tile).
+        <ClickableCard key={t.key} href={t.href} label={`${t.label}: ${t.title}`} className="k-tile" data-tone={t.key} role="listitem">
+          <VStack gap={1}>
+            <Text type="supporting">{t.label}</Text>
+            <Tooltip content={t.title} hasHoverIndication={false}>
+              <Text type="display-3" weight="semibold" hasTabularNumbers data-testid={`tile-${t.key}`}>
+                {summary ? t.value : '…'}
+              </Text>
+            </Tooltip>
+            <Text type="supporting">{t.foot}</Text>
+          </VStack>
+        </ClickableCard>
       ))}
-    </div>
+    </Grid>
   );
 }

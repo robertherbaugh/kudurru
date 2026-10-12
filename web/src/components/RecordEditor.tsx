@@ -128,7 +128,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
 
   return (
     <DialogForm
-      className="k-form"
+      gap={3}
       noValidate
       aria-label="Record"
       onSubmit={() => void submit()}

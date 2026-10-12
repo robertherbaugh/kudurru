@@ -1,5 +1,6 @@
 // Loading, error and toast helpers shared by every page.
 import { Banner } from '@astryxdesign/core/Banner';
+import { Center } from '@astryxdesign/core/Center';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { useToast } from '@astryxdesign/core/Toast';
 import { useCallback, useMemo } from 'react';
@@ -8,18 +9,18 @@ import { ApiError } from '../api/client';
 /** A centred spinner for the whole viewport (session check, lazy pages). */
 export function FullPageSpinner({ label }: { label: string }) {
   return (
-    <div className="k-login" role="status" aria-live="polite">
+    <Center minHeight="100dvh" role="status" aria-live="polite">
       <Spinner size="lg" label={label} />
-    </div>
+    </Center>
   );
 }
 
 /** An inline spinner for a panel that is still loading. */
 export function Loading({ label = 'Loading' }: { label?: string }) {
   return (
-    <div className="k-chart-empty" role="status" aria-live="polite">
+    <Center minHeight={160} role="status" aria-live="polite">
       <Spinner size="md" label={label} />
-    </div>
+    </Center>
   );
 }
 

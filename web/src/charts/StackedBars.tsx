@@ -13,6 +13,12 @@ import uPlot from 'uplot';
 import { axisColors, resolveCSSColor, withAlpha } from '../lib/colors';
 import { formatExact, formatTime } from '../lib/format';
 import { useChartTheme } from './useChartTheme';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { Link } from '@astryxdesign/core/Link';
+import { ScrollableArea } from '@astryxdesign/core/ScrollableArea';
+import { Stack, VStack } from '@astryxdesign/core/Stack';
+import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
 
 export interface StackSeries {
   key: string;
@@ -47,7 +53,7 @@ export function stack(series: number[][]): number[][] {
 }
 
 export function StackedBars({ x, series, step, height = 240, label, onBucketClick, bucketHref }: StackedBarsProps) {
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLElement>(null);
   const plot = useRef<uPlot | null>(null);
   const [width, setWidth] = useState(0);
   const themeKey = useChartTheme();
@@ -129,42 +135,56 @@ export function StackedBars({ x, series, step, height = 240, label, onBucketClic
   }, [x, series, width, height, themeKey]);
 
   return (
-    <div className="k-stack">
-      <div ref={host} className="k-chart" role="img" aria-label={label} style={{ minHeight: height }} />
-      <details className="k-chart-table">
-        <summary>Data table</summary>
-        <div className="k-table-wrap">
-          <table className="k-table">
-            <caption className="k-visually-hidden">{label}</caption>
-            <thead>
-              <tr>
-                <th scope="col">Bucket ({Math.round(step / 60)} min)</th>
+    <VStack gap={2}>
+      {/* uPlot owns the DOM inside this mount node (styles.css .k-chart). */}
+      <Stack ref={host} className="k-chart" role="img" aria-label={label} width="100%" minHeight={height} />
+      <Collapsible trigger={<Text type="supporting">Data table</Text>} defaultIsOpen={false} chevronPosition="start">
+        <ScrollableArea label={`${label}: data`} axis="both" height={320}>
+          <Table density="compact" aria-label={label}>
+            <TableHeader>
+              <TableRow isHeaderRow>
+                <TableHeaderCell scope="col">Bucket ({Math.round(step / 60)} min)</TableHeaderCell>
                 {series.map((s) => (
-                  <th key={s.key} scope="col" className="num">
-                    {s.label}
-                  </th>
+                  <TableHeaderCell key={s.key} scope="col">
+                    <Text type="inherit" display="block" justify="end">
+                      {s.label}
+                    </Text>
+                  </TableHeaderCell>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {x.map((ts, j) => (
-                <tr key={ts}>
-                  <td>{bucketHref ? <a href={bucketHref(ts)} onClick={(e) => {
-                    if (!onBucketClick) return;
-                    e.preventDefault();
-                    onBucketClick(ts);
-                  }}>{formatTime(ts * 1000)}</a> : formatTime(ts * 1000)}</td>
+                <TableRow key={ts}>
+                  <TableCell>
+                    {bucketHref ? (
+                      <Link
+                        href={bucketHref(ts)}
+                        onClick={(e) => {
+                          if (!onBucketClick) return;
+                          e.preventDefault();
+                          onBucketClick(ts);
+                        }}
+                      >
+                        {formatTime(ts * 1000)}
+                      </Link>
+                    ) : (
+                      formatTime(ts * 1000)
+                    )}
+                  </TableCell>
                   {series.map((s) => (
-                    <td key={s.key} className="num">
-                      {formatExact(s.values[j])}
-                    </td>
+                    <TableCell key={s.key}>
+                      <Text display="block" justify="end" hasTabularNumbers>
+                        {formatExact(s.values[j])}
+                      </Text>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </div>
+            </TableBody>
+          </Table>
+        </ScrollableArea>
+      </Collapsible>
+    </VStack>
   );
 }

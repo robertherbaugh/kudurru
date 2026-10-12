@@ -14,8 +14,12 @@ import { ScopeNote } from '../components/ScopeSelector';
 import { StatTiles } from '../components/StatTiles';
 import { TopList } from '../components/TopList';
 import { UnblockNotice } from '../components/UnblockBadge';
-import { Link, useNavigate } from '../lib/router';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
+import { useNavigate } from '../lib/router';
 import { Badge } from '@astryxdesign/core/Badge';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Link } from '@astryxdesign/core/Link';
+import { Text } from '@astryxdesign/core/Text';
 
 /** The query-log route for a chart bucket: its start ±5 minutes. */
 export function bucketRoute(tsSeconds: number, stepSeconds: number, extra: Record<string, string> = {}): string {
@@ -90,21 +94,22 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Dashboard</h1>
-        <ScopeNote scope={summary.data} />
-      </div>
+    <Page>
+      <PageHeader title="Dashboard" actions={<ScopeNote scope={summary.data} />} />
       {summary.error ? <ErrorBanner error={summary.error} /> : null}
       <UnblockNotice />
       <StatTiles summary={summary.data} />
 
-      <section className="k-panel" aria-labelledby="chart-total">
-        <div className="k-panel-title">
-          <h2 id="chart-total">Queries over the last 24 hours</h2>
-          {ts.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
-          <span className="k-muted k-small">Click a bar to open the log around it</span>
-        </div>
+      <Panel
+        title="Queries over the last 24 hours"
+        headingId="chart-total"
+        actions={
+          <>
+            {ts.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
+            <Text type="supporting">Click a bar to open the log around it</Text>
+          </>
+        }
+      >
         {ts.error ? <ErrorBanner error={ts.error} /> : null}
         {ts.data ? (
           <StackedBars
@@ -118,12 +123,9 @@ export default function DashboardPage() {
         ) : (
           !ts.error && <Loading />
         )}
-      </section>
+      </Panel>
 
-      <section className="k-panel" aria-labelledby="chart-clients">
-        <div className="k-panel-title">
-          <h2 id="chart-clients">Queries per client</h2>
-        </div>
+      <Panel title="Queries per client" headingId="chart-clients">
         {clients.error ? <ErrorBanner error={clients.error} /> : null}
         {clients.data ? (
           <StackedBars
@@ -138,42 +140,43 @@ export default function DashboardPage() {
         ) : (
           !clients.error && <Loading />
         )}
-      </section>
+      </Panel>
 
-      <div className="k-grid k-grid-2">
-        <section className="k-panel" aria-labelledby="pie-types">
-          <div className="k-panel-title">
-            <h2 id="pie-types">Query types</h2>
-          </div>
+      <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+        <Panel title="Query types" headingId="pie-types">
           {summary.data ? <PieChart label="Share of query types" items={types} onSliceClick={(i) => i.href && navigate(i.href)} /> : <Loading />}
-        </section>
-        <section className="k-panel" aria-labelledby="pie-upstreams">
-          <div className="k-panel-title">
-            <h2 id="pie-upstreams">Upstreams</h2>
-            {upstreams.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
-            {upstreams.data?.servers?.length ? (
-              <span className="k-small k-muted" data-testid="upstream-health">
-                {upstreams.data.servers.filter((s) => s.healthy).length} of {upstreams.data.servers.length} servers healthy
-              </span>
-            ) : null}
-            <Link href="/upstreams" className="k-small">
-              Health and configuration
-            </Link>
-          </div>
+        </Panel>
+        <Panel
+          title="Upstreams"
+          headingId="pie-upstreams"
+          actions={
+            <>
+              {upstreams.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
+              {upstreams.data?.servers?.length ? (
+                <Text type="supporting" data-testid="upstream-health">
+                  {upstreams.data.servers.filter((s) => s.healthy).length} of {upstreams.data.servers.length} servers healthy
+                </Text>
+              ) : null}
+              <Link href="/upstreams" size="sm">
+                Health and configuration
+              </Link>
+            </>
+          }
+        >
           {upstreams.error ? <ErrorBanner error={upstreams.error} /> : null}
           {upstreams.data ? (
             <PieChart label="Share of queries per upstream" items={ups} onSliceClick={(i) => i.href && navigate(i.href)} />
           ) : (
             !upstreams.error && <Loading />
           )}
-        </section>
-      </div>
+        </Panel>
+      </Grid>
 
-      <div className="k-grid k-grid-3">
+      <Grid columns={{ minWidth: 320, repeat: 'fit' }} gap={4}>
         <TopList title="Top permitted domains" dim="domains" data={topPermitted.data} isLoading={topPermitted.isLoading} error={topPermitted.error} />
         <TopList title="Top blocked domains" dim="domains" blocked data={topBlocked.data} isLoading={topBlocked.isLoading} error={topBlocked.error} />
         <TopList title="Top clients" dim="clients" data={topClients.data} isLoading={topClients.isLoading} error={topClients.error} />
-      </div>
-    </div>
+      </Grid>
+    </Page>
   );
 }

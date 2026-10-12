@@ -160,7 +160,7 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
 
   return (
     <DialogForm
-      className="k-form"
+      gap={3}
       noValidate
       onSubmit={() => {
         if (!readOnly) void submit();

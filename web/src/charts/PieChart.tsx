@@ -5,7 +5,10 @@
 import { useEffect, useRef } from 'react';
 import { categorical, resolveCSSColor } from '../lib/colors';
 import { formatExact, formatPercent } from '../lib/format';
-import { Link } from '../lib/router';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack, Stack, StackItem } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
+import { Square } from 'lucide-react';
 import { useChartTheme } from './useChartTheme';
 
 export interface PieItem {
@@ -32,7 +35,7 @@ export function canvasAvailable(): boolean {
 }
 
 export function PieChart({ label, items, onSliceClick, height = 220 }: PieChartProps) {
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLElement>(null);
   const themeKey = useChartTheme();
   const click = useRef(onSliceClick);
   click.current = onSliceClick;
@@ -82,25 +85,31 @@ export function PieChart({ label, items, onSliceClick, height = 220 }: PieChartP
 
   const palette = categorical();
   return (
-    <div className="k-pie">
-      <div ref={host} className="k-pie-canvas" role="img" aria-label={label} style={{ height }} />
-      <ul className="k-legend" aria-label={`${label} legend`}>
-        {items.map((i, idx) => (
-          <li key={i.name}>
-            <span className="k-swatch" style={{ background: palette[idx % palette.length] }} aria-hidden="true" />
-            {i.href ? (
-              <Link href={i.href} className="k-break">
-                {i.name}
-              </Link>
-            ) : (
-              <span className="k-break">{i.name}</span>
-            )}
-            <span className="k-spacer" />
-            <span className="k-mono k-muted">{formatExact(i.value)}</span>
-            <span className="k-mono k-legend-pct">{total ? formatPercent((i.value / total) * 100) : '–'}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <HStack gap={4} vAlign="center" wrap="wrap">
+      {/* ECharts owns the DOM inside this mount node. */}
+      <Stack ref={host} role="img" aria-label={label} width={220} height={height} />
+      <StackItem size="fill">
+        <List density="compact" aria-label={`${label} legend`}>
+          {items.map((i, idx) => (
+            <ListItem
+              key={i.name}
+              label={i.name}
+              href={i.href}
+              startContent={<Square size={10} fill={palette[idx % palette.length]} stroke="none" aria-hidden="true" />}
+              endContent={
+                <HStack gap={3}>
+                  <Text type="code" color="secondary" hasTabularNumbers>
+                    {formatExact(i.value)}
+                  </Text>
+                  <Text type="code" hasTabularNumbers>
+                    {total ? formatPercent((i.value / total) * 100) : '–'}
+                  </Text>
+                </HStack>
+              }
+            />
+          ))}
+        </List>
+      </StackItem>
+    </HStack>
   );
 }

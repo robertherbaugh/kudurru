@@ -5,6 +5,8 @@
 import { AppShell } from '@astryxdesign/core/AppShell';
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
 import { TopNav } from '@astryxdesign/core/TopNav';
+import { HStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { Suspense, type ReactNode } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { FullPageSpinner } from './Feedback';
@@ -18,6 +20,7 @@ import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
 import { UnblockBadge } from './UnblockBadge';
+import { Page, PageHeader } from './layout/Page';
 
 function Brand() {
   return (
@@ -59,42 +62,40 @@ export function Shell() {
       label="Toolbar"
       heading={<Brand />}
       endContent={
-        <div className="k-row">
+        <HStack gap={2} vAlign="center" wrap="wrap">
           {match?.route.scoped ? <ScopeSelector /> : null}
           <MessagesBadge />
           <AppearanceButton />
           <AccountMenu />
-        </div>
+        </HStack>
       }
     />
   );
 
   let page: ReactNode;
   if (match) {
-    const Page = match.route.page;
-    page = <Page params={match.params} />;
+    const RoutePage = match.route.page;
+    page = <RoutePage params={match.params} />;
   } else {
     page = <NotFound />;
   }
 
   return (
-    <div className="k-app">
-      <AppShell variant="section" sideNav={nav} topNav={top} banner={<DefaultCredentialsBanner />} contentPadding={0}>
-        <ErrorBoundary key={loc.path}>
-          <Suspense fallback={<FullPageSpinner label="Loading page" />}>{page}</Suspense>
-        </ErrorBoundary>
-      </AppShell>
-    </div>
+    <AppShell variant="section" sideNav={nav} topNav={top} banner={<DefaultCredentialsBanner />} contentPadding={0}>
+      <ErrorBoundary key={loc.path}>
+        <Suspense fallback={<FullPageSpinner label="Loading page" />}>{page}</Suspense>
+      </ErrorBoundary>
+    </AppShell>
   );
 }
 
 function NotFound() {
   return (
-    <div className="k-page">
-      <h1>Page not found</h1>
-      <p>
+    <Page>
+      <PageHeader title="Page not found" />
+      <Text as="p">
         There is no page at this address. <Link href="/">Go to the dashboard</Link>.
-      </p>
-    </div>
+      </Text>
+    </Page>
   );
 }
