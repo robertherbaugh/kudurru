@@ -66,6 +66,23 @@ func TestCatalogueRoutes(t *testing.T) {
 		t.Errorf("yandex = %+v", y)
 	}
 
+	if len(info.Sources) != 1 || info.Sources[0].ID != "kudurru" || info.Sources[0].License != "Apache-2.0" || info.Sources[0].Services != len(emb.Services) || info.Categories != len(emb.Categories) {
+		t.Errorf("sources = %+v", info.Sources)
+	}
+	var cats List[CatalogueCategory]
+	h.do(http.MethodGet, "/api/v1/catalogue/categories", "viewer", nil).want(http.StatusOK).json(&cats)
+	if len(cats.Items) != len(emb.Categories) || cats.Items[0].ID != emb.Categories[0].ID || cats.Items[0].Icon == "" {
+		t.Fatalf("categories = %+v", cats.Items)
+	}
+	for _, k := range cats.Items {
+		if ids, _ := emb.CategoryServices(k.ID); k.Services != len(ids) {
+			t.Errorf("category %s: %d services, want %d", k.ID, k.Services, len(ids))
+		}
+	}
+	if yt.Origin != "kudurru" || yt.License != "Apache-2.0" {
+		t.Errorf("youtube origin %q licence %q", yt.Origin, yt.License)
+	}
+
 	// policies.read: anonymous callers are refused.
 	h.do(http.MethodGet, "/api/v1/catalogue/services", "", nil).want(http.StatusUnauthorized)
 
@@ -76,6 +93,59 @@ func TestCatalogueRoutes(t *testing.T) {
 	h.do(http.MethodGet, "/api/v1/catalogue", "viewer", nil).want(http.StatusOK).json(&info)
 	if info.Origin != "embedded" || info.Refresh != nil {
 		t.Errorf("default info = %+v", info)
+	}
+}
+
+// TestCatalogueImportSources: with the AdGuard import the info reports
+// both sources and their licences, and imported services are marked.
+func TestCatalogueImportSources(t *testing.T) {
+	imp, err := catalogue.ParseAdGuard([]byte(`{"blocked_services":[
+		{"id":"example_stream","name":"Example Stream","group":"streaming","rules":["||stream.example^","@@||x.example^"]},
+		{"id":"youtube","name":"Shadowed","group":"streaming","rules":["||yt.example^"]}]}`), "https://mirror.example/services.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hold := catalogue.NewHolder(nil)
+	hold.SetImport(imp)
+	h := newHarness(t, func(o *Options) {
+		o.Catalogue = CatalogueSource{Holder: hold, ImportStatus: func() catalogue.Status {
+			return catalogue.Status{Kind: catalogue.KindAdGuard, URL: "https://mirror.example/services.json"}
+		}}
+	})
+	var info CatalogueInfo
+	h.do(http.MethodGet, "/api/v1/catalogue", "viewer", nil).want(http.StatusOK).json(&info)
+	if len(info.Sources) != 2 {
+		t.Fatalf("sources = %+v", info.Sources)
+	}
+	ag := info.Sources[1]
+	if ag.ID != "adguard" || ag.License != "GPL-3.0" || !ag.Loaded || ag.Services != 1 || ag.Shadowed != 1 || ag.DroppedRules != 1 ||
+		ag.Origin != "https://mirror.example/services.json" || ag.Refresh == nil {
+		t.Errorf("adguard source = %+v", ag)
+	}
+	var svcs List[CatalogueService]
+	h.do(http.MethodGet, "/api/v1/catalogue/services?category=video", "viewer", nil).want(http.StatusOK).json(&svcs)
+	var found bool
+	for _, s := range svcs.Items {
+		if s.ID == "example-stream" {
+			found = s.Origin == "adguard" && s.License == "GPL-3.0" && s.Source == "adguard-hostlists-registry" && s.Icon == ""
+		}
+		if s.ID == "youtube" && s.Origin != "kudurru" {
+			t.Errorf("youtube = %+v", s)
+		}
+	}
+	if !found {
+		t.Errorf("imported service missing or unmarked: %+v", svcs.Items)
+	}
+	// Configured but not downloaded yet: the source is listed, not loaded.
+	h = newHarness(t, func(o *Options) {
+		o.Catalogue = CatalogueSource{Holder: catalogue.NewHolder(nil), ImportStatus: func() catalogue.Status {
+			return catalogue.Status{Kind: catalogue.KindAdGuard, URL: "https://mirror.example/services.json", LastError: "GET: 503"}
+		}}
+	})
+	info = CatalogueInfo{}
+	h.do(http.MethodGet, "/api/v1/catalogue", "viewer", nil).want(http.StatusOK).json(&info)
+	if len(info.Sources) != 2 || info.Sources[1].Loaded || info.Sources[1].Refresh.LastError == "" {
+		t.Errorf("pending import = %+v", info.Sources)
 	}
 }
 

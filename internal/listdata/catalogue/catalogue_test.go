@@ -27,12 +27,28 @@ func TestEmbedded(t *testing.T) {
 	if !regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}$`).MatchString(c.Version) {
 		t.Errorf("version %q is not YYYY.MM.DD", c.Version)
 	}
-	if n := len(c.Services); n < 25 || n > 60 {
-		t.Errorf("%d services; the v0.1 catalogue carries the common 25-60", n)
+	if n := len(c.Services); n < 100 || n > 200 {
+		t.Errorf("%d services; the catalogue carries the common 100-200", n)
+	}
+	// The AI category is complete: the major chat assistants and generators.
+	for _, id := range []string{"chatgpt", "claude", "gemini", "copilot", "perplexity", "mistral", "deepseek", "grok", "metaai",
+		"characterai", "poe", "huggingface", "midjourney", "stability", "runway", "suno", "elevenlabs", "replicate"} {
+		if s, ok := c.Service(id); !ok || s.Category != "ai" {
+			t.Errorf("AI service %q missing", id)
+		}
+	}
+	// Every category the dashboard offers has services, except "other"
+	// (the bucket for imported services).
+	for _, k := range c.Categories {
+		if ids, _ := c.CategoryServices(k.ID); len(ids) == 0 && k.ID != CategoryOther {
+			t.Errorf("category %s is empty", k.ID)
+		}
 	}
 	for _, id := range []string{"youtube", "tiktok", "facebook", "instagram", "whatsapp", "snapchat", "twitter", "reddit", "discord",
 		"twitch", "netflix", "steam", "epicgames", "roblox", "minecraft", "fortnite", "pinterest", "tumblr", "telegram", "signal",
-		"spotify", "primevideo", "disneyplus", "hulu", "9gag", "linkedin"} {
+		"spotify", "primevideo", "disneyplus", "hulu", "9gag", "linkedin", "max", "paramountplus", "peacock", "appletv", "crunchyroll",
+		"plex", "kick", "xbox", "playstation", "nintendo", "battlenet", "ea", "ubisoft", "valorant", "amazon", "ebay", "temu", "shein",
+		"aliexpress", "etsy"} {
 		if !c.HasService(id) {
 			t.Errorf("service %q missing", id)
 		}
@@ -56,6 +72,21 @@ func TestEmbedded(t *testing.T) {
 	}
 	if got := snap.Contains("www.youtube.com"); got[ListName("youtube")] != "||youtube.com^" {
 		t.Errorf("www.youtube.com: %v", got)
+	}
+	// No service blocks the DoH/DoT host of a well-known upstream resolver,
+	// so blocking a service never cuts the node off from its upstreams.
+	for _, host := range []string{"dns.google", "cloudflare-dns.com", "one.one.one.one", "dns.quad9.net", "dns.adguard-dns.com",
+		"dns.nextdns.io", "dns.mullvad.net", "doh.opendns.com", "dns.controld.com", "freedns.controld.com"} {
+		if hits := snap.Contains(host); len(hits) > 0 {
+			t.Errorf("upstream resolver %s is blocked by %v", host, hits)
+		}
+	}
+	// Shared sign-in and infrastructure stay reachable.
+	for _, host := range []string{"accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com",
+		"www.apple.com", "www.google.com", "www.microsoft.com", "fonts.gstatic.com", "d1.cloudfront.net", "ajax.googleapis.com"} {
+		if hits := snap.Contains(host); len(hits) > 0 {
+			t.Errorf("shared host %s is blocked by %v", host, hits)
+		}
 	}
 	// No service list blocks a safe-search target of another vendor, so
 	// blocking one service never breaks safe search on another engine.

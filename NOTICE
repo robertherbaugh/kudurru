@@ -173,9 +173,15 @@ Embedded data (compiled into the binary):
   from Google's published list of its search domains
   (https://www.google.com/supported_domains), a list of facts. Nothing is
   taken from AdGuard Home's GPL-3.0 blocked-services or safe-search tables.
+  The category icon names refer to Lucide icons, which the dashboard
+  bundles (lucide-react, ISC).
+- AdGuard HostlistsRegistry services (GPL-3.0) are not distributed with
+  kudurru in any form. blocking.catalogue.adguardServicesURL, off by
+  default, lets an administrator's own instance download them at runtime;
+  kudurru implements the file format only.
 - Dashboard Icons (https://github.com/homarr-labs/dashboard-icons),
   Apache-2.0, Copyright (c) 2024 Bjorn Lammers, Meier Lukas, Thomas Camlong
-  and Homarr Labs: the 40 SVG logos in internal/listdata/catalogue/icons
+  and Homarr Labs: the 97 SVG logos in internal/listdata/catalogue/icons
   are svg/<slug>.svg at commit 104a791794ef, some optimised with svgo; the
   licence text and a provenance file naming every file and its checksum are
   in the same directory. The logos are trademarks of their respective

@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -62,6 +63,7 @@ func TestPolicyState(t *testing.T) {
 		&v1alpha1.Policy{ObjectMeta: meta("kids"), Spec: v1alpha1.PolicySpec{
 			ClientGroupRefs: []string{"kids", "off", "missing"}, BlockListRefs: []string{"games", "nolist"}, AllowListRefs: []string{"school"},
 			BlockedServices: []string{"youtube", "twitter", "roblox", "from-the-future"}, SafeSearch: &on, SafeSearchMode: "moderate",
+			BlockedCategories: []string{"ai", "nope"}, AllowedServices: []string{"chatgpt"},
 			UpstreamGroup: "kids-dns", Priority: 10, BlockTTL: metav1.Duration{Duration: 5 * time.Minute},
 			Schedule: &v1alpha1.Schedule{Start: "00:00", End: "00:00"},
 		}},
@@ -130,6 +132,27 @@ func TestPolicyState(t *testing.T) {
 	}
 	if f := svc["from-the-future"]; f.Known || f.Name != "from-the-future" {
 		t.Errorf("unknown service %+v", f)
+	}
+	if len(st.Categories) != 2 || !st.Categories[0].Known || st.Categories[0].Name != "AI" || st.Categories[0].Services == 0 || st.Categories[0].Allowed != 1 ||
+		st.Categories[1].Known || st.Categories[1].Name != "nope" {
+		t.Errorf("categories %+v", st.Categories)
+	}
+	if len(st.AllowedServices) != 1 || st.AllowedServices[0].ID != "chatgpt" || !st.AllowedServices[0].Known {
+		t.Errorf("allowed services %+v", st.AllowedServices)
+	}
+	aiServices, _ := catalogue.Embedded().CategoryServices("ai")
+	if len(st.EffectiveServices) != 4+len(aiServices)-1 {
+		t.Errorf("%d effective services, want %d", len(st.EffectiveServices), 4+len(aiServices)-1)
+	}
+	for i, e := range st.EffectiveServices {
+		switch {
+		case e.ID == "chatgpt":
+			t.Error("an allowedServices exception is in the effective set")
+		case i < 4 && e.Via != "service":
+			t.Errorf("effective %d = %+v, want via service", i, e)
+		case i >= 4 && (e.Via != "category" || e.Category != "ai" || e.Origin != "kudurru"):
+			t.Errorf("effective %d = %+v, want via category ai", i, e)
+		}
 	}
 	if ss := st.SafeSearch; !ss.Enabled || ss.Mode != "moderate" || len(ss.Engines) < 5 {
 		t.Errorf("safe search %+v", ss)

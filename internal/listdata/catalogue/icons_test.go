@@ -16,7 +16,7 @@ import (
 // Icon size limits: the binary carries every icon (D75 size budget).
 const (
 	maxIconBytes  = 16 << 10
-	maxIconsBytes = 128 << 10
+	maxIconsBytes = 256 << 10
 )
 
 // safeElements are the SVG elements an icon may use: shapes, paint
@@ -27,6 +27,10 @@ var safeElements = map[string]bool{
 	"polyline": true, "polygon": true, "defs": true, "lineargradient": true, "radialgradient": true,
 	"stop": true, "clippath": true, "mask": true, "use": true, "symbol": true, "style": true,
 	"title": true, "desc": true,
+	// Filter primitives that only compute from the document's own pixels
+	// (no feImage, which can load a URL).
+	"filter": true, "fegaussianblur": true, "feflood": true, "feblend": true, "fecolormatrix": true,
+	"fecomposite": true, "feoffset": true, "femerge": true, "femergenode": true,
 }
 
 // urlRef finds url(...) references; only same-document ones (#id) pass.
@@ -153,6 +157,7 @@ func TestCheckSVG(t *testing.T) {
 		"javascript url": `<svg xmlns="http://www.w3.org/2000/svg"><use href="javascript:alert(1)"/></svg>`,
 		"entity":         `<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="http://www.w3.org/2000/svg"/>`,
 		"not svg":        `<html/>`,
+		"feImage":        `<svg xmlns="http://www.w3.org/2000/svg"><filter id="f"><feImage href="#a"/></filter></svg>`,
 	} {
 		if err := checkSVG([]byte(doc)); err == nil {
 			t.Errorf("%s: accepted", name)
