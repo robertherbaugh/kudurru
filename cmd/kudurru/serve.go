@@ -461,7 +461,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Unblock requests (the block page's form, /unblockrequests): the book
 	// indexes them on every node; the leader expires and prunes them.
 	unblockBook := newUnblockBook(st, reload, cfg.Node.Name, logger)
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, unblockBook, reg, logger)
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, reg, logger)
 	if err != nil {
 		return err
 	}

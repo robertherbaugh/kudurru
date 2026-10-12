@@ -3,6 +3,7 @@ package querylog
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,6 +124,10 @@ func (a *Async) Enqueue(ev *Event) bool {
 // everything unchanged. Events already queued keep the old transform only
 // if admitted before the swap.
 func (a *Async) SetPrivacy(p *Privacy) { a.privacy.Store(p) }
+
+// Pseudonym is the current filter's Pseudonym of addr: the client name its
+// queries are logged under, "" when clients are not pseudonymised.
+func (a *Async) Pseudonym(addr netip.Addr) string { return a.privacy.Load().Pseudonym(addr) }
 
 // Dropped returns the number of events dropped since start.
 func (a *Async) Dropped() uint64 { return a.dropped.Load() }

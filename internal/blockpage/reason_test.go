@@ -67,7 +67,7 @@ func TestQuerylogFinderTail(t *testing.T) {
 }
 
 // TestQuerylogFinderPrivacy: anonymize_client matches the client's
-// prefix (or any client with pseudonyms); hide_domains and stricter modes
+// prefix (or its own pseudonym); hide_domains and stricter modes
 // and a disabled query log give no reason, with a note saying why.
 func TestQuerylogFinderPrivacy(t *testing.T) {
 	now := time.Now()
@@ -87,8 +87,24 @@ func TestQuerylogFinderPrivacy(t *testing.T) {
 	if r, ok, _ := (&QuerylogFinder{Tail: tail, Privacy: mode(querylog.PrivacyAnonymizeClient, false)}).Find(ctx, client, "ads.example", now); !ok || r.List != "default/ads" {
 		t.Errorf("anonymize_client prefix: %+v %v", r, ok)
 	}
-	if r, ok, _ := (&QuerylogFinder{Tail: tail, Privacy: mode(querylog.PrivacyAnonymizeClient, true)}).Find(ctx, client, "pseudo.example", now); !ok || r.List != "default/p" {
+	pseudonyms := func(a netip.Addr) string {
+		if a == client {
+			return "anon-0123456789ab"
+		}
+		return "anon-ffffffffffff"
+	}
+	if r, ok, _ := (&QuerylogFinder{Tail: tail, Privacy: mode(querylog.PrivacyAnonymizeClient, true), Pseudonym: pseudonyms}).Find(ctx, client, "pseudo.example", now); !ok || r.List != "default/p" {
 		t.Errorf("anonymize_client pseudonym: %+v %v", r, ok)
+	}
+	// Another device's pseudonymised block is not shown, and without the
+	// pseudonym nothing is matched (the page would otherwise tell any
+	// device which names others were blocked on).
+	other := netip.MustParseAddr("10.0.0.6")
+	if r, ok, _ := (&QuerylogFinder{Tail: tail, Privacy: mode(querylog.PrivacyAnonymizeClient, true), Pseudonym: pseudonyms}).Find(ctx, other, "pseudo.example", now); ok {
+		t.Errorf("anonymize_client pseudonym, other device: %+v", r)
+	}
+	if r, ok, note := (&QuerylogFinder{Tail: tail, Privacy: mode(querylog.PrivacyAnonymizeClient, true)}).Find(ctx, client, "pseudo.example", now); ok || note != noteNotFound {
+		t.Errorf("anonymize_client pseudonym without pseudonyms: %+v %v %q", r, ok, note)
 	}
 	for _, m := range []querylog.Mode{querylog.PrivacyHideDomains, querylog.PrivacyHideDomainsClients, querylog.PrivacyNothing} {
 		if _, ok, note := (&QuerylogFinder{Tail: tail, Privacy: mode(m, false)}).Find(ctx, client, "ads.example", now); ok || note != notePrivacy {

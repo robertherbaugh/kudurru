@@ -54,13 +54,17 @@ const (
 // (the API preview works with the block page off); the listeners are only
 // configured, and the HTTPS certificate generated, when blockPage.enabled.
 // Reasons come from the query log (live tail, then querylog.db) and, when
-// it has none, from the client's current policy.
+// it has none, from the client's current policy. ql is the query log's
+// collector (nil when it is off); it names the client's pseudonym.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	ql *querylog.Async, book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
 		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
 		Privacy: querylogPrivacy(reload),
+	}
+	if ql != nil {
+		qf.Pseudonym = ql.Pseudonym
 	}
 	o := blockpage.Options{
 		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,
