@@ -149,7 +149,7 @@ test('the client page names the group and the policy of 127.0.0.1', async ({ pag
   await expect(policy.getByRole('list', { name: 'Candidate policies' }).getByRole('link', { name: 'e2e-blocking' })).toBeVisible();
   await expect(policy).toContainText('decides');
   // The recent queries hold the blocked name of the global setup's traffic.
-  await expect(main(page).locator('.k-log')).toContainText(BLOCKLIST.blocked);
+  await expect(main(page).getByTestId('query-log-scroll')).toContainText(BLOCKLIST.blocked);
   await expectRendered(page);
 });
 
