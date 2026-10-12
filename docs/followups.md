@@ -11,7 +11,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| zonecache `TestDebounce` "two spaced changes produced 1 rebuilds, want 2" failed once in a full `go test ./...` at a load average of ~40 (eight agents) and passed 10/10 alone; the 300 ms spacing assumes the first rebuild publishes promptly: derive the spacing from the debounce window or use a fake clock | v0.1 fix round | v0.1.x |
 | Cold-start cluster-ID check is skipped while the kube driver has never reached the apiserver (its cluster ID is unknown then, the very outage case); compare against an independent source such as a node setting or the downward API | hardening report | v0.2 |
 | sqlite: remaining §11.4 audit fields (incl. `auth.DecisionFrom(ctx).Path`) via migration 2; secret redaction in before/after; `cluster_epoch`/`primary_id` setters for v0.2 fencing; `InternalKinds` once internal kinds exist (the daily `PruneAudit` leader loop and `WithActor` from the API principal landed in docs/m5/burndown-server.md) | store-sqlite report | v0.2 |
 | `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
@@ -80,8 +79,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| Principals whose only binding is zone-scoped (zone-admin) get 403 `tokens.own at scope cluster` on `/auth/tokens`: `stack.Guard` checks the permission at cluster scope although every built-in role holds `tokens.own` (the API forwards these routes as `authenticated` for that reason). Fail-closed, but zone-admins cannot mint tokens; check `tokens.own` at any scope the principal holds (keeping token scopes as restrictions) | docs/m5/security.md | v0.1.x |
-| Token `lastUsedIP` records `RemoteAddr` (the reverse proxy behind `listeners.api.trustedProxies`); give `tokens.Options` the API's ClientIP like the stack (`apiClientIP` in serve.go) | docs/m5/security.md | v0.1.x |
 | external-dns webhook: optional shared-secret header (`externalDNS.webhook.tokenFile`, the external-dns webhook provider can send custom headers) so the listener can leave loopback without relying on a NetworkPolicy | docs/m5/security.md | v0.2 |
 | A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | docs/m5/security.md | v0.2 |
 
@@ -100,19 +97,12 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | v0.1.x (moved from M4: size headroom only, the binary is within its budget) |
-| Catalogue: re-check domains taken from DNS and redirects because the vendor pages were behind bot challenges (Slack `slack-msgs.com`, Binance `bnbstatic.com`, some country domains, the KakaoTalk hosts) | catalogue stream (D145) | v0.1.x |
-| Blocked services grid: tiles with a logo and tiles with a monogram differ slightly in height | catalogue stream | v0.1.x |
 | "Is it allowed?" makes a second request to find list exceptions; the dig answer could report a matched exclusion itself | allowlist stream (D144) | v0.2 |
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
-| Allowlist/Denylist: policies managed by a file or an integration are reported as `unattached` but cannot be fixed from the UI; offer an "attach" action that prints the YAML to add to the file | allowlist stream | v0.1.x |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
 | Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since docs/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |
-| Astryx conformance pass over the older page scaffolding: raw `<div>`/`<span>` layout and `k-*` classes in styles.css (e.g. `k-form-grid`, ShapeField rows) → Stack/Grid/Section/Layout/Table and tokens, per web/AGENTS.md; target an empty styles.css apart from documented exceptions | UX round 3 (D141) | v0.1.x |
 | Self-host the brand fonts (Inter, JetBrains Mono; docs/brand) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
 | Settings schema `Shape` has no help field, so list items and map keys show no help of their own (fields and enum options do) | UX round 3 | v0.2 |
-| Query log: a "Policy" suggest box (the server answers `/queries/suggestions?field=policy`; the SPA's suggestion types lack it) and a "Request unblock"/"Requests" link on blocked rows | UX round | v0.1.x |
-| Unify `fields/ChoiceCards` with the inline choice cards of the list wizard | UX round | v0.1.x |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
 ## CLI
 
@@ -136,9 +126,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Metrics the §11.6 dashboard and alerts still lack: `kudurru_cluster_fenced` (v0.2), `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0); `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe). The serial-divergence, edge and VIP panels and alerts shipped in the v0.1 fix round | deploy report | v0.2 (moved from M3-M5: each waits for its feature; merged rows) |
 | Settings key `cluster.role: static`: the compose HA read-only mode cannot be expressed until it exists (the chart renders OIDC providers through `auth.oidc.providers`); lands with the `cluster.static` membership of E2E-2 | deploy report | v0.2 (compose HA) |
 | Separate path keys for `querylog.db` and `local.db` so `persistence.querylog` and `persistence.local` can be distinct volumes; today either switches `/var/lib/kudurru` to one per-pod claim | deploy report | v0.2 |
-| hostNetwork pods cannot use the `ip_unprivileged_port_start` sysctl: binding :53 as uid 65532 there needs `cap_net_bind_service=+ep` on the binary, which ko cannot set; build the release image with a file capability (or document a host sysctl) | deploy report | v0.1.x (moved from M4: `hostNetwork.enabled` is opt-in; until then set `net.ipv4.ip_unprivileged_port_start=0` on the host) |
-| Chart: scrape the supervisors' metrics (`kudurru edge run` on :8084 `edge-ready`, `kudurru vip run` on :8085) with a PodMonitor for the edge pods; until then the edge and VIP panels and `KudurruEdgeBackendDown`/`KudurruVIPNoMaster` stay empty in Kubernetes | v0.1 fix round (release-eng) | v0.1.x |
-| Chart `edge.ebpf.enabled`: the edge container runs as uid 953 with `BPF` and `SYS_ADMIN` added, but Kubernetes does not make added capabilities effective for a non-root user, so `dnsdist --check-config` (and dnsdist) cannot create the BPF maps; `make edge-check` has to run that case as root. Run the container as root and let dnsdist drop to 953 with `capabilities_to_retain`, or remove the option until it works | first `make edge-check` run (release-eng) | v0.1.x |
 
 ## Needs the project owner's hardware
 
