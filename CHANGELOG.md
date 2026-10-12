@@ -366,6 +366,13 @@ pipeline.
   sentence and paragraph length, unapproved words, links and figure numbers;
   `web/scripts/guide-screenshots.mjs` takes the screenshots again. The docs
   site lists the guide under **Guide**.
+- The docs site (docs.kudurru.io) is deployed by Cloudflare Workers Builds
+  (`site/wrangler.jsonc`, `site/static/_headers`; setup in
+  [site/README.md](site/README.md#publishing)) instead of GitHub Pages.
+  `docs-pages.yml` and its call in `release.yml` are removed, and the docs
+  workflow runs `make docs-check-workers`. The guide's screenshots are files
+  of the site, not links to GitHub's raw host, so they load while the
+  repository is private.
 - The project website, kudurru.io, in [www/](www/README.md): one page with
   the lineage, an interactive walk through the query pipeline, the v0.1
   features with their measured numbers, the dashboard screenshots from the

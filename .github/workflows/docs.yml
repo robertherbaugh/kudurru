@@ -1,8 +1,10 @@
 name: docs
 # Builds the docs site (site/, Hugo) on every change: the generated
 # references must be current, the Hugo build fails on any unresolved link in
-# the markdown (--panicOnWarning), and htmltest checks the HTML below the
-# GitHub Pages sub-path. Publishing is docs-pages.yml.
+# the markdown (--panicOnWarning), htmltest checks the HTML, and
+# `wrangler deploy --dry-run` checks the Workers config. Cloudflare Workers
+# Builds publishes docs.kudurru.io from GitHub (site/README.md, "Publishing");
+# this workflow holds no Cloudflare credentials.
 on:
   push:
     branches: [main]
@@ -30,8 +32,13 @@ jobs:
           test -z "$(git status --porcelain -- site/content/reference)" || { git status --porcelain -- site/content/reference; echo "run make docs-gen and commit the result"; exit 1; }
       - name: Build (fails on broken links)
         run: make docs-site
-      - name: Check the HTML below a sub-path
+      - name: Check the HTML (links, assets, fragments)
         run: make docs-check-links
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - name: Check the Workers config (wrangler deploy --dry-run)
+        run: make docs-check-workers
       - uses: actions/upload-artifact@v4
         with:
           name: docs-site

@@ -106,13 +106,19 @@ module:
     - {source: content, target: content}
     - {source: layouts, target: layouts}
     - {source: assets, target: assets}
+    # Files served as they are: _headers (Cloudflare response headers).
+    - {source: static, target: static}
 
-    # The user and administrator guide (docs/guide; its images are served from the repository).
+    # The user and administrator guide (docs/guide). Its images are served from
+    # the site itself (render-image.html), not from raw.githubusercontent.com:
+    # the repository can be private, and a public site must not depend on it.
     - {source: ../docs/guide/README.md, target: content/guide/_index.md}
     - {source: ../docs/guide/admin/README.md, target: content/guide/admin/_index.md}
     - source: ../docs/guide
       target: content/guide
       files: ['! README.md', '! admin/README.md', '! images/**']
+
+    - {source: ../docs/guide/images, target: static/guide/images}
 
     # User and operator guides, runbooks.
     - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}

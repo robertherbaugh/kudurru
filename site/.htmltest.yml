@@ -1,6 +1,6 @@
-# htmltest (MIT) over the site built below a sub-path, the way GitHub Pages
-# serves it (make docs-check-links). The Hugo build already fails on a
-# broken link in the markdown (render-link.html, --panicOnWarning); this
+# htmltest (MIT) over the site built for the root of its domain, the way
+# docs.kudurru.io serves it (make docs-check-links). The Hugo build already
+# fails on a broken link in the markdown (render-link.html, --panicOnWarning); this
 # checks the rendered HTML as a whole: template links, assets, fragments.
 DirectoryPath: bin/docs-links
 CheckExternal: false

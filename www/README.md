@@ -103,10 +103,12 @@ Cloudflare dashboard:
    reach them over HTTPS; Cloudflare's Universal SSL certificate covers the
    apex and `www`.
 
-4. **Docs domain.** `docs.kudurru.io` is the GitHub Pages custom domain of
-   the docs site (GitHub Settings → Pages → Custom domain), not part of this
-   Worker. In the `kudurru.io` zone add `CNAME docs robertherbaugh.github.io`
-   as DNS only (grey cloud), so GitHub can issue its certificate.
+4. **Docs domain.** `docs.kudurru.io` is not part of this Worker. It is a
+   second Worker, `kudurru-docs`, with its own Workers Builds project and
+   its own custom domain (root directory `site`); set it up from
+   [site/README.md](../site/README.md#publishing). The Bulk Redirect list
+   above does not cover it. Do not add a DNS record for `docs` by hand:
+   the first deploy of that Worker creates it.
 
 Version URLs (`preview_urls`) are served on `workers.dev`. `wrangler.jsonc`
 keeps the Worker's own `workers.dev` address off; if Cloudflare does not

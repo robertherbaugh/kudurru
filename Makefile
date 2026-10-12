@@ -299,14 +299,25 @@ docs-site: docs-assets $(HUGO)
 docs-serve: docs-assets $(HUGO)
 	cd site && $(HUGO) server --bind 127.0.0.1 --port $${PORT:-1313}
 
-## docs-check-links: build the site below /kudurru/ (the GitHub Pages
-## project path) and check every internal link, asset and fragment of the
+## docs-check-links: build the site for the root of its own domain
+## (docs.kudurru.io) and check every internal link, asset and fragment of the
 ## HTML with htmltest (MIT, site/.htmltest.yml)
 HTMLTEST ?= go run github.com/wjdp/htmltest@v0.17.0
 docs-check-links: docs-assets $(HUGO)
 	rm -rf bin/docs-links bin/docs-links-log
-	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/kudurru/ --destination ../bin/docs-links/kudurru
+	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/ --destination ../bin/docs-links
 	$(HTMLTEST) -c site/.htmltest.yml
+
+## docs-check-workers: build the site as Cloudflare Workers Builds does and
+## run `wrangler deploy --dry-run` on site/wrangler.jsonc (no Cloudflare
+## account needed; downloads wrangler). Workers Builds deploys docs.kudurru.io
+## from GitHub; nothing here deploys. site/README.md, "Publishing".
+DOCS_URL ?= https://docs.kudurru.io
+WRANGLER ?= $(BUN) x wrangler@4.149.0
+.PHONY: docs-check-workers
+docs-check-workers: docs-assets $(HUGO)
+	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL $(DOCS_URL)/
+	cd site && WRANGLER_SEND_METRICS=false $(WRANGLER) deploy --dry-run
 ## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are
 ## installed into bin/ at pinned versions; helm comes from the system.
 KUBECONFORM_VERSION ?= v0.8.0

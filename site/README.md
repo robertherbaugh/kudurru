@@ -8,7 +8,8 @@ generated references.
 ```sh
 make docs-serve        # http://localhost:1313/, rebuilds on change (PORT=... to move it)
 make docs-site         # site/public, fails on any unresolved link
-make docs-check-links  # the same build below /kudurru/, checked with htmltest
+make docs-check-links  # the same build for the root of a domain, checked with htmltest
+make docs-check-workers # the build Cloudflare runs, and `wrangler deploy --dry-run`
 make docs-gen          # regenerate site/content/reference after a schema, CRD, CLI or API change
 ```
 
@@ -54,11 +55,59 @@ site builds offline with the Hugo binary alone.
 
 ## Publishing
 
-`.github/workflows/docs.yml` builds and checks the site on every pull
-request. `.github/workflows/docs-pages.yml` publishes it to GitHub Pages for a
-`v*` tag or when started by hand; it needs Settings → Pages → Source set to
-"GitHub Actions". The site's address is **https://docs.kudurru.io**: set it in
-Settings → Pages → Custom domain (a `CNAME` file is ignored for Actions
-deployments). `actions/configure-pages` then answers that address as
-`base_url`, which the workflow passes to Hugo as `--baseURL`, so the workflow
-itself needs no change. The public website (`www/`, kudurru.io) links to it.
+The site is **https://docs.kudurru.io**, served by Cloudflare Workers as
+static assets: no Worker script, so no request counts as a Worker
+invocation. Cloudflare Workers Builds builds and deploys it from GitHub;
+no workflow in this repository holds Cloudflare credentials.
+`.github/workflows/docs.yml` builds and checks the site on every pull request
+(generated references, links, the HTML, and `wrangler deploy --dry-run` on
+`wrangler.jsonc`).
+
+| File | What it does |
+|---|---|
+| `wrangler.jsonc` | The Worker `kudurru-docs`: assets from `public/`, `404.html` for unknown paths, `/guide` redirects to `/guide/`, the custom domain `docs.kudurru.io`, no `workers.dev` address |
+| `static/_headers` | Response headers: a content security policy (own files only; inline styles for the API explorer), HSTS, `nosniff`, no framing, long caching for the fingerprinted CSS and JS |
+| `hugo.yaml` | Mounts `docs/guide/images` at `/guide/images`, so the guide's screenshots are files of the site |
+| `layouts/_markup/render-image.html` | Serves those images from the site's own origin. An image anywhere else in the repository is a build warning: GitHub's raw host is not served to visitors while the repository is private, and the content security policy does not allow it |
+
+### One-time setup in the Cloudflare dashboard
+
+The website (`www/`, kudurru.io) is a separate Workers Builds project; this is
+the second one. `kudurru.io` must be a zone on the same Cloudflare account.
+
+1. **Connect the repository.** Workers & Pages → Create → Import a repository
+   → `robertherbaugh/kudurru`, with these build settings:
+
+   | Setting | Value |
+   |---|---|
+   | Project name | `kudurru-docs` (must match `name` in `wrangler.jsonc`) |
+   | Production branch | `release`, so the site always shows the released version |
+   | Root directory | `site` |
+   | Build command | `make -C .. docs-site HUGO_FLAGS="--minify --gc --cleanDestinationDir --panicOnWarning --baseURL https://docs.kudurru.io/"` |
+   | Deploy command | `bunx wrangler@4.149.0 deploy` |
+   | Non-production branch deploy command | `bunx wrangler@4.149.0 versions upload` (a preview URL per branch and pull request) |
+   | Build watch paths, include | `site/*`, `docs/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
+   | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` |
+
+   The build reads `docs/`, `api/` and the root markdown files outside the
+   root directory; Workers Builds clones the whole repository. `make` downloads
+   the pinned Hugo release into `bin/` and checks its SHA-256 (it needs `curl`,
+   `tar`, `gunzip` and `git`, all in the build image). `HUGO_PARAMS_REPOREF`
+   is the ref that the site's links to repository files point at.
+
+2. **Domain.** The first deploy attaches `docs.kudurru.io` as the Worker's
+   custom domain (`routes` in `wrangler.jsonc`) and creates its DNS record and
+   certificate. Remove any earlier `CNAME docs` record that points at GitHub
+   Pages first, and leave GitHub Pages turned off for this repository. The
+   website's Bulk Redirect list (`www/README.md`) does not cover this name.
+
+3. **Check it.** Open https://docs.kudurru.io/guide/user-guide/: the
+   screenshots load. Open `/reference/api/explorer/`: the API reference
+   renders. Open a path that does not exist: the 404 page answers with status 404.
+
+Until the repository is public, a link from the site to a repository file
+(the "Source" line of a page, and links to files that are not pages) opens a
+GitHub page that needs a sign-in. The site itself, including every image,
+does not depend on the repository.
+
+The Hugo build writes to `site/public/`, which is not committed.

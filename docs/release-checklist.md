@@ -25,7 +25,7 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
 |---|---|---|
 | Push to a pull request against `main` (same repository, not Dependabot) | `dev-image.yml` | `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` from the PR's head commit with the dashboard bundle, linux/amd64 and linux/arm64, unsigned. Every push overwrites the same tag; `kudurru version` reports `<VERSION>-dev.<PR>` and the commit. |
 | Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>`, `<VERSION>-rc.<N>-debug` and `<VERSION>-rc.<N>-hostnetwork`, charts and supervisor images at that version. |
-| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug`, `latest-debug`, `<VERSION>-hostnetwork` and `latest-hostnetwork`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
+| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug`, `latest-debug`, `<VERSION>-hostnetwork` and `latest-hostnetwork`, charts and supervisor images, The docs site is not part of this workflow: Cloudflare Workers Builds deploys it from the `release` branch (see below). |
 | Pull request into `release-candidate` or `release` | `promotion.yml` | Nothing: fails unless the source branch is `main` (for `release-candidate`) or `release-candidate` (for `release`), and dry-runs the tag the merge would create. |
 
 `hack/release-tag.sh rc|release` computes the tags and refuses:
@@ -46,8 +46,10 @@ publish refuses other branches, because the branch is part of the signing
 identity that `cosign verify` checks (section 5).
 
 The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
-workflow, which is why the branch workflows call `publish.yml` and
-`docs-pages.yml` themselves. Pushing a `v*` tag by hand publishes nothing.
+workflow, which is why the branch workflows call `publish.yml` themselves.
+Pushing a `v*` tag by hand publishes nothing. The docs site
+(docs.kudurru.io) is deployed by Cloudflare Workers Builds when `release`
+moves; no GitHub workflow publishes it.
 
 Repository settings the pipeline relies on (once):
 
@@ -68,12 +70,10 @@ Repository settings the pipeline relies on (once):
       `refs/tags/<tag>`, so a branch named like the next tag can no longer
       stand in for it, but it would still confuse anyone checking out the
       bare name.
-- [ ] The `github-pages` environment allows deployments from the `release`
-      branch (docs-pages runs in the context of the `release` push).
-- [ ] Settings → Pages: Source "GitHub Actions" and Custom domain
-      `docs.kudurru.io` (DNS CNAME to `robertherbaugh.github.io`, then
-      "Enforce HTTPS"); the docs workflow reads the address from
-      `configure-pages`.
+- [ ] The Workers Builds project `kudurru-docs` exists and builds the
+      `release` branch (site/README.md, "Publishing"); `docs.kudurru.io`
+      answers with the released docs, its images load, and the `www`
+      links into it resolve.
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
       write access (it does when the first image was pushed by a workflow
       of this repository).
