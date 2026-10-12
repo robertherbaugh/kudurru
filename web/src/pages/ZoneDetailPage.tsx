@@ -1,5 +1,6 @@
 // One zone: its records flattened across record sets, the typed record
 // editor, BIND import/export, NOTIFY and the transfer status.
+import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -21,6 +22,8 @@ import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { RecordEditor } from '../components/RecordEditor';
+import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
+import { ZoneSettingsSection } from '../components/ZoneSettingsSection';
 import { ownership, readOnlyReason } from '../lib/managedBy';
 import { useNavigate } from '../lib/router';
 import { dnsNameToOwner } from '../lib/rr';
@@ -145,6 +148,7 @@ export default function ZoneDetailPage({ params }: PageProps) {
 
 function ZoneDetail({ zone }: { zone: string }) {
   const api = useApi();
+  const navigate = useNavigate();
   const can = useCan();
   const qc = useQueryClient();
   const notify = useNotify();
@@ -152,6 +156,8 @@ function ZoneDetail({ zone }: { zone: string }) {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filter, setFilter] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [confirmRecord, setConfirmRecord] = useState<ZoneRecord | null>(null);
 
   const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone) });
   const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone) });
@@ -262,9 +268,7 @@ function ZoneDetail({ zone }: { zone: string }) {
               size="sm"
               variant="ghost"
               isDisabled={!editable || !can('records', 'delete')}
-              onClick={() => {
-                if (window.confirm(`Delete ${r.dnsName} ${r.recordType}?`)) del.mutate(r);
-              }}
+              onClick={() => setConfirmRecord(r)}
             />
           </HStack>
         );
@@ -297,6 +301,21 @@ function ZoneDetail({ zone }: { zone: string }) {
             <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
             <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
             <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+            <Button
+              label="Delete zone"
+              variant="destructive"
+              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete')}
+              tooltip={
+                z.data?.deleteRefusal === 'default_zone'
+                  ? 'The root zone routes every other name; edit its settings instead'
+                  : z.data?.deleteRefusal === 'managed_by'
+                    ? 'The zone or some of its records are managed elsewhere'
+                    : !can('zones', 'delete')
+                      ? 'Needs zones.delete'
+                      : undefined
+              }
+              onClick={() => setDeleting(true)}
+            />
           </>
         }
       />
@@ -304,6 +323,7 @@ function ZoneDetail({ zone }: { zone: string }) {
       {z.data && own.editable && z.data.type !== 'primary' ? (
         <Banner status="info" title={`A ${z.data.type} zone`} description="Records of secondary, forward and stub zones come from elsewhere and are read-only." />
       ) : null}
+      {z.data ? <ZoneSettingsSection zone={zone} own={own} /> : null}
       {z.data?.transfer ? (
         <Panel title="Transfers and NOTIFY" headingId="xfr">
           <TransferCell z={z.data} />
@@ -352,6 +372,22 @@ function ZoneDetail({ zone }: { zone: string }) {
           />
         ) : null}
       </FormDialog>
+      <AlertDialog
+        isOpen={confirmRecord !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRecord(null);
+        }}
+        title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} in record set ${confirmRecord.recordSet} is removed.` : ''}
+        cancelLabel="Keep it"
+        actionLabel="Delete record"
+        actionVariant="destructive"
+        isActionLoading={del.isPending}
+        onAction={() => {
+          if (confirmRecord) del.mutate(confirmRecord, { onSettled: () => setConfirmRecord(null) });
+        }}
+      />
+      <ZoneDeleteDialog zone={zone} zoneName={zoneName} isOpen={deleting} onClose={() => setDeleting(false)} onDeleted={() => navigate('/zones')} />
       <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} />
       <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} />
     </Page>

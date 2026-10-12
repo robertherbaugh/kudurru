@@ -34,7 +34,7 @@ import { aclEntryError, apexError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRES
 
 type Kind = 'primary' | 'forward';
 
-interface Draft {
+export interface Draft {
   type: Kind;
   apex: string;
   nameservers: string[];
@@ -51,7 +51,7 @@ interface Draft {
   dnssec: '' | 'on' | 'off';
 }
 
-const EMPTY: Draft = {
+export const EMPTY: Draft = {
   type: 'primary',
   apex: '',
   nameservers: [],
@@ -108,6 +108,151 @@ export function zoneFromDraft(d: Draft): DNSZone {
 
 const cidr = (v: string) => formatError('cidr', v);
 
+/** Sets one field of a draft. */
+export type SetDraft = <K extends keyof Draft>(k: K, v: Draft[K]) => void;
+
+/** The first problem of a primary zone's settings, or null. */
+export function primaryError(d: Draft): string | null {
+  return (
+    listError(d.nameservers, (s) => hostError(s)) ??
+            (d.mname.trim() ? hostError(d.mname) && `Primary name server: ${hostError(d.mname)}` : null) ??
+            (d.rname.trim() && !d.rname.includes('@') && hostError(d.rname) ? `Responsible mailbox: ${hostError(d.rname)}` : null) ??
+            (['defaultTTL', 'refresh', 'retry', 'expire', 'minimum'] as const).map((k) => secondsError(d[k], { optional: true })).find(Boolean) ??
+            (usesACL(d.queryAccess) && !cleanList(d.queryACL).length ? 'The ACL needs at least one entry for this access mode' : null) ??
+            (usesACL(d.queryAccess) ? listError(d.queryACL, (s) => aclEntryError(s, cidr)) : null)
+  );
+}
+
+/** Name servers, default TTL, SOA and who may query (primary zones). */
+export function PrimaryFields({ d, set }: { d: Draft; set: SetDraft }) {
+  const soaId = useId();
+  const secs = (k: 'refresh' | 'retry' | 'expire' | 'minimum' | 'defaultTTL', label: string, description?: string) => (
+    <SecondsField
+      label={label}
+      description={description}
+      value={d[k]}
+      onChange={(v) => set(k, v)}
+      presets={[...SOA_PRESETS[k]]}
+      emptyLabel={`Default (${secondsLabel(SOA_DEFAULTS[k])})`}
+      error={secondsError(d[k], { optional: true }) ?? undefined}
+    />
+  );
+
+  return (
+    <>
+      <StringListField
+        label="Name servers"
+        description="The zone's NS records; none uses this server's name"
+        value={d.nameservers}
+        onChange={(v) => set('nameservers', v)}
+        placeholder="ns1.example.com"
+        itemError={(s) => hostError(s)}
+        addLabel="Add name server"
+      />
+      <Grid columns={2} gap={4} align="start">
+        {secs('defaultTTL', 'Default TTL', 'Records without their own TTL')}
+      </Grid>
+      <VStack gap={2} role="group" aria-labelledby={soaId}>
+        <Heading level={4} id={soaId}>
+          SOA
+        </Heading>
+        <Grid columns={2} gap={4} align="start">
+          <TextField
+            label="Primary name server"
+            isOptional
+            mono
+            placeholder="the first name server"
+            value={d.mname}
+            onChange={(v) => set('mname', v)}
+            error={d.mname.trim() ? (hostError(d.mname) ?? undefined) : undefined}
+          />
+          <TextField label="Responsible mailbox" isOptional placeholder="hostmaster@example.com" value={d.rname} onChange={(v) => set('rname', v)} help="An e-mail address; stored in SOA form" />
+          {secs('refresh', 'Refresh', 'How often secondaries check the serial')}
+          {secs('retry', 'Retry', 'After a failed refresh')}
+          {secs('expire', 'Expire', 'Secondaries stop answering after this without the primary')}
+          {secs('minimum', 'Negative TTL', 'How long resolvers cache "no such name"')}
+        </Grid>
+      </VStack>
+      <EnumSelect label="Who may query" value={d.queryAccess} options={QUERY_ACCESS} onChange={(v) => set('queryAccess', v as AccessMode)} />
+      {usesACL(d.queryAccess) ? (
+        <StringListField
+          label="Query ACL"
+          description='Addresses or CIDRs in order, first match wins; "!" in front denies (!192.168.1.66)'
+          value={d.queryACL}
+          onChange={(v) => set('queryACL', v)}
+          placeholder="192.168.1.0/24"
+          itemError={(s) => aclEntryError(s, cidr)}
+          addLabel="Add entry"
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Upstream group and DNSSEC validation (forward zones). */
+export function ForwardFields({ d, set }: { d: Draft; set: SetDraft }) {
+  return (
+    <>
+      <UpstreamGroupSelect value={d.upstreamGroup} onChange={(v) => set('upstreamGroup', v)} help="The servers of this group answer for the zone." />
+      <Text type="supporting">
+        Need a group for this zone? Create one on the Upstreams page first; it takes effect without a restart.
+      </Text>
+      <EnumSelect label="DNSSEC validation" value={d.dnssec} options={DNSSEC} onChange={(v) => set('dnssec', v as Draft['dnssec'])} />
+    </>
+  );
+}
+
+/** The draft of an existing zone's settings (the zone page's editor). */
+export function draftFromZone(spec: DNSZoneSpec): Draft {
+  const str = (v: number | undefined) => (v === undefined ? '' : String(v));
+  return {
+    ...EMPTY,
+    type: spec.type === 'forward' ? 'forward' : 'primary',
+    apex: spec.zoneName ?? '',
+    nameservers: spec.nameservers ?? [],
+    defaultTTL: str(spec.defaultTTL),
+    mname: spec.soa?.mname ?? '',
+    rname: spec.soa?.rname ?? '',
+    refresh: str(spec.soa?.refresh),
+    retry: str(spec.soa?.retry),
+    expire: str(spec.soa?.expire),
+    minimum: str(spec.soa?.minimum),
+    queryAccess: spec.policy?.queryAccess ?? 'allow',
+    queryACL: spec.policy?.queryACL ?? [],
+    upstreamGroup: spec.forward?.upstreamGroup ?? '',
+    dnssec: spec.forward?.dnssecValidation === undefined ? '' : spec.forward.dnssecValidation ? 'on' : 'off',
+  };
+}
+
+/**
+ * spec with the draft's settings applied: the fields the editor shows are
+ * replaced (empty ones removed, so the CRD defaults apply again) and every
+ * other field of the zone is kept as it was.
+ */
+export function applyDraft(spec: DNSZoneSpec, d: Draft): DNSZoneSpec {
+  const built = zoneFromDraft({ ...d, apex: spec.zoneName ?? d.apex }).spec;
+  const next: DNSZoneSpec = { ...spec };
+  if (d.type === 'primary') {
+    delete next.nameservers;
+    delete next.defaultTTL;
+    delete next.soa;
+    if (built.nameservers) next.nameservers = built.nameservers;
+    if (built.defaultTTL !== undefined) next.defaultTTL = built.defaultTTL;
+    if (built.soa) next.soa = built.soa;
+    const policy = { ...spec.policy };
+    delete policy.queryAccess;
+    delete policy.queryACL;
+    if (built.policy) Object.assign(policy, built.policy);
+    if (Object.keys(policy).length) next.policy = policy;
+    else delete next.policy;
+  } else {
+    next.forward = { ...spec.forward, ...built.forward };
+    if (!built.forward?.upstreamGroup) delete next.forward.upstreamGroup;
+    if (built.forward?.dnssecValidation === undefined) delete next.forward.dnssecValidation;
+  }
+  return next;
+}
+
 export interface ZoneWizardProps {
   /** Closes the dialog without asking (after the zone was created). */
   onClose: () => void;
@@ -140,7 +285,6 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
   const notify = useNotify();
   const navigate = useNavigate();
   const [d, setD] = useState<Draft>(EMPTY);
-  const soaId = useId();
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   // Object names and apexes: a second zone for the same apex is refused too.
@@ -155,18 +299,6 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
       navigate(`/zones/${encodeURIComponent(name)}`);
     },
   });
-
-  const secs = (k: 'refresh' | 'retry' | 'expire' | 'minimum' | 'defaultTTL', label: string, description?: string) => (
-    <SecondsField
-      label={label}
-      description={description}
-      value={d[k]}
-      onChange={(v) => set(k, v)}
-      presets={[...SOA_PRESETS[k]]}
-      emptyLabel={`Default (${secondsLabel(SOA_DEFAULTS[k])})`}
-      error={secondsError(d[k], { optional: true }) ?? undefined}
-    />
-  );
 
   const steps: WizardStep[] = [
     {
@@ -226,76 +358,14 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
           id: 'primary',
           label: 'Records and access',
           description: 'Everything here has a sensible default; change only what you need.',
-          validate: () =>
-            listError(d.nameservers, (s) => hostError(s)) ??
-            (d.mname.trim() ? hostError(d.mname) && `Primary name server: ${hostError(d.mname)}` : null) ??
-            (d.rname.trim() && !d.rname.includes('@') && hostError(d.rname) ? `Responsible mailbox: ${hostError(d.rname)}` : null) ??
-            (['defaultTTL', 'refresh', 'retry', 'expire', 'minimum'] as const).map((k) => secondsError(d[k], { optional: true })).find(Boolean) ??
-            (usesACL(d.queryAccess) && !cleanList(d.queryACL).length ? 'The ACL needs at least one entry for this access mode' : null) ??
-            (usesACL(d.queryAccess) ? listError(d.queryACL, (s) => aclEntryError(s, cidr)) : null),
-          content: (
-            <>
-              <StringListField
-                label="Name servers"
-                description="The zone's NS records; none uses this server's name"
-                value={d.nameservers}
-                onChange={(v) => set('nameservers', v)}
-                placeholder="ns1.example.com"
-                itemError={(s) => hostError(s)}
-                addLabel="Add name server"
-              />
-              <Grid columns={2} gap={4} align="start">
-                {secs('defaultTTL', 'Default TTL', 'Records without their own TTL')}
-              </Grid>
-              <VStack gap={2} role="group" aria-labelledby={soaId}>
-                <Heading level={4} id={soaId}>
-                  SOA
-                </Heading>
-                <Grid columns={2} gap={4} align="start">
-                  <TextField
-                    label="Primary name server"
-                    isOptional
-                    mono
-                    placeholder="the first name server"
-                    value={d.mname}
-                    onChange={(v) => set('mname', v)}
-                    error={d.mname.trim() ? (hostError(d.mname) ?? undefined) : undefined}
-                  />
-                  <TextField label="Responsible mailbox" isOptional placeholder="hostmaster@example.com" value={d.rname} onChange={(v) => set('rname', v)} help="An e-mail address; stored in SOA form" />
-                  {secs('refresh', 'Refresh', 'How often secondaries check the serial')}
-                  {secs('retry', 'Retry', 'After a failed refresh')}
-                  {secs('expire', 'Expire', 'Secondaries stop answering after this without the primary')}
-                  {secs('minimum', 'Negative TTL', 'How long resolvers cache "no such name"')}
-                </Grid>
-              </VStack>
-              <EnumSelect label="Who may query" value={d.queryAccess} options={QUERY_ACCESS} onChange={(v) => set('queryAccess', v as AccessMode)} />
-              {usesACL(d.queryAccess) ? (
-                <StringListField
-                  label="Query ACL"
-                  description='Addresses or CIDRs in order, first match wins; "!" in front denies (!192.168.1.66)'
-                  value={d.queryACL}
-                  onChange={(v) => set('queryACL', v)}
-                  placeholder="192.168.1.0/24"
-                  itemError={(s) => aclEntryError(s, cidr)}
-                  addLabel="Add entry"
-                />
-              ) : null}
-            </>
-          ),
+          validate: () => primaryError(d),
+          content: <PrimaryFields d={d} set={set} />,
         }
       : {
           id: 'forward',
           label: 'Upstream',
           description: 'Where queries for the zone are sent. Answers are cached like any forwarded answer.',
-          content: (
-            <>
-              <UpstreamGroupSelect value={d.upstreamGroup} onChange={(v) => set('upstreamGroup', v)} help="The servers of this group answer for the zone." />
-              <Text type="supporting">
-                Need a group for this zone? Create one on the Upstreams page first; it takes effect without a restart.
-              </Text>
-              <EnumSelect label="DNSSEC validation" value={d.dnssec} options={DNSSEC} onChange={(v) => set('dnssec', v as Draft['dnssec'])} />
-            </>
-          ),
+          content: <ForwardFields d={d} set={set} />,
         },
     {
       id: 'review',

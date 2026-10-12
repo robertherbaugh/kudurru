@@ -9,13 +9,16 @@ import { VStack } from '@astryxdesign/core/Stack';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ZoneSummary } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
+import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { useNewParam, useSearchParams } from '../lib/router';
@@ -50,7 +53,7 @@ export function TransferCell({ z }: { z: ZoneSummary }) {
 
 type Row = ZoneSummary & Record<string, unknown>;
 
-const columns: TableColumn<Row>[] = [
+const baseColumns: TableColumn<Row>[] = [
   {
     key: 'zoneName',
     header: 'Zone',
@@ -96,6 +99,34 @@ export default function ZonesPage() {
   const importing = sp.get('import') === '1';
   const setImporting = (on: boolean) => setParams({ import: on ? '1' : null });
   const q = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list(), refetchInterval: 30_000 });
+  const [deleting, setDeleting] = useState<Row | null>(null);
+  const columns: TableColumn<Row>[] = [
+    ...baseColumns,
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      width: pixel(96),
+      renderCell: (z) => (
+        <Button
+          label="Delete"
+          size="sm"
+          variant="ghost"
+          aria-label={`Delete zone ${z.zoneName}`}
+          isDisabled={!!z.deleteRefusal || !can('zones', 'delete')}
+          tooltip={
+            z.deleteRefusal === 'default_zone'
+              ? 'The root zone routes every other name; edit its settings on its page'
+              : z.deleteRefusal === 'managed_by'
+                ? 'The zone or some of its records are managed elsewhere'
+                : !can('zones', 'delete')
+                  ? 'Needs zones.delete'
+                  : undefined
+          }
+          onClick={() => setDeleting(z)}
+        />
+      ),
+    },
+  ];
   return (
     <Page>
       <PageHeader
@@ -129,6 +160,7 @@ export default function ZonesPage() {
           />
         </Card>
       ) : null}
+      {deleting ? <ZoneDeleteDialog zone={deleting.name} zoneName={deleting.zoneName} isOpen onClose={() => setDeleting(null)} /> : null}
       <ZoneImportDialog isOpen={importing} onClose={() => setImporting(false)} />
       <ZoneWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
     </Page>
