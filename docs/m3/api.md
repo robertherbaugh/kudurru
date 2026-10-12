@@ -35,14 +35,22 @@ The REST API server under `/api/v1` and the external-dns webhook
   X-Forwarded-For) → SecurityHeaders (CSP `default-src 'self'`,
   X-Frame-Options DENY, nosniff, Referrer-Policy, HSTS when TLS terminates
   here or a trusted proxy says https) → AccessLog + metrics → Go 1.25
-  `http.CrossOriginProtection` → RateLimit (`Options.RateLimit`, applied to
-  `/api/v1/auth/login` only) → Authenticate (`Options.Authenticate`) → actor
+  `http.CrossOriginProtection` → Authenticate (`Options.Authenticate`) → actor
   (`sqlite.WithActor` so the sqlite driver's audit rows name the principal)
   → per-operation Authorize (CSRF check for cookie sessions on unsafe
   methods, then the route's declared permission; 401/403) → handler →
   audit. Metrics: `kudurru_api_requests_total{method,route,code}`,
   `kudurru_api_request_duration_seconds{route}`; `route` is the operation
   pattern (bounded), `other` for the SPA and unknown paths.
+  `Options.RateLimit` is an optional hook before authentication for
+  `/api/v1/auth/login`; `kudurru serve` leaves it unset. Login throttling
+  comes from `internal/auth/users`: five failures per client address lock
+  it out for five minutes, and ten per account lock it out for fifteen
+  minutes, with 429 and `Retry-After`. These checks run before password
+  verification; a global semaphore bounds concurrent Argon2id work. There
+  is no additional request-rate limiter. The cookie authenticator records
+  CSRF failures; protected API routes return 403 `csrf` with its header
+  hint, while public routes such as login continue anonymously.
 - **Permissions (D31).** Every operation is registered through one helper
   that takes a `perm` declaration: `public`, `authenticated`, a fixed
   `{resource, verb}` with cluster or `zone:{zone}` scope, or by-kind for
@@ -249,6 +257,7 @@ local inside `if cfg.Querylog.Enabled`) and keep `qlWriter`.
 import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/web"
 )
@@ -275,9 +284,10 @@ apiSrv, err := api.New(api.Options{
 	// Refresher: api.RefreshFunc(...) once listfetcher has an on-demand refresh
 	Audit: recorders,
 	// From the auth package (M3 auth): authenticator middleware, authorizer,
-	// CSRF check, login limiter, the /auth/* handler and bearer roles.
-	Authenticate: authn.Middleware, Authorizer: authz, CSRF: authn.CheckCSRF,
-	RateLimit: authn.LoginLimiter, AuthHandler: authn.Handler(), Roles: authn.Roles,
+	// CSRF check, the /auth/* handler and bearer roles. Login lockouts
+	// are enforced by the stack's users store; no RateLimit hook is set.
+	Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
+	AuthHandler: authMux, Roles: ids.Roles, // authMux is registered with ids.Register
 	UIHandler: web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 	Logger: logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 })

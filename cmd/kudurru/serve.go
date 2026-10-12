@@ -25,6 +25,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
+	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
@@ -709,7 +710,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		ListBodies: listBodies{cache: lists},
 		Purger:     querylogPurger(qlWriter),
 		Audit:      recorders, AuditReader: auditReader, Central: centralState,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
 		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),

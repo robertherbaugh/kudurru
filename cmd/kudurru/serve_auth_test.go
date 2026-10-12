@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
@@ -65,7 +66,7 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	ids.Register(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), AuthHandler: authMux, Roles: ids.Roles,
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,
 		Logger: logger, NodeName: "node-a",
 	})
 	if err != nil {
@@ -74,6 +75,82 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return ts, st
+}
+
+func TestAPICookieSessionCSRFFailure(t *testing.T) {
+	ts, _ := authAPI(t, nil)
+	client := ts.Client()
+	var err error
+	client.Jar, err = cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginBody := `{"username":"admin","password":"admin-password-1"}`
+	login, err := client.Post(ts.URL+"/api/v1/auth/login", "application/json", strings.NewReader(loginBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = login.Body.Close() }()
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login: %d, want 200", login.StatusCode)
+	}
+	var me struct{ CSRF string }
+	if err := json.NewDecoder(login.Body).Decode(&me); err != nil {
+		t.Fatal(err)
+	}
+	if me.CSRF == "" {
+		t.Fatal("login must return a CSRF token")
+	}
+
+	for _, tc := range []struct {
+		name, method, path, body, csrf string
+		anonymous                      bool
+		status                         int
+		key                            string
+	}{
+		{"missing header", "POST", "/dns/blocking", `{"blocking":true}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"invalid header", "POST", "/dns/blocking", `{"blocking":true}`, "wrong-token", false, http.StatusForbidden, api.KeyCSRF},
+		{"patch", "PATCH", "/settings", `{}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"delete", "DELETE", "/querylog", "", "wrong-token", false, http.StatusForbidden, api.KeyCSRF},
+		{"forwarded auth route", "POST", "/auth/tokens", `{"description":"csrf regression"}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"valid header", "POST", "/auth/tokens", `{"description":"csrf regression"}`, me.CSRF, false, http.StatusCreated, ""},
+		{"safe method", "GET", "/auth/me", "", "", false, http.StatusOK, ""},
+		{"anonymous", "POST", "/dns/blocking", `{"blocking":true}`, "", true, http.StatusUnauthorized, api.KeyUnauthenticated},
+		{"public re-login", "POST", "/auth/login", loginBody, "", false, http.StatusOK, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, ts.URL+"/api/v1"+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Kudurru-CSRF", tc.csrf)
+			caller := client
+			if tc.anonymous {
+				caller = &http.Client{Transport: client.Transport}
+			}
+			res, err := caller.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			var envelope api.Error
+			if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
+				t.Fatal(err)
+			}
+			if res.StatusCode != tc.status || envelope.Body.Key != tc.key {
+				t.Fatalf("%s %s: %d %s, want %d %s", tc.method, tc.path, res.StatusCode, envelope.Body.Key, tc.status, tc.key)
+			}
+			if tc.key == api.KeyCSRF {
+				if hint, ok := envelope.Body.Hint.(string); !ok || !strings.Contains(hint, "X-Kudurru-CSRF") {
+					t.Fatalf("CSRF failure must explain the required header: %+v", envelope.Body)
+				}
+				if res.Header.Get("WWW-Authenticate") != "" {
+					t.Fatal("CSRF failure must not request new bearer credentials")
+				}
+			}
+		})
+	}
 }
 
 func TestAuthRoutesWithPathPrefix(t *testing.T) {

@@ -220,7 +220,8 @@ type Options struct {
 	// X-Kudurru-CSRF header); nil skips the check here (the session
 	// authenticator enforces it too).
 	CSRF func(*http.Request) error
-	// RateLimit wraps the auth routes (login brute-force limiter hook).
+	// RateLimit optionally wraps /api/v1/auth/login before authentication.
+	// serve leaves it nil; the users store enforces login lockouts.
 	RateLimit func(http.Handler) http.Handler
 	// AuthHandler serves /api/v1/auth/{status,login,logout,password,
 	// oidc/...,tokens...} and the read-only /api/v1/iam/* lists (the auth
