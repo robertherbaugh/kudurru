@@ -97,9 +97,12 @@ type Event struct {
 	Before json.RawMessage `json:"before,omitempty"`
 	After  json.RawMessage `json:"after,omitempty"`
 	// Manager is the store manager of a store write ("api", "file:...").
-	Manager string  `json:"manager,omitempty"`
-	Request Request `json:"request"`
-	// Hash and PrevHash chain stored events (sqlite recorder only).
+	Manager string `json:"manager,omitempty"`
+	// ResourceVersion is the object's resourceVersion after a store write.
+	ResourceVersion string  `json:"resource_version,omitempty"`
+	Request         Request `json:"request"`
+	// Hash and PrevHash chain stored events (recorders that store them;
+	// ChainHash).
 	Hash     string `json:"hash,omitempty"`
 	PrevHash string `json:"prev_hash,omitempty"`
 }

@@ -197,6 +197,9 @@ If you cannot sign in, you can make a token on the host. See
 kudurru writes an entry to the audit log for each change that comes
 through the API. The role Auditor or Admin can read it.
 
+NOTE: In Kubernetes, each replica keeps the entries for the changes that
+it writes. The tab shows the entries of the replica that answers the page.
+
 1. Open **System** > **Access & audit**.
 2. Click the tab **Audit**. Figure 4 shows it.
 

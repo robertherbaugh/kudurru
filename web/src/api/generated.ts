@@ -2238,6 +2238,7 @@ export interface components {
             reason?: string;
             request: components["schemas"]["Request"];
             resource: components["schemas"]["Resource"];
+            resource_version?: string;
             result: string;
             /** Format: date-time */
             ts: string;

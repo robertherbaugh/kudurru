@@ -24,6 +24,7 @@ import (
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
@@ -195,6 +196,28 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+
+	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
+	// so store writes and API actions are recorded in the node's audit
+	// spool (audit-spool.db) and as "log":"audit" lines. The wrapper goes
+	// on before the first writer (bootstrap) takes the store.
+	var auditSpool *spool.Spool
+	if cfg.Store.Driver == "kube" {
+		auditSpool, err = spool.Open(ctx, spool.Options{Path: filepath.Join(cfg.Node.DataDir, spool.FileName), Node: cfg.Node.Name, Registerer: reg})
+		if err != nil {
+			if errors.Is(err, spool.ErrSchemaTooNew) {
+				return fmt.Errorf("audit-spool.db was written by a newer kudurru: %w", err)
+			}
+			return err
+		}
+		defer func() { _ = auditSpool.Close() }()
+		scheme, err := internalkinds.NewScheme()
+		if err != nil {
+			return err
+		}
+		st = audit.WrapStore(st, audit.Multi{audit.Log{Logger: logger}, auditSpool},
+			audit.WrapOptions{Node: cfg.Node.Name, Scheme: scheme, Logger: logger})
+	}
 
 	// First boot: root forward zone, default client group and policy (§6.4).
 	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
@@ -591,13 +614,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	ids.Register(authMux)
 
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
-	// Only the sqlite store keeps audit events that can be read back; the
-	// kube driver has no reader yet, so /audit answers 503 there (#10).
+	// The sqlite store keeps audit events in state.db; the kube driver's
+	// are in this node's audit spool, so /audit shows the events recorded
+	// by the replica that answers.
 	recorders := audit.Multi{audit.Log{Logger: logger}}
 	var auditReader audit.Reader
 	if ss, ok := st.(*sqlite.Store); ok {
 		auditReader = audit.SQLite{Store: ss}
 		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
+	}
+	if auditSpool != nil {
+		auditReader = auditSpool
+		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
@@ -772,6 +800,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// than 400 days once a day.
 	if ss, ok := st.(*sqlite.Store); ok {
 		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	// Every node prunes its own audit spool.
+	if auditSpool != nil {
+		if err := add("audit-spool-prune", false, (&audit.Pruner{Name: "spool", Prune: auditSpool.Prune, Logger: logger}).Run); err != nil {
 			return err
 		}
 	}

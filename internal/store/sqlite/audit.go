@@ -74,19 +74,15 @@ type AuditQuery struct {
 	Desc bool
 }
 
-type actorKey struct{}
-
 // WithActor returns a context whose writes are audited as actor (for
-// example "user:alice" or "token:ci"). The API layer sets it per request.
+// example "user:alice" or "token:ci"); it is store.WithActor.
 func WithActor(ctx context.Context, actor string) context.Context {
-	return context.WithValue(ctx, actorKey{}, actor)
+	return store.WithActor(ctx, actor)
 }
 
-// ActorFrom returns the actor set by WithActor, or "".
-func ActorFrom(ctx context.Context) string {
-	a, _ := ctx.Value(actorKey{}).(string)
-	return a
-}
+// ActorFrom returns the actor set by WithActor, or ""; it is
+// store.ActorFrom.
+func ActorFrom(ctx context.Context) string { return store.ActorFrom(ctx) }
 
 // capDiff returns doc unchanged when it fits AuditDiffCap, else a JSON
 // summary {"truncated":true,"bytes":N,"sha256":"...","prefix":"..."} that

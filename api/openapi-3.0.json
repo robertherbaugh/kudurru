@@ -2038,6 +2038,9 @@
           "resource": {
             "$ref": "#/components/schemas/Resource"
           },
+          "resource_version": {
+            "type": "string"
+          },
           "result": {
             "type": "string"
           },

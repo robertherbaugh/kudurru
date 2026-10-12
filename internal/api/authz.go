@@ -12,7 +12,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
-	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // perm is the permission a route declares (decision D31). Exactly one of
@@ -98,7 +98,7 @@ func actorOf(p auth.Principal, ok bool) audit.Actor {
 func (s *Server) actorMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p, ok := auth.PrincipalFrom(r.Context()); ok {
-			r = r.WithContext(sqlite.WithActor(r.Context(), actorOf(p, true).String()))
+			r = r.WithContext(store.WithActor(r.Context(), actorOf(p, true).String()))
 		}
 		next.ServeHTTP(w, r)
 	})

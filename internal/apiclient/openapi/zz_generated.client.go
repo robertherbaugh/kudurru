@@ -2353,21 +2353,22 @@ type ErrorBody struct {
 
 // Event defines model for Event.
 type Event struct {
-	Action   string      `json:"action"`
-	Actor    Actor       `json:"actor"`
-	After    interface{} `json:"after,omitempty"`
-	Authz    *string     `json:"authz,omitempty"`
-	Before   interface{} `json:"before,omitempty"`
-	Hash     *string     `json:"hash,omitempty"`
-	Id       *int64      `json:"id,omitempty"`
-	Manager  *string     `json:"manager,omitempty"`
-	Node     *string     `json:"node,omitempty"`
-	PrevHash *string     `json:"prev_hash,omitempty"`
-	Reason   *string     `json:"reason,omitempty"`
-	Request  Request     `json:"request"`
-	Resource Resource    `json:"resource"`
-	Result   string      `json:"result"`
-	Ts       time.Time   `json:"ts"`
+	Action          string      `json:"action"`
+	Actor           Actor       `json:"actor"`
+	After           interface{} `json:"after,omitempty"`
+	Authz           *string     `json:"authz,omitempty"`
+	Before          interface{} `json:"before,omitempty"`
+	Hash            *string     `json:"hash,omitempty"`
+	Id              *int64      `json:"id,omitempty"`
+	Manager         *string     `json:"manager,omitempty"`
+	Node            *string     `json:"node,omitempty"`
+	PrevHash        *string     `json:"prev_hash,omitempty"`
+	Reason          *string     `json:"reason,omitempty"`
+	Request         Request     `json:"request"`
+	Resource        Resource    `json:"resource"`
+	ResourceVersion *string     `json:"resource_version,omitempty"`
+	Result          string      `json:"result"`
+	Ts              time.Time   `json:"ts"`
 }
 
 // Flags defines model for Flags.
