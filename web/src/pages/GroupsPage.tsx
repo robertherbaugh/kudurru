@@ -4,6 +4,7 @@
 // matchers, the members the controller counted and the policies that
 // apply, in priority order; a name opens the group's page, "New group"
 // the wizard.
+import { Text } from '@astryxdesign/core/Text';
 import type { ClientGroup } from '../api/types';
 import { describeMatcher } from '../components/fields/MatchersField';
 import { ObjectsPage } from '../components/ObjectsPage';
@@ -11,7 +12,7 @@ import { GroupWizardDialog } from '../components/wizards/GroupWizard';
 import { formatExact } from '../lib/format';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { objectHref, policiesOfGroup, refOfObject } from '../lib/policies';
-import { Link } from '../lib/router';
+import { Link } from '@astryxdesign/core/Link';
 import { usePolicies } from '../lib/usePolicyData';
 
 export default function GroupsPage() {
@@ -29,11 +30,11 @@ export default function GroupsPage() {
           cell: (g) => {
             const list = g.spec.clients ?? [];
             return (
-              <span className="k-small k-break">
-                {list.slice(0, 4).map(describeMatcher).join(', ') || <span className="k-muted">none</span>}
+              <Text size="sm" maxLines={4} wordBreak="break-word">
+                {list.slice(0, 4).map(describeMatcher).join(', ') || <Text color="secondary">none</Text>}
                 {list.length > 4 ? ` and ${list.length - 4} more` : ''}
                 {g.spec.sources?.integrationRef ? ` + integration ${g.spec.sources.integrationRef.name}` : ''}
-              </span>
+              </Text>
             );
           },
         },
@@ -42,16 +43,18 @@ export default function GroupsPage() {
           header: 'Policies',
           cell: (g) => {
             const applied = policiesOfGroup(g, pols.data?.items ?? []);
-            if (!applied.length) return <span className="k-muted k-small">default policy</span>;
+            if (!applied.length) return <Text type="supporting">default policy</Text>;
             return (
-              <span className="k-small">
+              <Text size="sm">
                 {applied.map((p, i) => (
-                  <span key={p.metadata.name}>
+                  <Text key={p.metadata.name} type="inherit">
                     {i ? ', ' : ''}
-                    <Link href={objectHref('policies', refOfObject(p))}>{p.metadata.name}</Link>
-                  </span>
+                    <Link href={objectHref('policies', refOfObject(p))} type="inherit" color="inherit" hasUnderline>
+                      {p.metadata.name}
+                    </Link>
+                  </Text>
                 ))}
-              </span>
+              </Text>
             );
           },
         },

@@ -231,6 +231,22 @@ describe('DenylistPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('opens the add dialog prefilled from ?add= and clears the parameter when it closes', async () => {
+    renderWithApp(<DenylistPage />, { route: '/denylist?add=tracker.example.net&type=exact' });
+    const dialog = await screen.findByRole('dialog', { name: 'Add to the Denylist' });
+    expect(within(dialog).getByRole('textbox', { name: /^Domains/ })).toHaveValue('tracker.example.net');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(window.location.search).toBe('?type=exact');
+    // Adding from it closes it the same way.
+    renderWithApp(<AllowlistPage />, { route: '/allowlist?add=cdn.example.org' });
+    const add = await screen.findByRole('dialog', { name: 'Add to the Allowlist' });
+    expect(within(add).getByRole('textbox', { name: /^Domains/ })).toHaveValue('cdn.example.org');
+    fireEvent.click(within(add).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(uiEntryValues('ui-allow')).toContain('cdn.example.org'));
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
   it('adds through POST /denylist', async () => {
     renderWithApp(<DenylistPage />, { route: '/denylist' });
     const dialog = await openAdd('Add to the Denylist');

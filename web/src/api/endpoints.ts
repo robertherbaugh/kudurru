@@ -59,6 +59,7 @@ import type {
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainEntryPatch, DomainWriteResult } from './types';
 import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
+import type { ZoneDeleteResult } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
 export interface ScopeParams {
@@ -126,6 +127,15 @@ export function endpoints(c: ApiClient) {
     zones: {
       list: () => c.get<ListEnvelope<ZoneSummary>>('/zones'),
       get: (zone: string) => c.get<ZoneSummary>(`/zones/${enc(zone)}`),
+      /**
+       * Deletes the zone with every record set that references it (D148);
+       * `dryRun` runs every check and returns the counts without deleting.
+       */
+      delete: (zone: string, opts: { dryRun?: boolean; ifMatch?: string } = {}) =>
+        c.request<ZoneDeleteResult>('DELETE', `/zones/${enc(zone)}`, {
+          query: opts.dryRun ? { dryRun: true } : undefined,
+          ...(opts.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
+        }),
       records: (zone: string) => c.get<ListEnvelope<ZoneRecord>>(`/zones/${enc(zone)}/records`),
       upsertRecord: (zone: string, ep: Endpoint, recordSet?: string) =>
         c.post<ZoneRecord>(`/zones/${enc(zone)}/records`, ep, recordSet ? { recordSet } : undefined),

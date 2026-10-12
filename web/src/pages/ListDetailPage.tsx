@@ -8,9 +8,16 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Grid } from '@astryxdesign/core/Grid';
+import { Heading } from '@astryxdesign/core/Heading';
+import { Link } from '@astryxdesign/core/Link';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { BlockList, BlockResponse, Condition, ListSource, Policy } from '../api/types';
 import { DurationField } from '../components/fields/DurationField';
@@ -18,6 +25,7 @@ import { EnumSelect } from '../components/fields/EnumSelect';
 import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
 import { SourceDialog } from '../components/lists/SourceDialog';
 import { SourcesTable } from '../components/lists/SourcesTable';
@@ -28,7 +36,7 @@ import { listHealth } from '../lib/listHealth';
 import { listKey, MODE_OPTIONS, RESPONSE_OPTIONS, sourceName, sourcesSummary, withSourceEnabled } from '../lib/lists';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError } from '../lib/objectSchemas';
-import { Link, useNavigate, useSearchParams } from '../lib/router';
+import { useNavigate, useSearchParams } from '../lib/router';
 import { isIPv4, isIPv6 } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { inlineOnly, STATUS_POLL_MS } from './ListsPage';
@@ -161,13 +169,10 @@ export default function ListDetailPage({ params }: PageProps) {
 
   if (q.error) {
     return (
-      <div className="k-page">
-        <Link href="/lists" className="k-small">
-          ← Lists
-        </Link>
-        <h1>List {name}</h1>
+      <Page>
+        <PageHeader title={`List ${name}`} back={{ href: '/lists', label: 'Lists' }} />
         <ErrorBanner error={q.error} />
-      </div>
+      </Page>
     );
   }
   const list = q.data;
@@ -195,18 +200,23 @@ export default function ListDetailPage({ params }: PageProps) {
   };
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/lists" className="k-small">
-            ← Lists
-          </Link>
-          <h1>
+    <Page>
+      <PageHeader
+        back={{ href: '/lists', label: 'Lists' }}
+        title={
+          <>
             {name}
-            {ns !== 'default' ? <span className="k-muted k-small"> ({ns})</span> : null}
-          </h1>
-          {comment ? <p className="k-muted k-small">{comment}</p> : null}
-          <div className="k-row k-small">
+            {ns !== 'default' ? (
+              <Text type="supporting" size="base">
+                {' '}
+                ({ns})
+              </Text>
+            ) : null}
+          </>
+        }
+        description={comment || undefined}
+        meta={
+          <>
             <Switch
               label="Enabled"
               size="sm"
@@ -216,20 +226,22 @@ export default function ListDetailPage({ params }: PageProps) {
               onChange={(on) => listToggle.mutate({ base: list, enabled: on })}
             />
             <Badge variant={list.spec.mode === 'allow' ? 'success' : 'error'} label={list.spec.mode === 'allow' ? 'allow list' : 'block list'} />
-            <span title={health.detail}>
+            <Tooltip content={health.detail} isEnabled={!!health.detail} hasHoverIndication={false}>
               <Badge variant={health.tone === 'neutral' ? 'neutral' : health.tone} label={health.label} />
-            </span>
+            </Tooltip>
             <ManagedBadge owner={list.metadata.annotations?.[MANAGED_BY]} />
-          </div>
-        </div>
-        <div className="k-actions">
-          {sources.some((s) => s.url) ? (
-            <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? undefined : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
-          ) : null}
-          <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
-          {own.editable ? <Button label="Delete list" variant="ghost" isDisabled={!can('blocklists', 'delete')} onClick={() => setDeletingList(true)} /> : null}
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {sources.some((s) => s.url) ? (
+              <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? undefined : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
+            ) : null}
+            <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
+            {own.editable ? <Button label="Delete list" variant="ghost" isDisabled={!can('blocklists', 'delete')} onClick={() => setDeletingList(true)} /> : null}
+          </>
+        }
+      />
 
       {!own.editable ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       {!enabled ? <Banner status="warning" title="This list is disabled" description="It is kept but not fetched or applied; turn it on with the Enabled switch." /> : null}
@@ -237,73 +249,67 @@ export default function ListDetailPage({ params }: PageProps) {
         <Banner status="warning" title="No policy uses this list" description="It has no effect until a policy references it (Policies → a policy → block or allow lists)." />
       ) : null}
 
-      <section className="k-panel" aria-labelledby="list-state">
-        <h2 id="list-state" className="k-visually-hidden">
-          Current state
-        </h2>
-        <dl className="k-facts">
-          <div>
-            <dt>Entries</dt>
-            <dd>{formatExact(st?.entries)}</dd>
-          </div>
-          <div>
-            <dt>Sources</dt>
-            <dd>{sourcesSummary(sources)}</dd>
-          </div>
-          <div>
-            <dt>Invalid lines</dt>
-            <dd>{formatExact(st?.invalid ?? 0)}</dd>
-          </div>
-          <div>
-            <dt title="Valid rules this version parses but does not apply: $important, $badfilter, mid-pattern wildcards, hosts rewrites">Unsupported rules</dt>
-            <dd data-testid="unsupported">
+      <Panel aria-label="Current state">
+        <VisuallyHidden>
+          <Heading level={2}>Current state</Heading>
+        </VisuallyHidden>
+        <MetadataList columns="multi">
+          <MetadataListItem label="Entries">{formatExact(st?.entries)}</MetadataListItem>
+          <MetadataListItem label="Sources">{sourcesSummary(sources)}</MetadataListItem>
+          <MetadataListItem label="Invalid lines">{formatExact(st?.invalid ?? 0)}</MetadataListItem>
+          <MetadataListItem label="Unsupported rules">
+            <Text data-testid="unsupported">
               {formatExact(st?.unsupported ?? 0)}
-              {st?.unsupported ? <span className="k-muted k-small"> parsed, not applied</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt>Last refresh</dt>
-            <dd>
-              {st?.lastFetched ? (
-                <span title={formatDateTime(st.lastFetched)}>{formatRelative(st.lastFetched)}</span>
-              ) : inlineOnly(sources) ? (
-                <span className="k-muted">inline, nothing to fetch</span>
-              ) : (
-                <span className="k-muted">not yet</span>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Refresh interval</dt>
-            <dd>{list.spec.refreshInterval ?? <span className="k-muted">24h (default)</span>}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd className="k-break">{ready ? readyText(ready) : <span className="k-muted">pending</span>}</dd>
-          </div>
-          <div>
-            <dt>Used by</dt>
-            <dd>
-              {usedBy.length
-                ? usedBy.map(({ policy, as }, i) => (
-                    <span key={`${policy.metadata.namespace ?? ''}/${policy.metadata.name}`}>
-                      {i ? ', ' : ''}
-                      <Link href={`/policies?q=${encodeURIComponent(policy.metadata.name)}`}>{policy.metadata.name}</Link>
-                      {as === 'allow' && list.spec.mode !== 'allow' ? ' (as allow list)' : ''}
-                    </span>
-                  ))
-                : '–'}
-            </dd>
-          </div>
-        </dl>
-      </section>
+              {st?.unsupported ? (
+                <Tooltip content="Valid rules this version parses but does not apply: $important, $badfilter, mid-pattern wildcards, hosts rewrites">
+                  <Text type="supporting"> parsed, not applied</Text>
+                </Tooltip>
+              ) : null}
+            </Text>
+          </MetadataListItem>
+          <MetadataListItem label="Last refresh">
+            {st?.lastFetched ? (
+              <time dateTime={st.lastFetched} title={formatDateTime(st.lastFetched)}>
+                {formatRelative(st.lastFetched)}
+              </time>
+            ) : inlineOnly(sources) ? (
+              <Text color="secondary">inline, nothing to fetch</Text>
+            ) : (
+              <Text color="secondary">not yet</Text>
+            )}
+          </MetadataListItem>
+          <MetadataListItem label="Refresh interval">{list.spec.refreshInterval ?? <Text color="secondary">24h (default)</Text>}</MetadataListItem>
+          <MetadataListItem label="Status">
+            {ready ? (
+              <Text maxLines={3} wordBreak="break-word">
+                {readyText(ready)}
+              </Text>
+            ) : (
+              <Text color="secondary">pending</Text>
+            )}
+          </MetadataListItem>
+          <MetadataListItem label="Used by">
+            {usedBy.length
+              ? usedBy.map(({ policy, as }, i) => (
+                  <Fragment key={`${policy.metadata.namespace ?? ''}/${policy.metadata.name}`}>
+                    {i ? ', ' : ''}
+                    <Link href={`/policies?q=${encodeURIComponent(policy.metadata.name)}`} hasUnderline>
+                      {policy.metadata.name}
+                    </Link>
+                    {as === 'allow' && list.spec.mode !== 'allow' ? ' (as allow list)' : ''}
+                  </Fragment>
+                ))
+              : '–'}
+          </MetadataListItem>
+        </MetadataList>
+      </Panel>
 
-      <section className="k-panel k-stack" aria-labelledby="list-sources">
-        <div className="k-panel-title">
-          <h2 id="list-sources">Sources</h2>
-          {editable ? <Button label="Add source" variant="primary" onClick={() => setSourceDialog({ index: null, key: Date.now() })} /> : null}
-        </div>
-        <p className="k-muted k-small">Turn a source off to stop fetching and applying it; its cached copy is kept, so turning it back on is instant.</p>
+      <Panel
+        title="Sources"
+        headingId="list-sources"
+        description="Turn a source off to stop fetching and applying it; its cached copy is kept, so turning it back on is instant."
+        actions={editable ? <Button label="Add source" variant="primary" onClick={() => setSourceDialog({ index: null, key: Date.now() })} /> : null}
+      >
         <SourcesTable
           list={list}
           editable={editable}
@@ -316,7 +322,7 @@ export default function ListDetailPage({ params }: PageProps) {
             if (src) setParams({ source: sourceName(index, src) }, { push: true });
           }}
         />
-      </section>
+      </Panel>
 
       {browsing !== null ? (
         browseIndex >= 0 ? (
@@ -351,7 +357,7 @@ export default function ListDetailPage({ params }: PageProps) {
           </>
         }
       >
-        <p>Its entries leave the list at the next compile. To pause it instead, turn its switch off.</p>
+        <Text as="p">Its entries leave the list at the next compile. To pause it instead, turn its switch off.</Text>
       </FormDialog>
 
       <FormDialog
@@ -366,11 +372,11 @@ export default function ListDetailPage({ params }: PageProps) {
           </>
         }
       >
-        <p>{usedBy.length ? `Policies ${usedBy.map((u) => u.policy.metadata.name).join(', ')} stop using it.` : 'No policy uses it.'} This cannot be undone.</p>
+        <Text as="p">{usedBy.length ? `Policies ${usedBy.map((u) => u.policy.metadata.name).join(', ')} stop using it.` : 'No policy uses it.'} This cannot be undone.</Text>
       </FormDialog>
 
       <YamlDialog obj={list} open={yaml} onClose={() => setYaml(false)} />
-    </div>
+    </Page>
   );
 }
 
@@ -421,18 +427,16 @@ function ListSettings({ list, editable, onSave }: { list: BlockList; editable: b
   };
 
   return (
-    <section className="k-panel" aria-labelledby="list-settings">
-      <form
-        className="k-form"
-        noValidate
+    <Panel title="Settings" headingId="list-settings">
+      <VStack
+        as="form"
+        gap={3}
+        {...FORM_ATTRS}
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
-        <h2 id="list-settings" className="k-h3">
-          Settings
-        </h2>
         <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
           <EnumSelect label="Mode" value={form.mode} options={MODE_OPTIONS} isDisabled={!editable} onChange={(v) => set({ mode: v as 'block' | 'allow' })} />
           {form.mode !== 'allow' ? (
@@ -461,12 +465,15 @@ function ListSettings({ list, editable, onSave }: { list: BlockList; editable: b
         ) : null}
         {error ? <Banner status="error" title="Could not save" description={error} /> : null}
         {editable ? (
-          <div className="k-row">
+          <HStack gap={2} vAlign="center" wrap="wrap">
             <Button type="submit" label="Save settings" variant="primary" isDisabled={!dirty} isLoading={busy} />
             <Button label="Reset" variant="ghost" isDisabled={!dirty} onClick={() => setForm(initial)} />
-          </div>
+          </HStack>
         ) : null}
-      </form>
-    </section>
+      </VStack>
+    </Panel>
   );
 }
+
+/** <form> attributes the Astryx stack props do not type (they reach the element). */
+const FORM_ATTRS: object = { noValidate: true };

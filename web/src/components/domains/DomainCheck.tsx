@@ -4,7 +4,6 @@
 // be checked right where it was added.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { Heading } from '@astryxdesign/core/Heading';
 import { Link } from '@astryxdesign/core/Link';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Text } from '@astryxdesign/core/Text';
@@ -17,6 +16,7 @@ import { refPath, shortRef } from '../../lib/domains';
 import { formatError } from '../fields/formats';
 import { TextField } from '../fields/TextField';
 import { ErrorBanner } from '../Feedback';
+import { Panel } from '../layout/Page';
 
 /** Whether a list exception's rule covers the name ("x", "||x^", "*.x" of a parent, "/re/"). */
 export function exceptionMatches(e: Pick<DomainEntry, 'value' | 'type'>, name: string): boolean {
@@ -58,15 +58,13 @@ export function DomainCheck() {
   const exceptions = m.data?.exceptions ?? [];
   const blocked = r?.status_class === 'blocked';
   return (
-    <VStack as="section" gap={3} className="k-panel" aria-labelledby={titleId}>
-      <VStack gap={1}>
-        <Heading level={2} id={titleId}>
-          Is it allowed?
-        </Heading>
-        <Text type="supporting">Asks the resolver as a client would (Tools → Query), with every policy, list and entry applied.</Text>
-      </VStack>
-      <form
-        noValidate
+    <Panel title="Is it allowed?" headingId={titleId} description="Asks the resolver as a client would (Tools → Query), with every policy, list and entry applied.">
+      <HStack
+        as="form"
+        gap={3}
+        vAlign="end"
+        wrap="wrap"
+        {...FORM_ATTRS}
         onSubmit={(e) => {
           e.preventDefault();
           const next = {
@@ -77,12 +75,10 @@ export function DomainCheck() {
           if (!next.name && !next.client) m.mutate();
         }}
       >
-        <HStack gap={3} align="end" wrap="wrap">
-          <TextField label="Name" mono value={name} onChange={setName} placeholder="ads.example.com" error={errors.name} fieldWidth={280} />
-          <TextField label="For client" isOptional mono value={client} onChange={setClient} placeholder="192.168.1.30" error={errors.client} fieldWidth={200} />
-          <Button type="submit" label="Check" variant="secondary" isLoading={m.isPending} />
-        </HStack>
-      </form>
+        <TextField label="Name" mono value={name} onChange={setName} placeholder="ads.example.com" error={errors.name} fieldWidth={280} />
+        <TextField label="For client" isOptional mono value={client} onChange={setClient} placeholder="192.168.1.30" error={errors.client} fieldWidth={200} />
+        <Button type="submit" label="Check" variant="secondary" isLoading={m.isPending} />
+      </HStack>
       {m.error ? <ErrorBanner error={m.error} title="Could not ask the resolver" /> : null}
       {r ? (
         <HStack gap={2} align="center" wrap="wrap" aria-live="polite" data-testid="domain-check-result">
@@ -112,6 +108,9 @@ export function DomainCheck() {
           ))}
         </VStack>
       ) : null}
-    </VStack>
+    </Panel>
   );
 }
+
+/** <form> attributes the Astryx stack props do not type (they reach the element). */
+const FORM_ATTRS: object = { noValidate: true };

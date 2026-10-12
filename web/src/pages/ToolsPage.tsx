@@ -6,21 +6,27 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Code } from '@astryxdesign/core/Code';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
 import { Grid } from '@astryxdesign/core/Grid';
-import { HStack } from '@astryxdesign/core/HStack';
+import { Link } from '@astryxdesign/core/Link';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
 import { TextArea } from '@astryxdesign/core/TextArea';
-import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { ApplyResult, DnsProto, DnsQueryResult } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { formatBytes, formatDateTime, formatExact, formatMS } from '../lib/format';
-import { Link } from '../lib/router';
 import { hostError, splitPresentation } from '../lib/rr';
 import { formatError } from '../components/fields/formats';
 import { SelectField } from '../components/fields/SelectField';
 import { CheckboxField, TextField } from '../components/fields/TextField';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 
 const DIG_TYPES = ['A', 'AAAA', 'HTTPS', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA', 'SVCB', 'DS', 'DNSKEY'];
 const DIG_PROTOS: { value: DnsProto; label: string }[] = [
@@ -32,37 +38,38 @@ const DIG_PROTOS: { value: DnsProto; label: string }[] = [
   { value: 'doh3', label: 'DoH3' },
 ];
 
+/** One line of a dig section: its columns, or the whole line (in Name) when it does not split. */
+type DigRow = { id: string; name: string; ttl: string; class: string; type: string; data: string } & Record<string, unknown>;
+
+const code = (v: string) => (
+  <Text type="code" size="sm">
+    {v}
+  </Text>
+);
+
+/** Long names and data wrap inside their cells. */
+const digColumns: TableColumn<DigRow>[] = [
+  { key: 'name', header: 'Name', width: proportional(3, { minWidth: 160 }), renderCell: (r) => code(r.name) },
+  { key: 'ttl', header: 'TTL', align: 'end', width: pixel(72), renderCell: (r) => code(r.ttl) },
+  { key: 'class', header: 'Class', width: pixel(64), renderCell: (r) => code(r.class) },
+  { key: 'type', header: 'Type', width: pixel(88), renderCell: (r) => code(r.type) },
+  { key: 'data', header: 'Data', width: proportional(4, { minWidth: 160 }), renderCell: (r) => code(r.data) },
+];
+
 /** One answer section: each presentation line split into its columns. */
 export function DigSection({ rows, title }: { rows: string[] | null | undefined; title: string }) {
   if (!rows?.length) return null;
+  const data: DigRow[] = rows.map((line, i) => {
+    const rr = splitPresentation(line);
+    return rr ? { id: String(i), ...rr } : { id: String(i), name: line, ttl: '', class: '', type: '', data: '' };
+  });
   return (
-    <div className="k-stack">
-      <p className="k-small k-muted">;; {title} SECTION:</p>
-      <div className="k-table-wrap">
-        <table className="k-table k-mono k-small" aria-label={`${title.toLowerCase()} section`}>
-          <tbody>
-            {rows.map((line, i) => {
-              const rr = splitPresentation(line);
-              return rr ? (
-                <tr key={i}>
-                  <td className="k-break">{rr.name}</td>
-                  <td className="num">{rr.ttl}</td>
-                  <td>{rr.class}</td>
-                  <td>{rr.type}</td>
-                  <td className="k-break">{rr.data}</td>
-                </tr>
-              ) : (
-                <tr key={i}>
-                  <td colSpan={5} className="k-break">
-                    {line}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <VStack gap={1}>
+      <Text type="supporting" as="p">
+        ;; {title} SECTION:
+      </Text>
+      <Table<DigRow> density="compact" aria-label={`${title.toLowerCase()} section`} idKey="id" data={data} columns={digColumns} />
+    </VStack>
   );
 }
 
@@ -94,15 +101,14 @@ function Dig() {
   const r: DnsQueryResult | undefined = m.data;
   const flags = r ? setFlags(r) : [];
   return (
-    <section className="k-panel" aria-labelledby="dig-title">
-      <h2 id="dig-title" className="k-h3">
-        Query (dig)
-      </h2>
-      <p className="k-muted k-small">
-        Runs the query through the full pipeline (policy, blocking, zones, cache, upstreams) as the given client and transport, without touching the network
-        listener.
-      </p>
-      <form
+    <Panel
+      title="Query (dig)"
+      headingId="dig-title"
+      description="Runs the query through the full pipeline (policy, blocking, zones, cache, upstreams) as the given client and transport, without touching the network listener."
+    >
+      <VStack
+        as="form"
+        gap={3}
         onSubmit={(e) => {
           e.preventDefault();
           const he = hostError(name);
@@ -112,73 +118,69 @@ function Dig() {
           if (!he && !ce) m.mutate();
         }}
       >
-        <VStack gap={3}>
-          {/* One row of fields lined up on their controls; help and errors hang below. */}
-          <Grid columns={{ minWidth: 180 }} gap={3} align="start">
-            <TextField label="Name" value={name} onChange={setName} placeholder="example.com" mono error={err} />
-            <SelectField label="Type" value={type} options={DIG_TYPES.map((t) => ({ value: t, label: t }))} onChange={setType} />
-            <SelectField label="Transport" value={proto} options={DIG_PROTOS} onChange={(v) => setProto(v as DnsProto)} />
-            <TextField
-              label="As client"
-              help="The client IP the query is evaluated for (its groups and policies)"
-              value={client}
-              onChange={setClient}
-              placeholder="192.168.1.30"
-              mono
-              isOptional
-              error={clientErr}
-            />
-          </Grid>
-          <HStack gap={4} align="center" wrap="wrap">
-            <CheckboxField label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
-            <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
-          </HStack>
-        </VStack>
-      </form>
+        {/* One row of fields lined up on their controls; help and errors hang below. */}
+        <Grid columns={{ minWidth: 180 }} gap={3} align="start">
+          <TextField label="Name" value={name} onChange={setName} placeholder="example.com" mono error={err} />
+          <SelectField label="Type" value={type} options={DIG_TYPES.map((t) => ({ value: t, label: t }))} onChange={setType} />
+          <SelectField label="Transport" value={proto} options={DIG_PROTOS} onChange={(v) => setProto(v as DnsProto)} />
+          <TextField
+            label="As client"
+            help="The client IP the query is evaluated for (its groups and policies)"
+            value={client}
+            onChange={setClient}
+            placeholder="192.168.1.30"
+            mono
+            isOptional
+            error={clientErr}
+          />
+        </Grid>
+        <HStack gap={4} align="center" wrap="wrap">
+          <CheckboxField label="DNSSEC (DO bit)" value={dnssec} onChange={setDnssec} />
+          <Button type="submit" label="Query" variant="primary" isLoading={m.isPending} />
+        </HStack>
+      </VStack>
       {m.error ? <ErrorBanner error={m.error} /> : null}
       {r ? (
-        <div className="k-stack" aria-live="polite" data-testid="dig-result">
-          <p className="k-row">
+        // The e2e specs read the result as the panel's last polite live region.
+        <VStack gap={2} aria-live="polite" data-testid="dig-result">
+          <HStack gap={2} vAlign="center" wrap="wrap">
             <Badge variant={r.status_class === 'blocked' ? 'error' : r.status_class === 'error' ? 'warning' : 'success'} label={r.status.replace(/_/g, ' ')} />
-            <span className="k-mono">{r.rcode}</span>
-            <span className="k-mono k-small">
+            <Text type="code">{r.rcode}</Text>
+            <Text type="code" size="sm">
               {r.name} {r.type}
-            </span>
-            <span className="k-muted k-small">{formatMS(r.latency_ms)} in the pipeline</span>
-            {flags.length ? <span className="k-mono k-small">flags: {flags.join(' ')}</span> : null}
-            {r.client ? <span className="k-muted k-small">as {r.client}</span> : null}
-            {r.node ? <span className="k-muted k-small">node {r.node}</span> : null}
-          </p>
+            </Text>
+            <Text type="supporting">{formatMS(r.latency_ms)} in the pipeline</Text>
+            {flags.length ? (
+              <Text type="code" size="sm">
+                flags: {flags.join(' ')}
+              </Text>
+            ) : null}
+            {r.client ? <Text type="supporting">as {r.client}</Text> : null}
+            {r.node ? <Text type="supporting">node {r.node}</Text> : null}
+          </HStack>
           {r.error ? <Banner status="warning" title="The pipeline reported an error" description={r.error} /> : null}
           {r.list || r.rule || r.upstream ? (
-          <dl className="k-why-grid">
-            {r.list ? (
-              <div>
-                <dt>Matched list</dt>
-                <dd>{r.list}</dd>
-              </div>
-            ) : null}
-            {r.rule ? (
-              <div>
-                <dt>Rule</dt>
-                <dd className="k-mono">{r.rule}</dd>
-              </div>
-            ) : null}
-            {r.upstream ? (
-              <div>
-                <dt>Upstream</dt>
-                <dd>{r.upstream}</dd>
-              </div>
-            ) : null}
-          </dl>
+            <MetadataList columns="multi">
+              {r.list ? <MetadataListItem label="Matched list">{r.list}</MetadataListItem> : null}
+              {r.rule ? (
+                <MetadataListItem label="Rule">
+                  <Text type="code">{r.rule}</Text>
+                </MetadataListItem>
+              ) : null}
+              {r.upstream ? <MetadataListItem label="Upstream">{r.upstream}</MetadataListItem> : null}
+            </MetadataList>
           ) : null}
           <DigSection title="ANSWER" rows={r.answer} />
           <DigSection title="AUTHORITY" rows={r.authority} />
           <DigSection title="ADDITIONAL" rows={r.additional} />
-          {!r.answer?.length && !r.authority?.length ? <p className="k-muted">No records in the answer.</p> : null}
-        </div>
+          {!r.answer?.length && !r.authority?.length ? (
+            <Text color="secondary" as="p">
+              No records in the answer.
+            </Text>
+          ) : null}
+        </VStack>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -193,24 +195,42 @@ function FlushCache() {
     onError: (err) => notify.error(err, 'Flush failed'),
   });
   return (
-    <section className="k-panel" aria-labelledby="flush-title">
-      <h2 id="flush-title" className="k-h3">
-        Response cache
-      </h2>
-      <form
+    <Panel title="Response cache" headingId="flush-title">
+      <VStack
+        as="form"
+        gap={3}
+        hAlign="start"
         onSubmit={(e) => {
           e.preventDefault();
           m.mutate();
         }}
       >
-        <VStack gap={3} hAlign="start">
-          <TextField label="Name" help="Empty flushes everything" value={name} onChange={setName} placeholder="example.com" mono isOptional fieldWidth="100%" />
-          <Button type="submit" label={name.trim() ? 'Flush name' : 'Flush all'} variant="secondary" isDisabled={!can('cache', 'flush')} isLoading={m.isPending} />
-        </VStack>
-      </form>
-    </section>
+        <TextField label="Name" help="Empty flushes everything" value={name} onChange={setName} placeholder="example.com" mono isOptional fieldWidth="100%" />
+        <Button type="submit" label={name.trim() ? 'Flush name' : 'Flush all'} variant="secondary" isDisabled={!can('cache', 'flush')} isLoading={m.isPending} />
+      </VStack>
+    </Panel>
   );
 }
+
+type ResultRow = ApplyResult & Record<string, unknown>;
+
+const resultKey = (r: ResultRow) => `${r.kind}/${r.namespace ?? ''}/${r.name}`;
+
+const resultColumns: TableColumn<ResultRow>[] = [
+  { key: 'kind', header: 'Kind', width: proportional(1, { minWidth: 120 }), renderCell: (r) => <Text>{r.kind}</Text> },
+  { key: 'name', header: 'Name', width: proportional(2, { minWidth: 160 }), renderCell: (r) => <Text type="code">{r.namespace ? `${r.namespace}/${r.name}` : r.name}</Text> },
+  {
+    key: 'result',
+    header: 'Result',
+    width: proportional(2, { minWidth: 160 }),
+    renderCell: (r) => (
+      <VStack gap={1} align="start">
+        <Badge variant={r.result === 'error' ? 'error' : r.result === 'unchanged' ? 'neutral' : 'success'} label={r.result} />
+        {r.error ? <FieldStatus type="error" variant="detached" message={r.error} /> : null}
+      </VStack>
+    ),
+  },
+];
 
 function ApplyYAML() {
   const api = useApi();
@@ -222,51 +242,36 @@ function ApplyYAML() {
     onSuccess: (r) => setResults(r.items),
   });
   return (
-    <section className="k-panel" aria-labelledby="apply-title">
-      <h2 id="apply-title" className="k-h3">
-        Import objects
-      </h2>
-      <p className="k-muted k-small">
-        Paste multi-document YAML or a JSON array of kudurru objects (what <code>kudurru apply -f</code> sends). Objects are applied whole, managed by
-        the API. For BIND zone files use Import on a <Link href="/zones">zone</Link>.
-      </p>
-      <form
-        className="k-stack"
+    <Panel
+      title="Import objects"
+      headingId="apply-title"
+      description={
+        <>
+          Paste multi-document YAML or a JSON array of kudurru objects (what <Code>kudurru apply -f</Code> sends). Objects are applied whole, managed by the
+          API. For BIND zone files use Import on a{' '}
+          <Link href="/zones" hasUnderline>
+            zone
+          </Link>
+          .
+        </>
+      }
+    >
+      <VStack
+        as="form"
+        gap={2}
         onSubmit={(e) => {
           e.preventDefault();
           if (text.trim()) m.mutate();
         }}
       >
         <TextArea label="Objects" value={text} onChange={setText} rows={10} hasSpellCheck={false} placeholder={'apiVersion: kudurru.io/v1alpha1\nkind: BlockList\nmetadata:\n  name: example\n  namespace: default\nspec:\n  sources:\n    - url: https://example.com/hosts'} />
-        <div>
+        <HStack>
           <Button type="submit" label="Apply" variant="primary" isDisabled={!text.trim() || !can('blocklists', 'write')} isLoading={m.isPending} />
-        </div>
-      </form>
+        </HStack>
+      </VStack>
       {m.error ? <ErrorBanner error={m.error} /> : null}
-      {results ? (
-        <table className="k-table" aria-label="Apply results">
-          <thead>
-            <tr>
-              <th scope="col">Kind</th>
-              <th scope="col">Name</th>
-              <th scope="col">Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((r) => (
-              <tr key={`${r.kind}/${r.namespace ?? ''}/${r.name}`}>
-                <td>{r.kind}</td>
-                <td className="k-mono">{r.namespace ? `${r.namespace}/${r.name}` : r.name}</td>
-                <td>
-                  <Badge variant={r.result === 'error' ? 'error' : r.result === 'unchanged' ? 'neutral' : 'success'} label={r.result} />
-                  {r.error ? <span className="k-error-text"> {r.error}</span> : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </section>
+      {results ? <Table<ResultRow> aria-label="Apply results" density="compact" idKey={resultKey} data={results as ResultRow[]} columns={resultColumns} /> : null}
+    </Panel>
   );
 }
 
@@ -275,39 +280,45 @@ function Exports() {
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   const kinds = ['dnszones', 'dnsrecordsets', 'blocklists', 'clientgroups', 'policies'] as const;
   return (
-    <section className="k-panel" aria-labelledby="exp-title">
-      <h2 id="exp-title" className="k-h3">
-        Backup and export
-      </h2>
-      <p className="k-muted k-small">
-        A full backup (state.db, keys, query log) is taken on the host with <code>kudurru backup</code>. From here you can download the objects as
-        JSON and each zone as a BIND file.
-      </p>
-      <ul className="k-link-list">
+    <Panel
+      title="Backup and export"
+      headingId="exp-title"
+      description={
+        <>
+          A full backup (state.db, keys, query log) is taken on the host with <Code>kudurru backup</Code>. From here you can download the objects as JSON and
+          each zone as a BIND file.
+        </>
+      }
+    >
+      <HStack role="list" gap={4} wrap="wrap" aria-label="Downloads">
         {kinds.map((k) => (
-          <li key={k}>
-            <a href={api.objectsURL(k)} download={`${k}.json`}>
+          <StackItem role="listitem" key={k}>
+            <Link href={api.objectsURL(k)} download={`${k}.json`} hasUnderline>
               {k}.json
-            </a>
-          </li>
+            </Link>
+          </StackItem>
         ))}
         {(zones.data?.items ?? []).map((z) => (
-          <li key={z.name}>
-            <a href={api.zones.exportURL(z.name)} download={`${z.name}.zone`}>
+          <StackItem role="listitem" key={z.name}>
+            <Link href={api.zones.exportURL(z.name)} download={`${z.name}.zone`} hasUnderline>
               {z.name}.zone
-            </a>
-          </li>
+            </Link>
+          </StackItem>
         ))}
-        <li>
-          <a href={api.audit.exportURL()} download="audit.jsonl">
+        <StackItem role="listitem">
+          <Link href={api.audit.exportURL()} download="audit.jsonl" hasUnderline>
             audit log
-          </a>
-        </li>
-      </ul>
-      <p className="k-small k-muted">
-        The dashboard includes open-source software; see the <a href="third-party-licenses.txt">third-party licences</a>.
-      </p>
-    </section>
+          </Link>
+        </StackItem>
+      </HStack>
+      <Text type="supporting" as="p">
+        The dashboard includes open-source software; see the{' '}
+        <Link href="third-party-licenses.txt" hasUnderline>
+          third-party licences
+        </Link>
+        .
+      </Text>
+    </Panel>
   );
 }
 
@@ -351,41 +362,39 @@ function Doctor() {
   });
   const text = lines?.map((l) => `${l.ok === true ? '[ ok ]' : l.ok === 'warn' ? '[warn]' : '[FAIL]'} ${l.text}`).join('\n') ?? '';
   return (
-    <section className="k-panel" aria-labelledby="doc-title">
-      <h2 id="doc-title" className="k-h3">
-        Doctor
-      </h2>
-      <p className="k-muted k-small">
-        Checks what the API can see. <code>kudurru doctor</code> on the host also checks ports, file permissions and the data directory.
-      </p>
-      <div>
+    <Panel
+      title="Doctor"
+      headingId="doc-title"
+      description={
+        <>
+          Checks what the API can see. <Code>kudurru doctor</Code> on the host also checks ports, file permissions and the data directory.
+        </>
+      }
+    >
+      <HStack>
         <Button label={lines ? 'Run again' : 'Run checks'} variant="secondary" isLoading={m.isPending} onClick={() => m.mutate()} />
-      </div>
+      </HStack>
       {lines ? (
         <>
           {lines.some((l) => l.ok === false) ? <Banner status="error" title="Some checks failed" /> : <Banner status="success" title="All checks passed" />}
-          <pre className="k-pre" data-testid="doctor-output">
-            {text}
-          </pre>
+          <CodeBlock data-testid="doctor-output" code={text} maxHeight={480} width="100%" />
         </>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
 export default function ToolsPage() {
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Tools</h1>
-      </div>
+    <Page>
+      <PageHeader title="Tools" />
       <Dig />
-      <div className="k-grid k-grid-2">
+      <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
         <FlushCache />
         <Doctor />
-      </div>
+      </Grid>
       <ApplyYAML />
       <Exports />
-    </div>
+    </Page>
   );
 }

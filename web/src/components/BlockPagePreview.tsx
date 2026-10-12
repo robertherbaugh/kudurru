@@ -5,6 +5,11 @@
 // the dashboard (frame-ancestors 'self'); it is shown in a sandboxed
 // iframe (no scripts, no same-origin access) or opened in a new tab.
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Code } from '@astryxdesign/core/Code';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import { useApi } from '../api/context';
 import { hostError } from '../lib/rr';
@@ -13,28 +18,35 @@ import { FormDialog } from './FormDialog';
 
 export const BLOCK_PAGE_DOCS = 'https://github.com/robertherbaugh/kudurru/blob/main/docs/deploy/blocking-page.md';
 
+/** The preview fills its Card (which draws the frame and clips the corners). */
+const FRAME_STYLE = { display: 'block', inlineSize: '100%', blockSize: '100%', border: 'none' } as const;
+
 export function BlockPageIntro() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="k-stack-sm" data-testid="blockpage-intro">
-      <p className="k-small">
-        With the <strong>Block page</strong> response (blocking.defaultResponse, or a policy's or list's block mode), blocked names answer with this
+    <VStack gap={1.5} data-testid="blockpage-intro">
+      <Text size="sm" as="p">
+        With the{' '}
+        <Text type="inherit" weight="semibold">
+          Block page
+        </Text>{' '}
+        response (blocking.defaultResponse, or a policy's or list's block mode), blocked names answer with this
         server's block page address, so a browser opening a blocked site sees which list, rule or policy blocked it and whom to ask, instead of a
         connection error.
-      </p>
-      <p className="k-small k-muted">
-        Plain <code>http://</code> pages show it directly. For <code>https://</code> sites the browser expects a certificate for the blocked domain, which
+      </Text>
+      <Text type="supporting" as="p">
+        Plain <Code>http://</Code> pages show it directly. For <Code>https://</Code> sites the browser expects a certificate for the blocked domain, which
         the block page cannot have: it shows a certificate warning, and sites with HSTS (most large ones, and every name on the browsers' preload list)
         refuse to show the page at all. The DNS answer still blocks the site either way.{' '}
-        <a href={BLOCK_PAGE_DOCS} target="_blank" rel="noopener noreferrer">
+        <Link href={BLOCK_PAGE_DOCS} target="_blank" type="inherit" hasUnderline>
           Block page deployment notes
-        </a>
-      </p>
-      <span className="k-row">
+        </Link>
+      </Text>
+      <HStack gap={2} vAlign="center">
         <Button label="Preview" size="sm" variant="secondary" onClick={() => setOpen(true)} />
-      </span>
+      </HStack>
       <BlockPagePreviewDialog isOpen={open} onClose={() => setOpen(false)} />
-    </div>
+    </VStack>
   );
 }
 
@@ -58,10 +70,10 @@ export function BlockPagePreviewDialog({ isOpen, onClose }: { isOpen: boolean; o
       onSubmit={show}
       footer={
         <>
-          <a className="k-small" href={api.blockPage.previewURL(shown)} target="_blank" rel="noopener noreferrer">
+          <Link href={api.blockPage.previewURL(shown)} target="_blank" size="sm" hasUnderline>
             Open in a new tab
-          </a>
-          <span className="k-spacer" />
+          </Link>
+          <StackItem size="fill" />
           <Button label="Close" variant="ghost" onClick={onClose} />
           <Button type="submit" label="Show" variant="primary" />
         </>
@@ -76,8 +88,12 @@ export function BlockPagePreviewDialog({ isOpen, onClose }: { isOpen: boolean; o
         mono
         error={err}
       />
-      <iframe key={shown} className="k-preview-frame" title={`Block page for ${shown}`} sandbox="" src={api.blockPage.previewURL(shown)} referrerPolicy="no-referrer" />
-      <p className="k-muted k-small">Rendered by this server with the current block page settings; the reason shown is a sample.</p>
+      <Card padding={0} height="min(60dvh, 560px)">
+        <iframe key={shown} style={FRAME_STYLE} title={`Block page for ${shown}`} sandbox="" src={api.blockPage.previewURL(shown)} referrerPolicy="no-referrer" />
+      </Card>
+      <Text type="supporting" as="p">
+        Rendered by this server with the current block page settings; the reason shown is a sample.
+      </Text>
     </FormDialog>
   );
 }

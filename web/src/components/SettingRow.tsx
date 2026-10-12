@@ -10,15 +10,18 @@
 // the key's shape. Rows are bound by data-configkey.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { Divider } from '@astryxdesign/core/Divider';
 import { FieldStatus } from '@astryxdesign/core/FieldStatus';
 import { Grid, GridSpan } from '@astryxdesign/core/Grid';
 import { useMediaQuery } from '@astryxdesign/core/hooks';
 import { HStack } from '@astryxdesign/core/HStack';
 import { StackItem } from '@astryxdesign/core/Stack';
+import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import type { SettingKey } from '../api/types';
 import { displayValue, lockFor, parseValue } from '../lib/settings';
@@ -111,7 +114,6 @@ export function rowHelp(k: SettingKey, shape: UiShape): string {
 }
 
 export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }: SettingRowProps) {
-  const id = useId();
   const narrow = useMediaQuery('(max-width: 900px)');
   const m = useMemo(() => meta ?? metaFor(k), [meta, k]);
   const shape = useMemo(() => shapeOf(k, m), [k, m]);
@@ -189,9 +191,14 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
       if (k.type === 'bool' && !k.writeOnly) return <Switch label={label} isLabelHidden value={value === true} isDisabled onChange={() => {}} />;
       if (structured && composite) return <ShapeField label={label} isLabelHidden shape={shape} value={toDraft(shape, value)} onChange={() => {}} isDisabled />;
       return composite ? (
-        <pre id={id} className="k-pre" aria-readonly="true" tabIndex={0}>
-          {k.writeOnly ? '(hidden)' : shownText || '(empty)'}
-        </pre>
+        <CodeBlock
+          code={k.writeOnly ? '(hidden)' : shownText || '(empty)'}
+          language={k.writeOnly || !shownText ? 'plaintext' : 'json'}
+          width="100%"
+          maxHeight={480}
+          size="sm"
+          aria-label={label}
+        />
       ) : (
         <TextField label={label} isLabelHidden isReadOnly value={k.writeOnly ? '(hidden)' : shownText} />
       );
@@ -243,76 +250,79 @@ export function SettingRow({ k, value, canWrite, onSave, meta, extra, summary }:
 
   const help = rowHelp(k, shape);
   return (
-    <Grid
-      columns={narrow ? 1 : 5}
-      columnGap={6}
-      rowGap={2}
-      align="start"
-      className="k-setting"
+    <VStack
+      gap={3}
+      paddingBlockStart={3}
       data-configkey={k.path}
       data-locked={lock.locked ? 'true' : 'false'}
       data-changed={changed ? 'true' : 'false'}
     >
-      <GridSpan columns={narrow ? 'full' : 3}>
-        <VStack gap={1}>
-          <Text weight="semibold" className="k-setting-label">
-            {label}
-          </Text>
-          <Text type="supporting" className="k-mono k-setting-key">
-            {k.path}
-          </Text>
-          <Text type="supporting" display="block" data-testid={`help-${k.path}`}>
-            {help}
-          </Text>
-          {extra}
-          <HStack gap={1} wrap="wrap">
-            <Badge variant="neutral" label={k.scope} />
-            {changed ? <Badge variant="blue" label="changed" /> : null}
-            {k.hostOnly ? <Badge variant="orange" label="host only" /> : null}
-            {k.envLocked ? <Badge variant="purple" label="environment" /> : null}
-            {k.restartRequired ? <Badge variant="warning" label="restart" /> : null}
-          </HStack>
-        </VStack>
-      </GridSpan>
-      <GridSpan columns={narrow ? 'full' : 2}>
-        <VStack gap={2} className="k-setting-value">
-          {control()}
-          {lock.locked ? (
-            <Text type="supporting" display="block" data-testid={`lock-${k.path}`}>
-              {lock.reason}
+      <Grid columns={narrow ? 1 : 5} columnGap={6} rowGap={2} align="start">
+        <GridSpan columns={narrow ? 'full' : 3}>
+          <VStack gap={1}>
+            <HStack gap={1.5} vAlign="center">
+              <Text weight="semibold" data-testid={`label-${k.path}`}>
+                {label}
+              </Text>
+              {changed ? <StatusDot variant="accent" label="Changed from the default" /> : null}
+            </HStack>
+            <Text type="code" size="sm" color="secondary">
+              {k.path}
             </Text>
-          ) : (
-            <>
-              {error ? <FieldStatus type="error" variant="detached" role="alert" data-testid="setting-error" message={parts.length ? `${error} (at ${parts.join(', ')})` : error} /> : null}
-              <HStack gap={2} wrap="wrap" vAlign="center">
-                {dirty && k.type !== 'bool' ? (
-                  <>
-                    <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
-                    <Button label="Cancel" size="sm" variant="ghost" onClick={cancel} />
-                  </>
-                ) : (
-                  <Text type="supporting">Default: {describeValue(k, shape, k.default)}</Text>
-                )}
-                <StackItem size="fill" />
-                {structured && composite && !summary ? (
-                  <Button
-                    label={asJSON ? 'Edit as form' : 'Edit as JSON'}
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      cancel();
-                      setAsJSON(!asJSON);
-                    }}
-                  />
-                ) : summary ? (
-                  <Button label={asJSON ? 'Show summary' : 'Edit as JSON'} size="sm" variant="ghost" onClick={() => setAsJSON(!asJSON)} />
-                ) : null}
-                {changed && !dirty ? <Button label="Reset to default" size="sm" variant="ghost" isLoading={busy} onClick={() => void run(null)} /> : null}
-              </HStack>
-            </>
-          )}
-        </VStack>
-      </GridSpan>
-    </Grid>
+            <Text type="supporting" display="block" data-testid={`help-${k.path}`}>
+              {help}
+            </Text>
+            {extra}
+            <HStack gap={1} wrap="wrap">
+              <Badge variant="neutral" label={k.scope} />
+              {changed ? <Badge variant="blue" label="changed" /> : null}
+              {k.hostOnly ? <Badge variant="orange" label="host only" /> : null}
+              {k.envLocked ? <Badge variant="purple" label="environment" /> : null}
+              {k.restartRequired ? <Badge variant="warning" label="restart" /> : null}
+            </HStack>
+          </VStack>
+        </GridSpan>
+        <GridSpan columns={narrow ? 'full' : 2}>
+          <VStack gap={2}>
+            {control()}
+            {lock.locked ? (
+              <Text type="supporting" display="block" data-testid={`lock-${k.path}`}>
+                {lock.reason}
+              </Text>
+            ) : (
+              <>
+                {error ? <FieldStatus type="error" variant="detached" role="alert" data-testid="setting-error" message={parts.length ? `${error} (at ${parts.join(', ')})` : error} /> : null}
+                <HStack gap={2} wrap="wrap" vAlign="center">
+                  {dirty && k.type !== 'bool' ? (
+                    <>
+                      <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
+                      <Button label="Cancel" size="sm" variant="ghost" onClick={cancel} />
+                    </>
+                  ) : (
+                    <Text type="supporting">Default: {describeValue(k, shape, k.default)}</Text>
+                  )}
+                  <StackItem size="fill" />
+                  {structured && composite && !summary ? (
+                    <Button
+                      label={asJSON ? 'Edit as form' : 'Edit as JSON'}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        cancel();
+                        setAsJSON(!asJSON);
+                      }}
+                    />
+                  ) : summary ? (
+                    <Button label={asJSON ? 'Show summary' : 'Edit as JSON'} size="sm" variant="ghost" onClick={() => setAsJSON(!asJSON)} />
+                  ) : null}
+                  {changed && !dirty ? <Button label="Reset to default" size="sm" variant="ghost" isLoading={busy} onClick={() => void run(null)} /> : null}
+                </HStack>
+              </>
+            )}
+          </VStack>
+        </GridSpan>
+      </Grid>
+      <Divider />
+    </VStack>
   );
 }

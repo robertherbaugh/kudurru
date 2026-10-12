@@ -1,7 +1,8 @@
 // Pages that show what the global setup's traffic and objects produced:
-// the dashboard tiles, the clients, the node, the audit log and an API
-// token created through the UI.
+// the dashboard tiles, a blocked query-log row, the clients, the node, the
+// audit log and an API token created through the UI.
 import { badLines, env, expect, expectRendered, main, settle, test } from './fixtures';
+import { BLOCKLIST } from './support/kudurru';
 
 /** The number a stat tile shows ("2.9k" and "1,234" included). */
 function tileNumber(text: string): number {
@@ -27,6 +28,23 @@ test('dashboard: the tiles count the traffic and the domains on lists', async ({
       { message: 'Domains on lists', timeout: 15_000 },
     )
     .toBeGreaterThan(0);
+  await expectRendered(page);
+});
+
+test('query log: a blocked row explains itself and links to the Allowlist add dialog', async ({ page }) => {
+  // The global setup's traffic: ads.example.net is blocked by the run's file list.
+  await page.goto(`/queries?status_class=blocked&domain=${BLOCKLIST.blocked}`);
+  await settle(page);
+  const row = main(page).getByRole('table', { name: 'Query log' }).locator('tr[aria-expanded]').filter({ hasText: BLOCKLIST.blocked }).first();
+  await expect(row).toBeVisible();
+  await row.focus();
+  await page.keyboard.press('Enter');
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  const why = main(page).getByRole('group', { name: /^Why ads\.example\.net\.? got this answer$/ });
+  await expect(why).toContainText('Matched list');
+  await expect(why).toContainText('Policy');
+  // No unblock request names it, so the link opens the Allowlist's Add dialog with the name.
+  await expect(why.getByRole('link', { name: 'Allow…' })).toHaveAttribute('href', `/allowlist?add=${BLOCKLIST.blocked}`);
   await expectRendered(page);
 });
 

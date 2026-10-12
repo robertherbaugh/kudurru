@@ -3,7 +3,8 @@
 // examples, everyone or some client groups, a comment), edit one entry
 // (type, value, scope, comment, enabled) and confirm a delete. Writes go
 // to POST /allowlist|/denylist and PATCH …/{id}; the answer's skipped
-// policies are reported, since their lists cannot be attached there.
+// policies are reported, since their lists cannot be attached there. The
+// add dialog keeps its fields in state: give it a new `key` per opening.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { List, ListItem } from '@astryxdesign/core/List';
@@ -97,16 +98,18 @@ export interface AddEntryDialogProps {
   action?: DomainAction;
   defaultAction?: DomainAction;
   defaultType?: DomainEntryType;
+  /** The values box at opening (`?add=<domain>` from the query log). */
+  defaultValue?: string;
   namespace?: string;
 }
 
-export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = 'deny', defaultType = 'exact', namespace = 'default' }: AddEntryDialogProps) {
+export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = 'deny', defaultType = 'exact', defaultValue = '', namespace = 'default' }: AddEntryDialogProps) {
   const api = useApi();
   const notify = useNotify();
   const invalidate = useInvalidateDomains();
   const [action, setAction] = useState<DomainAction>(fixed ?? defaultAction);
   const [type, setType] = useState<DomainEntryType>(defaultType);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(defaultValue);
   const [scope, setScope] = useState<Scope>('everyone');
   const [groups, setGroups] = useState<string[]>([]);
   const [comment, setComment] = useState('');

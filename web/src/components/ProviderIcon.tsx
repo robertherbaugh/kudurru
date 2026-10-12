@@ -31,9 +31,5 @@ export function ProviderIcon({ name, ids }: { name: string; ids: string[] }) {
   const icons = useIcons();
   const id = ids.find((i) => icons.has(i));
   const e = id ? icons.get(id) : undefined;
-  return (
-    <span className="k-provider-icon" aria-hidden="true">
-      <ServiceIcon id={id ?? ids[0] ?? name.toLowerCase()} name={name} icon={e?.path} iconOnDark={e?.onDark} size={28} />
-    </span>
-  );
+  return <ServiceIcon id={id ?? ids[0] ?? name.toLowerCase()} name={name} icon={e?.path} iconOnDark={e?.onDark} size={28} />;
 }

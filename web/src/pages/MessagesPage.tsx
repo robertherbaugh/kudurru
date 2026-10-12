@@ -2,11 +2,15 @@
 // that cannot be fetched, certificate expiry, disk/WAL size, serial
 // divergence, follower read-only and more, from GET /info/messages.
 import { Badge } from '@astryxdesign/core/Badge';
+import { Card } from '@astryxdesign/core/Card';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { useMessages } from '../api/hooks';
 import type { DiagnosisMessage } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
-import { Link } from '../lib/router';
+import { Page, PageHeader } from '../components/layout/Page';
 
 /** A parsed message object reference ("Kind/namespace/name" or "Kind/name"). */
 export interface ObjectRef {
@@ -57,41 +61,51 @@ export default function MessagesPage() {
   const items = [...(q.data?.items ?? [])].sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
   const keys = messageKeys(items);
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Diagnosis</h1>
-      </div>
+    <Page>
+      <PageHeader title="Diagnosis" />
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
       {q.data && items.length === 0 ? <EmptyState title="Nothing to report" description="No configuration problems, failing lists or node issues were found." /> : null}
       {items.length ? (
-        <ul className="k-messages">
+        <VStack role="list" aria-label="Diagnosis messages" gap={2}>
           {items.map((m, i) => {
             const ref = parseObjectRef(m.object);
             return (
-              <li key={keys[i]} className="k-panel">
-                <div className="k-row">
-                  <Badge variant={m.severity === 'error' ? 'error' : m.severity === 'warning' ? 'warning' : 'info'} label={m.severity} />
-                  <strong>{m.reason}</strong>
-                  <span className="k-spacer" />
-                  {m.source ? <span className="k-small k-muted">{m.source}</span> : null}
-                  {m.node ? <span className="k-small k-muted">node {m.node}</span> : null}
-                </div>
-                <p>{m.message}</p>
-                {m.hint ? <p className="k-small k-muted">{m.hint}</p> : null}
-                {ref ? (
-                  <Link href={objectLink(ref)} className="k-small">
-                    {ref.kind} {ref.namespace ? `${ref.namespace}/` : ''}
-                    {ref.name}
-                  </Link>
-                ) : m.object ? (
-                  <span className="k-small k-mono">{m.object}</span>
-                ) : null}
-              </li>
+              <StackItem role="listitem" key={keys[i]}>
+                <Card>
+                  <VStack gap={2}>
+                    <HStack gap={2} vAlign="center" wrap="wrap">
+                      <Badge variant={m.severity === 'error' ? 'error' : m.severity === 'warning' ? 'warning' : 'info'} label={m.severity} />
+                      <Text weight="semibold">{m.reason}</Text>
+                      <StackItem size="fill" />
+                      {m.source ? <Text type="supporting">{m.source}</Text> : null}
+                      {m.node ? <Text type="supporting">node {m.node}</Text> : null}
+                    </HStack>
+                    <Text as="p">{m.message}</Text>
+                    {m.hint ? (
+                      <Text type="supporting" as="p">
+                        {m.hint}
+                      </Text>
+                    ) : null}
+                    {ref ? (
+                      <Text type="supporting">
+                        <Link href={objectLink(ref)} hasUnderline>
+                          {ref.kind} {ref.namespace ? `${ref.namespace}/` : ''}
+                          {ref.name}
+                        </Link>
+                      </Text>
+                    ) : m.object ? (
+                      <Text type="code" size="sm">
+                        {m.object}
+                      </Text>
+                    ) : null}
+                  </VStack>
+                </Card>
+              </StackItem>
             );
           })}
-        </ul>
+        </VStack>
       ) : null}
-    </div>
+    </Page>
   );
 }

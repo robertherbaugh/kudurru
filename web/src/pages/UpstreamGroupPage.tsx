@@ -6,19 +6,27 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Link } from '@astryxdesign/core/Link';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { Policy } from '../api/types';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { GroupFields, groupFieldErrors, healthSummary, ServersTable, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { formatExact } from '../lib/format';
-import { Link, useNavigate } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { DEFAULT_GROUP, type UpstreamGroupConfig } from '../lib/upstreams';
 import type { PageProps } from '../routes';
+
+/** Group names in the page title keep the heading size in the code font. */
+const MONO = { fontFamily: 'var(--font-family-code)' };
 
 export interface GroupUser {
   kind: 'policy' | 'zone' | 'conditional';
@@ -52,8 +60,6 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   const conditional = Object.entries(u.cfg.conditional)
     .filter(([, grp]) => grp === name)
     .map(([suffix]) => suffix);
-  const settingsId = useId();
-  const usedId = useId();
   const [draft, setDraft] = useState<UpstreamGroupConfig | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -73,15 +79,21 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   if (u.settings.error) return <ErrorBanner error={u.settings.error} />;
   if (!g || !draft) {
     return (
-      <div className="k-page">
-        <h1 className="k-mono">{name}</h1>
+      <Page>
+        <PageHeader
+          title={
+            <Text type="inherit" style={MONO}>
+              {name}
+            </Text>
+          }
+        />
         <Banner status="warning" title="No such upstream group" description={`upstreams.groups has no group named ${name}.`} />
-        <p>
-          <Link href="/upstreams">All upstream groups</Link>{' '}
+        <HStack gap={2} vAlign="center" wrap="wrap">
+          <Link href="/upstreams">All upstream groups</Link>
           <Button label="New group" size="sm" variant="secondary" isDisabled={!u.canWrite} onClick={() => setCreating(true)} />
-        </p>
+        </HStack>
         <UpstreamWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
-      </div>
+      </Page>
     );
   }
 
@@ -126,32 +138,34 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   };
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <p className="k-small k-muted">
-            <Link href="/upstreams">Upstreams</Link> /
-          </p>
-          <h1 className="k-mono">{name}</h1>
-          <div className="k-header-state" data-testid="group-state">
+    <Page>
+      <PageHeader
+        back={{ href: '/upstreams', label: 'Upstreams' }}
+        title={
+          <Text type="inherit" style={MONO}>
+            {name}
+          </Text>
+        }
+        meta={
+          <HStack gap={2} vAlign="center" wrap="wrap" data-testid="group-state">
             {name === DEFAULT_GROUP ? <Badge variant="neutral" label="default" /> : null}
             <Badge variant="blue" label={strategyLabel(g.strategy)} />
-            <span className="k-row k-small">
-              {h.known === 0 ? (
-                <span className="k-muted">no health data yet</span>
-              ) : (
-                <>
-                  <StatusDot variant={h.healthy === h.known ? 'success' : h.healthy === 0 ? 'error' : 'warning'} label={`${h.healthy} of ${h.known} healthy`} />
+            {h.known === 0 ? (
+              <Text type="supporting">no health data yet</Text>
+            ) : (
+              <HStack gap={2} vAlign="center">
+                <StatusDot variant={h.healthy === h.known ? 'success' : h.healthy === 0 ? 'error' : 'warning'} label={`${h.healthy} of ${h.known} healthy`} />
+                <Text size="sm">
                   {h.healthy} of {h.known} servers healthy
-                </>
-              )}
-            </span>
-            <span className="k-small k-muted">
+                </Text>
+              </HStack>
+            )}
+            <Text type="supporting">
               {g.servers.length} server{g.servers.length === 1 ? '' : 's'} · timeout {g.timeout || '2s'} · {formatExact(queries)} queries in 24 h
-            </span>
-          </div>
-        </div>
-        <div className="k-actions">
+            </Text>
+          </HStack>
+        }
+        actions={
           <Button
             label="Delete"
             variant="ghost"
@@ -162,56 +176,51 @@ export default function UpstreamGroupPage({ params }: PageProps) {
               setDeleting(true);
             }}
           />
-        </div>
-      </div>
+        }
+      />
       {u.readOnlyReason ? <Banner status="info" title="Read-only here" description={u.readOnlyReason} /> : null}
       {u.notPersisted ? (
         <Banner status="warning" title="Kept in memory only" description="This server has no settings file, so the change is lost on restart." isDismissable onDismiss={u.clearNotPersisted} />
       ) : null}
       {u.stats.error ? <ErrorBanner error={u.stats.error} title="Upstream health is unavailable" /> : null}
 
-      <section className="k-panel" aria-label="Servers">
-        <h2 className="k-h3">Servers</h2>
+      <Panel title="Servers" aria-label="Servers">
         <ServersTable name={name} g={g} servers={servers} traffic={traffic} />
-      </section>
+      </Panel>
 
-      <section className="k-panel" aria-labelledby={settingsId}>
-        <h2 id={settingsId} className="k-h3">
-          Settings
-        </h2>
+      <Panel title="Settings">
         <GroupFields value={draft} onChange={setDraft} errors={errors} isDisabled={!u.canWrite} />
         {saveErr ? <Banner status="error" title="The server rejected the change" description={saveErr} /> : null}
         {dirty ? (
-          <div className="k-row">
+          <HStack gap={2} vAlign="center" wrap="wrap">
             <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
             <Button label="Cancel" size="sm" variant="ghost" onClick={() => setDraft(saved)} />
-          </div>
+          </HStack>
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="k-panel" aria-labelledby={usedId} data-testid="used-by">
-        <h2 id={usedId} className="k-h3">
-          Used by
-        </h2>
-        {name === DEFAULT_GROUP ? <p className="k-small">Every query no policy, forward zone or conditional rule sends elsewhere.</p> : null}
+      <Panel title="Used by" data-testid="used-by">
+        {name === DEFAULT_GROUP ? (
+          <Text as="p" size="sm">
+            Every query no policy, forward zone or conditional rule sends elsewhere.
+          </Text>
+        ) : null}
         {usersLoading ? <Loading /> : null}
         {users.length || conditional.length ? (
-          <ul className="k-link-list k-stack-sm">
+          <List density="compact" hasDividers edgeCompensation="inline" aria-label={`What uses ${name}`}>
             {users.map((x) => (
-              <li key={`${x.kind}/${x.name}`}>
-                {x.kind === 'policy' ? 'Policy' : 'Forward zone'} {x.href ? <Link href={x.href} className="k-mono">{x.name}</Link> : <span className="k-mono">{x.name}</span>}
-              </li>
+              <ListItem key={`${x.kind}/${x.name}`} label={x.name} href={x.href} endContent={<Text type="supporting">{x.kind === 'policy' ? 'Policy' : 'Forward zone'}</Text>} />
             ))}
             {conditional.map((s) => (
-              <li key={s}>
-                Conditional rule <span className="k-mono">{s}</span>
-              </li>
+              <ListItem key={s} label={s} endContent={<Text type="supporting">Conditional rule</Text>} />
             ))}
-          </ul>
+          </List>
         ) : !usersLoading && name !== DEFAULT_GROUP ? (
-          <p className="k-muted k-small">No policy, forward zone or conditional rule names this group.</p>
+          <Text as="p" type="supporting">
+            No policy, forward zone or conditional rule names this group.
+          </Text>
         ) : null}
-      </section>
+      </Panel>
 
       <FormDialog
         isOpen={deleting}
@@ -225,10 +234,10 @@ export default function UpstreamGroupPage({ params }: PageProps) {
           </>
         }
       >
-        <p>Queries routed to a group that does not exist fail with SERVFAIL, so change the policies and forward zones that name it first.</p>
+        <Text as="p">Queries routed to a group that does not exist fail with SERVFAIL, so change the policies and forward zones that name it first.</Text>
         {users.length ? <Banner status="warning" title="Still in use" description={`Named by ${users.map((x) => `${x.kind} ${x.name}`).join(', ')}.`} /> : null}
         {deleteErr ? <Banner status="error" title="The group was not deleted" description={deleteErr} /> : null}
       </FormDialog>
-    </div>
+    </Page>
   );
 }

@@ -7,24 +7,35 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Heading } from '@astryxdesign/core/Heading';
+import { HStack } from '@astryxdesign/core/HStack';
+import { Link } from '@astryxdesign/core/Link';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { VStack } from '@astryxdesign/core/VStack';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ScopeParams } from '../api/endpoints';
 import { useDeleteUnblock } from '../api/hooks';
 import type { QueryFilter, UnblockAllow, UnblockDecision, UnblockRequest } from '../api/types';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { QueryLogTable } from '../components/QueryLogTable';
 import { ApproveDialog, DenyDialog } from '../components/unblock/UnblockDialogs';
-import { ClientText, RefLinks, StateBadge, When, WhyBlocked } from '../components/unblock/UnblockParts';
+import { ClientText, RefLinks, StateBadge, Typed, When, WhyBlocked } from '../components/unblock/UnblockParts';
 import { formatDateTime, formatExact } from '../lib/format';
 import { objectHref, shortRef } from '../lib/policies';
-import { Link, useNavigate } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { canApprove, canDeny } from '../lib/unblock';
 import type { PageProps } from '../routes';
 
 const RECENT = 50;
+const BACK = { href: '/requests', label: 'Requests' };
+
+const muted = (text: string) => <Text type="inherit" color="secondary">{text}</Text>;
 
 export default function RequestDetailPage({ params }: PageProps) {
   const ns = params.ns ?? 'default';
@@ -40,13 +51,10 @@ export default function RequestDetailPage({ params }: PageProps) {
 
   if (q.error) {
     return (
-      <div className="k-page">
-        <Link href="/requests" className="k-small">
-          ← Requests
-        </Link>
-        <h1>Request {name}</h1>
+      <Page>
+        <PageHeader title={`Request ${name}`} back={BACK} />
         <ErrorBanner error={q.error} />
-      </div>
+      </Page>
     );
   }
   if (!r) return <Loading />;
@@ -66,44 +74,48 @@ export default function RequestDetailPage({ params }: PageProps) {
     );
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/requests" className="k-small">
-            ← Requests
-          </Link>
-          <h1 className="k-break">{r.domain}</h1>
-          <span className="k-row k-small">
+    <Page>
+      <PageHeader
+        title={
+          <Text type="inherit" maxLines={3} wordBreak="break-all">
+            {r.domain}
+          </Text>
+        }
+        back={BACK}
+        meta={
+          <>
             <StateBadge state={r.state} />
-            <span>
+            <Text type="supporting" color="primary">
               requested <When ts={r.requestedAt} />
               {r.submissions > 1 ? ` · asked ${formatExact(r.submissions)} times` : ''}
-            </span>
+            </Text>
             {r.decidedAt ? (
-              <span>
+              <Text type="supporting" color="primary">
                 decided <When ts={r.decidedAt} />
                 {r.decidedBy ? ` by ${r.decidedBy}` : ''}
-              </span>
+              </Text>
             ) : null}
             {r.state === 'Pending' && r.expiresAt ? (
-              <span className="k-muted">
+              <Text type="supporting">
                 expires undecided <When ts={r.expiresAt} />
-              </span>
+              </Text>
             ) : null}
-          </span>
-        </div>
-        <div className="k-actions">
-          {canApprove(r) ? <Button label="Approve" variant="primary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setDialog('approve')} /> : null}
-          {canDeny(r) ? <Button label="Deny" variant="secondary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setDialog('deny')} /> : null}
-          <Button
-            label="Delete"
-            variant="destructive"
-            isDisabled={!can('unblockrequests', 'delete')}
-            tooltip={can('unblockrequests', 'delete') ? undefined : 'Needs unblockrequests.delete'}
-            onClick={() => setDialog('delete')}
-          />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {canApprove(r) ? <Button label="Approve" variant="primary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setDialog('approve')} /> : null}
+            {canDeny(r) ? <Button label="Deny" variant="secondary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setDialog('deny')} /> : null}
+            <Button
+              label="Delete"
+              variant="destructive"
+              isDisabled={!can('unblockrequests', 'delete')}
+              tooltip={can('unblockrequests', 'delete') ? undefined : 'Needs unblockrequests.delete'}
+              onClick={() => setDialog('delete')}
+            />
+          </>
+        }
+      />
 
       <DecisionPanel r={r} />
       <RequestSection r={r} />
@@ -124,30 +136,39 @@ export default function RequestDetailPage({ params }: PageProps) {
           </>
         }
       >
-        <p className="k-small">
+        <Text as="p">
           {r.state === 'Approved' && r.allow && !r.allow.expiresAt
             ? `The permanent allow entry ${r.allow.entry} stays on ${shortRef(r.allow.list)}; remove it on the Allowlist page if it is no longer needed.`
             : r.state === 'Approved' && r.allow?.expiresAt
               ? 'A time-limited approval in force cannot be deleted: deny it first, which removes its allow entry.'
               : 'The request and its history are removed. The user can ask again from the block page.'}
-        </p>
+        </Text>
       </FormDialog>
-    </div>
+    </Page>
   );
 }
 
 /** The allow entry of an approval: entry, list link, scope, policies, end. */
 function AllowView({ allow }: { allow: UnblockAllow }) {
   return (
-    <span className="k-stack-sm">
-      <span>
-        <span className="k-mono">{allow.entry}</span> on <Link href={objectHref('lists', allow.list)}>{shortRef(allow.list)}</Link>{' '}
+    <VStack gap={1.5}>
+      <HStack gap={1} vAlign="center" wrap="wrap">
+        <Text type="code">{allow.entry}</Text>
+        <Text type="inherit">
+          on{' '}
+          <Link type="inherit" href={objectHref('lists', allow.list)} color="inherit" hasUnderline>
+            {shortRef(allow.list)}
+          </Link>
+        </Text>
         <Badge variant="info" label={allow.match === 'subdomains' ? '+ subdomains' : 'exact'} />
-      </span>
-      <span className="k-small">
+      </HStack>
+      <Text type="supporting" color="primary">
         {allow.scope === 'group' && allow.group ? (
           <>
-            for group <Link href={objectHref('groups', allow.group)}>{shortRef(allow.group)}</Link>
+            for group{' '}
+            <Link type="inherit" href={objectHref('groups', allow.group)} color="inherit" hasUnderline>
+              {shortRef(allow.group)}
+            </Link>
           </>
         ) : (
           'for everyone'
@@ -158,108 +179,93 @@ function AllowView({ allow }: { allow: UnblockAllow }) {
             · attached to <RefLinks kind="policies" refs={allow.policies} empty="" />
           </>
         ) : null}
-      </span>
-      <span className="k-small">
+      </Text>
+      <Text type="supporting" color="primary">
         {allow.removed ? (
-          <span className="k-muted">
+          <Text type="inherit" color="secondary">
             released <When ts={allow.removed} />
-          </span>
+          </Text>
         ) : allow.expiresAt ? (
-          <span>
+          <>
             until <time dateTime={allow.expiresAt}>{formatDateTime(allow.expiresAt)}</time> (<When ts={allow.expiresAt} />)
-          </span>
+          </>
         ) : (
           'permanent'
         )}
-        {!allow.added ? <span className="k-muted"> · the entry was on the list already, so it stays when the approval ends</span> : null}
-      </span>
+        {!allow.added ? <Text type="inherit" color="secondary"> · the entry was on the list already, so it stays when the approval ends</Text> : null}
+      </Text>
       {!allow.removed ? (
-        <span className="k-small">
-          <Link href={`/allowlist?q=${encodeURIComponent(allow.entry.replace(/^\|\||\^$/g, ''))}`}>Show it on the Allowlist</Link>
-        </span>
+        <Text type="supporting" color="primary">
+          <Link type="inherit" href={`/allowlist?q=${encodeURIComponent(allow.entry.replace(/^\|\||\^$/g, ''))}`} color="inherit" hasUnderline>
+            Show it on the Allowlist
+          </Link>
+        </Text>
       ) : null}
-    </span>
+    </VStack>
   );
 }
 
 function DecisionPanel({ r }: { r: UnblockRequest }) {
   return (
-    <section className="k-panel" aria-labelledby="req-decision" data-testid="request-decision">
-      <div className="k-panel-title">
-        <h2 id="req-decision">Decision</h2>
-      </div>
+    <Panel title="Decision" headingId="req-decision" data-testid="request-decision">
       {r.state === 'Pending' ? (
-        <p className="k-muted">Not decided yet{r.expiresAt ? `; the request expires undecided on ${formatDateTime(r.expiresAt)}` : ''}.</p>
+        <Text color="secondary" as="p">
+          Not decided yet{r.expiresAt ? `; the request expires undecided on ${formatDateTime(r.expiresAt)}` : ''}.
+        </Text>
       ) : (
-        <dl className="k-kv">
-          <dt>State</dt>
-          <dd>
+        <MetadataList label={{ position: 'start', width: 128 }}>
+          <MetadataListItem label="State">
             <StateBadge state={r.state} />
-          </dd>
-          <dt>Decided</dt>
-          <dd>
+          </MetadataListItem>
+          <MetadataListItem label="Decided">
             {r.decidedAt ? (
-              <>
+              <Text>
                 <time dateTime={r.decidedAt}>{formatDateTime(r.decidedAt)}</time>
                 {r.decidedBy ? ` by ${r.decidedBy}` : ''}
-              </>
+              </Text>
             ) : (
-              <span className="k-muted">{r.state === 'Expired' ? 'expired undecided' : '–'}</span>
+              muted(r.state === 'Expired' ? 'expired undecided' : '–')
             )}
-          </dd>
-          <dt>Note</dt>
-          <dd>{r.note ? <span className="k-reason">{r.note}</span> : <span className="k-muted">none</span>}</dd>
+          </MetadataListItem>
+          <MetadataListItem label="Note">{r.note ? <Typed>{r.note}</Typed> : muted('none')}</MetadataListItem>
           {r.allow ? (
-            <>
-              <dt>Allow entry</dt>
-              <dd>
-                <AllowView allow={r.allow} />
-              </dd>
-            </>
+            <MetadataListItem label="Allow entry">
+              <AllowView allow={r.allow} />
+            </MetadataListItem>
           ) : null}
-        </dl>
+        </MetadataList>
       )}
-    </section>
+    </Panel>
   );
 }
 
 function RequestSection({ r }: { r: UnblockRequest }) {
   return (
-    <section className="k-panel k-section" aria-labelledby="req-request" data-testid="request-details">
-      <h2 id="req-request" className="k-h3">
-        Request
-      </h2>
-      <dl className="k-kv">
-        <dt>Name given</dt>
-        <dd>{r.requesterName ? <span className="k-break">{r.requesterName}</span> : <span className="k-muted">none</span>}</dd>
-        <dt>Contact</dt>
-        <dd>{r.contact ? <span className="k-break">{r.contact}</span> : <span className="k-muted">none</span>}</dd>
-        <dt>Client</dt>
-        <dd>
+    <Panel title="Request" headingId="req-request" data-testid="request-details">
+      <MetadataList label={{ position: 'start', width: 128 }}>
+        <MetadataListItem label="Name given">{r.requesterName ? <Typed>{r.requesterName}</Typed> : muted('none')}</MetadataListItem>
+        <MetadataListItem label="Contact">{r.contact ? <Typed>{r.contact}</Typed> : muted('none')}</MetadataListItem>
+        <MetadataListItem label="Client">
           <ClientText r={r} />
-        </dd>
-        <dt>Groups</dt>
-        <dd>
+        </MetadataListItem>
+        <MetadataListItem label="Groups">
           <RefLinks kind="groups" refs={r.groups} empty="no client group" />
-        </dd>
-        <dt>Policies</dt>
-        <dd>
+        </MetadataListItem>
+        <MetadataListItem label="Policies">
           <RefLinks kind="policies" refs={r.policies} empty="none" />
-        </dd>
-        <dt>Node</dt>
-        <dd>{r.node ?? <span className="k-muted">not recorded</span>}</dd>
-        <dt>Reason</dt>
-        <dd>{r.reason ? <span className="k-reason">{r.reason}</span> : <span className="k-muted">none given</span>}</dd>
-        <dt>Why blocked</dt>
-        <dd>
+        </MetadataListItem>
+        <MetadataListItem label="Node">{r.node ?? muted('not recorded')}</MetadataListItem>
+        <MetadataListItem label="Reason">{r.reason ? <Typed>{r.reason}</Typed> : muted('none given')}</MetadataListItem>
+        <MetadataListItem label="Why blocked">
           <WhyBlocked block={r.block} detailed />
-        </dd>
-        <dt>First asked</dt>
-        <dd>
-          <time dateTime={r.createdAt}>{formatDateTime(r.createdAt)}</time>
-        </dd>
-      </dl>
-    </section>
+        </MetadataListItem>
+        <MetadataListItem label="First asked">
+          <Text>
+            <time dateTime={r.createdAt}>{formatDateTime(r.createdAt)}</time>
+          </Text>
+        </MetadataListItem>
+      </MetadataList>
+    </Panel>
   );
 }
 
@@ -273,74 +279,107 @@ function RecentQueries({ r }: { r: UnblockRequest }) {
   const api = useApi();
   const can = useCan();
   const current = useScopeParams();
+  const headingId = useId();
   // The query log is per node: read the one whose block page took the request.
   const scope: ScopeParams = r.node ? { scope: 'node', node: r.node } : current;
   const filter = recentFilter(r);
   const q = useQuery({ queryKey: qk.queries('unblock', scope, filter), queryFn: () => api.queries.list(scope, filter), enabled: can('querylog', 'read') });
   const all = new URLSearchParams({ domain: r.domain, ...(filter.client ? { client: filter.client } : {}) });
   return (
-    <section className="k-stack" aria-labelledby="req-recent">
-      <div className="k-panel-title">
-        <h2 id="req-recent" className="k-h3">
+    <VStack as="section" gap={2} aria-labelledby={headingId}>
+      <HStack gap={2} hAlign="between" vAlign="center" wrap="wrap">
+        <Heading level={3} accessibilityLevel={2} id={headingId}>
           Recent queries
-        </h2>
-        <Link href={`/queries?${all.toString()}`}>Open in the query log</Link>
-      </div>
-      <p className="k-muted k-small">
+        </Heading>
+        <Link type="inherit" href={`/queries?${all.toString()}`} hasUnderline>
+          Open in the query log
+        </Link>
+      </HStack>
+      <Text type="supporting" as="p">
         {filter.client ? 'Queries of this client for the name' : 'Queries of every client for the name (the client was not recorded)'}
         {r.node ? `, from the query log of ${r.node}, the node that took the request.` : '.'}
-      </p>
+      </Text>
       {!can('querylog', 'read') ? <Banner status="info" title="Needs querylog.read" description="Your role cannot read the query log." /> : null}
       {q.error ? <ErrorBanner error={q.error} title="The query log could not be read" /> : null}
       {q.isLoading ? <Loading /> : null}
-      {q.data && !q.data.queries.length ? <p className="k-muted">No queries in the log.</p> : null}
+      {q.data && !q.data.queries.length ? (
+        <Text color="secondary" as="p">
+          No queries in the log.
+        </Text>
+      ) : null}
       {q.data?.queries.length ? <QueryLogTable rows={q.data.queries} hasMore={false} loadingMore={false} onLoadMore={() => undefined} canAct={false} /> : null}
-    </section>
+    </VStack>
   );
 }
+
+interface HistoryRow extends Record<string, unknown> {
+  d: UnblockDecision;
+  now: boolean;
+  i: number;
+}
+
+const HISTORY_COLUMNS: TableColumn<HistoryRow>[] = [
+  {
+    key: 'decision',
+    header: 'Decision',
+    width: pixel(150),
+    renderCell: ({ d, now }) => (
+      <HStack gap={1} vAlign="center">
+        <StateBadge state={d.state} />
+        {now ? <Text type="supporting">current</Text> : null}
+      </HStack>
+    ),
+  },
+  {
+    key: 'when',
+    header: 'When',
+    width: proportional(1, { minWidth: 170 }),
+    renderCell: ({ d }) =>
+      d.decidedAt ? (
+        <Text type="supporting" color="primary" textWrap="nowrap">
+          <time dateTime={d.decidedAt}>{formatDateTime(d.decidedAt)}</time>
+        </Text>
+      ) : (
+        muted('–')
+      ),
+  },
+  { key: 'by', header: 'By', width: proportional(0.7, { minWidth: 80 }), renderCell: ({ d }) => (d.decidedBy ? <Text type="supporting" color="primary">{d.decidedBy}</Text> : muted('–')) },
+  {
+    key: 'note',
+    header: 'Note',
+    width: proportional(1.3, { minWidth: 120 }),
+    renderCell: ({ d }) =>
+      d.note ? (
+        <Text type="supporting" color="primary">
+          <Typed>{d.note}</Typed>
+        </Text>
+      ) : (
+        muted('–')
+      ),
+  },
+  { key: 'allow', header: 'Allow entry', width: proportional(2, { minWidth: 200 }), renderCell: ({ d }) => (d.allow ? <AllowView allow={d.allow} /> : muted('–')) },
+];
 
 function HistorySection({ r }: { r: UnblockRequest }) {
   const current: UnblockDecision | null =
     r.state === 'Pending'
       ? null
       : { state: r.state, ...(r.decidedBy ? { decidedBy: r.decidedBy } : {}), ...(r.decidedAt ? { decidedAt: r.decidedAt } : {}), ...(r.note ? { note: r.note } : {}), ...(r.allow ? { allow: r.allow } : {}) };
-  const rows = [...(current ? [{ d: current, now: true }] : []), ...[...r.history].reverse().map((d) => ({ d, now: false }))];
+  const rows: HistoryRow[] = [...(current ? [{ d: current, now: true }] : []), ...[...r.history].reverse().map((d) => ({ d, now: false }))].map((x, i) => ({ ...x, i }));
   return (
-    <section className="k-panel k-section" aria-labelledby="req-history">
-      <h2 id="req-history" className="k-h3">
-        Decision history
-      </h2>
+    <Panel title="Decision history" headingId="req-history">
       {rows.length ? (
-        <div className="k-table-wrap">
-          <table className="k-table" aria-label="Decision history">
-            <thead>
-              <tr>
-                <th scope="col">Decision</th>
-                <th scope="col">When</th>
-                <th scope="col">By</th>
-                <th scope="col">Note</th>
-                <th scope="col">Allow entry</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ d, now }, i) => (
-                <tr key={i}>
-                  <td className="k-nowrap">
-                    <StateBadge state={d.state} /> {now ? <span className="k-muted k-small">current</span> : null}
-                  </td>
-                  <td className="k-small k-nowrap">{d.decidedAt ? <time dateTime={d.decidedAt}>{formatDateTime(d.decidedAt)}</time> : <span className="k-muted">–</span>}</td>
-                  <td className="k-small">{d.decidedBy ?? <span className="k-muted">–</span>}</td>
-                  <td className="k-small">{d.note ? <span className="k-reason">{d.note}</span> : <span className="k-muted">–</span>}</td>
-                  <td className="k-small">{d.allow ? <AllowView allow={d.allow} /> : <span className="k-muted">–</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table<HistoryRow> aria-label="Decision history" density="compact" idKey="i" data={rows} columns={HISTORY_COLUMNS} />
       ) : (
-        <p className="k-muted">No decision yet.</p>
+        <Text color="secondary" as="p">
+          No decision yet.
+        </Text>
       )}
-      {r.state === 'Pending' && r.history.length ? <p className="k-small">The user asked again after the last decision, so the request is pending once more.</p> : null}
-    </section>
+      {r.state === 'Pending' && r.history.length ? (
+        <Text type="supporting" color="primary" as="p">
+          The user asked again after the last decision, so the request is pending once more.
+        </Text>
+      ) : null}
+    </Panel>
   );
 }

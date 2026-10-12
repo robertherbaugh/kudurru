@@ -12,9 +12,7 @@ export function UnblockBadge() {
   const n = q.data ?? 0;
   if (q.error || n <= 0) return null;
   return (
-    <span data-testid="requests-badge">
-      <Badge variant="warning" label={String(n)} aria-label={`${requestsLabel(n)} waiting`} />
-    </span>
+    <Badge data-testid="requests-badge" variant="warning" label={String(n)} aria-label={`${requestsLabel(n)} waiting`} />
   );
 }
 
@@ -23,13 +21,12 @@ export function UnblockNotice() {
   const n = q.data ?? 0;
   if (q.error || n <= 0) return null;
   return (
-    <div data-testid="requests-notice">
-      <Banner
-        status="info"
-        title={`${requestsLabel(n)} waiting`}
-        description="Users asked on the block page for blocked names to be allowed."
-        endContent={<Link href="/requests">Review requests</Link>}
-      />
-    </div>
+    <Banner
+      data-testid="requests-notice"
+      status="info"
+      title={`${requestsLabel(n)} waiting`}
+      description="Users asked on the block page for blocked names to be allowed."
+      endContent={<Link href="/requests">Review requests</Link>}
+    />
   );
 }

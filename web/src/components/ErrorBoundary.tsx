@@ -1,6 +1,7 @@
 // Catches render errors of one page so the shell and navigation survive.
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Banner } from '@astryxdesign/core/Banner';
+import { Page } from './layout/Page';
 
 interface State {
   error: Error | null;
@@ -20,9 +21,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   override render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="k-page">
+        <Page>
           <Banner status="error" title="This page failed to render" description={this.state.error.message} />
-        </div>
+        </Page>
       );
     }
     return this.props.children;

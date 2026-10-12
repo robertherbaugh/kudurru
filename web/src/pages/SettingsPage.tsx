@@ -8,7 +8,10 @@
 // Both answer the envelope {scope, node, settings, changed, restartRequired,
 // persisted}; the values are under `settings`.
 import { Banner } from '@astryxdesign/core/Banner';
+import { Link } from '@astryxdesign/core/Link';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -19,8 +22,9 @@ import { AppearanceControls } from '../components/AppearanceButton';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { BlockPageIntro } from '../components/BlockPagePreview';
 import { AdGuardImportNote } from '../components/CatalogueSources';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { SettingRow } from '../components/SettingRow';
-import { Link, useSearchParams } from '../lib/router';
+import { useSearchParams } from '../lib/router';
 import { BASIC_KEYS, getPath, mergePatchFor } from '../lib/settings';
 import { compareGroups, groupOf, labelOf, metaFor } from '../lib/settingsMeta';
 import { groupNames, mapPatch, strategyLabelOf, upstreamsOf } from '../lib/upstreams';
@@ -59,23 +63,25 @@ function GroupsSummary({ value }: { value: unknown }) {
   const cfg = upstreamsOf({ settings: { upstreams: { groups: value } } } as unknown as SettingsBody);
   const names = groupNames(cfg);
   return (
-    <div className="k-stack-sm" data-testid="groups-summary">
-      <ul className="k-link-list k-stack-sm">
+    <VStack gap={1.5} align="start" data-testid="groups-summary">
+      <VStack gap={1.5} role="list">
         {names.map((n) => (
-          <li key={n}>
-            <Link href={`/upstreams/${encodeURIComponent(n)}`} className="k-mono">
-              {n}
+          <Text key={n} role="listitem">
+            <Link href={`/upstreams/${encodeURIComponent(n)}`} hasUnderline>
+              <Text type="code" color="inherit">
+                {n}
+              </Text>
             </Link>{' '}
-            <span className="k-muted k-small">
+            <Text type="supporting">
               {cfg.groups[n]?.servers.length ?? 0} server{cfg.groups[n]?.servers.length === 1 ? '' : 's'}, {strategyLabelOf(cfg.groups[n]?.strategy ?? '')}
-            </span>
-          </li>
+            </Text>
+          </Text>
         ))}
-      </ul>
-      <Link href="/upstreams" className="k-small">
+      </VStack>
+      <Link href="/upstreams" size="sm" hasUnderline>
         Edit on the Upstreams page
       </Link>
-    </div>
+    </VStack>
   );
 }
 
@@ -91,14 +97,15 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
   }, [keys, grouped]);
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       {sections.map(([section, list]) => (
-        <section key={section || 'all'} className="k-panel" aria-labelledby={section ? `sec-${slug(section)}` : undefined} data-section={section}>
-          {section ? (
-            <h2 id={`sec-${slug(section)}`} className="k-h3">
-              {section}
-            </h2>
-          ) : null}
+        <Panel
+          key={section || 'all'}
+          title={section || undefined}
+          headingId={section ? `sec-${slug(section)}` : undefined}
+          isRegion={!!section}
+          data-section={section}
+        >
           {section === 'Block page' ? <BlockPageIntro /> : null}
           {list.map((k) => (
             <SettingRow
@@ -111,7 +118,7 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
               summary={k.path === 'upstreams.groups' ? <GroupsSummary value={valueOf(k, cluster, node)} /> : undefined}
               extra={
                 k.path.startsWith('upstreams.') && k.path !== 'upstreams.groups' ? (
-                  <Link href="/upstreams" className="k-small">
+                  <Link href="/upstreams" size="sm" hasUnderline>
                     Also on the Upstreams page
                   </Link>
                 ) : k.path === 'blocking.catalogue.adguardServicesURL' ? (
@@ -120,9 +127,9 @@ export function SettingsList({ keys, cluster, node, canWriteCluster, canWriteNod
               }
             />
           ))}
-        </section>
+        </Panel>
       ))}
-    </div>
+    </VStack>
   );
 }
 
@@ -175,30 +182,21 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>Settings</h1>
-          <p className="k-muted k-small">
-            Cluster settings apply to every node; node settings only to this one. Host-only keys (listeners, data directory, secrets on disk) are
-            changed in kudurru.yaml or the environment on the host.
-          </p>
-        </div>
-        <div className="k-actions">
+    <Page>
+      <PageHeader
+        title="Settings"
+        description="Cluster settings apply to every node; node settings only to this one. Host-only keys (listeners, data directory, secrets on disk) are changed in kudurru.yaml or the environment on the host."
+        actions={
           <SegmentedControl label="Detail" value={view} onChange={(v) => setParams({ view: v === 'expert' ? 'expert' : null })}>
             <SegmentedControlItem value="basic" label="Basic" />
             <SegmentedControlItem value="expert" label="Expert" />
           </SegmentedControl>
-        </div>
-      </div>
+        }
+      />
       {view === 'basic' ? (
-        <section className="k-panel" aria-labelledby="sec-appearance">
-          <h2 id="sec-appearance" className="k-h3">
-            Appearance
-          </h2>
-          <p className="k-muted k-small">Stored in this browser only.</p>
+        <Panel title="Appearance" headingId="sec-appearance" description="Stored in this browser only.">
           <AppearanceControls />
-        </section>
+        </Panel>
       ) : (
         <TextInput label="Search settings" isLabelHidden placeholder="Search all settings" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       )}
@@ -234,6 +232,6 @@ export default function SettingsPage() {
           grouped
         />
       ) : null}
-    </div>
+    </Page>
   );
 }

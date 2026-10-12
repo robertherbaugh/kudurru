@@ -179,7 +179,8 @@ describe('PolicyDetailPage', () => {
       ),
     );
     renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'default' }} />, { route: '/policies/default/default' });
-    expect(await screen.findByText(/No query log on this server/)).toBeInTheDocument();
+    // The groups table's "–" tooltip says the same; the statistics section explains it.
+    expect(await within(await screen.findByTestId('section-activity')).findByText(/No query log on this server/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open in the query log' })).toBeNull();
     const lists = await within(screen.getByTestId('section-what')).findByRole('table', { name: 'Lists of the policy' });
     expect(within(lists).getByText('disabled')).toBeInTheDocument();

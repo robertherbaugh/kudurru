@@ -238,7 +238,9 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
       ) : null}
 
       {inlineChoice && editing ? (
-        <p className="k-muted k-small">{formatExact(initial?.inline?.length ?? 0)} inline entries. Browse the entries from the sources table to add or remove some.</p>
+        <Text type="supporting" as="p">
+          {formatExact(initial?.inline?.length ?? 0)} inline entries. Browse the entries from the sources table to add or remove some.
+        </Text>
       ) : null}
 
       {choice === 'configMap' ? (

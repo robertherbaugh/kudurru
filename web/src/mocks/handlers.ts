@@ -330,6 +330,17 @@ function deleteObject(kind: ObjectKind, name: string, namespace?: string): { sta
   if (owner && owner !== 'api' && owner !== 'bootstrap') {
     return { status: 409, body: { error: { key: 'managed_by', message: `${KIND_NAMES[kind]} ${name} is managed by ${owner}`, hint: owner } } };
   }
+  if (kind === 'dnszones') {
+    // D148: a zone goes alone only when no record set references it.
+    if ((obj as DNSZone).spec.zoneName === '.') {
+      return { status: 409, body: { error: { key: 'default_zone', message: `zone ${name} is the root zone "." and cannot be deleted` } } };
+    }
+    const refs = db.recordSets.filter((rs) => rs.spec.zoneRef.name === name);
+    if (refs.length) {
+      const objects = refs.map((rs) => ({ kind: 'DNSRecordSet', namespace: rs.metadata.namespace ?? 'default', name: rs.metadata.name }));
+      return { status: 409, body: { error: { key: 'zone_not_empty', message: `zone ${name} is referenced by ${refs.length} record sets`, hint: `DELETE /api/v1/zones/${name} deletes the zone with its record sets`, objects } } };
+    }
+  }
   const list = collection(kind);
   list.splice(list.indexOf(obj), 1);
   return { status: 204 };
@@ -364,7 +375,19 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
     ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
     ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
+    ...(zoneDeleteRefusal(z) ? { deleteRefusal: zoneDeleteRefusal(z) } : {}),
   };
+}
+
+/** What DELETE /zones/{zone} refuses whatever the caller may do (D148). */
+function zoneDeleteRefusal(z: DNSZone): 'default_zone' | 'managed_by' | undefined {
+  if (z.spec.zoneName === '.') return 'default_zone';
+  const managed = (o: { metadata: { annotations?: Record<string, string> } }) => {
+    const owner = o.metadata.annotations?.[MANAGED] ?? '';
+    return owner !== '' && owner !== 'api' && owner !== 'bootstrap';
+  };
+  if (managed(z) || db.recordSets.some((rs) => rs.spec.zoneRef.name === z.metadata.name && managed(rs))) return 'managed_by';
+  return undefined;
 }
 
 function recordsOf(zone: string): ZoneRecord[] {
@@ -820,6 +843,39 @@ export const handlers = [
     if (g) return g;
     const z = db.zones.find((x) => x.metadata.name === params.zone);
     return z ? ok({ ...zoneSummary(z) }) : fail(404, 'not_found', `zone ${String(params.zone)} not found`);
+  }),
+  http.delete(`${B}/zones/:zone`, ({ request, params }) => {
+    const g = guard(request, 'zones', 'delete');
+    if (g) return g;
+    const zone = String(params.zone);
+    const z = db.zones.find((x) => x.metadata.name === zone);
+    if (!z) return fail(404, 'not_found', `zone ${zone} not found`);
+    const sets = db.recordSets.filter((rs) => rs.spec.zoneRef.name === zone);
+    if (sets.length) {
+      const g2 = guard(request, 'records', 'delete');
+      if (g2) return g2;
+    }
+    const refusal = zoneDeleteRefusal(z);
+    if (refusal === 'default_zone') {
+      return fail(409, 'default_zone', `zone ${zone} is the root zone "." and cannot be deleted`, 'edit it instead: change spec.forward.upstreamGroup, or set spec.policy.queryAccess to deny');
+    }
+    if (refusal === 'managed_by') {
+      const objects = [z, ...sets]
+        .filter((o) => !['', 'api', 'bootstrap'].includes(o.metadata.annotations?.[MANAGED] ?? ''))
+        .map((o) => ({ kind: o.kind, ...(o.metadata.namespace ? { namespace: o.metadata.namespace } : {}), name: o.metadata.name, managedBy: o.metadata.annotations?.[MANAGED] ?? '' }));
+      return HttpResponse.json(
+        { error: { key: 'managed_by', message: `zone ${zone} cannot be deleted: managed by another writer`, hint: objects[0]?.managedBy, objects }, took_ms: 0.4 } as JsonBodyType,
+        { status: 409 },
+      );
+    }
+    const dryRun = new URL(request.url).searchParams.get('dryRun') === 'true';
+    const recordSets = sets.map((rs) => `${rs.metadata.namespace ?? 'default'}/${rs.metadata.name}`).sort();
+    const endpointCount = sets.reduce((n, rs) => n + rs.spec.endpoints.length, 0);
+    if (!dryRun) {
+      db.recordSets = db.recordSets.filter((rs) => rs.spec.zoneRef.name !== zone);
+      db.zones = db.zones.filter((x) => x !== z);
+    }
+    return ok({ zone, zoneName: z.spec.zoneName, type: z.spec.type, dryRun, recordSets, recordSetCount: sets.length, endpointCount, flushed: dryRun ? 0 : 1 });
   }),
   http.get(`${B}/zones/:zone/records`, ({ request, params }) => {
     const g = guard(request, 'records', 'read');
@@ -1310,7 +1366,7 @@ export const handlers = [
     const prefix = (url.searchParams.get('prefix') ?? '').toLowerCase();
     const values = new Set<string>();
     for (const q of db.queries) {
-      const v = field === 'client' ? q.client.name ?? q.client.ip : field === 'upstream' ? q.upstream : field === 'list' ? q.list : field === 'zone' ? q.zone : q.domain;
+      const v = field === 'client' ? q.client.name ?? q.client.ip : field === 'upstream' ? q.upstream : field === 'list' ? q.list : field === 'zone' ? q.zone : field === 'policy' ? q.policy : q.domain;
       if (v && v.toLowerCase().includes(prefix)) values.add(v);
       if (values.size >= 10) break;
     }

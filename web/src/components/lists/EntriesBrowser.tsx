@@ -11,7 +11,6 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Heading } from '@astryxdesign/core/Heading';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Link } from '@astryxdesign/core/Link';
 import { List, ListItem } from '@astryxdesign/core/List';
@@ -33,6 +32,7 @@ import { EnumSelect } from '../fields/EnumSelect';
 import { TextAreaField, TextField } from '../fields/TextField';
 import { ErrorBanner, errorText, Loading, useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
+import { Panel } from '../layout/Page';
 
 const PAGE_SIZES = [
   { value: '25', label: '25 per page' },
@@ -195,13 +195,18 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
     : '';
 
   return (
-    <VStack as="section" gap={4} className="k-panel" aria-labelledby={titleId} data-testid="entries-browser">
-      <HStack gap={2} justify="between" align="start">
-        <VStack gap={1}>
-          <Heading level={2} id={titleId}>
-            Entries of <Text type="code">{source}</Text>
-          </Heading>
-          <Text type="supporting" size="sm">
+    <Panel
+      title={
+        <>
+          Entries of <Text type="code">{source}</Text>
+        </>
+      }
+      headingId={titleId}
+      data-testid="entries-browser"
+      actions={<Button label="Close entries" variant="ghost" onClick={onClose} />}
+      description={
+        summary || data?.fetched ? (
+          <>
             {summary}
             {data?.fetched ? (
               <>
@@ -212,41 +217,42 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                 </time>
               </>
             ) : null}
+          </>
+        ) : undefined
+      }
+    >
+      <VStack gap={4}>
+        {kind === 'entries' ? (
+          <Text type="supporting">
+            These are the{' '}
+            <Link href={actionPath(ui)} hasUnderline>
+              {ui === 'allow' ? 'Allowlist' : 'Denylist'}
+            </Link>{' '}
+            entries kept in {name}. Add, edit, scope and remove them there; the switches here and there are the same.
           </Text>
-        </VStack>
-        <Button label="Close entries" variant="ghost" onClick={onClose} />
-      </HStack>
+        ) : (
+          <Text type="supporting">
+            Switching off an entry of an imported list affects only this list; to {ui === 'deny' ? 'allow' : 'block'} a domain everywhere use the{' '}
+            <Link href={ui === 'deny' ? '/allowlist' : '/denylist'} hasUnderline>
+              {ui === 'deny' ? 'Allowlist' : 'Denylist'}
+            </Link>
+            . The entries switched off here show on the{' '}
+            <Link href={`${actionPath(ui === 'deny' ? 'allow' : 'deny')}?kind=exception&scope=${encodeURIComponent(`list:${ns}/${name}`)}`} hasUnderline>
+              {ui === 'deny' ? 'Allowlist' : 'Denylist'} as list exceptions
+            </Link>
+            .
+          </Text>
+        )}
 
-      {kind === 'entries' ? (
-        <Text type="supporting">
-          These are the{' '}
-          <Link href={actionPath(ui)} hasUnderline>
-            {ui === 'allow' ? 'Allowlist' : 'Denylist'}
-          </Link>{' '}
-          entries kept in {name}. Add, edit, scope and remove them there; the switches here and there are the same.
-        </Text>
-      ) : (
-        <Text type="supporting">
-          Switching off an entry of an imported list affects only this list; to {ui === 'deny' ? 'allow' : 'block'} a domain everywhere use the{' '}
-          <Link href={ui === 'deny' ? '/allowlist' : '/denylist'} hasUnderline>
-            {ui === 'deny' ? 'Allowlist' : 'Denylist'}
-          </Link>
-          . The entries switched off here show on the{' '}
-          <Link href={`${actionPath(ui === 'deny' ? 'allow' : 'deny')}?kind=exception&scope=${encodeURIComponent(`list:${ns}/${name}`)}`} hasUnderline>
-            {ui === 'deny' ? 'Allowlist' : 'Denylist'} as list exceptions
-          </Link>
-          .
-        </Text>
-      )}
-
-      {canAdd ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (toAdd.length && !addProblem) patch.mutate({ add: toAdd });
-          }}
-        >
-          <VStack gap={2}>
+        {canAdd ? (
+          <VStack
+            as="form"
+            gap={2}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (toAdd.length && !addProblem) patch.mutate({ add: toAdd });
+            }}
+          >
             <TextAreaField
               label="Add entries"
               help="One or many, one per line."
@@ -264,165 +270,165 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
               <Button type="submit" label={toAdd.length > 1 ? `Add ${toAdd.length}` : 'Add'} variant="secondary" isDisabled={!toAdd.length || !!addProblem} isLoading={patch.isPending && !!patch.variables?.add} />
             </HStack>
           </VStack>
-        </form>
-      ) : null}
-      {rejected.length ? (
-        <Banner
-          status="warning"
-          title={`${rejected.length} not added`}
-          description={rejected
-            .slice(0, 5)
-            .map((e) => `${e.item}: ${e.error}`)
-            .join('; ')}
-        />
-      ) : null}
+        ) : null}
+        {rejected.length ? (
+          <Banner
+            status="warning"
+            title={`${rejected.length} not added`}
+            description={rejected
+              .slice(0, 5)
+              .map((e) => `${e.item}: ${e.error}`)
+              .join('; ')}
+          />
+        ) : null}
 
-      {data?.stale ? <Banner status="info" title="An older copy" description="This node still has an older copy of the source than the one the list status reports; it catches up at the next fetch." /> : null}
-      {data?.staleExcludes.length ? (
-        <Banner
-          status="warning"
-          title={`${plural(data.staleExcludes.length, 'switched-off entry is', 'switched-off entries are')} no longer in the source`}
-          description="The source dropped them; they stay switched off in case they come back."
-          endContent={
-            editable ? (
-              <Button label="Forget them" size="sm" variant="secondary" isLoading={patch.isPending && patch.variables?.enable === data.staleExcludes} onClick={() => patch.mutate({ enable: data.staleExcludes })} />
-            ) : undefined
-          }
-          collapsible={{ defaultIsOpen: false }}
-        >
-          <List density="compact">
-            {data.staleExcludes.slice(0, 20).map((v) => (
-              <ListItem key={v} label={v} />
-            ))}
-          </List>
-        </Banner>
-      ) : null}
+        {data?.stale ? <Banner status="info" title="An older copy" description="This node still has an older copy of the source than the one the list status reports; it catches up at the next fetch." /> : null}
+        {data?.staleExcludes.length ? (
+          <Banner
+            status="warning"
+            title={`${plural(data.staleExcludes.length, 'switched-off entry is', 'switched-off entries are')} no longer in the source`}
+            description="The source dropped them; they stay switched off in case they come back."
+            endContent={
+              editable ? (
+                <Button label="Forget them" size="sm" variant="secondary" isLoading={patch.isPending && patch.variables?.enable === data.staleExcludes} onClick={() => patch.mutate({ enable: data.staleExcludes })} />
+              ) : undefined
+            }
+            collapsible={{ defaultIsOpen: false }}
+          >
+            <List density="compact">
+              {data.staleExcludes.slice(0, 20).map((v) => (
+                <ListItem key={v} label={v} />
+              ))}
+            </List>
+          </Banner>
+        ) : null}
 
-      <HStack gap={2} wrap="wrap" align="end">
-        <TextField className="k-search" label="Search entries" startIcon="search" placeholder="Part of a domain or rule" value={search} onChange={setSearch} hasClear />
-        <EnumSelect
-          label="Page size"
-          value={String(pageSize)}
-          options={PAGE_SIZES}
-          onChange={(v) => {
-            setPageSize(Number(v));
-            setCursors(['']);
-          }}
-        />
-        <Switch
-          label="Show disabled only"
-          value={disabledOnly}
-          onChange={(on) => {
-            setDisabledOnly(on);
-            setCursors(['']);
-            setSelected(new Set());
-          }}
-        />
-        <StackItem size="fill" />
-      </HStack>
+        <HStack gap={2} wrap="wrap" align="end">
+          <TextField fieldWidth={400} label="Search entries" startIcon="search" placeholder="Part of a domain or rule" value={search} onChange={setSearch} hasClear />
+          <EnumSelect
+            label="Page size"
+            value={String(pageSize)}
+            options={PAGE_SIZES}
+            onChange={(v) => {
+              setPageSize(Number(v));
+              setCursors(['']);
+            }}
+          />
+          <Switch
+            label="Show disabled only"
+            value={disabledOnly}
+            onChange={(on) => {
+              setDisabledOnly(on);
+              setCursors(['']);
+              setSelected(new Set());
+            }}
+          />
+          <StackItem size="fill" />
+        </HStack>
 
-      {editable && selected.size > 0 ? (
-        <Toolbar
-          label="Bulk actions"
-          size="sm"
-          variant="muted"
-          startContent={
+        {editable && selected.size > 0 ? (
+          <Toolbar
+            label="Bulk actions"
+            size="sm"
+            variant="muted"
+            startContent={
+              <>
+                <Badge label={`${selected.size} selected`} />
+                <Button label="Switch on" size="sm" variant="secondary" onClick={() => patch.mutate({ enable: chosen.filter((r) => !r.enabled).map((r) => r.value) })} isDisabled={!chosen.some((r) => !r.enabled)} />
+                <Button label="Switch off" size="sm" variant="secondary" onClick={() => patch.mutate({ disable: chosen.filter((r) => r.enabled).map((r) => r.value) })} isDisabled={!chosen.some((r) => r.enabled)} />
+                {canAdd ? <Button label={`Remove ${selected.size} selected`} size="sm" variant="destructive" onClick={() => setConfirm(true)} /> : null}
+              </>
+            }
+            endContent={<Button label="Clear selection" size="sm" variant="ghost" onClick={() => setSelected(new Set())} />}
+          />
+        ) : null}
+
+        {notFetched ? (
+          <Banner status="info" title="This node has not fetched the list yet" description={typeof notFetched.hint === 'string' && notFetched.hint ? `${notFetched.message}. ${notFetched.hint}` : notFetched.message} />
+        ) : q.error ? (
+          <ErrorBanner error={q.error} title="Could not read the entries" />
+        ) : null}
+        {q.isLoading ? <Loading label="Loading entries" /> : null}
+        {data ? (
+          <Table<Row>
+            aria-label={`Entries of ${source}`}
+            density="compact"
+            idKey="key"
+            data={rows}
+            plugins={editable ? { selection, rowAttrs } : { rowAttrs }}
+            emptyState={
+              <Text type="supporting">{query ? `No entry contains "${query}".` : disabledOnly ? 'No entry is switched off.' : 'No entries.'}</Text>
+            }
+            columns={[
+              { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
+              {
+                key: 'value',
+                header: 'Entry',
+                width: proportional(4),
+                renderCell: (r) => (
+                  <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
+                    {r.value}
+                  </Text>
+                ),
+              },
+              {
+                key: 'enabled',
+                header: 'Enabled',
+                width: pixel(84),
+                renderCell: (r) => (
+                  <Switch
+                    label={`${r.value} enabled`}
+                    isLabelHidden
+                    size="sm"
+                    value={r.enabled}
+                    isLoading={pending.has(r.value)}
+                    isDisabled={!editable || pending.has(r.value)}
+                    disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
+                    onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
+                  />
+                ),
+              },
+            ]}
+          />
+        ) : null}
+
+        <HStack gap={2} align="center" wrap="wrap">
+          <Text type="supporting" size="sm" role="status">
+            {rows.length
+              ? `Showing ${formatExact(first)}–${formatExact(first + rows.length - 1)}${
+                  query ? ` of the entries containing "${query}"` : disabledOnly ? ` of ${formatExact(data?.matched)} switched off` : ` of ${formatExact(data?.total)}`
+                }`
+              : ''}
+          </Text>
+          <StackItem size="fill" />
+          <Button label="Previous page" size="sm" variant="secondary" isDisabled={page === 0} onClick={() => setCursors((c) => c.slice(0, -1))} />
+          <Button label="Next page" size="sm" variant="secondary" isDisabled={!data?.continue || q.isPlaceholderData} onClick={() => setCursors((c) => (data?.continue ? [...c, data.continue] : c))} />
+        </HStack>
+
+        <FormDialog
+          isOpen={confirm}
+          onClose={() => setConfirm(false)}
+          title={`Remove ${plural(selected.size, 'entry', 'entries')}?`}
+          width={460}
+          footer={
             <>
-              <Badge label={`${selected.size} selected`} />
-              <Button label="Switch on" size="sm" variant="secondary" onClick={() => patch.mutate({ enable: chosen.filter((r) => !r.enabled).map((r) => r.value) })} isDisabled={!chosen.some((r) => !r.enabled)} />
-              <Button label="Switch off" size="sm" variant="secondary" onClick={() => patch.mutate({ disable: chosen.filter((r) => r.enabled).map((r) => r.value) })} isDisabled={!chosen.some((r) => r.enabled)} />
-              {canAdd ? <Button label={`Remove ${selected.size} selected`} size="sm" variant="destructive" onClick={() => setConfirm(true)} /> : null}
+              <Button label="Cancel" variant="ghost" onClick={() => setConfirm(false)} />
+              <Button label="Remove" variant="destructive" isLoading={patch.isPending} onClick={() => patch.mutate({ remove: [...selected] })} />
             </>
           }
-          endContent={<Button label="Clear selection" size="sm" variant="ghost" onClick={() => setSelected(new Set())} />}
-        />
-      ) : null}
-
-      {notFetched ? (
-        <Banner status="info" title="This node has not fetched the list yet" description={typeof notFetched.hint === 'string' && notFetched.hint ? `${notFetched.message}. ${notFetched.hint}` : notFetched.message} />
-      ) : q.error ? (
-        <ErrorBanner error={q.error} title="Could not read the entries" />
-      ) : null}
-      {q.isLoading ? <Loading label="Loading entries" /> : null}
-      {data ? (
-        <Table<Row>
-          aria-label={`Entries of ${source}`}
-          density="compact"
-          idKey="key"
-          data={rows}
-          plugins={editable ? { selection, rowAttrs } : { rowAttrs }}
-          emptyState={
-            <Text type="supporting">{query ? `No entry contains "${query}".` : disabledOnly ? 'No entry is switched off.' : 'No entries.'}</Text>
-          }
-          columns={[
-            { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
-            {
-              key: 'value',
-              header: 'Entry',
-              width: proportional(4),
-              renderCell: (r) => (
-                <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
-                  {r.value}
-                </Text>
-              ),
-            },
-            {
-              key: 'enabled',
-              header: 'Enabled',
-              width: pixel(84),
-              renderCell: (r) => (
-                <Switch
-                  label={`${r.value} enabled`}
-                  isLabelHidden
-                  size="sm"
-                  value={r.enabled}
-                  isLoading={pending.has(r.value)}
-                  isDisabled={!editable || pending.has(r.value)}
-                  disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
-                  onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
-                />
-              ),
-            },
-          ]}
-        />
-      ) : null}
-
-      <HStack gap={2} align="center" wrap="wrap">
-        <Text type="supporting" size="sm" role="status">
-          {rows.length
-            ? `Showing ${formatExact(first)}–${formatExact(first + rows.length - 1)}${
-                query ? ` of the entries containing "${query}"` : disabledOnly ? ` of ${formatExact(data?.matched)} switched off` : ` of ${formatExact(data?.total)}`
-              }`
-            : ''}
-        </Text>
-        <StackItem size="fill" />
-        <Button label="Previous page" size="sm" variant="secondary" isDisabled={page === 0} onClick={() => setCursors((c) => c.slice(0, -1))} />
-        <Button label="Next page" size="sm" variant="secondary" isDisabled={!data?.continue || q.isPlaceholderData} onClick={() => setCursors((c) => (data?.continue ? [...c, data.continue] : c))} />
-      </HStack>
-
-      <FormDialog
-        isOpen={confirm}
-        onClose={() => setConfirm(false)}
-        title={`Remove ${plural(selected.size, 'entry', 'entries')}?`}
-        width={460}
-        footer={
-          <>
-            <Button label="Cancel" variant="ghost" onClick={() => setConfirm(false)} />
-            <Button label="Remove" variant="destructive" isLoading={patch.isPending} onClick={() => patch.mutate({ remove: [...selected] })} />
-          </>
-        }
-      >
-        <VStack gap={2}>
-          <List density="compact">
-            {[...selected].slice(0, 20).map((v) => (
-              <ListItem key={v} label={v} />
-            ))}
-          </List>
-          {selected.size > 20 ? <Text type="supporting">and {selected.size - 20} more</Text> : null}
-          <Text type="supporting">They are removed from {source}; add them again to undo. To keep one for later, switch it off instead.</Text>
-          {patch.error && patch.variables?.remove ? <Text type="supporting">{errorText(patch.error)}</Text> : null}
-        </VStack>
-      </FormDialog>
-    </VStack>
+        >
+          <VStack gap={2}>
+            <List density="compact">
+              {[...selected].slice(0, 20).map((v) => (
+                <ListItem key={v} label={v} />
+              ))}
+            </List>
+            {selected.size > 20 ? <Text type="supporting">and {selected.size - 20} more</Text> : null}
+            <Text type="supporting">They are removed from {source}; add them again to undo. To keep one for later, switch it off instead.</Text>
+            {patch.error && patch.variables?.remove ? <Text type="supporting">{errorText(patch.error)}</Text> : null}
+          </VStack>
+        </FormDialog>
+      </VStack>
+    </Panel>
   );
 }

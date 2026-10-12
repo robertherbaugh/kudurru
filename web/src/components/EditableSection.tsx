@@ -1,13 +1,16 @@
 // One section of an object page (docs/m3/ui.md "Pages, wizards and
-// dialogs"): a panel with a heading, the current value, and an Edit button
-// that swaps in typed controls with their own Save and Cancel. The section
+// dialogs"): a Panel (a region named by its heading) with the current
+// value, and an Edit button that swaps in typed controls with their own
+// Save and Cancel. The section
 // edits a copy; Save validates it and hands it to onSave, which writes the
 // object. Read-only objects keep the Edit button disabled with the reason
 // as its tooltip.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { useId, useState, type ReactNode } from 'react';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { errorText } from './Feedback';
+import { Panel } from './layout/Page';
 
 export interface EditableSectionProps<T> {
   title: string;
@@ -27,7 +30,6 @@ export interface EditableSectionProps<T> {
 }
 
 export function EditableSection<T>({ title, description, value, view, edit, validate, onSave, readOnlyReason, actions, testId }: EditableSectionProps<T>) {
-  const id = useId();
   const [draft, setDraft] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -60,40 +62,48 @@ export function EditableSection<T>({ title, description, value, view, edit, vali
   };
 
   return (
-    <section className="k-panel k-section" aria-labelledby={id} data-testid={testId}>
-      <div className="k-panel-title">
-        <h2 id={id}>{title}</h2>
-        <div className="k-row">
-          {actions}
-          {edit && !editing ? (
-            <Button label={`Edit ${title}`} size="sm" variant="secondary" isDisabled={!!readOnlyReason} tooltip={readOnlyReason || undefined} onClick={() => setDraft(structuredClone(value))}>
-              Edit
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      {description ? <p className="k-muted k-small">{description}</p> : null}
+    <Panel
+      title={title}
+      description={description}
+      data-testid={testId}
+      actions={
+        actions || (edit && !editing) ? (
+          <>
+            {actions}
+            {edit && !editing ? (
+              <Button label={`Edit ${title}`} size="sm" variant="secondary" isDisabled={!!readOnlyReason} tooltip={readOnlyReason || undefined} onClick={() => setDraft(structuredClone(value))}>
+                Edit
+              </Button>
+            ) : null}
+          </>
+        ) : undefined
+      }
+    >
       {editing && edit ? (
-        <form
-          className="k-stack-lg"
-          noValidate
-          onSubmit={(e) => {
+        <VStack
+          as="form"
+          gap={4}
+          {...formAttrs}
+          onSubmit={(e: FormEvent) => {
             e.preventDefault();
             void save();
           }}
         >
           {edit(draft, (v) => setDraft(v), showErrors)}
           {error ? <Banner status="error" title={`Could not save ${title.toLowerCase()}`} description={error} /> : null}
-          <div className="k-row">
+          <HStack gap={2} vAlign="center" wrap="wrap">
             <Button type="submit" label={`Save ${title}`} variant="primary" isLoading={saving}>
               Save
             </Button>
             <Button label="Cancel" variant="ghost" onClick={cancel} />
-          </div>
-        </form>
+          </HStack>
+        </VStack>
       ) : (
         view
       )}
-    </section>
+    </Panel>
   );
 }
+
+/** <form> attributes the Astryx stack props do not type (they reach the element). */
+const formAttrs: object = { noValidate: true };

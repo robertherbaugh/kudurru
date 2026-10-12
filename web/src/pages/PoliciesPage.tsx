@@ -5,30 +5,33 @@
 // objects, the same rules the server applies), its groups, lists and
 // service logos; a name opens the policy's page, "New policy" the wizard.
 import { Badge } from '@astryxdesign/core/Badge';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMemo } from 'react';
 import type { Policy } from '../api/types';
 import { ObjectsPage } from '../components/ObjectsPage';
-import { ServiceIcon } from '../components/ServiceIcon';
 import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
-import { useCatalogueServices } from '../components/ServiceGrid';
+import { LogoStack, useCatalogueServices } from '../components/ServiceGrid';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { derivePolicyState, objectHref, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
-import { Link } from '../lib/router';
+import { Link } from '@astryxdesign/core/Link';
 import { useDeriveContext } from '../lib/usePolicyData';
 
 const SHOWN_SERVICES = 5;
 
 function Refs({ kind, ns, names }: { kind: 'groups' | 'lists'; ns: string; names: string[] | undefined }) {
-  if (!names?.length) return <span className="k-muted">none</span>;
+  if (!names?.length) return <Text color="secondary">none</Text>;
   return (
-    <span className="k-small">
+    <Text size="sm">
       {names.map((n, i) => (
-        <span key={n}>
+        <Text key={n} type="inherit">
           {i ? ', ' : ''}
-          <Link href={objectHref(kind, `${ns}/${n}`)}>{n}</Link>
-        </span>
+          <Link href={objectHref(kind, `${ns}/${n}`)} type="inherit" color="inherit" hasUnderline>
+            {n}
+          </Link>
+        </Text>
       ))}
-    </span>
+    </Text>
   );
 }
 
@@ -57,9 +60,9 @@ export default function PoliciesPage() {
           cell: (p) => {
             const b = badges.get(refOfObject(p));
             return b ? (
-              <span title={b.help} data-state={b.key}>
-                <Badge variant={b.variant} label={b.label} />
-              </span>
+              <Tooltip content={b.help}>
+                <Badge variant={b.variant} label={b.label} data-state={b.key} />
+              </Tooltip>
             ) : null;
           },
         },
@@ -78,26 +81,21 @@ export default function PoliciesPage() {
           header: 'Services',
           cell: (p) => {
             const blocked = p.spec.blockedServices ?? [];
-            if (!blocked.length && !p.spec.safeSearch) return <span className="k-muted">none</span>;
+            if (!blocked.length && !p.spec.safeSearch) return <Text color="secondary">none</Text>;
             return (
-              <ul className="k-logo-stack" aria-label={`Services blocked by ${p.metadata.name}`}>
-                {blocked.slice(0, SHOWN_SERVICES).map((id) => (
-                  <li key={id} title={byId.get(id)?.name ?? id}>
-                    <ServiceIcon id={id} name={byId.get(id)?.name ?? id} icon={byId.get(id)?.icon} iconOnDark={byId.get(id)?.iconOnDark} size={22} />
-                    <span className="k-visually-hidden">{byId.get(id)?.name ?? id}</span>
-                  </li>
-                ))}
-                {blocked.length > SHOWN_SERVICES ? <li className="k-muted k-small">+{blocked.length - SHOWN_SERVICES}</li> : null}
-                {p.spec.safeSearch ? (
-                  <li>
-                    <Badge variant="teal" label="safe search" />
-                  </li>
-                ) : null}
-              </ul>
+              <LogoStack
+                label={`Services blocked by ${p.metadata.name}`}
+                items={blocked.slice(0, SHOWN_SERVICES).map((id) => {
+                  const s = byId.get(id);
+                  return { id, name: s?.name ?? id, icon: s?.icon, iconOnDark: s?.iconOnDark };
+                })}
+                more={blocked.length - SHOWN_SERVICES}
+                extra={p.spec.safeSearch ? <Badge variant="teal" label="safe search" /> : undefined}
+              />
             );
           },
         },
-        { header: 'Schedule', cell: (p) => (p.spec.schedule ? <span className="k-small">{scheduleSummary(p.spec.schedule)}</span> : <span className="k-muted">always</span>) },
+        { header: 'Schedule', cell: (p) => (p.spec.schedule ? <Text size="sm">{scheduleSummary(p.spec.schedule)}</Text> : <Text color="secondary">always</Text>) },
       ]}
     />
   );

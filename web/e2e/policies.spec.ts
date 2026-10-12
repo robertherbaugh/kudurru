@@ -178,6 +178,16 @@ test('a policy blocks the whole AI category; the grid searches and filters', asy
     await settle(page);
     const sec = main(page).getByTestId('section-services');
 
+    // Every tile is equally tall, whether it shows a logo or a monogram
+    // (the embedded catalogue has both) and whatever its name's length.
+    await expect(sec.locator('[data-service]').first()).toBeVisible();
+    const tiles = await sec.locator('[data-service]').evaluateAll((els) =>
+      els.map((el) => ({ id: el.getAttribute('data-service'), logo: !!el.querySelector('img[data-icon]'), height: Math.round(el.getBoundingClientRect().height) })),
+    );
+    expect(tiles.some((t) => t.logo), 'a tile with a logo').toBe(true);
+    expect(tiles.some((t) => !t.logo), 'a tile with a monogram').toBe(true);
+    expect(new Set(tiles.map((t) => t.height)), `tile heights: ${JSON.stringify(tiles)}`).toEqual(new Set([tiles[0]!.height]));
+
     // Search filters by name and by domain.
     const search = sec.getByRole('textbox', { name: 'Search services' });
     await search.fill('claude.ai');

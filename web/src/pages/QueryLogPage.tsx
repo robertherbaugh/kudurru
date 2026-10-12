@@ -1,24 +1,29 @@
 // The query log (§10 principle 5): filters live in the URL (every drill-
 // down is a shareable link), keyset pagination over `cursor`, wildcard
-// search with suggestions, the live tail over SSE, and per-row Allow/Deny.
+// search with suggestions, the live tail over SSE, per-row Allow/Deny, and
+// on blocked rows a link to the name's unblock requests or the Allowlist.
 import { Button } from '@astryxdesign/core/Button';
+import { Code } from '@astryxdesign/core/Code';
 import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
 import { Grid } from '@astryxdesign/core/Grid';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Switch } from '@astryxdesign/core/Switch';
+import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { QueryFilter, QueryRow, StatusClass } from '../api/types';
+import type { QueryFilter, QueryRow, StatusClass, UnblockRequest } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { SelectField } from '../components/fields/SelectField';
+import { Page, PageHeader } from '../components/layout/Page';
 import { PurgeQueryLog } from '../components/PurgeQueryLog';
-import { QueryLogTable } from '../components/QueryLogTable';
+import { QueryLogTable, type UnblockLink } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
 import { SuggestInput } from '../components/SuggestInput';
+import { domainKey } from '../components/unblock/UnblockParts';
 import { formatDateTime, formatExact } from '../lib/format';
-import { Link, useSearchParams } from '../lib/router';
+import { useSearchParams } from '../lib/router';
 import { writeSummary } from '../components/domains/DomainEntryDialogs';
 import { useLiveTail } from '../lib/useLiveTail';
 
@@ -126,88 +131,101 @@ export default function QueryLogPage() {
     if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
   }, [q]);
 
+  // Blocked rows link to the unblock requests for their name, or to the
+  // Allowlist's Add dialog: one list call (newest requests, every state),
+  // matched by name, instead of one call per row.
+  const canRequests = can('unblockrequests', 'read');
+  const requests = useQuery({
+    queryKey: qk.unblock('by-domain'),
+    queryFn: () => api.unblock.list({ limit: REQUESTS_LIMIT }),
+    enabled: canRequests,
+    staleTime: 60_000,
+  });
+  const byDomain = useMemo(() => requestsByDomain(requests.data?.items ?? []), [requests.data]);
+  const canWrite = can('blocklists', 'write');
+  const unblock = useCallback((r: QueryRow) => unblockLink(r.domain, byDomain, canWrite), [byDomain, canWrite]);
+
   const anyFilter = FILTER_KEYS.some((k) => sp.get(k));
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Query log</h1>
-        <div className="k-actions">
-          <ScopeNote scope={first} />
-          <Switch
-            label="Live tail"
-            description={tail === 'unsupported' ? 'This browser has no EventSource' : tail === 'retrying' ? 'Reconnecting…' : tail === 'live' ? 'Streaming new queries' : undefined}
-            value={live}
-            isDisabled={tail === 'unsupported'}
-            onChange={setLive}
-          />
-          <PurgeQueryLog
-            onPurged={() => {
-              setLiveRows([]);
-              void qc.invalidateQueries({ queryKey: qk.queries() });
-            }}
-          />
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title="Query log"
+        actions={
+          <>
+            <ScopeNote scope={first} />
+            <Switch
+              label="Live tail"
+              description={tail === 'unsupported' ? 'This browser has no EventSource' : tail === 'retrying' ? 'Reconnecting…' : tail === 'live' ? 'Streaming new queries' : undefined}
+              value={live}
+              isDisabled={tail === 'unsupported'}
+              onChange={setLive}
+            />
+            <PurgeQueryLog
+              onPurged={() => {
+                setLiveRows([]);
+                void qc.invalidateQueries({ queryKey: qk.queries() });
+              }}
+            />
+          </>
+        }
+      />
 
-      <form
+      <VStack
+        as="form"
+        gap={2}
         aria-label="Filters"
         onSubmit={(e) => {
           e.preventDefault();
         }}
       >
-        <VStack gap={2}>
-          <Grid columns={{ minWidth: 180 }} gap={2} align="start">
-            <SuggestInput label="Domain" field="domain" value={filters.domain ?? ''} placeholder="*.example.com" onCommit={(v) => set({ domain: v || null })} />
-            <SuggestInput label="Client" field="client" value={filters.client ?? ''} placeholder="IP or name" onCommit={(v) => set({ client: v || null })} />
-            <SelectField label="Status" value={filters.status_class ?? ''} emptyLabel="Any status" options={CLASSES} onChange={(v) => set({ status_class: v || null })} />
-            <SelectField
-              label="Type"
-              value={filters.qtype ?? ''}
-              emptyLabel="Any type"
-              options={QTYPES.map((t) => ({ value: t, label: t }))}
-              onChange={(v) => set({ qtype: v || null })}
-            />
-            <SuggestInput label="Upstream" field="upstream" value={filters.upstream ?? ''} onCommit={(v) => set({ upstream: v || null })} />
-            <SuggestInput label="List" field="list" value={filters.list ?? ''} onCommit={(v) => set({ list: v || null })} />
-            <SuggestInput label="Zone" field="zone" value={filters.zone ?? ''} onCommit={(v) => set({ zone: v || null })} />
-          </Grid>
-          {/* Date and time sit side by side from 400px, so the range gets its own row. */}
-          <HStack gap={2} align="end" wrap="wrap">
-            <DateTimeInput
-              label="Since"
-              value={(toLocalInput(filters.since) || undefined) as ISODateTimeString | undefined}
-              onChange={(v) => set({ since: fromLocalInput(v ?? '') || null })}
-              hasClear
-            />
-            <DateTimeInput
-              label="Until"
-              value={(toLocalInput(filters.until) || undefined) as ISODateTimeString | undefined}
-              onChange={(v) => set({ until: fromLocalInput(v ?? '') || null })}
-              hasClear
-            />
-            {anyFilter ? <Button label="Clear filters" variant="ghost" onClick={() => set(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))} /> : null}
-          </HStack>
-        </VStack>
-      </form>
+        <Grid columns={{ minWidth: 180 }} gap={2} align="start">
+          <SuggestInput label="Domain" field="domain" value={filters.domain ?? ''} placeholder="*.example.com" onCommit={(v) => set({ domain: v || null })} />
+          <SuggestInput label="Client" field="client" value={filters.client ?? ''} placeholder="IP or name" onCommit={(v) => set({ client: v || null })} />
+          <SelectField label="Status" value={filters.status_class ?? ''} emptyLabel="Any status" options={CLASSES} onChange={(v) => set({ status_class: v || null })} />
+          <SelectField
+            label="Type"
+            value={filters.qtype ?? ''}
+            emptyLabel="Any type"
+            options={QTYPES.map((t) => ({ value: t, label: t }))}
+            onChange={(v) => set({ qtype: v || null })}
+          />
+          <SuggestInput label="Upstream" field="upstream" value={filters.upstream ?? ''} onCommit={(v) => set({ upstream: v || null })} />
+          <SuggestInput label="List" field="list" value={filters.list ?? ''} onCommit={(v) => set({ list: v || null })} />
+          <SuggestInput label="Zone" field="zone" value={filters.zone ?? ''} onCommit={(v) => set({ zone: v || null })} />
+          {/* The deciding policy, matched exactly (no wildcards on the server). */}
+          <SuggestInput label="Policy" field="policy" value={filters.policy ?? ''} placeholder="namespace/name" onCommit={(v) => set({ policy: v || null })} />
+        </Grid>
+        {/* Date and time sit side by side from 400px, so the range gets its own row. */}
+        <HStack gap={2} vAlign="end" wrap="wrap">
+          <DateTimeInput
+            label="Since"
+            value={(toLocalInput(filters.since) || undefined) as ISODateTimeString | undefined}
+            onChange={(v) => set({ since: fromLocalInput(v ?? '') || null })}
+            hasClear
+          />
+          <DateTimeInput
+            label="Until"
+            value={(toLocalInput(filters.until) || undefined) as ISODateTimeString | undefined}
+            onChange={(v) => set({ until: fromLocalInput(v ?? '') || null })}
+            hasClear
+          />
+          {anyFilter ? <Button label="Clear filters" variant="ghost" onClick={() => set(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])))} /> : null}
+        </HStack>
+      </VStack>
 
-      {filters.status || filters.policy ? (
-        <p className="k-small">
-          Also filtered by {filters.status ? <code>status={filters.status}</code> : null}{' '}
-          {filters.policy ? (
-            <>
-              policy <Link href={`/policies/${filters.policy.split('/').map(encodeURIComponent).join('/')}`}>{filters.policy}</Link>
-            </>
-          ) : null}
-        </p>
+      {filters.status ? (
+        <Text type="supporting" color="primary" as="p">
+          Also filtered by <Code>status={filters.status}</Code>
+        </Text>
       ) : null}
 
       {first ? (
-        <p className="k-small k-muted" data-testid="log-totals">
+        <Text type="supporting" as="p" data-testid="log-totals">
           {formatExact(first.records_filtered)} of {formatExact(first.records_total)} queries match
           {first.earliest_ts_memory ? `; in memory since ${formatDateTime(first.earliest_ts_memory)}` : ''}
           {first.earliest_ts_disk ? `; on disk since ${formatDateTime(first.earliest_ts_disk)}` : ''}
-        </p>
+        </Text>
       ) : null}
 
       {q.error ? <ErrorBanner error={q.error} title="The query log could not be read" /> : null}
@@ -218,9 +236,51 @@ export default function QueryLogPage() {
         hasMore={!!q.hasNextPage}
         loadingMore={q.isFetchingNextPage}
         onLoadMore={loadMore}
-        canAct={can('blocklists', 'write')}
+        canAct={canWrite}
         onAction={(row, a) => action.mutate({ row, action: a })}
+        unblockLink={unblock}
       />
-    </div>
+    </Page>
   );
+}
+
+/** The most requests the query log asks for to match blocked names (the API's page limit). */
+export const REQUESTS_LIMIT = 500;
+
+export interface DomainRequests {
+  total: number;
+  pending: number;
+}
+
+/** The unblock requests per name. */
+export function requestsByDomain(items: readonly Pick<UnblockRequest, 'domain' | 'state'>[]): Map<string, DomainRequests> {
+  const out = new Map<string, DomainRequests>();
+  for (const r of items) {
+    const k = domainKey(r.domain);
+    const c = out.get(k) ?? { total: 0, pending: 0 };
+    c.total++;
+    if (r.state === 'Pending') c.pending++;
+    out.set(k, c);
+  }
+  return out;
+}
+
+/**
+ * The link of a blocked row: its unblock requests on /requests when there
+ * are any, otherwise the Allowlist's Add dialog with the name filled in
+ * (only for roles that can write lists).
+ */
+export function unblockLink(domain: string, requests: ReadonlyMap<string, DomainRequests>, canWrite: boolean): UnblockLink | null {
+  const name = domainKey(domain);
+  const c = requests.get(name);
+  if (c) {
+    const n = `${formatExact(c.total)} unblock ${c.total === 1 ? 'request' : 'requests'} for this name`;
+    return {
+      href: `/requests?${new URLSearchParams({ domain: name, state: 'all' }).toString()}`,
+      label: 'Requests',
+      note: c.pending ? `${n}, ${formatExact(c.pending)} pending` : n,
+    };
+  }
+  if (!canWrite) return null;
+  return { href: `/allowlist?${new URLSearchParams({ add: name }).toString()}`, label: 'Allow…', note: 'Add an allow entry on the Allowlist (groups, subdomains, comment).' };
 }

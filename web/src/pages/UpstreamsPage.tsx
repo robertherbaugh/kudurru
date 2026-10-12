@@ -8,10 +8,18 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Code } from '@astryxdesign/core/Code';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { pixel, proportional, Table, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { useEffect, useMemo, useState } from 'react';
 import type { UpstreamItem, UpstreamServer } from '../api/types';
 import { ErrorBanner, errorText, Loading } from '../components/Feedback';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EnumSelect } from '../components/fields/EnumSelect';
 import { NumberField, numberError } from '../components/fields/NumberField';
 import { cleanList, StringListField } from '../components/fields/StringListField';
@@ -19,68 +27,74 @@ import { TextField } from '../components/fields/TextField';
 import { healthSummary, strategyLabel, trafficFor, useUpstreams } from '../components/UpstreamGroup';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 import { formatExact } from '../lib/format';
-import { Link, useNewParam } from '../lib/router';
-import { bootstrapError, conditionalKeyError, DEFAULT_GROUP, ECS_MODES, groupNames, mapPatch, type UpstreamsConfig } from '../lib/upstreams';
+import { useNewParam } from '../lib/router';
+import { bootstrapError, conditionalKeyError, DEFAULT_GROUP, ECS_MODES, groupNames, mapPatch, type UpstreamGroupConfig, type UpstreamsConfig } from '../lib/upstreams';
 
 export { healthFor, strategyLabel, trafficFor } from '../components/UpstreamGroup';
 
 type Save = (patch: Record<string, unknown>, what: string) => Promise<void>;
 
+interface GroupRow extends Record<string, unknown> {
+  name: string;
+  g: UpstreamGroupConfig;
+  healthy: number;
+  known: number;
+  queries: number;
+}
+
+/** data-testid="group-<name>" on each row (tests and e2e find groups by it). */
+const groupRowAttrs: TablePlugin<GroupRow> = {
+  transformBodyRow: (props, item) => ({ ...props, htmlProps: { ...props.htmlProps, ...({ 'data-testid': `group-${item.name}` } as Record<string, string>) } }),
+};
+
+const GROUP_COLUMNS: TableColumn<GroupRow>[] = [
+  {
+    key: 'name',
+    header: 'Group',
+    width: proportional(2, { minWidth: 160 }),
+    renderCell: (r) => (
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <Link href={`/upstreams/${encodeURIComponent(r.name)}`} color="inherit" hasUnderline>
+          <Text type="code" size="sm">{r.name}</Text>
+        </Link>
+        {r.name === DEFAULT_GROUP ? <Badge variant="neutral" label="default" /> : null}
+      </HStack>
+    ),
+  },
+  { key: 'strategy', header: 'Strategy', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <Badge variant="blue" label={strategyLabel(r.g.strategy)} /> },
+  { key: 'servers', header: 'Servers', align: 'end', width: pixel(80), renderCell: (r) => <Text hasTabularNumbers>{r.g.servers.length}</Text> },
+  {
+    key: 'health',
+    header: 'Health',
+    width: proportional(2, { minWidth: 140 }),
+    renderCell: (r) =>
+      r.known === 0 ? (
+        <Text color="secondary">no data yet</Text>
+      ) : (
+        <HStack gap={2} vAlign="center">
+          <StatusDot variant={r.healthy === r.known ? 'success' : r.healthy === 0 ? 'error' : 'warning'} label={`${r.healthy} of ${r.known} healthy`} />
+          <Text>
+            {r.healthy} of {r.known} healthy
+          </Text>
+        </HStack>
+      ),
+  },
+  { key: 'queries', header: 'Queries (24 h)', align: 'end', width: pixel(130), renderCell: (r) => <Text hasTabularNumbers>{formatExact(r.queries)}</Text> },
+  { key: 'timeout', header: 'Timeout', width: pixel(100), renderCell: (r) => <Text>{r.g.timeout || '2s'}</Text> },
+];
+
 function GroupsTable({ cfg, servers, traffic }: { cfg: UpstreamsConfig; servers: UpstreamServer[] | undefined; traffic: UpstreamItem[] | null | undefined }) {
-  const names = groupNames(cfg);
+  const rows = groupNames(cfg).flatMap((n): GroupRow[] => {
+    const g = cfg.groups[n];
+    if (!g) return [];
+    const h = healthSummary(servers, n, g.servers);
+    const queries = g.servers.reduce((sum, e) => sum + (trafficFor(traffic, n, e)?.total ?? 0), 0);
+    return [{ name: n, g, healthy: h.healthy, known: h.known, queries }];
+  });
   return (
-    <div className="k-panel k-table-wrap">
-      <table className="k-table" aria-label="Upstream groups">
-        <thead>
-          <tr>
-            <th scope="col">Group</th>
-            <th scope="col">Strategy</th>
-            <th scope="col" className="num">
-              Servers
-            </th>
-            <th scope="col">Health</th>
-            <th scope="col" className="num">
-              Queries (24 h)
-            </th>
-            <th scope="col">Timeout</th>
-          </tr>
-        </thead>
-        <tbody>
-          {names.map((n) => {
-            const g = cfg.groups[n];
-            if (!g) return null;
-            const h = healthSummary(servers, n, g.servers);
-            const queries = g.servers.reduce((sum, e) => sum + (trafficFor(traffic, n, e)?.total ?? 0), 0);
-            return (
-              <tr key={n} data-testid={`group-${n}`}>
-                <td>
-                  <Link href={`/upstreams/${encodeURIComponent(n)}`} className="k-mono">
-                    {n}
-                  </Link>{' '}
-                  {n === DEFAULT_GROUP ? <Badge variant="neutral" label="default" /> : null}
-                </td>
-                <td>
-                  <Badge variant="blue" label={strategyLabel(g.strategy)} />
-                </td>
-                <td className="num">{g.servers.length}</td>
-                <td>
-                  {h.known === 0 ? (
-                    <span className="k-muted">no data yet</span>
-                  ) : (
-                    <span className="k-row">
-                      <StatusDot variant={h.healthy === h.known ? 'success' : h.healthy === 0 ? 'error' : 'warning'} label={`${h.healthy} of ${h.known} healthy`} />
-                      {h.healthy} of {h.known} healthy
-                    </span>
-                  )}
-                </td>
-                <td className="num">{formatExact(queries)}</td>
-                <td>{g.timeout || '2s'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Card>
+      <Table<GroupRow> aria-label="Upstream groups" density="compact" hasHover idKey="name" data={rows} columns={GROUP_COLUMNS} plugins={{ groupRowAttrs }} emptyState={false} />
+    </Card>
   );
 }
 
@@ -104,7 +118,6 @@ export function ruleErrors(rules: Rule[], groups: string[]): Record<number, stri
 }
 
 function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: boolean; onSave: Save }) {
-  const titleId = useId();
   const names = groupNames(cfg);
   const initial = useMemo(() => Object.entries(cfg.conditional).map(([suffix, group]) => ({ suffix, group })), [cfg.conditional]);
   const [rules, setRules] = useState<Rule[]>(initial);
@@ -130,17 +143,22 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
   };
   const groupOptions = (current: string) => (names.includes(current) ? names : [...names, current]).map((n) => ({ value: n, label: names.includes(n) ? n : `${n} (missing)` }));
   return (
-    <section className="k-panel" aria-labelledby={titleId}>
-      <h2 id={titleId} className="k-h3">
-        Conditional forwarding
-      </h2>
-      <p className="k-muted k-small">
-        Queries under a domain suffix go to a group (the longest suffix wins; answers are not cached). A rule may list several suffixes in dnsmasq form,{' '}
-        <code>[/corp.example/10.in-addr.arpa/]</code>.
-      </p>
-      {rules.length === 0 ? <p className="k-muted">No rules; everything not matched by a policy or zone uses the default group.</p> : null}
+    <Panel
+      title="Conditional forwarding"
+      description={
+        <>
+          Queries under a domain suffix go to a group (the longest suffix wins; answers are not cached). A rule may list several suffixes in dnsmasq form,{' '}
+          <Code>[/corp.example/10.in-addr.arpa/]</Code>.
+        </>
+      }
+    >
+      {rules.length === 0 ? (
+        <Text as="p" color="secondary">
+          No rules; everything not matched by a policy or zone uses the default group.
+        </Text>
+      ) : null}
       {rules.map((r, i) => (
-        <div key={i} className="k-row-end">
+        <HStack key={i} gap={2} vAlign="end" wrap="wrap">
           <TextField
             label="Domain suffix"
             isLabelHidden={i > 0}
@@ -159,10 +177,10 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
             onChange={(v) => setRules(rules.map((x, j) => (j === i ? { ...x, group: v } : x)))}
           />
           <Button label="Remove" size="sm" variant="ghost" isDisabled={!canWrite} onClick={() => setRules(rules.filter((_, j) => j !== i))} />
-        </div>
+        </HStack>
       ))}
       {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}
-      <div className="k-row">
+      <HStack gap={2} vAlign="center" wrap="wrap">
         <Button label="Add rule" size="sm" variant="secondary" isDisabled={!canWrite} onClick={() => setRules([...rules, { suffix: '', group: names[0] ?? DEFAULT_GROUP }])} />
         {dirty ? (
           <>
@@ -170,13 +188,12 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
             <Button label="Reset" size="sm" variant="ghost" onClick={() => setRules(initial)} />
           </>
         ) : null}
-      </div>
-    </section>
+      </HStack>
+    </Panel>
   );
 }
 
 function BootstrapPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: boolean; onSave: Save }) {
-  const titleId = useId();
   const [list, setList] = useState(cfg.bootstrap);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -200,10 +217,7 @@ function BootstrapPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWr
     }
   };
   return (
-    <section className="k-panel" aria-labelledby={titleId}>
-      <h2 id={titleId} className="k-h3">
-        Bootstrap resolvers
-      </h2>
+    <Panel title="Bootstrap resolvers">
       <StringListField
         label="Resolvers"
         description="Plain DNS resolvers (ip[:port]) used to look up the host names of DoT, DoH and DoQ servers; none uses the system resolver"
@@ -216,19 +230,18 @@ function BootstrapPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWr
         error={error}
       />
       {dirty ? (
-        <div className="k-row">
+        <HStack gap={2} vAlign="center" wrap="wrap">
           <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
           <Button label="Reset" size="sm" variant="ghost" onClick={() => setList(cfg.bootstrap)} />
-        </div>
+        </HStack>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
 const ECS_OPTIONS = ECS_MODES.map((m) => ({ value: m.value, label: m.label }));
 
 function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: boolean; onSave: Save }) {
-  const titleId = useId();
   const [mode, setMode] = useState(cfg.ecs.mode);
   const [v4, setV4] = useState(String(cfg.ecs.ipv4Prefix));
   const [v6, setV6] = useState(String(cfg.ecs.ipv6Prefix));
@@ -253,25 +266,21 @@ function EcsPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; canWrite: b
     }
   };
   return (
-    <section className="k-panel" aria-labelledby={titleId}>
-      <h2 id={titleId} className="k-h3">
-        EDNS Client Subnet
-      </h2>
-      <p className="k-muted k-small">Whether upstreams learn which network a query came from (RFC 7871). Strip is the privacy default.</p>
+    <Panel title="EDNS Client Subnet" description="Whether upstreams learn which network a query came from (RFC 7871). Strip is the privacy default.">
       <EnumSelect label="Mode" value={mode} options={ECS_OPTIONS} isDisabled={!canWrite} onChange={setMode} />
       {mode !== 'strip' ? (
-        <div className="k-row-end">
+        <HStack gap={2} vAlign="end" wrap="wrap">
           <NumberField label="IPv4 prefix" value={v4} onChange={setV4} min={0} max={32} isDisabled={!canWrite} help="Longest prefix sent" />
           <NumberField label="IPv6 prefix" value={v6} onChange={setV6} min={0} max={128} isDisabled={!canWrite} help="Longest prefix sent" />
-        </div>
+        </HStack>
       ) : null}
       {err ? <Banner status="error" title="The server rejected the change" description={err} /> : null}
       {dirty ? (
-        <div className="k-row">
+        <HStack gap={2} vAlign="center" wrap="wrap">
           <Button label="Save" size="sm" variant="primary" isLoading={busy} onClick={() => void save()} />
-        </div>
+        </HStack>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -280,25 +289,19 @@ export default function UpstreamsPage() {
   const u = useUpstreams();
   const names = groupNames(u.cfg);
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>Upstreams</h1>
-          <p className="k-muted k-small">
-            The resolvers kudurru forwards to. Policies and forward zones pick a group by name; everything else uses <code>default</code>. Health is this
+    <Page>
+      <PageHeader
+        title="Upstreams"
+        description={
+          <>
+            The resolvers kudurru forwards to. Policies and forward zones pick a group by name; everything else uses <Code>default</Code>. Health is this
             node's view right now; traffic covers the last 24 hours.
-          </p>
-        </div>
-        <div className="k-actions">
-          <Button
-            label="New group"
-            variant="primary"
-            isDisabled={!u.canWrite}
-            tooltip={u.canWriteSetting ? undefined : 'Needs settings.write'}
-            onClick={() => setCreating(true)}
-          />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <Button label="New group" variant="primary" isDisabled={!u.canWrite} tooltip={u.canWriteSetting ? undefined : 'Needs settings.write'} onClick={() => setCreating(true)} />
+        }
+      />
       {u.readOnlyReason ? <Banner status="info" title="Read-only here" description={u.readOnlyReason} /> : null}
       {!u.readOnlyReason && !u.canWriteSetting ? <Banner status="info" title="Read-only" description="Changing upstreams needs the settings.write permission." /> : null}
       {u.notPersisted ? (
@@ -317,14 +320,14 @@ export default function UpstreamsPage() {
         <>
           {names.length === 0 ? <Banner status="warning" title="No upstream groups" description="Without a default group nothing can be forwarded." /> : null}
           <GroupsTable cfg={u.cfg} servers={u.stats.data?.servers} traffic={u.stats.data?.upstreams} />
-          <div className="k-grid k-grid-2">
+          <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
             <BootstrapPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
             <EcsPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
-          </div>
+          </Grid>
           <ConditionalPanel cfg={u.cfg} canWrite={u.canWrite} onSave={u.save} />
         </>
       ) : null}
       <UpstreamWizardDialog isOpen={creating} onClose={() => setCreating(false)} />
-    </div>
+    </Page>
   );
 }

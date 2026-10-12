@@ -6,23 +6,35 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Code } from '@astryxdesign/core/Code';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { ClientGroup, ClientMatcher } from '../api/types';
+import type { ClientGroup, ClientItem, ClientMatcher } from '../api/types';
 import { EditableSection } from '../components/EditableSection';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { cleanMatchers, kindLabel, matcherKind, matchersError, matcherValue, MatchersField } from '../components/fields/MatchersField';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 import { YamlDialog } from '../components/YamlDialog';
 import { formatExact, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { clientHref, DEFAULT_GROUP, derivePolicyState, identifyClient, objectHref, policiesOfGroup, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
-import { Link, useNavigate } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { useDeriveContext } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
+
+const BACK = { href: '/groups', label: 'Groups' };
+
+/** Lists drawn by Stacks: no markers or indent. */
+const LIST_RESET = { listStyle: 'none', padding: 0, margin: 0 } as const;
 
 export default function GroupDetailPage({ params }: PageProps) {
   const ns = params.ns ?? 'default';
@@ -72,13 +84,10 @@ export default function GroupDetailPage({ params }: PageProps) {
 
   if (q.error) {
     return (
-      <div className="k-page">
-        <Link href="/groups" className="k-small">
-          ← Groups
-        </Link>
-        <h1>Group {name}</h1>
+      <Page>
+        <PageHeader title={`Group ${name}`} back={BACK} />
         <ErrorBanner error={q.error} />
-      </div>
+      </Page>
     );
   }
   if (!group) return <Loading />;
@@ -94,30 +103,30 @@ export default function GroupDetailPage({ params }: PageProps) {
   const problems = (group.status?.conditions ?? []).filter((c) => c.type !== 'Ready' && c.status === 'True');
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/groups" className="k-small">
-            ← Groups
-          </Link>
-          <h1>{name}</h1>
-          <span className="k-row k-small">
+    <Page>
+      <PageHeader
+        title={name}
+        back={BACK}
+        meta={
+          <>
             <Badge variant={enabled ? 'success' : 'neutral'} label={enabled ? 'Enabled' : 'Disabled'} />
-            <span>
+            <Text size="sm">
               {matchers.length} matcher{matchers.length === 1 ? '' : 's'}
-            </span>
-            <span>{formatExact(group.status?.members ?? 0)} members counted</span>
+            </Text>
+            <Text size="sm">{formatExact(group.status?.members ?? 0)} members counted</Text>
             {ready_ ? <Badge variant={ready_.status === 'True' ? 'success' : 'error'} label={ready_.status === 'True' ? 'Ready' : 'Not ready'} /> : null}
             <ManagedBadge owner={group.metadata.annotations?.[MANAGED_BY]} />
-          </span>
-          {comment ? <p className="k-muted k-small">{comment}</p> : null}
-        </div>
-        <div className="k-actions">
-          <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
-          <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
-          <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('clientgroups', 'delete') || name === DEFAULT_GROUP} tooltip={name === DEFAULT_GROUP ? 'The default group is recreated at start-up' : roReason || undefined} onClick={() => setConfirmDelete(true)} />
-        </div>
-      </div>
+          </>
+        }
+        description={comment || undefined}
+        actions={
+          <>
+            <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
+            <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
+            <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('clientgroups', 'delete') || name === DEFAULT_GROUP} tooltip={name === DEFAULT_GROUP ? 'The default group is recreated at start-up' : roReason || undefined} onClick={() => setConfirmDelete(true)} />
+          </>
+        }
+      />
       {!own.editable ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       {problems.map((c) => (
         <Banner key={c.type} status="warning" title={c.reason ?? c.type} description={c.message} />
@@ -138,54 +147,32 @@ export default function GroupDetailPage({ params }: PageProps) {
         }}
       />
 
-      <section className="k-panel k-section" aria-labelledby="sec-seen">
-        <div className="k-panel-title">
-          <h2 id="sec-seen">Seen in the last 24 hours</h2>
-          <Link href="/clients">All clients</Link>
-        </div>
+      <Panel
+        title="Seen in the last 24 hours"
+        headingId="sec-seen"
+        actions={
+          <Link href="/clients" hasUnderline>
+            All clients
+          </Link>
+        }
+      >
         {clients.error ? <ErrorBanner error={clients.error} /> : null}
         {clients.isLoading ? <Loading /> : null}
         {clients.data ? (
           members.length ? (
-            <div className="k-table-wrap">
-              <table className="k-table" aria-label={`Clients of ${name}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Client</th>
-                    <th scope="col">Last seen</th>
-                    <th scope="col" className="num">
-                      Queries
-                    </th>
-                    <th scope="col" className="num">
-                      Blocked
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((c) => (
-                    <tr key={c.key}>
-                      <td>
-                        <Link href={clientHref(c.key)}>{c.name ?? c.key}</Link>
-                        {c.name ? <span className="k-muted k-small k-mono"> {c.key}</span> : null}
-                        {c.group && c.group !== ref ? <span className="k-muted k-small"> (resolved to {c.group.replace(/^default\//, '')})</span> : null}
-                      </td>
-                      <td>{c.last_seen ? <span title={c.last_seen}>{formatRelative(c.last_seen)}</span> : <span className="k-muted">–</span>}</td>
-                      <td className="num">{formatExact(c.count)}</td>
-                      <td className="num">{formatExact(c.blocked)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <MembersTable members={members} groupRef={ref} label={`Clients of ${name}`} />
           ) : (
-            <p className="k-muted">No client of this group sent a query in the last 24 hours.</p>
+            <Text color="secondary" as="p">
+              No client of this group sent a query in the last 24 hours.
+            </Text>
           )
         ) : null}
-      </section>
+      </Panel>
 
-      <section className="k-panel k-section" aria-labelledby="sec-pols">
-        <div className="k-panel-title">
-          <h2 id="sec-pols">Policies that apply</h2>
+      <Panel
+        title="Policies that apply"
+        headingId="sec-pols"
+        actions={
           <Button
             label="New policy"
             size="sm"
@@ -194,28 +181,39 @@ export default function GroupDetailPage({ params }: PageProps) {
             tooltip={can('policies', 'write') ? 'A policy for this group' : 'Needs policies.write'}
             onClick={() => setNewPolicy(true)}
           />
-        </div>
+        }
+      >
         {applied.length ? (
           <>
-            <ol className="k-policy-order" aria-label={`Policies of ${name}`}>
-              {applied.map((p) => {
+            <VStack as="ol" gap={1.5} aria-label={`Policies of ${name}`} style={LIST_RESET}>
+              {applied.map((p, i) => {
                 const b = policyBadge(derivePolicyState(p, ctx));
                 return (
-                  <li key={p.metadata.name}>
-                    <Link href={objectHref('policies', refOfObject(p))}>{p.metadata.name}</Link> <Badge variant={b.variant} label={b.label} />{' '}
-                    <span className="k-muted k-small">
+                  <HStack as="li" key={p.metadata.name} gap={2} vAlign="center" wrap="wrap">
+                    <Text type="supporting" hasTabularNumbers>
+                      {i + 1}.
+                    </Text>
+                    <Link href={objectHref('policies', refOfObject(p))} hasUnderline>
+                      {p.metadata.name}
+                    </Link>
+                    <Badge variant={b.variant} label={b.label} />
+                    <Text type="supporting">
                       priority {p.spec.priority ?? 0} · {p.spec.schedule ? scheduleSummary(p.spec.schedule) : 'always'}
-                    </span>
-                  </li>
+                    </Text>
+                  </HStack>
                 );
               })}
-            </ol>
-            <p className="k-muted k-small">The first active policy decides the block response, upstream group and safe search; the lists of every active policy are merged.</p>
+            </VStack>
+            <Text type="supporting" as="p">
+              The first active policy decides the block response, upstream group and safe search; the lists of every active policy are merged.
+            </Text>
           </>
         ) : (
-          <p className="k-muted">No policy names this group, so its members get the default policy.</p>
+          <Text color="secondary" as="p">
+            No policy names this group, so its members get the default policy.
+          </Text>
         )}
-      </section>
+      </Panel>
 
       <YamlDialog obj={group} open={yaml} onClose={() => setYaml(false)} />
       <PolicyWizardDialog isOpen={newPolicy} onClose={() => setNewPolicy(false)} namespace={ns} groups={[name]} />
@@ -231,50 +229,86 @@ export default function GroupDetailPage({ params }: PageProps) {
           </>
         }
       >
-        <p>
+        <Text as="p">
           Its members fall back to their other groups or the default group
           {applied.length ? `, and ${applied.map((p) => p.metadata.name).join(', ')} stop applying to them` : ''}. This cannot be undone.
-        </p>
+        </Text>
       </FormDialog>
-    </div>
+    </Page>
   );
 }
 
+type MemberRow = ClientItem & Record<string, unknown>;
+
+/** The clients of the last 24 hours that resolved to the group or that its matchers would put into it. */
+function MembersTable({ members, groupRef, label }: { members: ClientItem[]; groupRef: string; label: string }) {
+  const columns: TableColumn<MemberRow>[] = [
+    {
+      key: 'key',
+      header: 'Client',
+      width: proportional(3, { minWidth: 180 }),
+      renderCell: (c) => (
+        <Text>
+          <Link href={clientHref(c.key)} type="inherit" color="inherit" hasUnderline>
+            {c.name ?? c.key}
+          </Link>
+          {c.name ? (
+            <Text type="supporting">
+              {' '}
+              <Code color="inherit" size="inherit">
+                {c.key}
+              </Code>
+            </Text>
+          ) : null}
+          {c.group && c.group !== groupRef ? <Text type="supporting"> (resolved to {c.group.replace(/^default\//, '')})</Text> : null}
+        </Text>
+      ),
+    },
+    {
+      key: 'last_seen',
+      header: 'Last seen',
+      width: proportional(1.5, { minWidth: 110 }),
+      renderCell: (c) =>
+        c.last_seen ? (
+          <Tooltip content={c.last_seen}>
+            <Text>{formatRelative(c.last_seen)}</Text>
+          </Tooltip>
+        ) : (
+          <Text color="secondary">–</Text>
+        ),
+    },
+    { key: 'count', header: 'Queries', align: 'end', renderCell: (c) => <Text hasTabularNumbers>{formatExact(c.count)}</Text> },
+    { key: 'blocked', header: 'Blocked', align: 'end', renderCell: (c) => <Text hasTabularNumbers>{formatExact(c.blocked)}</Text> },
+  ];
+  return <Table<MemberRow> aria-label={label} density="compact" idKey="key" data={members} columns={columns} />;
+}
+
+type MatcherRow = ClientMatcher & { index: number } & Record<string, unknown>;
+
 function MatchersView({ matchers }: { matchers: ClientMatcher[] }) {
-  if (!matchers.length) return <p className="k-muted">No matchers: the group matches nobody.</p>;
-  return (
-    <div className="k-table-wrap">
-      <table className="k-table" aria-label="Matchers">
-        <thead>
-          <tr>
-            <th scope="col">Kind</th>
-            <th scope="col">Value</th>
-            <th scope="col">Display name</th>
-            <th scope="col">Comment</th>
-          </tr>
-        </thead>
-        <tbody>
-          {matchers.map((m, i) => {
-            const kind = matcherKind(m);
-            return (
-              <tr key={i}>
-                <td>
-                  {kindLabel(kind)}
-                  {kind === 'mac' || kind === 'hostname' || kind === 'nameGlob' ? (
-                    <span title={kind === 'mac' ? 'Matches only when the transport supplies MAC addresses (inventory integrations: v0.2).' : 'No hostname source in this version: never matches.'}>
-                      {' '}
-                      <Badge variant="warning" label="limited" />
-                    </span>
-                  ) : null}
-                </td>
-                <td className="k-mono">{matcherValue(m)}</td>
-                <td>{m.name ?? <span className="k-muted">–</span>}</td>
-                <td className="k-small">{m.comment ?? ''}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  if (!matchers.length) return <Text color="secondary">No matchers: the group matches nobody.</Text>;
+  const columns: TableColumn<MatcherRow>[] = [
+    {
+      key: 'kind',
+      header: 'Kind',
+      width: proportional(1, { minWidth: 120 }),
+      renderCell: (m) => {
+        const kind = matcherKind(m);
+        return (
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Text>{kindLabel(kind)}</Text>
+            {kind === 'mac' || kind === 'hostname' || kind === 'nameGlob' ? (
+              <Tooltip content={kind === 'mac' ? 'Matches only when the transport supplies MAC addresses (inventory integrations: v0.2).' : 'No hostname source in this version: never matches.'}>
+                <Badge variant="warning" label="limited" />
+              </Tooltip>
+            ) : null}
+          </HStack>
+        );
+      },
+    },
+    { key: 'value', header: 'Value', width: proportional(1.5, { minWidth: 140 }), renderCell: (m) => <Text type="code">{matcherValue(m)}</Text> },
+    { key: 'name', header: 'Display name', renderCell: (m) => (m.name ? <Text>{m.name}</Text> : <Text color="secondary">–</Text>) },
+    { key: 'comment', header: 'Comment', renderCell: (m) => <Text size="sm">{m.comment ?? ''}</Text> },
+  ];
+  return <Table<MatcherRow> aria-label="Matchers" density="compact" idKey="index" data={matchers.map((m, index) => ({ ...m, index }))} columns={columns} />;
 }

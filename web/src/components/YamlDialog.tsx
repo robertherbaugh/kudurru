@@ -2,6 +2,8 @@
 // without the server-owned status and bookkeeping metadata. Read-only, with
 // copy; changes go through the page or `kudurru apply`.
 import { Button } from '@astryxdesign/core/Button';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { Text } from '@astryxdesign/core/Text';
 import type { AnyObject } from '../api/types';
 import { toYAML } from '../lib/yaml';
 import { useNotify } from './Feedback';
@@ -38,10 +40,11 @@ export function YamlDialog({ obj, open, onClose }: { obj: AnyObject | undefined;
         </>
       }
     >
-      <pre className="k-pre" aria-label="YAML">
-        {text}
-      </pre>
-      <p className="k-muted k-small">Apply a changed copy with kudurru apply -f, or keep it in objects.d / Git.</p>
+      {/* The footer has the Copy button; no language header (the dialog title says YAML). */}
+      <CodeBlock aria-label="YAML" code={text} language="yaml" hasLanguageLabel={false} hasCopyButton={false} maxHeight={480} width="100%" />
+      <Text type="supporting" as="p">
+        Apply a changed copy with kudurru apply -f, or keep it in objects.d / Git.
+      </Text>
     </FormDialog>
   );
 }
