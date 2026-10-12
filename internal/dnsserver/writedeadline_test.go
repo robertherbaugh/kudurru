@@ -45,7 +45,10 @@ func (s endlessTransfer) Serve(req *pipeline.Request, next pipeline.Next) (*pipe
 // DoT. A client that keeps reading keeps the stream for longer than the
 // timeout; once it stops reading, the server gives up the stream.
 func TestTransferWriteDeadline(t *testing.T) {
-	const timeout = 200 * time.Millisecond
+	// Long enough that a steady reader on a loaded CI runner never misses
+	// it: the stream keeps the socket buffer full, so every write waits for
+	// the reader to drain it, and a 200 ms deadline was cut by one stall.
+	const timeout = time.Second
 	for _, p := range []Protocol{ProtoTCP, ProtoDoT} {
 		t.Run(string(p), func(t *testing.T) {
 			stage := endlessTransfer{done: make(chan struct{})}
