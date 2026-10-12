@@ -90,6 +90,9 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | v0.1.x (moved from M4: size headroom only, the binary is within its budget) |
+| Catalogue: re-check domains taken from DNS and redirects because the vendor pages were behind bot challenges (Slack `slack-msgs.com`, Binance `bnbstatic.com`, some country domains, the KakaoTalk hosts) | catalogue stream (D145) | v0.1.x |
+| Blocked services grid: tiles with a logo and tiles with a monogram differ slightly in height | catalogue stream | v0.1.x |
+| "Is it allowed?" makes a second request to find list exceptions; the dig answer could report a matched exclusion itself | allowlist stream (D144) | v0.2 |
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
 | Allowlist/Denylist: policies managed by a file or an integration are reported as `unattached` but cannot be fixed from the UI; offer an "attach" action that prints the YAML to add to the file | allowlist stream | v0.1.x |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |

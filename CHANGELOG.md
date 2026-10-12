@@ -108,6 +108,20 @@ a real server instead of its mocks.
   and the `unblockrequests` RBAC resource; `unblockRequests.*` settings.
   **Kubernetes: install the new CRD (`kudurru-crds` chart) before upgrading
   the server.**
+- Blocked services: the catalogue grows to 150 services in 14 categories
+  (AI with 19 providers, social, messaging, video, music, gaming, shopping,
+  dating, gambling, news, forums, productivity and cloud storage, VPN and
+  proxies, crypto exchanges), with logos. A policy can block whole
+  categories, including services added later (`blockedCategories`), with
+  exceptions (`allowedServices`). The grid has category tabs with counts,
+  search by name or domain and a "Blocked only" filter (D145). Content
+  categories from the Block List Project (gambling, adult, piracy, phishing,
+  malware, …) are offered as downloaded lists (D146). Opt-in: import
+  AdGuard's HostlistsRegistry services at runtime
+  (`blocking.catalogue.adguardServicesURL`, GPL-3.0, downloaded by your
+  instance, never shipped) (D147). The Allowlist shows entries switched off
+  in a single list as list exceptions, and row switches sit on the right
+  (D144).
 - Allowlist and Denylist pages (Filtering), next to the combined Domains
   page: one row per entry with an enable switch, type (exact, wildcard,
   regex), scope (everyone or client groups), comment, origin and the list it
