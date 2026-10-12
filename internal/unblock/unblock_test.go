@@ -321,6 +321,80 @@ func TestExpiryKeepsAManualEntry(t *testing.T) {
 	}
 }
 
+// racingStore runs hook once, right before the first Approved status
+// write: the requester re-posting the block page form while an approval
+// is in flight.
+type racingStore struct {
+	store.Store
+	hook func()
+}
+
+func (r *racingStore) UpdateStatus(ctx context.Context, obj store.Object) error {
+	if u, ok := obj.(*v1alpha1.UnblockRequest); ok && u.Status.State == v1alpha1.UnblockApproved && r.hook != nil {
+		h := r.hook
+		r.hook = nil
+		h()
+	}
+	return r.Store.UpdateStatus(ctx, obj)
+}
+
+// TestApprovalRacingAResubmission: a re-submission between the allow
+// entry write and the status write (a resource version conflict) does
+// not fail the approval, and the time-limited entry is still removed
+// when it ends. Before, the approval failed after writing the entry, and
+// its retry found the entry present (added false), so it was never
+// removed: the approval became permanent.
+func TestApprovalRacingAResubmission(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	rs := &racingStore{Store: f.st}
+	f.svc.opts.Store = rs
+	f.svc.lists = domainlist.New(domainlist.Options{Store: rs, Now: f.clk.Now})
+	r := f.submit("10.0.20.5", "games.example", "please")
+	rs.hook = func() { f.submit("10.0.20.5", "games.example", "please!!") }
+	out, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour, Actor: "user:admin"})
+	if err != nil {
+		t.Fatalf("approve racing a re-submission: %v", err)
+	}
+	if a := out.Request.Status.Allow; out.Request.Status.State != v1alpha1.UnblockApproved || a == nil || !a.Added || out.Request.Spec.Reason != "please!!" {
+		t.Fatalf("approved %+v spec %+v", out.Request.Status, out.Request.Spec)
+	}
+	f.clk.Add(2 * time.Hour)
+	if res, err := f.svc.Sweep(ctx); err != nil || res.Ended != 1 {
+		t.Fatalf("sweep %+v %v", res, err)
+	}
+	if got := f.list(EveryoneList); got != nil {
+		t.Fatalf("ui-allow after the 1h approval ended %v", got)
+	}
+}
+
+// failingStatusStore fails every Approved status write.
+type failingStatusStore struct{ store.Store }
+
+func (f failingStatusStore) UpdateStatus(ctx context.Context, obj store.Object) error {
+	if u, ok := obj.(*v1alpha1.UnblockRequest); ok && u.Status.State == v1alpha1.UnblockApproved {
+		return errors.New("store unavailable")
+	}
+	return f.Store.UpdateStatus(ctx, obj)
+}
+
+// TestFailedApprovalRemovesItsEntry: an approval whose status cannot be
+// written takes the entry it added off the list again.
+func TestFailedApprovalRemovesItsEntry(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	fs := failingStatusStore{Store: f.st}
+	f.svc.opts.Store = fs
+	f.svc.lists = domainlist.New(domainlist.Options{Store: fs, Now: f.clk.Now})
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour}); err == nil {
+		t.Fatal("approve succeeded")
+	}
+	if got := f.list(EveryoneList); got != nil {
+		t.Fatalf("ui-allow after a failed approval %v", got)
+	}
+}
+
 func TestApproveKeepsExistingEntries(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

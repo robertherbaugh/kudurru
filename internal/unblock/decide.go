@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -82,6 +83,7 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 	if err != nil {
 		return nil, err
 	}
+	stored := *r.Status.DeepCopy()
 	now := s.now()
 	if Active(r, now) {
 		return nil, fmt.Errorf("%w: %s/%s is already approved; deny it to revoke the approval", ErrState, ns, name)
@@ -154,7 +156,23 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 		State: v1alpha1.UnblockApproved, DecidedBy: d.Actor, DecidedAt: &at, Note: d.Note, Allow: allow,
 		History: pushHistory(r.Status),
 	}
-	if out.Request, err = s.setStatus(ctx, r, st); err != nil {
+	out.Request, err = s.setStatus(ctx, r, st)
+	if errors.Is(err, store.ErrConflict) {
+		// The block page updated the request (its spec) since it was
+		// read: record the decision on the fresh object, unless someone
+		// decided it meanwhile.
+		if fresh, ferr := s.load(ctx, ns, name); ferr == nil && equality.Semantic.DeepEqual(fresh.Status, stored) {
+			out.Request, err = s.setStatus(ctx, fresh, st)
+		}
+	}
+	if err != nil {
+		if added {
+			// No request links to the entry now: a retry would find it
+			// present, not own it, and never remove it.
+			if rerr := s.lists.RemoveRule(ctx, listNS, list, entry, v1alpha1.OriginUnblock); rerr != nil {
+				err = errors.Join(err, rerr)
+			}
+		}
 		return nil, err
 	}
 	return out, nil
