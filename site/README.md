@@ -57,4 +57,8 @@ site builds offline with the Hugo binary alone.
 `.github/workflows/docs.yml` builds and checks the site on every pull
 request. `.github/workflows/docs-pages.yml` publishes it to GitHub Pages for a
 `v*` tag or when started by hand; it needs Settings → Pages → Source set to
-"GitHub Actions".
+"GitHub Actions". The site's address is **https://docs.kudurru.io**: set it in
+Settings → Pages → Custom domain (a `CNAME` file is ignored for Actions
+deployments). `actions/configure-pages` then answers that address as
+`base_url`, which the workflow passes to Hugo as `--baseURL`, so the workflow
+itself needs no change. The public website (`www/`, kudurru.io) links to it.

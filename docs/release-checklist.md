@@ -70,6 +70,10 @@ Repository settings the pipeline relies on (once):
       bare name.
 - [ ] The `github-pages` environment allows deployments from the `release`
       branch (docs-pages runs in the context of the `release` push).
+- [ ] Settings → Pages: Source "GitHub Actions" and Custom domain
+      `docs.kudurru.io` (DNS CNAME to `robertherbaugh.github.io`, then
+      "Enforce HTTPS"); the docs workflow reads the address from
+      `configure-pages`.
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
       write access (it does when the first image was pushed by a workflow
       of this repository).
