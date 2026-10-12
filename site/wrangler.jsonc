@@ -4,7 +4,7 @@
 // repository holds Cloudflare credentials. Response headers come from
 // static/_headers, which Hugo copies to public/_headers.
 {
-  "$schema": "https://workers.cloudflare.com/wrangler-config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   // Workers Builds matches the dashboard project name to this name. The
   // website (www/) is "kudurru-www".
   "name": "kudurru-docs",
@@ -17,7 +17,11 @@
     "html_handling": "auto-trailing-slash"
   },
   "routes": [{ "pattern": "docs.kudurru.io", "custom_domain": true }],
-  // The *.workers.dev URL stays off; preview builds get version URLs.
+  // Static assets and compatibility settings also apply to Worker Previews.
+  // This site has no bindings or variables needing separate preview settings.
+  "previews": {},
+  // The production *.workers.dev URL stays off. Worker Previews get their
+  // own URLs; preview_urls also keeps version URLs available.
   "workers_dev": false,
   "preview_urls": true
 }
