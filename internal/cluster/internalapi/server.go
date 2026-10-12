@@ -17,6 +17,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
+
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 )
 
 // Routes.
@@ -88,6 +90,10 @@ type ListOpener interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
+	// Querylog serves local-only query-log and stats reads behind the peer guard.
+	Querylog func(context.Context, QuerylogRequest) (*QuerylogResponse, error)
+	// QueryTail returns the privacy-transformed live tail.
+	QueryTail func() *querylog.Tail
 	// Address is listeners.internal.address; default DefaultAddress.
 	Address string
 	// Credentials are required.
@@ -127,6 +133,7 @@ type Server struct {
 	log       *slog.Logger
 	handler   http.Handler
 	downloads chan struct{}
+	streams   chan struct{}
 	requests  *prometheus.CounterVec
 
 	mu       sync.Mutex
@@ -165,6 +172,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		opts:      opts,
 		log:       opts.Logger.With("component", "internal"),
 		downloads: make(chan struct{}, opts.MaxDownloads),
+		streams:   make(chan struct{}, 64),
 		limiters:  map[netip.Addr]*limiterEntry{},
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_internal_requests_total",
@@ -177,6 +185,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		}
 	}
 	mux := http.NewServeMux()
+	if opts.Querylog != nil {
+		mux.HandleFunc("GET "+PathQuerylog, s.handleQuerylog)
+	}
+	if opts.QueryTail != nil {
+		mux.HandleFunc("GET "+PathQuerylogStream, s.handleQuerylogStream)
+	}
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil {
@@ -269,6 +283,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func routeOf(p string) string {
 	switch {
+	case p == PathQuerylog, p == PathQuerylogStream:
+		return "querylog"
 	case p == PathStatus:
 		return "status"
 	case p == PathZones:

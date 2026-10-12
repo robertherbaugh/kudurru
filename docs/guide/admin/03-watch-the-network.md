@@ -23,7 +23,10 @@ Figure 1 shows the list.
 *Figure 1. The node scope list.*
 
 The line at the right of the page title tells you which nodes answered. If a
-node does not answer, the line says that the result is partial.
+node does not answer, the line says that the result is partial. The live
+tail updates that line when a node disconnects or recovers. If a result is
+partial, reload the query log after the node recovers to read its missing
+history. Selecting an unavailable node shows an error.
 
 ## Read the dashboard
 

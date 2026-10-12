@@ -19,6 +19,21 @@ function spyQueries(): URLSearchParams[] {
 }
 
 describe('QueryLogPage', () => {
+  it('retains same-ID queries from different nodes and expands them independently', async () => {
+    const original = mockDB().queries[0]!;
+    const queries = [{ ...original, node: 'node-a', domain: 'a-cluster.test' }, { ...original, node: 'node-b', domain: 'b-cluster.test' }];
+    server.use(http.get(`${API}/queries`, () => HttpResponse.json({ scope: 'cluster', nodes: [{ name: 'node-a', ok: true }, { name: 'node-b', ok: true }], partial: false, queries, records_total: 2, records_filtered: 2 })));
+    renderWithApp(<QueryLogPage />, { route: '/queries' });
+    expect(await screen.findByText('Showing 2 queries')).toBeInTheDocument();
+    const a = await logRow('a-cluster.test');
+    const b = await logRow('b-cluster.test');
+    fireEvent.keyDown(a, { key: 'Enter' });
+    expect(a).toHaveAttribute('aria-expanded', 'true');
+    expect(b).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.keyDown(b, { key: 'Enter' });
+    expect(a.getAttribute('aria-controls')).not.toBe(b.getAttribute('aria-controls'));
+  });
+
   it('pages through the log with the keyset cursor', async () => {
     const seen = spyQueries();
     renderWithApp(<QueryLogPage />, { route: '/queries' });

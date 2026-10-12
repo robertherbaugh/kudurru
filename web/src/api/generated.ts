@@ -1683,6 +1683,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             list?: string;
+            node: string;
             status: string;
             /** Format: date-time */
             ts: string;
@@ -3513,6 +3514,7 @@ export interface components {
             consecutive_failures: number;
             group: string;
             healthy: boolean;
+            node?: string;
             /** Format: double */
             rtt_ms: number;
             server: string;
@@ -7609,9 +7611,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
@@ -12223,9 +12225,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 step?: string;
                 n?: number;
@@ -12406,9 +12408,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
@@ -12500,9 +12502,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 /** @description Bucket width (Go duration) or auto (default). */
                 step?: string;
@@ -12596,9 +12598,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 dim: "domains" | "clients" | "upstreams" | "lists" | "zones";
                 n?: number;
@@ -12693,9 +12695,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
