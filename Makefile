@@ -420,9 +420,12 @@ edge-check: edge-images
 	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
 	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
 
-## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
-## UDP and TCP (split and mixed Services), rolling restart without unanswered
-## queries (hack/kind-e2e.sh; needs docker, kind, helm, kubectl, dig).
+## kind-e2e: three replicas on a four-node kind cluster with MetalLB and both
+## charts: dig through the LoadBalancer over UDP and TCP (split and mixed
+## Services), the API, query log and audit log of every replica, a rolling
+## restart without unanswered queries, then the same with a PostgreSQL
+## database that is stopped and started (hack/kind-e2e.sh; needs docker, kind,
+## helm, kubectl, jq, dig).
 kind-e2e:
 	hack/kind-e2e.sh
 
