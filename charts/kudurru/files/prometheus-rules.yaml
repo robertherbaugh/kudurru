@@ -151,3 +151,31 @@ spec:
             severity: info
           annotations:
             summary: querylog.db on {{ $labels.instance }} is above 90% of querylog.retention.maxDBBytes; the oldest rows are being deleted.
+    - name: kudurru.central
+      rules:
+        - alert: KudurruCentralDatabaseDown
+          # Only nodes with database.dsn export kudurru_central_up.
+          expr: kudurru_central_up == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} cannot use the central database."
+            description: DNS is not affected. The node keeps its audit events and query log and sends them when the database is back; the cluster-wide views are out of date until then. The Diagnosis page says why (CentralUnreachable or CentralIncompatible); see docs/deploy/postgres.md.
+        - alert: KudurruCentralShipLag
+          expr: kudurru_central_ship_lag_seconds{stream="query"} > 600
+          for: 10m
+          labels:
+            severity: info
+          annotations:
+            summary: The newest query {{ $labels.instance }} sent to the central database is more than 10 minutes old.
+            description: The node may be sending a backlog after an outage, or failing to send (see its log). Its querylog.db keeps the rows it has not sent unless querylog.retention.maxDBBytes needs the space.
+    - name: kudurru.audit
+      rules:
+        - alert: KudurruAuditSpoolDropping
+          expr: sum by (instance) (increase(kudurru_audit_spool_dropped_total[1h])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: The audit spool of {{ $labels.instance }} is full and drops its oldest events.
+            description: The node could not ship 50 000 audit events (AuditLog objects or the central database). The events are still in the "log":"audit" lines; check the node's log for the shipping error.

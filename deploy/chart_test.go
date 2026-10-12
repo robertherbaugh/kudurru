@@ -153,6 +153,12 @@ var chartCases = []chartCase{
 	{name: "edge-daemonset-standalone", values: "mode: standalone\nedge: {enabled: true, mode: daemonset}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
 		r.wantEdge(t, "DaemonSet")
 	}},
+	{name: "central-database", values: "database: {existingSecret: pg-app}\nconfig: {settings: {database: {querylog: {facts: false}}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantVolume(t, "database", "secret")
+		if !slices.Contains(r.envNames(t), "KUDURRU_DATABASE__DSN_FILE") {
+			t.Errorf("no KUDURRU_DATABASE__DSN_FILE with database.existingSecret")
+		}
+	}},
 	{name: "vip-none", values: "vip: {provider: none}", wantKind: "Deployment"},
 	{name: "vip-kube-vip", values: "vip: {provider: kube-vip, address: 10.0.0.53}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		if v := dig(r.object(t, "Service", "kudurru-dns"), "metadata", "annotations", "kube-vip.io/loadbalancerIPs"); v != "10.0.0.53" {

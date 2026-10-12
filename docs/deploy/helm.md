@@ -96,6 +96,35 @@ is also a `"log":"audit"` line for your log pipeline. `audit.store: local`
 keeps the events on each replica only. With a central database
 (`database.dsn`, [postgres.md](postgres.md)) the events go there instead.
 
+### Central database
+
+`database.existingSecret` names a Secret in the release namespace whose key
+`database.dsnKey` (default `uri`, what a CloudNativePG `<cluster>-app`
+Secret holds) is a PostgreSQL 15+ connection string. Every replica then
+keeps the audit log, query log and statistics of all replicas there, and
+the dashboard's **All nodes** view reads them ([postgres.md](postgres.md)).
+The chart does not install PostgreSQL. A CloudNativePG cluster is enough:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: kudurru-db, namespace: kudurru-system}
+spec:
+  instances: 2
+  storage: {size: 20Gi}
+  bootstrap: {initdb: {database: kudurru, owner: kudurru}}
+```
+
+```sh
+helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru \
+  --set database.existingSecret=kudurru-db-app \
+  --set-json 'config.settings.database={"querylog":{"retention":{"raw":"168h"}}}'
+```
+
+DNS never waits for the database. When it is unreachable, each replica
+keeps its data and sends it later, and the `KudurruCentralDatabaseDown`
+alert fires.
+
 ### hostNetwork
 
 `hostNetwork.enabled` runs a DaemonSet in the host network namespace, where

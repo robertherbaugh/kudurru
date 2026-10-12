@@ -144,3 +144,35 @@ VIP holder last.
 **Packages:** `apt upgrade kudurru` / `dnf upgrade kudurru` / `apk upgrade
 kudurru` replace the binary and keep `/etc/kudurru`; the post-install script
 restarts the service only if it was running.
+
+## Central database unavailable
+
+Symptoms: the `KudurruCentralDatabaseDown` alert, `CentralUnreachable` on the
+Diagnosis page, the Audit tab and **All nodes** answer "unavailable".
+
+DNS is not affected, and nothing is lost while the nodes keep their own
+copies: each node writes its audit events and query log locally first and
+sends them when the database answers again (`kudurru_central_ship_lag_seconds`
+falls back to a few seconds). A node keeps the queries it has not sent past
+`querylog.retention.raw`; only `querylog.retention.maxDBBytes` deletes them
+earlier, and its audit spool keeps 50 000 events (`KudurruAuditSpoolDropping`
+when it overflows).
+
+1. `kudurru doctor` on a node checks the connection, the server version and
+   the schema.
+2. Fix the database or the network; the nodes reconnect within a minute.
+3. Meanwhile **This node** in the scope selector still reads the node's own
+   query log.
+
+`CentralIncompatible` means a newer kudurru migrated the database past what
+this node can use (during a rolling upgrade): upgrade the node. It keeps its
+data locally until then.
+
+## AuditLog CRD missing
+
+Symptom: the log line "the AuditLog CRD is not installed" and each replica's
+Audit tab showing only its own events. The `kudurru-crds` chart is older than
+the app: upgrade it (`helm upgrade kudurru-crds …`) and restart the
+kudurru pods. The events recorded meanwhile are in each pod's
+`audit-spool.db` and are shipped after the restart, unless the pod was
+replaced (its emptyDir is gone); the `"log":"audit"` lines keep them all.

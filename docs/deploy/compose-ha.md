@@ -71,6 +71,16 @@ to all three hosts. Objects re-apply on file change; keys flagged `R` in
 time). Zone serials are `max(prev+1, unix_now)` on each twin, close but not
 identical: external secondaries should transfer from one named node.
 
+## Audit log, query log and statistics of all nodes
+
+Each node keeps its own audit log and query log, and its dashboard shows
+those. To see all three nodes on every dashboard, give them a central
+PostgreSQL database ([postgres.md](postgres.md)): put the connection string
+in `secrets/database_dsn` on every host and enable
+`KUDURRU_DATABASE__DSN_FILE` in the three `docker-compose.yml` files. The
+database is optional for DNS: when it is away, the nodes answer as before
+and keep their data until it is back.
+
 ## Upgrading
 
 One host at a time: `docker compose pull && docker compose up -d`, wait for
