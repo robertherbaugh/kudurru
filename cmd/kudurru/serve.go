@@ -329,11 +329,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 					ls = listResolver.Lists()
 				}
 				ready, unready := checker.Ready()
-				status := internalapi.Status{Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls, Ready: &ready, Unready: unready}
-				if snap := zc.Snapshot(); snap != nil && snap.State == zonecache.FromSnapshot && !snap.SnapshotWrittenAt.IsZero() {
-					status.Snapshot = time.Since(snap.SnapshotWrittenAt).Round(time.Second).String()
+				return internalapi.Status{
+					Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls, Ready: &ready, Unready: unready,
+					Snapshot: zc.Snapshot().SnapshotAge(time.Now()),
 				}
-				return status
 			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
 			Zones: func(context.Context) internalapi.ZoneList {

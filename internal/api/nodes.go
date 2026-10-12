@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -118,12 +121,7 @@ func (s *Server) zoneState() (string, string) {
 	if s.opts.Cache == nil {
 		return "", ""
 	}
-	snap := s.opts.Cache.Snapshot()
-	state := s.opts.Cache.State().String()
-	if snap != nil && snap.State == zonecache.FromSnapshot && !snap.SnapshotWrittenAt.IsZero() {
-		return state, s.opts.Now().Sub(snap.SnapshotWrittenAt).Round(time.Second).String()
-	}
-	return state, ""
+	return s.opts.Cache.State().String(), s.opts.Cache.Snapshot().SnapshotAge(s.opts.Now())
 }
 
 func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, error) {
@@ -147,11 +145,12 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 				defer cancel()
-				status, err := s.opts.InternalClient.Status(ctx, p.Address)
+				status, err := s.opts.InternalClient.Status(peerCtx, p.Address)
 				if err != nil {
-					items[i].Error = err.Error()
+					items[i].Error = peerStatusError(err)
+					s.log.WarnContext(ctx, "peer status unavailable", "node", p.Name, "address", p.Address, "error", err)
 					return
 				}
 				items[i].Ready, items[i].Unready = status.Ready, status.Unready
@@ -162,6 +161,18 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 	wg.Wait()
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &nodesOutput{Body: newList(items, "")}, nil
+}
+
+func peerStatusError(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout():
+		return "peer status: timeout"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "peer status: connection refused"
+	default:
+		return "peer status: unavailable"
+	}
 }
 
 func (s *Server) ready() (bool, []string) {
@@ -194,7 +205,7 @@ func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealth
 
 func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, error) {
 	info := s.opts.Store.Info()
-	out := &ClusterInfo{ClusterID: info.ClusterID, Driver: info.Driver, Epoch: info.Epoch, Leader: info.Leader, Node: s.opts.NodeName}
+	out := &ClusterInfo{ClusterID: info.ClusterID, Driver: info.Driver, Epoch: info.Epoch, Leader: info.Leader, Node: s.opts.NodeName, Nodes: 1}
 	if l, err := s.opts.Membership.Leader(ctx); err == nil && l.Name != "" {
 		out.Leader = l.Name
 	}

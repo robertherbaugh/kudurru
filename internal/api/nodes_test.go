@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -43,7 +46,9 @@ func TestNodesPeerStatus(t *testing.T) {
 			failed.TLS = creds.ServerTLS()
 			failed.StartTLS()
 			t.Cleanup(failed.Close)
+			var logs bytes.Buffer
 			h := newHarness(t, func(o *Options) {
+				o.Logger = slog.New(slog.NewTextHandler(&logs, nil))
 				o.InternalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 				o.Membership = staticMembership{peers: []cluster.Peer{
 					{Name: "node-b", Address: strings.TrimPrefix(ts.URL, "https://")},
@@ -65,8 +70,11 @@ func TestNodesPeerStatus(t *testing.T) {
 			if got.Name != "node-b" || got.Self || !got.Leader || !reflect.DeepEqual(got.Ready, status.Ready) || !reflect.DeepEqual(got.Unready, status.Unready) || got.Version != status.Version || got.State != status.State || got.Snapshot != status.Snapshot || got.Error != "" {
 				t.Fatalf("peer = %+v; status = %+v", got, status)
 			}
-			if failure.Name != "node-c" || failure.Ready != nil || !strings.Contains(failure.Error, "503") {
+			if failure.Name != "node-c" || failure.Ready != nil || failure.Error != "peer status: unavailable" {
 				t.Fatalf("failed peer must remain listed with unknown readiness: %+v", failure)
+			}
+			if !strings.Contains(logs.String(), "node=node-c") || !strings.Contains(logs.String(), "/internal/status") || !strings.Contains(logs.String(), "503") {
+				t.Fatalf("full peer status error missing from logs: %s", logs.String())
 			}
 			var info ClusterInfo
 			h.do(http.MethodGet, "/api/v1/cluster", "admin", nil).want(http.StatusOK).json(&info)
@@ -106,8 +114,52 @@ func TestNodesPeerStatusTimeout(t *testing.T) {
 		t.Fatalf("nodes = %+v", nodes.Items)
 	}
 	for _, n := range nodes.Items[1:] {
-		if n.Ready != nil || !strings.Contains(n.Error, "context deadline exceeded") {
+		if n.Ready != nil || n.Error != "peer status: timeout" {
 			t.Fatalf("timed-out peer = %+v", n)
 		}
+	}
+}
+
+type discoveryFailureMembership struct{ cluster.Membership }
+
+func (discoveryFailureMembership) Peers(context.Context) ([]cluster.Peer, error) {
+	return nil, errors.New("discovery unavailable")
+}
+
+func TestClusterDiscoveryFailure(t *testing.T) {
+	h := newHarness(t, func(o *Options) {
+		o.Membership = discoveryFailureMembership{Membership: cluster.Self{Name: "node-a"}}
+	})
+	var info ClusterInfo
+	h.do(http.MethodGet, "/api/v1/cluster", "admin", nil).want(http.StatusOK).json(&info)
+	if info.Nodes != 1 || info.Node != "node-a" || info.Leader != "node-a" {
+		t.Fatalf("cluster must count the serving node when discovery fails: %+v", info)
+	}
+	h.do(http.MethodGet, "/api/v1/nodes", "admin", nil).want(http.StatusServiceUnavailable)
+}
+
+func TestNodesPeerConnectionRefused(t *testing.T) {
+	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: bytes.Repeat([]byte{7}, 32)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(o *Options) {
+		o.InternalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
+		o.Membership = staticMembership{peers: []cluster.Peer{{Name: "node-a", Self: true}, {Name: "node-b", Address: address}}}
+	})
+	var nodes struct {
+		Items []NodeInfo `json:"items"`
+	}
+	h.do(http.MethodGet, "/api/v1/nodes", "admin", nil).want(http.StatusOK).json(&nodes)
+	if len(nodes.Items) != 2 || nodes.Items[1].Ready != nil || nodes.Items[1].Error != "peer status: connection refused" {
+		t.Fatalf("connection failure must have a short message and unknown readiness: %+v", nodes.Items)
 	}
 }
