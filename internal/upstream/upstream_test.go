@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -570,5 +571,28 @@ func TestConcurrentExchanges(t *testing.T) {
 		}
 		wg.Wait()
 		_ = s.Status()
+	}
+}
+
+// TestDoTRefusedRetriesOnAFreshConnection: a DoT server that refuses
+// queries past a per-connection budget (Cloudflare's 1.1.1.1 under a burst)
+// is asked again on a new connection instead of failing the client.
+func TestDoTRefusedRetriesOnAFreshConnection(t *testing.T) {
+	dot, pool := startDoT(t)
+	dot.mu.Lock()
+	dot.perConn = 5
+	dot.mu.Unlock()
+	s := newSet(t, Config{Groups: map[string]GroupConfig{DefaultGroup: {Servers: []string{"tls://" + dot.addr}, Strategy: Strict}}}, Options{RootCAs: pool})
+	for i := range 30 {
+		r := mustExchange(t, s, "q"+strconv.Itoa(i)+".example.com")
+		if r.Msg.Rcode != dns.RcodeSuccess || !answerIP(r.Msg).Equal(dot.ip) {
+			t.Fatalf("query %d: %s", i, dns.RcodeToString[r.Msg.Rcode])
+		}
+	}
+	dot.mu.Lock()
+	conns := len(dot.conns)
+	dot.mu.Unlock()
+	if conns < 6 {
+		t.Fatalf("%d connections for 30 queries at 5 per connection", conns)
 	}
 }

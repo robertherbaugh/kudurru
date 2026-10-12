@@ -44,6 +44,10 @@ type fake struct {
 	jitter   time.Duration // extra random delay in [0, jitter) per query
 	answerIP net.IP        // what A answers carry; ip unless changed
 	last     *dns.Msg      // last query received
+	// perConn > 0 answers that many queries per connection and REFUSED
+	// after (Cloudflare's DoT endpoint under a burst).
+	perConn int
+	conns   map[string]int // queries per client address
 }
 
 func (f *fake) set(mode behaviour, delay time.Duration) {
@@ -66,6 +70,15 @@ func (f *fake) handler(proto string) dns.HandlerFunc {
 		}
 		f.mu.Lock()
 		mode, delay, ip := f.mode, f.delay, f.answerIP
+		if f.perConn > 0 {
+			if f.conns == nil {
+				f.conns = map[string]int{}
+			}
+			f.conns[w.RemoteAddr().String()]++
+			if f.conns[w.RemoteAddr().String()] > f.perConn {
+				mode = refused
+			}
+		}
 		if f.jitter > 0 {
 			delay += mrand.N(f.jitter) //nolint:gosec // test jitter
 		}

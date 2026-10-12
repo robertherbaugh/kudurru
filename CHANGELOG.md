@@ -201,6 +201,11 @@ pipeline.
   another (the record set's status changed between the API's read and its
   write); the API now re-reads and re-applies, and answers 409 "try again"
   only when every attempt loses.
+- DNS-over-TLS upstreams: Cloudflare's 1.1.1.1 answers a burst of about
+  30 queries on one TLS connection and then REFUSED, and the connection was
+  reused, so with only `tls://1.1.1.1` configured about a third of the
+  names in a burst failed with SERVFAIL. A REFUSED answer from a DoT server
+  is now asked again once on a fresh connection.
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission

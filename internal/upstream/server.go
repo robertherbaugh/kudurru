@@ -137,6 +137,19 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 	}
 	start := time.Now()
 	resp, err := s.do(ctx, m)
+	if err == nil && resp != nil && resp.Rcode == dns.RcodeRefused && s.proto == "dot" && ctx.Err() == nil {
+		// Some DoT servers limit each connection: Cloudflare's 1.1.1.1
+		// answers a burst of about 30 queries on one TLS connection, then
+		// REFUSED, and dnsproxy keeps reusing the most recent connection.
+		// Drop the idle connections and ask once more on a fresh one; the
+		// refusal still counts in the metrics.
+		if s.mRcodes != nil {
+			s.countResponse(resp.Rcode)
+			s.mRequests.Inc()
+		}
+		_ = s.u.Close()
+		resp, err = s.do(ctx, m)
+	}
 	rtt := time.Since(start)
 	if s.mInflight != nil {
 		s.mInflight.Dec()
