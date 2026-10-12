@@ -23,6 +23,7 @@ const NAV = [
   ['/settings', 'Settings'],
   ['/tools', 'Tools'],
   ['/messages', 'Diagnosis'],
+  ['/license', 'License'],
   ['/access', 'Access & audit'],
   ['/requests', 'Requests'],
 ] as const;

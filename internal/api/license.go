@@ -71,7 +71,7 @@ func (s *Server) requireFeature(f license.Feature, what string) error {
 		return nil
 	}
 	return newError(http.StatusPaymentRequired, KeyLicense, what+" needs a license key",
-		"add a license key (a free personal key covers 3 nodes; see LICENSING.md); DNS keeps working meanwhile")
+		"add a license key (a free personal key covers 3 nodes; see https://kudurru.io/license); DNS keeps working meanwhile")
 }
 
 func (s *Server) nodeCount(ctx context.Context) int {
@@ -115,7 +115,7 @@ func (s *Server) licenseMW(next http.Handler) http.Handler {
 		}
 		if err := s.opts.License.CheckNodes(s.nodeCount(r.Context())); err != nil {
 			writeError(w, r, newError(http.StatusPaymentRequired, KeyLicense, err.Error(),
-				"remove nodes, or add a license key (a free personal key covers 3 nodes; see LICENSING.md); DNS keeps working meanwhile"))
+				"remove nodes, or add a license key (a free personal key covers 3 nodes; see https://kudurru.io/license); DNS keeps working meanwhile"))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -142,7 +142,7 @@ func (s *Server) checkPolicyLimit(ctx context.Context) error {
 	}
 	if err := s.opts.License.CheckPolicies(n); err != nil {
 		return newError(http.StatusPaymentRequired, KeyLicense, err.Error(),
-			"delete a policy, or add a license key (a free personal key lifts the limit; see LICENSING.md); existing policies keep working")
+			"delete a policy, or add a license key (a free personal key lifts the limit; see https://kudurru.io/license); existing policies keep working")
 	}
 	return nil
 }

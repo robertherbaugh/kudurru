@@ -21,7 +21,7 @@ import type {
 } from '../api/types';
 import schemaJSON from './data/settings-schema.json';
 import { pick, pickSkewed, rng } from './rand';
-import type { UnblockRequest } from '../api/types';
+import type { LicenseInfo, UnblockRequest } from '../api/types';
 
 const NS = 'default';
 const API = 'kudurru.io/v1alpha1' as const;
@@ -65,6 +65,16 @@ export interface MockDB {
   rv: number;
   /** Unblock requests from the block page, newest first. */
   unblock: UnblockRequest[];
+  /** GET /license (nodesInUse follows `nodes`); the default is a personal key with every feature. */
+  license: LicenseInfo;
+}
+
+/** Every licensed feature (internal/license Features). */
+export const ALL_FEATURES = ['oidc', 'edge', 'integrations', 'rbac', 'audit', 'longterm', 'requests'];
+
+/** A node without a key: one node, two policies, no licensed feature. */
+export function communityLicense(): LicenseInfo {
+  return { state: 'community', nodes: 1, nodesInUse: 1, overLimit: false, features: [], policyLimit: 2, took_ms: 0 };
 }
 
 export const CLIENTS: { ip: string; name: string; group: string }[] = [
@@ -769,6 +779,21 @@ export function createDB(now = FIXED_NOW): MockDB {
     nextQueryID: 100_501,
     rv: 100,
     unblock: buildUnblockRequests(now),
+    license: {
+      state: 'active',
+      plan: 'personal',
+      licensee: 'Homelab Hank',
+      id: 'lic_mock0000001',
+      source: 'file /var/lib/kudurru/license.key',
+      nodes: 3,
+      nodesInUse: 2,
+      overLimit: false,
+      features: [...ALL_FEATURES],
+      policyLimit: 0,
+      expiresAt: new Date(now + 700 * 86_400_000).toISOString(),
+      graceEndsAt: new Date(now + 730 * 86_400_000).toISOString(),
+      took_ms: 0,
+    },
   };
 }
 

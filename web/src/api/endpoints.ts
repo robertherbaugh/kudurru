@@ -13,6 +13,7 @@ import type {
   ClusterInfo,
   CreateTokenRequest,
   EdgeInfo,
+  LicenseInfo,
   CreatedToken,
   DiagnosisMessage,
   DoctorReport,
@@ -226,6 +227,10 @@ export function endpoints(c: ApiClient) {
       nodeConfig: () => c.get<SettingsBody>('/node/config'),
       patchNodeConfig: (patch: Record<string, unknown>) => c.patch<SettingsBody>('/node/config', patch),
       schema: () => c.get<ListEnvelope<SettingKey>>('/settings/_schema'),
+    },
+
+    license: {
+      get: () => c.get<LicenseInfo>('/license'),
     },
 
     cluster: {

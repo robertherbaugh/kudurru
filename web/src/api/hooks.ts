@@ -2,7 +2,7 @@
 // in their keys, so switching "all nodes" / one node refetches everything.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk, useApi, useCan, useScopeParams } from './context';
-import type { BlockingState } from './types';
+import type { BlockingState, LicenseInfo } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList } from './types';
 
 /** GET /stats/summary feeds the tiles and the sidebar (§10 principle 1). */
@@ -49,6 +49,26 @@ export function useVersion() {
   return useQuery({ queryKey: qk.version, queryFn: () => api.cluster.version(), staleTime: Infinity });
 }
 
+// License -------------------------------------------------------------------
+
+/** GET /license: the node's effective license (needs settings.read). */
+export function useLicense() {
+  const api = useApi();
+  return useQuery({ queryKey: qk.license, queryFn: () => api.license.get(), staleTime: 60_000, refetchInterval: 5 * 60_000 });
+}
+
+/**
+ * Whether a licensed feature (lib/license FEATURES) is on. While the license
+ * loads, `ready` is false so callers hold their requests back; when the
+ * license cannot be read (no settings.read) the feature counts as on and the
+ * server's own 402 decides, so a user is never locked out by a failed lookup.
+ */
+export function useFeature(feature: string): { allowed: boolean; ready: boolean; license: LicenseInfo | undefined } {
+  const q = useLicense();
+  if (q.data) return { allowed: q.data.features.includes(feature), ready: true, license: q.data };
+  return { allowed: true, ready: !q.isPending, license: undefined };
+}
+
 // Unblock requests ----------------------------------------------------------
 
 /**
@@ -60,11 +80,12 @@ export function useVersion() {
 export function usePendingUnblockCount() {
   const api = useApi();
   const can = useCan();
+  const requests = useFeature('requests');
   return useQuery({
     queryKey: qk.unblock('pending'),
     queryFn: () => api.unblock.list({ state: 'Pending', limit: 1 }),
     select: (l: UnblockRequestList) => l.counts.pending,
-    enabled: can('unblockrequests', 'read'),
+    enabled: can('unblockrequests', 'read') && requests.ready && requests.allowed,
     refetchInterval: 60_000,
   });
 }

@@ -5,9 +5,11 @@
 // objects, the same rules the server applies), its groups, lists and
 // service logos; a name opens the policy's page, "New policy" the wizard.
 import { Badge } from '@astryxdesign/core/Badge';
+import { Banner } from '@astryxdesign/core/Banner';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMemo } from 'react';
+import { useLicense } from '../api/hooks';
 import type { Policy } from '../api/types';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
@@ -46,9 +48,14 @@ export default function PoliciesPage() {
   const byId = useMemo(() => new Map((services.data?.items ?? []).map((s) => [s.id, s])), [services.data]);
   const badges = useMemo(() => new Map(ctx.policies.map((p) => [refOfObject(p), policyBadge(derivePolicyState(p, ctx))])), [ctx]);
 
+  const license = useLicense();
+  const limit = license.data?.policyLimit ?? 0;
+  const atLimit = limit > 0 && ctx.policies.length >= limit;
+
   return (
     <ObjectsPage<Policy>
       title="Policies"
+      createBlocked={atLimit ? `Without a license key at most ${limit} policies can exist` : undefined}
       description="Which lists and services apply to which client groups, highest priority first. When several active policies match a client, the highest priority decides the settings and their lists are merged."
       schema={SCHEMAS.policies}
       detailPath={(p) => objectHref('policies', refOfObject(p))}
@@ -97,6 +104,16 @@ export default function PoliciesPage() {
         },
         { header: 'Schedule', cell: (p) => (p.spec.schedule ? <Text size="sm">{scheduleSummary(p.spec.schedule)}</Text> : <Text color="secondary">always</Text>) },
       ]}
-    />
+    >
+      {atLimit ? (
+        <Banner
+          data-testid="policy-limit"
+          status="info"
+          title={`The free limit of ${limit} policies is reached`}
+          description="Existing policies keep working. A license key lifts the limit."
+          endContent={<Link href="/license">View license</Link>}
+        />
+      ) : null}
+    </ObjectsPage>
   );
 }

@@ -177,7 +177,7 @@ func (m *Manager) Require(f Feature) error {
 	if s.Allows(f) {
 		return nil
 	}
-	return fmt.Errorf("%w: %s needs a kudurru license key (state %s); a free personal key or a commercial one unlocks it (LICENSING.md)",
+	return fmt.Errorf("%w: %s needs a kudurru license key (state %s); a free personal key or a commercial one unlocks it (https://kudurru.io/license)",
 		ErrFeature, f, s.State)
 }
 

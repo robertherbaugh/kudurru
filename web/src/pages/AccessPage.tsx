@@ -18,9 +18,11 @@ import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
+import { useFeature } from '../api/hooks';
 import type { ApiToken, AuditEvent, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { ChangePasswordButton } from '../components/AccountMenu';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { FeatureLocked } from '../components/FeatureLocked';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
 import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
@@ -385,6 +387,8 @@ function Iam() {
   const sas = useQuery({ queryKey: ['iam', 'sa'], queryFn: () => api.iam.serviceAccounts(), enabled: can('serviceaccounts', 'read') });
   const rbs = useQuery({ queryKey: ['iam', 'rb'], queryFn: () => api.iam.roleBindings(), enabled: can('rolebindings', 'read') });
   const idps = useQuery({ queryKey: ['iam', 'idp'], queryFn: () => api.iam.identityProviders(), enabled: can('identityproviders', 'read') });
+  const rbac = useFeature('rbac');
+  const oidc = useFeature('oidc');
   const empty = (what: string, loading: boolean) => (
     <Text type="supporting" as="p">
       {loading ? 'Loading…' : `No ${what}.`}
@@ -422,6 +426,15 @@ function Iam() {
       </Panel>
       <Panel title="Role bindings" headingId="iam-rb">
         {rbs.error ? <ErrorBanner error={rbs.error} /> : null}
+        {!rbac.allowed && rbs.data?.items.length ? (
+          <Banner
+            data-testid="rbac-locked"
+            status="warning"
+            title="Roles need a license key"
+            description="Without one the built-in administrator is the only role: these bindings are configured but grant nothing."
+            endContent={<Link href="/license">View license</Link>}
+          />
+        ) : null}
         <Diagnoses items={rbs.data?.diagnoses} />
         {rbs.data?.items.length ? (
           <Table<BindingRow>
@@ -437,6 +450,15 @@ function Iam() {
       </Panel>
       <Panel title="Identity providers" headingId="iam-idp">
         {idps.error ? <ErrorBanner error={idps.error} /> : null}
+        {!oidc.allowed && idps.data?.items.length ? (
+          <Banner
+            data-testid="oidc-locked"
+            status="warning"
+            title="Single sign-on needs a license key"
+            description="Without one these identity providers are configured but switched off. Local sign-in keeps working."
+            endContent={<Link href="/license">View license</Link>}
+          />
+        ) : null}
         <Diagnoses items={idps.data?.diagnoses} />
         {idps.data?.items.length ? (
           <Table<ProviderRow> aria-label="Identity providers" density="compact" idKey="id" data={idps.data.items as ProviderRow[]} columns={providerColumns} />
@@ -518,7 +540,21 @@ const auditColumns: TableColumn<AuditRow>[] = [
   },
 ];
 
+/** The audit trail is licensed (feature "audit"); locked, the tab asks for nothing. */
 function Audit() {
+  const f = useFeature('audit');
+  if (!f.ready) return <Loading />;
+  if (!f.allowed) {
+    return (
+      <Panel title="Audit log" headingId="audit-title">
+        <FeatureLocked feature="audit" what="The audit trail" />
+      </Panel>
+    );
+  }
+  return <AuditLog />;
+}
+
+function AuditLog() {
   const api = useApi();
   const [actor, setActor] = useState('');
   const [kind, setKind] = useState('');

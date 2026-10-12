@@ -18,6 +18,8 @@ else is commercial and is not licensed by this repository.
 
 ## Keys
 
+The same rules, in short form, are on [kudurru.io/license](https://kudurru.io/license).
+
 A **license key** unlocks what a single free node does not have:
 
 | | No key (community) | Personal key (free) | Business key |
