@@ -163,13 +163,13 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
                   />
                 </th>
                 <th scope="col">Name</th>
-                <th scope="col">Enabled</th>
                 {columns.map((c) => (
                   <th key={c.header} scope="col" className={c.className}>
                     {c.header}
                   </th>
                 ))}
                 <th scope="col">Managed by</th>
+                <th scope="col">Enabled</th>
                 <th scope="col">
                   <span className="k-visually-hidden">Actions</span>
                 </th>
@@ -218,6 +218,14 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
                       {o.metadata.namespace && o.metadata.namespace !== 'default' ? <span className="k-muted k-small"> ({o.metadata.namespace})</span> : null}
                       {comment ? <div className="k-muted k-small">{comment}</div> : null}
                     </td>
+                    {columns.map((c) => (
+                      <td key={c.header} className={c.className}>
+                        {c.cell(o)}
+                      </td>
+                    ))}
+                    <td>
+                      <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />
+                    </td>
                     <td>
                       <Switch
                         label={`${o.metadata.name} enabled`}
@@ -227,14 +235,6 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
                         isDisabled={!own.editable || !canWrite || toggle.isPending}
                         onChange={(on) => toggle.mutate({ obj: o, enabled: on })}
                       />
-                    </td>
-                    {columns.map((c) => (
-                      <td key={c.header} className={c.className}>
-                        {c.cell(o)}
-                      </td>
-                    ))}
-                    <td>
-                      <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />
                     </td>
                     <td className="k-nowrap">
                       {rowActions?.(o)}

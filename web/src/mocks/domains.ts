@@ -169,6 +169,8 @@ export function collectEntries(db: MockDB, action?: DomainAction, ns?: string): 
           origin: x.origin ?? 'manual',
           ...(x.request ? { request: x.request } : {}),
           overrides: [],
+          stillMatchedBy: [],
+          kind: 'entry',
           readOnly: false,
         };
         byKey.set(key, e);

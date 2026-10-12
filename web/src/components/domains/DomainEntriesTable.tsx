@@ -69,26 +69,6 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
 
   const columns: TableColumn<DomainEntry>[] = [
     {
-      key: 'enabled',
-      header: 'On',
-      width: pixel(64),
-      renderCell: (e) => {
-        const why = lockReason(e, canWrite);
-        return (
-          <Switch
-            label={`${e.value} enabled`}
-            isLabelHidden
-            size="sm"
-            value={e.enabled}
-            isLoading={pending.has(e.id)}
-            isDisabled={!!why || pending.has(e.id)}
-            disabledMessage={why || undefined}
-            onChange={(on) => onToggle(e, on)}
-          />
-        );
-      },
-    },
-    {
       key: 'value',
       header: 'Domain',
       width: proportional(3, { minWidth: 190 }),
@@ -127,6 +107,26 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       header: 'Added',
       width: proportional(1.5, { minWidth: 120 }),
       renderCell: (e) => <AddedCell e={e} />,
+    },
+    {
+      key: 'enabled',
+      header: 'On',
+      width: pixel(64),
+      renderCell: (e) => {
+        const why = lockReason(e, canWrite);
+        return (
+          <Switch
+            label={`${e.value} enabled`}
+            isLabelHidden
+            size="sm"
+            value={e.enabled}
+            isLoading={pending.has(e.id)}
+            isDisabled={!!why || pending.has(e.id)}
+            disabledMessage={why || undefined}
+            onChange={(on) => onToggle(e, on)}
+          />
+        );
+      },
     },
     {
       key: 'actions',

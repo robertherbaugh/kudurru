@@ -43,6 +43,7 @@ export const ORIGIN_LABEL: Record<DomainOrigin, string> = {
   unblock: 'unblock request',
   api: 'API',
   migrated: 'migrated',
+  list: 'a list',
 };
 
 // internal/api dnsName: RFC 1123-ish labels, underscores allowed.

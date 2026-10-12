@@ -351,6 +351,17 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
             <Text type="supporting">{query ? `No entry contains "${query}".` : disabledOnly ? 'No entry is switched off.' : 'No entries.'}</Text>
           }
           columns={[
+            { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
+            {
+              key: 'value',
+              header: 'Entry',
+              width: proportional(4),
+              renderCell: (r) => (
+                <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
+                  {r.value}
+                </Text>
+              ),
+            },
             {
               key: 'enabled',
               header: 'Enabled',
@@ -366,17 +377,6 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                   disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
                   onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
                 />
-              ),
-            },
-            { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
-            {
-              key: 'value',
-              header: 'Entry',
-              width: proportional(4),
-              renderCell: (r) => (
-                <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
-                  {r.value}
-                </Text>
               ),
             },
           ]}
