@@ -25,11 +25,23 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       -X github.com/robertherbaugh/kudurru/internal/version.Commit=$COMMIT \
       -X github.com/robertherbaugh/kudurru/internal/version.Date=$DATE" \
     -o /out/kudurru ./cmd/kudurru
+# The directories kudurru writes, owned by the runtime user: a fresh named
+# volume (docker run -v kudurru-data:/var/lib/kudurru, compose) takes the
+# owner and mode of the image's directory, and distroless has none, so the
+# volume would come up root-owned and unwritable for uid 65532. The same as
+# images/base/Dockerfile (the release images); hack/volume-check.sh.
+RUN mkdir -p /out/var/lib/kudurru /out/run/kudurru \
+ && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
+ && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
 
 # -debug variant: the same binary on distroless's busybox image (a shell and
 # nslookup for troubleshooting; dig is not part of distroless).
 FROM gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51 AS debug
 COPY --from=build /out/kudurru /ko-app/kudurru
+# The parents' contents: COPY of a directory creates the target 0755 and
+# drops the 1777; this keeps the stage's owner and mode.
+COPY --from=build /out/var/lib/ /var/lib/
+COPY --from=build /out/run/ /run/
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/ko-app
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]
@@ -45,6 +57,10 @@ CMD ["serve"]
 # -hostnetwork variant adds cap_net_bind_service=+ep to this binary.
 FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS release
 COPY --from=build /out/kudurru /ko-app/kudurru
+# The parents' contents: COPY of a directory creates the target 0755 and
+# drops the 1777; this keeps the stage's owner and mode.
+COPY --from=build /out/var/lib/ /var/lib/
+COPY --from=build /out/run/ /run/
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/ko-app
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]

@@ -68,14 +68,18 @@ sboms:
     artifacts: package
 
 # Container images with ko (D68: linux/amd64 and linux/arm64 only). The
-# distroless bases are pinned as tag@digest (multi-arch index digest; the
-# Dockerfile carries the same digests, bump both together).
+# base is ghcr.io/robertherbaugh/kudurru-base (images/base/Dockerfile:
+# distroless plus /var/lib/kudurru and /run/kudurru owned by 65532, which ko
+# cannot create), built and pinned by digest in publish.yml. Without the
+# variables (a local --snapshot) the plain distroless bases are used, pinned
+# as tag@digest (multi-arch index digests; images/base/Dockerfile and the
+# Dockerfile carry the same digests, bump them together).
 kos:
   - id: kudurru
     build: kudurru
     main: ./cmd/kudurru
     working_dir: .
-    base_image: gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+    base_image: '{{ envOrDefault "KUDURRU_BASE_IMAGE" "gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3" }}'
     repositories: [ghcr.io/robertherbaugh/kudurru]
     platforms: [linux/amd64, linux/arm64]
     # v<VERSION>-rc.<N> publishes <VERSION>-rc.<N> only; v<VERSION> publishes
@@ -108,7 +112,7 @@ kos:
     build: kudurru
     main: ./cmd/kudurru
     working_dir: .
-    base_image: gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51
+    base_image: '{{ envOrDefault "KUDURRU_DEBUG_BASE_IMAGE" "gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51" }}'
     repositories: [ghcr.io/robertherbaugh/kudurru]
     platforms: [linux/amd64, linux/arm64]
     tags:

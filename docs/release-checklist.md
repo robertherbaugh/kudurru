@@ -104,9 +104,9 @@ Repository settings the pipeline relies on (once):
 - [ ] CHANGELOG.md: the section for the version, with the date on the GA
       release.
 - [ ] The distroless bases are pinned by digest (`tag@sha256:<index digest>`)
-      in `.goreleaser.yaml` (`base_image`), the Dockerfile and
-      images/hostnetwork/Dockerfile, the same digests everywhere
-      (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
+      in `.goreleaser.yaml` (the `base_image` fallbacks), images/base/Dockerfile,
+      the Dockerfile and images/hostnetwork/Dockerfile, the same digests
+      everywhere (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
       application/vnd.oci.image.index.v1+json'
       https://gcr.io/v2/distroless/static/manifests/nonroot` (and
       `debug-nonroot`), take `docker-content-digest`.
@@ -193,7 +193,10 @@ On the owner's hardware:
       bundle into web/dist), which publishes the GitHub release with archives,
       deb/rpm/apk, `checksums.txt` (cosign keyless signature and
       certificate), SBOMs, `crds.yaml` and `install.yaml`, and pushes the ko
-      images `ghcr.io/robertherbaugh/kudurru:<version>` and `<version>-debug`
+      images, built on `ghcr.io/robertherbaugh/kudurru-base:<version>` and
+      `<version>-debug` (images/base, pushed and signed first and pinned by
+      digest: the writable `/var/lib/kudurru` and `/run/kudurru`, D154;
+      `hack/volume-check.sh` runs on the result), `ghcr.io/robertherbaugh/kudurru:<version>` and `<version>-debug`
       (linux/amd64, linux/arm64), plus `latest` and `latest-debug` for a
       release. Build provenance is attested for the
       archives, packages and checksums.

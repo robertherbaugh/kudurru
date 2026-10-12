@@ -21,7 +21,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -409,6 +409,8 @@ kind-e2e:
 docker:
 	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
 
+DEBUG_BASE_IMAGE ?= $(shell sed -n 's/^FROM \(gcr.io\/distroless\/static:debug-nonroot@sha256:[0-9a-f]*\) AS debug$$/\1/p' Dockerfile)
+
 docker-debug:
 	docker build --target debug -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-debug --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
 
@@ -425,6 +427,16 @@ docker-hostnetwork: docker
 ## the plain image does (hack/hostnetwork-check.sh; needs Docker).
 hostnetwork-check: docker-hostnetwork
 	hack/hostnetwork-check.sh ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork ghcr.io/robertherbaugh/kudurru:$(VERSION)
+
+## volume-check: the Dockerfile images (plain, -debug, -hostnetwork) and
+## both release bases (images/base, the ko images' base_image) come up on
+## fresh named volumes at /var/lib/kudurru and /run/kudurru that uid 65532
+## can write (hack/volume-check.sh; needs Docker).
+volume-check: docker-debug docker-hostnetwork
+	docker build -t kudurru-base:volume-check images/base
+	docker build -t kudurru-base:volume-check-debug --build-arg BASE_IMAGE=$(DEBUG_BASE_IMAGE) images/base
+	hack/volume-check.sh ghcr.io/robertherbaugh/kudurru:$(VERSION) ghcr.io/robertherbaugh/kudurru:$(VERSION)-debug \
+	  ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork kudurru-base:volume-check kudurru-base:volume-check-debug
 
 clean:
 	rm -rf bin dist web/dist/assets

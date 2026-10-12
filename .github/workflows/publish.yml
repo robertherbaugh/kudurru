@@ -74,6 +74,48 @@ jobs:
         run: make test
       - name: Chart render matrix and kubeconform
         run: make helm-check
+      # The ko images' base: distroless with /var/lib/kudurru and
+      # /run/kudurru owned by 65532, which ko cannot create (a fresh named
+      # volume takes their owner; images/base/Dockerfile). goreleaser gets
+      # the pushed digests, not the tags.
+      - uses: docker/setup-buildx-action@v3
+      - name: Base image tags
+        id: basetag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}
+        id: base
+        uses: docker/build-push-action@v6
+        with:
+          context: images/base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.title=kudurru-base
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
+        id: debugbase
+        uses: docker/build-push-action@v6
+        with:
+          context: images/base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51
+          tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.title=kudurru-base
+      - name: Sign the base images by digest
+        run: |
+          cosign sign --yes "ghcr.io/robertherbaugh/kudurru-base@${{ steps.base.outputs.digest }}"
+          cosign sign --yes "ghcr.io/robertherbaugh/kudurru-base@${{ steps.debugbase.outputs.digest }}"
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -82,6 +124,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KO_DOCKER_REPO: ghcr.io/robertherbaugh/kudurru
+          KUDURRU_BASE_IMAGE: ghcr.io/robertherbaugh/kudurru-base@${{ steps.base.outputs.digest }}
+          KUDURRU_DEBUG_BASE_IMAGE: ghcr.io/robertherbaugh/kudurru-base@${{ steps.debugbase.outputs.digest }}
           # A release commit can carry both its last rc tag and the release
           # tag; name the one being published.
           GORELEASER_CURRENT_TAG: ${{ inputs.tag }}
@@ -97,6 +141,12 @@ jobs:
               --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
             echo "verified ${ref}"
           done
+      - name: Fresh named volumes are writable in the released images
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          hack/volume-check.sh "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"
       - name: Build provenance for the release artifacts
         uses: actions/attest-build-provenance@v2
         with:
@@ -191,6 +241,8 @@ jobs:
             org.opencontainers.image.description=kudurru with cap_net_bind_service=+ep for host networking
       - name: Sign the image by digest
         run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
+      - name: Fresh named volumes are writable in the image
+        run: hack/volume-check.sh "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
   supervisor-images:
     # kudurru-dnsdist and kudurru-keepalived aggregate the GPL programs with
     # the kudurru supervisor binary from the ko image the release job just

@@ -187,6 +187,12 @@ pipeline.
   concurrent parses of cached list bodies per node.
 - The approve dialog and API say that an everyone approval is attached to
   every policy kudurru may edit.
+- Container images: a fresh Docker named volume at `/var/lib/kudurru`
+  (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
+  up root-owned and kudurru exited with `open state.db: permission
+  denied`. Every image now has `/var/lib/kudurru` and `/run/kudurru` owned
+  by uid 65532; the ko images build on `kudurru-base` (images/base, D154)
+  and `make volume-check` checks each image.
 
 ### DNS serving
 

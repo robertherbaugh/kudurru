@@ -30,11 +30,19 @@ FROM --platform=$BUILDPLATFORM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1
 RUN apk add --no-cache libcap-utils
 COPY --from=kudurru /ko-app/kudurru /out/kudurru
 RUN setcap cap_net_bind_service=+ep /out/kudurru \
- && getcap /out/kudurru | grep -q cap_net_bind_service=ep
+ && getcap /out/kudurru | grep -q cap_net_bind_service=ep \
+ && mkdir -p /out/var/lib/kudurru /out/run/kudurru \
+ && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
+ && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
 
-# The base digest is base_image of the kudurru ko entry in .goreleaser.yaml.
+# The distroless digest of images/base/Dockerfile, with the same writable
+# directories (a fresh named volume takes their owner; hack/volume-check.sh).
 FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 COPY --from=caps /out/kudurru /ko-app/kudurru
+# The parents' contents: COPY of a directory creates the target 0755 and
+# drops the 1777; this keeps the stage's owner and mode.
+COPY --from=caps /out/var/lib/ /var/lib/
+COPY --from=caps /out/run/ /run/
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/ko-app
 USER 65532:65532
 VOLUME ["/var/lib/kudurru"]

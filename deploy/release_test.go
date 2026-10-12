@@ -49,13 +49,24 @@ func TestGoreleaserConfig(t *testing.T) {
 		}
 	}
 	tags := map[string]bool{}
+	publish := string(readRepoFile(t, ".github/workflows/publish.yml"))
 	for _, k := range list(cfg["kos"]) {
 		km := mapOf(k)
-		if !strings.HasPrefix(str(km["base_image"]), "gcr.io/distroless/static:") || !strings.Contains(str(km["base_image"]), "nonroot") {
-			t.Errorf("ko %v: base image %v is not distroless static nonroot", km["id"], km["base_image"])
+		// publish.yml passes the kudurru-base digest (images/base); the
+		// fallback is the distroless image that base is built on.
+		env, fallback, ok := koBase(str(km["base_image"]))
+		if !ok {
+			t.Errorf("ko %v: base image %v is not {{ envOrDefault \"<VAR>\" \"<distroless>\" }}", km["id"], km["base_image"])
+			continue
 		}
-		if !digestRefRE.MatchString(str(km["base_image"])) {
-			t.Errorf("ko %v: base image %v is not pinned as tag@sha256:<digest>", km["id"], km["base_image"])
+		if !strings.HasPrefix(fallback, "gcr.io/distroless/static:") || !strings.Contains(fallback, "nonroot") {
+			t.Errorf("ko %v: base image %v is not distroless static nonroot", km["id"], fallback)
+		}
+		if !digestRefRE.MatchString(fallback) {
+			t.Errorf("ko %v: base image %v is not pinned as tag@sha256:<digest>", km["id"], fallback)
+		}
+		if !strings.Contains(publish, "\n          "+env+": ghcr.io/robertherbaugh/kudurru-base@${{ steps.") {
+			t.Errorf("ko %v: publish.yml does not set %s to a kudurru-base digest", km["id"], env)
 		}
 		if !slices.Equal(list(km["platforms"]), []any{"linux/amd64", "linux/arm64"}) {
 			t.Errorf("ko %v: platforms %v, want linux/amd64 and linux/arm64 (D68)", km["id"], km["platforms"])
@@ -173,6 +184,19 @@ func TestSystemdUnit(t *testing.T) {
 }
 
 // digestRefRE matches an image reference pinned as tag@digest.
+// koBaseRE is a ko base_image of .goreleaser.yaml: a variable with the
+// pinned distroless fallback.
+var koBaseRE = regexp.MustCompile(`^\{\{ envOrDefault "([A-Z_]+)" "([^"]+)" \}\}$`)
+
+// koBase splits a ko base_image into its variable and its fallback.
+func koBase(ref string) (env, fallback string, ok bool) {
+	m := koBaseRE.FindStringSubmatch(ref)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
 var digestRefRE = regexp.MustCompile(`^[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$`)
 
 // TestDockerfile keeps the local image equivalent to the release image,
@@ -190,7 +214,7 @@ func TestDockerfile(t *testing.T) {
 	}
 	base := map[string]string{}
 	for _, k := range cfg.Kos {
-		base[k.ID] = k.BaseImage
+		_, base[k.ID], _ = koBase(k.BaseImage)
 	}
 	if base["kudurru"] == "" || base["kudurru-debug"] == "" {
 		t.Fatalf("ko entries kudurru and kudurru-debug not found: %v", base)
@@ -218,6 +242,21 @@ func TestDockerfile(t *testing.T) {
 	for _, want := range []string{"FROM " + base["kudurru"] + "\n", "COPY --from=kudurru /ko-app/kudurru", "setcap cap_net_bind_service=+ep", "USER 65532:65532", `ENTRYPOINT ["/ko-app/kudurru"]`} {
 		if !strings.Contains(hn, want) {
 			t.Errorf("images/hostnetwork/Dockerfile lacks %q", want)
+		}
+	}
+	// The ko images' base, on the distroless image of the kudurru ko entry.
+	kb := string(readRepoFile(t, "images/base/Dockerfile"))
+	if !strings.Contains(kb, "ARG BASE_IMAGE="+base["kudurru"]+"\n") || !strings.Contains(kb, "USER 65532:65532") {
+		t.Errorf("images/base/Dockerfile must default BASE_IMAGE to %s and run as 65532", base["kudurru"])
+	}
+	// Every image has /var/lib/kudurru (0755) and /run/kudurru (1777) owned
+	// by 65532: a fresh named volume takes their owner and mode
+	// (hack/volume-check.sh runs the images).
+	for f, src := range map[string]string{"Dockerfile": s, "images/hostnetwork/Dockerfile": hn, "images/base/Dockerfile": kb} {
+		for _, want := range []string{"chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru", "chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru", " /out/var/lib/ /var/lib/\n", " /out/run/ /run/\n"} {
+			if !strings.Contains(src, want) {
+				t.Errorf("%s lacks %q (the writable directories)", f, want)
+			}
 		}
 	}
 }
