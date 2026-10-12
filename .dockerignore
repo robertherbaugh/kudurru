@@ -11,3 +11,4 @@ web/playwright-report
 web/test-results
 site/public
 site/resources
+.claude
