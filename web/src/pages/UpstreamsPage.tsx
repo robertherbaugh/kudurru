@@ -148,7 +148,7 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
       description={
         <>
           Queries under a domain suffix go to a group (the longest suffix wins; answers are not cached). A rule may list several suffixes in dnsmasq form,{' '}
-          <Code>[/corp.example/10.in-addr.arpa/]</Code>.
+          <Code size="inherit">[/corp.example/10.in-addr.arpa/]</Code>.
         </>
       }
     >
@@ -294,7 +294,7 @@ export default function UpstreamsPage() {
         title="Upstreams"
         description={
           <>
-            The resolvers kudurru forwards to. Policies and forward zones pick a group by name; everything else uses <Code>default</Code>. Health is this
+            The resolvers kudurru forwards to. Policies and forward zones pick a group by name; everything else uses <Code size="inherit">default</Code>. Health is this
             node's view right now; traffic covers the last 24 hours.
           </>
         }

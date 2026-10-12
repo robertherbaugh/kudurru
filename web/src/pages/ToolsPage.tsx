@@ -247,7 +247,7 @@ function ApplyYAML() {
       headingId="apply-title"
       description={
         <>
-          Paste multi-document YAML or a JSON array of kudurru objects (what <Code>kudurru apply -f</Code> sends). Objects are applied whole, managed by the
+          Paste multi-document YAML or a JSON array of kudurru objects (what <Code size="inherit">kudurru apply -f</Code> sends). Objects are applied whole, managed by the
           API. For BIND zone files use Import on a{' '}
           <Link href="/zones" hasUnderline>
             zone
@@ -285,7 +285,7 @@ function Exports() {
       headingId="exp-title"
       description={
         <>
-          A full backup (state.db, keys, query log) is taken on the host with <Code>kudurru backup</Code>. From here you can download the objects as JSON and
+          A full backup (state.db, keys, query log) is taken on the host with <Code size="inherit">kudurru backup</Code>. From here you can download the objects as JSON and
           each zone as a BIND file.
         </>
       }
@@ -367,7 +367,7 @@ function Doctor() {
       headingId="doc-title"
       description={
         <>
-          Checks what the API can see. <Code>kudurru doctor</Code> on the host also checks ports, file permissions and the data directory.
+          Checks what the API can see. <Code size="inherit">kudurru doctor</Code> on the host also checks ports, file permissions and the data directory.
         </>
       }
     >

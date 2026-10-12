@@ -35,7 +35,7 @@ export function BlockPageIntro() {
         connection error.
       </Text>
       <Text type="supporting" as="p">
-        Plain <Code>http://</Code> pages show it directly. For <Code>https://</Code> sites the browser expects a certificate for the blocked domain, which
+        Plain <Code size="inherit">http://</Code> pages show it directly. For <Code size="inherit">https://</Code> sites the browser expects a certificate for the blocked domain, which
         the block page cannot have: it shows a certificate warning, and sites with HSTS (most large ones, and every name on the browsers' preload list)
         refuse to show the page at all. The DNS answer still blocks the site either way.{' '}
         <Link href={BLOCK_PAGE_DOCS} target="_blank" type="inherit" hasUnderline>

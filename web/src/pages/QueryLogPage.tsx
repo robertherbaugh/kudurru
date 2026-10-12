@@ -216,7 +216,7 @@ export default function QueryLogPage() {
 
       {filters.status ? (
         <Text type="supporting" color="primary" as="p">
-          Also filtered by <Code>status={filters.status}</Code>
+          Also filtered by <Code size="inherit">status={filters.status}</Code>
         </Text>
       ) : null}
 
