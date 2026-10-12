@@ -9,6 +9,13 @@
   // website (www/) is "kudurru-www".
   "name": "kudurru-docs",
   "compatibility_date": "2026-10-01",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "assets": {
     "directory": "./public",
     // Unknown paths get public/404.html with status 404.
