@@ -2,7 +2,9 @@
 # postgres.md): one StatefulSet pod on a PVC, so the data survives scaling
 # it to zero for the outage test. The Secret holds the connection string
 # under "uri" (chart value database.existingSecret, database.dsnKey) and the
-# role's password for the server. Applied with `kubectl -n <namespace>`.
+# role's password for the server. Applied with `kubectl -n <namespace>`;
+# hack/kind-e2e.sh then puts the Service's ClusterIP in "uri", because the
+# kudurru pods use dnsPolicy Default and cannot resolve cluster names.
 # The image is the one the Go jobs of ci.yml test against.
 apiVersion: v1
 kind: Secret
@@ -10,7 +12,7 @@ metadata:
   name: kudurru-db
 type: Opaque
 stringData:
-  uri: postgres://kudurru:kudurru@postgres:5432/kudurru?sslmode=disable
+  uri: postgres://kudurru:kudurru@postgres-cluster-ip:5432/kudurru?sslmode=disable
   password: kudurru
 ---
 apiVersion: v1

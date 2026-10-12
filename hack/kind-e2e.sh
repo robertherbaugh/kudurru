@@ -350,8 +350,13 @@ log "helm install kudurru-crds and kudurru ($REPLICAS replicas, vip.provider=met
 kubectl create namespace "$NS"
 helm install kudurru-crds "$ROOT/charts/kudurru-crds" --namespace "$NS" --wait
 if [ "$DATABASE" = 1 ]; then
-  # Started now, used in part 2.
+  # Started now, used in part 2. The pods run with dnsPolicy Default (the
+  # node's resolver, because kudurru can be the cluster's own resolver), so
+  # the connection string names the Service by its ClusterIP.
   kubectl -n "$NS" apply -f "$ROOT/hack/kind/postgres.yaml"
+  pg_ip=$(kubectl -n "$NS" get svc postgres -o jsonpath='{.spec.clusterIP}')
+  kubectl -n "$NS" patch secret kudurru-db --type merge \
+    -p "{\"stringData\":{\"uri\":\"postgres://kudurru:kudurru@${pg_ip}:5432/kudurru?sslmode=disable\"}}"
 fi
 # install_kudurru <splitProtocols> [database secret]
 install_kudurru() {
