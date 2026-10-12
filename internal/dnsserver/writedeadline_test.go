@@ -80,11 +80,11 @@ func TestTransferWriteDeadline(t *testing.T) {
 			}
 			conn := raw
 			if tc.protocol == ProtoDoT {
-				tc := tls.Client(raw, &tls.Config{RootCAs: f.cert.Pool, ServerName: "localhost", NextProtos: []string{"dot"}, MinVersion: tls.VersionTLS12})
-				if err := tc.Handshake(); err != nil {
+				tlsConn := tls.Client(raw, &tls.Config{RootCAs: f.cert.Pool, ServerName: "localhost", NextProtos: []string{"dot"}, MinVersion: tls.VersionTLS12})
+				if err := tlsConn.Handshake(); err != nil {
 					t.Fatal(err)
 				}
-				conn = tc
+				conn = tlsConn
 			}
 			defer func() { _ = conn.Close() }()
 			co := &dns.Conn{Conn: conn}
