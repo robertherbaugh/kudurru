@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
 // chartCase is one values permutation of charts/kudurru.
@@ -96,6 +98,7 @@ var chartCases = []chartCase{
 			t.Errorf("edge args lack the endpointslice backends: %v", args)
 		}
 	}},
+	{name: "edge-deployment-pod-cidr", values: "edge: {enabled: true, mode: deployment, existingSecret: my-proxy, proxyProtocolFrom: ['172.16.0.0/16', 'fd00::/64']}", wantKind: "Deployment"},
 	{name: "edge-sidecar", values: "edge: {enabled: true, mode: sidecar}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		r.wantNoObject(t, "Deployment", "kudurru-edge")
 		cfg := r.config(t)
@@ -483,7 +486,22 @@ func TestChartRenderMatrix(t *testing.T) {
 			if k := r.workloadKind(t); k != tc.wantKind {
 				t.Errorf("kudurru workload is a %s, want %s", k, tc.wantKind)
 			}
-			r.config(t) // loads through config.Load
+			listeners := r.config(t).Listeners
+			if listeners.ProxyProtocolSecretFile != "" {
+				// Stand in for the Secret mounted in the pod, then run
+				// the same policy construction as kudurru serve.
+				listeners.ProxyProtocolSecretFile = filepath.Join(t.TempDir(), "proxy-secret")
+				if err := os.WriteFile(listeners.ProxyProtocolSecretFile, []byte(strings.Repeat("0123456789abcdef", 4)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			policy, err := dnsserver.PolicyFromConfig(listeners)
+			if err != nil {
+				t.Fatalf("DNS policy rejects rendered listeners: %v", err)
+			}
+			if policy.Enabled() != (len(listeners.ProxyProtocolFrom) > 0) {
+				t.Fatal("DNS policy enabled state does not match proxyProtocolFrom")
+			}
 			if tc.check != nil {
 				tc.check(t, r)
 			}

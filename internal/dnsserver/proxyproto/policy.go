@@ -81,7 +81,7 @@ var (
 func exemptLoopback(a netip.Addr) bool { return a == loopback4 || a == loopback6 }
 
 // Policy decides which PROXYv2 headers are honoured: the transport peer must
-// be listed in proxyProtocolFrom (exact hosts only) and the header must carry
+// be listed in proxyProtocolFrom (hosts or CIDRs) and the header must carry
 // TLV 0xE0 equal to the shared secret. When no secret is configured only the
 // loopback peers 127.0.0.1 and ::1 may send headers, without the TLV.
 // Everything else is dropped and counted.
@@ -90,18 +90,18 @@ func exemptLoopback(a netip.Addr) bool { return a == loopback4 || a == loopback6
 // A Policy is safe for concurrent use.
 type Policy struct {
 	peers   map[netip.Addr]struct{}
+	ranges  []netip.Prefix
 	secret  []byte
 	dropped [3]atomic.Uint64
 	hook    atomic.Pointer[func(Reason)]
 }
 
 // NewPolicy builds a policy from the listeners.proxyProtocolFrom entries
-// (bare addresses or single-host prefixes such as 10.0.0.11/32 or
-// fd00::11/128) and the shared secret (nil when unset).
+// (bare addresses or CIDR prefixes) and the shared secret (nil when unset).
 //
-// It refuses wider prefixes, because CIDR trust is forgeable by any
-// neighbour in the range (D45), refuses secrets shorter than MinSecretLen,
-// and refuses non-loopback peers without a secret (D56).
+// Wider prefixes require a secret (D72), because CIDR trust alone is
+// forgeable by any neighbour in the range (D45). It refuses secrets shorter
+// than MinSecretLen and non-loopback peers without a secret (D56).
 func NewPolicy(from []string, secret []byte) (*Policy, error) {
 	if len(secret) > 0 && len(secret) < MinSecretLen {
 		return nil, fmt.Errorf("proxyproto: shared secret is %d bytes, need at least %d", len(secret), MinSecretLen)
@@ -113,11 +113,20 @@ func NewPolicy(from []string, secret []byte) (*Policy, error) {
 	var errs []error
 	for _, entry := range from {
 		entry = strings.TrimSpace(entry)
-		addr, err := parseHost(entry)
+		pfx, err := parsePeer(entry)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
+		if !pfx.IsSingleIP() {
+			if p.secret == nil {
+				errs = append(errs, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q is a /%d; only exact hosts (/32, /128) are allowed without a shared secret (set listeners.proxyProtocolSecretFile)", entry, pfx.Bits()))
+			} else {
+				p.ranges = append(p.ranges, pfx)
+			}
+			continue
+		}
+		addr := pfx.Addr().Unmap()
 		if p.secret == nil && !exemptLoopback(addr) {
 			errs = append(errs, fmt.Errorf("proxyproto: peer %s: %w (set listeners.proxyProtocolSecretFile)", addr, errNeedTLV))
 			continue
@@ -130,22 +139,20 @@ func NewPolicy(from []string, secret []byte) (*Policy, error) {
 	return p, nil
 }
 
-func parseHost(entry string) (netip.Addr, error) {
+func parsePeer(entry string) (netip.Prefix, error) {
 	if !strings.Contains(entry, "/") {
 		a, err := netip.ParseAddr(entry)
 		if err != nil {
-			return netip.Addr{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: %w", entry, err)
+			return netip.Prefix{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: %w", entry, err)
 		}
-		return a.Unmap(), nil
+		a = a.Unmap()
+		return netip.PrefixFrom(a, a.BitLen()), nil
 	}
 	pfx, err := netip.ParsePrefix(entry)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: %w", entry, err)
+		return netip.Prefix{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: %w", entry, err)
 	}
-	if !pfx.IsSingleIP() {
-		return netip.Addr{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q is a /%d; only exact hosts (/32, /128) are allowed because range trust is forgeable", entry, pfx.Bits())
-	}
-	return pfx.Addr().Unmap(), nil
+	return pfx.Masked(), nil
 }
 
 // LoadSecretFile reads the shared secret from path. Trailing CR/LF are
@@ -168,15 +175,23 @@ func LoadSecretFile(path string) ([]byte, error) {
 }
 
 // Enabled reports whether any peer may send headers.
-func (p *Policy) Enabled() bool { return p != nil && len(p.peers) > 0 }
+func (p *Policy) Enabled() bool { return p != nil && (len(p.peers) > 0 || len(p.ranges) > 0) }
 
 // Trusted reports whether peer is listed in proxyProtocolFrom.
 func (p *Policy) Trusted(peer netip.Addr) bool {
 	if p == nil {
 		return false
 	}
-	_, ok := p.peers[peer.Unmap()]
-	return ok
+	peer = peer.Unmap()
+	if _, ok := p.peers[peer]; ok {
+		return true
+	}
+	for _, pfx := range p.ranges {
+		if pfx.Contains(peer) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetDropHook registers fn to be called (synchronously, on the I/O path)

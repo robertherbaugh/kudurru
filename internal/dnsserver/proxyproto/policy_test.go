@@ -50,8 +50,11 @@ func TestNewPolicy(t *testing.T) {
 		{name: "loopback without secret", from: []string{"127.0.0.1/32", "::1/128"}, trusted: []netip.Addr{loopbackV4.Addr(), loopbackV6.Addr()}},
 		{name: "bare addresses", from: []string{"10.0.0.11", " 10.0.0.12 "}, secret: testSecret, trusted: []netip.Addr{dnsdistA.Addr(), netip.MustParseAddr("10.0.0.12")}},
 		{name: "mapped address is unmapped", from: []string{"::ffff:10.0.0.11"}, secret: testSecret, trusted: []netip.Addr{dnsdistA.Addr()}},
-		{name: "LAN /24 refused", from: []string{"10.0.0.0/24"}, secret: testSecret, wantErr: "only exact hosts"},
-		{name: "pod CIDR refused", from: []string{"fd00::/64"}, secret: testSecret, wantErr: "only exact hosts"},
+		{name: "LAN /24 without secret refused", from: []string{"10.0.0.0/24"}, wantErr: "only exact hosts"},
+		{name: "pod CIDR without secret refused", from: []string{"fd00::/64"}, wantErr: "only exact hosts"},
+		{name: "loopback range without secret refused", from: []string{"127.0.0.1/8"}, wantErr: "only exact hosts"},
+		{name: "IPv6 loopback range without secret refused", from: []string{"::1/127"}, wantErr: "only exact hosts"},
+		{name: "mapped host prefix is unmapped", from: []string{"::ffff:10.0.0.11/128"}, secret: testSecret, trusted: []netip.Addr{dnsdistA.Addr()}},
 		{name: "non-loopback needs secret", from: []string{"10.0.0.11/32"}, wantErr: "require a shared secret"},
 		{name: "127.0.0.2 is not exempt", from: []string{"127.0.0.2/32"}, wantErr: "require a shared secret"},
 		{name: "short secret", from: []string{"10.0.0.11"}, secret: []byte("short"), wantErr: "need at least 32"},
@@ -79,6 +82,77 @@ func TestNewPolicy(t *testing.T) {
 			}
 			if p.Trusted(neighbour.Addr()) {
 				t.Error("neighbour must not be trusted")
+			}
+		})
+	}
+}
+
+func TestCIDRPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		from    []string
+		inside  string
+		outside string
+	}{
+		{"IPv4 pod CIDR", []string{"172.16.0.0/16"}, "172.16.5.10", "172.17.5.10"},
+		{"IPv6 pod CIDR", []string{"fd00::/64"}, "fd00::1234", "fd00:0:0:1::1234"},
+		{"IPv4 host bits", []string{"172.16.5.10/16"}, "172.16.255.255", "172.17.0.0"},
+		{"IPv6 host bits", []string{"fd00::1234/64"}, "fd00::ffff", "fd00:0:0:1::"},
+		{"mapped IPv4 peer", []string{"172.16.0.0/16"}, "::ffff:172.16.5.10", "::ffff:172.17.5.10"},
+		{"mixed hosts and ranges", []string{"10.0.0.11/32", "fd00::/64"}, "10.0.0.11", "10.0.0.12"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := NewPolicy(tc.from, testSecret)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !p.Enabled() {
+				t.Fatal("CIDR policy must be enabled")
+			}
+			inside := netip.MustParseAddr(tc.inside)
+			outside := netip.MustParseAddr(tc.outside)
+			if !p.Trusted(inside) || p.Trusted(outside) {
+				t.Fatalf("Trusted(%s) = %v, Trusted(%s) = %v", inside, p.Trusted(inside), outside, p.Trusted(outside))
+			}
+			wrong := bytes.Clone(testSecret)
+			wrong[0] ^= 1
+			for _, auth := range []struct {
+				name   string
+				peer   netip.Addr
+				secret []byte
+				drop   Reason
+			}{
+				{"authenticated", inside, testSecret, ""},
+				{"missing TLV", inside, nil, ReasonUnauthenticated},
+				{"wrong TLV", inside, wrong, ReasonUnauthenticated},
+				{"outside CIDR", outside, testSecret, ReasonUntrustedPeer},
+			} {
+				for _, transport := range []string{"datagram", "stream"} {
+					t.Run(auth.name+"/"+transport, func(t *testing.T) {
+						var tlvs []byte
+						if auth.secret != nil {
+							tlvs = secretTLV(auth.secret)
+						}
+						in := header(t, CommandProxy, tlvs)
+						peer := netip.AddrPortFrom(auth.peer, 40000)
+						var client netip.AddrPort
+						var proxied bool
+						var err error
+						if transport == "datagram" {
+							_, client, proxied, err = p.Datagram(peer, in)
+						} else {
+							_, client, proxied, err = p.Stream(peer, bytes.NewReader(in))
+						}
+						if auth.drop != "" {
+							var de *DropError
+							if !errors.As(err, &de) || de.Reason != auth.drop {
+								t.Fatalf("err = %v, want drop %s", err, auth.drop)
+							}
+						} else if err != nil || !proxied || client != realClient {
+							t.Fatalf("client = %s, proxied = %v, err = %v", client, proxied, err)
+						}
+					})
+				}
 			}
 		})
 	}
