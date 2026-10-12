@@ -10,6 +10,13 @@ This image contains two separate programs:
   terms; see LICENSING.md), acting as the supervisor (`kudurru edge run`). The
   supervisor needs a license key (`KUDURRU_LICENSE_KEY`) that covers the edge.
 
+The image label `org.opencontainers.image.licenses` says so as an SPDX
+expression, `PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only`: each program keeps
+its own license, and neither license applies to the other program. The terms of
+kudurru (the key, the noncommercial limit) do not restrict what you do with
+dnsdist, which you can run without kudurru under the GPL. The base image
+carries other packages under their own licenses (`/usr/share/doc/*/copyright`).
+
 They communicate only through dnsdist's configuration file, console and HTTP
 API. kudurru does not link against or modify dnsdist. The digest of the
 upstream image is pinned in the Dockerfile and bumped by the CVE tracking job.

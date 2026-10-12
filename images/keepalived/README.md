@@ -8,6 +8,13 @@ This image contains two separate programs:
   terms; see LICENSING.md), acting as the supervisor (`kudurru vip run`). The
   supervisor needs a license key (`KUDURRU_LICENSE_KEY`) that covers the edge.
 
+The image label `org.opencontainers.image.licenses` says so as an SPDX
+expression, `PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later`: each program
+keeps its own license, and neither license applies to the other program. The
+terms of kudurru (the key, the noncommercial limit) do not restrict what you do
+with keepalived, which you can run without kudurru under the GPL. Alpine's
+packages (iproute2, tini, musl) keep their own licenses.
+
 ## Written offer for source code
 
 The complete corresponding source of keepalived as shipped in this image is

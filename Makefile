@@ -427,6 +427,9 @@ edge-check: edge-images
 	# without the sysctl, switches to 953 keeping CAP_SYS_ADMIN, and stops.
 	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
 	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
+	# The supervisor images name both licenses (GPL program + kudurru).
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_SUPERVISOR_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only"
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_KEEPALIVED_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later"
 
 ## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
 ## UDP and TCP (split and mixed Services), rolling restart without unanswered
