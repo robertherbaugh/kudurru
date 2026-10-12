@@ -11,10 +11,10 @@ All notable changes to kudurru are listed here. The format follows
 
 - kudurru is now **source-available** under the PolyForm Noncommercial License
   1.0.0 instead of Apache-2.0. Personal use is free; a business needs an
-  agreement ([LICENSING.md](LICENSING.md), D155). Nothing had been published,
+  agreement ([LICENSING.md](LICENSING.md), D162). Nothing had been published,
   so every tag, release, image and chart carries the new licence; commits
   before the change keep the old one in the history.
-- **License keys** (D156): a free personal key (3 nodes) or a business key
+- **License keys** (D163): a free personal key (3 nodes) or a business key
   unlocks more than one node and the features that moved to [`ee/`](ee/):
   OIDC sign-in, the dnsdist and keepalived edge, and the integrations. Keys are
   verified offline; with no key kudurru runs one node, and DNS answering never
@@ -40,6 +40,25 @@ section lists. The milestone reports in [docs/m1](docs/m1/README.md),
 [docs/m2](docs/m2/README.md), [docs/m3](docs/m3/README.md) (M3 and M4, D122)
 and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
 D126 record what changed on the way.
+
+### Multi-node data (after 0.1.0-rc.3)
+
+- Audit in mode=kubernetes ([#10](https://github.com/robertherbaugh/kudurru/issues/10)):
+  the Audit tab no longer fails with "events are not stored on this node".
+  Every replica records the kube driver's writes and its API actions in an
+  audit spool (`audit-spool.db`, D156) and ships them into immutable
+  `AuditLog` objects (`audit.kudurru.io`, new in the `kudurru-crds` chart,
+  D157), so every replica shows the same events and they survive pod
+  restarts. New hostOnly keys `audit.store` and `audit.retention`.
+- Optional central PostgreSQL database (`database.dsn`, D158,
+  [postgres.md](docs/deploy/postgres.md)) for the runtime data of every
+  node. With it, the audit log of every node, Docker and compose included,
+  is kept in one hash chain there (`audit.store: database`, D159); each
+  node keeps its own copy and sends it when the database is reachable.
+- With a central database every node also sends its query log and
+  statistics there (`database.querylog.*`, D160), and **All nodes** reads
+  them instead of asking every replica: every node's queries, charts and
+  top lists, including those of replicas that are down or gone (D161).
 
 ### Dashboard and API fixes (v0.1 fix round)
 

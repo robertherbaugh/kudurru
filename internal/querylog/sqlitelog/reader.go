@@ -14,8 +14,13 @@ import (
 // separate query_only connection pool and never block ingest; results
 // include the writer's not-yet-flushed accumulators, so they are current
 // to the last committed batch. All methods are safe for concurrent use.
+//
+// A central reader (NewCentralReader) answers the same questions for every
+// node from the central database, whose tables mirror querylog.db.
 type Reader struct {
-	w *Writer
+	w *Writer  // a node's querylog.db; nil for a central reader
+	c *central // the central database; nil for a node's reader
+	d dialect
 }
 
 // Read limits.
@@ -41,7 +46,10 @@ type snapshot struct {
 // accumulators. A rollup flush between the snapshot and the transaction
 // would count the flushed minutes twice, so the read is retried when the
 // flush sequence moved (at most twice; flushes happen once a minute).
-func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *sql.Tx, s *snapshot) error) error {
+func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *rtx, s *snapshot) error) error {
+	if r.c != nil {
+		return r.c.read(ctx, fn)
+	}
 	w := r.w
 	w.readers.Add(1)
 	defer w.readers.Add(-1)
@@ -72,7 +80,7 @@ func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *sql.Tx, s
 		if err != nil {
 			return fmt.Errorf("sqlitelog: begin read: %w", err)
 		}
-		err = fn(tx, s)
+		err = fn(&rtx{tx: tx, d: r.d}, s)
 		_ = tx.Rollback()
 		if err != nil {
 			return err
@@ -84,6 +92,9 @@ func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *sql.Tx, s
 }
 
 func (r *Reader) scope(start time.Time) Scope {
+	if r.c != nil {
+		return r.c.scope(start)
+	}
 	return Scope{Scope: ScopeNode, Nodes: []NodeResult{{
 		Name: r.w.opts.Node, OK: true, TookMS: float64(time.Since(start).Microseconds()) / 1000,
 	}}}
@@ -92,7 +103,7 @@ func (r *Reader) scope(start time.Time) Scope {
 // window applies the defaults: the last 24 hours ending now.
 func (r *Reader) window(w Window) Window {
 	if w.Until.IsZero() {
-		w.Until = r.w.clock.Now()
+		w.Until = r.now()
 	}
 	if w.From.IsZero() {
 		w.From = w.Until.Add(-24 * time.Hour)
@@ -197,7 +208,7 @@ func stepTiers(all []tier, step int64) []tier {
 }
 
 // baseSeries sums the rollup_1m-shaped columns per bucket over the window.
-func (r *Reader) baseSeries(ctx context.Context, tx *sql.Tx, s *snapshot, from, until, step int64) (map[int64]*[nBase]int64, bool, error) {
+func (r *Reader) baseSeries(ctx context.Context, tx *rtx, s *snapshot, from, until, step int64) (map[int64]*[nBase]int64, bool, error) {
 	from = floorTo(from, 60)
 	segs := cover(from, until, r.baseTiers(s, step))
 	out := map[int64]*[nBase]int64{}
@@ -216,7 +227,7 @@ func (r *Reader) baseSeries(ctx context.Context, tx *sql.Tx, s *snapshot, from, 
 			parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+strings.Join(baseCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 			args = append(args, sg.from, sg.until)
 		}
-		q := `SELECT bk, ` + sumCols(baseCols) + ` FROM (` + strings.Join(parts, " UNION ALL ") + `) GROUP BY bk` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
+		q := `SELECT bk, ` + sumCols(baseCols) + ` FROM (` + strings.Join(parts, " UNION ALL ") + `) AS u GROUP BY bk` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		rows, err := tx.QueryContext(ctx, q, args...)
 		if err != nil {
 			return nil, false, fmt.Errorf("sqlitelog: base series: %w", err)
@@ -285,7 +296,7 @@ func anyFull(src keyedSource, hours map[int64]*hourAcc, from, until int64) bool 
 // keyed aggregates a dimension over the window: one SQL statement over the
 // tier segments plus the pending accumulators (passed as JSON), grouped by
 // (bucket, key), filtered by having, ordered and limited in SQLite.
-func (r *Reader) keyed(ctx context.Context, tx *sql.Tx, s *snapshot, src keyedSource, from, until, step int64, having, order string, limit int, countOnly bool) ([]keyedRow, int64, bool, error) {
+func (r *Reader) keyed(ctx context.Context, tx *rtx, s *snapshot, src keyedSource, from, until, step int64, having, order string, limit int, countOnly bool) ([]keyedRow, int64, bool, error) {
 	if src.minute != nil {
 		from = floorTo(from, 60)
 	}
@@ -329,13 +340,13 @@ func (r *Reader) keyed(ctx context.Context, tx *sql.Tx, s *snapshot, src keyedSo
 	if len(parts) == 0 {
 		return nil, 0, approximate(segs, s.now), nil
 	}
-	q := `SELECT bk, k, sum(a) AS a, sum(b) AS b FROM (` + strings.Join(parts, " UNION ALL ") + `) GROUP BY bk, k` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
+	q := `SELECT bk, k, sum(a) AS a, sum(b) AS b FROM (` + strings.Join(parts, " UNION ALL ") + `) AS u GROUP BY bk, k` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 	if having != "" {
 		q += ` HAVING ` + having
 	}
 	if countOnly {
 		var n int64
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (`+q+`)`, args...).Scan(&n); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (`+q+`) AS c`, args...).Scan(&n); err != nil {
 			return nil, 0, false, fmt.Errorf("sqlitelog: keyed count: %w", err)
 		}
 		return nil, n, approximate(segs, s.now), nil
@@ -414,7 +425,35 @@ func (r *Reader) clientSource(s *snapshot) keyedSource {
 }
 
 func (r *Reader) factTier() tier {
-	return tier{table: "query", res: 1, done: forever, keep: r.w.rawRetention(), facts: true}
+	return tier{table: "query", res: 1, done: forever, keep: r.rawRetention(), facts: true}
+}
+
+// now is the reader's clock.
+func (r *Reader) now() time.Time {
+	if r.c != nil {
+		return r.c.opts.Now()
+	}
+	return r.w.clock.Now()
+}
+
+// rawRetention bounds the fact table by age.
+func (r *Reader) rawRetention() time.Duration {
+	if r.c != nil {
+		return r.c.opts.RawRetention
+	}
+	return r.w.rawRetention()
+}
+
+// domainsOnLists is the summary's fourth tile.
+func (r *Reader) domainsOnLists() int64 {
+	f := r.c.domainsOnLists()
+	if r.w != nil {
+		f = r.w.opts.DomainsOnLists
+	}
+	if f == nil {
+		return 0
+	}
+	return f()
 }
 
 func (r *Reader) domainSource(s *snapshot) keyedSource {
@@ -425,7 +464,7 @@ func (r *Reader) domainSource(s *snapshot) keyedSource {
 			r.factTier(),
 		},
 		key: "domain", a: "total", b: "blocked",
-		fKey: "domain", fA: "1", fB: "(status BETWEEN 16 AND 23)",
+		fKey: "domain", fA: "1", fB: "CASE WHEN status BETWEEN 16 AND 23 THEN 1 ELSE 0 END",
 		hour: func(h *hourAcc, emit func(k, a, b int64)) {
 			for d, v := range h.domains {
 				emit(d, v[0], v[1])

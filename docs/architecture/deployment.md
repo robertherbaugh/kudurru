@@ -49,6 +49,11 @@ the dnsdist API, whose key the supervisor writes to the shared
   stable name. Its EndpointSlice is how replicas find the leader on `:8082`,
   how the Nodes page lists every replica (and fetches each one's status),
   and how the edge builds its backend list.
+- Audit events are kept in `AuditLog` objects (`audit.kudurru.io`, from the
+  `kudurru-crds` chart) that every replica reads, so the per-pod `emptyDir`
+  can go. With `database.existingSecret` the replicas keep the audit log,
+  query log and statistics in a PostgreSQL database instead
+  ([postgres.md](../deploy/postgres.md)); DNS never waits for it.
 - Probes use the ops port: startup, readiness and liveness on
   `/healthz/*` (:8081). `preStop` runs `kudurru lameduck`, so a pod fails
   readiness and drains before it stops.
@@ -95,8 +100,9 @@ Readiness on `:8084/healthz/ready` is "dnsdist runs and at least one backend
 is up". The supervisor also polls every backend's `/internal/zones` on
 `:8082` and flushes the authoritative pool's cache when a zone serial
 changes (when that pool is cached). The poll needs the internal credentials
-(`KUDURRU_ENCRYPTION_KEY` or `--internal-token-file`); the shipped chart and
-compose files do not pass them to the edge yet, so there it stays off.
+(`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
+chart, Kustomize and Compose files mount the backend's encryption key into
+the edge for this.
 Membership changes restart dnsdist in
 v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
 sub-second gap for a lone edge.

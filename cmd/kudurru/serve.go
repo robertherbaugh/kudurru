@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
@@ -35,6 +36,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
+	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/central/pgaudit"
+	"github.com/robertherbaugh/kudurru/internal/central/pgquerylog"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -213,6 +217,28 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	defer func() { _ = st.Close() }()
+
+	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
+	// so store writes and API actions are recorded in the node's audit
+	// spool (audit-spool.db) and as "log":"audit" lines. The wrapper goes
+	// on before the first writer (bootstrap) takes the store.
+	var auditSpool *spool.Spool
+	if cfg.Store.Driver == "kube" {
+		auditSpool, err = spool.Open(ctx, spool.Options{Path: filepath.Join(cfg.Node.DataDir, spool.FileName), Node: cfg.Node.Name, Registerer: reg})
+		if err != nil {
+			if errors.Is(err, spool.ErrSchemaTooNew) {
+				return fmt.Errorf("audit-spool.db was written by a newer kudurru: %w", err)
+			}
+			return err
+		}
+		defer func() { _ = auditSpool.Close() }()
+		scheme, err := internalkinds.NewScheme()
+		if err != nil {
+			return err
+		}
+		st = audit.WrapStore(st, audit.Multi{audit.Log{Logger: logger}, auditSpool},
+			audit.WrapOptions{Node: cfg.Node.Name, Scheme: scheme, Logger: logger})
+	}
 
 	// First boot: root forward zone, default client group and policy (§6.4).
 	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
@@ -406,6 +432,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		qlAsync   *querylog.Async
 		qlWriter  *sqlitelog.Writer
 	)
+	listedDomains := func() int64 {
+		if sn := zc.Snapshot(); sn != nil {
+			return domainsOnLists(sn.Objects.Lists())
+		}
+		return 0
+	}
 	if cfg.Querylog.Enabled {
 		qlMetrics := querylog.NewMetrics(reg)
 		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
@@ -423,12 +455,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 				return err
 			}
 			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
-			opts.DomainsOnLists = func() int64 {
-				if sn := zc.Snapshot(); sn != nil {
-					return domainsOnLists(sn.Objects.Lists())
-				}
-				return 0
-			}
+			opts.DomainsOnLists = listedDomains
 			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
 				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
@@ -610,29 +637,101 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
 
+	// The optional central database (D158): opened here, connected and
+	// migrated in the background by its runnable; never part of readiness.
+	var centralDB *central.DB
+	var centralState api.CentralState
+	if cfg.Database.Enabled() {
+		if centralDB, err = central.Open(central.Options{DSN: cfg.Database.DSN, MaxConns: int32(cfg.Database.MaxConns), // #nosec G115 -- bounded 1-32 by the schema
+			Node: cfg.Node.Name, Version: info.Version, Registerer: reg, Logger: logger}); err != nil {
+			return err
+		}
+		defer centralDB.Close()
+		centralState = centralDB
+	}
+
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
+	// The sqlite store keeps audit events in state.db; the kube driver's
+	// are in this node's audit spool, so /audit shows the events recorded
+	// by the replica that answers.
 	recorders := audit.Multi{audit.Log{Logger: logger}}
+	var auditReader audit.Reader
 	if ss, ok := st.(*sqlite.Store); ok {
+		auditReader = auditstore.SQLite{Store: ss}
 		recorders = audit.Multi{
 			audit.Gated{Inner: auditstore.SQLite{Store: ss}, Allowed: func() bool { return lic.Allows(license.FeatureAudit) }},
 			audit.Log{Logger: logger},
 		}
+	}
+	var auditLogs *auditLogStore
+	if auditSpool != nil {
+		auditReader = auditSpool
+		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
+		// audit.store auditlog: every replica reads every node's events.
+		if cfg.AuditStore() == config.AuditStoreAuditLog {
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, logger); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+			if auditLogs != nil {
+				auditReader = auditLogs.reader
+			}
+		}
+	}
+	// audit.store database (D159): every node ships its own audit (the
+	// spool, or state.db) into the central chain; every replica reads it.
+	var auditShipper *audit.Shipper
+	var centralJobs []central.Job
+	if centralDB != nil && cfg.AuditStore() == config.AuditStoreDatabase {
+		var src audit.Source
+		if auditSpool != nil {
+			src = auditSpool
+		} else if ss, ok := st.(*sqlite.Store); ok {
+			if src, err = audit.NewStateSource(ctx, ss, cfg.Node.Name); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+		}
+		if src != nil {
+			auditShipper = &audit.Shipper{Source: src, Target: &pgaudit.Target{DB: centralDB, Version: info.Version},
+				Delay: time.Second, MinGap: -1, Logger: logger}
+			auditReader = &pgaudit.Reader{DB: centralDB}
+			centralJobs = append(centralJobs, pgaudit.PruneJob(cfg.Audit.Retention.Std()))
+		}
+	}
+	if auditLogs != nil {
+		auditShipper = auditLogs.shipper
+	}
+	// The query log in the central database (D160): this node copies its
+	// querylog.db rows and rollups; the leader keeps the partitions.
+	var qlShipper *pgquerylog.Shipper
+	var centralQuerylog *sqlitelog.Reader
+	var centralPurger api.QuerylogPurger
+	if centralDB != nil && cfg.Database.Querylog.Ship {
+		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
+			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains})
+		centralPurger = pgquerylog.Purger{DB: centralDB}
+		if qlWriter == nil {
+			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
+		} else {
+			qlShipper = &pgquerylog.Shipper{DB: centralDB, Local: qlWriter, Node: cfg.Node.Name, Version: info.Version,
+				Facts: cfg.Database.Querylog.Facts, Retention: cfg.Database.Querylog.Retention.Raw.Std(), Registerer: reg, Logger: logger}
+		}
+		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
 	apiSrv, err := api.New(api.Options{
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		Querylog: qlReader, Tail: qlTail,
+		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
-		Refresher:    listRefresher(membership, fetcher),
-		ListBodies:   listBodies{cache: lists},
-		Purger:       querylogPurger(qlWriter),
-		Audit:        recorders,
+		Refresher:  listRefresher(membership, fetcher),
+		ListBodies: listBodies{cache: lists},
+		Purger:     querylogPurger(qlWriter),
+		Audit:      recorders, AuditReader: auditReader, Central: centralState,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
@@ -796,8 +895,41 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
+	if centralDB != nil {
+		if err := add("central", false, centralDB.Run); err != nil {
+			return err
+		}
+		if len(centralJobs) > 0 {
+			if err := add("central-janitor", true, (&central.Janitor{DB: centralDB, Jobs: centralJobs, Logger: logger}).Run); err != nil {
+				return err
+			}
+		}
+	}
+	if auditShipper != nil {
+		if err := add("audit-ship", false, auditShipper.Run); err != nil {
+			return err
+		}
+	}
+	if qlShipper != nil {
+		if err := add("querylog-ship", false, qlShipper.Run); err != nil {
+			return err
+		}
+	}
+	auditRetention := cfg.Audit.Retention.Std()
 	if ss, ok := st.(*sqlite.Store); ok {
-		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Logger: logger}).Run); err != nil {
+		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Retention: auditRetention, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	// Every node prunes its own audit spool; the leader prunes the
+	// AuditLog batches, which every node ships its spool into.
+	if auditSpool != nil {
+		if err := add("audit-spool-prune", false, (&audit.Pruner{Name: "spool", Prune: auditSpool.Prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	if auditLogs != nil {
+		if err := add("auditlog-prune", true, (&audit.Pruner{Name: "auditlog", Prune: auditLogs.prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
 			return err
 		}
 	}

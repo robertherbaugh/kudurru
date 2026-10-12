@@ -29,6 +29,11 @@ services:
       # Cluster settings edited in the UI or with `kudurru settings set` are
       # written here (on the data volume; kudurru.yaml stays read-only).
       KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
+      # Optional central database (docs/deploy/postgres.md): the audit log,
+      # query log and statistics of all three nodes in one PostgreSQL, so
+      # every node's dashboard shows them all. Write the connection string
+      # to secrets/database_dsn, add database_dsn to secrets below and here:
+      # KUDURRU_DATABASE__DSN_FILE: /run/secrets/database_dsn
       # v0.2 follower mode (nodes b and c) and v1.0 raft add cluster.* keys
       # here; they do not exist in v0.1.
     volumes:
@@ -63,8 +68,6 @@ services:
     cap_add: [NET_BIND_SERVICE, SETUID, SETGID, KILL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
-    environment:
-      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
     command:
       - kudurru
       - edge
@@ -78,7 +81,10 @@ services:
       - --console=127.0.0.1:5199
       - --api-key-out=/run/kudurru/dnsdist-api.key
       - --proxy-protocol-secret-file=/run/secrets/proxy_secret
-    secrets: [proxy_secret]
+    environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    secrets: [proxy_secret, encryption_key]
     volumes:
       - ./certs:/certs:ro
       - kudurru-run:/run/kudurru
@@ -119,5 +125,7 @@ secrets:
     file: ./secrets/encryption_key
   proxy_secret:
     file: ./secrets/proxy_secret
+  # database_dsn:                    # the optional central database (above)
+  #   file: ./secrets/database_dsn
   vrrp_hmac:
     file: ./secrets/vrrp_hmac

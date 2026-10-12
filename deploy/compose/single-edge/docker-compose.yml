@@ -14,6 +14,8 @@ services:
     restart: unless-stopped
     environment:
       KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    secrets: [encryption_key]
     command:
       - kudurru
       - edge

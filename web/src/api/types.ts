@@ -46,6 +46,8 @@ export interface ScopeInfo {
   scope: 'node' | 'cluster';
   nodes: { name: string; ok: boolean; took_ms: number; error?: string }[];
   partial: boolean;
+  /** "central" when the central database answered (D161). */
+  source?: 'central';
 }
 
 // ---------------------------------------------------------------------------

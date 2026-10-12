@@ -8,14 +8,17 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/version"
@@ -60,6 +63,9 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
              listeners.api.address)
   token      the CLI token is accepted (GET /auth/me)
   diagnoses  configuration diagnoses reported by the server (GET /info/messages)
+  database   with database.dsn set: the central database answers, runs
+             PostgreSQL 15 or newer and has a schema this binary can use;
+             warns about sslmode=disable to another host
   vrrp       warns when ` + "`kudurru vip run --legacy`" + ` renders keepalived without
              auth_hmac (unauthenticated VRRP adverts); silent on nodes
              without keepalived
@@ -93,6 +99,7 @@ Exits non-zero when a check fails.`,
 				say("env-locked keys: %v\n", cfg.EnvLocked)
 			}
 			checkDataDir(rep, cfg.Node.DataDir)
+			checkDatabase(c.Context(), rep, cfg)
 			checkVRRP(rep, vipRunDir, kaConf)
 
 			var serverUp bool
@@ -364,4 +371,54 @@ func tryBind(proto, addr string) error {
 		}
 		return l.Close()
 	}
+}
+
+// checkDatabase checks the central database (database.dsn, D158): reachable,
+// PostgreSQL 15 or newer, a schema this binary can use. It reads only;
+// the server migrates.
+func checkDatabase(ctx context.Context, rep *doctorReport, cfg *config.Config) {
+	if !cfg.Database.Enabled() {
+		return
+	}
+	pc, err := central.ParseDSN(cfg.Database.DSN)
+	if err != nil {
+		rep.fail("database", "%v", err)
+		return
+	}
+	cc := pc.ConnConfig
+	if cc.TLSConfig == nil && cc.Host != "" && !strings.HasPrefix(cc.Host, "/") && cc.Host != "localhost" && cc.Host != "127.0.0.1" && cc.Host != "::1" {
+		rep.warn("database", "sslmode=disable to %s: the connection is not encrypted; use sslmode=verify-full", cc.Host)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	conn, err := pgx.ConnectConfig(ctx, cc)
+	if err != nil {
+		rep.fail("database", "cannot connect to %s:%d: %v (nodes keep their data locally until it answers)", cc.Host, cc.Port, err)
+		return
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	var num int
+	if err := conn.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&num); err != nil {
+		rep.fail("database", "server version: %v", err)
+		return
+	}
+	if num < central.MinServerVersion {
+		rep.fail("database", "PostgreSQL %d.%d is too old; kudurru needs 15 or newer", num/10000, num%10000)
+		return
+	}
+	var schema, compat string
+	err = conn.QueryRow(ctx, `SELECT coalesce(max(value) FILTER (WHERE key = 'schema_version'), ''), coalesce(max(value) FILTER (WHERE key = 'compat_version'), '') FROM kudurru_meta`).Scan(&schema, &compat)
+	switch {
+	case err != nil:
+		rep.ok("database", "PostgreSQL %d.%d at %s; no kudurru schema yet (the server creates it)", num/10000, num%10000, cc.Host)
+	case atoi(compat) > central.SchemaVersion:
+		rep.fail("database", "schema %s needs a newer kudurru (compat %s, this binary %d)", schema, compat, central.SchemaVersion)
+	default:
+		rep.ok("database", "PostgreSQL %d.%d at %s, schema %s", num/10000, num%10000, cc.Host, schema)
+	}
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }

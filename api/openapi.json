@@ -904,6 +904,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "step": {
             "format": "int64",
             "type": "integer"
@@ -2090,11 +2093,17 @@
           "resource": {
             "$ref": "#/components/schemas/Resource"
           },
+          "resource_version": {
+            "type": "string"
+          },
           "result": {
             "type": "string"
           },
           "ts": {
             "format": "date-time",
+            "type": "string"
+          },
+          "uid": {
             "type": "string"
           }
         },
@@ -3681,6 +3690,10 @@
       "PurgeResult": {
         "additionalProperties": false,
         "properties": {
+          "central_deleted": {
+            "format": "int64",
+            "type": "integer"
+          },
           "deleted": {
             "format": "int64",
             "type": "integer"
@@ -3736,6 +3749,9 @@
               "null"
             ]
           },
+          "records_capped": {
+            "type": "boolean"
+          },
           "records_filtered": {
             "format": "int64",
             "type": "integer"
@@ -3745,6 +3761,9 @@
             "type": "integer"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -3952,6 +3971,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "subscribers": {
             "format": "int64",
             "type": "integer"
@@ -4009,6 +4031,9 @@
             "type": "boolean"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -5075,6 +5100,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -5150,6 +5178,9 @@
             "type": "object"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -5302,6 +5333,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "step": {
             "format": "int64",
             "type": "integer"
@@ -5452,6 +5486,9 @@
             "type": "boolean"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -6027,6 +6064,9 @@
               "$ref": "#/components/schemas/UpstreamServer"
             },
             "type": "array"
+          },
+          "source": {
+            "type": "string"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -17491,6 +17531,21 @@
               "format": "int64",
               "minimum": 0,
               "type": "integer"
+            }
+          },
+          {
+            "description": "cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).",
+              "enum": [
+                "node",
+                "cluster",
+                ""
+              ],
+              "type": "string"
             }
           }
         ],

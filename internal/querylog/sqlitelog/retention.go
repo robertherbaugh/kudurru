@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"time"
 )
@@ -38,7 +39,14 @@ func (w *Writer) Retain(ctx context.Context) (RetentionReport, error) {
 	}
 	if raw := w.rawRetention(); raw > 0 {
 		cutoff := now.Add(-raw).UnixMicro()
-		if rep.RawDeleted, err = w.deleteFacts(ctx, `DELETE FROM query WHERE id IN (SELECT id FROM query WHERE ts < ? LIMIT `+fmt.Sprint(w.deleteBatch)+`)`, cutoff); err != nil {
+		// Rows a shipper has not delivered yet stay until it has (D160).
+		shipped := int64(math.MaxInt64)
+		w.mu.Lock()
+		if f := w.shippedThrough; f != nil {
+			shipped = f()
+		}
+		w.mu.Unlock()
+		if rep.RawDeleted, err = w.deleteFacts(ctx, `DELETE FROM query WHERE id IN (SELECT id FROM query WHERE ts < ? AND id <= ? LIMIT `+fmt.Sprint(w.deleteBatch)+`)`, cutoff, shipped); err != nil {
 			return rep, err
 		}
 	}

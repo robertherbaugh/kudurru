@@ -76,6 +76,9 @@ func reasonWithContext(ev audit.Event) string {
 // Read implements Reader. The table has no actor index, so an actor filter
 // pages through the table until the page is full.
 func (s SQLite) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) {
+	if q.Cursor != "" {
+		return nil, audit.ErrBadCursor
+	}
 	limit := audit.ClampLimit(q.Limit)
 	after, before := q.AfterID, q.BeforeID
 	out := []audit.Event{}
@@ -92,7 +95,7 @@ func (s SQLite) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) 
 			} else {
 				after = r.ID
 			}
-			ev := fromEntry(r)
+			ev := audit.FromEntry(r)
 			if q.Actor != "" && ev.Actor.String() != q.Actor && ev.Actor.Name != q.Actor {
 				continue
 			}
@@ -104,18 +107,5 @@ func (s SQLite) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) 
 		if len(rows) < limit || q.Actor == "" {
 			return out, nil
 		}
-	}
-}
-
-func fromEntry(r sqlite.AuditEntry) audit.Event {
-	actor := audit.Actor{Name: r.Actor}
-	if kind, name, ok := strings.Cut(r.Actor, ":"); ok && kind != "file" && kind != "integration" {
-		actor = audit.Actor{Kind: kind, Name: name}
-	}
-	return audit.Event{
-		ID: r.ID, Time: r.Time, Actor: actor, Action: r.Action,
-		Resource: audit.Resource{Kind: string(r.Key.Kind), Namespace: r.Key.Namespace, Name: r.Key.Name},
-		Result:   r.Result, Reason: r.Reason, Before: r.Before, After: r.After,
-		Manager: r.Manager, Hash: r.Hash, PrevHash: r.PrevHash,
 	}
 }

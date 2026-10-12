@@ -22,9 +22,17 @@ type scopedQuerylog struct {
 	s       *Server
 	peers   []cluster.Peer
 	cluster bool
+	// central answers a cluster request from the central database
+	// (D161) instead of the peers.
+	central *sqlitelog.Reader
 }
 
 func (s *Server) scopedReader(ctx context.Context, scope, node string) (*scopedQuerylog, error) {
+	// With a central database every node's rows are in one place: no
+	// scatter-gather (D161).
+	if scope == "cluster" && node == "" && s.opts.CentralQuerylog != nil {
+		return &scopedQuerylog{s: s, cluster: true, central: s.opts.CentralQuerylog}, nil
+	}
 	peers, err := s.queryPeers(ctx, scope, node)
 	if err != nil {
 		return nil, err
@@ -73,6 +81,19 @@ func (s *Server) queryPeers(ctx context.Context, scope, node string) ([]cluster.
 }
 
 func (r *scopedQuerylog) localOnly() bool { return !r.cluster && r.peers[0].Self }
+
+// direct is the reader that answers the whole request by itself: the
+// central database for a cluster request, this node's log for this node;
+// nil when the peers must be gathered.
+func (r *scopedQuerylog) direct() *sqlitelog.Reader {
+	if r.central != nil {
+		return r.central
+	}
+	if r.localOnly() {
+		return r.s.opts.Querylog
+	}
+	return nil
+}
 
 type shardResult struct {
 	node     string
@@ -191,8 +212,8 @@ func validShard(out *internalapi.QuerylogResponse, kind, name string) bool {
 }
 
 func (r *scopedQuerylog) Summary(ctx context.Context, q sqlitelog.SummaryQuery) (*sqlitelog.Summary, error) {
-	if r.localOnly() {
-		return r.s.opts.Querylog.Summary(ctx, q)
+	if d := r.direct(); d != nil {
+		return d.Summary(ctx, q)
 	}
 	shards, scope, err := r.gather(ctx, internalapi.QuerylogRequest{Kind: "summary", Window: q.Window}, nil)
 	if err != nil {
@@ -252,8 +273,8 @@ func limitN(n int) int {
 	return min(n, sqlitelog.MaxTopN)
 }
 func (r *scopedQuerylog) Timeseries(ctx context.Context, q sqlitelog.TimeseriesQuery) (*sqlitelog.Timeseries, error) {
-	if r.localOnly() {
-		return r.s.opts.Querylog.Timeseries(ctx, q)
+	if d := r.direct(); d != nil {
+		return d.Timeseries(ctx, q)
 	}
 	q.Step = time.Duration(sqlitelog.StepSeconds(q.Step, q.Window, r.s.opts.Now())) * time.Second
 	shards, scope, err := r.gather(ctx, internalapi.QuerylogRequest{Kind: "timeseries", Window: q.Window, Step: q.Step}, nil)
@@ -285,16 +306,16 @@ func (r *scopedQuerylog) Timeseries(ctx context.Context, q sqlitelog.TimeseriesQ
 	return out, nil
 }
 func (r *scopedQuerylog) top(ctx context.Context, kind string, q sqlitelog.TopQuery) (*sqlitelog.TopList, error) {
-	if r.localOnly() {
+	if d := r.direct(); d != nil {
 		switch kind {
 		case "domains":
-			return r.s.opts.Querylog.TopDomains(ctx, q)
+			return d.TopDomains(ctx, q)
 		case "clients":
-			return r.s.opts.Querylog.TopClients(ctx, q)
+			return d.TopClients(ctx, q)
 		case "lists":
-			return r.s.opts.Querylog.TopLists(ctx, q)
+			return d.TopLists(ctx, q)
 		case "zones":
-			return r.s.opts.Querylog.TopZones(ctx, q)
+			return d.TopZones(ctx, q)
 		}
 	}
 	n := limitN(q.N)
@@ -365,8 +386,10 @@ func (r *scopedQuerylog) TopZones(ctx context.Context, q sqlitelog.TopQuery) (*s
 }
 
 func (r *scopedQuerylog) upstreams(ctx context.Context, q sqlitelog.TopQuery) (*sqlitelog.UpstreamTop, []UpstreamServer, error) {
-	if r.localOnly() {
-		out, err := r.s.opts.Querylog.TopUpstreams(ctx, q)
+	if d := r.direct(); d != nil {
+		// The central database holds traffic, not live server health:
+		// that is this node's.
+		out, err := d.TopUpstreams(ctx, q)
 		return out, r.s.upstreamServers(), err
 	}
 	n := limitN(q.N)
@@ -426,8 +449,8 @@ func (r *scopedQuerylog) TopUpstreams(ctx context.Context, q sqlitelog.TopQuery)
 }
 
 func (r *scopedQuerylog) ClientTimeseries(ctx context.Context, q sqlitelog.ClientTimeseriesQuery) (*sqlitelog.ClientTimeseries, error) {
-	if r.localOnly() {
-		return r.s.opts.Querylog.ClientTimeseries(ctx, q)
+	if d := r.direct(); d != nil {
+		return d.ClientTimeseries(ctx, q)
 	}
 	n := limitN(q.N)
 	candidates := n
@@ -498,8 +521,8 @@ func (r *scopedQuerylog) ClientTimeseries(ctx context.Context, q sqlitelog.Clien
 	return out, nil
 }
 func (r *scopedQuerylog) RecentBlocked(ctx context.Context, n int) (*sqlitelog.RecentBlocked, error) {
-	if r.localOnly() {
-		return r.s.opts.Querylog.RecentBlocked(ctx, n)
+	if d := r.direct(); d != nil {
+		return d.RecentBlocked(ctx, n)
 	}
 	n = limitN(n)
 	shards, scope, err := r.gather(ctx, internalapi.QuerylogRequest{Kind: "recent_blocked", N: n}, nil)
@@ -560,6 +583,9 @@ func decodeQuerylogCursor(raw string, v any) error {
 	return nil
 }
 func (r *scopedQuerylog) Queries(ctx context.Context, f sqlitelog.QueryFilter) (*sqlitelog.QueryPage, error) {
+	if r.central != nil {
+		return r.central.Queries(ctx, f)
+	}
 	if !r.cluster {
 		if r.localOnly() {
 			return r.s.opts.Querylog.Queries(ctx, f)

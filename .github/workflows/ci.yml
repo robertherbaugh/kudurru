@@ -52,6 +52,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
+    # PostgreSQL for the central-database tests (internal/central, D158):
+    # with KUDURRU_REQUIRE_POSTGRES they fail instead of skipping.
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -80,6 +93,35 @@ jobs:
         run: make size
       - name: Smoke test the binary
         run: ./bin/kudurru version
+  # The central-database tests on the oldest and newest supported
+  # PostgreSQL (15: UNIQUE NULLS NOT DISTINCT; 18); the go job runs 17.
+  postgres:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    strategy:
+      matrix:
+        image:
+          - postgres:15-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+          - postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Central-database tests
+        run: go test -count=1 $(go list ./... | grep -E '/internal/(central|audit|querylog)')
   # The dashboard SPA (web/, D69): lint, typecheck, unit tests with MSW,
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.

@@ -371,6 +371,16 @@ rules:
       - watch
       - create
       - update
+  - apiGroups:
+      - audit.kudurru.io
+    resources:
+      - auditlogs
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

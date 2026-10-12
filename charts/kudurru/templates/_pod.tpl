@@ -81,6 +81,10 @@ spec:
         - name: KUDURRU_BOOTSTRAP_TOKEN_FILE
           value: /etc/kudurru/secrets/bootstrap-token/token
         {{- end }}
+        {{- if .Values.database.existingSecret }}
+        - name: KUDURRU_DATABASE__DSN_FILE
+          value: /etc/kudurru/secrets/database/{{ .Values.database.dsnKey }}
+        {{- end }}
         {{- if (.Values.resources.limits | default dict).memory }}
         - name: GOMEMLIMIT
           valueFrom:
@@ -192,6 +196,11 @@ spec:
           mountPath: /etc/kudurru/secrets/encryption-previous
           readOnly: true
         {{- end }}
+        {{- if .Values.database.existingSecret }}
+        - name: database
+          mountPath: /etc/kudurru/secrets/database
+          readOnly: true
+        {{- end }}
         - name: admin
           mountPath: /etc/kudurru/secrets/admin
           readOnly: true
@@ -238,6 +247,15 @@ spec:
       secret:
         secretName: {{ .Values.auth.encryptionKeyPreviousSecret }}
         defaultMode: 0440
+    {{- end }}
+    {{- if .Values.database.existingSecret }}
+    - name: database
+      secret:
+        secretName: {{ .Values.database.existingSecret }}
+        defaultMode: 0440
+        items:
+          - key: {{ .Values.database.dsnKey }}
+            path: {{ .Values.database.dsnKey }}
     {{- end }}
     - name: admin
       secret:
@@ -375,6 +393,12 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
         fieldRef:
           fieldPath: metadata.name
     {{- include "kudurru.licenseEnv" .root | nindent 4 }}
+    - name: KUDURRU_ENCRYPTION_KEY_FILE
+      value: /etc/kudurru/secrets/encryption/key
+    {{- if $root.Values.auth.encryptionKeyPreviousSecret }}
+    - name: KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE
+      value: /etc/kudurru/secrets/encryption-previous/key
+    {{- end }}
   ports:
     - name: edge-dns-udp
       containerPort: 53
@@ -442,6 +466,14 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
       mountPath: /etc/dnsdist
     - name: run
       mountPath: /run/kudurru
+    - name: encryption-key
+      mountPath: /etc/kudurru/secrets/encryption
+      readOnly: true
+    {{- if $root.Values.auth.encryptionKeyPreviousSecret }}
+    - name: encryption-key-previous
+      mountPath: /etc/kudurru/secrets/encryption-previous
+      readOnly: true
+    {{- end }}
     {{- if not .sidecar }}
     - name: proxy-protocol
       mountPath: /etc/kudurru/secrets/proxy

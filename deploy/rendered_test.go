@@ -2,6 +2,8 @@ package deploy_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -102,6 +104,12 @@ func (r *rendered) nodeFile(t *testing.T) string {
 	return str(dig(r.object(t, "ConfigMap", "kudurru-node"), "data", "kudurru.yaml"))
 }
 
+// fileStandIns are the contents of the Secret files the chart mounts for
+// KUDURRU_<SECTION>__<KEY>_FILE variables, valid for their keys.
+var fileStandIns = map[string]string{
+	"KUDURRU_DATABASE__DSN_FILE": "postgres://kudurru@db.example:5432/kudurru?sslmode=verify-full",
+}
+
 // config loads the node file with the kudurru container's settings env.
 func (r *rendered) config(t *testing.T) *config.Config {
 	t.Helper()
@@ -122,6 +130,14 @@ func (r *rendered) config(t *testing.T) *config.Config {
 		v := str(em["value"])
 		if em["valueFrom"] != nil {
 			v = "kudurru-0"
+		}
+		// A key read from a mounted Secret: stand in for the file.
+		if strings.HasSuffix(name, "_FILE") {
+			f := filepath.Join(t.TempDir(), "secret")
+			if err := os.WriteFile(f, []byte(fileStandIns[name]), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			v = f
 		}
 		env = append(env, name+"="+v)
 	}

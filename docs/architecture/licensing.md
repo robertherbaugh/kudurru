@@ -91,11 +91,14 @@ Two details matter for an operator:
   gate lets the request through: an outage never blocks an operator. Changes
   made outside the API (file-managed objects, `kubectl`) are not gated; the
   limit is a management-plane check, backed by the licence terms.
-- **The audit trail keeps being written where the store writes it.** The
-  sqlite driver records one hash-chained row per store mutation in `state.db`
-  whatever the license says, and every event goes to the log; what the license
-  gates is the API recorder's extra rows (denials, runtime actions) and
-  reading the trail back (`GET /audit`, the export, the dashboard page).
+- **The audit trail keeps being written and shipped.** The sqlite driver
+  records one hash-chained row per store mutation in `state.db` whatever the
+  license says, the spool and the shipper of the cluster-wide audit log
+  (`AuditLog` objects, or the central database; D155 to D161) keep running, and
+  every event goes to the log. What the license gates is the API recorder's
+  extra rows (denials, runtime actions) and reading the trail back at the API
+  (`GET /audit`, the export, the dashboard page), whichever store answers. A key
+  that arrives later shows the history that was kept meanwhile.
 - **The supervisors check once, at start.** They are separate processes (the
   `kudurru-dnsdist` and `kudurru-keepalived` images), often PID 1 of a
   container. A key that expires later never stops a running one, and the

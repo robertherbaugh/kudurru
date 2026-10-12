@@ -1433,6 +1433,27 @@ func (e QuerySuggestionsParamsField) Valid() bool {
 	}
 }
 
+// Defines values for QueryActionParamsScope.
+const (
+	QueryActionParamsScopeCluster QueryActionParamsScope = "cluster"
+	QueryActionParamsScopeEmpty   QueryActionParamsScope = ""
+	QueryActionParamsScopeNode    QueryActionParamsScope = "node"
+)
+
+// Valid indicates whether the value is a known member of the QueryActionParamsScope enum.
+func (e QueryActionParamsScope) Valid() bool {
+	switch e {
+	case QueryActionParamsScopeCluster:
+		return true
+	case QueryActionParamsScopeEmpty:
+		return true
+	case QueryActionParamsScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StatsClientTimeseriesParamsScope.
 const (
 	StatsClientTimeseriesParamsScopeCluster StatsClientTimeseriesParamsScope = "cluster"
@@ -1935,6 +1956,7 @@ type ClientTimeseriesBody struct {
 	Partial     bool           `json:"partial"`
 	Points      *[]ClientPoint `json:"points"`
 	Scope       string         `json:"scope"`
+	Source      *string        `json:"source,omitempty"`
 	Step        int64          `json:"step"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -2353,21 +2375,23 @@ type ErrorBody struct {
 
 // Event defines model for Event.
 type Event struct {
-	Action   string      `json:"action"`
-	Actor    Actor       `json:"actor"`
-	After    interface{} `json:"after,omitempty"`
-	Authz    *string     `json:"authz,omitempty"`
-	Before   interface{} `json:"before,omitempty"`
-	Hash     *string     `json:"hash,omitempty"`
-	Id       *int64      `json:"id,omitempty"`
-	Manager  *string     `json:"manager,omitempty"`
-	Node     *string     `json:"node,omitempty"`
-	PrevHash *string     `json:"prev_hash,omitempty"`
-	Reason   *string     `json:"reason,omitempty"`
-	Request  Request     `json:"request"`
-	Resource Resource    `json:"resource"`
-	Result   string      `json:"result"`
-	Ts       time.Time   `json:"ts"`
+	Action          string      `json:"action"`
+	Actor           Actor       `json:"actor"`
+	After           interface{} `json:"after,omitempty"`
+	Authz           *string     `json:"authz,omitempty"`
+	Before          interface{} `json:"before,omitempty"`
+	Hash            *string     `json:"hash,omitempty"`
+	Id              *int64      `json:"id,omitempty"`
+	Manager         *string     `json:"manager,omitempty"`
+	Node            *string     `json:"node,omitempty"`
+	PrevHash        *string     `json:"prev_hash,omitempty"`
+	Reason          *string     `json:"reason,omitempty"`
+	Request         Request     `json:"request"`
+	Resource        Resource    `json:"resource"`
+	ResourceVersion *string     `json:"resource_version,omitempty"`
+	Result          string      `json:"result"`
+	Ts              time.Time   `json:"ts"`
+	Uid             *string     `json:"uid,omitempty"`
 }
 
 // Flags defines model for Flags.
@@ -2955,8 +2979,9 @@ type ProviderSpecific struct {
 
 // PurgeResult defines model for PurgeResult.
 type PurgeResult struct {
-	Deleted int64  `json:"deleted"`
-	Node    string `json:"node"`
+	CentralDeleted *int64 `json:"central_deleted,omitempty"`
+	Deleted        int64  `json:"deleted"`
+	Node           string `json:"node"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -2970,9 +2995,11 @@ type QueriesBody struct {
 	Nodes            *[]NodeResult `json:"nodes"`
 	Partial          bool          `json:"partial"`
 	Queries          *[]QueryRow   `json:"queries"`
+	RecordsCapped    *bool         `json:"records_capped,omitempty"`
 	RecordsFiltered  int64         `json:"records_filtered"`
 	RecordsTotal     int64         `json:"records_total"`
 	Scope            string        `json:"scope"`
+	Source           *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -3038,6 +3065,7 @@ type QuerylogStatusBody struct {
 	Retention   Retention     `json:"retention"`
 	Rows        int64         `json:"rows"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 	Subscribers int64         `json:"subscribers"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -3052,6 +3080,7 @@ type RecentBlockedBody struct {
 	Nodes   *[]NodeResult  `json:"nodes"`
 	Partial bool           `json:"partial"`
 	Scope   string         `json:"scope"`
+	Source  *string        `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -3414,6 +3443,7 @@ type SuggestionsBody struct {
 	Nodes   *[]NodeResult `json:"nodes"`
 	Partial bool          `json:"partial"`
 	Scope   string        `json:"scope"`
+	Source  *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64   `json:"took_ms"`
@@ -3433,6 +3463,7 @@ type SummaryBody struct {
 	Queries        SummaryQueries   `json:"queries"`
 	Rcodes         map[string]int64 `json:"rcodes"`
 	Scope          string           `json:"scope"`
+	Source         *string          `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64          `json:"took_ms"`
@@ -3469,6 +3500,7 @@ type TimeseriesBody struct {
 	Partial     bool          `json:"partial"`
 	Points      *[]Point      `json:"points"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 	Step        int64         `json:"step"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -3518,6 +3550,7 @@ type TopBody struct {
 	Nodes       *[]NodeResult `json:"nodes"`
 	Partial     bool          `json:"partial"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64         `json:"took_ms"`
@@ -3742,6 +3775,7 @@ type UpstreamsBody struct {
 	Partial     bool             `json:"partial"`
 	Scope       string           `json:"scope"`
 	Servers     []UpstreamServer `json:"servers"`
+	Source      *string          `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs    float64         `json:"took_ms"`
@@ -4281,6 +4315,15 @@ type QuerySuggestionsParams struct {
 
 // QuerySuggestionsParamsField defines parameters for QuerySuggestions.
 type QuerySuggestionsParamsField string
+
+// QueryActionParams defines parameters for QueryAction.
+type QueryActionParams struct {
+	// Scope cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).
+	Scope *QueryActionParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
+// QueryActionParamsScope defines parameters for QueryAction.
+type QueryActionParamsScope string
 
 // PurgeQuerylogParams defines parameters for PurgeQuerylog.
 type PurgeQuerylogParams struct {
@@ -5412,14 +5455,14 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithBody(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	QueryActionWithBody(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// QueryAction Allow or deny the domain of a logged query
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryAction(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	QueryAction(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PurgeQuerylog Delete query-log rows
 	//
@@ -7564,8 +7607,8 @@ func (c *Client) QuerySuggestions(ctx context.Context, params *QuerySuggestionsP
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *Client) QueryActionWithBody(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewQueryActionRequestWithBody(c.Server, id, contentType, body)
+func (c *Client) QueryActionWithBody(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryActionRequestWithBody(c.Server, id, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7581,8 +7624,8 @@ func (c *Client) QueryActionWithBody(ctx context.Context, id int64, contentType 
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *Client) QueryAction(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewQueryActionRequest(c.Server, id, body)
+func (c *Client) QueryAction(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryActionRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13052,18 +13095,18 @@ func NewQuerySuggestionsRequest(server string, params *QuerySuggestionsParams) (
 }
 
 // NewQueryActionRequest calls the generic QueryAction builder with application/json body
-func NewQueryActionRequest(server string, id int64, body QueryActionJSONRequestBody) (*http.Request, error) {
+func NewQueryActionRequest(server string, id int64, params *QueryActionParams, body QueryActionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewQueryActionRequestWithBody(server, id, "application/json", bodyReader)
+	return NewQueryActionRequestWithBody(server, id, params, "application/json", bodyReader)
 }
 
 // NewQueryActionRequestWithBody constructs an http.Request for the QueryAction method, with any body, and a specified content type
-func NewQueryActionRequestWithBody(server string, id int64, contentType string, body io.Reader) (*http.Request, error) {
+func NewQueryActionRequestWithBody(server string, id int64, params *QueryActionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -13086,6 +13129,33 @@ func NewQueryActionRequestWithBody(server string, id int64, contentType string, 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
@@ -15647,14 +15717,14 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithBodyWithResponse(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
+	QueryActionWithBodyWithResponse(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
 
 	// QueryActionWithResponse Allow or deny the domain of a logged query
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithResponse(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
+	QueryActionWithResponse(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
 
 	// PurgeQuerylogWithResponse Delete query-log rows
 	//
@@ -28237,8 +28307,8 @@ func (c *ClientWithResponses) QuerySuggestionsWithResponse(ctx context.Context, 
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
-	rsp, err := c.QueryActionWithBody(ctx, id, contentType, body, reqEditors...)
+func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
+	rsp, err := c.QueryActionWithBody(ctx, id, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -28250,8 +28320,8 @@ func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Contex
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *ClientWithResponses) QueryActionWithResponse(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
-	rsp, err := c.QueryAction(ctx, id, body, reqEditors...)
+func (c *ClientWithResponses) QueryActionWithResponse(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
+	rsp, err := c.QueryAction(ctx, id, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
