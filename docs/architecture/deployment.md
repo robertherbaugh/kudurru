@@ -89,8 +89,9 @@ Readiness on `:8084/healthz/ready` is "dnsdist runs and at least one backend
 is up". The supervisor also polls every backend's `/internal/zones` on
 `:8082` and flushes the authoritative pool's cache when a zone serial
 changes (when that pool is cached). The poll needs the internal credentials
-(`KUDURRU_ENCRYPTION_KEY` or `--internal-token-file`); the shipped chart and
-compose files do not pass them to the edge yet, so there it stays off.
+(`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
+chart, Kustomize and Compose files mount the backend's encryption key into
+the edge for this.
 Membership changes restart dnsdist in
 v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
 sub-second gap for a lone edge.
