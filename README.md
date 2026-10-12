@@ -125,6 +125,30 @@ site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)
 ```
 
+## AI Assisted Development
+
+kudurru was built with substantial help from AI coding assistants: **Claude** (Anthropic) and **OpenAI** models. To be transparent about what that means:
+
+**Created with AI assistance**
+
+- most of the source code (the resolver and control plane, the dashboard, the CLI and the supervisors)
+- the Helm charts, compose profiles, Dockerfiles and GitHub Actions workflows
+- the tests and benchmarks
+- the documentation, including the architecture, the user guide and this README
+
+**Done by the maintainer**
+
+- defining the requirements and deciding on features, design and licensing rules
+- reviewing, running and testing the result, and reporting problems that were then fixed
+- publishing, versioning and operating the project
+
+**What this means for you**
+
+- The test suite and the CI workflows run on every change, and releases are published only through the pipeline described in the [release checklist](docs/release-checklist.md). Tests are not a substitute for validating your own environment.
+- Some checks need real hardware and are still open for v0.1, such as 2-VM keepalived failover and dnsdist through the edge. Provider-specific setups (OIDC providers, Cloudflare, UniFi) have not been tested in every combination.
+- AI-generated code can contain mistakes, including security-relevant ones. Review the code, and validate authentication, RBAC and network exposure yourself, before you run kudurru in production or on an untrusted network.
+- Issues and pull requests are reviewed and handled by the maintainer. The rules for AI agents that work in this repository are in [CLAUDE.md](CLAUDE.md).
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). dnsdist and keepalived are GPL-2.0 and are distributed only as separate, unmodified programs in their own images.
