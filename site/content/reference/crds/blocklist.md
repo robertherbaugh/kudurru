@@ -42,6 +42,17 @@ Validation: response customIP requires the customIP block (`!has(self.response) 
 | `spec.sources[].configMapRef.name` | `string` | **Required.**<br>Length: at least 1 |
 | `spec.sources[].configMapRef.namespace` | `string` |  |
 | `spec.sources[].enabled` | `boolean` | Enabled false switches this one source off without removing it, like Pi-hole's per-adlist switch: it is not fetched and not compiled, its cached body and status digest are kept, and status.sources\[\] reports it with enabled: false. Omitted means true. The kudurru.io/enabled annotation switches the whole list off. |
+| `spec.sources[].entries` | `[]object` | Entries are structured entries (value, type, switch, comment, provenance), as the dashboard's Allowlist and Denylist write them. They compile as adblock rules; format and subdomains do not apply.<br>Items: at most 10000 |
+| `spec.sources[].entries[].comment` | `string` | Length: at most 500 |
+| `spec.sources[].entries[].created` | `string` | Format: `date-time` |
+| `spec.sources[].entries[].createdBy` | `string` | CreatedBy is the actor that added the entry ("user:alice").<br>Length: at most 300 |
+| `spec.sources[].entries[].enabled` | `boolean` | Enabled false keeps the entry without applying it. Omitted means true. |
+| `spec.sources[].entries[].modified` | `string` | Format: `date-time` |
+| `spec.sources[].entries[].origin` | `string` | EntryOrigin records how a structured entry was added.<br>One of: `manual`, `querylog`, `unblock`, `api`, `migrated` |
+| `spec.sources[].entries[].request` | `string` | Request is the UnblockRequest ("namespace/name") whose approval added the entry.<br>Length: at most 300 |
+| `spec.sources[].entries[].type` | `string` | EntryType is how a structured list entry matches.<br>Default: `exact`<br>One of: `exact`, `wildcard`, `regex` |
+| `spec.sources[].entries[].value` | `string` | **Required.** Value is the canonical form for Type: "ads.example.com" (exact), "\*.example.com" (wildcard) or the RE2 expression without slashes (regex).<br>Length: 1 to 1024 |
+| `spec.sources[].exclude` | `[]string` | Exclude switches off single entries of this source without editing it, also for URL and ConfigMap sources: each value is a rule as the source's format normalises it ("ads.example.com" for a hosts line "0.0.0.0 ads.example.com", "\|\|ads.example.com^", "/regex/"), as GET /blocklists/{namespace}/{name}/sources/{source}/entries lists them. Excluded rules are not compiled; the exclusions survive refreshes, and values that match nothing in the current body are reported in status.sources\[\].staleExcludes.<br>Items: at most 10000<br>List type: `set` |
 | `spec.sources[].format` | `string` | ListFormat is the syntax of a blocklist source.<br>Default: `auto`<br>One of: `auto`, `hosts`, `domains`, `adblock`, `regex` |
 | `spec.sources[].inline` | `[]string` |  |
 | `spec.sources[].name` | `string` |  |
@@ -66,9 +77,11 @@ BlockListStatus is the observed state of a block list.
 | `status.sources[].entries` | `integer` |  |
 | `status.sources[].error` | `string` |  |
 | `status.sources[].etag` | `string` |  |
+| `status.sources[].excluded` | `integer` | Excluded counts the entries of this source that are switched off (spec.sources\[\].exclude hits, or entries with enabled: false); they are not in Entries. |
 | `status.sources[].invalid` | `integer` |  |
 | `status.sources[].lastFetched` | `string` | Format: `date-time` |
 | `status.sources[].name` | `string` | **Required.** |
+| `status.sources[].staleExcludes` | `[]string` | StaleExcludes are spec.sources\[\].exclude values that match no rule of the current body (at most 50): the list dropped the entry, or the value is not written the way the source's format normalises it. |
 | `status.unsupported` | `integer` | Unsupported counts valid rules this version parses but does not apply: modifiers such as $important and $badfilter, mid-pattern wildcards, hosts rewrites. |
 
 ## Example

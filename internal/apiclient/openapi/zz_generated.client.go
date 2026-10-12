@@ -152,6 +152,192 @@ func (e DoctorCheckStatus) Valid() bool {
 	}
 }
 
+// Defines values for DomainEntriesBatchOp.
+const (
+	DomainEntriesBatchOpDelete  DomainEntriesBatchOp = "delete"
+	DomainEntriesBatchOpDisable DomainEntriesBatchOp = "disable"
+	DomainEntriesBatchOpEnable  DomainEntriesBatchOp = "enable"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntriesBatchOp enum.
+func (e DomainEntriesBatchOp) Valid() bool {
+	switch e {
+	case DomainEntriesBatchOpDelete:
+		return true
+	case DomainEntriesBatchOpDisable:
+		return true
+	case DomainEntriesBatchOpEnable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntriesCreateOrigin.
+const (
+	DomainEntriesCreateOriginApi      DomainEntriesCreateOrigin = "api"
+	DomainEntriesCreateOriginManual   DomainEntriesCreateOrigin = "manual"
+	DomainEntriesCreateOriginQuerylog DomainEntriesCreateOrigin = "querylog"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntriesCreateOrigin enum.
+func (e DomainEntriesCreateOrigin) Valid() bool {
+	switch e {
+	case DomainEntriesCreateOriginApi:
+		return true
+	case DomainEntriesCreateOriginManual:
+		return true
+	case DomainEntriesCreateOriginQuerylog:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntriesCreateType.
+const (
+	DomainEntriesCreateTypeExact    DomainEntriesCreateType = "exact"
+	DomainEntriesCreateTypeRegex    DomainEntriesCreateType = "regex"
+	DomainEntriesCreateTypeWildcard DomainEntriesCreateType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntriesCreateType enum.
+func (e DomainEntriesCreateType) Valid() bool {
+	switch e {
+	case DomainEntriesCreateTypeExact:
+		return true
+	case DomainEntriesCreateTypeRegex:
+		return true
+	case DomainEntriesCreateTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntryAction.
+const (
+	DomainEntryActionAllow DomainEntryAction = "allow"
+	DomainEntryActionDeny  DomainEntryAction = "deny"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryAction enum.
+func (e DomainEntryAction) Valid() bool {
+	switch e {
+	case DomainEntryActionAllow:
+		return true
+	case DomainEntryActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntryOrigin.
+const (
+	DomainEntryOriginApi      DomainEntryOrigin = "api"
+	DomainEntryOriginManual   DomainEntryOrigin = "manual"
+	DomainEntryOriginMigrated DomainEntryOrigin = "migrated"
+	DomainEntryOriginQuerylog DomainEntryOrigin = "querylog"
+	DomainEntryOriginUnblock  DomainEntryOrigin = "unblock"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryOrigin enum.
+func (e DomainEntryOrigin) Valid() bool {
+	switch e {
+	case DomainEntryOriginApi:
+		return true
+	case DomainEntryOriginManual:
+		return true
+	case DomainEntryOriginMigrated:
+		return true
+	case DomainEntryOriginQuerylog:
+		return true
+	case DomainEntryOriginUnblock:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntryType.
+const (
+	DomainEntryTypeExact    DomainEntryType = "exact"
+	DomainEntryTypeRegex    DomainEntryType = "regex"
+	DomainEntryTypeWildcard DomainEntryType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryType enum.
+func (e DomainEntryType) Valid() bool {
+	switch e {
+	case DomainEntryTypeExact:
+		return true
+	case DomainEntryTypeRegex:
+		return true
+	case DomainEntryTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntryPatchScope.
+const (
+	DomainEntryPatchScopeEveryone DomainEntryPatchScope = "everyone"
+	DomainEntryPatchScopeGroups   DomainEntryPatchScope = "groups"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryPatchScope enum.
+func (e DomainEntryPatchScope) Valid() bool {
+	switch e {
+	case DomainEntryPatchScopeEveryone:
+		return true
+	case DomainEntryPatchScopeGroups:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainEntryPatchType.
+const (
+	DomainEntryPatchTypeExact    DomainEntryPatchType = "exact"
+	DomainEntryPatchTypeRegex    DomainEntryPatchType = "regex"
+	DomainEntryPatchTypeWildcard DomainEntryPatchType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryPatchType enum.
+func (e DomainEntryPatchType) Valid() bool {
+	switch e {
+	case DomainEntryPatchTypeExact:
+		return true
+	case DomainEntryPatchTypeRegex:
+		return true
+	case DomainEntryPatchTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DomainListInfoAction.
+const (
+	DomainListInfoActionAllow DomainListInfoAction = "allow"
+	DomainListInfoActionDeny  DomainListInfoAction = "deny"
+)
+
+// Valid indicates whether the value is a known member of the DomainListInfoAction enum.
+func (e DomainListInfoAction) Valid() bool {
+	switch e {
+	case DomainListInfoActionAllow:
+		return true
+	case DomainListInfoActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IdentityProviderInfoSource.
 const (
 	IdentityProviderInfoSourceConfig IdentityProviderInfoSource = "config"
@@ -554,6 +740,30 @@ func (e SettingsBodyScope) Valid() bool {
 	}
 }
 
+// Defines values for SourceEntriesKind.
+const (
+	SourceEntriesKindConfigMap SourceEntriesKind = "configMap"
+	SourceEntriesKindEntries   SourceEntriesKind = "entries"
+	SourceEntriesKindInline    SourceEntriesKind = "inline"
+	SourceEntriesKindUrl       SourceEntriesKind = "url"
+)
+
+// Valid indicates whether the value is a known member of the SourceEntriesKind enum.
+func (e SourceEntriesKind) Valid() bool {
+	switch e {
+	case SourceEntriesKindConfigMap:
+		return true
+	case SourceEntriesKindEntries:
+		return true
+	case SourceEntriesKindInline:
+		return true
+	case SourceEntriesKindUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TokenOwnerKind.
 const (
 	TokenOwnerKindServiceAccount TokenOwnerKind = "ServiceAccount"
@@ -710,6 +920,45 @@ func (e UnblockRequestState) Valid() bool {
 	}
 }
 
+// Defines values for ListAllowlistParamsType.
+const (
+	ListAllowlistParamsTypeExact    ListAllowlistParamsType = "exact"
+	ListAllowlistParamsTypeRegex    ListAllowlistParamsType = "regex"
+	ListAllowlistParamsTypeWildcard ListAllowlistParamsType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the ListAllowlistParamsType enum.
+func (e ListAllowlistParamsType) Valid() bool {
+	switch e {
+	case ListAllowlistParamsTypeExact:
+		return true
+	case ListAllowlistParamsTypeRegex:
+		return true
+	case ListAllowlistParamsTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAllowlistParamsEnabled.
+const (
+	ListAllowlistParamsEnabledFalse ListAllowlistParamsEnabled = "false"
+	ListAllowlistParamsEnabledTrue  ListAllowlistParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListAllowlistParamsEnabled enum.
+func (e ListAllowlistParamsEnabled) Valid() bool {
+	switch e {
+	case ListAllowlistParamsEnabledFalse:
+		return true
+	case ListAllowlistParamsEnabledTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAuditParamsOrder.
 const (
 	ListAuditParamsOrderAsc  ListAuditParamsOrder = "asc"
@@ -746,6 +995,24 @@ func (e ExportAuditParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListSourceEntriesParamsEnabled.
+const (
+	ListSourceEntriesParamsEnabledFalse ListSourceEntriesParamsEnabled = "false"
+	ListSourceEntriesParamsEnabledTrue  ListSourceEntriesParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListSourceEntriesParamsEnabled enum.
+func (e ListSourceEntriesParamsEnabled) Valid() bool {
+	switch e {
+	case ListSourceEntriesParamsEnabledFalse:
+		return true
+	case ListSourceEntriesParamsEnabledTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListClientsParamsScope.
 const (
 	ListClientsParamsScopeCluster ListClientsParamsScope = "cluster"
@@ -761,6 +1028,102 @@ func (e ListClientsParamsScope) Valid() bool {
 	case ListClientsParamsScopeEmpty:
 		return true
 	case ListClientsParamsScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDenylistParamsType.
+const (
+	ListDenylistParamsTypeExact    ListDenylistParamsType = "exact"
+	ListDenylistParamsTypeRegex    ListDenylistParamsType = "regex"
+	ListDenylistParamsTypeWildcard ListDenylistParamsType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the ListDenylistParamsType enum.
+func (e ListDenylistParamsType) Valid() bool {
+	switch e {
+	case ListDenylistParamsTypeExact:
+		return true
+	case ListDenylistParamsTypeRegex:
+		return true
+	case ListDenylistParamsTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDenylistParamsEnabled.
+const (
+	ListDenylistParamsEnabledFalse ListDenylistParamsEnabled = "false"
+	ListDenylistParamsEnabledTrue  ListDenylistParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListDenylistParamsEnabled enum.
+func (e ListDenylistParamsEnabled) Valid() bool {
+	switch e {
+	case ListDenylistParamsEnabledFalse:
+		return true
+	case ListDenylistParamsEnabledTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDomainEntriesParamsAction.
+const (
+	ListDomainEntriesParamsActionAllow ListDomainEntriesParamsAction = "allow"
+	ListDomainEntriesParamsActionDeny  ListDomainEntriesParamsAction = "deny"
+)
+
+// Valid indicates whether the value is a known member of the ListDomainEntriesParamsAction enum.
+func (e ListDomainEntriesParamsAction) Valid() bool {
+	switch e {
+	case ListDomainEntriesParamsActionAllow:
+		return true
+	case ListDomainEntriesParamsActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDomainEntriesParamsType.
+const (
+	ListDomainEntriesParamsTypeExact    ListDomainEntriesParamsType = "exact"
+	ListDomainEntriesParamsTypeRegex    ListDomainEntriesParamsType = "regex"
+	ListDomainEntriesParamsTypeWildcard ListDomainEntriesParamsType = "wildcard"
+)
+
+// Valid indicates whether the value is a known member of the ListDomainEntriesParamsType enum.
+func (e ListDomainEntriesParamsType) Valid() bool {
+	switch e {
+	case ListDomainEntriesParamsTypeExact:
+		return true
+	case ListDomainEntriesParamsTypeRegex:
+		return true
+	case ListDomainEntriesParamsTypeWildcard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDomainEntriesParamsEnabled.
+const (
+	ListDomainEntriesParamsEnabledFalse ListDomainEntriesParamsEnabled = "false"
+	ListDomainEntriesParamsEnabledTrue  ListDomainEntriesParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListDomainEntriesParamsEnabled enum.
+func (e ListDomainEntriesParamsEnabled) Valid() bool {
+	switch e {
+	case ListDomainEntriesParamsEnabledFalse:
+		return true
+	case ListDomainEntriesParamsEnabledTrue:
 		return true
 	default:
 		return false
@@ -1457,6 +1820,197 @@ type DoctorReport struct {
 	Warnings int64   `json:"warnings"`
 }
 
+// DomainEntries defines model for DomainEntries.
+type DomainEntries struct {
+	// Continue Token for the next page; empty on the last page.
+	Continue *string          `json:"continue,omitempty"`
+	Items    []DomainEntry    `json:"items"`
+	Lists    []DomainListInfo `json:"lists"`
+
+	// Matched Entries matching the filters.
+	Matched int64 `json:"matched"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries of the action(s) and namespace(s), before filters.
+	Total int64 `json:"total"`
+
+	// Unattached Policies that should reference a list but are managed by a file or an integration; add the list there.
+	Unattached []DomainUnattached `json:"unattached"`
+}
+
+// DomainEntriesBatch defines model for DomainEntriesBatch.
+type DomainEntriesBatch struct {
+	Ids *[]string            `json:"ids"`
+	Op  DomainEntriesBatchOp `json:"op"`
+}
+
+// DomainEntriesBatchOp defines model for DomainEntriesBatch.Op.
+type DomainEntriesBatchOp string
+
+// DomainEntriesCreate defines model for DomainEntriesCreate.
+type DomainEntriesCreate struct {
+	Comment *string `json:"comment,omitempty"`
+
+	// Enabled Default true.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Groups ClientGroups (ns/name or a name in namespace); empty applies to everyone.
+	Groups *[]string `json:"groups,omitempty"`
+
+	// Namespace Default the server's default namespace.
+	Namespace *string `json:"namespace,omitempty"`
+
+	// Origin Where the entry was added from (default manual).
+	Origin *DomainEntriesCreateOrigin `json:"origin,omitempty"`
+
+	// Type Default exact.
+	Type *DomainEntriesCreateType `json:"type,omitempty"`
+
+	// Values One entry per value, all of one type.
+	Values *[]string `json:"values"`
+}
+
+// DomainEntriesCreateOrigin Where the entry was added from (default manual).
+type DomainEntriesCreateOrigin string
+
+// DomainEntriesCreateType Default exact.
+type DomainEntriesCreateType string
+
+// DomainEntry defines model for DomainEntry.
+type DomainEntry struct {
+	Action  DomainEntryAction `json:"action"`
+	Comment *string           `json:"comment,omitempty"`
+	Created *time.Time        `json:"created,omitempty"`
+
+	// CreatedBy The actor that added the entry (user:alice).
+	CreatedBy *string `json:"createdBy,omitempty"`
+	Enabled   bool    `json:"enabled"`
+
+	// Everyone Applies to every client (stored in ui-allow / ui-deny).
+	Everyone bool `json:"everyone"`
+
+	// Groups ClientGroups (ns/name) with a group-scoped copy.
+	Groups []string `json:"groups"`
+
+	// Id Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}.
+	Id        string            `json:"id"`
+	Lists     []DomainEntryList `json:"lists"`
+	Modified  *time.Time        `json:"modified,omitempty"`
+	Namespace string            `json:"namespace"`
+	Origin    DomainEntryOrigin `json:"origin"`
+	Overrides []DomainOverride  `json:"overrides"`
+
+	// Policies Policies that reference the entry's lists, ns/name.
+	Policies       []string `json:"policies"`
+	ReadOnly       bool     `json:"readOnly"`
+	ReadOnlyReason *string  `json:"readOnlyReason,omitempty"`
+
+	// Request The UnblockRequest (ns/name) whose approval added the entry.
+	Request *string `json:"request,omitempty"`
+
+	// Rule The rule as compiled and shown in the query log: name, *.name or /expression/.
+	Rule string          `json:"rule"`
+	Type DomainEntryType `json:"type"`
+
+	// Value exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes.
+	Value string `json:"value"`
+}
+
+// DomainEntryAction defines model for DomainEntry.Action.
+type DomainEntryAction string
+
+// DomainEntryOrigin defines model for DomainEntry.Origin.
+type DomainEntryOrigin string
+
+// DomainEntryType defines model for DomainEntry.Type.
+type DomainEntryType string
+
+// DomainEntryList defines model for DomainEntryList.
+type DomainEntryList struct {
+	// Group The ClientGroup of a group list, ns/name.
+	Group *string `json:"group,omitempty"`
+
+	// List The BlockList, ns/name (ui-allow, ui-deny, ui-allow-<group>, ui-deny-<group>).
+	List string `json:"list"`
+
+	// ManagedBy The list's owner when not the API.
+	ManagedBy *string `json:"managedBy,omitempty"`
+
+	// Source The source holding the entry (ui).
+	Source string `json:"source"`
+}
+
+// DomainEntryPatch defines model for DomainEntryPatch.
+type DomainEntryPatch struct {
+	Comment *string   `json:"comment,omitempty"`
+	Enabled *bool     `json:"enabled,omitempty"`
+	Groups  *[]string `json:"groups,omitempty"`
+
+	// Scope everyone, or groups (with groups).
+	Scope *DomainEntryPatchScope `json:"scope,omitempty"`
+	Type  *DomainEntryPatchType  `json:"type,omitempty"`
+	Value *string                `json:"value,omitempty"`
+}
+
+// DomainEntryPatchScope everyone, or groups (with groups).
+type DomainEntryPatchScope string
+
+// DomainEntryPatchType defines model for DomainEntryPatch.Type.
+type DomainEntryPatchType string
+
+// DomainListInfo defines model for DomainListInfo.
+type DomainListInfo struct {
+	Action DomainListInfoAction `json:"action"`
+
+	// Enabled The list's kudurru.io/enabled switch.
+	Enabled   bool     `json:"enabled"`
+	Entries   int64    `json:"entries"`
+	Group     *string  `json:"group,omitempty"`
+	List      string   `json:"list"`
+	ManagedBy *string  `json:"managedBy,omitempty"`
+	Policies  []string `json:"policies"`
+}
+
+// DomainListInfoAction defines model for DomainListInfo.Action.
+type DomainListInfoAction string
+
+// DomainOverride defines model for DomainOverride.
+type DomainOverride struct {
+	// List The compiled list, ns/name.
+	List string `json:"list"`
+
+	// Rule The rule of that list that matches the name.
+	Rule string `json:"rule"`
+}
+
+// DomainUnattached defines model for DomainUnattached.
+type DomainUnattached struct {
+	List      string `json:"list"`
+	ManagedBy string `json:"managedBy"`
+	Policy    string `json:"policy"`
+}
+
+// DomainWriteResult defines model for DomainWriteResult.
+type DomainWriteResult struct {
+	// Attached Policies that reference the written lists.
+	Attached []string `json:"attached"`
+
+	// Flushed Response-cache entries of the names removed on this node.
+	Flushed int64 `json:"flushed"`
+
+	// Items The entries written, as stored after the write.
+	Items     []DomainEntry  `json:"items"`
+	Processed ProcessedItems `json:"processed"`
+
+	// Skipped Policies that should reference a list but are managed elsewhere.
+	Skipped []string `json:"skipped"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
 // DomainsRequest defines model for DomainsRequest.
 type DomainsRequest struct {
 	Domains   *[]string `json:"domains"`
@@ -1611,50 +2165,6 @@ type ImportResult struct {
 	Warnings []string `json:"warnings"`
 	Zone     string   `json:"zone"`
 	ZoneName string   `json:"zoneName"`
-}
-
-// InlineEntries defines model for InlineEntries.
-type InlineEntries struct {
-	// Continue Token for the next page; empty on the last page.
-	Continue *string       `json:"continue,omitempty"`
-	Items    []InlineEntry `json:"items"`
-
-	// Matched Entries matching q (Total without q).
-	Matched int64 `json:"matched"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-
-	// Total Entries in the source.
-	Total int64 `json:"total"`
-}
-
-// InlineEntriesPatch defines model for InlineEntriesPatch.
-type InlineEntriesPatch struct {
-	Add    *[]string `json:"add,omitempty"`
-	Remove *[]string `json:"remove,omitempty"`
-}
-
-// InlineEntriesResult defines model for InlineEntriesResult.
-type InlineEntriesResult struct {
-	Added           []string `json:"added"`
-	Removed         []string `json:"removed"`
-	ResourceVersion string   `json:"resourceVersion"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-
-	// Total Entries in the source after the change.
-	Total int64 `json:"total"`
-}
-
-// InlineEntry defines model for InlineEntry.
-type InlineEntry struct {
-	// Line 1-based position in spec.sources[].inline.
-	Line int64 `json:"line"`
-
-	// Value The entry as written in spec.sources[].inline.
-	Value string `json:"value"`
 }
 
 // LatencySummary defines model for LatencySummary.
@@ -2436,6 +2946,86 @@ type SettingsBody struct {
 // SettingsBodyScope defines model for SettingsBody.Scope.
 type SettingsBodyScope string
 
+// SourceEntries defines model for SourceEntries.
+type SourceEntries struct {
+	// Continue Token for the next page; empty on the last page.
+	Continue *string `json:"continue,omitempty"`
+
+	// Digest url and configMap: sha256 of the body this node holds.
+	Digest *string `json:"digest,omitempty"`
+
+	// Excluded Entries switched off.
+	Excluded int64 `json:"excluded"`
+
+	// Fetched url and configMap: when this node's body was fetched.
+	Fetched *time.Time        `json:"fetched,omitempty"`
+	Items   []SourceEntry     `json:"items"`
+	Kind    SourceEntriesKind `json:"kind"`
+
+	// Matched Entries matching q and enabled.
+	Matched int64 `json:"matched"`
+
+	// Stale This node's body is not the one status.sources[].digest publishes yet.
+	Stale bool `json:"stale"`
+
+	// StaleExcludes spec.sources[].exclude values that match no entry of the current body.
+	StaleExcludes []string `json:"staleExcludes"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Entries in the source.
+	Total int64 `json:"total"`
+}
+
+// SourceEntriesKind defines model for SourceEntries.Kind.
+type SourceEntriesKind string
+
+// SourceEntriesPatch defines model for SourceEntriesPatch.
+type SourceEntriesPatch struct {
+	// Add Inline sources only: lines to add.
+	Add *[]string `json:"add,omitempty"`
+
+	// Disable Entries to switch off: added to spec.sources[].exclude (enabled: false for structured entries).
+	Disable *[]string `json:"disable,omitempty"`
+
+	// Enable Entries (values as GET lists them) to switch back on.
+	Enable *[]string `json:"enable,omitempty"`
+
+	// Remove Inline sources only: lines to remove.
+	Remove *[]string `json:"remove,omitempty"`
+}
+
+// SourceEntriesResult defines model for SourceEntriesResult.
+type SourceEntriesResult struct {
+	Added    []string `json:"added"`
+	Disabled []string `json:"disabled"`
+	Enabled  []string `json:"enabled"`
+
+	// Excluded Exclude values, or structured entries switched off, after the change.
+	Excluded        int64    `json:"excluded"`
+	Removed         []string `json:"removed"`
+	ResourceVersion string   `json:"resourceVersion"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+
+	// Total Inline lines or structured entries after the change (0 for url and configMap sources).
+	Total int64 `json:"total"`
+}
+
+// SourceEntry defines model for SourceEntry.
+type SourceEntry struct {
+	// Enabled false when switched off (spec.sources[].exclude, or enabled: false of a structured entry).
+	Enabled bool `json:"enabled"`
+
+	// Line 1-based line of the body (inline: position in spec.sources[].inline; entries: position in spec.sources[].entries).
+	Line int64 `json:"line"`
+
+	// Value inline: the line as written; url and configMap: the rule as the source's format normalises it (one item per host of a hosts line); entries: the rendered rule.
+	Value string `json:"value"`
+}
+
 // Stats defines model for Stats.
 type Stats struct {
 	Batches       int64 `json:"batches"`
@@ -2847,6 +3437,30 @@ type ZoneSummary struct {
 	ZoneName        string  `json:"zoneName"`
 }
 
+// ListAllowlistParams defines parameters for ListAllowlist.
+type ListAllowlistParams struct {
+	// Namespace Only this namespace (default: every namespace).
+	Namespace *string                     `form:"namespace,omitempty" json:"namespace,omitempty"`
+	Type      *ListAllowlistParamsType    `form:"type,omitempty" json:"type,omitempty"`
+	Enabled   *ListAllowlistParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
+
+	// Scope everyone, or a ClientGroup (ns/name).
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// Q Substring of the value or comment, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListAllowlistParamsType defines parameters for ListAllowlist.
+type ListAllowlistParamsType string
+
+// ListAllowlistParamsEnabled defines parameters for ListAllowlist.
+type ListAllowlistParamsEnabled string
+
 // ApplyJSONBody defines parameters for Apply.
 type ApplyJSONBody = []map[string]interface{}
 
@@ -2948,18 +3562,24 @@ type PutBlocklistsParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 
-// ListInlineEntriesParams defines parameters for ListInlineEntries.
-type ListInlineEntriesParams struct {
+// ListSourceEntriesParams defines parameters for ListSourceEntries.
+type ListSourceEntriesParams struct {
 	// Q Substring filter, case-insensitive.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Enabled Only entries switched on (true) or off (false).
+	Enabled *ListSourceEntriesParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
 
 	// Limit Page size (default 100).
 	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
 	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
 }
 
-// PatchInlineEntriesParams defines parameters for PatchInlineEntries.
-type PatchInlineEntriesParams struct {
+// ListSourceEntriesParamsEnabled defines parameters for ListSourceEntries.
+type ListSourceEntriesParamsEnabled string
+
+// PatchSourceEntriesParams defines parameters for PatchSourceEntries.
+type PatchSourceEntriesParams struct {
 	// IfMatch Apply only when the stored resourceVersion equals this value (412 otherwise).
 	IfMatch *string `json:"If-Match,omitempty"`
 }
@@ -3031,6 +3651,60 @@ type ListClientsParams struct {
 
 // ListClientsParamsScope defines parameters for ListClients.
 type ListClientsParamsScope string
+
+// ListDenylistParams defines parameters for ListDenylist.
+type ListDenylistParams struct {
+	// Namespace Only this namespace (default: every namespace).
+	Namespace *string                    `form:"namespace,omitempty" json:"namespace,omitempty"`
+	Type      *ListDenylistParamsType    `form:"type,omitempty" json:"type,omitempty"`
+	Enabled   *ListDenylistParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
+
+	// Scope everyone, or a ClientGroup (ns/name).
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// Q Substring of the value or comment, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListDenylistParamsType defines parameters for ListDenylist.
+type ListDenylistParamsType string
+
+// ListDenylistParamsEnabled defines parameters for ListDenylist.
+type ListDenylistParamsEnabled string
+
+// ListDomainEntriesParams defines parameters for ListDomainEntries.
+type ListDomainEntriesParams struct {
+	// Action Only Allowlist (allow) or Denylist (deny) entries.
+	Action *ListDomainEntriesParamsAction `form:"action,omitempty" json:"action,omitempty"`
+
+	// Namespace Only this namespace (default: every namespace).
+	Namespace *string                         `form:"namespace,omitempty" json:"namespace,omitempty"`
+	Type      *ListDomainEntriesParamsType    `form:"type,omitempty" json:"type,omitempty"`
+	Enabled   *ListDomainEntriesParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
+
+	// Scope everyone, or a ClientGroup (ns/name).
+	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// Q Substring of the value or comment, case-insensitive.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 100).
+	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListDomainEntriesParamsAction defines parameters for ListDomainEntries.
+type ListDomainEntriesParamsAction string
+
+// ListDomainEntriesParamsType defines parameters for ListDomainEntries.
+type ListDomainEntriesParamsType string
+
+// ListDomainEntriesParamsEnabled defines parameters for ListDomainEntries.
+type ListDomainEntriesParamsEnabled string
 
 // AddDomainsParamsAction defines parameters for AddDomains.
 type AddDomainsParamsAction string
@@ -3359,6 +4033,15 @@ type DeleteZoneRecordParams struct {
 	SetIdentifier *string `form:"setIdentifier,omitempty" json:"setIdentifier,omitempty"`
 }
 
+// CreateAllowlistEntriesJSONRequestBody defines body for CreateAllowlistEntries for application/json ContentType.
+type CreateAllowlistEntriesJSONRequestBody = DomainEntriesCreate
+
+// PatchAllowlistEntryJSONRequestBody defines body for PatchAllowlistEntry for application/json ContentType.
+type PatchAllowlistEntryJSONRequestBody = DomainEntryPatch
+
+// BatchAllowlistEntriesJSONRequestBody defines body for BatchAllowlistEntries for application/json ContentType.
+type BatchAllowlistEntriesJSONRequestBody = DomainEntriesBatch
+
 // ApplyJSONRequestBody defines body for Apply for application/json ContentType.
 type ApplyJSONRequestBody = ApplyJSONBody
 
@@ -3377,8 +4060,8 @@ type CreateBlocklistsJSONRequestBody CreateBlocklistsJSONBody
 // PutBlocklistsJSONRequestBody defines body for PutBlocklists for application/json ContentType.
 type PutBlocklistsJSONRequestBody PutBlocklistsJSONBody
 
-// PatchInlineEntriesJSONRequestBody defines body for PatchInlineEntries for application/json ContentType.
-type PatchInlineEntriesJSONRequestBody = InlineEntriesPatch
+// PatchSourceEntriesJSONRequestBody defines body for PatchSourceEntries for application/json ContentType.
+type PatchSourceEntriesJSONRequestBody = SourceEntriesPatch
 
 // BatchDeleteBlocklistsJSONRequestBody defines body for BatchDeleteBlocklists for application/json ContentType.
 type BatchDeleteBlocklistsJSONRequestBody = BatchDeleteInputBody
@@ -3394,6 +4077,15 @@ type PutClientgroupsJSONRequestBody PutClientgroupsJSONBody
 
 // BatchDeleteClientgroupsJSONRequestBody defines body for BatchDeleteClientgroups for application/json ContentType.
 type BatchDeleteClientgroupsJSONRequestBody = BatchDeleteInputBody
+
+// CreateDenylistEntriesJSONRequestBody defines body for CreateDenylistEntries for application/json ContentType.
+type CreateDenylistEntriesJSONRequestBody = DomainEntriesCreate
+
+// PatchDenylistEntryJSONRequestBody defines body for PatchDenylistEntry for application/json ContentType.
+type PatchDenylistEntryJSONRequestBody = DomainEntryPatch
+
+// BatchDenylistEntriesJSONRequestBody defines body for BatchDenylistEntries for application/json ContentType.
+type BatchDenylistEntriesJSONRequestBody = DomainEntriesBatch
 
 // SetBlockingJSONRequestBody defines body for SetBlocking for application/json ContentType.
 type SetBlockingJSONRequestBody = SetBlockingInputBody
@@ -3519,6 +4211,75 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+
+	// ListAllowlist List Allowlist entries
+	//
+	// Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+	//
+	// Corresponds with GET /allowlist (the `ListAllowlist` operationId).
+	ListAllowlist(ctx context.Context, params *ListAllowlistParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAllowlistEntriesWithBody Add Allowlist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+	CreateAllowlistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAllowlistEntries Add Allowlist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+	CreateAllowlistEntries(ctx context.Context, body CreateAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAllowlistEntry Delete a Allowlist entry
+	//
+	// Removes every copy; a list left empty is deleted and its policy references removed.
+	//
+	// Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
+	DeleteAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAllowlistEntry Get a Allowlist entry
+	//
+	// Corresponds with GET /allowlist/{id} (the `GetAllowlistEntry` operationId).
+	GetAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchAllowlistEntryWithBody Change a Allowlist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+	PatchAllowlistEntryWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchAllowlistEntry Change a Allowlist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+	PatchAllowlistEntry(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchAllowlistEntriesWithBody Switch on, off or delete several Allowlist entries
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+	BatchAllowlistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchAllowlistEntries Switch on, off or delete several Allowlist entries
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+	BatchAllowlistEntries(ctx context.Context, body BatchAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ApplyWithBody Apply objects (multi-document YAML or a JSON array)
 	//
@@ -3687,30 +4448,30 @@ type ClientInterface interface {
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListInlineEntries Page through the entries of an inline BlockList source
+	// ListSourceEntries Page through the entries of a BlockList source
 	//
-	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	// Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.
 	//
-	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
-	ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListSourceEntries` operationId).
+	ListSourceEntries(ctx context.Context, namespace string, name string, source string, params *ListSourceEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+	// PatchSourceEntriesWithBody Switch entries of a BlockList source off and on, add and remove inline entries
 	//
-	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-	PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+	PatchSourceEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PatchInlineEntries Add and remove entries of an inline BlockList source
+	// PatchSourceEntries Switch entries of a BlockList source off and on, add and remove inline entries
 	//
-	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-	PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+	PatchSourceEntries(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, body PatchSourceEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchDeleteBlocklistsWithBody Delete several blocklists
 	//
@@ -3841,6 +4602,75 @@ type ClientInterface interface {
 	// Corresponds with GET /cluster (the `GetCluster` operationId).
 	GetCluster(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListDenylist List Denylist entries
+	//
+	// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+	//
+	// Corresponds with GET /denylist (the `ListDenylist` operationId).
+	ListDenylist(ctx context.Context, params *ListDenylistParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDenylistEntriesWithBody Add Denylist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+	CreateDenylistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDenylistEntries Add Denylist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+	CreateDenylistEntries(ctx context.Context, body CreateDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDenylistEntry Delete a Denylist entry
+	//
+	// Removes every copy; a list left empty is deleted and its policy references removed.
+	//
+	// Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
+	DeleteDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDenylistEntry Get a Denylist entry
+	//
+	// Corresponds with GET /denylist/{id} (the `GetDenylistEntry` operationId).
+	GetDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchDenylistEntryWithBody Change a Denylist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+	PatchDenylistEntryWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchDenylistEntry Change a Denylist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+	PatchDenylistEntry(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchDenylistEntriesWithBody Switch on, off or delete several Denylist entries
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+	BatchDenylistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchDenylistEntries Switch on, off or delete several Denylist entries
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+	BatchDenylistEntries(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetBlocking Blocking state of this node
 	//
 	// Corresponds with GET /dns/blocking (the `GetBlocking` operationId).
@@ -3906,6 +4736,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /doctor (the `Doctor` operationId).
 	Doctor(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDomainEntries List Allowlist and Denylist entries together
+	//
+	// The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.
+	//
+	// Corresponds with GET /domains (the `ListDomainEntries` operationId).
+	ListDomainEntries(ctx context.Context, params *ListDomainEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AddDomainsWithBody Allow or deny domains through the UI lists
 	//
@@ -4312,6 +5149,165 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /zones/{zone}/records/{name}/{type} (the `DeleteZoneRecord` operationId).
 	DeleteZoneRecord(ctx context.Context, zone string, name string, pType string, params *DeleteZoneRecordParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// ListAllowlist List Allowlist entries
+//
+// Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+//
+// Corresponds with GET /allowlist (the `ListAllowlist` operationId).
+func (c *Client) ListAllowlist(ctx context.Context, params *ListAllowlistParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAllowlistRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAllowlistEntriesWithBody Add Allowlist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+func (c *Client) CreateAllowlistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAllowlistEntriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateAllowlistEntries Add Allowlist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+func (c *Client) CreateAllowlistEntries(ctx context.Context, body CreateAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAllowlistEntriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteAllowlistEntry Delete a Allowlist entry
+//
+// Removes every copy; a list left empty is deleted and its policy references removed.
+//
+// Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
+func (c *Client) DeleteAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAllowlistEntryRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAllowlistEntry Get a Allowlist entry
+//
+// Corresponds with GET /allowlist/{id} (the `GetAllowlistEntry` operationId).
+func (c *Client) GetAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAllowlistEntryRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchAllowlistEntryWithBody Change a Allowlist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+func (c *Client) PatchAllowlistEntryWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchAllowlistEntryRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchAllowlistEntry Change a Allowlist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+func (c *Client) PatchAllowlistEntry(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchAllowlistEntryRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchAllowlistEntriesWithBody Switch on, off or delete several Allowlist entries
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+func (c *Client) BatchAllowlistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchAllowlistEntriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchAllowlistEntries Switch on, off or delete several Allowlist entries
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+func (c *Client) BatchAllowlistEntries(ctx context.Context, body BatchAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchAllowlistEntriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // ApplyWithBody Apply objects (multi-document YAML or a JSON array)
@@ -4751,13 +5747,13 @@ func (c *Client) RefreshBlockList(ctx context.Context, namespace string, name st
 	return c.Client.Do(req)
 }
 
-// ListInlineEntries Page through the entries of an inline BlockList source
+// ListSourceEntries Page through the entries of a BlockList source
 //
-// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+// Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.
 //
-// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
-func (c *Client) ListInlineEntries(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListInlineEntriesRequest(c.Server, namespace, name, source, params)
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListSourceEntries` operationId).
+func (c *Client) ListSourceEntries(ctx context.Context, namespace string, name string, source string, params *ListSourceEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSourceEntriesRequest(c.Server, namespace, name, source, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4768,15 +5764,15 @@ func (c *Client) ListInlineEntries(ctx context.Context, namespace string, name s
 	return c.Client.Do(req)
 }
 
-// PatchInlineEntriesWithBody Add and remove entries of an inline BlockList source
+// PatchSourceEntriesWithBody Switch entries of a BlockList source off and on, add and remove inline entries
 //
-// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-func (c *Client) PatchInlineEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchInlineEntriesRequestWithBody(c.Server, namespace, name, source, params, contentType, body)
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+func (c *Client) PatchSourceEntriesWithBody(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSourceEntriesRequestWithBody(c.Server, namespace, name, source, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4787,15 +5783,15 @@ func (c *Client) PatchInlineEntriesWithBody(ctx context.Context, namespace strin
 	return c.Client.Do(req)
 }
 
-// PatchInlineEntries Add and remove entries of an inline BlockList source
+// PatchSourceEntries Switch entries of a BlockList source off and on, add and remove inline entries
 //
-// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-func (c *Client) PatchInlineEntries(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchInlineEntriesRequest(c.Server, namespace, name, source, params, body)
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+func (c *Client) PatchSourceEntries(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, body PatchSourceEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSourceEntriesRequest(c.Server, namespace, name, source, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5145,6 +6141,165 @@ func (c *Client) GetCluster(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// ListDenylist List Denylist entries
+//
+// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+//
+// Corresponds with GET /denylist (the `ListDenylist` operationId).
+func (c *Client) ListDenylist(ctx context.Context, params *ListDenylistParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDenylistRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDenylistEntriesWithBody Add Denylist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+func (c *Client) CreateDenylistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDenylistEntriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDenylistEntries Add Denylist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+func (c *Client) CreateDenylistEntries(ctx context.Context, body CreateDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDenylistEntriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteDenylistEntry Delete a Denylist entry
+//
+// Removes every copy; a list left empty is deleted and its policy references removed.
+//
+// Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
+func (c *Client) DeleteDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDenylistEntryRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDenylistEntry Get a Denylist entry
+//
+// Corresponds with GET /denylist/{id} (the `GetDenylistEntry` operationId).
+func (c *Client) GetDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDenylistEntryRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchDenylistEntryWithBody Change a Denylist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+func (c *Client) PatchDenylistEntryWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDenylistEntryRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PatchDenylistEntry Change a Denylist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+func (c *Client) PatchDenylistEntry(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDenylistEntryRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchDenylistEntriesWithBody Switch on, off or delete several Denylist entries
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+func (c *Client) BatchDenylistEntriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchDenylistEntriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchDenylistEntries Switch on, off or delete several Denylist entries
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+func (c *Client) BatchDenylistEntries(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchDenylistEntriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetBlocking Blocking state of this node
 //
 // Corresponds with GET /dns/blocking (the `GetBlocking` operationId).
@@ -5301,6 +6456,23 @@ func (c *Client) BatchDeleteDnszones(ctx context.Context, body BatchDeleteDnszon
 // Corresponds with GET /doctor (the `Doctor` operationId).
 func (c *Client) Doctor(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDoctorRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDomainEntries List Allowlist and Denylist entries together
+//
+// The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.
+//
+// Corresponds with GET /domains (the `ListDomainEntries` operationId).
+func (c *Client) ListDomainEntries(ctx context.Context, params *ListDomainEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDomainEntriesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6395,6 +7567,327 @@ func (c *Client) DeleteZoneRecord(ctx context.Context, zone string, name string,
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewListAllowlistRequest constructs an http.Request for the ListAllowlist method
+func NewListAllowlistRequest(server string, params *ListAllowlistParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAllowlistEntriesRequest calls the generic CreateAllowlistEntries builder with application/json body
+func NewCreateAllowlistEntriesRequest(server string, body CreateAllowlistEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAllowlistEntriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateAllowlistEntriesRequestWithBody constructs an http.Request for the CreateAllowlistEntries method, with any body, and a specified content type
+func NewCreateAllowlistEntriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAllowlistEntryRequest constructs an http.Request for the DeleteAllowlistEntry method
+func NewDeleteAllowlistEntryRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAllowlistEntryRequest constructs an http.Request for the GetAllowlistEntry method
+func NewGetAllowlistEntryRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchAllowlistEntryRequest calls the generic PatchAllowlistEntry builder with application/json body
+func NewPatchAllowlistEntryRequest(server string, id string, body PatchAllowlistEntryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchAllowlistEntryRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewPatchAllowlistEntryRequestWithBody constructs an http.Request for the PatchAllowlistEntry method, with any body, and a specified content type
+func NewPatchAllowlistEntryRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBatchAllowlistEntriesRequest calls the generic BatchAllowlistEntries builder with application/json body
+func NewBatchAllowlistEntriesRequest(server string, body BatchAllowlistEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBatchAllowlistEntriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBatchAllowlistEntriesRequestWithBody constructs an http.Request for the BatchAllowlistEntries method, with any body, and a specified content type
+func NewBatchAllowlistEntriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/allowlist:batch")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewApplyRequest calls the generic Apply builder with application/json body
@@ -7533,8 +9026,8 @@ func NewRefreshBlockListRequest(server string, namespace string, name string) (*
 	return req, nil
 }
 
-// NewListInlineEntriesRequest constructs an http.Request for the ListInlineEntries method
-func NewListInlineEntriesRequest(server string, namespace string, name string, source string, params *ListInlineEntriesParams) (*http.Request, error) {
+// NewListSourceEntriesRequest constructs an http.Request for the ListSourceEntries method
+func NewListSourceEntriesRequest(server string, namespace string, name string, source string, params *ListSourceEntriesParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -7594,6 +9087,18 @@ func NewListInlineEntriesRequest(server string, namespace string, name string, s
 
 		}
 
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
@@ -7632,19 +9137,19 @@ func NewListInlineEntriesRequest(server string, namespace string, name string, s
 	return req, nil
 }
 
-// NewPatchInlineEntriesRequest calls the generic PatchInlineEntries builder with application/json body
-func NewPatchInlineEntriesRequest(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody) (*http.Request, error) {
+// NewPatchSourceEntriesRequest calls the generic PatchSourceEntries builder with application/json body
+func NewPatchSourceEntriesRequest(server string, namespace string, name string, source string, params *PatchSourceEntriesParams, body PatchSourceEntriesJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPatchInlineEntriesRequestWithBody(server, namespace, name, source, params, "application/json", bodyReader)
+	return NewPatchSourceEntriesRequestWithBody(server, namespace, name, source, params, "application/json", bodyReader)
 }
 
-// NewPatchInlineEntriesRequestWithBody constructs an http.Request for the PatchInlineEntries method, with any body, and a specified content type
-func NewPatchInlineEntriesRequestWithBody(server string, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader) (*http.Request, error) {
+// NewPatchSourceEntriesRequestWithBody constructs an http.Request for the PatchSourceEntries method, with any body, and a specified content type
+func NewPatchSourceEntriesRequestWithBody(server string, namespace string, name string, source string, params *PatchSourceEntriesParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -8518,6 +10023,327 @@ func NewGetClusterRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListDenylistRequest constructs an http.Request for the ListDenylist method
+func NewListDenylistRequest(server string, params *ListDenylistParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDenylistEntriesRequest calls the generic CreateDenylistEntries builder with application/json body
+func NewCreateDenylistEntriesRequest(server string, body CreateDenylistEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDenylistEntriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateDenylistEntriesRequestWithBody constructs an http.Request for the CreateDenylistEntries method, with any body, and a specified content type
+func NewCreateDenylistEntriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteDenylistEntryRequest constructs an http.Request for the DeleteDenylistEntry method
+func NewDeleteDenylistEntryRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDenylistEntryRequest constructs an http.Request for the GetDenylistEntry method
+func NewGetDenylistEntryRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchDenylistEntryRequest calls the generic PatchDenylistEntry builder with application/json body
+func NewPatchDenylistEntryRequest(server string, id string, body PatchDenylistEntryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchDenylistEntryRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewPatchDenylistEntryRequestWithBody constructs an http.Request for the PatchDenylistEntry method, with any body, and a specified content type
+func NewPatchDenylistEntryRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBatchDenylistEntriesRequest calls the generic BatchDenylistEntries builder with application/json body
+func NewBatchDenylistEntriesRequest(server string, body BatchDenylistEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBatchDenylistEntriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBatchDenylistEntriesRequestWithBody constructs an http.Request for the BatchDenylistEntries method, with any body, and a specified content type
+func NewBatchDenylistEntriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/denylist:batch")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetBlockingRequest constructs an http.Request for the GetBlocking method
 func NewGetBlockingRequest(server string) (*http.Request, error) {
 	var err error
@@ -8722,6 +10548,144 @@ func NewDoctorRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListDomainEntriesRequest constructs an http.Request for the ListDomainEntries method
+func NewListDomainEntriesRequest(server string, params *ListDomainEntriesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/domains")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Action != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "action", *params.Action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -12123,6 +14087,81 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListAllowlistWithResponse List Allowlist entries
+	//
+	// Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /allowlist (the `ListAllowlist` operationId).
+	ListAllowlistWithResponse(ctx context.Context, params *ListAllowlistParams, reqEditors ...RequestEditorFn) (*ListAllowlistResponse, error)
+
+	// CreateAllowlistEntriesWithBodyWithResponse Add Allowlist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+	CreateAllowlistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAllowlistEntriesResponse, error)
+
+	// CreateAllowlistEntriesWithResponse Add Allowlist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+	CreateAllowlistEntriesWithResponse(ctx context.Context, body CreateAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAllowlistEntriesResponse, error)
+
+	// DeleteAllowlistEntryWithResponse Delete a Allowlist entry
+	//
+	// Removes every copy; a list left empty is deleted and its policy references removed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
+	DeleteAllowlistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteAllowlistEntryResponse, error)
+
+	// GetAllowlistEntryWithResponse Get a Allowlist entry
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /allowlist/{id} (the `GetAllowlistEntry` operationId).
+	GetAllowlistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetAllowlistEntryResponse, error)
+
+	// PatchAllowlistEntryWithBodyWithResponse Change a Allowlist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+	PatchAllowlistEntryWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchAllowlistEntryResponse, error)
+
+	// PatchAllowlistEntryWithResponse Change a Allowlist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+	PatchAllowlistEntryWithResponse(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchAllowlistEntryResponse, error)
+
+	// BatchAllowlistEntriesWithBodyWithResponse Switch on, off or delete several Allowlist entries
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+	BatchAllowlistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchAllowlistEntriesResponse, error)
+
+	// BatchAllowlistEntriesWithResponse Switch on, off or delete several Allowlist entries
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+	BatchAllowlistEntriesWithResponse(ctx context.Context, body BatchAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchAllowlistEntriesResponse, error)
+
 	// ApplyWithBodyWithResponse Apply objects (multi-document YAML or a JSON array)
 	//
 	// Whole-object apply with manager "api". The body is multi-document YAML (application/yaml) or JSON (an object, an array of objects, or a kind: List). Every document is authorized, validated and applied on its own; the response lists one result per document in order.
@@ -12320,32 +14359,32 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockListWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*RefreshBlockListResponse, error)
 
-	// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+	// ListSourceEntriesWithResponse Page through the entries of a BlockList source
 	//
-	// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+	// Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
-	ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error)
+	// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListSourceEntries` operationId).
+	ListSourceEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListSourceEntriesParams, reqEditors ...RequestEditorFn) (*ListSourceEntriesResponse, error)
 
-	// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+	// PatchSourceEntriesWithBodyWithResponse Switch entries of a BlockList source off and on, add and remove inline entries
 	//
-	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-	PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+	PatchSourceEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSourceEntriesResponse, error)
 
-	// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+	// PatchSourceEntriesWithResponse Switch entries of a BlockList source off and on, add and remove inline entries
 	//
-	// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+	// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-	PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error)
+	// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+	PatchSourceEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, body PatchSourceEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSourceEntriesResponse, error)
 
 	// BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
 	//
@@ -12498,6 +14537,81 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /cluster (the `GetCluster` operationId).
 	GetClusterWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterResponse, error)
 
+	// ListDenylistWithResponse List Denylist entries
+	//
+	// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /denylist (the `ListDenylist` operationId).
+	ListDenylistWithResponse(ctx context.Context, params *ListDenylistParams, reqEditors ...RequestEditorFn) (*ListDenylistResponse, error)
+
+	// CreateDenylistEntriesWithBodyWithResponse Add Denylist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+	CreateDenylistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDenylistEntriesResponse, error)
+
+	// CreateDenylistEntriesWithResponse Add Denylist entries
+	//
+	// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+	CreateDenylistEntriesWithResponse(ctx context.Context, body CreateDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDenylistEntriesResponse, error)
+
+	// DeleteDenylistEntryWithResponse Delete a Denylist entry
+	//
+	// Removes every copy; a list left empty is deleted and its policy references removed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
+	DeleteDenylistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteDenylistEntryResponse, error)
+
+	// GetDenylistEntryWithResponse Get a Denylist entry
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /denylist/{id} (the `GetDenylistEntry` operationId).
+	GetDenylistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetDenylistEntryResponse, error)
+
+	// PatchDenylistEntryWithBodyWithResponse Change a Denylist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+	PatchDenylistEntryWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDenylistEntryResponse, error)
+
+	// PatchDenylistEntryWithResponse Change a Denylist entry
+	//
+	// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+	PatchDenylistEntryWithResponse(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDenylistEntryResponse, error)
+
+	// BatchDenylistEntriesWithBodyWithResponse Switch on, off or delete several Denylist entries
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+	BatchDenylistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDenylistEntriesResponse, error)
+
+	// BatchDenylistEntriesWithResponse Switch on, off or delete several Denylist entries
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+	BatchDenylistEntriesWithResponse(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDenylistEntriesResponse, error)
+
 	// GetBlockingWithResponse Blocking state of this node
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -12567,6 +14681,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /doctor (the `Doctor` operationId).
 	DoctorWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DoctorResponse, error)
+
+	// ListDomainEntriesWithResponse List Allowlist and Denylist entries together
+	//
+	// The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /domains (the `ListDomainEntries` operationId).
+	ListDomainEntriesWithResponse(ctx context.Context, params *ListDomainEntriesParams, reqEditors ...RequestEditorFn) (*ListDomainEntriesResponse, error)
 
 	// AddDomainsWithBodyWithResponse Allow or deny domains through the UI lists
 	//
@@ -13055,6 +15178,574 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /zones/{zone}/records/{name}/{type} (the `DeleteZoneRecord` operationId).
 	DeleteZoneRecordWithResponse(ctx context.Context, zone string, name string, pType string, params *DeleteZoneRecordParams, reqEditors ...RequestEditorFn) (*DeleteZoneRecordResponse, error)
+}
+
+type ListAllowlistResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainEntries
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAllowlistResponse) GetJSON200() *DomainEntries {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListAllowlistResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAllowlistResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListAllowlistResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListAllowlistResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListAllowlistResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListAllowlistResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListAllowlistResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAllowlistResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAllowlistResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAllowlistResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAllowlistResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAllowlistEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateAllowlistEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateAllowlistEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAllowlistEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAllowlistEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAllowlistEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteAllowlistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteAllowlistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteAllowlistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAllowlistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAllowlistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAllowlistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAllowlistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainEntry
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON200() *DomainEntry {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetAllowlistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAllowlistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAllowlistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAllowlistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAllowlistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PatchAllowlistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PatchAllowlistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PatchAllowlistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchAllowlistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchAllowlistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PatchAllowlistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BatchAllowlistEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BatchAllowlistEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BatchAllowlistEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BatchAllowlistEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BatchAllowlistEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BatchAllowlistEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ApplyResponse struct {
@@ -14930,16 +17621,16 @@ func (r RefreshBlockListResponse) ContentType() string {
 	return ""
 }
 
-// ListInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for ListInlineEntries
-type ListInlineEntriesResponse200Headers struct {
+// ListSourceEntriesResponse200Headers the declared response headers of an HTTP 200 response for ListSourceEntries
+type ListSourceEntriesResponse200Headers struct {
 	ETag *string
 }
 
-type ListInlineEntriesResponse struct {
+type ListSourceEntriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *InlineEntries
+	JSON200 *SourceEntries
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -14955,56 +17646,56 @@ type ListInlineEntriesResponse struct {
 	// JSON503 the response for an HTTP 503 `application/json` response
 	JSON503 *Error
 	// Headers200 the parsed response headers for an HTTP 200 response
-	Headers200 *ListInlineEntriesResponse200Headers
+	Headers200 *ListSourceEntriesResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON200() *InlineEntries {
+func (r ListSourceEntriesResponse) GetJSON200() *SourceEntries {
 	return r.JSON200
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON400() *Error {
+func (r ListSourceEntriesResponse) GetJSON400() *Error {
 	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON401() *Error {
+func (r ListSourceEntriesResponse) GetJSON401() *Error {
 	return r.JSON401
 }
 
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON403() *Error {
+func (r ListSourceEntriesResponse) GetJSON403() *Error {
 	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON404() *Error {
+func (r ListSourceEntriesResponse) GetJSON404() *Error {
 	return r.JSON404
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON422() *Error {
+func (r ListSourceEntriesResponse) GetJSON422() *Error {
 	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON500() *Error {
+func (r ListSourceEntriesResponse) GetJSON500() *Error {
 	return r.JSON500
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r ListInlineEntriesResponse) GetJSON503() *Error {
+func (r ListSourceEntriesResponse) GetJSON503() *Error {
 	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r ListInlineEntriesResponse) GetBody() []byte {
+func (r ListSourceEntriesResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r ListInlineEntriesResponse) Status() string {
+func (r ListSourceEntriesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -15012,7 +17703,7 @@ func (r ListInlineEntriesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ListInlineEntriesResponse) StatusCode() int {
+func (r ListSourceEntriesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -15020,23 +17711,23 @@ func (r ListInlineEntriesResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListInlineEntriesResponse) ContentType() string {
+func (r ListSourceEntriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-// PatchInlineEntriesResponse200Headers the declared response headers of an HTTP 200 response for PatchInlineEntries
-type PatchInlineEntriesResponse200Headers struct {
+// PatchSourceEntriesResponse200Headers the declared response headers of an HTTP 200 response for PatchSourceEntries
+type PatchSourceEntriesResponse200Headers struct {
 	ETag *string
 }
 
-type PatchInlineEntriesResponse struct {
+type PatchSourceEntriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *InlineEntriesResult
+	JSON200 *SourceEntriesResult
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -15056,66 +17747,66 @@ type PatchInlineEntriesResponse struct {
 	// JSON503 the response for an HTTP 503 `application/json` response
 	JSON503 *Error
 	// Headers200 the parsed response headers for an HTTP 200 response
-	Headers200 *PatchInlineEntriesResponse200Headers
+	Headers200 *PatchSourceEntriesResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON200() *InlineEntriesResult {
+func (r PatchSourceEntriesResponse) GetJSON200() *SourceEntriesResult {
 	return r.JSON200
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON400() *Error {
+func (r PatchSourceEntriesResponse) GetJSON400() *Error {
 	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON401() *Error {
+func (r PatchSourceEntriesResponse) GetJSON401() *Error {
 	return r.JSON401
 }
 
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON403() *Error {
+func (r PatchSourceEntriesResponse) GetJSON403() *Error {
 	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON404() *Error {
+func (r PatchSourceEntriesResponse) GetJSON404() *Error {
 	return r.JSON404
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON409() *Error {
+func (r PatchSourceEntriesResponse) GetJSON409() *Error {
 	return r.JSON409
 }
 
 // GetJSON412 returns the response for an HTTP 412 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON412() *Error {
+func (r PatchSourceEntriesResponse) GetJSON412() *Error {
 	return r.JSON412
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON422() *Error {
+func (r PatchSourceEntriesResponse) GetJSON422() *Error {
 	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON500() *Error {
+func (r PatchSourceEntriesResponse) GetJSON500() *Error {
 	return r.JSON500
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r PatchInlineEntriesResponse) GetJSON503() *Error {
+func (r PatchSourceEntriesResponse) GetJSON503() *Error {
 	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r PatchInlineEntriesResponse) GetBody() []byte {
+func (r PatchSourceEntriesResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r PatchInlineEntriesResponse) Status() string {
+func (r PatchSourceEntriesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -15123,7 +17814,7 @@ func (r PatchInlineEntriesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PatchInlineEntriesResponse) StatusCode() int {
+func (r PatchSourceEntriesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -15131,7 +17822,7 @@ func (r PatchInlineEntriesResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r PatchInlineEntriesResponse) ContentType() string {
+func (r PatchSourceEntriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16624,6 +19315,574 @@ func (r GetClusterResponse) ContentType() string {
 	return ""
 }
 
+type ListDenylistResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainEntries
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDenylistResponse) GetJSON200() *DomainEntries {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListDenylistResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDenylistResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListDenylistResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListDenylistResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListDenylistResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDenylistResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListDenylistResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDenylistResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDenylistResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDenylistResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDenylistResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDenylistEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateDenylistEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDenylistEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDenylistEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDenylistEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDenylistEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteDenylistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteDenylistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteDenylistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDenylistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDenylistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteDenylistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDenylistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainEntry
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON200() *DomainEntry {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetDenylistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDenylistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDenylistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDenylistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDenylistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PatchDenylistEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r PatchDenylistEntryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r PatchDenylistEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchDenylistEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchDenylistEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PatchDenylistEntryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BatchDenylistEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainWriteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON200() *DomainWriteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BatchDenylistEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BatchDenylistEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BatchDenylistEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BatchDenylistEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BatchDenylistEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetBlockingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17172,6 +20431,96 @@ func (r DoctorResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DoctorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDomainEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DomainEntries
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON200() *DomainEntries {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListDomainEntriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDomainEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDomainEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDomainEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDomainEntriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -22315,6 +25664,135 @@ func (r DeleteZoneRecordResponse) ContentType() string {
 	return ""
 }
 
+// ListAllowlistWithResponse List Allowlist entries
+//
+// Allowed names are never blocked: an allow entry wins over every block list of the policies it applies through. Entries are stored on the BlockLists ui-allow (everyone) and ui-allow-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /allowlist (the `ListAllowlist` operationId).
+func (c *ClientWithResponses) ListAllowlistWithResponse(ctx context.Context, params *ListAllowlistParams, reqEditors ...RequestEditorFn) (*ListAllowlistResponse, error) {
+	rsp, err := c.ListAllowlist(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAllowlistResponse(rsp)
+}
+
+// CreateAllowlistEntriesWithBodyWithResponse Add Allowlist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+func (c *ClientWithResponses) CreateAllowlistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAllowlistEntriesResponse, error) {
+	rsp, err := c.CreateAllowlistEntriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAllowlistEntriesResponse(rsp)
+}
+
+// CreateAllowlistEntriesWithResponse Add Allowlist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /allowlist (the `CreateAllowlistEntries` operationId).
+func (c *ClientWithResponses) CreateAllowlistEntriesWithResponse(ctx context.Context, body CreateAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAllowlistEntriesResponse, error) {
+	rsp, err := c.CreateAllowlistEntries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAllowlistEntriesResponse(rsp)
+}
+
+// DeleteAllowlistEntryWithResponse Delete a Allowlist entry
+//
+// Removes every copy; a list left empty is deleted and its policy references removed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
+func (c *ClientWithResponses) DeleteAllowlistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteAllowlistEntryResponse, error) {
+	rsp, err := c.DeleteAllowlistEntry(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAllowlistEntryResponse(rsp)
+}
+
+// GetAllowlistEntryWithResponse Get a Allowlist entry
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /allowlist/{id} (the `GetAllowlistEntry` operationId).
+func (c *ClientWithResponses) GetAllowlistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetAllowlistEntryResponse, error) {
+	rsp, err := c.GetAllowlistEntry(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAllowlistEntryResponse(rsp)
+}
+
+// PatchAllowlistEntryWithBodyWithResponse Change a Allowlist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+func (c *ClientWithResponses) PatchAllowlistEntryWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchAllowlistEntryResponse, error) {
+	rsp, err := c.PatchAllowlistEntryWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchAllowlistEntryResponse(rsp)
+}
+
+// PatchAllowlistEntryWithResponse Change a Allowlist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /allowlist/{id} (the `PatchAllowlistEntry` operationId).
+func (c *ClientWithResponses) PatchAllowlistEntryWithResponse(ctx context.Context, id string, body PatchAllowlistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchAllowlistEntryResponse, error) {
+	rsp, err := c.PatchAllowlistEntry(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchAllowlistEntryResponse(rsp)
+}
+
+// BatchAllowlistEntriesWithBodyWithResponse Switch on, off or delete several Allowlist entries
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+func (c *ClientWithResponses) BatchAllowlistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchAllowlistEntriesResponse, error) {
+	rsp, err := c.BatchAllowlistEntriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchAllowlistEntriesResponse(rsp)
+}
+
+// BatchAllowlistEntriesWithResponse Switch on, off or delete several Allowlist entries
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /allowlist:batch (the `BatchAllowlistEntries` operationId).
+func (c *ClientWithResponses) BatchAllowlistEntriesWithResponse(ctx context.Context, body BatchAllowlistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchAllowlistEntriesResponse, error) {
+	rsp, err := c.BatchAllowlistEntries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchAllowlistEntriesResponse(rsp)
+}
+
 // ApplyWithBodyWithResponse Apply objects (multi-document YAML or a JSON array)
 //
 // Whole-object apply with manager "api". The body is multi-document YAML (application/yaml) or JSON (an object, an array of objects, or a kind: List). Every document is authorized, validated and applied on its own; the response lists one result per document in order.
@@ -22674,49 +26152,49 @@ func (c *ClientWithResponses) RefreshBlockListWithResponse(ctx context.Context, 
 	return ParseRefreshBlockListResponse(rsp)
 }
 
-// ListInlineEntriesWithResponse Page through the entries of an inline BlockList source
+// ListSourceEntriesWithResponse Page through the entries of a BlockList source
 //
-// The entries of spec.sources[].inline, one per line, so a client never round-trips a long inline source. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive). The ETag header is the object's resourceVersion for If-Match on PATCH.
+// Every source type: the lines of an inline source, the structured entries of an entries source, and for URL and ConfigMap sources the rules of the body this node's list cache holds (the leader fetches it, replicas pull it by digest; 503 while this node has none). Each item says whether it is switched on. {source} is the source's name (spec.sources[].name, else the name status.sources[] reports) or its index. q filters by substring (case-insensitive), enabled by switch. The ETag header is the object's resourceVersion for If-Match on PATCH.
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListInlineEntries` operationId).
-func (c *ClientWithResponses) ListInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListInlineEntriesParams, reqEditors ...RequestEditorFn) (*ListInlineEntriesResponse, error) {
-	rsp, err := c.ListInlineEntries(ctx, namespace, name, source, params, reqEditors...)
+// Corresponds with GET /blocklists/{namespace}/{name}/sources/{source}/entries (the `ListSourceEntries` operationId).
+func (c *ClientWithResponses) ListSourceEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *ListSourceEntriesParams, reqEditors ...RequestEditorFn) (*ListSourceEntriesResponse, error) {
+	rsp, err := c.ListSourceEntries(ctx, namespace, name, source, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseListInlineEntriesResponse(rsp)
+	return ParseListSourceEntriesResponse(rsp)
 }
 
-// PatchInlineEntriesWithBodyWithResponse Add and remove entries of an inline BlockList source
+// PatchSourceEntriesWithBodyWithResponse Switch entries of a BlockList source off and on, add and remove inline entries
 //
-// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-func (c *ClientWithResponses) PatchInlineEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
-	rsp, err := c.PatchInlineEntriesWithBody(ctx, namespace, name, source, params, contentType, body, reqEditors...)
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+func (c *ClientWithResponses) PatchSourceEntriesWithBodyWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSourceEntriesResponse, error) {
+	rsp, err := c.PatchSourceEntriesWithBody(ctx, namespace, name, source, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePatchInlineEntriesResponse(rsp)
+	return ParsePatchSourceEntriesResponse(rsp)
 }
 
-// PatchInlineEntriesWithResponse Add and remove entries of an inline BlockList source
+// PatchSourceEntriesWithResponse Switch entries of a BlockList source off and on, add and remove inline entries
 //
-// Edits spec.sources[].inline through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply. Entries already present are not added twice; removals of absent entries are ignored. Each added entry is one rule in the source's format.
+// Edits the source through the same write path as PUT /blocklists/{namespace}/{name}: If-Match, the managedBy rules and validation apply (a bootstrap-managed list such as the starter list is taken over, D84). enable and disable work for every source type: they edit spec.sources[].exclude, each value normalised to the rule(s) the source's format reads from it, or the enabled switch of structured entries. Switching an entry off affects only this list; to allow a name everywhere use the Allowlist. add and remove edit spec.sources[].inline and are for inline sources only; entries already present are not added twice and removals of absent entries are ignored.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchInlineEntries` operationId).
-func (c *ClientWithResponses) PatchInlineEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchInlineEntriesParams, body PatchInlineEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchInlineEntriesResponse, error) {
-	rsp, err := c.PatchInlineEntries(ctx, namespace, name, source, params, body, reqEditors...)
+// Corresponds with PATCH /blocklists/{namespace}/{name}/sources/{source}/entries (the `PatchSourceEntries` operationId).
+func (c *ClientWithResponses) PatchSourceEntriesWithResponse(ctx context.Context, namespace string, name string, source string, params *PatchSourceEntriesParams, body PatchSourceEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSourceEntriesResponse, error) {
+	rsp, err := c.PatchSourceEntries(ctx, namespace, name, source, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePatchInlineEntriesResponse(rsp)
+	return ParsePatchSourceEntriesResponse(rsp)
 }
 
 // BatchDeleteBlocklistsWithBodyWithResponse Delete several blocklists
@@ -22996,6 +26474,135 @@ func (c *ClientWithResponses) GetClusterWithResponse(ctx context.Context, reqEdi
 	return ParseGetClusterResponse(rsp)
 }
 
+// ListDenylistWithResponse List Denylist entries
+//
+// Denied names are blocked for the clients the entry applies to, unless an allow list of their policy allows them. Entries are stored on the BlockLists ui-deny (everyone) and ui-deny-<group> (one ClientGroup), referenced by the policies concerned. Newest first.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /denylist (the `ListDenylist` operationId).
+func (c *ClientWithResponses) ListDenylistWithResponse(ctx context.Context, params *ListDenylistParams, reqEditors ...RequestEditorFn) (*ListDenylistResponse, error) {
+	rsp, err := c.ListDenylist(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDenylistResponse(rsp)
+}
+
+// CreateDenylistEntriesWithBodyWithResponse Add Denylist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+func (c *ClientWithResponses) CreateDenylistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDenylistEntriesResponse, error) {
+	rsp, err := c.CreateDenylistEntriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDenylistEntriesResponse(rsp)
+}
+
+// CreateDenylistEntriesWithResponse Add Denylist entries
+//
+// Adds one entry per value, of one type and scope. A value that exists already gets the new comment and switch (when given) and its scope widened. The lists are created on demand and referenced from the policies of the scope (every policy of the namespace for everyone, the policies naming the group otherwise); policies managed by a file or an integration are reported in skipped. Refused values are listed in processed.errors; a scope error (unknown group, no policy covers it) answers 422.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /denylist (the `CreateDenylistEntries` operationId).
+func (c *ClientWithResponses) CreateDenylistEntriesWithResponse(ctx context.Context, body CreateDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDenylistEntriesResponse, error) {
+	rsp, err := c.CreateDenylistEntries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDenylistEntriesResponse(rsp)
+}
+
+// DeleteDenylistEntryWithResponse Delete a Denylist entry
+//
+// Removes every copy; a list left empty is deleted and its policy references removed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
+func (c *ClientWithResponses) DeleteDenylistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteDenylistEntryResponse, error) {
+	rsp, err := c.DeleteDenylistEntry(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDenylistEntryResponse(rsp)
+}
+
+// GetDenylistEntryWithResponse Get a Denylist entry
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /denylist/{id} (the `GetDenylistEntry` operationId).
+func (c *ClientWithResponses) GetDenylistEntryWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetDenylistEntryResponse, error) {
+	rsp, err := c.GetDenylistEntry(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDenylistEntryResponse(rsp)
+}
+
+// PatchDenylistEntryWithBodyWithResponse Change a Denylist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+func (c *ClientWithResponses) PatchDenylistEntryWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDenylistEntryResponse, error) {
+	rsp, err := c.PatchDenylistEntryWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDenylistEntryResponse(rsp)
+}
+
+// PatchDenylistEntryWithResponse Change a Denylist entry
+//
+// Switch it on or off, change its comment, value, type or scope. A new scope moves the entry between the everyone list and the group lists.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /denylist/{id} (the `PatchDenylistEntry` operationId).
+func (c *ClientWithResponses) PatchDenylistEntryWithResponse(ctx context.Context, id string, body PatchDenylistEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDenylistEntryResponse, error) {
+	rsp, err := c.PatchDenylistEntry(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDenylistEntryResponse(rsp)
+}
+
+// BatchDenylistEntriesWithBodyWithResponse Switch on, off or delete several Denylist entries
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+func (c *ClientWithResponses) BatchDenylistEntriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDenylistEntriesResponse, error) {
+	rsp, err := c.BatchDenylistEntriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchDenylistEntriesResponse(rsp)
+}
+
+// BatchDenylistEntriesWithResponse Switch on, off or delete several Denylist entries
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
+func (c *ClientWithResponses) BatchDenylistEntriesWithResponse(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDenylistEntriesResponse, error) {
+	rsp, err := c.BatchDenylistEntries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchDenylistEntriesResponse(rsp)
+}
+
 // GetBlockingWithResponse Blocking state of this node
 //
 // Returns a wrapper object for the known response body format(s).
@@ -23124,6 +26731,21 @@ func (c *ClientWithResponses) DoctorWithResponse(ctx context.Context, reqEditors
 		return nil, err
 	}
 	return ParseDoctorResponse(rsp)
+}
+
+// ListDomainEntriesWithResponse List Allowlist and Denylist entries together
+//
+// The entries of both the Allowlist and the Denylist, newest first, with the same filters as GET /allowlist.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /domains (the `ListDomainEntries` operationId).
+func (c *ClientWithResponses) ListDomainEntriesWithResponse(ctx context.Context, params *ListDomainEntriesParams, reqEditors ...RequestEditorFn) (*ListDomainEntriesResponse, error) {
+	rsp, err := c.ListDomainEntries(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDomainEntriesResponse(rsp)
 }
 
 // AddDomainsWithBodyWithResponse Allow or deny domains through the UI lists
@@ -24020,6 +27642,487 @@ func (c *ClientWithResponses) DeleteZoneRecordWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseDeleteZoneRecordResponse(rsp)
+}
+
+// ParseListAllowlistResponse parses an HTTP response from a ListAllowlistWithResponse call
+func ParseListAllowlistResponse(rsp *http.Response) (*ListAllowlistResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAllowlistResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainEntries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAllowlistEntriesResponse parses an HTTP response from a CreateAllowlistEntriesWithResponse call
+func ParseCreateAllowlistEntriesResponse(rsp *http.Response) (*CreateAllowlistEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAllowlistEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAllowlistEntryResponse parses an HTTP response from a DeleteAllowlistEntryWithResponse call
+func ParseDeleteAllowlistEntryResponse(rsp *http.Response) (*DeleteAllowlistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAllowlistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAllowlistEntryResponse parses an HTTP response from a GetAllowlistEntryWithResponse call
+func ParseGetAllowlistEntryResponse(rsp *http.Response) (*GetAllowlistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAllowlistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchAllowlistEntryResponse parses an HTTP response from a PatchAllowlistEntryWithResponse call
+func ParsePatchAllowlistEntryResponse(rsp *http.Response) (*PatchAllowlistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchAllowlistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBatchAllowlistEntriesResponse parses an HTTP response from a BatchAllowlistEntriesWithResponse call
+func ParseBatchAllowlistEntriesResponse(rsp *http.Response) (*BatchAllowlistEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BatchAllowlistEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseApplyResponse parses an HTTP response from a ApplyWithResponse call
@@ -25640,22 +29743,22 @@ func ParseRefreshBlockListResponse(rsp *http.Response) (*RefreshBlockListRespons
 	return response, nil
 }
 
-// ParseListInlineEntriesResponse parses an HTTP response from a ListInlineEntriesWithResponse call
-func ParseListInlineEntriesResponse(rsp *http.Response) (*ListInlineEntriesResponse, error) {
+// ParseListSourceEntriesResponse parses an HTTP response from a ListSourceEntriesWithResponse call
+func ParseListSourceEntriesResponse(rsp *http.Response) (*ListSourceEntriesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &ListInlineEntriesResponse{
+	response := &ListSourceEntriesResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest InlineEntries
+		var dest SourceEntries
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -25714,7 +29817,7 @@ func ParseListInlineEntriesResponse(rsp *http.Response) (*ListInlineEntriesRespo
 
 	switch {
 	case rsp.StatusCode == 200:
-		var headers ListInlineEntriesResponse200Headers
+		var headers ListSourceEntriesResponse200Headers
 		if values := rsp.Header.Values("ETag"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -25728,22 +29831,22 @@ func ParseListInlineEntriesResponse(rsp *http.Response) (*ListInlineEntriesRespo
 	return response, nil
 }
 
-// ParsePatchInlineEntriesResponse parses an HTTP response from a PatchInlineEntriesWithResponse call
-func ParsePatchInlineEntriesResponse(rsp *http.Response) (*PatchInlineEntriesResponse, error) {
+// ParsePatchSourceEntriesResponse parses an HTTP response from a PatchSourceEntriesWithResponse call
+func ParsePatchSourceEntriesResponse(rsp *http.Response) (*PatchSourceEntriesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PatchInlineEntriesResponse{
+	response := &PatchSourceEntriesResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest InlineEntriesResult
+		var dest SourceEntriesResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -25816,7 +29919,7 @@ func ParsePatchInlineEntriesResponse(rsp *http.Response) (*PatchInlineEntriesRes
 
 	switch {
 	case rsp.StatusCode == 200:
-		var headers PatchInlineEntriesResponse200Headers
+		var headers PatchSourceEntriesResponse200Headers
 		if values := rsp.Header.Values("ETag"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -27181,6 +31284,487 @@ func ParseGetClusterResponse(rsp *http.Response) (*GetClusterResponse, error) {
 	return response, nil
 }
 
+// ParseListDenylistResponse parses an HTTP response from a ListDenylistWithResponse call
+func ParseListDenylistResponse(rsp *http.Response) (*ListDenylistResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDenylistResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainEntries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDenylistEntriesResponse parses an HTTP response from a CreateDenylistEntriesWithResponse call
+func ParseCreateDenylistEntriesResponse(rsp *http.Response) (*CreateDenylistEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDenylistEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDenylistEntryResponse parses an HTTP response from a DeleteDenylistEntryWithResponse call
+func ParseDeleteDenylistEntryResponse(rsp *http.Response) (*DeleteDenylistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDenylistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDenylistEntryResponse parses an HTTP response from a GetDenylistEntryWithResponse call
+func ParseGetDenylistEntryResponse(rsp *http.Response) (*GetDenylistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDenylistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchDenylistEntryResponse parses an HTTP response from a PatchDenylistEntryWithResponse call
+func ParsePatchDenylistEntryResponse(rsp *http.Response) (*PatchDenylistEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchDenylistEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBatchDenylistEntriesResponse parses an HTTP response from a BatchDenylistEntriesWithResponse call
+func ParseBatchDenylistEntriesResponse(rsp *http.Response) (*BatchDenylistEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BatchDenylistEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainWriteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetBlockingResponse parses an HTTP response from a GetBlockingWithResponse call
 func ParseGetBlockingResponse(rsp *http.Response) (*GetBlockingResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27625,6 +32209,81 @@ func ParseDoctorResponse(rsp *http.Response) (*DoctorResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDomainEntriesResponse parses an HTTP response from a ListDomainEntriesWithResponse call
+func ParseListDomainEntriesResponse(rsp *http.Response) (*ListDomainEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDomainEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DomainEntries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

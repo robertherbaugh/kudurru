@@ -50,7 +50,7 @@
 {
   "error": {
     "key": "invalid",
-    "message": "BlockList.kudurru.io \"default-ads\" is invalid: spec.sources[0]: Invalid value: exactly one of url, inline or configMapRef must be set",
+    "message": "BlockList.kudurru.io \"default-ads\" is invalid: spec.sources[0]: Invalid value: exactly one of url, inline, configMapRef or entries must be set",
     "hint": "fix the listed fields and retry: spec.sources[0]",
     "fields": [
       "spec.sources[0]"

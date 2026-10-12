@@ -5,7 +5,13 @@ import { render, type RenderResult } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import type { SettingKey } from '../api/types';
 import { AppProviders } from '../App';
-import { signIn } from '../mocks/handlers';
+import { mockDB, signIn } from '../mocks/handlers';
+
+/** The values of the structured entries of a mock list (the ui-allow / ui-deny lists). */
+export function uiEntryValues(listName: string, namespace = 'default'): string[] {
+  const l = mockDB().lists.find((x) => x.metadata.name === listName && (x.metadata.namespace ?? 'default') === namespace);
+  return (l?.spec.sources ?? []).flatMap((s) => (s.entries ?? []).map((e) => e.value));
+}
 
 /** The absolute API base the tests use (Node's fetch needs absolute URLs). */
 export const API = `${window.location.origin}/api/v1`;

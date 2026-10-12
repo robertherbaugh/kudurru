@@ -1,19 +1,22 @@
 // The sources of one BlockList, one row each like Pi-hole's Adlists: an
 // enable switch (spec.sources[].enabled, ux-plan C2), the type, the URL or
 // the number of inline entries, format, subdomains, the per-source status
-// (entries, last fetch, error) and edit / delete actions.
+// ("N of M entries enabled" once single entries are switched off, last
+// fetch, error) and the entries browser, edit and delete actions. Every
+// kind of source opens the entries browser.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Switch } from '@astryxdesign/core/Switch';
-import { Database, FileText, Link as LinkIcon } from 'lucide-react';
+import { Database, FileText, Link as LinkIcon, ListChecks } from 'lucide-react';
 import type { BlockList } from '../../api/types';
 import { formatExact, formatRelative } from '../../lib/format';
-import { formatLabel, sourceEnabled, sourceKind, sourceName, sourceStatus, type SourceKind } from '../../lib/lists';
+import { enabledEntriesText, formatLabel, sourceEnabled, sourceKind, sourceName, sourceStatus, type SourceKind } from '../../lib/lists';
 
 const KIND: Record<SourceKind, { label: string; Icon: typeof LinkIcon }> = {
   url: { label: 'URL', Icon: LinkIcon },
   inline: { label: 'Inline entries', Icon: FileText },
   configMap: { label: 'ConfigMap', Icon: Database },
+  entries: { label: 'Allow or deny entries', Icon: ListChecks },
 };
 
 export interface SourcesTableProps {
@@ -88,6 +91,10 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
                     <button type="button" className="k-linklike" onClick={() => onBrowse(i)} aria-label={`Browse the ${formatExact(src.inline?.length ?? 0)} inline entries of ${name}`}>
                       {formatExact(src.inline?.length ?? 0)} inline entries
                     </button>
+                  ) : kind === 'entries' ? (
+                    <button type="button" className="k-linklike" onClick={() => onBrowse(i)} aria-label={`Browse the ${formatExact(src.entries?.length ?? 0)} entries of ${name}`}>
+                      {formatExact(src.entries?.length ?? 0)} {list.spec.mode === 'allow' ? 'allow' : 'deny'} entries
+                    </button>
                   ) : (
                     <span className="k-mono k-small">
                       ConfigMap {src.configMapRef?.namespace ? `${src.configMapRef.namespace}/` : ''}
@@ -98,13 +105,13 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
                 <td className="k-small">{formatLabel(src.format)}</td>
                 <td>{src.subdomains ? <Badge variant="info" label="yes" /> : <span className="k-muted k-small">no</span>}</td>
                 <td className="num" title={on ? undefined : 'Not counted while the source is disabled'}>
-                  {on ? formatExact(st?.entries) : <span className="k-muted">{st?.entries ? `${formatExact(st.entries)} (off)` : 'off'}</span>}
+                  {on ? enabledEntriesText(st) : <span className="k-muted">{st?.entries ? `${formatExact(st.entries)} (off)` : 'off'}</span>}
                   {on && st?.invalid ? <div className="k-muted k-small">{formatExact(st.invalid)} invalid</div> : null}
                 </td>
                 <td className="k-small k-nowrap">
                   {!on ? (
                     <span className="k-muted">disabled</span>
-                  ) : kind === 'inline' ? (
+                  ) : kind === 'inline' || kind === 'entries' ? (
                     <span className="k-muted" title="Inline entries are compiled from the object; there is nothing to fetch">
                       compiled
                     </span>
@@ -116,10 +123,10 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
                 </td>
                 <td className="k-small k-break">{on && st?.error ? <span className="k-error-text">{st.error}</span> : <span className="k-muted">–</span>}</td>
                 <td className="k-nowrap k-row-actions">
-                  {kind === 'inline' ? <Button label="Entries" size="sm" variant="ghost" onClick={() => onBrowse(i)} /> : null}
+                  <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${name}`} onClick={() => onBrowse(i)} />
                   {editable ? (
                     <>
-                      <Button label="Edit" size="sm" variant="ghost" onClick={() => onEdit(i)} />
+                      {kind !== 'entries' ? <Button label="Edit" size="sm" variant="ghost" onClick={() => onEdit(i)} /> : null}
                       <Button
                         label="Delete"
                         size="sm"

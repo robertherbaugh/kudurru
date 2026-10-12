@@ -11,7 +11,7 @@ import { qk, useApi, useCan } from '../api/context';
 import type { BlockList, ListSource } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
-import { AddDomainsDialog } from '../components/lists/AddDomainsDialog';
+import { AddEntryDialog } from '../components/domains/DomainEntryDialogs';
 import { ObjectsPage } from '../components/ObjectsPage';
 import { ListWizardDialog } from '../components/wizards/ListWizard';
 import { formatExact, formatRelative } from '../lib/format';
@@ -113,7 +113,7 @@ export default function ListsPage() {
       onSaved={pollStatus}
       detailPath={listPath}
       wizard={ListWizardDialog}
-      headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} onClick={() => setAdding(true)} />}
+      headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} tooltip={can('blocklists', 'write') ? 'Add to the Allowlist or Denylist' : 'Needs blocklists.write'} onClick={() => setAdding(true)} />}
       rowActions={(l) =>
         l.spec.sources.some((s) => s.url && sourceEnabled(s)) ? (
           <Button label="Refresh" size="sm" variant="ghost" isDisabled={!can('blocklists', 'refresh')} isLoading={refresh.isPending && refresh.variables === l} onClick={() => refresh.mutate(l)} />
@@ -157,7 +157,7 @@ export default function ListsPage() {
       ]}
     >
       <ListSearch />
-      <AddDomainsDialog open={adding} onClose={() => setAdding(false)} />
+      <AddEntryDialog key={adding ? 'open' : 'closed'} open={adding} onClose={() => setAdding(false)} />
     </ObjectsPage>
   );
 }

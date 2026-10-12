@@ -3,6 +3,8 @@ package listfetcher
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -114,6 +116,23 @@ func ListName(namespace, name string) string {
 	return namespace + "/" + name
 }
 
+// SourceKey is the list cache key of a URL or ConfigMap source of a
+// BlockList in namespace: the URL, or configmap://<namespace>/<name>; ""
+// for sources kept in the object.
+func SourceKey(namespace string, src v1alpha1.ListSource) string {
+	switch {
+	case src.URL != "":
+		return src.URL
+	case src.ConfigMapRef != nil:
+		ns := src.ConfigMapRef.Namespace
+		if ns == "" {
+			ns = namespace
+		}
+		return ConfigMapKey(ns, src.ConfigMapRef.Name)
+	}
+	return ""
+}
+
 // plannedSource is one source of a BlockList with everything both halves
 // need to know about it.
 type plannedSource struct {
@@ -128,9 +147,26 @@ type plannedSource struct {
 	// referenced) so that switching it back on needs no download.
 	disabled bool
 	inline   []string
-	cm       *ConfigMapRef
+	// exclude is spec.sources[].exclude plus, for structured entries, the
+	// rules of the entries switched off.
+	exclude []string
+	cm      *ConfigMapRef
 	// status is the published status entry for this source, if any.
 	status *v1alpha1.SourceStatus
+}
+
+// fp is the part of a list fingerprint this source contributes besides
+// its digest.
+func (p *plannedSource) fp(digest string) []string {
+	return []string{p.name, string(p.format), strconv.FormatBool(p.subdomains), digest, blocking.ExcludeDigest(p.exclude)}
+}
+
+// compileSource is the blocking.Source of an inline or structured source.
+func (p *plannedSource) compileSource() blocking.Source {
+	src := blocking.LinesSource(p.name, p.format, p.inline)
+	src.HostsSubdomains = p.subdomains
+	src.Exclude = p.exclude
+	return src
 }
 
 func (p *plannedSource) download() Source {
@@ -176,9 +212,13 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 	}
 	for i, src := range bl.Spec.Sources {
 		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains, disabled: !src.IsEnabled()}
+		ps.exclude = src.Exclude
 		switch {
-		case len(src.Inline) > 0:
-			ps.inline = src.Inline
+		case len(src.Inline) > 0 || len(src.Entries) > 0:
+			ps.inline, ps.format, ps.exclude, _ = blocking.InlineLines(src)
+			if len(src.Entries) > 0 {
+				ps.subdomains = false
+			}
 		case src.URL != "":
 			ps.key = src.URL
 		case src.ConfigMapRef != nil:
@@ -235,7 +275,8 @@ func disabledStatus(ps *plannedSource) v1alpha1.SourceStatus {
 		if ps.key != "" {
 			ss.Digest, ss.ETag = p.Digest, p.ETag
 		}
-		ss.Entries, ss.Invalid = p.Entries, p.Invalid
+		ss.Entries, ss.Invalid, ss.Excluded = p.Entries, p.Invalid, p.Excluded
+		ss.StaleExcludes = slices.Clone(p.StaleExcludes)
 		ss.LastFetched = p.LastFetched.DeepCopy()
 	}
 	return ss

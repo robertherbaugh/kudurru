@@ -16,6 +16,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -108,8 +109,28 @@ func (f *fixture) list(name string) []string {
 	var out []string
 	for _, src := range bl.Spec.Sources {
 		out = append(out, src.Inline...)
+		for _, e := range src.Entries {
+			out = append(out, v1alpha1.EntryRule(e.Type, e.Value))
+		}
 	}
 	return out
+}
+
+func (f *fixture) entry(list, rule string) v1alpha1.ListEntry {
+	f.t.Helper()
+	bl := &v1alpha1.BlockList{}
+	if err := f.st.Get(context.Background(), store.Key{Kind: "BlockList", Namespace: "default", Name: list}, bl); err != nil {
+		f.t.Fatal(err)
+	}
+	for _, src := range bl.Spec.Sources {
+		for _, e := range src.Entries {
+			if v1alpha1.EntryRule(e.Type, e.Value) == rule {
+				return e
+			}
+		}
+	}
+	f.t.Fatalf("no entry %s in %s", rule, list)
+	return v1alpha1.ListEntry{}
 }
 
 func (f *fixture) allowRefs(policy string) []string {
@@ -196,14 +217,17 @@ func TestApproveEveryoneAndExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := out.Request.Status.Allow
-	if out.Request.Status.State != v1alpha1.UnblockApproved || a == nil || a.List != "default/ui-allow" || a.Entry != "||games.example^" || !a.Added || a.ExpiresAt == nil {
+	if out.Request.Status.State != v1alpha1.UnblockApproved || a == nil || a.List != "default/ui-allow" || a.Entry != "*.games.example" || !a.Added || a.ExpiresAt == nil {
 		t.Fatalf("status %+v allow %+v", out.Request.Status, a)
 	}
 	if !slices.Equal(out.Attached, []string{"default/default", "default/kids"}) {
 		t.Fatalf("attached %v", out.Attached)
 	}
-	if got := f.list(EveryoneList); !slices.Equal(got, []string{"||games.example^"}) {
+	if got := f.list(EveryoneList); !slices.Equal(got, []string{"*.games.example"}) {
 		t.Fatalf("ui-allow %v", got)
+	}
+	if e := f.entry(EveryoneList, "*.games.example"); e.Origin != v1alpha1.OriginUnblock || e.Request != "default/"+r.Name || e.CreatedBy != "user:admin" || e.Comment != "for today" {
+		t.Fatalf("entry provenance %+v", e)
 	}
 	if !slices.Contains(f.allowRefs("kids"), EveryoneList) || !slices.Contains(f.allowRefs("default"), EveryoneList) {
 		t.Fatal("ui-allow not attached")
@@ -244,7 +268,7 @@ func TestApproveKeepsExistingEntries(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	// An entry the Domains page added stays after the approval ends.
-	if _, err := f.svc.addEntry(ctx, "default", EveryoneList, "games.example"); err != nil {
+	if _, err := f.svc.lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryExact, Values: []string{"games.example"}}); err != nil {
 		t.Fatal(err)
 	}
 	r := f.submit("10.0.20.5", "games.example", "")
@@ -344,6 +368,38 @@ func TestManagedElsewhere(t *testing.T) {
 	}
 	if !slices.Equal(out.Skipped, []string{"default/kids"}) || slices.Contains(f.allowRefs("kids"), EveryoneList) {
 		t.Fatalf("skipped %v", out.Skipped)
+	}
+}
+
+// TestLegacyApprovalRelease: an approval made before structured entries
+// (entry "||name^" as an inline line) is released from the migrated list.
+func TestLegacyApprovalRelease(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	bl := &v1alpha1.BlockList{ObjectMeta: meta(EveryoneList), Spec: v1alpha1.BlockListSpec{Mode: "allow", Sources: []v1alpha1.ListSource{{Name: "ui", Inline: []string{"||games.example^", "keep.example"}}}}}
+	if _, err := f.st.Apply(ctx, bl, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	exp := metav1.NewTime(f.clk.Now().Add(time.Minute))
+	r.Status = v1alpha1.UnblockRequestStatus{State: v1alpha1.UnblockApproved, Allow: &v1alpha1.UnblockAllow{
+		Scope: ScopeEveryone, Match: MatchSubdomains, List: "default/" + EveryoneList, Entry: "||games.example^", Added: true, ExpiresAt: &exp,
+	}}
+	if err := f.st.UpdateStatus(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.svc.lists.Migrate(ctx); err != nil || n != 1 {
+		t.Fatalf("migrate %d %v", n, err)
+	}
+	if e := f.entry(EveryoneList, "*.games.example"); e.Origin != v1alpha1.OriginUnblock || e.Request != "default/"+r.Name {
+		t.Fatalf("migrated entry %+v", e)
+	}
+	f.clk.Add(2 * time.Minute)
+	if res, err := f.svc.Sweep(ctx); err != nil || res.Ended != 1 {
+		t.Fatalf("sweep %+v %v", res, err)
+	}
+	if got := f.list(EveryoneList); !slices.Equal(got, []string{"keep.example"}) {
+		t.Fatalf("ui-allow after the release %v", got)
 	}
 }
 

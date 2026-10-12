@@ -4,26 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-// Allow lists: approvals for everyone go to the UI allow list (the
-// Domains page's, POST /domains/allow), approvals for one ClientGroup to
-// ui-allow-<group> in the group's namespace. Both keep their entries in
-// the inline source "ui".
+// Allow lists: approvals for everyone go to the Allowlist's everyone list
+// (ui-allow), approvals for one ClientGroup to ui-allow-<group> in the
+// group's namespace, as structured entries (internal/domainlist) with
+// origin unblock and the request.
 const (
-	EveryoneList    = "ui-allow"
-	GroupListPrefix = "ui-allow-"
-	uiSource        = "ui"
-	// DefaultPolicy is the fallback policy every everyone-approval
-	// attaches the list to.
+	EveryoneList    = domainlist.AllowList
+	GroupListPrefix = domainlist.AllowList + "-"
+	// DefaultPolicy is the bootstrap policy.
 	DefaultPolicy = "default"
 )
 
@@ -67,10 +65,11 @@ func (s *Service) load(ctx context.Context, ns, name string) (*v1alpha1.UnblockR
 	return r, nil
 }
 
-// Entry is the allow-list line of domain for match.
+// Entry is the allow-list rule of domain for match: the name, or
+// "*.name" for the name and its subdomains.
 func Entry(domain, match string) string {
 	if match == MatchSubdomains {
-		return "||" + domain + "^"
+		return v1alpha1.EntryRule(v1alpha1.EntryWildcard, "*."+domain)
 	}
 	return domain
 }
@@ -98,16 +97,10 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 		return nil, fmt.Errorf("%w: duration must not be negative", ErrInvalid)
 	}
 	listNS, list, group := ns, EveryoneList, ""
-	var policies []string // names in listNS
+	var scope domainlist.Scope
 	switch d.Scope {
 	case ScopeEveryone, "":
 		d.Scope = ScopeEveryone
-		policies = []string{DefaultPolicy}
-		for _, p := range r.Spec.Policies {
-			if pns, pname, ok := strings.Cut(p, "/"); ok && pns == listNS && !slices.Contains(policies, pname) {
-				policies = append(policies, pname)
-			}
-		}
 	case ScopeGroup:
 		group = d.Group
 		if group == "" {
@@ -120,13 +113,8 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 			group = ns + "/" + group
 		}
 		gns, gname, _ := strings.Cut(group, "/")
-		listNS, list = gns, GroupListPrefix+gname
-		if policies, err = s.policiesOfGroup(ctx, gns, gname); err != nil {
-			return nil, err
-		}
-		if len(policies) == 0 {
-			return nil, fmt.Errorf("%w: no policy covers client group %s; approve it for everyone", ErrInvalid, group)
-		}
+		listNS, list = gns, domainlist.ListName(domainlist.Allow, gname)
+		scope.Groups = []string{gname}
 	default:
 		return nil, fmt.Errorf("%w: scope %q (everyone or group)", ErrInvalid, d.Scope)
 	}
@@ -135,24 +123,27 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 	if err := s.end(ctx, r, now); err != nil {
 		return nil, err
 	}
-	entry := Entry(r.Spec.Domain, d.Match)
-	added, err := s.addEntry(ctx, listNS, list, entry)
-	if err != nil {
+	typ, value := v1alpha1.EntryExact, r.Spec.Domain
+	if d.Match == MatchSubdomains {
+		typ, value = v1alpha1.EntryWildcard, "*."+r.Spec.Domain
+	}
+	res, err := s.lists.Add(ctx, domainlist.AddRequest{
+		Action: domainlist.Allow, Namespace: listNS, Type: typ, Values: []string{value}, Scope: scope,
+		Comment: d.Note, Origin: v1alpha1.OriginUnblock, Request: ns + "/" + name, Actor: d.Actor,
+	})
+	switch {
+	case errors.Is(err, domainlist.ErrNoPolicy):
+		return nil, fmt.Errorf("%w: no policy covers client group %s; approve it for everyone", ErrInvalid, group)
+	case errors.Is(err, domainlist.ErrInvalid):
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	case err != nil:
 		return nil, err
+	case len(res.Errors) > 0:
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, res.Errors[0].Err)
 	}
-	out := &Outcome{}
-	for _, p := range policies {
-		ok, err := s.attach(ctx, listNS, p, list)
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-		case err != nil:
-			return nil, err
-		case ok:
-			out.Attached = append(out.Attached, listNS+"/"+p)
-		default:
-			out.Skipped = append(out.Skipped, listNS+"/"+p)
-		}
-	}
+	entry := Entry(r.Spec.Domain, d.Match)
+	added := len(res.New) > 0
+	out := &Outcome{Attached: res.Attached, Skipped: res.Skipped}
 	at := metav1.NewTime(now.UTC().Truncate(time.Second))
 	allow := &v1alpha1.UnblockAllow{Scope: d.Scope, Match: d.Match, Group: group, List: listNS + "/" + list, Entry: entry, Added: added, Policies: out.Attached}
 	if d.Duration > 0 {
@@ -219,19 +210,6 @@ func (s *Service) setStatus(ctx context.Context, r *v1alpha1.UnblockRequest, st 
 	return next, nil
 }
 
-// policiesOfGroup names the policies in ns whose clientGroupRefs include
-// group.
-func (s *Service) policiesOfGroup(ctx context.Context, ns, group string) ([]string, error) {
-	var out []string
-	err := s.each(ctx, "Policy", ns, func(o store.Object) {
-		if p, ok := o.(*v1alpha1.Policy); ok && slices.Contains(p.Spec.ClientGroupRefs, group) {
-			out = append(out, p.Name)
-		}
-	})
-	slices.Sort(out)
-	return out, err
-}
-
 // each lists every object of kind in ns.
 func (s *Service) each(ctx context.Context, kind store.Kind, ns string, fn func(store.Object)) error {
 	cont := ""
@@ -248,187 +226,6 @@ func (s *Service) each(ctx context.Context, kind store.Kind, ns string, fn func(
 		}
 		cont = page.Continue
 	}
-}
-
-// writeAttempts bounds the read-modify-write retries of list and policy
-// edits that lose a race with another writer.
-const writeAttempts = 3
-
-// writable reports whether the API may change obj and whether it must
-// force (bootstrap defaults), as the API's own write path decides.
-func writable(obj store.Object) (ok, force bool) {
-	switch store.ManagedBy(obj) {
-	case "", store.ManagerAPI:
-		return true, false
-	case store.ManagerBootstrap:
-		return true, true
-	}
-	return false, false
-}
-
-// addEntry adds entry to the "ui" source of the allow list ns/name,
-// creating the list. added is false when the entry was there already.
-func (s *Service) addEntry(ctx context.Context, ns, name, entry string) (added bool, err error) {
-	for attempt := 1; ; attempt++ {
-		added, err = s.tryAddEntry(ctx, ns, name, entry)
-		if !errors.Is(err, store.ErrConflict) || attempt == writeAttempts {
-			return added, err
-		}
-	}
-}
-
-func (s *Service) tryAddEntry(ctx context.Context, ns, name, entry string) (bool, error) {
-	bl := &v1alpha1.BlockList{}
-	opts := store.ApplyOptions{Manager: store.ManagerAPI}
-	err := s.opts.Store.Get(ctx, store.Key{Kind: "BlockList", Namespace: ns, Name: name}, bl)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		bl = &v1alpha1.BlockList{
-			TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "BlockList"},
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-			Spec:       v1alpha1.BlockListSpec{Mode: "allow", Sources: []v1alpha1.ListSource{{Name: uiSource, Inline: []string{entry}}}},
-		}
-		_, err := s.opts.Store.Apply(ctx, bl, opts)
-		return true, err
-	case err != nil:
-		return false, err
-	}
-	ok, force := writable(bl)
-	if !ok {
-		return false, &store.ErrManagedBy{Key: store.KeyOf(bl), Owner: store.ManagedBy(bl)}
-	}
-	if bl.Spec.Mode != "allow" {
-		return false, fmt.Errorf("%w: BlockList %s/%s has mode %q, not allow", ErrInvalid, ns, name, bl.Spec.Mode)
-	}
-	idx := slices.IndexFunc(bl.Spec.Sources, func(src v1alpha1.ListSource) bool { return src.Name == uiSource })
-	if idx < 0 {
-		idx = slices.IndexFunc(bl.Spec.Sources, func(src v1alpha1.ListSource) bool { return src.URL == "" && src.ConfigMapRef == nil })
-	}
-	if idx < 0 {
-		bl.Spec.Sources = append(bl.Spec.Sources, v1alpha1.ListSource{Name: uiSource})
-		idx = len(bl.Spec.Sources) - 1
-	}
-	if slices.Contains(bl.Spec.Sources[idx].Inline, entry) {
-		return false, nil
-	}
-	bl.Spec.Sources[idx].Inline = append(bl.Spec.Sources[idx].Inline, entry)
-	opts.ExpectedResourceVersion, opts.Force = bl.ResourceVersion, force
-	_, err = s.opts.Store.Apply(ctx, bl, opts)
-	return true, err
-}
-
-// removeEntry takes entry off the allow list ns/name. A source left empty
-// is dropped; a list left without sources is deleted and detached from
-// policies.
-func (s *Service) removeEntry(ctx context.Context, ns, name, entry string) error {
-	for attempt := 1; ; attempt++ {
-		err := s.tryRemoveEntry(ctx, ns, name, entry)
-		if !errors.Is(err, store.ErrConflict) || attempt == writeAttempts {
-			return err
-		}
-	}
-}
-
-func (s *Service) tryRemoveEntry(ctx context.Context, ns, name, entry string) error {
-	bl := &v1alpha1.BlockList{}
-	key := store.Key{Kind: "BlockList", Namespace: ns, Name: name}
-	if err := s.opts.Store.Get(ctx, key, bl); errors.Is(err, store.ErrNotFound) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	ok, force := writable(bl)
-	if !ok {
-		return &store.ErrManagedBy{Key: key, Owner: store.ManagedBy(bl)}
-	}
-	changed := false
-	sources := bl.Spec.Sources[:0:0]
-	for _, src := range bl.Spec.Sources {
-		if src.URL == "" && src.ConfigMapRef == nil && slices.Contains(src.Inline, entry) {
-			src.Inline = slices.DeleteFunc(slices.Clone(src.Inline), func(e string) bool { return e == entry })
-			changed = true
-			if len(src.Inline) == 0 {
-				continue
-			}
-		}
-		sources = append(sources, src)
-	}
-	if !changed {
-		return nil
-	}
-	if len(sources) == 0 {
-		if err := s.opts.Store.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerAPI, Force: force}); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		return s.detachEverywhere(ctx, ns, name)
-	}
-	bl.Spec.Sources = sources
-	_, err := s.opts.Store.Apply(ctx, bl, store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: bl.ResourceVersion, Force: force})
-	return err
-}
-
-// attach adds list to the allowListRefs of policy ns/name. ok is false
-// when the policy is managed elsewhere and was left alone.
-func (s *Service) attach(ctx context.Context, ns, name, list string) (ok bool, err error) {
-	for attempt := 1; ; attempt++ {
-		ok, err = s.editPolicy(ctx, ns, name, func(p *v1alpha1.Policy) bool {
-			if slices.Contains(p.Spec.AllowListRefs, list) {
-				return false
-			}
-			p.Spec.AllowListRefs = append(p.Spec.AllowListRefs, list)
-			return true
-		})
-		if !errors.Is(err, store.ErrConflict) || attempt == writeAttempts {
-			return ok, err
-		}
-	}
-}
-
-// detachEverywhere removes list from the allowListRefs of every writable
-// policy in ns.
-func (s *Service) detachEverywhere(ctx context.Context, ns, list string) error {
-	var names []string
-	if err := s.each(ctx, "Policy", ns, func(o store.Object) {
-		if p, ok := o.(*v1alpha1.Policy); ok && slices.Contains(p.Spec.AllowListRefs, list) {
-			names = append(names, p.Name)
-		}
-	}); err != nil {
-		return err
-	}
-	for _, n := range names {
-		for attempt := 1; ; attempt++ {
-			_, err := s.editPolicy(ctx, ns, n, func(p *v1alpha1.Policy) bool {
-				before := len(p.Spec.AllowListRefs)
-				p.Spec.AllowListRefs = slices.DeleteFunc(p.Spec.AllowListRefs, func(r string) bool { return r == list })
-				return len(p.Spec.AllowListRefs) != before
-			})
-			if !errors.Is(err, store.ErrConflict) || attempt == writeAttempts {
-				if err != nil && !errors.Is(err, store.ErrNotFound) {
-					return err
-				}
-				break
-			}
-		}
-	}
-	return nil
-}
-
-// editPolicy applies fn to policy ns/name and writes it when fn changed
-// it. ok is false when the policy is not writable by the API.
-func (s *Service) editPolicy(ctx context.Context, ns, name string, fn func(*v1alpha1.Policy) bool) (bool, error) {
-	p := &v1alpha1.Policy{}
-	if err := s.opts.Store.Get(ctx, store.Key{Kind: "Policy", Namespace: ns, Name: name}, p); err != nil {
-		return false, err
-	}
-	ok, force := writable(p)
-	if !ok {
-		return false, nil
-	}
-	if !fn(p) {
-		return true, nil
-	}
-	_, err := s.opts.Store.Apply(ctx, p, store.ApplyOptions{Manager: store.ManagerAPI, ExpectedResourceVersion: p.ResourceVersion, Force: force})
-	return true, err
 }
 
 // end releases the allow entry of an approved r and marks it removed in
@@ -459,7 +256,7 @@ func (s *Service) release(ctx context.Context, r *v1alpha1.UnblockRequest, now t
 		if !ok || heir != nil || (other.Namespace == r.Namespace && other.Name == r.Name) || !Active(other, now) {
 			return
 		}
-		if oa := other.Status.Allow; oa.List == a.List && oa.Entry == a.Entry {
+		if oa := other.Status.Allow; oa.List == a.List && domainlist.RuleKey(oa.Entry) == domainlist.RuleKey(a.Entry) {
 			heir = other
 		}
 	}); err != nil {
@@ -479,5 +276,5 @@ func (s *Service) release(ctx context.Context, r *v1alpha1.UnblockRequest, now t
 		return nil
 	}
 	ns, name, _ := strings.Cut(a.List, "/")
-	return s.removeEntry(ctx, ns, name, a.Entry)
+	return s.lists.RemoveRule(ctx, ns, name, a.Entry)
 }

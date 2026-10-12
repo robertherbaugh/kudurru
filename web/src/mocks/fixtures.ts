@@ -1,5 +1,5 @@
 // Realistic fixtures for MSW (development with `bun run dev:mock` and the
-// tests): 3 zones with 50 records, 7 block/allow lists including the
+// tests): 3 zones with 50 records, 8 block/allow lists including the
 // starter list, 4 client groups, 5 policies, 24 h of time series, 500
 // query-log rows and 2 nodes. Everything is generated from a fixed seed
 // relative to a fixed clock (`now`), so tests see the same data each run.
@@ -277,13 +277,18 @@ function buildLists(now: number): BlockList[] {
       apiVersion: API,
       kind: 'BlockList',
       metadata: meta('stevenblack', 'api', { annotations: { 'kudurru.io/comment': 'Unified hosts' } }),
-      spec: { mode: 'block', refreshInterval: '24h', sources: [{ name: 'unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', format: 'hosts' }] },
+      spec: {
+        mode: 'block',
+        refreshInterval: '24h',
+        // Two rules of the body switched off on this list only; one is no longer in the body.
+        sources: [{ name: 'unified', url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', format: 'hosts', exclude: ['ads.unified.example', 'track.unified.example', 'gone.tracker.example'] }],
+      },
       status: {
         entries: 81234,
         ruleCount: 81234,
         invalid: 3,
         lastFetched: iso(3_600_000 * 4),
-        sources: [{ name: 'unified', entries: 81234, invalid: 3, etag: '"5f2c"', digest: 'sha256:51c0', lastFetched: iso(3_600_000 * 4) }],
+        sources: [{ name: 'unified', entries: 81234, excluded: 2, staleExcludes: ['gone.tracker.example'], invalid: 3, etag: '"5f2c"', digest: 'sha256:51c0', lastFetched: iso(3_600_000 * 4) }],
         conditions: ready(),
       },
     },
@@ -340,21 +345,61 @@ function buildLists(now: number): BlockList[] {
       status: { entries: 3, ruleCount: 3, invalid: 0, sources: [{ name: 'patterns', entries: 3 }], conditions: ready() },
     },
     {
+      // The Allowlist for everyone: structured entries of the source "ui"
+      // (allowlist contract A), one from the query log, one from an approved
+      // unblock request, a wildcard, a disabled one.
       apiVersion: API,
       kind: 'BlockList',
-      metadata: meta('ui-allow', 'api', { annotations: { 'kudurru.io/comment': 'Allowed from the query log' } }),
-      spec: { mode: 'allow', sources: [{ name: 'inline', inline: ['s.youtube.com', 'clickserve.dartsearch.net'], format: 'domains' }] },
-      status: { entries: 2, ruleCount: 2, sources: [{ name: 'inline', entries: 2 }], conditions: ready() },
+      metadata: meta('ui-allow', 'api', { annotations: { 'kudurru.io/comment': 'Allowed from the dashboard' } }),
+      spec: {
+        mode: 'allow',
+        sources: [
+          {
+            name: 'ui',
+            entries: [
+              { value: 's.youtube.com', type: 'exact', comment: 'YouTube search suggestions', created: iso(3_600_000 * 24 * 9), createdBy: 'User:admin', origin: 'manual' },
+              { value: 'clickserve.dartsearch.net', type: 'exact', created: iso(3_600_000 * 24 * 3), createdBy: 'User:admin', origin: 'querylog' },
+              { value: '*.cdn.example-video.com', type: 'wildcard', comment: 'Video player assets', created: iso(3_600_000 * 30), createdBy: 'User:admin', modified: iso(3_600_000 * 5), origin: 'manual' },
+              { value: 'doubleclick.net', type: 'exact', created: iso(3_600_000 * 4), createdBy: 'User:admin', origin: 'unblock', request: 'default/doubleclick-net-c0a8010a' },
+              { value: 'ads.partner.example', type: 'exact', enabled: false, comment: 'Turn back on after the campaign', created: iso(3_600_000 * 24 * 20), createdBy: 'ServiceAccount:ci', origin: 'api' },
+            ],
+          },
+        ],
+      },
+      status: { entries: 4, ruleCount: 4, sources: [{ name: 'ui', entries: 4, excluded: 1 }], conditions: ready() },
+    },
+    {
+      // A group-scoped copy: allowed for the kids group only.
+      apiVersion: API,
+      kind: 'BlockList',
+      metadata: meta('ui-allow-kids', 'api', { annotations: { 'kudurru.io/client-group': `${NS}/kids` } }),
+      spec: {
+        mode: 'allow',
+        sources: [{ name: 'ui', entries: [{ value: 'scratch.mit.edu', type: 'exact', comment: 'School projects', created: iso(3_600_000 * 24 * 2), createdBy: 'User:admin', origin: 'manual' }] }],
+      },
+      status: { entries: 1, ruleCount: 1, sources: [{ name: 'ui', entries: 1 }], conditions: ready() },
     },
     {
       apiVersion: API,
       kind: 'BlockList',
       metadata: meta('ui-deny', 'api', { annotations: { 'kudurru.io/enabled': 'true' } }),
-      spec: { mode: 'block', sources: [{ name: 'inline', inline: ['tracking.example-shop.com'], format: 'domains' }] },
+      spec: {
+        mode: 'block',
+        sources: [
+          {
+            name: 'ui',
+            entries: [
+              { value: 'tracking.example-shop.com', type: 'exact', created: iso(3_600_000 * 6), createdBy: 'User:admin', origin: 'querylog' },
+              { value: '^ads?[0-9]*\\.', type: 'regex', comment: 'ad servers by name', created: iso(3_600_000 * 24 * 5), createdBy: 'User:admin', origin: 'manual' },
+              { value: 'telemetry.tv.example', type: 'exact', created: iso(3_600_000 * 24 * 40), createdBy: 'system', origin: 'migrated' },
+            ],
+          },
+        ],
+      },
       status: {
-        entries: 1,
-        ruleCount: 1,
-        sources: [{ name: 'inline', entries: 1 }],
+        entries: 3,
+        ruleCount: 3,
+        sources: [{ name: 'ui', entries: 3 }],
         conditions: [{ type: 'Ready', status: 'False', reason: 'Invalid', message: 'line 2: "bad..domain" is not a domain name', lastTransitionTime: iso(600_000) }],
         invalid: 1,
       },
@@ -404,7 +449,9 @@ function buildPolicies(): Policy[] {
       metadata: meta('kids-bedtime', 'api', { annotations: { 'kudurru.io/comment': 'Social media off on school nights' } }),
       spec: {
         clientGroupRefs: ['kids'],
-        blockListRefs: ['starter', 'stevenblack', 'regex-trackers', 'family'],
+        blockListRefs: ['starter', 'stevenblack', 'regex-trackers', 'family', 'ui-deny'],
+        // The dashboard's allow and deny lists are attached to every policy the API manages.
+        allowListRefs: ['ui-allow', 'ui-allow-kids'],
         schedule: { weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], start: '21:00', end: '07:00', tz: 'America/Chicago' },
         safeSearch: true,
         priority: 20,
@@ -423,14 +470,14 @@ function buildPolicies(): Policy[] {
       apiVersion: API,
       kind: 'Policy',
       metadata: meta('social-media', 'api', { annotations: { 'kudurru.io/comment': 'No social apps on the home network' } }),
-      spec: { clientGroupRefs: ['default'], blockedServices: ['tiktok', 'facebook', 'instagram', '9gag'], safeSearch: true, priority: 5 },
+      spec: { clientGroupRefs: ['default'], blockListRefs: ['ui-deny'], allowListRefs: ['ui-allow'], blockedServices: ['tiktok', 'facebook', 'instagram', '9gag'], safeSearch: true, priority: 5 },
       status: { conditions: ready() },
     },
     {
       apiVersion: API,
       kind: 'Policy',
       metadata: meta('streaming-off', 'api', { annotations: { 'kudurru.io/enabled': 'false', 'kudurru.io/comment': 'Paused until the exams are over' } }),
-      spec: { clientGroupRefs: ['kids'], blockedServices: ['youtube', 'netflix', 'twitch', 'roblox', 'fortnite', 'steam'], priority: 30, blockMode: 'blockPage' },
+      spec: { clientGroupRefs: ['kids'], blockListRefs: ['ui-deny'], allowListRefs: ['ui-allow', 'ui-allow-kids'], blockedServices: ['youtube', 'netflix', 'twitch', 'roblox', 'fortnite', 'steam'], priority: 30, blockMode: 'blockPage' },
       status: { conditions: [{ type: 'Ready', status: 'False', reason: 'Disabled', message: 'kudurru.io/enabled is "false"', lastTransitionTime: '2026-10-09T06:00:00Z' }] },
     },
   ];

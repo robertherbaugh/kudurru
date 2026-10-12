@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { cleanSpec, validateFields } from '../components/ObjectForm';
 import { mockDB } from '../mocks/handlers';
 import { SCHEMAS } from '../lib/objectSchemas';
-import { findSelector, pick } from '../test/controls';
-import { renderWithApp } from '../test/utils';
+import { findSelector, getSelector, pick, valueOf } from '../test/controls';
+import { renderWithApp, uiEntryValues } from '../test/utils';
 import ListsPage, { inlineOnly } from './ListsPage';
 
 /** Clicks a button once the session has loaded and enabled it. */
@@ -88,30 +88,39 @@ describe('ListsPage', () => {
     expect(await screen.findByText('Deleted 2 lists')).toBeInTheDocument();
   });
 
-  it('adds domains to ui-deny with a typed choice and reports per-item results', async () => {
+  it('adds domains to the Denylist with a typed choice and reports per-item results', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
     await clickWhenEnabled('Add domains');
-    const domains = await screen.findByRole('textbox', { name: /^Domains/ });
+    const dialog = await screen.findByRole('dialog');
+    expect(valueOf(getSelector(/^Action/, dialog))).toBe('deny');
+    const domains = within(dialog).getByRole('textbox', { name: /^Domains/ });
     fireEvent.change(domains, { target: { value: 'not_a..domain' } });
-    expect(await screen.findByText(/is not a domain name/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add 1' })).toBeDisabled();
+    expect(await within(dialog).findByText(/is not a domain name/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
     fireEvent.change(domains, { target: { value: 'ads.example.com\ntracking.example-shop.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add 2' }));
-    expect(await screen.findByText('1 added, 1 rejected.')).toBeInTheDocument();
-    expect(mockDB().lists.find((l) => l.metadata.name === 'ui-deny')?.spec.sources[0]?.inline).toContain('ads.example.com');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add 2' }));
+    // The duplicate stays in the box with the reason; the new one is added.
+    expect(await within(dialog).findByText('1 not added')).toBeInTheDocument();
+    expect(within(dialog).getByText('already on the Denylist')).toBeInTheDocument();
+    expect(uiEntryValues('ui-deny')).toContain('ads.example.com');
+    expect(within(dialog).getByRole('textbox', { name: /^Domains/ })).toHaveValue('tracking.example-shop.com');
   });
 
-  it('adds an allow regex through the Type select', async () => {
+  it('adds an allow regex through the Action and Type selects', async () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
     await clickWhenEnabled('Add domains');
-    pick(await findSelector(/^Type/, await screen.findByRole('dialog')), 'Allow: regular expression');
-    const box = screen.getByRole('textbox', { name: /^Expressions/ });
+    const dialog = await screen.findByRole('dialog');
+    pick(await findSelector(/^Action/, dialog), 'Allow');
+    pick(getSelector(/^Type/, dialog), 'Regular expression');
+    const box = within(dialog).getByRole('textbox', { name: /^Expressions/ });
     fireEvent.change(box, { target: { value: '(' } });
-    expect(await screen.findByText(/Not a valid expression/)).toBeInTheDocument();
-    fireEvent.change(box, { target: { value: '^cdn[0-9]+\\.example\\.com$' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add 1' }));
-    expect(await screen.findByText('1 added, 0 rejected.')).toBeInTheDocument();
-    expect(mockDB().lists.find((l) => l.metadata.name === 'ui-allow')?.spec.sources[0]?.inline).toContain('/^cdn[0-9]+\\.example\\.com$/');
+    expect(await within(dialog).findByText(/Not a valid expression/)).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: '/^cdn[0-9]+\\.example\\.com$/' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Stored without the slashes, as a regex entry of ui-allow.
+    expect(uiEntryValues('ui-allow')).toContain('^cdn[0-9]+\\.example\\.com$');
+    expect(await screen.findByText('Added 1 to the Allowlist.')).toBeInTheDocument();
   });
 });
 

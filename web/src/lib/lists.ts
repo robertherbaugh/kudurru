@@ -5,14 +5,25 @@
 // wizard offers.
 import type { BlockList, ListFormat, ListSource, SourceStatus } from '../api/types';
 import type { EnumOption } from '../components/fields/EnumSelect';
+import { formatExact } from './format';
 import { listEntryError } from './objectSchemas';
 
-export type SourceKind = 'url' | 'inline' | 'configMap';
+/** entries: the structured entries of the dashboard's allow and deny lists (ui-*). */
+export type SourceKind = 'url' | 'inline' | 'configMap' | 'entries';
 
 export function sourceKind(src: ListSource): SourceKind {
   if (src.url) return 'url';
   if (src.configMapRef) return 'configMap';
+  if (src.entries) return 'entries';
   return 'inline';
+}
+
+/** "N of M entries enabled" when some are switched off, else "N" (status.sources[].entries of entries + excluded). */
+export function enabledEntriesText(st: Pick<SourceStatus, 'entries' | 'excluded'> | undefined): string {
+  const on = st?.entries ?? 0;
+  const off = st?.excluded ?? 0;
+  if (!off) return formatExact(on);
+  return `${formatExact(on)} of ${formatExact(on + off)} enabled`;
 }
 
 /**

@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -34,11 +35,13 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
@@ -79,6 +82,21 @@ type PolicySource interface {
 // (listfetcher.Resolver).
 type ListStatusSource interface {
 	Ready() (bool, []string)
+}
+
+// ListBodies opens the body of a URL or ConfigMap source as this node's
+// list cache holds it (listfetcher.DiskCache): the leader fetches it,
+// replicas pull it by digest. It returns an error wrapping
+// fs.ErrNotExist when the node has no body for the source.
+type ListBodies interface {
+	OpenSourceBody(namespace string, src v1alpha1.ListSource) (io.ReadCloser, SourceBody, error)
+}
+
+// SourceBody describes a cached source body.
+type SourceBody struct {
+	Digest  string
+	Fetched time.Time
+	Size    int64
 }
 
 // ListRefresher forces a refresh of one BlockList (leader-side fetch).
@@ -164,7 +182,10 @@ type Options struct {
 	// leader-side triggers.
 	Lists     ListStatusSource
 	Refresher ListRefresher
-	Notifier  ZoneNotifier
+	// ListBodies opens this node's cached body of a URL or ConfigMap
+	// source for the entries browser; nil answers 503 for those sources.
+	ListBodies ListBodies
+	Notifier   ZoneNotifier
 	// Audit records denied attempts and non-store mutations; a Reader
 	// implementation also backs GET /audit.
 	Audit audit.Recorder
@@ -243,6 +264,9 @@ type Server struct {
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once
 	unblockFallback *unblock.Service
+	// domainSvc is the Allowlist and Denylist over the store.
+	domainOnce sync.Once
+	domainSvc  *domainlist.Service
 }
 
 // New builds the server and registers every route.

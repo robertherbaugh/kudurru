@@ -77,6 +77,8 @@ export const qk = {
   cluster: ['cluster'] as const,
   audit: (...rest: unknown[]) => ['audit', ...rest] as const,
   unblock: (...rest: unknown[]) => ['unblockrequests', ...rest] as const,
+  /** Allowlist, Denylist and /domains pages. */
+  domains: (...rest: unknown[]) => ['domains', ...rest] as const,
 };
 
 /** The signed-in session; `data` is undefined while signed out. */

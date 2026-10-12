@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ClientGroup, QueryRow } from '../api/types';
+import { writeSummary } from '../components/domains/DomainEntryDialogs';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { matcherFor } from '../components/fields/MatchersField';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
@@ -78,21 +79,25 @@ export default function ClientDetailPage({ params }: PageProps) {
     onError: (err) => notify.error(err, 'Could not update the group'),
   });
   const quick = useMutation({
-    mutationFn: (v: { action: 'allow' | 'deny'; domain: string }) => api.lists.addDomains(v.action, 'exact', [v.domain]),
+    // "*.x" is a wildcard entry (the name and its subdomains), anything else an exact one.
+    mutationFn: (v: { action: 'allow' | 'deny'; domain: string }) =>
+      api.domains.create(v.action, { values: [v.domain], type: v.domain.startsWith('*.') ? 'wildcard' : 'exact', origin: 'manual' }),
     onSuccess: (r, v) => {
-      if (r.processed.success.length) notify.success(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.domain} (list ui-${v.action})`);
+      if (r.processed.success.length) notify.success(writeSummary(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.domain} (list ui-${v.action})`, r, v.action));
       for (const e of r.processed.errors) notify.error(new Error(`${e.item}: ${e.error}`));
       setDomain('');
       void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      void qc.invalidateQueries({ queryKey: qk.domains() });
     },
     onError: (err) => notify.error(err, 'Could not change the list'),
   });
   const rowAction = useMutation({
-    mutationFn: (v: { row: QueryRow; action: 'allow' | 'deny' }) => api.queries.action(v.row.id, v.action),
+    mutationFn: (v: { row: QueryRow; action: 'allow' | 'deny' }) => api.domains.create(v.action, { values: [v.row.domain.replace(/\.$/, '')], type: 'exact', origin: 'querylog' }),
     onSuccess: (r, v) => {
-      if (r.processed.success.length) notify.success(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.row.domain} (list ui-${v.action})`);
+      if (r.processed.success.length) notify.success(writeSummary(`${v.action === 'allow' ? 'Allowed' : 'Denied'} ${v.row.domain} (list ui-${v.action})`, r, v.action));
       for (const e of r.processed.errors) notify.error(new Error(`${e.item}: ${e.error}`));
       void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      void qc.invalidateQueries({ queryKey: qk.domains() });
     },
     onError: (err, v) => notify.error(err, `Could not ${v.action} ${v.row.domain}`),
   });

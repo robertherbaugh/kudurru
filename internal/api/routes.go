@@ -104,6 +104,7 @@ func (s *Server) registerRoutes() {
 	s.registerObjects()
 	s.registerZones()
 	s.registerLists()
+	s.registerDomainLists()
 	s.registerCatalogue()
 	s.registerPolicies()
 	s.registerRuntime()

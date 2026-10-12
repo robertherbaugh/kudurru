@@ -206,3 +206,103 @@ describe('ListDetailPage', () => {
     expect(used.map((u) => `${u.policy.metadata.name}:${u.as}`)).toEqual(['a:block', 'c:block', 'd:allow']);
   });
 });
+
+describe('EntriesBrowser on every kind of source', () => {
+  const steven = () => mockDB().lists.find((l) => l.metadata.name === 'stevenblack');
+
+  async function openBrowser(list: string, source: string): Promise<HTMLElement> {
+    renderList(list);
+    fireEvent.click(within(await screen.findByTestId(`source-${source}`)).getByRole('button', { name: 'Entries' }));
+    return screen.findByTestId('entries-browser');
+  }
+
+  it('counts the enabled entries of a source in the sources table', async () => {
+    renderList('stevenblack');
+    expect(within(await screen.findByTestId('source-unified')).getByText('81,234 of 81,236 enabled')).toBeInTheDocument();
+  });
+
+  it('browses the fetched rules of a URL source and switches one back on', async () => {
+    const browser = await openBrowser('stevenblack', 'unified');
+    expect(await within(browser).findByText(/81,236 rules, 2 switched off/)).toBeInTheDocument();
+    expect(within(browser).getByText(/affects only this list/)).toBeInTheDocument();
+    expect(within(browser).getByRole('link', { name: 'Allowlist' })).toHaveAttribute('href', '/allowlist');
+    // URL sources take no add or remove.
+    expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
+    expect(within(browser).getByText('1 switched-off entry is no longer in the source')).toBeInTheDocument();
+
+    fireEvent.click(within(browser).getByRole('switch', { name: 'Show disabled only' }));
+    expect(await within(browser).findByText('Showing 1–2 of 2 switched off')).toBeInTheDocument();
+    const sw = within(within(browser).getByTestId('list-entry-ads.unified.example')).getByRole('switch', { name: 'ads.unified.example enabled' });
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect(steven()?.spec.sources[0]?.exclude).not.toContain('ads.unified.example'));
+    expect(await screen.findByText('ads.unified.example switched on in stevenblack')).toBeInTheDocument();
+  });
+
+  it('switches a rule off at once and back when the write fails', async () => {
+    let release = () => {};
+    server.use(
+      http.patch(`${API}/blocklists/default/stevenblack/sources/unified/entries`, async () => {
+        await new Promise<void>((r) => (release = r));
+        return HttpResponse.json({ error: { key: 'conflict', message: 'the list changed meanwhile' } }, { status: 409 });
+      }),
+    );
+    const browser = await openBrowser('stevenblack', 'unified');
+    fireEvent.change(within(browser).getByRole('textbox', { name: /^Search entries/ }), { target: { value: 'pixel.unified' } });
+    const r = await within(browser).findByTestId('list-entry-pixel.unified.example');
+    const sw = within(r).getByRole('switch');
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    expect(sw).toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect(within(within(browser).getByTestId('list-entry-pixel.unified.example')).getByRole('switch')).not.toBeChecked());
+    release();
+    expect(await screen.findByText('Could not switch the entries off: the list changed meanwhile')).toBeInTheDocument();
+    await waitFor(() => expect(within(within(browser).getByTestId('list-entry-pixel.unified.example')).getByRole('switch')).toBeChecked());
+  });
+
+  it('switches several rules off at once and forgets the stale ones', async () => {
+    const browser = await openBrowser('stevenblack', 'unified');
+    fireEvent.change(within(browser).getByRole('textbox', { name: /^Search entries/ }), { target: { value: 'beacon' } });
+    await within(browser).findByTestId('list-entry-beacon.unified.example');
+    fireEvent.click(within(browser).getByRole('checkbox', { name: 'Select beacon.unified.example' }));
+    fireEvent.click(within(browser).getByRole('checkbox', { name: 'Select beacon1.unified.example' }));
+    fireEvent.click(within(within(browser).getByRole('toolbar', { name: 'Bulk actions' })).getByRole('button', { name: 'Switch off' }));
+    await waitFor(() => expect(steven()?.spec.sources[0]?.exclude).toEqual(expect.arrayContaining(['beacon.unified.example', 'beacon1.unified.example'])));
+    expect(await screen.findByText('Switched off 2 entries in stevenblack')).toBeInTheDocument();
+
+    fireEvent.click(within(browser).getByRole('button', { name: 'Forget them' }));
+    await waitFor(() => expect(steven()?.spec.sources[0]?.exclude).not.toContain('gone.tracker.example'));
+  });
+
+  it('switches structured entries of a ui list and points to the Allowlist', async () => {
+    const browser = await openBrowser('ui-allow', 'ui');
+    expect(await within(browser).findByText(/5 allow entries, 1 switched off/)).toBeInTheDocument();
+    expect(within(browser).getByRole('link', { name: 'Allowlist' })).toHaveAttribute('href', '/allowlist');
+    expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
+    const sw = within(within(browser).getByTestId('list-entry-s.youtube.com')).getByRole('switch');
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    fireEvent.click(sw);
+    await waitFor(() => expect(mockDB().lists.find((l) => l.metadata.name === 'ui-allow')?.spec.sources[0]?.entries?.[0]?.enabled).toBe(false));
+  });
+
+  it('switches inline lines off without removing them', async () => {
+    const browser = await openBrowser('family', 'extra');
+    const sw = within(await within(browser).findByTestId('list-entry-roblox.com')).getByRole('switch');
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    fireEvent.click(sw);
+    await waitFor(() => expect(family()?.spec.sources[3]?.exclude).toEqual(['roblox.com']));
+    expect(family()?.spec.sources[3]?.inline).toContain('roblox.com');
+  });
+
+  it('says so when this node has not fetched the source yet', async () => {
+    server.use(
+      http.get(`${API}/blocklists/default/stevenblack/sources/unified/entries`, () =>
+        HttpResponse.json({ error: { key: 'unavailable', message: 'the fetched body of source "unified" is not on this node yet', hint: 'try again after the next refresh' } }, { status: 503 }),
+      ),
+    );
+    const browser = await openBrowser('stevenblack', 'unified');
+    expect(await within(browser).findByText('This node has not fetched the list yet')).toBeInTheDocument();
+    expect(within(browser).getByText(/try again after the next refresh/)).toBeInTheDocument();
+  });
+});

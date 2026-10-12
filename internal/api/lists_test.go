@@ -65,8 +65,11 @@ func TestAddDomains(t *testing.T) {
 	if err := h.st.Get(context.Background(), store.Key{Kind: "BlockList", Namespace: "default", Name: UIDenyList}, &deny); err != nil {
 		t.Fatal(err)
 	}
-	got := deny.Spec.Sources[0].Inline
-	if deny.Spec.Mode != "block" || !slices.Equal(got, []string{"ads.example.com", "tracker.example", `/^ad[0-9]+\./`}) {
+	var got []string
+	for _, e := range deny.Spec.Sources[0].Entries {
+		got = append(got, v1alpha1.EntryRule(e.Type, e.Value))
+	}
+	if deny.Spec.Mode != "block" || deny.Spec.Sources[0].Entries[0].Origin != v1alpha1.OriginAPI || !slices.Equal(got, []string{"ads.example.com", "tracker.example", `/^ad[0-9]+\./`}) {
 		t.Fatalf("ui-deny %+v", deny.Spec)
 	}
 	var allow v1alpha1.BlockList
@@ -83,8 +86,8 @@ func TestAddDomains(t *testing.T) {
 	// Re-adding is idempotent.
 	h.do(http.MethodPost, "/api/v1/domains/deny/exact", "operator", map[string]any{"domains": []string{"ads.example.com"}}).want(http.StatusOK)
 	_ = h.st.Get(context.Background(), store.Key{Kind: "BlockList", Namespace: "default", Name: UIDenyList}, &deny)
-	if len(deny.Spec.Sources[0].Inline) != 3 {
-		t.Fatalf("duplicate entry added: %v", deny.Spec.Sources[0].Inline)
+	if len(deny.Spec.Sources[0].Entries) != 3 {
+		t.Fatalf("duplicate entry added: %v", deny.Spec.Sources[0].Entries)
 	}
 
 	// Search falls back to inline entries without a compiled snapshot.

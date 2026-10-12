@@ -19,9 +19,94 @@ type ListMode string
 // +kubebuilder:validation:Enum=nxdomain;zeroIP;refused;customIP;blockPage
 type BlockResponse string
 
+// EntryType is how a structured list entry matches.
+// +kubebuilder:validation:Enum=exact;wildcard;regex
+type EntryType string
+
+// Entry types.
+const (
+	// EntryExact matches the name only.
+	EntryExact EntryType = "exact"
+	// EntryWildcard ("*.example.com") matches the name and every name
+	// below it, like the adblock rule ||example.com^.
+	EntryWildcard EntryType = "wildcard"
+	// EntryRegex matches every name the RE2 expression matches.
+	EntryRegex EntryType = "regex"
+)
+
+// EntryOrigin records how a structured entry was added.
+// +kubebuilder:validation:Enum=manual;querylog;unblock;api;migrated
+type EntryOrigin string
+
+// Entry origins.
+const (
+	OriginManual   EntryOrigin = "manual"
+	OriginQueryLog EntryOrigin = "querylog"
+	OriginUnblock  EntryOrigin = "unblock"
+	OriginAPI      EntryOrigin = "api"
+	OriginMigrated EntryOrigin = "migrated"
+)
+
+// ListEntry is one structured entry of a list: the dashboard's Allowlist
+// and Denylist keep their domains as entries of the lists ui-allow,
+// ui-deny, ui-allow-<group> and ui-deny-<group>, each with its own switch,
+// comment and provenance (Pi-hole's Domains page).
+type ListEntry struct {
+	// Value is the canonical form for Type: "ads.example.com" (exact),
+	// "*.example.com" (wildcard) or the RE2 expression without slashes
+	// (regex).
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1024
+	Value string `json:"value"`
+	// +kubebuilder:default=exact
+	// +optional
+	Type EntryType `json:"type,omitempty"`
+	// Enabled false keeps the entry without applying it. Omitted means
+	// true.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+	// +kubebuilder:validation:MaxLength=500
+	// +optional
+	Comment string `json:"comment,omitempty"`
+	// +optional
+	Created *metav1.Time `json:"created,omitempty"`
+	// CreatedBy is the actor that added the entry ("user:alice").
+	// +kubebuilder:validation:MaxLength=300
+	// +optional
+	CreatedBy string `json:"createdBy,omitempty"`
+	// +optional
+	Modified *metav1.Time `json:"modified,omitempty"`
+	// +optional
+	Origin EntryOrigin `json:"origin,omitempty"`
+	// Request is the UnblockRequest ("namespace/name") whose approval
+	// added the entry.
+	// +kubebuilder:validation:MaxLength=300
+	// +optional
+	Request string `json:"request,omitempty"`
+}
+
+// IsEnabled reports whether the entry is switched on (Enabled unset or
+// true).
+func (e *ListEntry) IsEnabled() bool { return e.Enabled == nil || *e.Enabled }
+
+// EntryRule renders a structured entry as the list rule it compiles to:
+// "example.com", "*.example.com" or "/expression/".
+func EntryRule(t EntryType, value string) string {
+	switch t {
+	case EntryRegex:
+		return "/" + value + "/"
+	case EntryWildcard:
+		if len(value) > 2 && value[:2] == "*." {
+			return value
+		}
+		return "*." + value
+	}
+	return value
+}
+
 // ListSource is one place a BlockList reads entries from. Exactly one of
-// URL, Inline or ConfigMapRef is set.
-// +kubebuilder:validation:XValidation:rule="[has(self.url), has(self.inline), has(self.configMapRef)].filter(x, x).size() == 1",message="exactly one of url, inline or configMapRef must be set"
+// URL, Inline, ConfigMapRef or Entries is set.
+// +kubebuilder:validation:XValidation:rule="[has(self.url), has(self.inline), has(self.configMapRef), has(self.entries)].filter(x, x).size() == 1",message="exactly one of url, inline, configMapRef or entries must be set"
 type ListSource struct {
 	// +optional
 	URL string `json:"url,omitempty"`
@@ -29,6 +114,24 @@ type ListSource struct {
 	Inline []string `json:"inline,omitempty"`
 	// +optional
 	ConfigMapRef *ObjectRef `json:"configMapRef,omitempty"`
+	// Entries are structured entries (value, type, switch, comment,
+	// provenance), as the dashboard's Allowlist and Denylist write them.
+	// They compile as adblock rules; format and subdomains do not apply.
+	// +kubebuilder:validation:MaxItems=10000
+	// +optional
+	Entries []ListEntry `json:"entries,omitempty"`
+	// Exclude switches off single entries of this source without editing
+	// it, also for URL and ConfigMap sources: each value is a rule as the
+	// source's format normalises it ("ads.example.com" for a hosts line
+	// "0.0.0.0 ads.example.com", "||ads.example.com^", "/regex/"), as
+	// GET /blocklists/{namespace}/{name}/sources/{source}/entries lists
+	// them. Excluded rules are not compiled; the exclusions survive
+	// refreshes, and values that match nothing in the current body are
+	// reported in status.sources[].staleExcludes.
+	// +kubebuilder:validation:MaxItems=10000
+	// +listType=set
+	// +optional
+	Exclude []string `json:"exclude,omitempty"`
 	// +kubebuilder:default=auto
 	// +optional
 	Format ListFormat `json:"format,omitempty"`
@@ -97,6 +200,16 @@ type SourceStatus struct {
 	Entries int `json:"entries,omitempty"`
 	// +optional
 	Invalid int `json:"invalid,omitempty"`
+	// Excluded counts the entries of this source that are switched off
+	// (spec.sources[].exclude hits, or entries with enabled: false); they
+	// are not in Entries.
+	// +optional
+	Excluded int `json:"excluded,omitempty"`
+	// StaleExcludes are spec.sources[].exclude values that match no rule
+	// of the current body (at most 50): the list dropped the entry, or the
+	// value is not written the way the source's format normalises it.
+	// +optional
+	StaleExcludes []string `json:"staleExcludes,omitempty"`
 	// +optional
 	LastFetched *metav1.Time `json:"lastFetched,omitempty"`
 	// +optional

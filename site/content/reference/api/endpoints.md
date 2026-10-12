@@ -45,8 +45,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | PUT | `/api/v1/blocklists/{namespace}/{name}` | Create or replace a BlockList | `blocklists.write` (cluster) |
 | DELETE | `/api/v1/blocklists/{namespace}/{name}` | Delete a BlockList | `blocklists.delete` (cluster) |
 | POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) |
-| GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of an inline BlockList source | `blocklists.read` (cluster) |
-| PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Add and remove entries of an inline BlockList source | `blocklists.write` (cluster) |
+| GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of a BlockList source | `blocklists.read` (cluster) |
+| PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Switch entries of a BlockList source off and on, add and remove inline entries | `blocklists.write` (cluster) |
 | POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) |
 | POST | `/api/v1/domains/{action}/{kind}` | Allow or deny domains through the UI lists | `blocklists.write` (cluster) |
 
@@ -93,6 +93,24 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | POST | `/api/v1/dnszones:batchDelete` | Delete several dnszones | `zones.delete` (cluster or per object) |
+
+## domains
+
+| Method | Path | Summary | Permission |
+|---|---|---|---|
+| GET | `/api/v1/allowlist` | List Allowlist entries | `blocklists.read` (cluster) |
+| POST | `/api/v1/allowlist` | Add Allowlist entries | `blocklists.write` (cluster) |
+| GET | `/api/v1/allowlist/{id}` | Get a Allowlist entry | `blocklists.read` (cluster) |
+| PATCH | `/api/v1/allowlist/{id}` | Change a Allowlist entry | `blocklists.write` (cluster) |
+| DELETE | `/api/v1/allowlist/{id}` | Delete a Allowlist entry | `blocklists.write` (cluster) |
+| POST | `/api/v1/allowlist:batch` | Switch on, off or delete several Allowlist entries | `blocklists.write` (cluster) |
+| GET | `/api/v1/denylist` | List Denylist entries | `blocklists.read` (cluster) |
+| POST | `/api/v1/denylist` | Add Denylist entries | `blocklists.write` (cluster) |
+| GET | `/api/v1/denylist/{id}` | Get a Denylist entry | `blocklists.read` (cluster) |
+| PATCH | `/api/v1/denylist/{id}` | Change a Denylist entry | `blocklists.write` (cluster) |
+| DELETE | `/api/v1/denylist/{id}` | Delete a Denylist entry | `blocklists.write` (cluster) |
+| POST | `/api/v1/denylist:batch` | Switch on, off or delete several Denylist entries | `blocklists.write` (cluster) |
+| GET | `/api/v1/domains` | List Allowlist and Denylist entries together | `blocklists.read` (cluster) |
 
 ## iam
 

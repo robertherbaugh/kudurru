@@ -17,6 +17,8 @@ import {
   Server,
   Settings,
   ShieldBan,
+  ShieldCheck,
+  ShieldX,
   Siren,
   Users,
   Wrench,
@@ -54,6 +56,8 @@ const LongTerm = lazy(() => import('./pages/LongTermPage'));
 const Lists = lazy(() => import('./pages/ListsPage'));
 const ListDetail = lazy(() => import('./pages/ListDetailPage'));
 const Domains = lazy(() => import('./pages/DomainsPage'));
+const Allowlist = lazy(() => import('./pages/AllowlistPage'));
+const Denylist = lazy(() => import('./pages/DenylistPage'));
 const Groups = lazy(() => import('./pages/GroupsPage'));
 const Clients = lazy(() => import('./pages/ClientsPage'));
 const Policies = lazy(() => import('./pages/PoliciesPage'));
@@ -80,6 +84,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/lists/new', navKey: 'lists', label: 'New list', section: 'Filtering', icon: ListChecks, page: newRedirect('/lists'), hidden: true },
   { path: '/lists/:ns/:name', navKey: 'lists', label: 'List', section: 'Filtering', icon: ListChecks, page: ListDetail, hidden: true },
   { path: '/domains', navKey: 'domains', label: 'Domains', section: 'Filtering', icon: ShieldBan, page: Domains },
+  { path: '/allowlist', navKey: 'allowlist', label: 'Allowlist', section: 'Filtering', icon: ShieldCheck, page: Allowlist },
+  { path: '/denylist', navKey: 'denylist', label: 'Denylist', section: 'Filtering', icon: ShieldX, page: Denylist },
   { path: '/groups', navKey: 'groups', label: 'Groups', section: 'Filtering', icon: Users, page: Groups },
   { path: '/groups/new', navKey: 'groups', label: 'New group', section: 'Filtering', icon: Users, page: newRedirect('/groups'), hidden: true },
   { path: '/groups/:ns/:name', navKey: 'groups', label: 'Group', section: 'Filtering', icon: Users, page: GroupDetail, hidden: true },

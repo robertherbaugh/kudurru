@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
-import { renderWithApp } from '../test/utils';
+import { renderWithApp, uiEntryValues } from '../test/utils';
 import ClientDetailPage from './ClientDetailPage';
 import GroupDetailPage from './GroupDetailPage';
 import GroupsPage from './GroupsPage';
@@ -153,7 +153,7 @@ describe('ClientDetailPage', () => {
     expect(screen.getByText('"bad..domain" is not a domain name')).toBeInTheDocument();
     fireEvent.change(input, { target: { value: 'games.example.com' } });
     await clickWhenEnabled('Deny');
-    await waitFor(() => expect(mockDB().lists.find((l) => l.metadata.name === 'ui-deny')?.spec.sources[0]?.inline).toContain('games.example.com'));
+    await waitFor(() => expect(uiEntryValues('ui-deny')).toContain('games.example.com'));
   });
 
   it('works for a client the last 24 hours do not know', async () => {

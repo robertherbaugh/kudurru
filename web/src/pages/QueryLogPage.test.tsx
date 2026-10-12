@@ -1,10 +1,11 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { collectEntries } from '../mocks/domains';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, valueOf } from '../test/controls';
 import { server } from '../test/setup';
-import { API, renderWithApp } from '../test/utils';
+import { API, renderWithApp, uiEntryValues } from '../test/utils';
 import QueryLogPage, { filtersFrom, fromLocalInput, toLocalInput } from './QueryLogPage';
 
 /** Records the query strings of GET /queries while passing through to the mock. */
@@ -74,8 +75,10 @@ describe('QueryLogPage', () => {
     await waitFor(() => expect(allow).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(allow!);
     expect(await screen.findByText(/^Allowed .* \(list ui-allow\)$/)).toBeInTheDocument();
-    const list = mockDB().lists.find((l) => l.metadata.name === 'ui-allow');
-    expect(list?.spec.sources[0]?.inline?.length).toBe(3);
+    // An exact entry for everyone, from the query log (POST /allowlist).
+    const added = collectEntries(mockDB(), 'allow').find((e) => e.origin === 'querylog' && e.value !== 'clickserve.dartsearch.net');
+    expect(added).toMatchObject({ type: 'exact', everyone: true, groups: [] });
+    expect(uiEntryValues('ui-allow')).toHaveLength(6);
   });
 
   it('shows the API error when the log cannot be read', async () => {

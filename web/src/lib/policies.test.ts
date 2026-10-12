@@ -130,7 +130,7 @@ describe('client identification and policy selection', () => {
     const def = derivePolicyState(byName('default'), ctx);
     expect(def).toMatchObject({ policy: 'default/default', enabled: true, active: true, shadowedBy: ['default/social-media'], priority: 0 });
     expect(policyBadge(def).key).toBe('shadowed');
-    expect(def.lists.find((l) => l.ref === 'ui-allow')).toMatchObject({ role: 'allow', mode: 'allow', exists: true, enabled: true, ready: true, entries: 2, sourcesTotal: 1 });
+    expect(def.lists.find((l) => l.ref === 'ui-allow')).toMatchObject({ role: 'allow', mode: 'allow', exists: true, enabled: true, ready: true, entries: 4, sourcesTotal: 1 });
     expect(def.lists.find((l) => l.ref === 'gone')).toBeUndefined();
     expect(def.groups).toEqual([{ ref: 'default', exists: true, enabled: true, clients: 2 }]);
     // Schedules do not count for shadowing (internal/policy ShadowedBy).

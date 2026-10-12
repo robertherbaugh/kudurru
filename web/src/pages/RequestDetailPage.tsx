@@ -126,7 +126,7 @@ export default function RequestDetailPage({ params }: PageProps) {
       >
         <p className="k-small">
           {r.state === 'Approved' && r.allow && !r.allow.expiresAt
-            ? `The permanent allow entry ${r.allow.entry} stays on ${shortRef(r.allow.list)}; remove it on the Domains page if it is no longer needed.`
+            ? `The permanent allow entry ${r.allow.entry} stays on ${shortRef(r.allow.list)}; remove it on the Allowlist page if it is no longer needed.`
             : r.state === 'Approved' && r.allow?.expiresAt
               ? 'A time-limited approval in force cannot be deleted: deny it first, which removes its allow entry.'
               : 'The request and its history are removed. The user can ask again from the block page.'}
@@ -173,6 +173,11 @@ function AllowView({ allow }: { allow: UnblockAllow }) {
         )}
         {!allow.added ? <span className="k-muted"> · the entry was on the list already, so it stays when the approval ends</span> : null}
       </span>
+      {!allow.removed ? (
+        <span className="k-small">
+          <Link href={`/allowlist?q=${encodeURIComponent(allow.entry.replace(/^\|\||\^$/g, ''))}`}>Show it on the Allowlist</Link>
+        </span>
+      ) : null}
     </span>
   );
 }

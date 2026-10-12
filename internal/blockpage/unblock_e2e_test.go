@@ -23,7 +23,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	engine "github.com/robertherbaugh/kudurru/internal/blocking"
-	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
@@ -59,15 +58,11 @@ func (s *storeIndex) Rebuild(t *testing.T) {
 	for _, o := range page.Items {
 		bl := o.(*v1alpha1.BlockList)
 		in.BlockLists = append(in.BlockLists, bl)
-		mode := engine.ModeBlock
-		if bl.Spec.Mode == "allow" {
-			mode = engine.ModeAllow
+		spec, err := engine.SpecFromAPI(bl.Namespace+"/"+bl.Name, &bl.Spec, nil)
+		if err != nil {
+			t.Fatal(err)
 		}
-		var srcs []engine.Source
-		for i, src := range bl.Spec.Sources {
-			srcs = append(srcs, engine.LinesSource(engine.SourceName(i, src), parser.FormatAuto, src.Inline))
-		}
-		l, err := engine.Compile(engine.Spec{Name: bl.Namespace + "/" + bl.Name, Mode: mode, Sources: srcs}, nil, engine.CompileOptions{})
+		l, err := engine.Compile(spec, nil, engine.CompileOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
