@@ -299,6 +299,12 @@ the query log. A Kubernetes identity needs `get`/`list` on
 `unblockrequests.kudurru.io` to read and the custom verb `decide` to approve or
 deny (`kubectl auth can-i decide unblockrequests.kudurru.io`).
 
+`decide` is enough to approve: the approval writes the allow list and attaches
+it to the policies itself, without `blocklists` or `policies` write
+permissions of the approver. An *everyone* approval allows the name for every
+client, also under strict or allow-only policies of the namespace. Grant
+`decide` to people you would trust to edit the Allowlist.
+
 ## HTTPS: why browsers warn
 
 Most sites are opened over HTTPS. When a browser connects to the block page
