@@ -28,6 +28,7 @@ TARGETS=(
 	"./internal/dnsserver/proxyproto FuzzStream"
 	"./internal/zone FuzzImportBIND"
 	"./internal/zone FuzzCanonicalKey"
+	"./internal/blockpage FuzzBlockPage"
 	"./test/fuzz FuzzConfigLoad"
 	"./test/fuzz FuzzConfigEnv"
 	"./test/fuzz FuzzConfigValues"
