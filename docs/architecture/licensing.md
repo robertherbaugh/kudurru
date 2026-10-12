@@ -114,6 +114,26 @@ The edge supervisors read the key from their own environment, so Helm and
 Compose pass `KUDURRU_LICENSE_KEY` to every kudurru container. Without it an
 edge deployment does not start.
 
+## The dashboard
+
+`GET /api/v1/license` feeds the License page and the banner
+(`web/src/pages/LicensePage.tsx`, `components/LicenseBanner.tsx`; see
+docs/m3/ui.md, "Licensed features"). A page whose feature is locked shows a
+short explanation instead of its content and makes none of the requests the
+server would refuse with 402. The public page is [kudurru.io/license](https://kudurru.io/license)
+(`www/src/pages/license.ts`, content in `www/src/content.ts`), and the
+administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
+
+## Test builds
+
+The dashboard's Playwright suite needs a node with a license, and it cannot
+have the licensor's signing key. A binary built with `-tags licensetest`
+(`make web-e2e` does it) also trusts a throwaway key, `e2e-test`, whose
+private half was discarded after it signed `internal/license/testdata/e2e-license.key`
+(all features, 10 nodes, expires in 2126). A default build trusts only the
+keys in `internal/license/keys/`, and `TestDefaultBuildTrustsNoTestKey` fails
+if that ever changes. Never build a release with the tag.
+
 ## For the licensor
 
 ```sh

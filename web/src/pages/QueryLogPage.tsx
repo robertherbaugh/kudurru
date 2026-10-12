@@ -13,6 +13,7 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
+import { useFeature } from '../api/hooks';
 import type { QueryFilter, QueryRow, StatusClass, UnblockRequest } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { SelectField } from '../components/fields/SelectField';
@@ -134,7 +135,8 @@ export default function QueryLogPage() {
   // Blocked rows link to the unblock requests for their name, or to the
   // Allowlist's Add dialog: one list call (newest requests, every state),
   // matched by name, instead of one call per row.
-  const canRequests = can('unblockrequests', 'read');
+  const requestsFeature = useFeature('requests');
+  const canRequests = can('unblockrequests', 'read') && requestsFeature.ready && requestsFeature.allowed;
   const requests = useQuery({
     queryKey: qk.unblock('by-domain'),
     queryFn: () => api.unblock.list({ limit: REQUESTS_LIMIT }),

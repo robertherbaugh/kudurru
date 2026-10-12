@@ -75,13 +75,15 @@ export interface ObjectsPageProps<T extends AnyObject> {
   wizard?: ComponentType<{ isOpen: boolean; onClose: () => void }>;
   /** Row order (default: the server's, by name). */
   sort?: (a: T, b: T) => number;
+  /** Why "New" cannot be used right now (a license limit); disables the button. */
+  createBlocked?: string;
 }
 
 function key(o: AnyObject): string {
   return `${o.metadata.namespace ?? ''}/${o.metadata.name}`;
 }
 
-export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, wizard: CreateWizard, sort }: ObjectsPageProps<T>) {
+export function ObjectsPage<T extends AnyObject>({ title, description, schema, columns, headerActions, rowActions, children, onSaved, detailPath, wizard: CreateWizard, sort, createBlocked }: ObjectsPageProps<T>) {
   const api = useApi();
   const can = useCan();
   const qc = useQueryClient();
@@ -243,8 +245,8 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
             <Button
               label={`New ${schema.singular}`}
               variant="primary"
-              isDisabled={!canWrite}
-              tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`}
+              isDisabled={!canWrite || !!createBlocked}
+              tooltip={canWrite ? createBlocked : `Needs ${schema.resource}.write`}
               onClick={() => (CreateWizard ? setCreating(true) : setEditing('new'))}
             />
           </>

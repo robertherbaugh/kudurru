@@ -8,6 +8,32 @@ export const REPO_URL = "https://github.com/robertherbaugh/kudurru";
 export const IMAGE = "ghcr.io/robertherbaugh/kudurru";
 export const CHARTS = "oci://ghcr.io/robertherbaugh/charts";
 
+// The license page (/license/): follows LICENSING.md and internal/license.
+export const LICENSE_CONTACT = "hello@kudurru.io";
+export const LICENSE_FREE_NODES = 3;
+export const LICENSE_FREE_POLICIES = 2;
+
+export interface LicenseRow {
+  what: string;
+  community: string;
+  personal: string;
+  business: string;
+}
+
+export const LICENSE_ROWS: LicenseRow[] = [
+  { what: "DNS answering, blocking, zones, the block page, the dashboard, short-term statistics", community: "Yes", personal: "Yes", business: "Yes" },
+  { what: "Nodes in one cluster", community: "1", personal: `Up to ${LICENSE_FREE_NODES}`, business: "As agreed" },
+  { what: "Policies", community: String(LICENSE_FREE_POLICIES), personal: "Unlimited", business: "Unlimited" },
+  { what: "Roles beyond the built-in administrator, zone-scoped roles, Kubernetes RBAC", community: "No", personal: "Yes", business: "Yes" },
+  { what: "OIDC single sign-on", community: "No", personal: "Yes", business: "Yes" },
+  { what: "The audit trail and its export", community: "No", personal: "Yes", business: "Yes" },
+  { what: "Long-term statistics (anything older than 24 hours)", community: "No", personal: "Yes", business: "Yes" },
+  { what: "Unblock requests from the block page", community: "No", personal: "Yes", business: "Yes" },
+  { what: "The dnsdist and keepalived edge", community: "No", personal: "Yes", business: "Yes" },
+  { what: "Integrations, such as the external-dns webhook", community: "No", personal: "Yes", business: "Yes" },
+  { what: "Use by a business", community: "No", personal: "No", business: "Yes" },
+];
+
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
   "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer, OIDC and RBAC.";
@@ -79,7 +105,7 @@ export const TOGETHER: { title: string; body: string; release?: string }[] = [
   },
   {
     title: "OIDC login with real RBAC",
-    body: "viewer, auditor, operator, zone-admin and admin, scoped per zone. A login with no role binding is refused, never silently admin.",
+    body: "viewer, auditor, operator, zone-admin and admin, scoped per zone. A login with no role binding is refused, never silently admin. Needs a license key (free for personal use).",
   },
   {
     title: "A simple integration model",
@@ -371,6 +397,7 @@ export const REGISTERS: Register[] = [
       "Roles viewer, auditor, operator, zone-admin and admin, scoped per zone",
       "API tokens, service accounts, and Kubernetes ServiceAccount tokens checked with SubjectAccessReview",
       "The chart's aggregated ClusterRoles are generated from the same permission file",
+      "Roles, OIDC and the audit trail need a license key; a free personal key covers up to 3 nodes",
     ],
     figure: { value: "0", caption: "OIDC logins that become admin without a role binding" },
     link: { label: "People, roles and tokens", href: docs("/guide/admin/09-people-and-tokens/") },
@@ -513,7 +540,7 @@ export const ROADMAP: Release[] = [
       "Resolver with DoT, DoH, DoQ and DoH3",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
-      "Dashboard with long-term views, OIDC and RBAC",
+      "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
       "CRDs and Helm, compose HA with dnsdist and keepalived",
     ],
   },
@@ -564,6 +591,7 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     title: "Project",
     links: [
       { label: "Source on GitHub", href: REPO_URL },
+      { label: "License and keys", href: "/license/" },
       { label: "Releases", href: `${REPO_URL}/releases` },
       { label: "Architecture", href: `${REPO_URL}/tree/main/docs/architecture` },
       { label: "Changelog", href: docs("/project/changelog/") },

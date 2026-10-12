@@ -685,6 +685,9 @@ export type NodeHealth = Omit<S['NodeHealth'], 'health'> & { health: HealthDoc }
 /** GET /cluster: store driver, leader, epoch and shape. */
 export type ClusterInfo = S['ClusterInfo'];
 
+/** GET /license: the effective license of the node (state, limits, licensed features). */
+export type LicenseInfo = S['LicenseInfo'];
+
 /** GET /edge: the dnsdist and keepalived supervisors and the dnsdist backends. */
 export type EdgeInfo = S['EdgeInfo'];
 export type EdgeComponentState = S['EdgeComponent'];

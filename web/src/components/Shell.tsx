@@ -20,6 +20,7 @@ import { AccountMenu } from './AccountMenu';
 import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
+import { LicenseBanner } from './LicenseBanner';
 import { UnblockBadge } from './UnblockBadge';
 import { Page, PageHeader } from './layout/Page';
 
@@ -82,7 +83,12 @@ export function Shell() {
   }
 
   return (
-    <AppShell variant="section" sideNav={nav} topNav={top} banner={<DefaultCredentialsBanner />} contentPadding={0}>
+    <AppShell variant="section" sideNav={nav} topNav={top} banner={
+        <>
+          <DefaultCredentialsBanner />
+          <LicenseBanner />
+        </>
+      } contentPadding={0}>
       <ErrorBoundary key={loc.path}>
         <Suspense fallback={<FullPageSpinner label="Loading page" />}>{page}</Suspense>
       </ErrorBoundary>

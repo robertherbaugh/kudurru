@@ -203,6 +203,10 @@ statistics.
 Open **Overview** > **Long-term**. The page shows the statistics for a
 longer time (Figure 8).
 
+NOTE: Statistics for more than 24 hours need a license key. Without a key,
+the page asks for one. kudurru collects the statistics in both cases. See
+[Chapter 13](13-license.md).
+
 ![The page Long-term with the choices 7 days, 30 days, 90 days and 1 year, four tiles, a chart with one bar for each day, and the tables of the top domains.](../images/long-term.png)
 
 *Figure 8. The long-term statistics.*

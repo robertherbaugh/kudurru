@@ -21,6 +21,11 @@ by default.
 
 ## Roles
 
+NOTE: Roles other than the built-in administrator need a license key.
+Without a key, only the first-boot administrator has access, and role
+bindings give none. The audit log and single sign-on also need a key. See
+[Chapter 13](13-license.md).
+
 | Role | Purpose | Can do |
 |---|---|---|
 | Viewer | Look at the setup and the statistics | Read zones, records, lists, policies, groups, clients, settings and statistics |

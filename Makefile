@@ -237,13 +237,16 @@ web-dev: web-install
 	cd web && $(BUN) run dev:mock
 
 ## web-e2e: the Playwright suite (web/e2e) against a real `kudurru serve`
-## with the embedded dashboard: builds the bundle and the binary, starts
+## with the embedded dashboard: builds the bundle and the binary (with
+## -tags licensetest, so the suite's node can run with a test license key),
+## starts
 ## the server on free loopback ports with its own data directory, sends
 ## DNS traffic and drives every page in Chrome. Locally it uses
 ## /usr/bin/google-chrome (KUDURRU_E2E_CHROME names another; without one,
 ## run `cd web && bunx playwright install chromium` once); CI uses
 ## Playwright's chromium. The HTML report lands in web/playwright-report.
-web-e2e: web-build build
+web-e2e: web-build
+	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags licensetest"
 	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 
 ## Docs site (site/, Hugo; site/README.md). The Hugo extended release

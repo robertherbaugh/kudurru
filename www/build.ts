@@ -12,6 +12,7 @@ import { SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
 import { headersFile } from "./src/headers.ts";
 import { layout, type Assets } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
+import { license } from "./src/pages/license.ts";
 
 const ROOT = import.meta.dir;
 const REPO = resolve(ROOT, "..");
@@ -137,6 +138,19 @@ export async function build({ outDir, version }: BuildOptions): Promise<void> {
     layout({ path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false }, version),
   );
   await put(
+    join(outDir, "license/index.html"),
+    layout(
+      {
+        path: "/license/",
+        title: "License and keys · kudurru",
+        description: "kudurru is source-available: free for personal use, a key for more nodes and features, an agreement for businesses.",
+        body: license(),
+        assets,
+      },
+      version,
+    ),
+  );
+  await put(
     join(outDir, "licenses/index.html"),
     layout(
       {
@@ -158,7 +172,7 @@ export async function build({ outDir, version }: BuildOptions): Promise<void> {
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      ["/", "/license/", "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

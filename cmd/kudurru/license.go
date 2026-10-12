@@ -52,7 +52,7 @@ func newLicenseCmd(configPath *string) *cobra.Command {
 		Long: "kudurru is source-available under the PolyForm Noncommercial License 1.0.0 (LICENSE). Running it for\n" +
 			"personal, non-commercial use is free; use by a business needs an agreement. A license key unlocks more\n" +
 			"than one node and the features under ee/ (OIDC single sign-on, the dnsdist and keepalived edge, the\n" +
-			"integrations). A free personal key covers 3 nodes. See LICENSING.md.\n\n" +
+			"integrations). A free personal key covers 3 nodes. See https://kudurru.io/license.\n\n" +
 			"The key is read from --license-key, KUDURRU_LICENSE_KEY, the file KUDURRU_LICENSE_KEY_FILE names, or\n" +
 			"<node.dataDir>/license.key, in that order. Licensing never affects DNS answering: without a key the\n" +
 			"node serves DNS as usual and only the node limit and the licensed features apply.",

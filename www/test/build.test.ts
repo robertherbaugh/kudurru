@@ -16,7 +16,7 @@ const pages: Record<string, string> = {};
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
   await build({ outDir: out, version: "9.8.7" });
-  for (const name of ["index.html", "404.html", "licenses/index.html"]) {
+  for (const name of ["index.html", "404.html", "license/index.html", "licenses/index.html"]) {
     pages[name] = await readFile(join(out, name), "utf8");
   }
 });
@@ -25,7 +25,7 @@ afterAll(() => rm(out, { recursive: true, force: true }));
 
 const attrs = (page: string, attr: string) => [...page.matchAll(new RegExp(`\\s${attr}="([^"]*)"`, "g"))].map((m) => m[1]!);
 
-describe.each(["index.html", "404.html", "licenses/index.html"])("%s", (name) => {
+describe.each(["index.html", "404.html", "license/index.html", "licenses/index.html"])("%s", (name) => {
   test("no inline scripts, styles or event handlers", () => {
     const page = pages[name]!;
     for (const tag of page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -109,4 +109,23 @@ test("fonts are separate hashed files, not data URLs", async () => {
   const fonts = [...text.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)].map((m) => m[1]!);
   expect(fonts.length).toBe(3);
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
+});
+
+describe("the license page", () => {
+  test("states the terms, the free limits and where to write", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("PolyForm Noncommercial License 1.0.0");
+    expect(page).toContain("DNS never depends on a key");
+    expect(page).toContain("mailto:hello@kudurru.io?subject=Free%20personal%20key");
+    expect(page).toContain("mailto:hello@kudurru.io?subject=kudurru%20commercial%20license");
+    expect(page).toContain("kudurru license status");
+    expect(page).not.toContain("Apache-2.0");
+    // One row per row of the table in content.ts, each with its three cells.
+    expect(page.match(/<tr><th scope="row">/g)?.length).toBe(11);
+  });
+
+  test("is linked from the footer of every page and listed in the sitemap", async () => {
+    for (const name of Object.keys(pages)) expect(pages[name]).toContain('href="/license/"');
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/");
+  });
 });

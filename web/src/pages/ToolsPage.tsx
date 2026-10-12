@@ -19,6 +19,7 @@ import { TextArea } from '@astryxdesign/core/TextArea';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
+import { useFeature } from '../api/hooks';
 import type { ApplyResult, DnsProto, DnsQueryResult } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { formatBytes, formatDateTime, formatExact, formatMS } from '../lib/format';
@@ -277,6 +278,7 @@ function ApplyYAML() {
 
 function Exports() {
   const api = useApi();
+  const audit = useFeature('audit');
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   const kinds = ['dnszones', 'dnsrecordsets', 'blocklists', 'clientgroups', 'policies'] as const;
   return (
@@ -305,11 +307,13 @@ function Exports() {
             </Link>
           </StackItem>
         ))}
-        <StackItem role="listitem">
-          <Link href={api.audit.exportURL()} download="audit.jsonl" hasUnderline>
-            audit log
-          </Link>
-        </StackItem>
+        {audit.allowed ? (
+          <StackItem role="listitem">
+            <Link href={api.audit.exportURL()} download="audit.jsonl" hasUnderline>
+              audit log
+            </Link>
+          </StackItem>
+        ) : null}
       </HStack>
       <Text type="supporting" as="p">
         The dashboard includes open-source software; see the{' '}
