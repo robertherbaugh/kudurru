@@ -312,12 +312,14 @@ docs-check-links: docs-assets $(HUGO)
 
 ## docs-check-workers: build the site as Cloudflare Workers Builds does and
 ## run `wrangler deploy --dry-run` on site/wrangler.jsonc (no Cloudflare
-## account needed; downloads wrangler). Workers Builds deploys docs.kudurru.io
-## from GitHub; nothing here deploys. site/README.md, "Publishing".
+## account needed; installs the locked Wrangler dependency). Workers Builds
+## deploys docs.kudurru.io from GitHub; nothing here deploys.
+## site/README.md, "Publishing".
 DOCS_URL ?= https://docs.kudurru.io
-WRANGLER ?= $(BUN) x wrangler@4.149.0
+WRANGLER ?= $(BUN) x wrangler
 .PHONY: docs-check-workers
 docs-check-workers: docs-assets $(HUGO)
+	cd site && $(BUN) install --frozen-lockfile
 	cd site && $(HUGO) $(HUGO_FLAGS) --baseURL $(DOCS_URL)/
 	cd site && WRANGLER_SEND_METRICS=false $(WRANGLER) deploy --dry-run
 ## Deployment assets (docs/m3/deploy.md). The tools are Apache-2.0 and are

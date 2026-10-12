@@ -1,0 +1,10 @@
+{
+  "name": "@kudurru/docs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "The docs.kudurru.io documentation site: Hugo served by Cloudflare Workers static assets.",
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}
