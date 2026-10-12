@@ -838,7 +838,8 @@ func identityOptions(cfg *config.Config, st store.Store, k keys.Keys, logger *sl
 // apiClientIP is stack.Options.ClientIP: the client address the API
 // server's RealIP step derived (the right-most untrusted X-Forwarded-For
 // entry behind listeners.api.trustedProxies), so login lockouts count
-// clients rather than the reverse proxy every request arrives from.
+// clients rather than the reverse proxy every request arrives from (and
+// API tokens record the client as lastUsedIP).
 // Requests that did not pass the API server (the admin socket) fall back
 // to the transport peer.
 func apiClientIP(r *http.Request) string {
