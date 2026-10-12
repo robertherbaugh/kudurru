@@ -33,6 +33,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -637,6 +638,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			}
 		}
 	}
+	// The optional central database (D158): opened here, connected and
+	// migrated in the background by its runnable; never part of readiness.
+	var centralDB *central.DB
+	var centralState api.CentralState
+	if cfg.Database.Enabled() {
+		if centralDB, err = central.Open(central.Options{DSN: cfg.Database.DSN, MaxConns: int32(cfg.Database.MaxConns), // #nosec G115 -- bounded 1-32 by the schema
+			Node: cfg.Node.Name, Version: info.Version, Registerer: reg, Logger: logger}); err != nil {
+			return err
+		}
+		defer centralDB.Close()
+		centralState = centralDB
+	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
@@ -651,7 +664,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
 		Purger:     querylogPurger(qlWriter),
-		Audit:      recorders, AuditReader: auditReader,
+		Audit:      recorders, AuditReader: auditReader, Central: centralState,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
@@ -808,6 +821,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
+	if centralDB != nil {
+		if err := add("central", false, centralDB.Run); err != nil {
+			return err
+		}
+	}
 	auditRetention := cfg.Audit.Retention.Std()
 	if ss, ok := st.(*sqlite.Store); ok {
 		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Retention: auditRetention, Logger: logger}).Run); err != nil {

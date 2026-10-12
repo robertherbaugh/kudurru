@@ -10,6 +10,7 @@
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).

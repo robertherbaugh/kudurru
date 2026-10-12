@@ -96,6 +96,7 @@ const (
 	GroupBlocking     = "Blocking"
 	GroupBlockPage    = "Block page"
 	GroupQuerylog     = "Query log"
+	GroupDatabase     = "Central database"
 	GroupRateLimit    = "Rate limiting"
 	GroupSecurity     = "Security"
 	GroupZones        = "Zone transfers"
@@ -105,7 +106,7 @@ const (
 
 // Groups lists the UI sections in display order.
 var Groups = []string{
-	GroupNode, GroupListeners, GroupUpstreams, GroupCache, GroupBlocking, GroupBlockPage, GroupQuerylog,
+	GroupNode, GroupListeners, GroupUpstreams, GroupCache, GroupBlocking, GroupBlockPage, GroupQuerylog, GroupDatabase,
 	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging,
 }
 
@@ -308,6 +309,8 @@ var Schema = []Key{
 	{Path: "querylog.exclude.domains", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Names that are never logged, e.g. *.home.arpa or connectivitycheck.gstatic.com: exact names, *.suffix for a domain and everything below it, or /regex/.", Label: "Domains never logged", Group: GroupQuerylog, Items: &Shape{Type: TypeString}},
 	{Path: "querylog.exclude.clients", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Clients whose queries are never logged, e.g. 192.168.1.20, 10.0.0.0/8 or a client name such as nas: IP addresses, CIDR prefixes or client names.", Label: "Clients never logged", Group: GroupQuerylog, Items: &Shape{Type: TypeString}},
 	{Path: "querylog.exclude.sudn", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Leave out names that never leave the local network, which keeps local discovery noise out of the log: localhost, .local, .home.arpa and private and link-local reverse zones (special-use names, RFC 6761).", Label: "Skip special-use names", Group: GroupQuerylog},
+	{Path: "database.dsn", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Optional PostgreSQL 15 or newer database that keeps the audit events, query log and statistics of every node in one place, so every node shows the same history and it outlives the nodes; empty (default) keeps them on each node. A connection string, e.g. postgres://kudurru@db.example:5432/kudurru?sslmode=verify-full; it may hold a password, so set it in the file or with KUDURRU_DATABASE__DSN_FILE. DNS never depends on it: nodes keep their own copy and send it when the database is reachable. docs/deploy/postgres.md.", HostOnly: true, RestartRequired: true, WriteOnly: true, Label: "Database connection", Group: GroupDatabase},
+	{Path: "database.maxConns", Type: TypeInt, Scope: ScopeNode, Default: 4, Help: "Most connections each node opens to the central database, e.g. 4.", HostOnly: true, RestartRequired: true, Label: "Database connections per node", Group: GroupDatabase, Min: new(1), Max: new(32)},
 	{Path: "blocking.refreshInterval", Type: TypeDuration, Scope: ScopeCluster, Default: "24h", Help: "How often blocklists are downloaded again when a list sets no refreshInterval of its own, e.g. 24h; at least 1m. In a cluster the leader downloads and the other nodes copy its result by digest.", RestartRequired: true, Label: "List refresh interval", Group: GroupBlocking, Presets: []string{"1h", "6h", "12h", "24h", "168h"}},
 	{Path: "blocking.initStrategy", Type: TypeString, Scope: ScopeCluster, Default: "fast", Help: "What happens at start while blocklists load: fast (default) serves at once using the copies saved on disk; blocking waits until every list is loaded; failOnError also exits when a list cannot be loaded.", RestartRequired: true, Label: "List loading at start", Group: GroupBlocking, Enum: []Option{{Value: "fast", Label: "Fast", Help: "Serve at once using the lists saved on disk, and load fresh copies in the background."}, {Value: "blocking", Label: "Wait for lists", Help: "Report not ready until every list is loaded."}, {Value: "failOnError", Label: "Fail on error", Help: "Wait for every list, and exit with an error when one fails to load."}}},
 	{Path: "blocking.listsDir", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Directory where downloaded blocklists are saved so the next start can use them at once. Empty uses <node.dataDir>/lists. Files are named by the sha256 of the list URL.", HostOnly: true, RestartRequired: true, Label: "List cache directory", Group: GroupBlocking},

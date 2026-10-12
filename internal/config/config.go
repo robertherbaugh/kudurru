@@ -36,6 +36,7 @@ type Config struct {
 	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
 	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
 	Audit           Audit           `koanf:"audit" json:"audit"`
+	Database        Database        `koanf:"database" json:"database"`
 	RateLimit       RateLimit       `koanf:"ratelimit" json:"ratelimit"`
 	Log             Log             `koanf:"log" json:"log"`
 	Auth            Auth            `koanf:"auth" json:"auth"`
@@ -472,6 +473,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.validateUnblockRequests()...)
 	errs = append(errs, c.Querylog.validate()...)
 	errs = append(errs, c.validateAudit()...)
+	errs = append(errs, c.Database.validate()...)
 	if t := c.Listeners.Internal.TLS; (t.CertFile == "") != (t.KeyFile == "") {
 		errs = append(errs, errors.New("listeners.internal.tls: certFile and keyFile must be set together"))
 	}

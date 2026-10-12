@@ -167,6 +167,13 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="querylog.exclude.clients"></a>`querylog.exclude.clients` | `string[]` | `[]` | cluster | **Clients never logged.** Clients whose queries are never logged, e.g. 192.168.1.20, 10.0.0.0/8 or a client name such as nas: IP addresses, CIDR prefixes or client names.<br>Environment: `KUDURRU_QUERYLOG__EXCLUDE__CLIENTS` |
 | <a id="querylog.exclude.sudn"></a>`querylog.exclude.sudn` | `bool` | `true` | cluster | **Skip special-use names.** Leave out names that never leave the local network, which keeps local discovery noise out of the log: localhost, .local, .home.arpa and private and link-local reverse zones (special-use names, RFC 6761).<br>Environment: `KUDURRU_QUERYLOG__EXCLUDE__SUDN` |
 
+## database
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="database.dsn"></a>`database.dsn` | `string` |  | node | **Database connection.** Optional PostgreSQL 15 or newer database that keeps the audit events, query log and statistics of every node in one place, so every node shows the same history and it outlives the nodes; empty (default) keeps them on each node. A connection string, e.g. postgres://kudurru@db.example:5432/kudurru?sslmode=verify-full; it may hold a password, so set it in the file or with KUDURRU\_DATABASE\_\_DSN\_FILE. DNS never depends on it: nodes keep their own copy and send it when the database is reachable. docs/deploy/postgres.md.<br>*host-only, restart, write-only*<br>Environment: `KUDURRU_DATABASE__DSN` |
+| <a id="database.maxConns"></a>`database.maxConns` | `int` | `4` | node | **Database connections per node.** Most connections each node opens to the central database, e.g. 4.<br>Allowed: range 1-32.<br>*host-only, restart*<br>Environment: `KUDURRU_DATABASE__MAXCONNS` |
+
 ## ratelimit
 
 | Key | Type | Default | Scope | Description |
