@@ -46,6 +46,7 @@ root_start() {
 	# The dnsdist child, once it has switched (the image has no pgrep).
 	local status="" pid
 	for _ in $(seq 30); do
+		# shellcheck disable=SC2016 # expanded by the shell in the container
 		pid=$($docker exec "$name" sh -c 'for p in /proc/[0-9]*; do [ "$(cat "$p/comm" 2>/dev/null)" = dnsdist ] && echo "${p#/proc/}"; done | tail -1' 2>/dev/null || true)
 		if [ -n "$pid" ] && status=$($docker exec "$name" cat "/proc/$pid/status" 2>/dev/null) &&
 			echo "$status" | grep -q '^Uid:[[:space:]]*953[[:space:]]'; then

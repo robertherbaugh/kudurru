@@ -21,6 +21,7 @@ docker=${DOCKER:-docker}
 
 dir=$(mktemp -d)
 names=()
+# shellcheck disable=SC2329 # the EXIT trap runs it
 cleanup() {
 	for n in "${names[@]}"; do $docker rm -f "$n" >/dev/null 2>&1 || true; done
 	rm -rf "$dir"
