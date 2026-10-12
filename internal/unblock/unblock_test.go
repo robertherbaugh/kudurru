@@ -416,6 +416,50 @@ func TestApproveKeepsExistingEntries(t *testing.T) {
 	}
 }
 
+// TestApproveKeepsExistingComment: an approval of a name the Allowlist
+// already has leaves that entry's comment alone.
+func TestApproveKeepsExistingComment(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryExact, Values: []string{"games.example"}, Comment: "homework site"}); err != nil {
+		t.Fatal(err)
+	}
+	r := f.submit("10.0.20.5", "games.example", "")
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Note: "approved for today", Actor: "user:admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if e := f.entry(EveryoneList, "games.example"); e.Comment != "homework site" || e.Origin == v1alpha1.OriginUnblock {
+		t.Fatalf("existing entry taken over: %+v", e)
+	}
+}
+
+// TestFailedReapprovalRecordsTheEnd: re-approving after a time-limited
+// approval ran out first releases the old entry; when the new approval
+// then fails, the request records that the old entry is gone instead of
+// staying approved with nothing behind it.
+func TestFailedReapprovalRecordsTheEnd(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	f.clk.Add(2 * time.Minute) // expired, the janitor has not run
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeGroup, Group: "default/no-such-group"}); err == nil {
+		t.Fatal("approval for a group no policy covers succeeded")
+	}
+	if got := f.list(EveryoneList); got != nil {
+		t.Fatalf("ui-allow %v, want the expired entry released", got)
+	}
+	stored := &v1alpha1.UnblockRequest{}
+	if err := f.st.Get(ctx, keyOf("default", r.Name), stored); err != nil {
+		t.Fatal(err)
+	}
+	if a := stored.Status.Allow; a == nil || a.Removed == nil {
+		t.Fatalf("stored allow %+v: the release was not recorded", a)
+	}
+}
+
 func TestSharedEntryOutlivesFirstApproval(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

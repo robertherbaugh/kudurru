@@ -125,23 +125,35 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 	if err := s.end(ctx, r, now); err != nil {
 		return nil, err
 	}
+	// From here on the earlier approval's entry may be gone: a failure
+	// records that (status.allow.removed) instead of leaving the request
+	// approved with nothing behind it.
+	ended := stored.Allow != nil && stored.Allow.Removed == nil && r.Status.Allow != nil && r.Status.Allow.Removed != nil
+	fail := func(err error) (*Outcome, error) {
+		if ended {
+			if _, werr := s.setStatus(ctx, r, r.Status); werr != nil {
+				err = errors.Join(err, werr)
+			}
+		}
+		return nil, err
+	}
 	typ, value := v1alpha1.EntryExact, r.Spec.Domain
 	if d.Match == MatchSubdomains {
 		typ, value = v1alpha1.EntryWildcard, "*."+r.Spec.Domain
 	}
 	res, err := s.lists.Add(ctx, domainlist.AddRequest{
 		Action: domainlist.Allow, Namespace: listNS, Type: typ, Values: []string{value}, Scope: scope,
-		Comment: d.Note, Origin: v1alpha1.OriginUnblock, Request: ns + "/" + name, Actor: d.Actor,
+		Comment: d.Note, Origin: v1alpha1.OriginUnblock, Request: ns + "/" + name, Actor: d.Actor, KeepExisting: true,
 	})
 	switch {
 	case errors.Is(err, domainlist.ErrNoPolicy):
-		return nil, fmt.Errorf("%w: no policy covers client group %s; approve it for everyone", ErrInvalid, group)
+		return fail(fmt.Errorf("%w: no policy covers client group %s; approve it for everyone", ErrInvalid, group))
 	case errors.Is(err, domainlist.ErrInvalid):
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+		return fail(fmt.Errorf("%w: %v", ErrInvalid, err))
 	case err != nil:
-		return nil, err
+		return fail(err)
 	case len(res.Errors) > 0:
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, res.Errors[0].Err)
+		return fail(fmt.Errorf("%w: %v", ErrInvalid, res.Errors[0].Err))
 	}
 	entry := Entry(r.Spec.Domain, d.Match)
 	added := len(res.New) > 0
@@ -173,7 +185,7 @@ func (s *Service) Approve(ctx context.Context, ns, name string, d Decision) (*Ou
 				err = errors.Join(err, rerr)
 			}
 		}
-		return nil, err
+		return fail(err)
 	}
 	return out, nil
 }

@@ -207,6 +207,9 @@ type AddRequest struct {
 	Request string
 	// Actor is who adds ("user:alice").
 	Actor string
+	// KeepExisting leaves an entry that exists as it is (its comment and
+	// switch): an approval does not take over an entry it did not add.
+	KeepExisting bool
 }
 
 // Add stores the values in every list of the scope, creating the lists
@@ -246,6 +249,9 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (*Result, error) {
 			for _, v := range values {
 				i := slices.IndexFunc(entries, func(e v1alpha1.ListEntry) bool { return e.Value == v && typeOf(e) == req.Type })
 				if i >= 0 {
+					if req.KeepExisting {
+						continue
+					}
 					e := &entries[i]
 					if req.Comment != "" && e.Comment != req.Comment {
 						e.Comment, changed = req.Comment, true

@@ -86,9 +86,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| A password change or `kudurru admin reset-password` revokes sessions but not the user's API tokens; offer revoking them with a reset (`--revoke-tokens`, and a checkbox on the reset dialog) | docs/m5/security-v0.1-round.md | v0.1.x |
-| Approving a request whose entry already exists overwrites that entry's comment with the approver's note; keep the comment of an entry the approval did not add | docs/m5/security-v0.1-round.md | v0.1.x |
-| Approve ends an expired earlier approval (`end`) before adding its entry; if the add fails the request stays marked approved with its entry removed. Write the ended state first, or roll it back | docs/m5/security-v0.1-round.md | v0.1.x |
 | Release workflows: pin third-party actions by SHA with Dependabot for `github-actions`; pin goreleaser, helm and cosign versions; run `make test` and `make helm-check` in a separate read-only job before the release job and disable setup-go's cache there; refuse to promote a candidate whose publish failed (`gh release view`); image build provenance (`attest-build-provenance` with `subject-digest`, `push-to-registry`) and SBOMs for the supervisor images | docs/m5/security-v0.1-round.md | v0.1.x |
 | Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | docs/m5/security-v0.1-round.md | before v0.1.0 |
 | Optional `httpsOnly` for `blocking.catalogue.adguardServicesURL` (and BlockList URLs): a plain-http document can be changed in transit | docs/m5/security-v0.1-round.md | v0.2 |
