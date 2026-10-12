@@ -14,7 +14,7 @@
     });
   }
 
-  for (const pre of document.querySelectorAll('.prose pre')) {
+  for (const pre of document.querySelectorAll('.prose pre:not(.mermaid)')) {
     if (!navigator.clipboard) break;
     const button = document.createElement('button');
     button.type = 'button';

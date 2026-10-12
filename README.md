@@ -87,7 +87,7 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 - [kudurru.io](https://kudurru.io): the project website ([source](www/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
 - [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
-- [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (repository only, not on the docs site).
+- [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (also at [docs.kudurru.io/architecture](https://docs.kudurru.io/architecture/)).
 - [Design record](docs/architecture.md): the v0.1 design, the decision log and the glossary.
 - [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
 - [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.
@@ -107,7 +107,7 @@ charts/             Helm charts: kudurru and kudurru-crds
 config/             kustomize tree, CRD bases, samples
 deploy/             docker compose profiles, Grafana dashboard, Prometheus rules
 images/             dnsdist and keepalived supervisor images (GPL binaries, digest-pinned)
-docs/               guide and deploy docs (published); architecture tour, design record, research, engineering notes (repo only)
+docs/               guide, deploy docs and the architecture tour (published); design record, research, engineering notes (repo only)
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)

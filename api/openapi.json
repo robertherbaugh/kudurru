@@ -422,6 +422,9 @@
           "list": {
             "type": "string"
           },
+          "node": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -432,6 +435,7 @@
         },
         "required": [
           "id",
+          "node",
           "ts",
           "domain",
           "client",
@@ -5972,6 +5976,9 @@
           },
           "healthy": {
             "type": "boolean"
+          },
+          "node": {
+            "type": "string"
           },
           "rtt_ms": {
             "format": "double",
@@ -11688,12 +11695,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -11703,12 +11710,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }
@@ -18136,12 +18143,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18151,12 +18158,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18433,12 +18440,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18448,12 +18455,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }
@@ -18586,12 +18593,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18601,12 +18608,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18749,12 +18756,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18764,12 +18771,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18937,12 +18944,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18952,12 +18959,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }

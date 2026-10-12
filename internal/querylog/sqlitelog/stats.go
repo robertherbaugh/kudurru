@@ -16,9 +16,22 @@ import (
 
 // Summary answers GET /stats/summary.
 func (r *Reader) Summary(ctx context.Context, q SummaryQuery) (*Summary, error) {
+	shard, err := r.summary(ctx, q, false)
+	if err != nil {
+		return nil, err
+	}
+	return &shard.Summary, nil
+}
+
+// SummaryShard returns a summary with mergeable distinct sets and histogram.
+func (r *Reader) SummaryShard(ctx context.Context, q SummaryQuery) (*SummaryShard, error) {
+	return r.summary(ctx, q, true)
+}
+
+func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*SummaryShard, error) {
 	start := time.Now()
 	win := r.window(q.Window)
-	var out *Summary
+	var out *SummaryShard
 	err := r.read(ctx, true, func(tx *sql.Tx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
 		res := &Summary{Window: win, Rcodes: map[string]int64{}, Protocols: map[string]int64{}, Types: map[string]int64{}}
@@ -76,7 +89,14 @@ func (r *Reader) Summary(ctx context.Context, q SummaryQuery) (*Summary, error) 
 		if f := r.w.opts.DomainsOnLists; f != nil {
 			res.DomainsOnLists = f()
 		}
-		out = res
+		out = &SummaryShard{Summary: *res}
+		if merge {
+			out.Histogram.Sum, out.Histogram.Count = b[cLatSum], b[cLatCnt]
+			copy(out.Histogram.Buckets[:], b[cLatB0:cLatB0+latencyBuckets])
+			if err := r.summaryDistinct(ctx, tx, s, win, out); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -193,7 +213,7 @@ func (r *Reader) top(ctx context.Context, dim string, q TopQuery, withHours bool
 	src func(s *snapshot) keyedSource, resolve func(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]TopItem, error)) (*TopList, error) {
 	start := time.Now()
 	win := r.window(q.Window)
-	n := topN(q.N)
+	n := candidateN(q.N, q.Candidates)
 	var out *TopList
 	err := r.read(ctx, withHours, func(tx *sql.Tx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
@@ -340,10 +360,19 @@ func idsJSON(ids []int64) string {
 // TopUpstreams answers GET /stats/upstreams: traffic, errors, timeouts and
 // latency per upstream ("cache" and "zone:<name>" included).
 func (r *Reader) TopUpstreams(ctx context.Context, q TopQuery) (*UpstreamTop, error) {
+	shard, err := r.UpstreamShard(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return &shard.UpstreamTop, nil
+}
+
+// UpstreamShard returns traffic with additive latency histograms.
+func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard, error) {
 	start := time.Now()
 	win := r.window(q.Window)
-	n := topN(q.N)
-	var out *UpstreamTop
+	n := candidateN(q.N, q.Candidates)
+	var out *UpstreamShard
 	err := r.read(ctx, false, func(tx *sql.Tx, s *snapshot) error {
 		from, until := floorTo(win.From.Unix(), 60), win.Until.Unix()
 		segs := cover(from, until, []tier{
@@ -428,7 +457,13 @@ func (r *Reader) TopUpstreams(ctx context.Context, q TopQuery) (*UpstreamTop, er
 				Percent: percent(v[uTotal], total), AvgMS: lat.AvgMS, P95MS: lat.P95MS,
 			})
 		}
-		out = res
+		out = &UpstreamShard{UpstreamTop: *res, TotalInWindow: total, Histograms: map[string]LatencyMerge{}}
+		for _, k := range ids {
+			v := acc[k]
+			h := LatencyMerge{Sum: v[uLatSum], Count: v[uLatCnt]}
+			copy(h.Buckets[:], v[uLatB0:uLatB0+latencyBuckets])
+			out.Histograms[names[k].Key] = h
+		}
 		return nil
 	})
 	if err != nil {
@@ -443,7 +478,7 @@ func (r *Reader) TopUpstreams(ctx context.Context, q TopQuery) (*UpstreamTop, er
 func (r *Reader) ClientTimeseries(ctx context.Context, q ClientTimeseriesQuery) (*ClientTimeseries, error) {
 	start := time.Now()
 	win := r.window(q.Window)
-	n := topN(q.N)
+	n := candidateN(q.N, q.Candidates)
 	var out *ClientTimeseries
 	err := r.read(ctx, false, func(tx *sql.Tx, s *snapshot) error {
 		step := stepSeconds(q.Step, win, s.now)
@@ -532,6 +567,7 @@ func (r *Reader) RecentBlocked(ctx context.Context, n int) (*RecentBlocked, erro
 			if err := rows.Scan(&id, &ts, &st, &it.Client, &it.ClientName, &it.Domain, &it.List); err != nil {
 				return err
 			}
+			it.Node = r.w.opts.Node
 			it.ID, it.TS, it.Status = uint64(id), time.UnixMicro(ts).UTC(), pipeline.Status(st).String() //nolint:gosec // ids and statuses are small non-negative ints
 			res.Items = append(res.Items, it)
 		}

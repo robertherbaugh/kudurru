@@ -137,6 +137,8 @@ type TopQuery struct {
 	N int `json:"n"`
 	// Blocked ranks by blocked queries; false ranks by permitted ones.
 	Blocked bool `json:"blocked"`
+	// Candidates permits the internal scatter-gather to request up to 4*N.
+	Candidates bool `json:"-"`
 }
 
 // TopList is a ranked dimension (§10 item 3).
@@ -193,7 +195,8 @@ type ClientTimeseriesQuery struct {
 	Window
 	Step time.Duration `json:"step"`
 	// N is the number of named clients (default 10); the rest are "other".
-	N int `json:"n"`
+	N          int  `json:"n"`
+	Candidates bool `json:"-"`
 }
 
 // ClientTimeseries is the per-client stacked chart with "other clients".
@@ -228,6 +231,7 @@ type RecentBlocked struct {
 // BlockedItem is one recently blocked query.
 type BlockedItem struct {
 	ID         uint64    `json:"id"`
+	Node       string    `json:"node"`
 	TS         time.Time `json:"ts"`
 	Domain     string    `json:"domain"`
 	Client     string    `json:"client"`
@@ -238,6 +242,8 @@ type BlockedItem struct {
 
 // QueryFilter parameterises Queries (GET /queries).
 type QueryFilter struct {
+	// TimeOrder uses (timestamp, id) pagination for cluster merging.
+	TimeOrder bool `json:"time_order,omitempty"`
 	// Client matches an IP, a CIDR prefix, or a client name (with *
 	// wildcards).
 	Client string `json:"client,omitempty"`

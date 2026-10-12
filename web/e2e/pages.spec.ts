@@ -77,6 +77,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
     }
 
     test('client-side navigation through every page keeps the shell alive', async ({ page }) => {
+      // One test visits every page of NAV in turn: 25-30 s on a CI runner,
+      // right at the 30 s default, so it timed out on unrelated changes.
+      // test.slow() gives it three times the default.
+      test.slow();
       await page.goto('/');
       await settle(page);
       const nav = page.getByRole('navigation', { name: 'Side navigation' });

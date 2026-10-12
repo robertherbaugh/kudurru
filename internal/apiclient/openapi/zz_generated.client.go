@@ -1736,6 +1736,7 @@ type BlockedItem struct {
 	Domain     string    `json:"domain"`
 	Id         int64     `json:"id"`
 	List       *string   `json:"list,omitempty"`
+	Node       string    `json:"node"`
 	Status     string    `json:"status"`
 	Ts         time.Time `json:"ts"`
 }
@@ -3728,6 +3729,7 @@ type UpstreamServer struct {
 	ConsecutiveFailures int64      `json:"consecutive_failures"`
 	Group               string     `json:"group"`
 	Healthy             bool       `json:"healthy"`
+	Node                *string    `json:"node,omitempty"`
 	RttMs               float64    `json:"rtt_ms"`
 	Server              string     `json:"server"`
 }
@@ -4045,10 +4047,10 @@ type ListClientsParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *ListClientsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -4300,10 +4302,10 @@ type StatsClientTimeseriesParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsClientTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 	Step *string `form:"step,omitempty" json:"step,omitempty"`
 	N    *int64  `form:"n,omitempty" json:"n,omitempty"`
@@ -4330,10 +4332,10 @@ type StatsSummaryParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsSummaryParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -4351,10 +4353,10 @@ type StatsTimeseriesParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 
 	// Step Bucket width (Go duration) or auto (default).
@@ -4375,10 +4377,10 @@ type StatsTopParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTopParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node    *string           `form:"node,omitempty" json:"node,omitempty"`
 	Dim     StatsTopParamsDim `form:"dim" json:"dim"`
 	N       *int64            `form:"n,omitempty" json:"n,omitempty"`
@@ -4402,10 +4404,10 @@ type StatsUpstreamsParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsUpstreamsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 

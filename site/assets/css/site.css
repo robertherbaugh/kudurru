@@ -155,6 +155,13 @@ a:hover { text-decoration-thickness: 2px; }
 .prose p, .prose ul, .prose ol, .prose blockquote, .prose .table-wrap, .prose .highlight, .prose pre { margin: 0 0 1.1em; }
 .prose li + li { margin-top: .25em; }
 .prose img { max-width: 100%; height: auto; }
+/* Architecture diagrams: hand-drawn SVGs open at full size; Mermaid blocks
+   show their source until the bundle draws them (render-codeblock-mermaid). */
+.prose a.diagram { display: block; margin: 0 0 1.1em; cursor: zoom-in; }
+.prose a.diagram img { display: block; border: 1px solid var(--border); border-radius: var(--radius); }
+.prose pre.mermaid { background: var(--surface); text-align: center; line-height: 1.2; }
+.prose pre.mermaid[data-processed] { font-family: var(--font); }
+.prose pre.mermaid svg { max-width: 100%; height: auto; }
 .prose hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 .prose blockquote {
   margin-left: 0; padding: .6em 1em; color: var(--muted);

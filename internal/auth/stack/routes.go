@@ -147,11 +147,11 @@ func (s *Stack) requireAnyScope(resource, verb string, next http.Handler) http.H
 	})
 }
 
-// Register mounts every route on mux under the API prefix, guarded by
+// Register mounts every route on mux under RoutePrefix, guarded by
 // Guard. The mux must sit behind Middleware.
 func (s *Stack) Register(mux *http.ServeMux) {
 	for _, rt := range s.Routes() {
-		mux.Handle(rt.Method+" "+s.opts.APIPrefix+rt.Path, s.Guard(rt))
+		mux.Handle(rt.Method+" "+s.opts.RoutePrefix+rt.Path, s.Guard(rt))
 	}
 }
 

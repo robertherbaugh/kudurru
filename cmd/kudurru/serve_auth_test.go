@@ -8,7 +8,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +74,136 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return ts, st
+}
+
+func TestAuthRoutesWithPathPrefix(t *testing.T) {
+	for _, prefix := range []string{"", "/kudurru", "/kudurru/"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			ts, _ := authAPI(t, func(cfg *config.Config) {
+				cfg.Listeners.API.PathPrefix = prefix
+			})
+			base := strings.TrimSuffix(prefix, "/") + "/api/v1"
+			client := ts.Client()
+			var err error
+			client.Jar, err = cookiejar.New(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var csrf string
+			do := func(method, path, body string, want int, out any) *http.Response {
+				t.Helper()
+				req, err := http.NewRequest(method, ts.URL+base+path, strings.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Kudurru-CSRF", csrf)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = res.Body.Close() }()
+				if res.StatusCode != want {
+					raw, _ := io.ReadAll(res.Body)
+					t.Fatalf("%s %s: %d, want %d: %s", method, path, res.StatusCode, want, raw)
+				}
+				if out != nil {
+					if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return res
+			}
+			do(http.MethodGet, "/version", "", http.StatusOK, nil)
+			var status struct{ LocalLogin bool }
+			do(http.MethodGet, "/auth/status", "", http.StatusOK, &status)
+			if !status.LocalLogin {
+				t.Fatal("local login should be enabled")
+			}
+			var me struct{ CSRF string }
+			res := do(http.MethodPost, "/auth/login", `{"username":"admin","password":"admin-password-1"}`, http.StatusOK, &me)
+			csrf = me.CSRF
+			if csrf == "" || len(res.Cookies()) != 1 || res.Cookies()[0].Path != "/" {
+				t.Fatal("login must return CSRF and a session cookie covering the API")
+			}
+			for _, path := range []string{"/auth/me", "/auth/tokens", "/iam/users", "/iam/serviceaccounts", "/iam/rolebindings", "/iam/identityproviders"} {
+				do(http.MethodGet, path, "", http.StatusOK, nil)
+			}
+			var tok struct{ ID, Token string }
+			do(http.MethodPost, "/auth/tokens", `{"description":"path-prefix regression"}`, http.StatusCreated, &tok)
+			if tok.ID == "" || tok.Token == "" {
+				t.Fatal("create token must return its ID and secret")
+			}
+			do(http.MethodGet, "/auth/tokens/"+tok.ID, "", http.StatusOK, nil)
+			do(http.MethodDelete, "/auth/tokens/"+tok.ID, "", http.StatusNoContent, nil)
+			do(http.MethodPost, "/auth/password", `{"currentPassword":"admin-password-1","newPassword":"new-admin-password-1"}`, http.StatusOK, &me)
+			csrf = me.CSRF
+			do(http.MethodPost, "/auth/logout", "", http.StatusNoContent, nil)
+			do(http.MethodGet, "/auth/me", "", http.StatusUnauthorized, nil)
+		})
+	}
+}
+
+func TestOIDCRoutesWithPathPrefix(t *testing.T) {
+	// Only discovery is needed to check the authorization redirect; callback
+	// without a pre-auth cookie exercises routing without exchanging a code.
+	mux := http.NewServeMux()
+	op := httptest.NewServer(mux)
+	t.Cleanup(op.Close)
+	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": op.URL, "authorization_endpoint": op.URL + "/authorize",
+			"token_endpoint": op.URL + "/token", "jwks_uri": op.URL + "/keys",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		})
+	})
+	secretFile := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secretFile, []byte("test-client-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"", "/kudurru", "/kudurru/"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			base := strings.TrimSuffix(prefix, "/") + "/api/v1"
+			redirectURL := "https://dns.example" + base + "/auth/oidc/corp/callback"
+			ts, _ := authAPI(t, func(cfg *config.Config) {
+				cfg.Listeners.API.PathPrefix = prefix
+				cfg.Auth.IdentityProviders = []map[string]any{{
+					"id": "corp", "issuer": op.URL, "clientID": "kudurru",
+					"clientSecretFile": secretFile, "redirectURL": redirectURL,
+				}}
+			})
+			client := ts.Client()
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			res, err := client.Get(ts.URL + base + "/auth/oidc/corp/start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			if res.StatusCode != http.StatusFound {
+				t.Fatalf("OIDC start: %d, want 302", res.StatusCode)
+			}
+			location, err := res.Location()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := location.Query().Get("redirect_uri"); got != redirectURL {
+				t.Fatalf("redirect_uri = %q, want %q", got, redirectURL)
+			}
+			cookies := res.Cookies()
+			if len(cookies) != 1 || cookies[0].Path != base+"/auth/oidc/corp/" {
+				t.Fatalf("pre-auth cookie must cover the external callback path: %+v", cookies)
+			}
+			callback, err := client.Get(ts.URL + base + "/auth/oidc/corp/callback")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = callback.Body.Close() }()
+			if callback.StatusCode != http.StatusBadRequest {
+				t.Fatalf("OIDC callback without cookie: %d, want 400", callback.StatusCode)
+			}
+		})
+	}
 }
 
 // TestLoginLockoutCountsClientsBehindTrustedProxy is the regression test of

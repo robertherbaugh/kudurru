@@ -16,6 +16,9 @@ make docs-gen          # regenerate site/content/reference after a schema, CRD, 
 `make` downloads the pinned Hugo extended release (`HUGO_VERSION` in the
 Makefile) into `bin/` and verifies its SHA-256; elsewhere than linux
 amd64/arm64 pass `HUGO=/path/to/hugo`.
+`make docs-check-workers` also uses Bun to install Wrangler from
+`site/package.json` and `site/bun.lock`; building the Hugo site alone does
+not require Bun.
 
 ## Where the pages come from
 
@@ -25,10 +28,11 @@ amd64/arm64 pass `HUGO=/path/to/hugo`.
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
 | Reference | `site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
 | Reference → API explorer | `api/openapi.json`, rendered by the Scalar bundle in `internal/api/scalar` |
+| Architecture | `docs/architecture` (its `README.md` is the section page); the hand-drawn diagrams are served from `docs/architecture/diagrams`, and the Mermaid blocks are drawn in the browser by the bundle in `site/vendor/mermaid`, loaded only on pages that have one |
 | Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
 
 The rest of `docs/` is for contributors and stays in the repository: the
-architecture tour (`docs/architecture/`), the design record and decision log
+design record and decision log
 (`docs/architecture.md`, `docs/open-questions.md`) and the engineering notes
 (`docs/m1` ... `docs/m5`, `docs/spikes`, `docs/research`, `docs/followups.md`,
 `docs/release-checklist.md`). A page of the site that links to one of them
@@ -71,6 +75,7 @@ no workflow in this repository holds Cloudflare credentials.
 | File | What it does |
 |---|---|
 | `wrangler.jsonc` | The Worker `kudurru-docs`: assets from `public/`, `404.html` for unknown paths, `/guide` redirects to `/guide/`, the custom domain `docs.kudurru.io`, no `workers.dev` address |
+| `package.json`, `bun.lock` | The pinned Wrangler dependency used for local checks and Cloudflare builds |
 | `static/_headers` | Response headers: a content security policy (own files only; inline styles for the API explorer), HSTS, `nosniff`, no framing, long caching for the fingerprinted CSS and JS |
 | `hugo.yaml` | Mounts `docs/guide/images` at `/guide/images`, so the guide's screenshots are files of the site |
 | `layouts/_markup/render-image.html` | Serves those images from the site's own origin. An image anywhere else in the repository is a build warning: GitHub's raw host is not served to visitors while the repository is private, and the content security policy does not allow it |
@@ -88,19 +93,28 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    | Project name | `kudurru-docs` (must match `name` in `wrangler.jsonc`) |
    | Production branch | `release`, so the site always shows the released version |
    | Root directory | `site` |
-   | Build command | `make -C .. docs-site HUGO_FLAGS="--minify --gc --cleanDestinationDir --panicOnWarning --baseURL https://docs.kudurru.io/"` |
-   | Deploy command | `bunx wrangler@4.149.0 deploy` |
-   | Non-production branch deploy command | `bunx wrangler@4.149.0 versions upload` (a preview URL per branch and pull request) |
+   | Build command | `bun install --frozen-lockfile && make -C .. docs-site HUGO_FLAGS="--minify --gc --cleanDestinationDir --panicOnWarning --baseURL https://docs.kudurru.io/"` |
+   | Deploy command | `bunx wrangler deploy` |
+   | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
    | Build watch paths, include | `site/*`, `docs/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
-   | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` |
+   | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    Before the first release the `release` branch is still the initial commit,
    with no `site/`, so a build of it stops with "root directory not found".
    Until `release` carries the site, set the production branch to `main`
    (after the pull request that adds the site is merged) or to the branch
    that has it, and switch it to `release` when the first release is cut.
-   A build of any other branch is a preview and runs the non-production
-   deploy command.
+   A build of any other branch, including `main` when production is `release`,
+   runs the Preview command against that branch's commit. The command does
+   not choose which branch to clone.
+
+   **Existing projects:** if Settings → Builds shows **Set up Worker
+   Previews**, complete that setup before using the Preview command. This
+   is a one-way switch from the older version URL preview system; follow
+   [Cloudflare's migration steps](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#existing-workers-connected-to-builds).
+   `wrangler.jsonc` includes the required `previews` block. This static site
+   needs no separate preview bindings; assets and compatibility settings
+   stay at the top level.
 
    The build reads `docs/`, `api/` and the root markdown files outside the
    root directory; Workers Builds clones the whole repository. `make` downloads
@@ -124,3 +138,9 @@ GitHub page that needs a sign-in. The site itself, including every image,
 does not depend on the repository.
 
 The Hugo build writes to `site/public/`, which is not committed.
+
+If GitHub reports **Preview creation failed** and Cloudflare has no build
+log, preview provisioning may have failed before the build command started.
+Changing the GitHub Actions runner or adding flags to the deploy command
+cannot repair that stage. Contact Cloudflare with the Worker name, failing
+build ID and GitHub check URL so they can inspect its preview build state.

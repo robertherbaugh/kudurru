@@ -6,8 +6,8 @@ the dashboard to every node, and how the deployment shapes fit together.
 Every page leads with a picture and then explains it.
 
 This tour is for contributors and for operators who want to know what
-happens inside. It is not published on the docs site. For running kudurru,
-read the [guide](../guide/README.md) and the [deployment docs](../deploy/README.md).
+happens inside. For running kudurru, read the [guide](../guide/README.md)
+and the [deployment docs](../deploy/README.md).
 For *why* it is built this way, read the [design record](../architecture.md)
 and its decision log (D1 onwards); where the code and the design record
 disagree, these pages follow the code and say so.
@@ -122,7 +122,7 @@ Two kinds of pictures appear on these pages:
   Excalidraw extension for VS Code, edit it, and export it again as SVG with
   "Embed scene" checked, under the same name.
 - **Mermaid diagrams** (in the markdown) show flows, sequences and states.
-  GitHub renders them; edit them as text.
+  GitHub and the docs site render them; edit them as text.
 
 Colours in the hand-drawn diagrams:
 
