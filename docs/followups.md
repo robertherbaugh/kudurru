@@ -32,6 +32,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
+| Query-log stats reads over the current hour scan its facts once it has more than 100,000 distinct names (1.8 s at 1M rows at 2,000 q/s): per-domain rollups for shorter buckets, or an HLL sketch per hour for unique domains (docs/m2/querylog.md) | docs/m5/measurements-v0.1.md | v0.2 |
 | Blocking: `$important`/`$badfilter` (considered for v0.1 in the policy package and left to the v0.2 modifier slow path, §7.3; v0.1 counts them unsupported) | blocking spike, policy report | v0.2 |
 | Config keys for the control stage (`control.allowedNetworks`, `control.blockedQTypes`) and a hostname source (`policy.HostnameResolver`: reverse PTR cache, DHCP leases, UniFi) for hostname/nameGlob client matchers | policy report | v0.2 (moved from M3 / v0.2: new configuration surface, not an exit criterion) |
 | Blocking toggle replication: a `blocking.Publisher` writing `kudurru.io/blocking-disabled-until` on the `kudurru-runtime` ConfigMap (kube) or state.db (sqlite), and a watcher calling `Toggle.Apply` (`POST /dns/blocking` toggles the node-local Toggle since docs/m3/api.md) | policy report | v0.2 (moved from M3: the toggle stays per node in v0.1; the release notes list it) |
