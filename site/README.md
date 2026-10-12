@@ -25,10 +25,11 @@ amd64/arm64 pass `HUGO=/path/to/hugo`.
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
 | Reference | `site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
 | Reference → API explorer | `api/openapi.json`, rendered by the Scalar bundle in `internal/api/scalar` |
+| Architecture | `docs/architecture` (its `README.md` is the section page); the hand-drawn diagrams are served from `docs/architecture/diagrams`, and the Mermaid blocks are drawn in the browser by the bundle in `site/vendor/mermaid`, loaded only on pages that have one |
 | Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
 
 The rest of `docs/` is for contributors and stays in the repository: the
-architecture tour (`docs/architecture/`), the design record and decision log
+design record and decision log
 (`docs/architecture.md`, `docs/open-questions.md`) and the engineering notes
 (`docs/m1` ... `docs/m5`, `docs/spikes`, `docs/research`, `docs/followups.md`,
 `docs/release-checklist.md`). A page of the site that links to one of them

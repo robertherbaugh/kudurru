@@ -11,6 +11,7 @@ links:
   - {page: /reference/api, label: REST API reference, text: "The OpenAPI document, the endpoint index with permissions, and an API explorer."}
   - {page: /reference/cli, text: "Every `kudurru` command and flag."}
   - {page: /migrate, label: Migration guides, text: "How Pi-hole and AdGuard Home concepts map onto kudurru objects."}
+  - {page: /architecture, label: Architecture, text: "How kudurru works inside, with a diagram for every flow: queries, policies, upstreams, the store, deployment shapes."}
 ---
 
 ## Status

@@ -285,12 +285,14 @@ docs-gen:
 	go run ./hack/docsgen -root .
 	go test -count=1 ./cmd/kudurru -run '^TestCLIReferenceDrift$$' -update-cli-reference
 
-## docs-assets: the decompressed Scalar bundle, and the list of repository
+## docs-assets: the decompressed Scalar and Mermaid bundles
+## (internal/api/scalar, site/vendor/mermaid), and the list of repository
 ## files the link hook checks links into the repository against (Hugo cannot
 ## stat files outside site/)
 docs-assets:
-	mkdir -p $(DOCS_GENERATED)/scalar
+	mkdir -p $(DOCS_GENERATED)/scalar $(DOCS_GENERATED)/mermaid
 	gunzip -c internal/api/scalar/standalone.js.gz > $(DOCS_GENERATED)/scalar/standalone.js
+	gunzip -c site/vendor/mermaid/mermaid.min.js.gz > $(DOCS_GENERATED)/mermaid/mermaid.min.js
 	{ git ls-files --cached --others --exclude-standard 2>/dev/null || find . -path ./.git -prune -o -type f -print | sed 's|^\./||'; } > $(DOCS_GENERATED)/repo-files.txt
 
 docs-site: docs-assets $(HUGO)
