@@ -24,8 +24,8 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
 | Step | Workflow | What it publishes |
 |---|---|---|
 | Push to a pull request against `main` (same repository, not Dependabot) | `dev-image.yml` | `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` from the PR's head commit with the dashboard bundle, linux/amd64 and linux/arm64, unsigned. Every push overwrites the same tag; `kudurru version` reports `<VERSION>-dev.<PR>` and the commit. |
-| Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>` and `<VERSION>-rc.<N>-debug`, charts and supervisor images at that version. |
-| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug` and `latest-debug`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
+| Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>`, `<VERSION>-rc.<N>-debug` and `<VERSION>-rc.<N>-hostnetwork`, charts and supervisor images at that version. |
+| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug`, `latest-debug`, `<VERSION>-hostnetwork` and `latest-hostnetwork`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
 | Pull request into `release-candidate` or `release` | `promotion.yml` | Nothing: fails unless the source branch is `main` (for `release-candidate`) or `release-candidate` (for `release`), and dry-runs the tag the merge would create. |
 
 `hack/release-tag.sh rc|release` computes the tags and refuses:
@@ -89,8 +89,9 @@ Repository settings the pipeline relies on (once):
 - [ ] CHANGELOG.md: the section for the version, with the date on the GA
       release.
 - [ ] The distroless bases are pinned by digest (`tag@sha256:<index digest>`)
-      in `.goreleaser.yaml` (`base_image`) and the Dockerfile, the same
-      digests in both (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
+      in `.goreleaser.yaml` (`base_image`), the Dockerfile and
+      images/hostnetwork/Dockerfile, the same digests everywhere
+      (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
       application/vnd.oci.image.index.v1+json'
       https://gcr.io/v2/distroless/static/manifests/nonroot` (and
       `debug-nonroot`), take `docker-content-digest`.
@@ -192,6 +193,12 @@ On the owner's hardware:
       linux/amd64 and linux/arm64 and cosign-signs each digest (the program
       versions come from the Dockerfile ARGs). Check both jobs succeeded;
       the image READMEs carry the GPL notices and source offer.
+- [ ] The `hostnetwork-image` job (after `release`) builds and pushes
+      `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork` (and
+      `latest-hostnetwork` for a release) from `images/hostnetwork` with
+      `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>`: the ko
+      image's binary with `cap_net_bind_service=+ep`, for the chart's
+      `hostNetwork.enabled`. It cosign-signs the digest.
 
 ## 5. Verify what was published
 

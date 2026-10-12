@@ -66,11 +66,17 @@ app.kubernetes.io/component: edge
 {{- end -}}
 
 {{/* Images */}}
+{{/*
+hostNetwork pods run the <tag>-hostnetwork variant: the same binary with
+cap_net_bind_service=+ep, because the ip_unprivileged_port_start sysctl is
+not available on the host network (images/hostnetwork/Dockerfile). A digest
+is used as given.
+*/}}
 {{- define "kudurru.image" -}}
 {{- if .Values.image.digest -}}
 {{ .Values.image.repository }}@{{ .Values.image.digest }}
 {{- else -}}
-{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{ if .Values.hostNetwork.enabled }}{{ .Values.hostNetwork.imageTagSuffix }}{{ end }}
 {{- end -}}
 {{- end -}}
 
@@ -255,6 +261,9 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if include "kudurru.anyTLS" . -}}
 {{- if and $v.edge.enabled (not $v.edge.tlsSecretName) }}{{ fail "service.dot/doh/doq/doh3 with edge.enabled need edge.tlsSecretName (dnsdist terminates TLS)" }}{{ end -}}
 {{- if and (not $v.edge.enabled) (not $v.tls.secretName) }}{{ fail "service.dot/doh/doq/doh3 need tls.secretName (a kubernetes.io/tls Secret)" }}{{ end -}}
+{{- end -}}
+{{- if and $v.hostNetwork.enabled $v.hostNetwork.imageTagSuffix (not (has "NET_BIND_SERVICE" ((($v.securityContext | default dict).capabilities | default dict).add | default list))) -}}
+{{- fail "hostNetwork.enabled runs the -hostnetwork image, whose binary carries cap_net_bind_service=+ep: securityContext.capabilities.add must keep NET_BIND_SERVICE, or the kernel refuses to start it" -}}
 {{- end -}}
 {{- if and (eq $v.mode "kubernetes") $v.hostNetwork.enabled (or $v.persistence.querylog.enabled $v.persistence.local.enabled) -}}
 {{- fail "persistence.querylog/local need per-pod claims, which a hostNetwork DaemonSet cannot have; use extraVolumes (hostPath) instead" -}}

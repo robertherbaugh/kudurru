@@ -55,7 +55,7 @@ external-secrets) to keep secret material out of Helm entirely.
 | Pin the address with MetalLB | `vip.provider=metallb`, `vip.address=192.0.2.53` (`vip.metallbPool`) |
 | Pin the address with kube-vip | `vip.provider=kube-vip`, `vip.address=192.0.2.53` |
 | LoadBalancer without mixed-protocol support | `service.dns.splitProtocols=true` (dns-udp + dns-tcp sharing the IP) |
-| One pod per node on the host network | `hostNetwork.enabled=true` (DaemonSet) |
+| One pod per node on the host network | `hostNetwork.enabled=true` (DaemonSet, the `-hostnetwork` image) |
 | Single node, no CRDs ("Pi-hole on k3s") | `mode=standalone` (sqlite on a PVC, StatefulSet with one replica) |
 | dnsdist edge in front (DoT/DoH/DoQ, packet cache) | `edge.enabled=true` (`edge.mode=deployment`) |
 | Single-node cluster with dnsdist | `edge.enabled=true`, `edge.mode=sidecar` |
@@ -79,6 +79,25 @@ switch the Deployment to a StatefulSet so every replica gets its own claim
 (SQLite WAL files must never be shared or put on RWX/NFS). A hostNetwork
 DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
+
+### hostNetwork
+
+`hostNetwork.enabled` runs a DaemonSet in the host network namespace, where
+the namespaced `net.ipv4.ip_unprivileged_port_start` sysctl is not available
+(Kubernetes rejects `net.*` sysctls on hostNetwork pods) and Kubernetes gives
+a non-root process no ambient capabilities. The chart therefore runs
+`ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork`
+(`hostNetwork.imageTagSuffix`): the same binary with the file capability
+`cap_net_bind_service=+ep` (images/hostnetwork/Dockerfile). The container
+keeps the Restricted security context: uid 65532, all capabilities dropped
+except `NET_BIND_SERVICE`, `allowPrivilegeEscalation: false`.
+`NET_BIND_SERVICE` must stay in `securityContext.capabilities.add`: the
+kernel refuses to start a binary whose file capability is outside the
+bounding set, so the chart fails the render without it. Host networking is
+outside the Baseline level; label the namespace
+`pod-security.kubernetes.io/enforce=privileged`. With your own image set
+`hostNetwork.imageTagSuffix: ""` and either give the binary the capability
+or set `net.ipv4.ip_unprivileged_port_start=53` on the hosts.
 
 ### Edge (dnsdist)
 

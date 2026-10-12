@@ -164,6 +164,20 @@ var chartCases = []chartCase{
 		if dig(pod, "spec", "securityContext", "sysctls") != nil {
 			t.Errorf("hostNetwork pods cannot set namespaced sysctls")
 		}
+		// Without the sysctl, :53 needs the file capability of the
+		// -hostnetwork image, which needs NET_BIND_SERVICE in the bounding set.
+		c := r.container(t, pod, "kudurru")
+		if img := str(c["image"]); !strings.HasSuffix(img, "-hostnetwork") {
+			t.Errorf("hostNetwork pods need the -hostnetwork image, got %s", img)
+		}
+		if !slices.Contains(list(dig(c, "securityContext", "capabilities", "add")), any("NET_BIND_SERVICE")) {
+			t.Errorf("the -hostnetwork image needs NET_BIND_SERVICE added")
+		}
+	}},
+	{name: "host-network-plain-image", values: "hostNetwork: {enabled: true, imageTagSuffix: ''}\nimage: {tag: 9.9.9}", wantKind: "DaemonSet", check: func(t *testing.T, r *rendered) {
+		if img := str(r.container(t, r.pod(t), "kudurru")["image"]); img != "ghcr.io/robertherbaugh/kudurru:9.9.9" {
+			t.Errorf("imageTagSuffix '' keeps the plain tag, got %s", img)
+		}
 	}},
 	{name: "host-network-standalone", values: "mode: standalone\nhostNetwork: {enabled: true}", wantKind: "StatefulSet"},
 	{name: "persistence-querylog", values: "persistence: {querylog: {enabled: true, size: 20Gi}}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
@@ -345,6 +359,7 @@ var failCases = []struct{ name, values, want string }{
 	{"metallb-without-address", "vip: {provider: metallb}", "vip.address"},
 	{"dot-without-tls", "service: {dot: {enabled: true}}", "tls.secretName"},
 	{"dot-edge-without-tls", "edge: {enabled: true}\nservice: {doh: {enabled: true}}", "edge.tlsSecretName"},
+	{"hostnetwork-without-net-bind-service", "hostNetwork: {enabled: true}\nsecurityContext: {capabilities: {drop: [ALL], add: []}}", "NET_BIND_SERVICE"},
 	{"hostnetwork-persistence", "hostNetwork: {enabled: true}\npersistence: {querylog: {enabled: true}}", "hostNetwork DaemonSet"},
 	{"ingress-without-host", "ingress: {enabled: true}", "ingress.host"},
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},

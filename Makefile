@@ -21,7 +21,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -392,6 +392,20 @@ docker:
 
 docker-debug:
 	docker build --target debug -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-debug --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
+
+## docker-hostnetwork: the -hostnetwork variant of the `make docker` image
+## (images/hostnetwork/Dockerfile): the same binary with the file capability
+## cap_net_bind_service=+ep, for host networking (publish.yml builds it from
+## the ko image).
+docker-hostnetwork: docker
+	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) images/hostnetwork
+
+## hostnetwork-check: uid 65532 in the -hostnetwork image binds :53 with
+## only NET_BIND_SERVICE and no_new_privs where the ip_unprivileged_port_start
+## sysctl does not apply, and neither the image without the capability nor
+## the plain image does (hack/hostnetwork-check.sh; needs Docker).
+hostnetwork-check: docker-hostnetwork
+	hack/hostnetwork-check.sh ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork ghcr.io/robertherbaugh/kudurru:$(VERSION)
 
 clean:
 	rm -rf bin dist web/dist/assets

@@ -210,6 +210,13 @@ vip:
 # DaemonSet; dnsPolicy becomes ClusterFirstWithHostNet.
 hostNetwork:
   enabled: false
+  # -- Appended to the image tag with hostNetwork.enabled: the -hostnetwork
+  # image carries cap_net_bind_service=+ep on the binary, because the
+  # ip_unprivileged_port_start sysctl that lets uid 65532 bind :53 is not
+  # available on the host network. It needs NET_BIND_SERVICE in
+  # securityContext.capabilities.add (the default). Empty keeps the plain
+  # tag (a custom image, or hosts with net.ipv4.ip_unprivileged_port_start=0).
+  imageTagSuffix: -hostnetwork
 
 podSecurityContext:
   runAsNonRoot: true
