@@ -99,6 +99,10 @@ type ServerOptions struct {
 	// Catalogue serves GET /internal/catalogue (the blocked-services and
 	// safe-search catalogue in service); nil answers 404.
 	Catalogue func() CatalogueBody
+	// CatalogueImport serves GET /internal/catalogue/adguard (the AdGuard
+	// services document this node imported, when
+	// blocking.catalogue.adguardServicesURL is set); false answers 404.
+	CatalogueImport func() (CatalogueBody, bool)
 	// RateLimit and Burst bound requests per client address; defaults
 	// DefaultRateLimit and DefaultBurst.
 	RateLimit rate.Limit
@@ -176,6 +180,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 	if opts.Catalogue != nil {
 		mux.HandleFunc("GET "+PathCatalogue, s.handleCatalogue)
+	}
+	if opts.CatalogueImport != nil {
+		mux.HandleFunc("GET "+PathCatalogueAdGuard, s.handleCatalogueImport)
 	}
 	s.handler = s.guard(mux)
 	return s, nil
@@ -262,7 +269,7 @@ func routeOf(p string) string {
 		return "status"
 	case p == PathZones:
 		return "zones"
-	case p == PathCatalogue:
+	case p == PathCatalogue, p == PathCatalogueAdGuard:
 		return "catalogue"
 	case len(p) > len(PathLists) && p[:len(PathLists)] == PathLists:
 		return "lists"

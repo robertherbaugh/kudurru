@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,12 +27,28 @@ func TestEmbedded(t *testing.T) {
 	if !regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}$`).MatchString(c.Version) {
 		t.Errorf("version %q is not YYYY.MM.DD", c.Version)
 	}
-	if n := len(c.Services); n < 25 || n > 60 {
-		t.Errorf("%d services; the v0.1 catalogue carries the common 25-60", n)
+	if n := len(c.Services); n < 100 || n > 200 {
+		t.Errorf("%d services; the catalogue carries the common 100-200", n)
+	}
+	// The AI category is complete: the major chat assistants and generators.
+	for _, id := range []string{"chatgpt", "claude", "gemini", "copilot", "perplexity", "mistral", "deepseek", "grok", "metaai",
+		"characterai", "poe", "huggingface", "midjourney", "stability", "runway", "suno", "elevenlabs", "replicate"} {
+		if s, ok := c.Service(id); !ok || s.Category != "ai" {
+			t.Errorf("AI service %q missing", id)
+		}
+	}
+	// Every category the dashboard offers has services, except "other"
+	// (the bucket for imported services).
+	for _, k := range c.Categories {
+		if ids, _ := c.CategoryServices(k.ID); len(ids) == 0 && k.ID != CategoryOther {
+			t.Errorf("category %s is empty", k.ID)
+		}
 	}
 	for _, id := range []string{"youtube", "tiktok", "facebook", "instagram", "whatsapp", "snapchat", "twitter", "reddit", "discord",
 		"twitch", "netflix", "steam", "epicgames", "roblox", "minecraft", "fortnite", "pinterest", "tumblr", "telegram", "signal",
-		"spotify", "primevideo", "disneyplus", "hulu", "9gag", "linkedin"} {
+		"spotify", "primevideo", "disneyplus", "hulu", "9gag", "linkedin", "max", "paramountplus", "peacock", "appletv", "crunchyroll",
+		"plex", "kick", "xbox", "playstation", "nintendo", "battlenet", "ea", "ubisoft", "valorant", "amazon", "ebay", "temu", "shein",
+		"aliexpress", "etsy"} {
 		if !c.HasService(id) {
 			t.Errorf("service %q missing", id)
 		}
@@ -55,6 +72,21 @@ func TestEmbedded(t *testing.T) {
 	}
 	if got := snap.Contains("www.youtube.com"); got[ListName("youtube")] != "||youtube.com^" {
 		t.Errorf("www.youtube.com: %v", got)
+	}
+	// No service blocks the DoH/DoT host of a well-known upstream resolver,
+	// so blocking a service never cuts the node off from its upstreams.
+	for _, host := range []string{"dns.google", "cloudflare-dns.com", "one.one.one.one", "dns.quad9.net", "dns.adguard-dns.com",
+		"dns.nextdns.io", "dns.mullvad.net", "doh.opendns.com", "dns.controld.com", "freedns.controld.com"} {
+		if hits := snap.Contains(host); len(hits) > 0 {
+			t.Errorf("upstream resolver %s is blocked by %v", host, hits)
+		}
+	}
+	// Shared sign-in and infrastructure stay reachable.
+	for _, host := range []string{"accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com",
+		"www.apple.com", "www.google.com", "www.microsoft.com", "fonts.gstatic.com", "d1.cloudfront.net", "ajax.googleapis.com"} {
+		if hits := snap.Contains(host); len(hits) > 0 {
+			t.Errorf("shared host %s is blocked by %v", host, hits)
+		}
 	}
 	// No service list blocks a safe-search target of another vendor, so
 	// blocking one service never breaks safe search on another engine.
@@ -179,7 +211,18 @@ func TestParseRejects(t *testing.T) {
 		edit func(map[string]any)
 		want string
 	}{
-		{"schema 2", func(d map[string]any) { d["schemaVersion"] = 2 }, "unsupported schemaVersion 2"},
+		{"schema 3", func(d map[string]any) { d["schemaVersion"] = 3 }, "unsupported schemaVersion 3"},
+		{"schema 0", func(d map[string]any) { d["schemaVersion"] = 0 }, "unsupported schemaVersion 0"},
+		{"unlisted category", func(d map[string]any) { svc(d)["category"] = "nowhere" }, "is not in categories"},
+		{"duplicate category", func(d map[string]any) {
+			c := d["categories"].([]any)
+			c[1].(map[string]any)["id"] = c[0].(map[string]any)["id"]
+		}, "duplicate id"},
+		{"category name", func(d map[string]any) { d["categories"].([]any)[0].(map[string]any)["name"] = "" }, "name is empty"},
+		{"category icon", func(d map[string]any) { d["categories"].([]any)[0].(map[string]any)["icon"] = "Gamepad 2" }, "icon"},
+		{"requires unknown", func(d map[string]any) { svc(d)["requires"] = []any{"no-such-service"} }, `requires "no-such-service" is not a service`},
+		{"related self", func(d map[string]any) { s := svc(d); s["related"] = []any{s["id"]} }, "related names the service itself"},
+		{"long note", func(d map[string]any) { svc(d)["note"] = strings.Repeat("x", 300) }, "note is longer"},
 		{"no schema", func(d map[string]any) { delete(d, "schemaVersion") }, "no schemaVersion"},
 		{"no version", func(d map[string]any) { d["version"] = "" }, "version is empty"},
 		{"bad id", func(d map[string]any) { svc(d)["id"] = "You Tube" }, "id must match"},
@@ -267,5 +310,86 @@ func TestHolder(t *testing.T) {
 	var nilHolder *Holder
 	if nilHolder.Current() != Embedded() {
 		t.Error("a nil holder serves the embedded catalogue")
+	}
+}
+
+// TestCategories: the embedded categories are sorted, every service is in
+// one, and CategoryServices lists a category's members.
+func TestCategories(t *testing.T) {
+	c := Embedded()
+	if len(c.Categories) < 10 {
+		t.Fatalf("%d categories", len(c.Categories))
+	}
+	for i := 1; i < len(c.Categories); i++ {
+		if a, b := c.Categories[i-1], c.Categories[i]; a.Order > b.Order || (a.Order == b.Order && a.ID >= b.ID) {
+			t.Errorf("categories out of order: %s (%d) before %s (%d)", a.ID, a.Order, b.ID, b.Order)
+		}
+	}
+	for _, k := range c.Categories {
+		if k.Name == "" || k.Description == "" || k.Icon == "" {
+			t.Errorf("category %s lacks a name, description or icon", k.ID)
+		}
+	}
+	total := 0
+	for _, k := range c.Categories {
+		ids, ok := c.CategoryServices(k.ID)
+		if !ok {
+			t.Errorf("CategoryServices(%s) unknown", k.ID)
+		}
+		total += len(ids)
+		for _, id := range ids {
+			if s, _ := c.Service(id); s.Category != k.ID {
+				t.Errorf("%s listed under %s", id, k.ID)
+			}
+		}
+	}
+	if total != len(c.Services) {
+		t.Errorf("categories hold %d services of %d", total, len(c.Services))
+	}
+	if _, ok := c.CategoryServices("no-such-category"); ok || c.HasCategory("no-such-category") || !c.HasCategory("ai") {
+		t.Error("HasCategory / CategoryServices of an unknown ID")
+	}
+	if k, ok := c.Category("ai"); !ok || k.Name != "AI" {
+		t.Errorf("ai = %+v", k)
+	}
+}
+
+// TestSchemaV1: a version 1 document (no categories, no hints) is still
+// read; its categories get the embedded names, unknown ones a made-up one.
+func TestSchemaV1(t *testing.T) {
+	v1 := `{"schemaVersion":1,"version":"2026.01.01","license":"Apache-2.0","services":[
+		{"id":"a","name":"A","category":"video","rules":["||a.example^"],"source":"test"},
+		{"id":"b","name":"B","category":"retro-games","rules":["||b.example^"],"source":"test","requires":["a"],"note":"ignored"}],
+		"safeSearch":[]}`
+	c, err := Parse([]byte(v1), "https://example/v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SchemaVersion != 1 || len(c.Categories) != 2 {
+		t.Fatalf("schema %d, categories %+v", c.SchemaVersion, c.Categories)
+	}
+	if k, _ := c.Category("video"); k.Name != "Video and streaming" || k.Icon == "" {
+		t.Errorf("video = %+v", k)
+	}
+	if k, _ := c.Category("retro-games"); k.Name != "Retro games" || k.Order <= 1000 {
+		t.Errorf("retro-games = %+v", k)
+	}
+	if b, _ := c.Service("b"); b.Requires != nil || b.Note != "" {
+		t.Errorf("version 1 hints kept: %+v", b)
+	}
+}
+
+// TestHints: requires and related name services of the document.
+func TestHints(t *testing.T) {
+	c := Embedded()
+	n := 0
+	for _, s := range c.Services {
+		n += len(s.Requires) + len(s.Related)
+	}
+	if n == 0 {
+		t.Error("no service carries a requires or related hint")
+	}
+	if f, _ := c.Service("fortnite"); !slices.Contains(f.Requires, "epicgames") {
+		t.Errorf("fortnite requires = %v", f.Requires)
 	}
 }

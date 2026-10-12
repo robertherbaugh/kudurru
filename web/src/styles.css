@@ -339,7 +339,7 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 
 .k-form { display: flex; flex-direction: column; gap: 12px; }
 .k-form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); align-items: start; }
-.k-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.k-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-element, 8px); padding: 12px; margin: 0; min-inline-size: 0; display: flex; flex-direction: column; gap: 10px; }
 .k-fieldset legend { padding: 0 4px; font-weight: 600; font-size: var(--font-size-sm, 0.875rem); }
 .k-array-item { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .k-array-item > :first-child { flex: 1 1 260px; }

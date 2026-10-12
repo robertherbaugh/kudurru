@@ -95,6 +95,10 @@ type Options struct {
 	// blockedServices IDs it does not know make the Policy
 	// Degraded{UnknownService}. Nil skips the check.
 	KnownService func(id string) bool
+	// KnownCategory is KnownService for blockedCategories
+	// (catalogue.Holder.HasCategory): unknown IDs make the Policy
+	// Degraded{UnknownCategory}. Nil skips the check.
+	KnownCategory func(id string) bool
 	// ServicesChanged re-queues every Policy when the catalogue changes at
 	// runtime (catalogue.Holder.Subscribe); nil leaves it to the resync.
 	ServicesChanged <-chan struct{}

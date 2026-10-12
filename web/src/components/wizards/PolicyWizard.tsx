@@ -7,6 +7,7 @@
 // prop) creates it in another namespace; `groups` preselects client groups.
 import { Banner } from '@astryxdesign/core/Banner';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
+import { Heading } from '@astryxdesign/core/Heading';
 import { MetadataList } from '@astryxdesign/core/MetadataList';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
@@ -16,10 +17,11 @@ import { qk, useApi, useCan } from '../../api/context';
 import type { Policy, PolicySpec } from '../../api/types';
 import { errorText, useNotify } from '../Feedback';
 import { TextField } from '../fields/TextField';
-import { cleanPolicySpec, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../PolicyFields';
+import { cleanPolicySpec, ContentCategoryFields, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../PolicyFields';
 import { ServiceIcon } from '../ServiceIcon';
-import { useCatalogueServices } from '../ServiceGrid';
+import { useCatalogueCategories, useCatalogueServices } from '../ServiceGrid';
 import { ReviewRow, Wizard, WizardDialog, type WizardStep } from '../Wizard';
+import { contentCategoryOfList, ensureContentLists } from '../../lib/contentCategories';
 import { COMMENT } from '../../lib/managedBy';
 import { nameError } from '../../lib/objectSchemas';
 import { blockResponseLabel, DEFAULT_NAMESPACE, scheduleSummary } from '../../lib/policies';
@@ -54,7 +56,7 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
   const namespace = ns || sp.get('namespace') || DEFAULT_NAMESPACE;
   const [name, setName] = useState('');
   const [comment, setComment] = useState('');
-  const [initial] = useState<PolicySpec>(() => ({ clientGroupRefs: groups ?? [], blockListRefs: [], allowListRefs: [], blockedServices: [], priority: 100 }));
+  const [initial] = useState<PolicySpec>(() => ({ clientGroupRefs: groups ?? [], blockListRefs: [], allowListRefs: [], blockedServices: [], blockedCategories: [], allowedServices: [], priority: 100 }));
   const [spec, setSpec] = useState<PolicySpec>(initial);
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -88,6 +90,8 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
         setError(msg);
         return;
       }
+      // Content categories are BlockLists created the first time a policy names them.
+      if ((await ensureContentLists(api, namespace, obj.spec.blockListRefs)).length) await qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
       await api.objects.put('policies', obj);
       await qc.invalidateQueries({ queryKey: qk.objects('policies') });
       notify.success(`Created policy ${obj.metadata.name}`);
@@ -130,11 +134,15 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
     {
       id: 'what',
       label: 'What',
-      description: 'Block and allow lists, and whole services to block.',
+      description: 'Block and allow lists, whole services and categories of services to block, and content categories.',
       content: (
         <VStack gap={5}>
           <WhatFields {...props} />
           <ServicesFields {...props} />
+          <VStack gap={2}>
+            <Heading level={3}>Content categories</Heading>
+            <ContentCategoryFields {...props} />
+          </VStack>
         </VStack>
       ),
     },
@@ -165,7 +173,11 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
 
 function Review({ name, namespace, comment, spec }: { name: string; namespace: string; comment: string; spec: PolicySpec }) {
   const services = useCatalogueServices();
+  const categories = useCatalogueCategories();
   const byId = new Map((services.data?.items ?? []).map((s) => [s.id, s]));
+  const catName = (id: string) => categories.data?.items.find((c) => c.id === id)?.name ?? id;
+  const content = (spec.blockListRefs ?? []).map(contentCategoryOfList).filter((c) => !!c);
+  const lists = (spec.blockListRefs ?? []).filter((r) => !contentCategoryOfList(r));
   const none = <Text color="secondary">none</Text>;
   const names = (xs: string[] | undefined) => (xs?.length ? xs.join(', ') : none);
   return (
@@ -179,7 +191,7 @@ function Review({ name, namespace, comment, spec }: { name: string; namespace: s
         {names(spec.clientGroupRefs)} <Text color="secondary">· priority {spec.priority ?? 0}</Text>
       </ReviewRow>
       <ReviewRow label="Block lists" step="what" what="block lists">
-        {spec.allowOnly ? <Text weight="semibold">Allow only: everything else is blocked</Text> : names(spec.blockListRefs)}
+        {spec.allowOnly ? <Text weight="semibold">Allow only: everything else is blocked</Text> : names(lists)}
       </ReviewRow>
       <ReviewRow label="Allow lists" step="what" what="allow lists">
         {names(spec.allowListRefs)}
@@ -197,6 +209,19 @@ function Review({ name, namespace, comment, spec }: { name: string; namespace: s
         ) : (
           none
         )}
+      </ReviewRow>
+      <ReviewRow label="Blocked categories" step="what" what="blocked categories">
+        {spec.blockedCategories?.length ? (
+          <Text>
+            {spec.blockedCategories.map(catName).join(', ')}
+            {spec.allowedServices?.length ? <Text color="secondary"> · except {spec.allowedServices.map((id) => byId.get(id)?.name ?? id).join(', ')}</Text> : null}
+          </Text>
+        ) : (
+          none
+        )}
+      </ReviewRow>
+      <ReviewRow label="Content categories" step="what" what="content categories">
+        {content.length ? content.map((c) => c.name).join(', ') : none}
       </ReviewRow>
       <ReviewRow label="Safe search" step="safesearch" what="safe search">
         {spec.safeSearch ? `On (${spec.safeSearchMode === 'moderate' ? 'moderate' : 'strict'})` : 'Off'}

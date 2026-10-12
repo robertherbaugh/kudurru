@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi } from '../api/context';
 import type { BlockList, ClientGroup, Policy, PolicyState } from '../api/types';
-import { useCatalogueServices, useSafeSearchEngines } from '../components/ServiceGrid';
+import { useCatalogueCategories, useCatalogueServices, useSafeSearchEngines } from '../components/ServiceGrid';
 import { derivePolicyState, type DeriveContext } from './policies';
 import { useUpstreamGroups } from './upstreams';
 
@@ -33,6 +33,7 @@ export function useDeriveContext(): { ctx: DeriveContext; ready: boolean; error:
   const groups = useGroups();
   const lists = useLists();
   const services = useCatalogueServices();
+  const categories = useCatalogueCategories();
   const engines = useSafeSearchEngines();
   const upstreams = useUpstreamGroups();
   const ctx = useMemo<DeriveContext>(
@@ -41,11 +42,12 @@ export function useDeriveContext(): { ctx: DeriveContext; ready: boolean; error:
       groups: groups.data?.items ?? [],
       lists: lists.data?.items ?? [],
       services: services.data?.items ?? [],
+      categories: categories.data?.items ?? [],
       engines: engines.data?.items ?? [],
       ...(upstreams.available ? { upstreamGroups: upstreams.names } : {}),
       now: new Date(),
     }),
-    [pols.data, groups.data, lists.data, services.data, engines.data, upstreams.available, upstreams.names],
+    [pols.data, groups.data, lists.data, services.data, categories.data, engines.data, upstreams.available, upstreams.names],
   );
   return { ctx, ready: !!pols.data && !!groups.data && !!lists.data, error: pols.error ?? groups.error ?? lists.error };
 }

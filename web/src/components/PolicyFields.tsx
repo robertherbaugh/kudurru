@@ -5,18 +5,22 @@
 // TTL, upstream group, query log) and When (schedule). Each takes the spec
 // and returns a new one; references are bare names in the policy's
 // namespace, as the API stores them.
+import { Grid } from '@astryxdesign/core/Grid';
+import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useApi } from '../api/context';
 import type { AnyObject, BlockList, ClientGroup, Policy, PolicySpec } from '../api/types';
 import { formatExact } from '../lib/format';
 import { BLOCK_RESPONSES, SAFE_SEARCH_MODES, scheduleError, sortByPriority } from '../lib/policies';
+import { BLP_LICENCE_NOTE, CONTENT_CATEGORIES, CONTENT_GROUPS, contentListName } from '../lib/contentCategories';
 import { durationError } from '../lib/objectSchemas';
+import { selectionOf, withSelection } from '../lib/serviceCatalogue';
 import { DurationField, type DurationPreset } from './fields/DurationField';
 import { EnumSelect } from './fields/EnumSelect';
 import { NumberField } from './fields/NumberField';
 import { ObjectRefPicker } from './fields/ObjectRefPicker';
 import { ScheduleField } from './fields/ScheduleField';
-import { SwitchField } from './fields/TextField';
+import { CheckboxField, SwitchField } from './fields/TextField';
 import { EngineList, ServiceGrid, useSafeSearchEngines } from './ServiceGrid';
 import { UpstreamGroupSelect } from './UpstreamGroupSelect';
 
@@ -166,11 +170,43 @@ export function ServicesFields({ spec, onChange, isDisabled, isLabelHidden }: Po
     <ServiceGrid
       label="Blocked services"
       isLabelHidden={isLabelHidden}
-      description="Block every domain of these services, like a block list. Allow lists still win; the query log names the service."
-      value={spec.blockedServices ?? []}
-      onChange={(v) => onChange({ ...spec, blockedServices: v })}
+      description="Block every domain of these services, like a block list. A blocked category also covers services later catalogue updates add to it. Allow lists still win; the query log names the service."
+      value={selectionOf(spec)}
+      onChange={(sel) => onChange(withSelection(spec, sel))}
       isDisabled={isDisabled}
     />
+  );
+}
+
+// -- Content categories -------------------------------------------------------
+
+/** Content categories (Block List Project lists, fetched by URL): a view over blockListRefs. */
+export function ContentCategoryFields({ spec, onChange, isDisabled }: PolicyFieldsProps) {
+  const refs = spec.blockListRefs ?? [];
+  return (
+    <div className="k-stack">
+      <Text type="supporting" display="block">
+        Large community lists of sites by topic from the Block List Project, downloaded by kudurru from their URL and refreshed like any list. Turning one on creates the
+        block list <Text type="code">blp-…</Text> in this namespace if it does not exist yet. {BLP_LICENCE_NOTE}
+      </Text>
+      {CONTENT_GROUPS.map((g) => (
+        <fieldset key={g.id} className="k-fieldset">
+          <legend>{g.name}</legend>
+          <Grid columns={{ minWidth: 260 }} gap={3}>
+            {CONTENT_CATEGORIES.filter((c) => c.group === g.id).map((c) => (
+              <CheckboxField
+                key={c.id}
+                label={c.name}
+                help={`${c.description} ${c.size}.`}
+                value={refs.includes(contentListName(c.id))}
+                isDisabled={isDisabled}
+                onChange={(on) => onChange({ ...spec, blockListRefs: on ? [...refs.filter((r) => r !== contentListName(c.id)), contentListName(c.id)] : refs.filter((r) => r !== contentListName(c.id)) })}
+              />
+            ))}
+          </Grid>
+        </fieldset>
+      ))}
+    </div>
   );
 }
 

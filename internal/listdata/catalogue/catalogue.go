@@ -22,6 +22,7 @@ package catalogue
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -37,10 +38,17 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 )
 
-// SchemaVersion is the catalogue document schema this build reads. A
-// document with any other schemaVersion is refused, and the catalogue in
-// service (the embedded one, or the last good download) stays.
-const SchemaVersion = 1
+// SchemaVersion is the catalogue document schema this build writes and
+// reads. Version 2 added categories (with names, descriptions, icons and a
+// sort order) and the requires, related and note hints of a service;
+// MinSchemaVersion documents are still read, their categories filled in
+// from the embedded catalogue's. A document with any other schemaVersion
+// is refused, and the catalogue in service (the embedded one, or the last
+// good download) stays.
+const (
+	SchemaVersion    = 2
+	MinSchemaVersion = 1
+)
 
 // Name prefixes of the catalogue's entries in the query log (Response.List)
 // and in the compiled list snapshot. BlockList names are DNS labels, so
@@ -58,11 +66,13 @@ const MaxBytes = 4 << 20
 
 // Document limits.
 const (
-	maxServices = 1000
-	maxRules    = 1000 // per service
-	maxEngines  = 100
-	maxDomains  = 10000 // safe-search host names over all engines
-	maxText     = 256
+	maxServices   = 1000
+	maxRules      = 1000 // per service
+	maxEngines    = 100
+	maxDomains    = 10000 // safe-search host names over all engines
+	maxCategories = 100
+	maxHints      = 20 // requires and related entries per service
+	maxText       = 256
 )
 
 // Safe-search modes (Policy.spec.safeSearchMode).
@@ -87,9 +97,39 @@ var provenanceText string
 // idPattern is the form of service, engine and category IDs.
 var idPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
-// IDPattern is the pattern service IDs match (the CRD items pattern of
-// Policy.spec.blockedServices).
+// IDPattern is the pattern service and category IDs match (the CRD items
+// pattern of Policy.spec.blockedServices and blockedCategories).
 const IDPattern = `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
+
+// CategoryOther is the category of imported services whose upstream group
+// has no kudurru counterpart.
+const CategoryOther = "other"
+
+// Category groups services: the dashboard's tabs and section headers, and
+// what Policy.spec.blockedCategories names.
+type Category struct {
+	// ID is the stable identifier blockedCategories names.
+	ID string `json:"id"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// Description says what the category holds; optional.
+	Description string `json:"description,omitempty"`
+	// Icon is a Lucide icon name (kebab-case, "gamepad-2") the dashboard
+	// draws next to the name; optional.
+	Icon string `json:"icon,omitempty"`
+	// Order sorts the categories (ascending, then by ID).
+	Order int `json:"order"`
+}
+
+// Origins of a service in the catalogue in service.
+const (
+	// OriginKudurru: the catalogue document (embedded or
+	// blocking.catalogue.url).
+	OriginKudurru = "kudurru"
+	// OriginAdGuard: the opt-in import of AdGuard's HostlistsRegistry
+	// services (blocking.catalogue.adguardServicesURL, adguard.go).
+	OriginAdGuard = "adguard"
+)
 
 // Service is one blockable service.
 type Service struct {
@@ -97,8 +137,7 @@ type Service struct {
 	ID string `json:"id"`
 	// Name is the display name.
 	Name string `json:"name"`
-	// Category groups services in the UI: video, social, messaging,
-	// gaming, music, ai, dating, ...
+	// Category is the ID of the service's category (ai, social, video, ...).
 	Category string `json:"category"`
 	// Rules are adblock-style DNS rules, "||domain^" (the domain and its
 	// subdomains).
@@ -109,6 +148,24 @@ type Service struct {
 	// Icon optionally names the embedded logo (icons/<slug>.svg) when its
 	// slug differs from ID; IconSlug resolves it.
 	Icon string `json:"icon,omitempty"`
+	// Requires names services this one also depends on, so blocking it
+	// alone does not stop it (Fortnite signs in through Epic Games).
+	Requires []string `json:"requires,omitempty"`
+	// Related names services of the same vendor or closely tied to it.
+	Related []string `json:"related,omitempty"`
+	// Note is an optional caveat shown with the service.
+	Note string `json:"note,omitempty"`
+
+	// origin is OriginKudurru ("") or OriginAdGuard (Origin).
+	origin string
+}
+
+// Origin is where the service comes from: OriginKudurru or OriginAdGuard.
+func (s *Service) Origin() string {
+	if s.origin == "" {
+		return OriginKudurru
+	}
+	return s.origin
 }
 
 // Engine is one safe-search rewrite: the engine's host names are answered
@@ -140,17 +197,28 @@ type Catalogue struct {
 	Version       string `json:"version"`
 	License       string `json:"license"`
 	Homepage      string `json:"homepage,omitempty"`
+	// Categories are sorted by Order, then ID. A version 1 document has
+	// none; Parse fills them in.
+	Categories []Category `json:"categories,omitempty"`
 	// Services are sorted by ID.
 	Services []Service `json:"services"`
 	// SafeSearch engines are sorted by ID.
 	SafeSearch []Engine `json:"safeSearch"`
 
-	raw       []byte
-	digest    string
-	origin    string
-	byService map[string]int
-	byHost    map[string]int
-	specs     []blocking.Spec
+	raw        []byte
+	digest     string
+	origin     string
+	byService  map[string]int
+	byCategory map[string]int
+	members    map[string][]string // category -> service IDs, sorted
+	byHost     map[string]int
+	specs      []blocking.Spec
+	// imported is the AdGuard import merged in; nil without one.
+	imported *Import
+	// shadowed counts imported services dropped for a kudurru ID.
+	shadowed int
+	// fingerprint changes with the document and the import.
+	fingerprint string
 }
 
 // Parse decodes and validates a catalogue document. origin is recorded for
@@ -170,19 +238,67 @@ func Parse(b []byte, origin string) (*Catalogue, error) {
 	switch {
 	case head.SchemaVersion == nil:
 		return nil, fmt.Errorf("%w: the document has no schemaVersion", ErrSchemaVersion)
-	case *head.SchemaVersion != SchemaVersion:
-		return nil, fmt.Errorf("%w %d (this build reads %d)", ErrSchemaVersion, *head.SchemaVersion, SchemaVersion)
+	case *head.SchemaVersion < MinSchemaVersion || *head.SchemaVersion > SchemaVersion:
+		return nil, fmt.Errorf("%w %d (this build reads %d to %d)", ErrSchemaVersion, *head.SchemaVersion, MinSchemaVersion, SchemaVersion)
 	}
 	c := &Catalogue{}
 	if err := json.Unmarshal(b, c); err != nil {
 		return nil, fmt.Errorf("catalogue: %w", err)
 	}
+	if c.SchemaVersion == 1 {
+		// Version 1 has no categories and no hints: its services' category
+		// IDs get the embedded catalogue's names, or a name made from the ID.
+		c.Categories = deriveCategories(c.Services, defaultCategories())
+		for i := range c.Services {
+			c.Services[i].Requires, c.Services[i].Related, c.Services[i].Note = nil, nil, ""
+		}
+	}
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
 	c.raw, c.digest, c.origin = bytes.Clone(b), digestOf(b), origin
+	c.fingerprint = c.digest
 	c.index()
 	return c, nil
+}
+
+// defaultCategories are the embedded catalogue's categories; nil while
+// the embedded catalogue itself is parsed.
+func defaultCategories() []Category { return knownCategories }
+
+// deriveCategories returns a category for every category ID services use:
+// the one of known with that ID, else one named after the ID and sorted
+// after the known ones.
+func deriveCategories(services []Service, known []Category) []Category {
+	byID := map[string]Category{}
+	last := 0
+	for _, k := range known {
+		byID[k.ID] = k
+		last = max(last, k.Order)
+	}
+	seen := map[string]bool{}
+	var out []Category
+	for _, s := range services {
+		if seen[s.Category] || !idPattern.MatchString(s.Category) {
+			continue
+		}
+		seen[s.Category] = true
+		if k, ok := byID[s.Category]; ok {
+			out = append(out, k)
+			continue
+		}
+		out = append(out, Category{ID: s.Category, Name: titleCase(s.Category), Order: last + 1})
+	}
+	return out
+}
+
+// titleCase makes a display name from an ID: "social-media" -> "Social media".
+func titleCase(id string) string {
+	s := strings.ReplaceAll(id, "-", " ")
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func checkText(field, s string) error {
@@ -211,6 +327,33 @@ func (c *Catalogue) validate() error {
 	if len(c.SafeSearch) > maxEngines {
 		add("%d safe-search engines, over the limit of %d", len(c.SafeSearch), maxEngines)
 	}
+	if len(c.Categories) > maxCategories {
+		add("%d categories, over the limit of %d", len(c.Categories), maxCategories)
+	}
+	cats := map[string]bool{}
+	for i := range c.Categories {
+		k := &c.Categories[i]
+		where := fmt.Sprintf("categories[%d] %q", i, k.ID)
+		if !idPattern.MatchString(k.ID) {
+			add("%s: id must match %s", where, IDPattern)
+		} else if cats[k.ID] {
+			add("%s: duplicate id", where)
+		}
+		cats[k.ID] = true
+		if err := checkText("name", k.Name); err != nil {
+			add("%s: %v", where, err)
+		}
+		if len(k.Description) > maxText {
+			add("%s: description is longer than %d bytes", where, maxText)
+		}
+		if k.Icon != "" && !idPattern.MatchString(k.Icon) {
+			add("%s: icon %q must match %s", where, k.Icon, IDPattern)
+		}
+	}
+	ids := make(map[string]bool, len(c.Services))
+	for i := range c.Services {
+		ids[c.Services[i].ID] = true
+	}
 	seen := map[string]bool{}
 	for i := range c.Services {
 		s := &c.Services[i]
@@ -226,8 +369,30 @@ func (c *Catalogue) validate() error {
 				add("%s: %v", where, err)
 			}
 		}
-		if !idPattern.MatchString(s.Category) {
+		switch {
+		case !idPattern.MatchString(s.Category):
 			add("%s: category %q must match %s", where, s.Category, IDPattern)
+		case !cats[s.Category]:
+			add("%s: category %q is not in categories", where, s.Category)
+		}
+		if len(s.Note) > maxText {
+			add("%s: note is longer than %d bytes", where, maxText)
+		}
+		for _, h := range []struct {
+			field string
+			ids   []string
+		}{{"requires", s.Requires}, {"related", s.Related}} {
+			if len(h.ids) > maxHints {
+				add("%s: %d %s entries, over the limit of %d", where, len(h.ids), h.field, maxHints)
+			}
+			for _, id := range h.ids {
+				switch {
+				case id == s.ID:
+					add("%s: %s names the service itself", where, h.field)
+				case !ids[id]:
+					add("%s: %s %q is not a service of the document", where, h.field, id)
+				}
+			}
 		}
 		if s.Icon != "" && !idPattern.MatchString(s.Icon) {
 			add("%s: icon %q must match %s", where, s.Icon, IDPattern)
@@ -344,10 +509,17 @@ func canonicalHost(s string) bool {
 func (c *Catalogue) index() {
 	slices.SortFunc(c.Services, func(a, b Service) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(c.SafeSearch, func(a, b Engine) int { return strings.Compare(a.ID, b.ID) })
+	slices.SortFunc(c.Categories, func(a, b Category) int { return cmp.Or(cmp.Compare(a.Order, b.Order), strings.Compare(a.ID, b.ID)) })
+	c.byCategory = make(map[string]int, len(c.Categories))
+	for i, k := range c.Categories {
+		c.byCategory[k.ID] = i
+	}
 	c.byService = make(map[string]int, len(c.Services))
+	c.members = map[string][]string{}
 	c.specs = make([]blocking.Spec, 0, len(c.Services))
 	for i, s := range c.Services {
 		c.byService[s.ID] = i
+		c.members[s.Category] = append(c.members[s.Category], s.ID)
 		c.specs = append(c.specs, blocking.Spec{
 			Name: ListName(s.ID), Mode: blocking.ModeBlock,
 			Sources: []blocking.Source{blocking.LinesSource("catalogue", parser.FormatAdblock, s.Rules)},
@@ -370,8 +542,18 @@ func digestOf(b []byte) string {
 // ListName is the compiled list name of service id: "service:<id>".
 func ListName(id string) string { return ServiceListPrefix + id }
 
-// Digest is the lowercase hex SHA-256 of the document bytes.
+// Digest is the lowercase hex SHA-256 of the document bytes (of the
+// catalogue document alone when an import is merged in).
 func (c *Catalogue) Digest() string { return c.digest }
+
+// Fingerprint changes whenever the services in service change: the
+// document digest, combined with the import's when one is merged in.
+func (c *Catalogue) Fingerprint() string { return c.fingerprint }
+
+// Imported is the AdGuard import merged into c, and how many of its
+// services were dropped because the catalogue document has their ID; nil
+// and 0 without an import.
+func (c *Catalogue) Imported() (*Import, int) { return c.imported, c.shadowed }
 
 // Origin is OriginEmbedded or the URL the document was fetched from.
 func (c *Catalogue) Origin() string { return c.origin }
@@ -392,6 +574,30 @@ func (c *Catalogue) Service(id string) (Service, bool) {
 func (c *Catalogue) HasService(id string) bool {
 	_, ok := c.byService[id]
 	return ok
+}
+
+// Category returns the category with id.
+func (c *Catalogue) Category(id string) (Category, bool) {
+	i, ok := c.byCategory[id]
+	if !ok {
+		return Category{}, false
+	}
+	return c.Categories[i], true
+}
+
+// HasCategory reports whether id names a category.
+func (c *Catalogue) HasCategory(id string) bool {
+	_, ok := c.byCategory[id]
+	return ok
+}
+
+// CategoryServices returns the IDs of the services in category id, sorted,
+// and whether the category exists. The slice is shared: do not modify it.
+func (c *Catalogue) CategoryServices(id string) ([]string, bool) {
+	if _, ok := c.byCategory[id]; !ok {
+		return nil, false
+	}
+	return c.members[id], true
 }
 
 // Specs returns the compile specs of every service, one block-mode list
@@ -436,8 +642,13 @@ var embedded = func() *Catalogue {
 	if err != nil {
 		panic(fmt.Sprintf("catalogue: the embedded catalogue.json is invalid: %v", err))
 	}
+	knownCategories = c.Categories
 	return c
 }()
+
+// knownCategories are the embedded catalogue's categories, the names a
+// version 1 document's category IDs get; set once at start-up.
+var knownCategories []Category
 
 // Embedded returns the catalogue built into the binary.
 func Embedded() *Catalogue { return embedded }

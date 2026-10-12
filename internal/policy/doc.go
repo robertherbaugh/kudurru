@@ -63,9 +63,14 @@
 //
 // blockedServices IDs resolve to the catalogue's compiled block lists
 // "service:<id>" (internal/listdata/catalogue), which the list resolver
-// compiles into the same snapshot. An ID the catalogue in service does
-// not have (Options.Services) is skipped with Diagnosis UnknownService;
-// one that is known but not compiled yet counts as NotLoaded.
+// compiles into the same snapshot. blockedCategories add every service
+// the catalogue in service has in those categories, minus the policy's
+// allowedServices (EffectiveServices); the Index is rebuilt with every
+// snapshot, and a catalogue change recompiles the snapshot, so a service
+// a newer catalogue adds to a blocked category is blocked from then on.
+// An ID the catalogue in service does not have (Options.Services) is
+// skipped with Diagnosis UnknownService (UnknownCategory for a
+// category); one that is known but not compiled yet counts as NotLoaded.
 //
 // # Serving
 //

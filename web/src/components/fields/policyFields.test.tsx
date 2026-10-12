@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClientMatcher } from '../../api/types';
 import type { Schedule } from '../../lib/policies';
+import type { ServiceSelection } from '../../lib/serviceCatalogue';
 import { renderWithApp } from '../../test/utils';
 import { findSelector, getSelector, optionLabels, pick } from '../../test/controls';
 import { ServiceGrid } from '../ServiceGrid';
@@ -41,20 +42,87 @@ describe('ServiceIcon', () => {
 });
 
 describe('ServiceGrid', () => {
-  it('toggles services, filters and keeps IDs the catalogue lacks', async () => {
+  const sel = (blocked: string[] = [], categories: string[] = [], allowed: string[] = []): ServiceSelection => ({ blocked, categories, allowed });
+
+  it('toggles services and keeps IDs the catalogue lacks', async () => {
     const onChange = vi.fn();
-    renderWithApp(<ServiceGrid label="Blocked services" value={['tiktok', 'myspace']} onChange={onChange} />);
+    renderWithApp(<ServiceGrid label="Blocked services" value={sel(['tiktok', 'myspace'])} onChange={onChange} />);
     const tiktok = await screen.findByRole('button', { name: /TikTok/ });
     expect(tiktok).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /myspace/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Not in the catalogue (ignored until it is)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /YouTube/ }));
-    expect(onChange).toHaveBeenLastCalledWith(['tiktok', 'myspace', 'youtube']);
+    expect(onChange).toHaveBeenLastCalledWith(sel(['tiktok', 'myspace', 'youtube']));
     fireEvent.click(tiktok);
-    expect(onChange).toHaveBeenLastCalledWith(['myspace']);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Filter services' }), { target: { value: 'gaming' } });
-    expect(screen.getByRole('button', { name: /Roblox/ })).toBeInTheDocument();
+    expect(onChange).toHaveBeenLastCalledWith(sel(['myspace']));
+  });
+
+  it('groups by category under tabs with counts, searches names and domains, and filters blocked ones', async () => {
+    renderWithApp(<Stateful initial={sel(['claude'])} render={(v, set) => <ServiceGrid label="Blocked services" value={v} onChange={set} />} />);
+    const ai = await screen.findByRole('tab', { name: /^AI · 4 · 1 blocked$/ });
+    expect(screen.getByRole('tab', { name: /^All · \d+ · 1 blocked$/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Gaming' })).toBeInTheDocument();
+    fireEvent.click(ai);
+    expect(ai).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('heading', { name: 'Gaming' })).toBeNull();
+    expect(screen.getByRole('button', { name: /ChatGPT/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /^All/ }));
+    // Search matches a domain, not only the name.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search services' }), { target: { value: 'sora.com' } });
+    expect(screen.getByRole('button', { name: /ChatGPT/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /YouTube/ })).toBeNull();
+    expect(screen.getByText(/Showing 1 of/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search services' }), { target: { value: 'nothing-like-this' } });
+    expect(screen.getByText('No service matches "nothing-like-this".')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search services' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Blocked only' }));
+    expect(screen.getByRole('button', { name: /Claude/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: /ChatGPT/ })).toBeNull();
+  });
+
+  it('blocks a whole category, with exceptions, and marks imported services', async () => {
+    const onChange = vi.fn();
+    renderWithApp(
+      <Stateful
+        initial={sel()}
+        render={(v, set) => (
+          <ServiceGrid
+            label="Blocked services"
+            value={v}
+            onChange={(n) => {
+              onChange(n);
+              set(n);
+            }}
+          />
+        )}
+      />,
+    );
+    const section = within(await screen.findByTestId('category-ai'));
+    fireEvent.click(section.getByRole('switch', { name: 'Block the whole category' }));
+    expect(onChange).toHaveBeenLastCalledWith(sel([], ['ai']));
+    const ai = within(screen.getByTestId('category-ai'));
+    expect(ai.getByText(/including services a catalogue update adds/)).toBeInTheDocument();
+    const gpt = ai.getByRole('button', { name: /ChatGPT/ });
+    expect(gpt).toHaveAttribute('aria-pressed', 'true');
+    expect(gpt).toHaveTextContent('Blocked by category');
+    fireEvent.click(gpt);
+    expect(onChange).toHaveBeenLastCalledWith(sel([], ['ai'], ['chatgpt']));
+    expect(within(screen.getByTestId('category-ai')).getByRole('button', { name: /ChatGPT/ })).toHaveTextContent('Allowed (exception)');
+    expect(screen.getByRole('tab', { name: /^AI · 4 · 3 blocked$/ })).toBeInTheDocument();
+    // Turning the category off drops its exceptions.
+    fireEvent.click(within(screen.getByTestId('category-ai')).getByRole('switch', { name: 'Block the whole category' }));
+    expect(onChange).toHaveBeenLastCalledWith(sel());
+    // An AdGuard import carries its licence.
+    expect(within(screen.getByTestId('category-other')).getByRole('button', { name: /Example Tool/ })).toHaveTextContent('AdGuard · GPL-3.0');
+  });
+
+  it('offers to block what a blocked service requires', async () => {
+    const onChange = vi.fn();
+    renderWithApp(<ServiceGrid label="Blocked services" value={sel(['fortnite'])} onChange={onChange} />);
+    const hint = await screen.findByTestId('requires-fortnite');
+    expect(hint).toHaveTextContent('Fortnite also needs Epic Games');
+    fireEvent.click(within(hint).getByRole('button', { name: 'Block Epic Games' }));
+    expect(onChange).toHaveBeenLastCalledWith(sel(['fortnite', 'epicgames']));
   });
 });
 

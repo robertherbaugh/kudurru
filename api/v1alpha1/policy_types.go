@@ -68,6 +68,25 @@ type PolicySpec struct {
 	// +kubebuilder:validation:MaxItems=256
 	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
 	BlockedServices []string `json:"blockedServices,omitempty"`
+	// BlockedCategories names categories of the catalogue
+	// (GET /api/v1/catalogue/categories: ai, social, gaming, ...); every
+	// service in them is blocked as if listed in blockedServices, including
+	// services a later catalogue adds to the category. Unknown IDs are
+	// reported as Degraded{UnknownCategory}.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
+	BlockedCategories []string `json:"blockedCategories,omitempty"`
+	// AllowedServices are exceptions to blockedCategories: services of a
+	// blocked category this policy does not block. They do not cancel an
+	// ID listed in blockedServices, nor another policy's blocks; allow
+	// lists still win over every service.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
+	AllowedServices []string `json:"allowedServices,omitempty"`
 	// SafeSearch true answers the search engines' and YouTube's host names
 	// with their vendor's safe-search target (a CNAME to
 	// forcesafesearch.google.com, strict.bing.com, ...; see the catalogue).

@@ -811,7 +811,7 @@ Hard rules: the query path never touches `Store`, never blocks on logging, never
 Source     {url|inline|configMapRef, format auto|hosts|domains|adblock|regex, refresh, etag, digest, ruleCount, invalid, enabled}
 BlockList  {name, mode block|allow, sources[], response override}            # blocky "group list"
 ClientGroup{name, clients[ip|cidr|mac|clientID|hostname|nameGlob]{name,comment}, sources{integrationRef}}
-Policy     {name, clientGroupRefs[], blockListRefs[], allowListRefs[], allowOnly, schedule, upstreamGroup, blockMode, blockTTL, queryLog, priority, rewrites[], safeSearch, safeSearchMode, blockedServices[]}
+Policy     {name, clientGroupRefs[], blockListRefs[], allowListRefs[], allowOnly, schedule, upstreamGroup, blockMode, blockTTL, queryLog, priority, rewrites[], safeSearch, safeSearchMode, blockedServices[], blockedCategories[], allowedServices[]}
 ```
 Defaults: `ClientGroup/default` (matches everything), `Policy/default`. Pi-hole users map 1:1: Groups → `ClientGroup` + `Policy`, Lists → `BlockList`, Domains (exact/regex allow/deny) → an inline `BlockList` source, Clients → `ClientGroup.clients`. Blocked-services and safe-search data come from a kudurru-authored, Apache-2.0 catalogue embedded in the binary with per-entry provenance (AdGuard's tables are GPL) [blocking §6.6]; `blocking.catalogue.url` can replace it at runtime. It shipped in the v0.1 fix round instead of M2 (D60, D120, contract in docs/deploy/blocked-services.md).
 

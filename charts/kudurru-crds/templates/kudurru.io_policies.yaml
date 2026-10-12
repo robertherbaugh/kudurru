@@ -60,6 +60,18 @@ spec:
               allowOnly:
                 description: AllowOnly answers only names present in the allow lists.
                 type: boolean
+              allowedServices:
+                description: |-
+                  AllowedServices are exceptions to blockedCategories: services of a
+                  blocked category this policy does not block. They do not cancel an
+                  ID listed in blockedServices, nor another policy's blocks; allow
+                  lists still win over every service.
+                items:
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+                  type: string
+                maxItems: 256
+                type: array
+                x-kubernetes-list-type: set
               blockListRefs:
                 items:
                   type: string
@@ -80,6 +92,19 @@ spec:
               blockTTL:
                 default: 10m
                 type: string
+              blockedCategories:
+                description: |-
+                  BlockedCategories names categories of the catalogue
+                  (GET /api/v1/catalogue/categories: ai, social, gaming, ...); every
+                  service in them is blocked as if listed in blockedServices, including
+                  services a later catalogue adds to the category. Unknown IDs are
+                  reported as Degraded{UnknownCategory}.
+                items:
+                  pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+                  type: string
+                maxItems: 64
+                type: array
+                x-kubernetes-list-type: set
               blockedServices:
                 description: |-
                   BlockedServices names services of the blocked-services catalogue

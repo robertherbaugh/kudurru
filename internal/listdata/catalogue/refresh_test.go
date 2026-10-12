@@ -85,11 +85,11 @@ func TestRefresherLeader(t *testing.T) {
 		t.Errorf("304s = %d", srv.notMod)
 	}
 	// A newer schema version is refused; the catalogue in service stays.
-	srv.set(http.StatusOK, strings.Replace(doc(t, "2099.02.01", "beta"), `"schemaVersion":1`, `"schemaVersion":2`, 1))
+	srv.set(http.StatusOK, strings.Replace(doc(t, "2099.02.01", "beta"), `"schemaVersion":1`, `"schemaVersion":3`, 1))
 	if wait := r.Refresh(ctx); wait != retryAfter || !h.HasService("alpha") {
-		t.Errorf("schema 2: wait %v, alpha kept %v", wait, h.HasService("alpha"))
+		t.Errorf("schema 3: wait %v, alpha kept %v", wait, h.HasService("alpha"))
 	}
-	if st := r.Status(); !strings.Contains(st.LastError, "unsupported schemaVersion 2") {
+	if st := r.Status(); !strings.Contains(st.LastError, "unsupported schemaVersion 3") {
 		t.Errorf("status = %+v", st)
 	}
 	// Invalid documents and HTTP errors keep it too.

@@ -57,7 +57,7 @@ import type {
   SourceEntriesQuery,
 } from './types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainEntryPatch, DomainWriteResult } from './types';
-import type { CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
+import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
@@ -245,6 +245,7 @@ export function endpoints(c: ApiClient) {
     catalogue: {
       info: () => c.get<CatalogueInfo>('/catalogue'),
       services: () => c.get<ListEnvelope<CatalogueService>>('/catalogue/services'),
+      categories: () => c.get<ListEnvelope<CatalogueCategory>>('/catalogue/categories'),
       safeSearch: () => c.get<ListEnvelope<SafeSearchEngine>>('/catalogue/safesearch'),
       /** C4: the embedded icons (404 on servers without them). */
       icons: () => c.get<CatalogueIconIndex>('/catalogue/icons'),

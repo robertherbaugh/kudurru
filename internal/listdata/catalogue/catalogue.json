@@ -1,27 +1,354 @@
 {
-  "schemaVersion": 1,
-  "version": "2026.10.11",
+  "schemaVersion": 2,
+  "version": "2026.10.12",
   "license": "Apache-2.0",
   "homepage": "https://github.com/robertherbaugh/kudurru/tree/main/internal/listdata/catalogue",
+  "categories": [
+    {
+      "id": "ai",
+      "name": "AI",
+      "description": "Chatbots and assistants, and image, video, music and voice generators.",
+      "icon": "sparkles",
+      "order": 10
+    },
+    {
+      "id": "social",
+      "name": "Social media",
+      "description": "Social networks, short video and photo sharing.",
+      "icon": "users",
+      "order": 20
+    },
+    {
+      "id": "messaging",
+      "name": "Messaging",
+      "description": "Chat apps with voice and video calls.",
+      "icon": "message-circle",
+      "order": 30
+    },
+    {
+      "id": "video",
+      "name": "Video and streaming",
+      "description": "Streaming services, video sites and live streaming.",
+      "icon": "tv",
+      "order": 40
+    },
+    {
+      "id": "music",
+      "name": "Music and audio",
+      "description": "Music streaming and audio platforms.",
+      "icon": "music",
+      "order": 50
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming",
+      "description": "Game stores, console networks and online games.",
+      "icon": "gamepad-2",
+      "order": 60
+    },
+    {
+      "id": "shopping",
+      "name": "Shopping",
+      "description": "Online marketplaces and stores.",
+      "icon": "shopping-cart",
+      "order": 70
+    },
+    {
+      "id": "dating",
+      "name": "Dating",
+      "description": "Dating apps and sites.",
+      "icon": "heart",
+      "order": 80
+    },
+    {
+      "id": "gambling",
+      "name": "Gambling and betting",
+      "description": "Major betting, casino and poker brands; the Gambling content category covers the long tail.",
+      "icon": "dices",
+      "order": 90
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "description": "Major news publishers.",
+      "icon": "newspaper",
+      "order": 100
+    },
+    {
+      "id": "forums",
+      "name": "Forums and Q&A",
+      "description": "Discussion boards and question-and-answer sites.",
+      "icon": "messages-square",
+      "order": 110
+    },
+    {
+      "id": "productivity",
+      "name": "Productivity and cloud storage",
+      "description": "Cloud storage, file transfer, workplace chat and video meetings.",
+      "icon": "cloud",
+      "order": 120
+    },
+    {
+      "id": "vpn",
+      "name": "VPN and proxy",
+      "description": "VPN and anonymising proxy services: their websites, sign-up and app downloads.",
+      "icon": "shield",
+      "order": 130
+    },
+    {
+      "id": "crypto",
+      "name": "Cryptocurrency exchanges",
+      "description": "Crypto exchanges and trading apps.",
+      "icon": "bitcoin",
+      "order": 140
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Services without a matching category, such as imported ones.",
+      "icon": "shapes",
+      "order": 1000
+    }
+  ],
   "services": [
     {
-      "id": "youtube",
-      "icon": "youtube",
-      "name": "YouTube",
-      "category": "video",
+      "id": "chatgpt",
+      "icon": "chatgpt",
+      "name": "ChatGPT",
+      "category": "ai",
       "rules": [
-        "||youtube.com^",
-        "||youtu.be^",
-        "||yt.be^",
-        "||ytimg.com^",
-        "||googlevideo.com^",
-        "||youtube-nocookie.com^",
-        "||youtubei.googleapis.com^",
-        "||youtube.googleapis.com^",
-        "||youtubekids.com^",
-        "||yt3.ggpht.com^"
+        "||chatgpt.com^",
+        "||chat.com^",
+        "||openai.com^",
+        "||oaistatic.com^",
+        "||oaiusercontent.com^",
+        "||sora.com^"
       ],
-      "source": "first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users"
+      "source": "first-party domains of the service",
+      "note": "Also blocks the OpenAI API (api.openai.com) and Sora, so other apps built on OpenAI models may stop working."
+    },
+    {
+      "id": "claude",
+      "icon": "claude-ai",
+      "name": "Claude",
+      "category": "ai",
+      "rules": [
+        "||claude.ai^",
+        "||claude.com^",
+        "||anthropic.com^",
+        "||claudeusercontent.com^",
+        "||claudemcpcontent.com^",
+        "||claudemcpclient.com^",
+        "||claude.site^",
+        "||clau.de^"
+      ],
+      "source": "first-party domains of the service; host names from https://claude.com/docs/claude-science/network-requirements",
+      "note": "Also blocks the Anthropic API (api.anthropic.com), so other apps built on Claude may stop working."
+    },
+    {
+      "id": "gemini",
+      "icon": "google-gemini",
+      "name": "Google Gemini",
+      "category": "ai",
+      "rules": [
+        "||gemini.google.com^",
+        "||gemini.google^",
+        "||bard.google.com^",
+        "||aistudio.google.com^",
+        "||makersuite.google.com^",
+        "||generativelanguage.googleapis.com^"
+      ],
+      "source": "first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and https://knowledge.workspace.google.com/admin/getting-started/set-up-a-google-workspace-host-name-allowlist",
+      "note": "Gemini inside Android, Chrome, Google Search and Workspace apps runs on shared Google hosts and stays reachable."
+    },
+    {
+      "id": "copilot",
+      "icon": "microsoft-copilot",
+      "name": "Microsoft Copilot",
+      "category": "ai",
+      "rules": [
+        "||copilot.microsoft.com^",
+        "||copilot.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Microsoft sign-in and Copilot inside Windows, Edge, Bing and Microsoft 365 (copilot.cloud.microsoft) use shared hosts and stay reachable."
+    },
+    {
+      "id": "perplexity",
+      "icon": "perplexity",
+      "name": "Perplexity",
+      "category": "ai",
+      "rules": [
+        "||perplexity.ai^",
+        "||perplexity.com^",
+        "||pplx.ai^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "mistral",
+      "icon": "mistral-ai",
+      "name": "Mistral Vibe (Le Chat)",
+      "category": "ai",
+      "rules": [
+        "||mistral.ai^",
+        "||lechat.ai^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Also blocks the Mistral API and docs on mistral.ai."
+    },
+    {
+      "id": "deepseek",
+      "icon": "deepseek",
+      "name": "DeepSeek",
+      "category": "ai",
+      "rules": [
+        "||deepseek.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "grok",
+      "icon": "grok",
+      "name": "Grok",
+      "category": "ai",
+      "rules": [
+        "||grok.com^",
+        "||x.ai^",
+        "||grokusercontent.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "twitter"
+      ],
+      "note": "Grok inside X (x.com and the X app) uses X's own hosts and cannot be blocked separately without blocking X."
+    },
+    {
+      "id": "metaai",
+      "icon": "meta",
+      "name": "Meta AI",
+      "category": "ai",
+      "rules": [
+        "||meta.ai^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "facebook",
+        "instagram",
+        "whatsapp",
+        "threads"
+      ],
+      "note": "Meta AI inside WhatsApp, Instagram, Messenger and Facebook uses those apps' hosts and stays reachable unless they are blocked."
+    },
+    {
+      "id": "characterai",
+      "name": "Character.AI",
+      "category": "ai",
+      "rules": [
+        "||character.ai^",
+        "||c.ai^",
+        "||characterai.io^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "poe",
+      "name": "Poe",
+      "category": "ai",
+      "rules": [
+        "||poe.com^",
+        "||poecdn.net^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "category": "ai",
+      "rules": [
+        "||huggingface.co^",
+        "||hf.co^",
+        "||hf.space^",
+        "||huggingface.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Also blocks model downloads for developer tools and apps that fetch models from Hugging Face."
+    },
+    {
+      "id": "midjourney",
+      "name": "Midjourney",
+      "category": "ai",
+      "rules": [
+        "||midjourney.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "discord"
+      ],
+      "note": "The Midjourney bot inside Discord keeps working unless Discord is blocked too."
+    },
+    {
+      "id": "stability",
+      "name": "Stability AI",
+      "category": "ai",
+      "rules": [
+        "||stability.ai^",
+        "||stableaudio.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "runway",
+      "name": "Runway",
+      "category": "ai",
+      "rules": [
+        "||runwayml.com^",
+        "||runway.com^",
+        "||runwayusercontent.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "suno",
+      "name": "Suno",
+      "category": "ai",
+      "rules": [
+        "||suno.com^",
+        "||suno.ai^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "category": "ai",
+      "rules": [
+        "||elevenlabs.io^",
+        "||elevenlabs.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "replicate",
+      "name": "Replicate",
+      "category": "ai",
+      "rules": [
+        "||replicate.com^",
+        "||replicate.delivery^",
+        "||replicateassets.com^",
+        "||replicate.ai^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Also blocks the Replicate API, so apps that generate images or video through Replicate may stop working."
+    },
+    {
+      "id": "pi",
+      "name": "Pi",
+      "category": "ai",
+      "rules": [
+        "||pi.ai^"
+      ],
+      "source": "first-party domains of the service"
     },
     {
       "id": "tiktok",
@@ -40,7 +367,10 @@
         "||ttwstatic.com^",
         "||musical.ly^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "lemon8"
+      ]
     },
     {
       "id": "facebook",
@@ -55,9 +385,15 @@
         "||fbcdn.net^",
         "||fbsbx.com^",
         "||messenger.com^",
-        "||m.me^"
+        "||m.me^",
+        "||fb.watch^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "instagram",
+        "threads",
+        "whatsapp"
+      ]
     },
     {
       "id": "instagram",
@@ -70,7 +406,11 @@
         "||ig.me^",
         "||instagr.am^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "facebook",
+        "threads"
+      ]
     },
     {
       "id": "threads",
@@ -81,19 +421,11 @@
         "||threads.net^",
         "||threads.com^"
       ],
-      "source": "first-party domains of the service"
-    },
-    {
-      "id": "whatsapp",
-      "icon": "whatsapp",
-      "name": "WhatsApp",
-      "category": "messaging",
-      "rules": [
-        "||whatsapp.com^",
-        "||whatsapp.net^",
-        "||wa.me^"
-      ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "instagram",
+        "facebook"
+      ]
     },
     {
       "id": "snapchat",
@@ -195,9 +527,122 @@
         "||vk.me^",
         "||vkuser.net^",
         "||userapi.com^",
-        "||vk-cdn.net^"
+        "||vk-cdn.net^",
+        "||vk.ru^",
+        "||vkvideo.ru^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "okru"
+      ],
+      "note": "VK ID sign-in on vk.com and vk.ru is also used by other VK-group services such as OK and Mail.ru."
+    },
+    {
+      "id": "bluesky",
+      "icon": "bluesky",
+      "name": "Bluesky",
+      "category": "social",
+      "rules": [
+        "||bsky.app^",
+        "||bsky.social^",
+        "||bsky.network^",
+        "||bsky.chat^",
+        "||blueskyweb.xyz^"
+      ],
+      "source": "first-party domains of the service; relay host from https://bsky.network/",
+      "note": "Handles on custom domains and self-hosted AT Protocol servers are not covered."
+    },
+    {
+      "id": "bereal",
+      "name": "BeReal",
+      "category": "social",
+      "rules": [
+        "||bereal.com^",
+        "||bere.al^",
+        "||bereal.network^"
       ],
       "source": "first-party domains of the service"
+    },
+    {
+      "id": "mastodon",
+      "icon": "mastodon",
+      "name": "Mastodon (mastodon.social)",
+      "category": "social",
+      "rules": [
+        "||mastodon.social^",
+        "||mastodon.online^",
+        "||joinmastodon.org^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Covers only the flagship mastodon.social and mastodon.online servers and joinmastodon.org; other Mastodon servers are not blocked."
+    },
+    {
+      "id": "weibo",
+      "icon": "weibo",
+      "name": "Weibo",
+      "category": "social",
+      "rules": [
+        "||weibo.com^",
+        "||weibo.cn^",
+        "||weibocdn.com^",
+        "||t.cn^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Weibo images come from sinaimg.cn, shared with other Sina sites, and are not blocked."
+    },
+    {
+      "id": "okru",
+      "name": "OK (Odnoklassniki)",
+      "category": "social",
+      "rules": [
+        "||ok.ru^",
+        "||odnoklassniki.ru^",
+        "||ok.me^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "vk"
+      ],
+      "note": "OK's CDNs okcdn.ru and mycdn.me are not blocked because VK Video also uses them."
+    },
+    {
+      "id": "imgur",
+      "name": "Imgur",
+      "category": "social",
+      "rules": [
+        "||imgur.com^",
+        "||imgur.io^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Imgur images embedded on other sites stop loading too."
+    },
+    {
+      "id": "lemon8",
+      "name": "Lemon8",
+      "category": "social",
+      "rules": [
+        "||lemon8-app.com^",
+        "||lemon8cdn.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "tiktok"
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "icon": "whatsapp",
+      "name": "WhatsApp",
+      "category": "messaging",
+      "rules": [
+        "||whatsapp.com^",
+        "||whatsapp.net^",
+        "||wa.me^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "facebook"
+      ]
     },
     {
       "id": "discord",
@@ -209,9 +654,16 @@
         "||discord.gg^",
         "||discord.media^",
         "||discordapp.com^",
-        "||discordapp.net^"
+        "||discordapp.net^",
+        "||discord.co^",
+        "||discord.gift^",
+        "||discord.new^",
+        "||discord.dev^",
+        "||dis.gd^",
+        "||discordsays.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "note": "Voice calls connect to media servers by IP address once set up; this blocks sign-in, chat and new calls."
     },
     {
       "id": "telegram",
@@ -223,9 +675,13 @@
         "||telegram.me^",
         "||t.me^",
         "||telegra.ph^",
-        "||telesco.pe^"
+        "||telesco.pe^",
+        "||cdn-telegram.org^",
+        "||telegram.dog^",
+        "||tg.dev^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "note": "Telegram apps can reach their servers by built-in IP addresses; this blocks the website, links, web app and media, not always the app itself."
     },
     {
       "id": "signal",
@@ -237,9 +693,92 @@
         "||signal.me^",
         "||signal.group^",
         "||signal.art^",
-        "||whispersystems.org^"
+        "||whispersystems.org^",
+        "||signal.tube^"
       ],
       "source": "first-party domains of the service"
+    },
+    {
+      "id": "viber",
+      "icon": "viber",
+      "name": "Viber",
+      "category": "messaging",
+      "rules": [
+        "||viber.com^",
+        "||viber.me^",
+        "||vb.me^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "wechat",
+      "icon": "wechat",
+      "name": "WeChat",
+      "category": "messaging",
+      "rules": [
+        "||wechat.com^",
+        "||weixin.qq.com^",
+        "||wx.qq.com^",
+        "||wx2.qq.com^",
+        "||weixin.com^",
+        "||servicewechat.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Blocking weixin.qq.com also affects WeCom; images on Tencent CDNs shared with QQ stay reachable."
+    },
+    {
+      "id": "line",
+      "name": "LINE",
+      "category": "messaging",
+      "rules": [
+        "||line.me^",
+        "||line-apps.com^",
+        "||line-scdn.net^",
+        "||line-cdn.net^",
+        "||lin.ee^",
+        "||line.naver.jp^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Sign-in with LINE on other websites (access.line.me) stops working too."
+    },
+    {
+      "id": "kakaotalk",
+      "name": "KakaoTalk",
+      "category": "messaging",
+      "rules": [
+        "||kakaotalk.com^",
+        "||talk.kakao.com^",
+        "||katalk.kakao.com^",
+        "||booking-loco.kakao.com^",
+        "||ticket-loco.kakao.com^",
+        "||talk-pilsner.kakao.com^",
+        "||talk-apps.kakao.com^",
+        "||open.kakao.com^"
+      ],
+      "source": "first-party domains of the service; talk-apps host name from http://developers.kakao.com/docs/ko/reference/firewall",
+      "note": "Kakao Account sign-in and other Kakao services on kakao.com stay reachable."
+    },
+    {
+      "id": "youtube",
+      "icon": "youtube",
+      "name": "YouTube",
+      "category": "video",
+      "rules": [
+        "||youtube.com^",
+        "||youtu.be^",
+        "||yt.be^",
+        "||ytimg.com^",
+        "||googlevideo.com^",
+        "||youtube-nocookie.com^",
+        "||youtubei.googleapis.com^",
+        "||youtube.googleapis.com^",
+        "||youtubekids.com^",
+        "||yt3.ggpht.com^"
+      ],
+      "source": "first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users",
+      "related": [
+        "youtubemusic"
+      ]
     },
     {
       "id": "twitch",
@@ -298,7 +837,10 @@
         "||bamgrid.com^",
         "||dssott.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "hulu"
+      ]
     },
     {
       "id": "hulu",
@@ -310,7 +852,10 @@
         "||huluim.com^",
         "||hulustream.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "disneyplus"
+      ]
     },
     {
       "id": "vimeo",
@@ -319,6 +864,151 @@
       "rules": [
         "||vimeo.com^",
         "||vimeocdn.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "max",
+      "icon": "hbo",
+      "name": "HBO Max",
+      "category": "video",
+      "rules": [
+        "||max.com^",
+        "||hbomax.com^",
+        "||hbo.com^",
+        "||discomax.com^",
+        "||hbogo.com^",
+        "||hbonow.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Also blocks HBO's own website (hbo.com)."
+    },
+    {
+      "id": "paramountplus",
+      "icon": "paramount-plus",
+      "name": "Paramount+",
+      "category": "video",
+      "rules": [
+        "||paramountplus.com^",
+        "||pplusstatic.com^",
+        "||cbsaavideo.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "plutotv"
+      ]
+    },
+    {
+      "id": "peacock",
+      "icon": "peacock",
+      "name": "Peacock",
+      "category": "video",
+      "rules": [
+        "||peacocktv.com^",
+        "||peacock.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "appletv",
+      "icon": "apple-tv-plus",
+      "name": "Apple TV+",
+      "category": "video",
+      "rules": [
+        "||tv.apple.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "applemusic"
+      ],
+      "note": "Blocks the Apple TV app's catalogue and web player only; apple.com and Apple's shared media servers stay reachable, so downloaded shows may still play."
+    },
+    {
+      "id": "crunchyroll",
+      "icon": "crunchyroll",
+      "name": "Crunchyroll",
+      "category": "video",
+      "rules": [
+        "||crunchyroll.com^",
+        "||crunchyroll.co^",
+        "||vrv.co^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "plex",
+      "icon": "plex",
+      "name": "Plex",
+      "category": "video",
+      "rules": [
+        "||plex.tv^",
+        "||plex.direct^",
+        "||plexapp.com^",
+        "||plex.app^"
+      ],
+      "source": "first-party domains of the service; plex.direct and app.plex.tv from https://support.plex.tv/articles/206225077-how-to-use-secure-server-connections/",
+      "note": "Blocking plex.direct also stops secure connections to a Plex server on the home network."
+    },
+    {
+      "id": "kick",
+      "icon": "kick",
+      "name": "Kick",
+      "category": "video",
+      "rules": [
+        "||kick.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "dailymotion",
+      "name": "Dailymotion",
+      "category": "video",
+      "rules": [
+        "||dailymotion.com^",
+        "||dmcdn.net^",
+        "||dai.ly^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "plutotv",
+      "name": "Pluto TV",
+      "category": "video",
+      "rules": [
+        "||pluto.tv^",
+        "||plutotv.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "paramountplus"
+      ]
+    },
+    {
+      "id": "tubi",
+      "name": "Tubi",
+      "category": "video",
+      "rules": [
+        "||tubitv.com^",
+        "||tubi.tv^",
+        "||tubi.io^",
+        "||adrise.tv^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "bilibili",
+      "icon": "bilibili",
+      "name": "Bilibili",
+      "category": "video",
+      "rules": [
+        "||bilibili.com^",
+        "||bilibili.tv^",
+        "||b23.tv^",
+        "||hdslb.com^",
+        "||bilivideo.com^",
+        "||biliapi.net^",
+        "||biliapi.com^",
+        "||acgvideo.com^"
       ],
       "source": "first-party domains of the service"
     },
@@ -332,9 +1022,84 @@
         "||scdn.co^",
         "||spotifycdn.com^",
         "||spoti.fi^",
-        "||pscdn.co^"
+        "||pscdn.co^",
+        "||spotify.link^"
       ],
       "source": "first-party domains of the service"
+    },
+    {
+      "id": "soundcloud",
+      "icon": "soundcloud",
+      "name": "SoundCloud",
+      "category": "music",
+      "rules": [
+        "||soundcloud.com^",
+        "||sndcdn.com^",
+        "||snd.sc^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "deezer",
+      "icon": "deezer",
+      "name": "Deezer",
+      "category": "music",
+      "rules": [
+        "||deezer.com^",
+        "||dzcdn.net^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "tidal",
+      "icon": "tidal",
+      "name": "TIDAL",
+      "category": "music",
+      "rules": [
+        "||tidal.com^",
+        "||tidalhifi.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "pandora",
+      "name": "Pandora",
+      "category": "music",
+      "rules": [
+        "||pandora.com^",
+        "||p-cdn.com^",
+        "||p-cdn.us^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "applemusic",
+      "icon": "apple-music",
+      "name": "Apple Music",
+      "category": "music",
+      "rules": [
+        "||music.apple.com^",
+        "||applemusic.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "appletv"
+      ],
+      "note": "Blocks the Apple Music catalogue and web player; apple.com, the iTunes Store and sign-in stay reachable, and downloaded music keeps playing."
+    },
+    {
+      "id": "youtubemusic",
+      "icon": "youtube-music",
+      "name": "YouTube Music",
+      "category": "music",
+      "rules": [
+        "||music.youtube.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "youtube"
+      ],
+      "note": "Also blocked by the YouTube block. On its own this stops the website; the app shares YouTube's servers and may keep working."
     },
     {
       "id": "steam",
@@ -349,7 +1114,8 @@
         "||steamserver.net^",
         "||steamusercontent.com^",
         "||steamgames.com^",
-        "||steam-chat.com^"
+        "||steam-chat.com^",
+        "||s.team^"
       ],
       "source": "first-party domains of the service"
     },
@@ -362,7 +1128,10 @@
         "||epicgames.com^",
         "||epicgames.dev^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service",
+      "related": [
+        "fortnite"
+      ]
     },
     {
       "id": "fortnite",
@@ -372,7 +1141,11 @@
         "||fortnite.com^",
         "||fortnite.net^"
       ],
-      "source": "first-party domains of the service; the game also signs in through Epic Games' services, so block epicgames as well to stop it"
+      "source": "first-party domains of the service",
+      "requires": [
+        "epicgames"
+      ],
+      "note": "Fortnite signs in and updates through Epic Games, so block Epic Games as well to stop it."
     },
     {
       "id": "roblox",
@@ -382,7 +1155,8 @@
         "||roblox.com^",
         "||rbxcdn.com^",
         "||rbx.com^",
-        "||robloxlabs.com^"
+        "||robloxlabs.com^",
+        "||rbxinfra.com^"
       ],
       "source": "first-party domains of the service"
     },
@@ -396,7 +1170,11 @@
         "||minecraftservices.com^",
         "||minecraft-services.net^"
       ],
-      "source": "first-party domains of the service; Microsoft account and Xbox sign-in are shared with other Microsoft services and not included"
+      "source": "first-party domains of the service",
+      "related": [
+        "xbox"
+      ],
+      "note": "Minecraft signs in through Xbox network; Microsoft account sign-in is shared with other Microsoft services and stays reachable."
     },
     {
       "id": "riotgames",
@@ -407,20 +1185,331 @@
         "||riotgames.com^",
         "||leagueoflegends.com^",
         "||playvalorant.com^",
-        "||riotcdn.net^"
+        "||riotcdn.net^",
+        "||pvp.net^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "valorant"
+      ]
+    },
+    {
+      "id": "xbox",
+      "icon": "xbox",
+      "name": "Xbox network",
+      "category": "gaming",
+      "rules": [
+        "||xbox.com^",
+        "||xboxlive.com^",
+        "||xboxservices.com^",
+        "||gamepass.com^"
+      ],
+      "source": "first-party domains of the service; xboxlive.com and xbox.com from https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network",
+      "related": [
+        "minecraft"
+      ],
+      "note": "Also stops Xbox sign-in in Minecraft and other PC/mobile games. Microsoft account sign-in is shared with other Microsoft services and stays reachable."
+    },
+    {
+      "id": "playstation",
+      "icon": "playstation",
+      "name": "PlayStation Network",
+      "category": "gaming",
+      "rules": [
+        "||playstation.com^",
+        "||playstation.net^",
+        "||sonyentertainmentnetwork.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Sony account sign-in (account.sony.com) is shared with other Sony services and stays reachable."
+    },
+    {
+      "id": "nintendo",
+      "icon": "nintendo-switch",
+      "name": "Nintendo Switch Online",
+      "category": "gaming",
+      "rules": [
+        "||nintendo.com^",
+        "||nintendo.net^",
+        "||nintendowifi.net^",
+        "||nintendo.co.jp^",
+        "||nintendo.co.uk^",
+        "||nintendo.de^",
+        "||nintendo.eu^",
+        "||nintendo-europe.com^",
+        "||nintendo.com.au^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Games already on the console keep working offline; this blocks online play, the eShop, system updates and the Nintendo Account."
+    },
+    {
+      "id": "battlenet",
+      "name": "Battle.net",
+      "category": "gaming",
+      "rules": [
+        "||battle.net^",
+        "||blizzard.com^",
+        "||battlenet.com.cn^",
+        "||blizzard.cn^",
+        "||worldofwarcraft.com^",
+        "||playoverwatch.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Blizzard games sold on Steam or consoles still sign in with Battle.net accounts, so this stops those too."
+    },
+    {
+      "id": "ea",
+      "icon": "electronic-arts",
+      "name": "EA app",
+      "category": "gaming",
+      "rules": [
+        "||ea.com^",
+        "||origin.com^",
+        "||eaplay.com^",
+        "||easports.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "EA games bought on Steam or Epic also sign in through EA accounts, so this stops those too."
+    },
+    {
+      "id": "ubisoft",
+      "name": "Ubisoft Connect",
+      "category": "gaming",
+      "rules": [
+        "||ubisoft.com^",
+        "||ubi.com^",
+        "||ubisoftconnect.com^",
+        "||uplay.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Ubisoft games bought on Steam or Epic also sign in through Ubisoft Connect, so this stops those too."
+    },
+    {
+      "id": "valorant",
+      "name": "VALORANT",
+      "category": "gaming",
+      "rules": [
+        "||playvalorant.com^",
+        "||pvp.net^"
+      ],
+      "source": "first-party domains of the service",
+      "requires": [
+        "riotgames"
+      ],
+      "related": [
+        "riotgames"
+      ],
+      "note": "VALORANT signs in through the Riot Client, so block Riot Games as well to stop it."
+    },
+    {
+      "id": "gog",
+      "name": "GOG",
+      "category": "gaming",
+      "rules": [
+        "||gog.com^",
+        "||gogalaxy.com^",
+        "||gog-statics.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "GOG games are DRM-free, so installed games keep working."
+    },
+    {
+      "id": "itchio",
+      "name": "itch.io",
+      "category": "gaming",
+      "rules": [
+        "||itch.io^",
+        "||itch.zone^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Games already downloaded keep working."
+    },
+    {
+      "id": "hoyoverse",
+      "name": "HoYoverse (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero)",
+      "category": "gaming",
+      "rules": [
+        "||hoyoverse.com^",
+        "||hoyolab.com^",
+        "||mihoyo.com^",
+        "||yuanshen.com^",
+        "||starrails.com^",
+        "||zenlesszonezero.com^",
+        "||honkaiimpact3.com^",
+        "||bh3.com^"
       ],
       "source": "first-party domains of the service"
     },
     {
-      "id": "chatgpt",
-      "icon": "chatgpt",
-      "name": "ChatGPT",
-      "category": "ai",
+      "id": "supercell",
+      "name": "Supercell (Clash of Clans, Clash Royale, Brawl Stars)",
+      "category": "gaming",
       "rules": [
-        "||chatgpt.com^",
-        "||openai.com^",
-        "||oaistatic.com^",
-        "||oaiusercontent.com^"
+        "||supercell.com^",
+        "||supercell.net^",
+        "||clashofclans.com^",
+        "||clashroyale.com^",
+        "||brawlstars.com^",
+        "||haydaygame.com^",
+        "||boombeachgame.com^",
+        "||squadbusters.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "rockstar",
+      "name": "Rockstar Games",
+      "category": "gaming",
+      "rules": [
+        "||rockstargames.com^",
+        "||rockstar.com^",
+        "||rsg.sc^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Rockstar games bought on Steam or Epic also sign in through the Rockstar Games Launcher, so this stops their online play too."
+    },
+    {
+      "id": "pubg",
+      "name": "PUBG: Battlegrounds",
+      "category": "gaming",
+      "rules": [
+        "||pubg.com^",
+        "||playbattlegrounds.com^",
+        "||pubgmobile.com^",
+        "||battlegroundsmobileindia.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "PUBG on PC is sold through Steam; PUBG Mobile's game servers are run by Tencent and are not all covered."
+    },
+    {
+      "id": "amazon",
+      "icon": "amazon",
+      "name": "Amazon",
+      "category": "shopping",
+      "rules": [
+        "||amazon.com^",
+        "||amazon.co.uk^",
+        "||amazon.de^",
+        "||amazon.fr^",
+        "||amazon.it^",
+        "||amazon.es^",
+        "||amazon.ca^",
+        "||amazon.co.jp^",
+        "||amazon.com.au^",
+        "||amazon.in^",
+        "||amazon.com.mx^",
+        "||amazon.com.br^",
+        "||amazon.nl^",
+        "||amazon.se^",
+        "||amazon.pl^",
+        "||amazon.sg^",
+        "||amazon.ae^",
+        "||amazon.sa^",
+        "||amazon.com.tr^",
+        "||amazon.com.be^",
+        "||amazon.eg^",
+        "||amzn.to^",
+        "||amzn.eu^",
+        "||a.co^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "primevideo"
+      ],
+      "note": "Prime Video, Alexa, Kindle and Audible sign in through amazon.com, so they stop working too; image CDNs shared with IMDb and Prime Video stay reachable."
+    },
+    {
+      "id": "ebay",
+      "icon": "ebay",
+      "name": "eBay",
+      "category": "shopping",
+      "rules": [
+        "||ebay.com^",
+        "||ebay.co.uk^",
+        "||ebay.de^",
+        "||ebay.fr^",
+        "||ebay.it^",
+        "||ebay.es^",
+        "||ebay.ca^",
+        "||ebay.com.au^",
+        "||ebay.at^",
+        "||ebay.ch^",
+        "||ebay.ie^",
+        "||ebay.nl^",
+        "||ebay.be^",
+        "||ebay.pl^",
+        "||ebay.com.sg^",
+        "||ebay.com.hk^",
+        "||ebay.us^",
+        "||ebaystatic.com^",
+        "||ebayimg.com^",
+        "||ebaydesc.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "temu",
+      "name": "Temu",
+      "category": "shopping",
+      "rules": [
+        "||temu.com^",
+        "||kwcdn.com^",
+        "||temucdn.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "shein",
+      "name": "SHEIN",
+      "category": "shopping",
+      "rules": [
+        "||shein.com^",
+        "||ltwebstatic.com^",
+        "||shein.co.uk^",
+        "||shein.in^",
+        "||shein.tw^",
+        "||shein.se^",
+        "||shein.com.mx^",
+        "||shein.com.vn^",
+        "||shein.com.co^",
+        "||shein.com.hk^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "aliexpress",
+      "icon": "aliexpress",
+      "name": "AliExpress",
+      "category": "shopping",
+      "rules": [
+        "||aliexpress.com^",
+        "||aliexpress.us^",
+        "||aliexpress.ru^",
+        "||aliexpress-media.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "alicdn.com is shared with Alibaba and Taobao and stays reachable."
+    },
+    {
+      "id": "etsy",
+      "name": "Etsy",
+      "category": "shopping",
+      "rules": [
+        "||etsy.com^",
+        "||etsystatic.com^",
+        "||etsy.me^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "walmart",
+      "name": "Walmart",
+      "category": "shopping",
+      "rules": [
+        "||walmart.com^",
+        "||walmartimages.com^",
+        "||walmart.ca^",
+        "||wal.co^"
       ],
       "source": "first-party domains of the service"
     },
@@ -431,6 +1520,717 @@
       "rules": [
         "||tinder.com^",
         "||gotinder.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "hinge",
+        "okcupid",
+        "match",
+        "pof"
+      ],
+      "note": "Sign-in with Google, Facebook or Apple is shared with other services and stays reachable."
+    },
+    {
+      "id": "bumble",
+      "name": "Bumble",
+      "category": "dating",
+      "rules": [
+        "||bumble.com^",
+        "||bumbcdn.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "badoo"
+      ]
+    },
+    {
+      "id": "hinge",
+      "name": "Hinge",
+      "category": "dating",
+      "rules": [
+        "||hinge.co^",
+        "||hingeaws.net^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "tinder",
+        "okcupid",
+        "match",
+        "pof"
+      ]
+    },
+    {
+      "id": "okcupid",
+      "name": "OkCupid",
+      "category": "dating",
+      "rules": [
+        "||okcupid.com^",
+        "||okccdn.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "tinder",
+        "hinge",
+        "match",
+        "pof"
+      ]
+    },
+    {
+      "id": "grindr",
+      "name": "Grindr",
+      "category": "dating",
+      "rules": [
+        "||grindr.com^",
+        "||grindr.mobi^",
+        "||grindr.io^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "match",
+      "name": "Match",
+      "category": "dating",
+      "rules": [
+        "||match.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "tinder",
+        "hinge",
+        "okcupid",
+        "pof"
+      ]
+    },
+    {
+      "id": "badoo",
+      "name": "Badoo",
+      "category": "dating",
+      "rules": [
+        "||badoo.com^",
+        "||badoocdn.com^",
+        "||badoo.app^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "bumble"
+      ]
+    },
+    {
+      "id": "pof",
+      "name": "Plenty of Fish",
+      "category": "dating",
+      "rules": [
+        "||pof.com^",
+        "||plentyoffish.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "tinder",
+        "hinge",
+        "okcupid",
+        "match"
+      ]
+    },
+    {
+      "id": "bet365",
+      "name": "bet365",
+      "category": "gambling",
+      "rules": [
+        "||bet365.com^",
+        "||bet365.co.uk^",
+        "||bet365.es^",
+        "||bet365.it^",
+        "||bet365.de^",
+        "||bet365.dk^",
+        "||bet365.gr^",
+        "||bet365.nl^",
+        "||bet365.ca^",
+        "||bet365.com.au^",
+        "||bet365.bet.br^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "draftkings",
+      "name": "DraftKings",
+      "category": "gambling",
+      "rules": [
+        "||draftkings.com^",
+        "||draftkings.ca^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "fanduel",
+      "name": "FanDuel",
+      "category": "gambling",
+      "rules": [
+        "||fanduel.com^",
+        "||fanduel.ca^",
+        "||fndl.co^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "betfair",
+        "pokerstars"
+      ]
+    },
+    {
+      "id": "williamhill",
+      "name": "William Hill",
+      "category": "gambling",
+      "rules": [
+        "||williamhill.com^",
+        "||williamhill.co.uk^",
+        "||williamhill.es^",
+        "||williamhill.it^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "William Hill's former US sportsbook is now Caesars Sportsbook and is not covered."
+    },
+    {
+      "id": "betfair",
+      "name": "Betfair",
+      "category": "gambling",
+      "rules": [
+        "||betfair.com^",
+        "||betfair.co.uk^",
+        "||betfair.it^",
+        "||betfair.es^",
+        "||betfair.ro^",
+        "||betfair.com.au^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "pokerstars",
+        "fanduel"
+      ]
+    },
+    {
+      "id": "pokerstars",
+      "name": "PokerStars",
+      "category": "gambling",
+      "rules": [
+        "||pokerstars.com^",
+        "||pokerstars.net^",
+        "||pokerstars.eu^",
+        "||pokerstars.uk^",
+        "||pokerstars.it^",
+        "||pokerstars.es^",
+        "||pokerstars.fr^",
+        "||pokerstars.de^",
+        "||pokerstars.se^",
+        "||pokerstars.dk^",
+        "||pokerstars.ca^",
+        "||pokerstarscasino.com^"
+      ],
+      "source": "first-party domains of the service",
+      "related": [
+        "betfair",
+        "fanduel"
+      ]
+    },
+    {
+      "id": "stake",
+      "name": "Stake",
+      "category": "gambling",
+      "rules": [
+        "||stake.com^",
+        "||stake.us^",
+        "||playstake.club^",
+        "||playstake.info^",
+        "||playstake.io^",
+        "||playstake.casino^"
+      ],
+      "source": "first-party domains of the service; mirror domains from https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them",
+      "note": "Stake.us is Stake's US sweepstakes site."
+    },
+    {
+      "id": "betway",
+      "name": "Betway",
+      "category": "gambling",
+      "rules": [
+        "||betway.com^",
+        "||betway.co.uk^",
+        "||betway.es^",
+        "||betway.it^",
+        "||betway.de^",
+        "||betway.be^",
+        "||betway.ca^",
+        "||betway.mx^",
+        "||betway.com.mx^",
+        "||betway.co.za^",
+        "||betway.com.gh^",
+        "||betway.com.ng^",
+        "||betway.co.zm^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "cnn",
+      "name": "CNN",
+      "category": "news",
+      "rules": [
+        "||cnn.com^",
+        "||cnn.io^",
+        "||cnn.it^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "bbc",
+      "name": "BBC",
+      "category": "news",
+      "rules": [
+        "||bbc.com^",
+        "||bbc.co.uk^",
+        "||bbci.co.uk^",
+        "||bbc.in^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Includes BBC iPlayer and BBC Sounds, which run on bbc.co.uk."
+    },
+    {
+      "id": "nytimes",
+      "name": "The New York Times",
+      "category": "news",
+      "rules": [
+        "||nytimes.com^",
+        "||nyt.com^",
+        "||nyti.ms^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Also blocks NYT Games (Wordle, Connections), Cooking and Wirecutter, which are on nytimes.com."
+    },
+    {
+      "id": "foxnews",
+      "name": "Fox News",
+      "category": "news",
+      "rules": [
+        "||foxnews.com^",
+        "||fncstatic.com^",
+        "||foxnation.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Fox Business and Fox entertainment sites are not included."
+    },
+    {
+      "id": "theguardian",
+      "name": "The Guardian",
+      "category": "news",
+      "rules": [
+        "||theguardian.com^",
+        "||guim.co.uk^",
+        "||guardian.co.uk^",
+        "||guardianapis.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "quora",
+      "name": "Quora",
+      "category": "forums",
+      "rules": [
+        "||quora.com^",
+        "||quoracdn.net^",
+        "||qr.ae^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "4chan",
+      "icon": "4chan",
+      "name": "4chan",
+      "category": "forums",
+      "rules": [
+        "||4chan.org^",
+        "||4cdn.org^",
+        "||4channel.org^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "stackexchange",
+      "name": "Stack Overflow & Stack Exchange",
+      "category": "forums",
+      "rules": [
+        "||stackoverflow.com^",
+        "||stackexchange.com^",
+        "||sstatic.net^",
+        "||superuser.com^",
+        "||serverfault.com^",
+        "||askubuntu.com^",
+        "||mathoverflow.net^",
+        "||stackapps.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Stack Overflow for Teams (stackoverflowteams.com) and the company site stackoverflow.co are not blocked."
+    },
+    {
+      "id": "dropbox",
+      "icon": "dropbox",
+      "name": "Dropbox",
+      "category": "productivity",
+      "rules": [
+        "||dropbox.com^",
+        "||dropboxapi.com^",
+        "||dropboxstatic.com^",
+        "||dropboxusercontent.com^",
+        "||db.tt^",
+        "||getdropbox.com^",
+        "||dropboxbusiness.com^",
+        "||dropboxcaptcha.com^",
+        "||addtodropbox.com^"
+      ],
+      "source": "first-party domains of the service; verified and user-content domains from https://help.dropbox.com/security/official-domains",
+      "note": "DocSend and Dropbox Sign (HelloSign) use their own domains and are not blocked."
+    },
+    {
+      "id": "googledrive",
+      "icon": "google-drive",
+      "name": "Google Drive",
+      "category": "productivity",
+      "rules": [
+        "||drive.google.com^",
+        "||docs.google.com^",
+        "||drive.usercontent.google.com^",
+        "||sheets.google.com^",
+        "||slides.google.com^",
+        "||googledrive.com^"
+      ],
+      "source": "first-party domains of the service; Drive and Docs host names from https://knowledge.workspace.google.com/admin/drive/drive-and-sites-firewall-and-proxy-settings",
+      "note": "This also blocks Docs, Sheets, Slides and Forms, which Classroom relies on. Google sign-in is shared and stays reachable."
+    },
+    {
+      "id": "onedrive",
+      "icon": "microsoft-onedrive",
+      "name": "OneDrive",
+      "category": "productivity",
+      "rules": [
+        "||onedrive.live.com^",
+        "||onedrive.com^",
+        "||1drv.ms^",
+        "||1drv.com^",
+        "||storage.live.com^",
+        "||skyapi.live.net^",
+        "||skydrive.live.com^",
+        "||livefilestore.com^"
+      ],
+      "source": "first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports",
+      "note": "Personal OneDrive only: OneDrive for work or school runs on SharePoint (sharepoint.com) and Microsoft sign-in, both shared and still reachable."
+    },
+    {
+      "id": "icloud",
+      "icon": "icloud",
+      "name": "iCloud",
+      "category": "productivity",
+      "rules": [
+        "||icloud.com^",
+        "||icloud.com.cn^",
+        "||icloud-content.com^",
+        "||iwork.apple.com^"
+      ],
+      "source": "first-party domains of the service; iCloud host names from https://support.apple.com/en-us/101555",
+      "note": "Blocking icloud.com also breaks Apple device services: iCloud sign-in, backup, Find My, Keychain, iCloud Mail and Private Relay."
+    },
+    {
+      "id": "box",
+      "icon": "box",
+      "name": "Box",
+      "category": "productivity",
+      "rules": [
+        "||box.com^",
+        "||box.net^",
+        "||boxcdn.net^",
+        "||boxcloud.com^",
+        "||boxenterprise.net^"
+      ],
+      "source": "first-party domains of the service; core domains from https://support.box.com/hc/en-us/articles/360043696434-Allowing-Box-Domains-on-Your-Network"
+    },
+    {
+      "id": "mega",
+      "icon": "mega-nz",
+      "name": "MEGA",
+      "category": "productivity",
+      "rules": [
+        "||mega.nz^",
+        "||mega.co.nz^",
+        "||mega.io^",
+        "||mega.app^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "wetransfer",
+      "name": "WeTransfer",
+      "category": "productivity",
+      "rules": [
+        "||wetransfer.com^",
+        "||wetransfer.net^",
+        "||we.tl^"
+      ],
+      "source": "first-party domains of the service; host names from https://wetransfer.com/help-center/troubleshooting/configure-firewall",
+      "note": "Transfers are stored on Amazon S3, which is shared infrastructure and not blocked; the website and transfer links stop working."
+    },
+    {
+      "id": "notion",
+      "icon": "notion",
+      "name": "Notion",
+      "category": "productivity",
+      "rules": [
+        "||notion.so^",
+        "||notion.com^",
+        "||notion.site^",
+        "||notionusercontent.com^",
+        "||notion-static.com^"
+      ],
+      "source": "first-party domains of the service; Notion-owned domains from https://www.notion.com/help/allowlist-ip"
+    },
+    {
+      "id": "slack",
+      "icon": "slack",
+      "name": "Slack",
+      "category": "productivity",
+      "rules": [
+        "||slack.com^",
+        "||slack-edge.com^",
+        "||slack-imgs.com^",
+        "||slack-files.com^",
+        "||slackb.com^",
+        "||slack-redir.net^",
+        "||slack-msgs.com^"
+      ],
+      "source": "first-party domains of the service; host names from https://slack.com/help/articles/360001603387-Manage-Slack-connection-issues"
+    },
+    {
+      "id": "zoom",
+      "icon": "zoom",
+      "name": "Zoom",
+      "category": "productivity",
+      "rules": [
+        "||zoom.us^",
+        "||zoom.com^",
+        "||zoomgov.com^",
+        "||zoomapp.cloud^"
+      ],
+      "source": "first-party domains of the service; core domains from https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060548",
+      "note": "Zoom media servers are reached by IP address; this blocks sign-in, joining and the web client, not a meeting already in progress."
+    },
+    {
+      "id": "mediafire",
+      "icon": "mediafire",
+      "name": "MediaFire",
+      "category": "productivity",
+      "rules": [
+        "||mediafire.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "nordvpn",
+      "icon": "nordvpn",
+      "name": "NordVPN",
+      "category": "vpn",
+      "rules": [
+        "||nordvpn.com^",
+        "||nordvpn.net^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect by IP address; this blocks the website, sign-up and app updates, not an established tunnel. Nord Account is shared with NordPass."
+    },
+    {
+      "id": "expressvpn",
+      "icon": "expressvpn",
+      "name": "ExpressVPN",
+      "category": "vpn",
+      "rules": [
+        "||expressvpn.com^",
+        "||expressvpn.net^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "protonvpn",
+      "icon": "proton-vpn",
+      "name": "Proton VPN",
+      "category": "vpn",
+      "rules": [
+        "||protonvpn.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect by IP address; this blocks the website and downloads. Proton sign-in and API on proton.me are shared with Proton Mail and stay reachable."
+    },
+    {
+      "id": "surfshark",
+      "icon": "surfshark",
+      "name": "Surfshark",
+      "category": "vpn",
+      "rules": [
+        "||surfshark.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "privateinternetaccess",
+      "icon": "private-internet-access",
+      "name": "Private Internet Access",
+      "category": "vpn",
+      "rules": [
+        "||privateinternetaccess.com^",
+        "||piavpn.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "cyberghost",
+      "name": "CyberGhost",
+      "category": "vpn",
+      "rules": [
+        "||cyberghostvpn.com^",
+        "||cyberghost.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "windscribe",
+      "name": "Windscribe",
+      "category": "vpn",
+      "rules": [
+        "||windscribe.com^",
+        "||windscribe.net^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "tunnelbear",
+      "name": "TunnelBear",
+      "category": "vpn",
+      "rules": [
+        "||tunnelbear.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "hotspotshield",
+      "name": "Hotspot Shield",
+      "category": "vpn",
+      "rules": [
+        "||hotspotshield.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
+    },
+    {
+      "id": "psiphon",
+      "name": "Psiphon",
+      "category": "vpn",
+      "rules": [
+        "||psiphon.ca^",
+        "||psiphon3.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Psiphon connects by IP and also ships through cloud-storage mirrors and email; this blocks its website and main download sites only."
+    },
+    {
+      "id": "torproject",
+      "name": "Tor Project",
+      "category": "vpn",
+      "rules": [
+        "||torproject.org^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Tor connects to relays and bridges by IP address; this blocks the Tor Project website, downloads and bridge requests, not an installed Tor Browser."
+    },
+    {
+      "id": "binance",
+      "name": "Binance",
+      "category": "crypto",
+      "rules": [
+        "||binance.com^",
+        "||binance.us^",
+        "||bnbstatic.com^"
+      ],
+      "source": "first-party domains of the service",
+      "note": "Binance.US is a separately run US exchange under the same brand."
+    },
+    {
+      "id": "coinbase",
+      "name": "Coinbase",
+      "category": "crypto",
+      "rules": [
+        "||coinbase.com^",
+        "||cbhq.net^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "kraken",
+      "name": "Kraken",
+      "category": "crypto",
+      "rules": [
+        "||kraken.com^",
+        "||krak.app^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "cryptocom",
+      "name": "Crypto.com",
+      "category": "crypto",
+      "rules": [
+        "||crypto.com^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "bybit",
+      "name": "Bybit",
+      "category": "crypto",
+      "rules": [
+        "||bybit.com^",
+        "||bybit.eu^",
+        "||bybitglobal.com^",
+        "||bybit-global.com^",
+        "||bybit.kz^",
+        "||bybit.tr^",
+        "||bybit-tr.com^",
+        "||bybitgeorgia.ge^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "okx",
+      "name": "OKX",
+      "category": "crypto",
+      "rules": [
+        "||okx.com^",
+        "||okex.com^",
+        "||okx.ac^",
+        "||okx.cab^",
+        "||okx.reise^"
+      ],
+      "source": "first-party domains of the service"
+    },
+    {
+      "id": "kucoin",
+      "name": "KuCoin",
+      "category": "crypto",
+      "rules": [
+        "||kucoin.com^",
+        "||kucoinauth.cloud^",
+        "||kucoin.club^",
+        "||kucoin.cloud^",
+        "||kucoin.biz^",
+        "||kucoin.plus^",
+        "||kucoin.work^",
+        "||kucoin.tr^",
+        "||kucoin.th^"
       ],
       "source": "first-party domains of the service"
     }

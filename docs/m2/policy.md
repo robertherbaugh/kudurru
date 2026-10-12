@@ -48,7 +48,7 @@ Within a tier every matching group is joined. A tie between equal entries in dif
   - A ref to a BlockList that exists but is not compiled yet is reported by `NotLoaded()`, which feeds readiness.
   - Dangling refs are `MissingReference`.
   - A list referenced under the wrong field is `ModeMismatch`, and its own mode still applies.
-- **Blocked services (D60):** `blockedServices` IDs resolve to the catalogue's compiled lists `service:<id>` (internal/listdata/catalogue), which the list resolver compiles into the same snapshot as the BlockLists (`listfetcher.ResolverOptions.Extra`). An ID the catalogue does not have is `UnknownService` (and the controller sets `Degraded{UnknownService}` on the Policy); a known one not compiled yet is `NotLoaded`. See docs/deploy/blocked-services.md.
+- **Blocked services (D60):** `blockedServices` IDs resolve to the catalogue's compiled lists `service:<id>` (internal/listdata/catalogue), which the list resolver compiles into the same snapshot as the BlockLists (`listfetcher.ResolverOptions.Extra`). An ID the catalogue does not have is `UnknownService` (and the controller sets `Degraded{UnknownService}` on the Policy); a known one not compiled yet is `NotLoaded`. `blockedCategories` add every service of those categories in the catalogue in service, minus `allowedServices` (`policy.EffectiveServices`); an unknown category is `UnknownCategory`. The Index is rebuilt with every snapshot and a catalogue change recompiles the snapshot, so a service a newer catalogue adds to a blocked category is blocked from then on. See docs/deploy/blocked-services.md.
 
 ### Control stage
 

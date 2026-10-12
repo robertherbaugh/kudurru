@@ -55,6 +55,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | Method | Path | Summary | Permission |
 |---|---|---|---|
 | GET | `/api/v1/catalogue` | The blocked-services and safe-search catalogue in service | `policies.read` (cluster) |
+| GET | `/api/v1/catalogue/categories` | Categories Policy.spec.blockedCategories can block | `policies.read` (cluster) |
 | GET | `/api/v1/catalogue/icons` | Logos embedded in this build | public |
 | GET | `/api/v1/catalogue/icons/{file}` | One embedded logo (image/svg+xml) | public |
 | GET | `/api/v1/catalogue/safesearch` | Search engines Policy.spec.safeSearch rewrites | `policies.read` (cluster) |

@@ -39,10 +39,18 @@ type IconImage struct {
 // onDark maps an icon whose artwork is dark on a transparent background to
 // its dashboard-icons variant for dark backgrounds.
 var onDark = map[string]string{
-	"x":         "x-light",
-	"threads":   "threads-light",
-	"tiktok":    "tiktok-light",
-	"control-d": "control-d-dark",
+	"x":             "x-light",
+	"threads":       "threads-light",
+	"tiktok":        "tiktok-light",
+	"control-d":     "control-d-dark",
+	"amazon":        "amazon-light",
+	"apple-tv-plus": "apple-tv-plus-light",
+	"grok":          "grok-dark", // upstream names the white artwork -dark
+	"hbo":           "hbo-light",
+	"peacock":       "peacock-light",
+	"plex":          "plex-light",
+	"soundcloud":    "soundcloud-dark", // the default is currentColor, drawn black in <img>
+	"tidal":         "tidal-dark",
 }
 
 var icons = func() map[string]IconImage {

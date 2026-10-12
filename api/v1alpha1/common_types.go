@@ -37,6 +37,9 @@ const (
 	// ReasonUnknownService: a Policy's blockedServices names a service the
 	// blocked-services catalogue in service does not have.
 	ReasonUnknownService = "UnknownService"
+	// ReasonUnknownCategory: a Policy's blockedCategories names a category
+	// the catalogue in service does not have.
+	ReasonUnknownCategory = "UnknownCategory"
 	// ReasonUnsupported: the zone type is not served by this version.
 	ReasonUnsupported = "Unsupported"
 	// ReasonOccluded: records below a DNAME owner, which no lookup can

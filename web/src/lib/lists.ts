@@ -5,6 +5,7 @@
 // wizard offers.
 import type { BlockList, ListFormat, ListSource, SourceStatus } from '../api/types';
 import type { EnumOption } from '../components/fields/EnumSelect';
+import { CONTENT_CATEGORIES, contentListName, contentURL } from './contentCategories';
 import { formatExact } from './format';
 import { listEntryError } from './objectSchemas';
 
@@ -176,6 +177,8 @@ export interface CuratedList {
   size: string;
   /** Suggested source name. */
   source: string;
+  /** The wizard's group: general lists, or the Block List Project's topic lists (content categories). */
+  group?: 'blp';
 }
 
 export const CURATED_LISTS: CuratedList[] = [
@@ -268,3 +271,22 @@ export const CURATED_LISTS: CuratedList[] = [
     source: 'adguard-dns',
   },
 ];
+
+// The Block List Project's topic lists (the content categories policies
+// can turn on, lib/contentCategories.ts), as well-known lists too.
+CURATED_LISTS.push(
+  ...CONTENT_CATEGORIES.map(
+    (c): CuratedList => ({
+      id: contentListName(c.id),
+      name: c.name,
+      publisher: 'Block List Project',
+      url: contentURL(c),
+      format: 'domains',
+      licence: c.merges?.includes('GPL') ? 'Unlicense, merges GPL-3.0' : 'Unlicense',
+      description: `${c.description}${c.merges ? ` Merges ${c.merges}.` : ''}`,
+      size: c.size,
+      source: contentListName(c.id),
+      group: 'blp',
+    }),
+  ),
+);

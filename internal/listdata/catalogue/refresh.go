@@ -36,6 +36,17 @@ const (
 const (
 	fileDocument = "catalogue.json"
 	fileSource   = "catalogue.source"
+	fileAdGuard  = "adguard-services.json"
+	fileAdGuardS = "adguard-services.source"
+)
+
+// What a Refresher's URL serves (RefresherOptions.Kind).
+const (
+	// KindCatalogue: a kudurru catalogue document (blocking.catalogue.url).
+	KindCatalogue = "catalogue"
+	// KindAdGuard: AdGuard's HostlistsRegistry services document
+	// (blocking.catalogue.adguardServicesURL), merged in as an import.
+	KindAdGuard = "adguard"
 )
 
 // PullFunc fetches the catalogue the leader at addr serves
@@ -44,8 +55,10 @@ type PullFunc func(ctx context.Context, addr string) (body []byte, source string
 
 // RefresherOptions configure a Refresher.
 type RefresherOptions struct {
-	// URL is blocking.catalogue.url; required (an empty URL needs no
-	// refresher: the embedded catalogue serves).
+	// Kind is what URL serves: KindCatalogue (default) or KindAdGuard.
+	Kind string
+	// URL is blocking.catalogue.url (or adguardServicesURL); required (an
+	// empty URL needs no refresher: the embedded catalogue serves).
 	URL string
 	// RefreshInterval is blocking.catalogue.refreshInterval; default
 	// DefaultRefreshInterval, at least MinRefreshInterval.
@@ -70,6 +83,8 @@ type RefresherOptions struct {
 
 // Status reports the refresher's last attempt, for the API.
 type Status struct {
+	// Kind is KindCatalogue or KindAdGuard.
+	Kind string `json:"kind"`
 	// URL is blocking.catalogue.url.
 	URL string `json:"url"`
 	// LastAttempt and LastSuccess are zero before the first attempt.
@@ -110,6 +125,10 @@ func NewRefresher(opts RefresherOptions) (*Refresher, error) {
 		return nil, fmt.Errorf("catalogue: blocking.catalogue.url %q is not an http or https URL", opts.URL)
 	case opts.Holder == nil:
 		return nil, errors.New("catalogue: RefresherOptions.Holder is required")
+	case opts.Kind == "":
+		opts.Kind = KindCatalogue
+	case opts.Kind != KindCatalogue && opts.Kind != KindAdGuard:
+		return nil, fmt.Errorf("catalogue: unknown RefresherOptions.Kind %q", opts.Kind)
 	}
 	if opts.RefreshInterval <= 0 {
 		opts.RefreshInterval = DefaultRefreshInterval
@@ -130,7 +149,7 @@ func NewRefresher(opts RefresherOptions) (*Refresher, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Refresher{opts: opts, log: opts.Logger.With("component", "catalogue"), status: Status{URL: opts.URL}}, nil
+	return &Refresher{opts: opts, log: opts.Logger.With("component", "catalogue", "kind", opts.Kind), status: Status{Kind: opts.Kind, URL: opts.URL}}, nil
 }
 
 // NeedLeaderElection marks the Refresher as always-on: the leader
@@ -194,7 +213,7 @@ func (r *Refresher) Refresh(ctx context.Context) time.Duration {
 	since := r.leaderSince
 	r.mu.Unlock()
 	if now.Sub(since) >= r.opts.FallbackAfter {
-		r.log.Info("catalogue: the leader is unreachable; downloading it directly", "err", err)
+		r.log.Info("catalogue: the leader is unreachable; downloading directly", "err", err)
 		return r.download(ctx, now)
 	}
 	r.failed(now, err)
@@ -238,7 +257,7 @@ func (r *Refresher) fetch(ctx context.Context) error {
 	default:
 		return fmt.Errorf("GET %s: %s", r.opts.URL, resp.Status)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(r.maxBytes())+1))
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", r.opts.URL, err)
 	}
@@ -251,9 +270,19 @@ func (r *Refresher) fetch(ctx context.Context) error {
 	return nil
 }
 
+func (r *Refresher) maxBytes() int {
+	if r.opts.Kind == KindAdGuard {
+		return MaxAdGuardBytes
+	}
+	return MaxBytes
+}
+
 // apply validates body and serves it; an unchanged document is a no-op.
 func (r *Refresher) apply(body []byte, source string) error {
-	if r.opts.Holder.Current().Digest() == digestOf(body) {
+	if r.opts.Kind == KindAdGuard {
+		return r.applyImport(body, source)
+	}
+	if r.opts.Holder.Base().Digest() == digestOf(body) {
 		return nil
 	}
 	c, err := Parse(body, source)
@@ -262,16 +291,53 @@ func (r *Refresher) apply(body []byte, source string) error {
 	}
 	if r.opts.Holder.Set(c) {
 		r.log.Info("catalogue updated", "version", c.Version, "source", source, "services", len(c.Services), "safeSearch", len(c.SafeSearch), "digest", c.Digest())
-		r.persist(c)
+		r.persist(c.raw, c.Origin())
 	}
 	return nil
+}
+
+// applyImport is apply for KindAdGuard.
+func (r *Refresher) applyImport(body []byte, source string) error {
+	if cur := r.opts.Holder.Import(); cur != nil && cur.Digest() == digestOf(body) {
+		return nil
+	}
+	if len(body) > MaxAdGuardBytes {
+		return fmt.Errorf("catalogue: AdGuard services document is over the %d byte cap", MaxAdGuardBytes)
+	}
+	imp, err := ParseAdGuard(body, source)
+	if err != nil {
+		return err
+	}
+	if r.opts.Holder.SetImport(imp) {
+		_, shadowed := r.opts.Holder.Current().Imported()
+		r.log.Info("AdGuard services imported", "source", source, "services", len(imp.Services), "shadowed", shadowed,
+			"skipped", imp.Skipped, "droppedRules", imp.DroppedRules, "digest", imp.Digest())
+		r.persist(imp.raw, imp.origin)
+	}
+	return nil
+}
+
+// files are the names of the kept document and its source under Dir.
+func (r *Refresher) files() (doc, src string) {
+	if r.opts.Kind == KindAdGuard {
+		return fileAdGuard, fileAdGuardS
+	}
+	return fileDocument, fileSource
 }
 
 func (r *Refresher) failed(now time.Time, err error) {
 	r.mu.Lock()
 	r.status.LastAttempt, r.status.LastError = now, err.Error()
 	r.mu.Unlock()
-	keep := r.opts.Holder.Current()
+	if r.opts.Kind == KindAdGuard {
+		kept := "none"
+		if imp := r.opts.Holder.Import(); imp != nil {
+			kept = imp.Digest()
+		}
+		r.log.Warn("AdGuard services refresh failed; keeping the import in service", "url", r.opts.URL, "err", err, "digest", kept)
+		return
+	}
+	keep := r.opts.Holder.Base()
 	r.log.Warn("catalogue refresh failed; keeping the catalogue in service", "url", r.opts.URL, "err", err,
 		"version", keep.Version, "source", keep.Origin())
 }
@@ -284,10 +350,11 @@ func (r *Refresher) succeeded(now time.Time) {
 
 // persist keeps a downloaded document for the next start; the embedded
 // one is in the binary already.
-func (r *Refresher) persist(c *Catalogue) {
-	if r.opts.Dir == "" || c.Origin() == OriginEmbedded {
+func (r *Refresher) persist(raw []byte, origin string) {
+	if r.opts.Dir == "" || origin == OriginEmbedded {
 		return
 	}
+	docName, srcName := r.files()
 	if err := os.MkdirAll(r.opts.Dir, 0o750); err != nil {
 		r.log.Warn("catalogue: cannot keep the download", "dir", r.opts.Dir, "err", err)
 		return
@@ -295,7 +362,7 @@ func (r *Refresher) persist(c *Catalogue) {
 	for _, f := range []struct {
 		name string
 		data []byte
-	}{{fileDocument, c.raw}, {fileSource, []byte(c.Origin() + "\n")}} {
+	}{{docName, raw}, {srcName, []byte(origin + "\n")}} {
 		tmp := filepath.Join(r.opts.Dir, "."+f.name+".tmp")
 		if err := os.WriteFile(tmp, f.data, 0o600); err != nil {
 			r.log.Warn("catalogue: cannot keep the download", "err", err)
@@ -313,15 +380,27 @@ func (r *Refresher) loadPersisted() {
 	if r.opts.Dir == "" {
 		return
 	}
-	src, err := os.ReadFile(filepath.Join(r.opts.Dir, fileSource))
+	docName, srcName := r.files()
+	src, err := os.ReadFile(filepath.Join(r.opts.Dir, srcName)) //nolint:gosec // G304: the data directory and a fixed file name
 	if err != nil {
 		return
 	}
 	if string(bytes.TrimSpace(src)) != r.opts.URL {
 		return // downloaded from a URL no longer configured
 	}
-	body, err := os.ReadFile(filepath.Join(r.opts.Dir, fileDocument))
+	body, err := os.ReadFile(filepath.Join(r.opts.Dir, docName)) //nolint:gosec // G304: the data directory and a fixed file name
 	if err != nil {
+		return
+	}
+	if r.opts.Kind == KindAdGuard {
+		imp, err := ParseAdGuard(body, r.opts.URL)
+		if err != nil {
+			r.log.Warn("catalogue: ignoring the kept AdGuard services download", "err", err)
+			return
+		}
+		if r.opts.Holder.SetImport(imp) {
+			r.log.Info("AdGuard services loaded from the last download", "source", r.opts.URL, "services", len(imp.Services))
+		}
 		return
 	}
 	c, err := Parse(body, r.opts.URL)
