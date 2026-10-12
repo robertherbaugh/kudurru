@@ -20,10 +20,10 @@ on:
 permissions:
   contents: read
 jobs:
-  # A change that touches nothing outside docs/ cannot affect any job below
-  # (no build, test or check reads docs/), so they are skipped; docs.yml
-  # still builds and checks the docs. Jobs are skipped rather than the
-  # workflow filtered with paths-ignore, because a skipped job satisfies a
+  # Changes confined to docs/, site/ and www/ skip the jobs below;
+  # docs.yml and www.yml still build and check the affected sites.
+  # Jobs are skipped rather than filtering the workflow with paths-ignore,
+  # because a skipped job satisfies a
   # required status check and a workflow that never runs does not.
   changes:
     runs-on: ubicloud-standard-2-ubuntu-2404
@@ -39,11 +39,11 @@ jobs:
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # Run everything unless git can list the changes and every one is
-          # under docs/ (a new branch or an unreachable force-pushed base
-          # runs everything).
+          # under docs/, site/ or www/ (a new branch or an unreachable
+          # force-pushed base runs everything).
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -qv '^docs/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www)/' <<<"$files"; then
               code=false
             fi
           fi
