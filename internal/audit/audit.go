@@ -175,12 +175,37 @@ func (m Multi) Record(ctx context.Context, ev Event) error {
 
 // Read implements Reader with the first member that stores events.
 func (m Multi) Read(ctx context.Context, q Query) ([]Event, error) {
-	for _, r := range m {
-		if rd, ok := r.(Reader); ok {
-			return rd.Read(ctx, q)
-		}
+	if rd, ok := m.Reader(); ok {
+		return rd.Read(ctx, q)
 	}
 	return nil, ErrNotStored
+}
+
+// Reader returns the first member that stores events; ok is false when
+// none does (Read would return ErrNotStored).
+func (m Multi) Reader() (rd Reader, ok bool) {
+	for _, r := range m {
+		if sub, isMulti := r.(Multi); isMulti {
+			if rd, ok = sub.Reader(); ok {
+				return rd, true
+			}
+			continue
+		}
+		if rd, ok = r.(Reader); ok {
+			return rd, true
+		}
+	}
+	return nil, false
+}
+
+// ReaderOf returns the Reader behind a Recorder: r itself, or for a Multi
+// its first storing member; ok is false when r cannot read events back.
+func ReaderOf(r Recorder) (Reader, bool) {
+	if m, isMulti := r.(Multi); isMulti {
+		return m.Reader()
+	}
+	rd, ok := r.(Reader)
+	return rd, ok
 }
 
 // Log writes every event as one JSON log line with "log":"audit" (§11.4:

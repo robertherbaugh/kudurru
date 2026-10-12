@@ -591,8 +591,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	ids.Register(authMux)
 
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
+	// Only the sqlite store keeps audit events that can be read back; the
+	// kube driver has no reader yet, so /audit answers 503 there (#10).
 	recorders := audit.Multi{audit.Log{Logger: logger}}
+	var auditReader audit.Reader
 	if ss, ok := st.(*sqlite.Store); ok {
+		auditReader = audit.SQLite{Store: ss}
 		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
 	}
 	if !web.Built() {
@@ -606,10 +610,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient,
 		Lists:          listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
-		Refresher:    listRefresher(membership, fetcher),
-		ListBodies:   listBodies{cache: lists},
-		Purger:       querylogPurger(qlWriter),
-		Audit:        recorders,
+		Refresher:  listRefresher(membership, fetcher),
+		ListBodies: listBodies{cache: lists},
+		Purger:     querylogPurger(qlWriter),
+		Audit:      recorders, AuditReader: auditReader,
 		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
 		AuthHandler: authMux,
 		Roles:       ids.Roles,

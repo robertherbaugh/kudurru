@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -195,6 +196,8 @@ func storeError(err error) error {
 		e := newError(http.StatusBadRequest, KeyInvalid, ve.Error(), ve.Hint())
 		e.Body.Fields = ve.Fields()
 		return e
+	case errors.Is(err, audit.ErrNotStored):
+		return errAuditNotStored()
 	case errors.Is(err, validator.ErrUnknownKind):
 		return newError(http.StatusBadRequest, KeyInvalid, err.Error(), "")
 	case errors.Is(err, store.ErrNotFound):

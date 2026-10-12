@@ -427,3 +427,36 @@ func TestRequestIDAndRealIP(t *testing.T) {
 		t.Fatalf("untrusted headers believed: %+v", h2.audit.Events()[0].Request)
 	}
 }
+
+// TestAuditNotStoredMulti is the kube driver's wiring (#10): a Multi with
+// only the log recorder stores nothing, so both routes answer 503 before
+// any byte of the export stream is written.
+func TestAuditNotStoredMulti(t *testing.T) {
+	logOnly := audit.Multi{audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	h := newHarness(t, func(o *Options) { o.Audit = logOnly })
+	for _, p := range []string{"/api/v1/audit", "/api/v1/audit/export"} {
+		if r := h.do(http.MethodGet, p, "admin", nil).want(http.StatusServiceUnavailable); r.errKey() != KeyUnavailable {
+			t.Fatalf("%s: key %q", p, r.errKey())
+		}
+	}
+	// An explicit AuditReader wins over the recorder.
+	mem := &audit.Memory{}
+	if err := mem.Record(context.Background(), audit.Event{Action: "blocking.toggle", Resource: audit.Resource{Kind: "blocking"}, Result: audit.ResultSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	h = newHarness(t, func(o *Options) { o.Audit = logOnly; o.AuditReader = mem })
+	var page AuditPage
+	h.do(http.MethodGet, "/api/v1/audit", "admin", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].Action != "blocking.toggle" {
+		t.Fatalf("page %+v", page)
+	}
+}
+
+// TestStoreErrorNotStored: a reader returning audit.ErrNotStored is a 503,
+// not a 500.
+func TestStoreErrorNotStored(t *testing.T) {
+	var e *Error
+	if !errors.As(storeError(audit.ErrNotStored), &e) || e.GetStatus() != http.StatusServiceUnavailable {
+		t.Fatalf("storeError(ErrNotStored) = %v", storeError(audit.ErrNotStored))
+	}
+}

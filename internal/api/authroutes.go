@@ -268,10 +268,19 @@ func (s *Server) registerAudit() {
 }
 
 func (s *Server) auditReader() (audit.Reader, error) {
-	if rd, ok := s.opts.Audit.(audit.Reader); ok {
+	if s.opts.AuditReader != nil {
+		return s.opts.AuditReader, nil
+	}
+	if rd, ok := audit.ReaderOf(s.opts.Audit); ok {
 		return rd, nil
 	}
-	return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "audit events are not stored on this node",
+	return nil, errAuditNotStored()
+}
+
+// errAuditNotStored is the 503 of the audit routes when no recorder
+// stores events (audit.ErrNotStored).
+func errAuditNotStored() *Error {
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, "audit events are not stored on this node",
 		"the sqlite store keeps them in state.db; in Kubernetes they are the \"log\":\"audit\" lines")
 }
 

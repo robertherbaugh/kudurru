@@ -189,9 +189,12 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
-	// Audit records denied attempts and non-store mutations; a Reader
-	// implementation also backs GET /audit.
-	Audit audit.Recorder
+	// Audit records denied attempts and non-store mutations. AuditReader
+	// backs GET /audit and /audit/export; when nil, the reader behind
+	// Audit is used (audit.ReaderOf), and the routes answer 503 when no
+	// recorder stores events.
+	Audit       audit.Recorder
+	AuditReader audit.Reader
 	// Authenticate puts the principal in the request context or answers
 	// 401 for bad credentials (anonymous requests pass through and are
 	// refused by Authorize on non-public routes).
