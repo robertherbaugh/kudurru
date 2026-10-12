@@ -155,7 +155,7 @@
         "||makersuite.google.com^",
         "||generativelanguage.googleapis.com^"
       ],
-      "source": "first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other vendor pages under Domain citations",
+      "source": "first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other pages under Domain citations",
       "note": "Gemini inside Android, Chrome, Google Search and Workspace apps runs on shared Google hosts and stays reachable."
     },
     {
@@ -379,7 +379,7 @@
         "||messenger.com^",
         "||m.me^"
       ],
-      "source": "first-party domains of the service; host names from http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking and the other vendor pages under Domain citations",
+      "source": "first-party domains of the service; host names from http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking and the other pages under Domain citations",
       "related": [
         "instagram",
         "threads",
@@ -1584,7 +1584,6 @@
       "category": "gambling",
       "rules": [
         "||bet365.com^",
-        "||bet365.co.uk^",
         "||bet365.es^",
         "||bet365.it^",
         "||bet365.de^",
@@ -1593,19 +1592,19 @@
         "||bet365.nl^",
         "||bet365.ca^",
         "||bet365.com.au^",
-        "||bet365.bet.br^"
+        "||bet365.bet.br^",
+        "||bet365.fr^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/55149 and the other pages under Domain citations"
     },
     {
       "id": "draftkings",
       "name": "DraftKings",
       "category": "gambling",
       "rules": [
-        "||draftkings.com^",
-        "||draftkings.ca^"
+        "||draftkings.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; licensed host names from https://igamingontario.ca/en/player/regulated-igaming-market"
     },
     {
       "id": "fanduel",
@@ -1613,10 +1612,9 @@
       "category": "gambling",
       "rules": [
         "||fanduel.com^",
-        "||fanduel.ca^",
-        "||fndl.co^"
+        "||fanduel.ca^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/43990 and https://igamingontario.ca/en/player/regulated-igaming-market",
       "related": [
         "betfair",
         "pokerstars"
@@ -1628,11 +1626,10 @@
       "category": "gambling",
       "rules": [
         "||williamhill.com^",
-        "||williamhill.co.uk^",
         "||williamhill.es^",
         "||williamhill.it^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/39225 and the other pages under Domain citations",
       "note": "William Hill's former US sportsbook is now Caesars Sportsbook and is not covered."
     },
     {
@@ -1641,13 +1638,15 @@
       "category": "gambling",
       "rules": [
         "||betfair.com^",
-        "||betfair.co.uk^",
         "||betfair.it^",
         "||betfair.es^",
         "||betfair.ro^",
-        "||betfair.com.au^"
+        "||betfair.com.au^",
+        "||betfair.dk^",
+        "||betfair.bet.br^",
+        "||betfair.se^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; country domains from https://betfair-developer-docs.atlassian.net/wiki/spaces/1smk3cen4v3lu3yomq5qye0ni/pages/2687915/Login+Session+Management and the other pages under Domain citations",
       "related": [
         "pokerstars",
         "fanduel"
@@ -1659,7 +1658,6 @@
       "category": "gambling",
       "rules": [
         "||pokerstars.com^",
-        "||pokerstars.net^",
         "||pokerstars.eu^",
         "||pokerstars.uk^",
         "||pokerstars.it^",
@@ -1668,10 +1666,10 @@
         "||pokerstars.de^",
         "||pokerstars.se^",
         "||pokerstars.dk^",
-        "||pokerstars.ca^",
-        "||pokerstarscasino.com^"
+        "||pokerstarscasino.com^",
+        "||pokerstars.gr^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; licensed domains from https://mgaurlchecker.mga.org.mt/ and the other pages under Domain citations",
       "related": [
         "betfair",
         "fanduel"
@@ -1687,10 +1685,12 @@
         "||playstake.club^",
         "||playstake.info^",
         "||playstake.io^",
-        "||playstake.casino^"
+        "||playstake.casino^",
+        "||stake.bet.br^",
+        "||stake.it^"
       ],
-      "source": "first-party domains of the service; mirror domains from https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them",
-      "note": "Stake.us is Stake's US sweepstakes site."
+      "source": "first-party domains of the service; mirror and country domains from https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them and the other pages under Domain citations",
+      "note": "Stake.us is Stake's US sweepstakes site; stake.bet.br and stake.it are run by local licensees under the Stake brand."
     },
     {
       "id": "betway",
@@ -1698,20 +1698,18 @@
       "category": "gambling",
       "rules": [
         "||betway.com^",
-        "||betway.co.uk^",
         "||betway.es^",
-        "||betway.it^",
         "||betway.de^",
         "||betway.be^",
         "||betway.ca^",
         "||betway.mx^",
-        "||betway.com.mx^",
         "||betway.co.za^",
         "||betway.com.gh^",
         "||betway.com.ng^",
-        "||betway.co.zm^"
+        "||betway.co.zm^",
+        "||betway.ie^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; licensed and country domains from https://mgaurlchecker.mga.org.mt/ and the other pages under Domain citations"
     },
     {
       "id": "cnn",
@@ -1858,7 +1856,7 @@
         "||skydrive.live.com^",
         "||livefilestore.com^"
       ],
-      "source": "first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other vendor pages under Domain citations",
+      "source": "first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other pages under Domain citations",
       "note": "Personal OneDrive only: OneDrive for work or school runs on SharePoint (sharepoint.com) and Microsoft sign-in, both shared and still reachable."
     },
     {
@@ -1941,7 +1939,7 @@
         "||slack-redir.net^",
         "||slack-msgs.com^"
       ],
-      "source": "first-party domains of the service; host names from https://docs.slack.dev/faq and the other vendor pages under Domain citations"
+      "source": "first-party domains of the service; host names from https://docs.slack.dev/faq and the other pages under Domain citations"
     },
     {
       "id": "zoom",

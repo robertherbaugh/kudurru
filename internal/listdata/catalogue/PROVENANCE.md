@@ -8,8 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 | Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
 | Schema version | 2 |
 | Catalogue version | `2026.10.12` |
-| SHA-256 | `bd8bd9f76fb6683a0e161abcb9cc7bb74ec3ab79092435c5313b6bdb3ee4974c` |
-| Size | 71,169 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
+| SHA-256 | `b0c2dc8692e8e159d79a5e66287a2d8c63b6b9ef5ee31dc2cb92e5547087b851` |
+| Size | 72,177 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
 | Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |
@@ -65,9 +65,9 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | battlenet | Battle.net | gaming | 5 | first-party domains of the service; host names from https://overwatch.blizzard.com/en-us/ and https://www.blizzard.cn/ |
 | service | bbc | BBC | news | 3 | first-party domains of the service; bbci.co.uk from https://www.bbc.co.uk/ |
 | service | bereal | BeReal | social | 3 | first-party domains of the service |
-| service | bet365 | bet365 | gambling | 11 | first-party domains of the service |
-| service | betfair | Betfair | gambling | 6 | first-party domains of the service |
-| service | betway | Betway | gambling | 13 | first-party domains of the service |
+| service | bet365 | bet365 | gambling | 11 | first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/55149 and the other pages under Domain citations |
+| service | betfair | Betfair | gambling | 8 | first-party domains of the service; country domains from https://betfair-developer-docs.atlassian.net/wiki/spaces/1smk3cen4v3lu3yomq5qye0ni/pages/2687915/Login+Session+Management and the other pages under Domain citations |
+| service | betway | Betway | gambling | 11 | first-party domains of the service; licensed and country domains from https://mgaurlchecker.mga.org.mt/ and the other pages under Domain citations |
 | service | bilibili | Bilibili | video | 8 | first-party domains of the service |
 | service | binance | Binance | crypto | 3 | first-party domains of the service; host names from https://www.binance.com/en/official-verification and https://x.com/BinanceHelpDesk/status/1464954119832154114 |
 | service | bluesky | Bluesky | social | 5 | first-party domains of the service; relay host from https://bsky.network/ |
@@ -88,7 +88,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | deezer | Deezer | music | 2 | first-party domains of the service |
 | service | discord | Discord | messaging | 11 | first-party domains of the service |
 | service | disneyplus | Disney+ | video | 5 | first-party domains of the service |
-| service | draftkings | DraftKings | gambling | 2 | first-party domains of the service |
+| service | draftkings | DraftKings | gambling | 1 | first-party domains of the service; licensed host names from https://igamingontario.ca/en/player/regulated-igaming-market |
 | service | dropbox | Dropbox | productivity | 9 | first-party domains of the service; verified and user-content domains from https://help.dropbox.com/security/official-domains |
 | service | ea | EA app | gaming | 1 | first-party domains of the service |
 | service | ebay | eBay | shopping | 21 | first-party domains of the service; country sites from https://developer.ebay.com/api-docs/static/rest-request-components.html, https://developer.ebay.com/devzone/xml/docs/reference/ebay/types/PictureDetailsType.html and https://www.ebay.com/ |
@@ -96,11 +96,11 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | epicgames | Epic Games | gaming | 1 | first-party domains of the service; host names from https://www.epicgames.com/help/c-202300000001639/a202300000012358 |
 | service | etsy | Etsy | shopping | 2 | first-party domains of the service; host names from https://www.etsy.com/ |
 | service | expressvpn | ExpressVPN | vpn | 1 | first-party domains of the service |
-| service | facebook | Facebook | social | 8 | first-party domains of the service; host names from http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking and the other vendor pages under Domain citations |
-| service | fanduel | FanDuel | gambling | 3 | first-party domains of the service |
+| service | facebook | Facebook | social | 8 | first-party domains of the service; host names from http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking and the other pages under Domain citations |
+| service | fanduel | FanDuel | gambling | 2 | first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/43990 and https://igamingontario.ca/en/player/regulated-igaming-market |
 | service | fortnite | Fortnite | gaming | 1 | first-party domains of the service |
 | service | foxnews | Fox News | news | 1 | first-party domains of the service |
-| service | gemini | Google Gemini | ai | 6 | first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other vendor pages under Domain citations |
+| service | gemini | Google Gemini | ai | 6 | first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other pages under Domain citations |
 | service | gog | GOG | gaming | 3 | first-party domains of the service; host names from https://www.gog.com/en/ and https://www.gog.com/galaxy |
 | service | googledrive | Google Drive | productivity | 6 | first-party domains of the service; Drive and Docs host names from https://knowledge.workspace.google.com/admin/drive/drive-and-sites-firewall-and-proxy-settings |
 | service | grindr | Grindr | dating | 2 | first-party domains of the service; host names from https://hackerone.com/grindr/policy_scopes |
@@ -138,7 +138,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | okcupid | OkCupid | dating | 2 | first-party domains of the service; host names from https://www.okcupid.com/press |
 | service | okru | OK (Odnoklassniki) | social | 3 | first-party domains of the service |
 | service | okx | OKX | crypto | 4 | first-party domains of the service; official domains from https://www.okx.com/support-center/channel-verification |
-| service | onedrive | OneDrive | productivity | 8 | first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other vendor pages under Domain citations |
+| service | onedrive | OneDrive | productivity | 8 | first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other pages under Domain citations |
 | service | pandora | Pandora | music | 3 | first-party domains of the service |
 | service | paramountplus | Paramount+ | video | 3 | first-party domains of the service |
 | service | peacock | Peacock | video | 2 | first-party domains of the service |
@@ -150,7 +150,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | plutotv | Pluto TV | video | 2 | first-party domains of the service |
 | service | poe | Poe | ai | 2 | first-party domains of the service; host names from https://creator.poe.com/docs/script-bots/quick-start |
 | service | pof | Plenty of Fish | dating | 2 | first-party domains of the service |
-| service | pokerstars | PokerStars | gambling | 12 | first-party domains of the service |
+| service | pokerstars | PokerStars | gambling | 11 | first-party domains of the service; licensed domains from https://mgaurlchecker.mga.org.mt/ and the other pages under Domain citations |
 | service | primevideo | Amazon Prime Video | video | 5 | first-party domains of the service |
 | service | privateinternetaccess | Private Internet Access | vpn | 3 | first-party domains of the service; host names from https://github.com/pia-foss/manual-connections and https://github.com/pia-foss/desktop |
 | service | protonvpn | Proton VPN | vpn | 1 | first-party domains of the service |
@@ -165,13 +165,13 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | runway | Runway | ai | 2 | first-party domains of the service; host names from https://help.runwayml.com/hc/en-us/articles/51474557342227-Identifying-and-troubleshooting-network-issues |
 | service | shein | SHEIN | shopping | 9 | first-party domains of the service; country sites (the page's alternate-language links) from https://www.shein.co.uk/ |
 | service | signal | Signal | messaging | 6 | first-party domains of the service |
-| service | slack | Slack | productivity | 7 | first-party domains of the service; host names from https://docs.slack.dev/faq and the other vendor pages under Domain citations |
+| service | slack | Slack | productivity | 7 | first-party domains of the service; host names from https://docs.slack.dev/faq and the other pages under Domain citations |
 | service | snapchat | Snapchat | social | 6 | first-party domains of the service |
 | service | soundcloud | SoundCloud | music | 3 | first-party domains of the service |
 | service | spotify | Spotify | music | 6 | first-party domains of the service |
 | service | stability | Stability AI | ai | 2 | first-party domains of the service; host names from https://stability.ai/news-updates/sharing-a-new-way-to-work-with-stable-audio |
 | service | stackexchange | Stack Overflow & Stack Exchange | forums | 8 | first-party domains of the service; host names from https://api.stackexchange.com/docs/types/site and https://stackexchange.com/sites?view=list |
-| service | stake | Stake | gambling | 6 | first-party domains of the service; mirror domains from https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them |
+| service | stake | Stake | gambling | 8 | first-party domains of the service; mirror and country domains from https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them and the other pages under Domain citations |
 | service | steam | Steam | gaming | 7 | first-party domains of the service; host names from https://help.steampowered.com/en/faqs/view/2EA8-4D75-DA21-31EB and https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v1/?cellid=0 |
 | service | suno | Suno | ai | 2 | first-party domains of the service; host names from https://github.com/suno-ai/bark |
 | service | supercell | Supercell (Clash of Clans, Clash Royale, Brawl Stars) | gaming | 6 | first-party domains of the service |
@@ -199,7 +199,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | weibo | Weibo | social | 4 | first-party domains of the service |
 | service | wetransfer | WeTransfer | productivity | 3 | first-party domains of the service; host names from https://wetransfer.com/help-center/troubleshooting/configure-firewall |
 | service | whatsapp | WhatsApp | messaging | 3 | first-party domains of the service; host names from http://web.archive.org/web/20241228071158/https://developers.facebook.com/docs/whatsapp/guides/network-requirements/ and https://faq.whatsapp.com/5913398998672934 |
-| service | williamhill | William Hill | gambling | 4 | first-party domains of the service |
+| service | williamhill | William Hill | gambling | 3 | first-party domains of the service; licensed domains from https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/39225 and the other pages under Domain citations |
 | service | windscribe | Windscribe | vpn | 2 | first-party domains of the service; host names from https://github.com/Windscribe/wsnet |
 | service | xbox | Xbox network | gaming | 4 | first-party domains of the service; host names from https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network, https://www.xbox.com/en-US/ and https://www.xbox.com/en-US/play |
 | service | youtube | YouTube | video | 7 | first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users and https://support.google.com/youtubekids/answer/9406390 |
@@ -225,6 +225,30 @@ and that is not the service's own brand domain is left out.
 | battlenet | `playoverwatch.com` | https://overwatch.blizzard.com/en-us/ |
 | battlenet | `blizzard.cn`, `battlenet.com.cn` | https://www.blizzard.cn/ |
 | bbc | `bbci.co.uk` | https://www.bbc.co.uk/ |
+| bet365 | `bet365.com` | https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/55149 |
+| bet365 | `bet365.es` | https://www.ordenacionjuego.es/operadores-juego/operadores-licencia/operadores |
+| bet365 | `bet365.it` | https://www.adm.gov.it/portale/monopoli/giochi/gioco_distanza/gioco_dist_concessionari |
+| bet365 | `bet365.de` | https://www.gluecksspiel-behoerde.de/de/fuer-spielende/uebersicht-erlaubter-anbieter-whitelist |
+| bet365 | `bet365.dk` | https://spillemyndigheden.dk/spiludbydere-med-tilladelse |
+| bet365 | `bet365.gr` | https://certifications.gamingcommission.gov.gr/publicRecordsOnline/SitePages/KatoxoiAdeiasOnline.aspx |
+| bet365 | `bet365.nl` | https://openovergokken.nl/kansspelwijzer/hillside-new-media-malta-plc/ |
+| bet365 | `bet365.ca` | https://igamingontario.ca/en/player/regulated-igaming-market |
+| bet365 | `bet365.com.au` | https://www.acma.gov.au/check-if-gambling-operator-legal |
+| bet365 | `bet365.bet.br` | https://www.gov.br/fazenda/pt-br/composicao/orgaos/secretaria-de-premios-e-apostas/transparencia-ativa-processos-de-autorizacao-de-apostas-de-quota-fixa/empresas-autorizadas |
+| bet365 | `bet365.fr` | https://anj.fr/offre-de-jeu-et-marche/operateurs-agrees |
+| betfair | `betfair.it`, `betfair.es`, `betfair.ro`, `betfair.com.au`, `betfair.bet.br`, `betfair.se` | https://betfair-developer-docs.atlassian.net/wiki/spaces/1smk3cen4v3lu3yomq5qye0ni/pages/2687915/Login+Session+Management |
+| betfair | `betfair.com` | https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/39435 |
+| betfair | `betfair.dk` | https://spillemyndigheden.dk/spiludbydere-med-tilladelse |
+| betway | `betway.com`, `betway.ie` | https://mgaurlchecker.mga.org.mt/ |
+| betway | `betway.es` | https://www.ordenacionjuego.es/operadores-juego/operadores-licencia/operadores |
+| betway | `betway.de` | https://www.gluecksspiel-behoerde.de/de/fuer-spielende/uebersicht-erlaubter-anbieter-whitelist |
+| betway | `betway.ca` | https://igamingontario.ca/en/player/regulated-igaming-market |
+| betway | `betway.be` | https://betway.be/maint-betway?maintenancePage=betway-be-market-close |
+| betway | `betway.mx` | https://betway.mx/ |
+| betway | `betway.co.za` | https://www.betway.co.za/ |
+| betway | `betway.com.gh` | https://www.betway.com.gh/ |
+| betway | `betway.com.ng` | https://www.betway.com.ng/ |
+| betway | `betway.co.zm` | https://www.betway.co.zm/ |
 | binance | `binance.com`, `binance.us` | https://www.binance.com/en/official-verification |
 | binance | `bin.bnbstatic.com` | https://x.com/BinanceHelpDesk/status/1464954119832154114 |
 | box | `box.com`, `box.net`, `boxcdn.net`, `boxcloud.com`, `app.boxenterprise.net` | https://docs.box.com/en/box-admin-tools/box-security/configuring-a-firewall-for-box-applications-and-services |
@@ -238,6 +262,7 @@ and that is not the service's own brand domain is left out.
 | cnn | `cnn.io` | https://www.cnn.com/ |
 | copilot | `copilot.com` | https://copilot.microsoft.com/ |
 | deepseek | `api.deepseek.com` | https://api-docs.deepseek.com/ |
+| draftkings | `draftkings.com` | https://igamingontario.ca/en/player/regulated-igaming-market |
 | ebay | `ebay.com`, `ebay.co.uk`, `ebay.de`, `ebay.com.hk`, `ebay.com.my`, `ebay.ph`, `ebay.com.tw` | https://developer.ebay.com/api-docs/static/rest-request-components.html |
 | ebay | `ebayimg.com` | https://developer.ebay.com/devzone/xml/docs/reference/ebay/types/PictureDetailsType.html |
 | ebay | `ebaystatic.com` | https://www.ebay.com/ |
@@ -246,6 +271,8 @@ and that is not the service's own brand domain is left out.
 | facebook | `facebook.com`, `fbcdn.net`, `fb.me`, `fbsbx.com` | http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking |
 | facebook | `facebook.net` | https://developers.facebook.com/documentation/javascript/quickstart |
 | facebook | `m.me` | https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/m-me-links |
+| fanduel | `fanduel.com` | https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/43990 |
+| fanduel | `fanduel.ca` | https://igamingontario.ca/en/player/regulated-igaming-market |
 | gemini | `gemini.google.com`, `gemini.google` | https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings |
 | gemini | `aistudio.google.com` | https://knowledge.workspace.google.com/admin/getting-started/set-up-a-google-workspace-host-name-allowlist |
 | gemini | `generativelanguage.googleapis.com` | https://ai.google.dev/api |
@@ -284,6 +311,15 @@ and that is not the service's own brand domain is left out.
 | pi | `pi.ai` | https://inflection.ai/ |
 | playstation | `playstation.net`, `sonyentertainmentnetwork.com` | https://www.playstation.com/en-us/ |
 | poe | `poecdn.net` | https://creator.poe.com/docs/script-bots/quick-start |
+| pokerstars | `pokerstars.com`, `pokerstars.eu`, `pokerstarscasino.com` | https://mgaurlchecker.mga.org.mt/ |
+| pokerstars | `pokerstars.uk` | https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/39108 |
+| pokerstars | `pokerstars.it` | https://www.adm.gov.it/portale/monopoli/giochi/gioco_distanza/gioco_dist_concessionari |
+| pokerstars | `pokerstars.es` | https://www.ordenacionjuego.es/operadores-juego/operadores-licencia/operadores |
+| pokerstars | `pokerstars.fr` | https://anj.fr/offre-de-jeu-et-marche/operateurs-agrees |
+| pokerstars | `pokerstars.de` | https://www.gluecksspiel-behoerde.de/de/fuer-spielende/uebersicht-erlaubter-anbieter-whitelist |
+| pokerstars | `pokerstars.se` | https://www.spelinspektionen.se/licens-o-tillstand/licensregister/ |
+| pokerstars | `pokerstars.dk` | https://spillemyndigheden.dk/spiludbydere-med-tilladelse |
+| pokerstars | `pokerstars.gr` | https://certifications.gamingcommission.gov.gr/publicRecordsOnline/SitePages/KatoxoiAdeiasOnline.aspx |
 | privateinternetaccess | `serverlist.piaservers.net` | https://github.com/pia-foss/manual-connections |
 | privateinternetaccess | `api.piaproxy.net` | https://github.com/pia-foss/desktop |
 | psiphon | `psiphon3.com` | https://psiphon.ca/en/download.html |
@@ -304,6 +340,10 @@ and that is not the service's own brand domain is left out.
 | stability | `stableaudio.com` | https://stability.ai/news-updates/sharing-a-new-way-to-work-with-stable-audio |
 | stackexchange | `sstatic.net` | https://api.stackexchange.com/docs/types/site |
 | stackexchange | `stackoverflow.com`, `superuser.com`, `serverfault.com`, `askubuntu.com`, `mathoverflow.net`, `stackapps.com` | https://stackexchange.com/sites?view=list |
+| stake | `playstake.club`, `playstake.info`, `playstake.io`, `playstake.casino` | https://help.stake.com/en/articles/16032252-official-stake-com-mirror-sites-what-they-are-how-to-use-them |
+| stake | `stake.us` | https://help.stake.us/en/ |
+| stake | `stake.bet.br` | https://www.gov.br/fazenda/pt-br/composicao/orgaos/secretaria-de-premios-e-apostas/transparencia-ativa-processos-de-autorizacao-de-apostas-de-quota-fixa/empresas-autorizadas |
+| stake | `stake.it` | https://www.adm.gov.it/portale/monopoli/giochi/gioco_distanza/gioco_dist_concessionari |
 | steam | `steampowered.com`, `steamcommunity.com`, `steamgames.com`, `steamusercontent.com`, `steamcontent.com`, `steamstatic.com` | https://help.steampowered.com/en/faqs/view/2EA8-4D75-DA21-31EB |
 | steam | `steamserver.net` | https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v1/?cellid=0 |
 | suno | `suno.ai` | https://github.com/suno-ai/bark |
@@ -319,6 +359,9 @@ and that is not the service's own brand domain is left out.
 | walmart | `walmartimages.com`, `wal.co` | https://www.walmart.com/ |
 | whatsapp | `whatsapp.net`, `whatsapp.com` | http://web.archive.org/web/20241228071158/https://developers.facebook.com/docs/whatsapp/guides/network-requirements/ |
 | whatsapp | `wa.me` | https://faq.whatsapp.com/5913398998672934 |
+| williamhill | `williamhill.com` | https://www.gamblingcommission.gov.uk/public-register/business/detail/domain-names/39225 |
+| williamhill | `williamhill.es` | https://www.ordenacionjuego.es/operadores-juego/operadores-licencia/operadores |
+| williamhill | `williamhill.it` | https://www.adm.gov.it/portale/monopoli/giochi/gioco_distanza/gioco_dist_concessionari |
 | windscribe | `windscribe.net` | https://github.com/Windscribe/wsnet |
 | xbox | `xboxlive.com`, `xbox.com` | https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network |
 | xbox | `xboxservices.com` | https://www.xbox.com/en-US/ |
