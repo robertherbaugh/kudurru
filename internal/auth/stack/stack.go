@@ -88,8 +88,12 @@ type Options struct {
 	// X-Forwarded-Proto from a trusted proxy (only when the API server's
 	// RealIP step guarantees the header's origin).
 	TrustForwardedProto bool
-	// APIPrefix is the API base path; default /api/v1.
+	// APIPrefix is the external API base path, including the deployment's
+	// path prefix, for OIDC redirect validation; default /api/v1.
 	APIPrefix string
+	// RoutePrefix is the base path seen by the route mux; default APIPrefix.
+	// Set /api/v1 when the API server strips the deployment's path prefix.
+	RoutePrefix string
 	// ClientIP returns the client address of a request after the
 	// RealIP(trustedProxies) step (login lockouts, token lastUsedIP);
 	// default the RemoteAddr host.
@@ -149,6 +153,9 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	}
 	if opts.APIPrefix == "" {
 		opts.APIPrefix = DefaultAPIPrefix
+	}
+	if opts.RoutePrefix == "" {
+		opts.RoutePrefix = opts.APIPrefix
 	}
 	if opts.Namespace == "" {
 		opts.Namespace = tokens.DefaultNamespace
