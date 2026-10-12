@@ -233,6 +233,30 @@ func ID(namespace string, t v1alpha1.EntryType, value string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(namespace + "\n" + string(t) + "\n" + value))
 }
 
+// exceptionMark starts the decoded id of a list exception; it cannot
+// start a namespace name.
+const exceptionMark = "!exception"
+
+// ExceptionID is the opaque identifier of the exception list ns/list
+// makes in source for value (an exclude value).
+func ExceptionID(namespace, list, source, value string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(exceptionMark + "\n" + namespace + "\n" + list + "\n" + source + "\n" + value))
+}
+
+// ParseExceptionID is the inverse of ExceptionID; ok is false for other
+// ids.
+func ParseExceptionID(id string) (namespace, list, source, value string, ok bool) {
+	b, err := base64.RawURLEncoding.DecodeString(id)
+	if err != nil {
+		return "", "", "", "", false
+	}
+	parts := strings.SplitN(string(b), "\n", 5)
+	if len(parts) != 5 || parts[0] != exceptionMark || parts[1] == "" || parts[2] == "" || parts[3] == "" || parts[4] == "" {
+		return "", "", "", "", false
+	}
+	return parts[1], parts[2], parts[3], parts[4], true
+}
+
 // ParseID is the inverse of ID.
 func ParseID(id string) (namespace string, t v1alpha1.EntryType, value string, err error) {
 	b, err := base64.RawURLEncoding.DecodeString(id)

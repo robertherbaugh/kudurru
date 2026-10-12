@@ -1258,6 +1258,11 @@
             "nullable": true,
             "type": "array"
           },
+          "list": {
+            "description": "Switch the value off in this list only (a list exception) instead of adding an entry: ns/name or a name in namespace.",
+            "maxLength": 300,
+            "type": "string"
+          },
           "namespace": {
             "description": "Default the server's default namespace.",
             "type": "string"
@@ -1269,6 +1274,11 @@
               "querylog",
               "api"
             ],
+            "type": "string"
+          },
+          "source": {
+            "description": "With list: only this source (default every source that has the value).",
+            "maxLength": 300,
             "type": "string"
           },
           "type": {
@@ -1335,6 +1345,14 @@
             "description": "Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}.",
             "type": "string"
           },
+          "kind": {
+            "description": "entry: an Allowlist or Denylist entry. exception: an entry of the list in lists[0] switched off there (spec.sources[].exclude); it only affects that list, its switch is the exclusion (off switches the list's entry back on) and nothing else of it can be edited.",
+            "enum": [
+              "entry",
+              "exception"
+            ],
+            "type": "string"
+          },
           "lists": {
             "items": {
               "$ref": "#/components/schemas/DomainEntryList"
@@ -1349,12 +1367,14 @@
             "type": "string"
           },
           "origin": {
+            "description": "list for an exception.",
             "enum": [
               "manual",
               "querylog",
               "unblock",
               "api",
-              "migrated"
+              "migrated",
+              "list"
             ],
             "type": "string"
           },
@@ -1385,6 +1405,13 @@
             "description": "The rule as compiled and shown in the query log: name, *.name or /expression/.",
             "type": "string"
           },
+          "stillMatchedBy": {
+            "description": "exception only: other lists that still match the name; the exception does not affect them.",
+            "items": {
+              "$ref": "#/components/schemas/DomainOverride"
+            },
+            "type": "array"
+          },
           "type": {
             "enum": [
               "exact",
@@ -1400,6 +1427,7 @@
         },
         "required": [
           "id",
+          "kind",
           "action",
           "namespace",
           "value",
@@ -1412,6 +1440,7 @@
           "policies",
           "origin",
           "overrides",
+          "stillMatchedBy",
           "readOnly"
         ],
         "type": "object"
@@ -5738,6 +5767,20 @@
         "operationId": "listAllowlist",
         "parameters": [
           {
+            "description": "Only entries, or only list exceptions.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only entries, or only list exceptions.",
+              "enum": [
+                "entry",
+                "exception"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Only this namespace (default: every namespace).",
             "explode": false,
             "in": "query",
@@ -5773,22 +5816,22 @@
             }
           },
           {
-            "description": "everyone, or a ClientGroup (ns/name).",
+            "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "everyone, or a ClientGroup (ns/name).",
+              "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
               "type": "string"
             }
           },
           {
-            "description": "Substring of the value or comment, case-insensitive.",
+            "description": "Substring of the value, comment or list, case-insensitive.",
             "explode": false,
             "in": "query",
             "name": "q",
             "schema": {
-              "description": "Substring of the value or comment, case-insensitive.",
+              "description": "Substring of the value, comment or list, case-insensitive.",
               "type": "string"
             }
           },
@@ -6024,7 +6067,7 @@
     },
     "/allowlist/{id}": {
       "delete": {
-        "description": "Removes every copy; a list left empty is deleted and its policy references removed.",
+        "description": "Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.",
         "operationId": "deleteAllowlistEntry",
         "parameters": [
           {
@@ -11172,6 +11215,20 @@
         "operationId": "listDenylist",
         "parameters": [
           {
+            "description": "Only entries, or only list exceptions.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only entries, or only list exceptions.",
+              "enum": [
+                "entry",
+                "exception"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Only this namespace (default: every namespace).",
             "explode": false,
             "in": "query",
@@ -11207,22 +11264,22 @@
             }
           },
           {
-            "description": "everyone, or a ClientGroup (ns/name).",
+            "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "everyone, or a ClientGroup (ns/name).",
+              "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
               "type": "string"
             }
           },
           {
-            "description": "Substring of the value or comment, case-insensitive.",
+            "description": "Substring of the value, comment or list, case-insensitive.",
             "explode": false,
             "in": "query",
             "name": "q",
             "schema": {
-              "description": "Substring of the value or comment, case-insensitive.",
+              "description": "Substring of the value, comment or list, case-insensitive.",
               "type": "string"
             }
           },
@@ -11458,7 +11515,7 @@
     },
     "/denylist/{id}": {
       "delete": {
-        "description": "Removes every copy; a list left empty is deleted and its policy references removed.",
+        "description": "Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.",
         "operationId": "deleteDenylistEntry",
         "parameters": [
           {
@@ -12575,6 +12632,20 @@
             }
           },
           {
+            "description": "Only entries, or only list exceptions.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only entries, or only list exceptions.",
+              "enum": [
+                "entry",
+                "exception"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "description": "Only this namespace (default: every namespace).",
             "explode": false,
             "in": "query",
@@ -12610,22 +12681,22 @@
             }
           },
           {
-            "description": "everyone, or a ClientGroup (ns/name).",
+            "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "everyone, or a ClientGroup (ns/name).",
+              "description": "everyone, a ClientGroup (ns/name), or list:\u003cns/name\u003e for the exceptions of one list.",
               "type": "string"
             }
           },
           {
-            "description": "Substring of the value or comment, case-insensitive.",
+            "description": "Substring of the value, comment or list, case-insensitive.",
             "explode": false,
             "in": "query",
             "name": "q",
             "schema": {
-              "description": "Substring of the value or comment, case-insensitive.",
+              "description": "Substring of the value, comment or list, case-insensitive.",
               "type": "string"
             }
           },
