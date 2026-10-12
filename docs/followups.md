@@ -85,6 +85,17 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | external-dns webhook: optional shared-secret header (`externalDNS.webhook.tokenFile`, the external-dns webhook provider can send custom headers) so the listener can leave loopback without relying on a NetworkPolicy | docs/m5/security.md | v0.2 |
 | A `ServiceAccount` binding subject matches a kudurru service account and a Kubernetes ServiceAccount of the same namespace/name; consider a subject field (`provider: kubernetes|kudurru`) or documenting the overlap in §8.5 | docs/m5/security.md | v0.2 |
 
+## Security (docs/m5/security-v0.1-round.md)
+
+| Item | Source | Target |
+|---|---|---|
+| A password change or `kudurru admin reset-password` revokes sessions but not the user's API tokens; offer revoking them with a reset (`--revoke-tokens`, and a checkbox on the reset dialog) | docs/m5/security-v0.1-round.md | v0.1.x |
+| Approving a request whose entry already exists overwrites that entry's comment with the approver's note; keep the comment of an entry the approval did not add | docs/m5/security-v0.1-round.md | v0.1.x |
+| Approve ends an expired earlier approval (`end`) before adding its entry; if the add fails the request stays marked approved with its entry removed. Write the ended state first, or roll it back | docs/m5/security-v0.1-round.md | v0.1.x |
+| Release workflows: pin third-party actions by SHA with Dependabot for `github-actions`; pin goreleaser, helm and cosign versions; run `make test` and `make helm-check` in a separate read-only job before the release job and disable setup-go's cache there; refuse to promote a candidate whose publish failed (`gh release view`); image build provenance (`attest-build-provenance` with `subject-digest`, `push-to-registry`) and SBOMs for the supervisor images | docs/m5/security-v0.1-round.md | v0.1.x |
+| Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | docs/m5/security-v0.1-round.md | before v0.1.0 |
+| Optional `httpsOnly` for `blocking.catalogue.adguardServicesURL` (and BlockList URLs): a plain-http document can be changed in transit | docs/m5/security-v0.1-round.md | v0.2 |
+
 ## Dashboard (web/)
 
 | Item | Source | Target |
@@ -96,7 +107,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
 | Allowlist/Denylist: policies managed by a file or an integration are reported as `unattached` but cannot be fixed from the UI; offer an "attach" action that prints the YAML to add to the file | allowlist stream | v0.1.x |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
-| Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow | allowlist stream | v0.2 |
+| Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since docs/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |
 | Astryx conformance pass over the older page scaffolding: raw `<div>`/`<span>` layout and `k-*` classes in styles.css (e.g. `k-form-grid`, ShapeField rows) → Stack/Grid/Section/Layout/Table and tokens, per web/AGENTS.md; target an empty styles.css apart from documented exceptions | UX round 3 (D141) | v0.1.x |
 | Self-host the brand fonts (Inter, JetBrains Mono; docs/brand) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
 | Settings schema `Shape` has no help field, so list items and map keys show no help of their own (fields and enum options do) | UX round 3 | v0.2 |

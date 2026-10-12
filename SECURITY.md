@@ -47,7 +47,10 @@ pinned upstream versions are bumped by the CVE job.
 
 The design and its rationale live in [docs/architecture.md](docs/architecture.md)
 §3.3 (dataplane), §8 (authentication, RBAC, tokens, bootstrap) and §14
-(risks). The M5 security review is in [docs/m5/security.md](docs/m5/security.md).
+(risks). The M5 security review is in [docs/m5/security.md](docs/m5/security.md),
+the review of the v0.1 round (block page, unblock requests, allowlists,
+catalogue fetchers, release pipeline) in
+[docs/m5/security-v0.1-round.md](docs/m5/security-v0.1-round.md).
 
 ### Assets
 
@@ -74,7 +77,8 @@ The design and its rationale live in [docs/architecture.md](docs/architecture.md
 | Internal listener (`listeners.internal`, :8082) | other kudurru nodes | TLS 1.3 only with node certificates from a CA derived from the encryption key, a bearer token derived the same way (constant-time compare), per-address rate limit, no request bodies; peers get read-only grants |
 | Kubernetes apiserver | the cluster | SubjectAccessReview for ServiceAccounts (no `impersonate` grant), JWKS fetched through the apiserver, TokenReview only while discovery fails |
 | Identity providers | the OpenID Provider | authorization code + PKCE (S256), single-use sealed pre-auth cookie with state and nonce, `next` redirects restricted to same-origin paths, strict provisioning (no login without a binding, never an automatic admin), IdP usernames and groups prefixed `<idp>:` |
-| Block list URLs | the operators who write BlockList objects | the fetching node refuses loopback, link-local (cloud metadata), unspecified and multicast addresses unless `blocking.allowLocalListURLs` is set; bodies are size-capped and validated; replicas pull bodies by SHA-256 digest |
+| Block list and catalogue URLs | the operators who write BlockList objects; the admins who set `blocking.catalogue.url` and `adguardServicesURL`; whoever serves those documents | the fetching node refuses loopback, link-local (cloud metadata), unspecified and multicast addresses unless `blocking.allowLocalListURLs` is set, on the resolved address of every connection and on every request URL, redirects included; bodies are size-capped after decompression and validated (catalogue entry counts, AdGuard rules limited to single sites); replicas pull bodies by SHA-256 digest |
+| Block page (`listeners.blockPage`, HTTP and HTTPS) | any device that reaches it, unauthenticated | a fixed template with every value escaped, no script or cookies, a CSP that loads nothing and forbids framing; never proxies or fetches; per-client rate limits. The unblock request form refuses cross-site posts, caps the body and fields, and is bounded per client, per node (30 writes a minute) and by `unblockRequests.maxPending`; the client is recorded as `querylog.privacy` allows, under an object name keyed by the encryption key |
 | external-dns webhook | external-dns | **unauthenticated by design** (the external-dns webhook contract has no authentication): it listens on `127.0.0.1:8888` by default; a wider listener must be restricted with a NetworkPolicy or firewall, and `externalDNS.webhook.zoneSelector` limits the zones it can write |
 | dnsdist and keepalived | the supervisors that render their configuration | separate programs in their own images (never linked); rendered values are validated to characters that need no quoting; the dnsdist console and webserver listen on loopback with per-start credentials |
 
@@ -108,7 +112,12 @@ by scopes, and can never mint a broader or longer-lived token.
   `KUDURRU_ENCRYPTION_KEY_PREVIOUS`.
 - Change the generated first-boot admin password; prefer OIDC for people
   and scoped, expiring API tokens (`auth.tokens.maxLifetime`) for
-  automation.
+  automation. A password change or reset ends the user's sessions but not
+  their API tokens: delete the tokens of a compromised account, or disable
+  it.
+- Grant `unblockrequests.decide` only to people you would let edit the
+  Allowlist: an approval writes the allow list and attaches it to the
+  policies by itself.
 - With OIDC, bind groups rather than `User` subjects, or map the username
   to an immutable claim (`claimMappings.username.claim: sub`): the default
   chain starts at `preferred_username`, which some identity providers let

@@ -3359,7 +3359,7 @@ export interface components {
             /** @description Shown to the user on the block page. */
             note?: string;
             /**
-             * @description everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+             * @description everyone: the everyone list ui-allow, attached to every policy of the namespace that kudurru may edit (policies managed by a file or an integration are skipped). group: ui-allow-<group>, attached to the policies of the group. Default everyone. Approving needs only unblockrequests.decide: the approval writes the allow list and the policy references itself.
              * @enum {string}
              */
             scope?: "everyone" | "group";

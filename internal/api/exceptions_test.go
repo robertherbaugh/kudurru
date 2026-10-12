@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -108,5 +110,44 @@ func TestListExceptions(t *testing.T) {
 	h.do(http.MethodDelete, path, "operator", nil).want(http.StatusNoContent)
 	if len(stored()) != 0 {
 		t.Fatalf("delete left %v", stored())
+	}
+}
+
+// countingBodies counts the opens of cached list bodies.
+type countingBodies struct {
+	fakeBodies
+	opens *atomic.Int64
+}
+
+func (c countingBodies) OpenSourceBody(ns string, src v1alpha1.ListSource) (io.ReadCloser, SourceBody, error) {
+	c.opens.Add(1)
+	return c.fakeBodies.OpenSourceBody(ns, src)
+}
+
+// TestExceptionsParseEachSourceOnce: POST /allowlist with a list parses
+// each source's cached body once, whatever the number of values. It was
+// once per value (up to 1000): about 1.3 s of CPU per value for a 60 MiB
+// list, 20 minutes for one operator request.
+func TestExceptionsParseEachSourceOnce(t *testing.T) {
+	var opens atomic.Int64
+	body := "0.0.0.0 ads.example tracker.example\n||cdn.example^\n"
+	h := newHarness(t, func(o *Options) {
+		o.ListBodies = countingBodies{fakeBodies{"https://lists.example/hosts.txt": body}, &opens}
+	})
+	h.seed(store.ManagerAPI,
+		&v1alpha1.BlockList{ObjectMeta: objectMeta("default", "feed"), Spec: v1alpha1.BlockListSpec{Mode: "block", Sources: []v1alpha1.ListSource{
+			{Name: "remote", URL: "https://lists.example/hosts.txt"},
+		}}},
+	)
+	values := []string{"ads.example", "tracker.example", "cdn.example", "nothere.example", "bad value"}
+	var res DomainWriteResult
+	h.do(http.MethodPost, "/api/v1/allowlist", "operator", map[string]any{"values": values, "list": "feed"}).want(http.StatusOK).json(&res)
+	if len(res.Processed.Success) != 3 || len(res.Processed.Errors) != 2 || res.Processed.Errors[0].Item != "nothere.example" || res.Processed.Errors[1].Item != "bad value" {
+		t.Fatalf("processed %+v", res.Processed)
+	}
+	// One open to find the rules; listing the new exceptions afterwards
+	// reads the list without its body.
+	if n := opens.Load(); n != 1 {
+		t.Errorf("the body was opened %d times for %d values", n, len(values))
 	}
 }

@@ -99,7 +99,7 @@ type UnblockRequestList struct {
 
 // UnblockApproval is the body of POST …/approve.
 type UnblockApproval struct {
-	Scope string `json:"scope,omitempty" enum:"everyone,group" doc:"everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone."`
+	Scope string `json:"scope,omitempty" enum:"everyone,group" doc:"everyone: the everyone list ui-allow, attached to every policy of the namespace that kudurru may edit (policies managed by a file or an integration are skipped). group: ui-allow-<group>, attached to the policies of the group. Default everyone. Approving needs only unblockrequests.decide: the approval writes the allow list and the policy references itself."`
 	Match string `json:"match,omitempty" enum:"exact,subdomains" doc:"exact: the name only; subdomains: the name and every name below it (||name^). Default exact."`
 	Group string `json:"group,omitempty" maxLength:"300" doc:"The ClientGroup of a group approval (ns/name or a name in the request's namespace); default the request's first group."`
 	// Duration limits the approval; empty is permanent.

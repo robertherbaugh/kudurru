@@ -40,7 +40,7 @@ export function scopeOptions(r: Pick<UnblockRequest, 'groups'>, group?: string):
     {
       value: 'everyone',
       label: 'Everyone',
-      help: "Adds the name to the UI allow list ui-allow (the Domains page's list), attached to the default policy and the requester's policies.",
+      help: 'Adds the name to the everyone list ui-allow (the Allowlist), attached to every policy kudurru may edit, so every client may resolve it, also under strict or allow-only policies.',
     },
     {
       value: 'group',

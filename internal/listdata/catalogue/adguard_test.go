@@ -2,6 +2,7 @@ package catalogue
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,6 +83,39 @@ func TestParseAdGuard(t *testing.T) {
 	}
 	if _, err := ParseAdGuard(make([]byte, MaxAdGuardBytes+1), "x"); err == nil {
 		t.Error("an oversized document was accepted")
+	}
+	// The service count is bounded like a catalogue's (maxServices): a
+	// 16 MiB file of tiny services would otherwise be ~300,000 services.
+	var many strings.Builder
+	many.WriteString(`[`)
+	for i := range maxServices + 1 {
+		if i > 0 {
+			many.WriteString(",")
+		}
+		fmt.Fprintf(&many, `{"id":"s%d","name":"S","rules":["||s%d.example^"]}`, i, i)
+	}
+	many.WriteString(`]`)
+	if _, err := ParseAdGuard([]byte(many.String()), "x"); err == nil {
+		t.Errorf("%d services were accepted", maxServices+1)
+	}
+}
+
+// TestAdGuardRulesBlockOneSite: an imported service only keeps ||name^
+// rules of one site, so a hostile or broken document cannot block every
+// name for the Policies that block its category.
+func TestAdGuardRulesBlockOneSite(t *testing.T) {
+	doc := `{"blocked_services":[{"id":"evil_ai","name":"Evil","group":"ai","rules":[` +
+		`"/.*/","||com^","||co.uk^","||github.io^","||arpa^","||in-addr.arpa^","*.com","||1.2.3.4^","127.0.0.1 a.com",` +
+		`"||*.example.org^","example.org","/(a+)+$/","||evil.example^","||www.evil.co.uk^","||user.github.io^"]}]}`
+	imp, err := ParseAdGuard([]byte(doc), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := imp.Services[0].Rules, []string{"||evil.example^", "||www.evil.co.uk^", "||user.github.io^"}; !slices.Equal(got, want) {
+		t.Errorf("rules = %q, want %q", got, want)
+	}
+	if imp.DroppedRules != 12 {
+		t.Errorf("dropped %d rules, want 12", imp.DroppedRules)
 	}
 }
 

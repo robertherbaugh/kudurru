@@ -260,6 +260,9 @@ type Server struct {
 
 	// streams is the semaphore of the live-tail streams (maxQueryStreams).
 	streams chan struct{}
+	// bodyScans is the semaphore of the parses of cached list bodies
+	// (maxBodyScans).
+	bodyScans chan struct{}
 
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once
@@ -320,15 +323,16 @@ func New(opts Options) (*Server, error) {
 	installHumaErrors()
 
 	s := &Server{
-		opts:    opts,
-		log:     opts.Logger.With("component", "api"),
-		mux:     http.NewServeMux(),
-		perms:   perms,
-		metrics: newMetrics(opts.Registerer),
-		trusted: trusted,
-		prefix:  strings.TrimSuffix(opts.Config.Listeners.API.PathPrefix, "/"),
-		cfg:     opts.Config,
-		streams: make(chan struct{}, max(maxQueryStreams, 1)),
+		opts:      opts,
+		log:       opts.Logger.With("component", "api"),
+		mux:       http.NewServeMux(),
+		perms:     perms,
+		metrics:   newMetrics(opts.Registerer),
+		trusted:   trusted,
+		prefix:    strings.TrimSuffix(opts.Config.Listeners.API.PathPrefix, "/"),
+		cfg:       opts.Config,
+		streams:   make(chan struct{}, max(maxQueryStreams, 1)),
+		bodyScans: make(chan struct{}, max(maxBodyScans, 1)),
 	}
 	s.api = newHumaAPI(s.mux, s.prefix)
 	s.ui = opts.UIHandler

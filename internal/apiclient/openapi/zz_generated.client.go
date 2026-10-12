@@ -3510,14 +3510,14 @@ type UnblockApproval struct {
 	// Note Shown to the user on the block page.
 	Note *string `json:"note,omitempty"`
 
-	// Scope everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+	// Scope everyone: the everyone list ui-allow, attached to every policy of the namespace that kudurru may edit (policies managed by a file or an integration are skipped). group: ui-allow-<group>, attached to the policies of the group. Default everyone. Approving needs only unblockrequests.decide: the approval writes the allow list and the policy references itself.
 	Scope *UnblockApprovalScope `json:"scope,omitempty"`
 }
 
 // UnblockApprovalMatch exact: the name only; subdomains: the name and every name below it (||name^). Default exact.
 type UnblockApprovalMatch string
 
-// UnblockApprovalScope everyone: the UI allow list ui-allow, attached to the default policy and the requester's policies. group: ui-allow-<group>, attached to the policies of the group. Default everyone.
+// UnblockApprovalScope everyone: the everyone list ui-allow, attached to every policy of the namespace that kudurru may edit (policies managed by a file or an integration are skipped). group: ui-allow-<group>, attached to the policies of the group. Default everyone. Approving needs only unblockrequests.decide: the approval writes the allow list and the policy references itself.
 type UnblockApprovalScope string
 
 // UnblockBlock defines model for UnblockBlock.

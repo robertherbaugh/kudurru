@@ -33,14 +33,19 @@ func querylogPrivacy(reload *config.Reloadable) func() (querylog.Mode, bool) {
 
 // newUnblockBook is the unblock request book (internal/unblock): requests
 // in the default namespace, the client recorded as querylog.privacy
-// allows.
-func newUnblockBook(st store.Store, reload *config.Reloadable, node string, logger *slog.Logger) *unblock.Service {
+// allows, object names keyed by the encryption key.
+func newUnblockBook(st store.Store, reload *config.Reloadable, node string, encKey []byte, logger *slog.Logger) (*unblock.Service, error) {
+	nameKey, err := unblock.NameKey(encKey)
+	if err != nil {
+		return nil, err
+	}
 	return unblock.New(unblock.Options{
 		Store: st, Namespace: bootstrap.DefaultNamespace, Node: node,
 		Settings: func() config.UnblockRequests { return reload.Current().UnblockRequests },
 		Privacy:  querylogPrivacy(reload),
+		NameKey:  nameKey,
 		Logger:   logger,
-	})
+	}), nil
 }
 
 // Self-signed block page certificate under <node.dataDir>/keys/ when
@@ -54,13 +59,17 @@ const (
 // (the API preview works with the block page off); the listeners are only
 // configured, and the HTTPS certificate generated, when blockPage.enabled.
 // Reasons come from the query log (live tail, then querylog.db) and, when
-// it has none, from the client's current policy.
+// it has none, from the client's current policy. ql is the query log's
+// collector (nil when it is off); it names the client's pseudonym.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	ql *querylog.Async, book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
 		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
 		Privacy: querylogPrivacy(reload),
+	}
+	if ql != nil {
+		qf.Pseudonym = ql.Pseudonym
 	}
 	o := blockpage.Options{
 		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,

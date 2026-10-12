@@ -106,6 +106,17 @@ func TestPseudonymRotatesDaily(t *testing.T) {
 	if a1 != a2 || a1 == b || !strings.HasPrefix(a1, PseudonymPrefix) || len(a1) != len(PseudonymPrefix)+12 {
 		t.Errorf("same day: %q %q %q", a1, a2, b)
 	}
+	// Pseudonym names the logged client name (the block page matches it).
+	if got := p.Pseudonym(netip.MustParseAddr("::ffff:10.0.0.1")); got != a1 {
+		t.Errorf("Pseudonym = %q, logged %q", got, a1)
+	}
+	if got := (*Privacy)(nil).Pseudonym(netip.MustParseAddr("10.0.0.1")); got != "" {
+		t.Errorf("nil filter: %q", got)
+	}
+	prefix, _ := NewPrivacy(PrivacyOptions{Mode: PrivacyAnonymizeClient})
+	if got := prefix.Pseudonym(netip.MustParseAddr("10.0.0.1")); got != "" {
+		t.Errorf("prefix mode: %q", got)
+	}
 	fc.Step(2 * time.Hour) // past UTC midnight
 	if a3 := pseud("10.0.0.1"); a3 == a1 {
 		t.Error("pseudonym did not rotate at UTC midnight")

@@ -43,7 +43,7 @@ Verify an image:
 
 ```sh
 cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
-  --certificate-identity-regexp 'https://github.com/robertherbaugh/kudurru/' \
+  --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

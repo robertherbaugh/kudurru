@@ -40,7 +40,10 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
   `promotion` check (or the `release` workflow).
 
 Re-running a workflow at the same commit reuses its tag. To re-publish an
-existing tag by hand, run `publish` with workflow_dispatch and the tag.
+existing tag by hand, run `publish` with workflow_dispatch and the tag, on
+the `release` branch (a final tag) or `release-candidate` (a candidate);
+publish refuses other branches, because the branch is part of the signing
+identity that `cosign verify` checks (section 5).
 
 The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
 workflow, which is why the branch workflows call `publish.yml` and
@@ -56,7 +59,15 @@ Repository settings the pipeline relies on (once):
       rebase (a branch ruleset can restrict the merge method per branch):
       `release-candidate` must keep `main`'s history, or the next promotion
       conflicts and the release tree check fails.
+- [ ] Promotion pull requests need an approving review by a maintainer
+      (CODEOWNERS for `.github/` and `hack/release-tag.sh`): the `promotion`
+      check runs the workflow and script of the pull request itself, so a
+      pull request that edits them can pass its own check.
 - [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
+- [ ] A branch ruleset refuses branches named `v*`. publish.yml checks out
+      `refs/tags/<tag>`, so a branch named like the next tag can no longer
+      stand in for it, but it would still confuse anyone checking out the
+      bare name.
 - [ ] The `github-pages` environment allows deployments from the `release`
       branch (docs-pages runs in the context of the `release` push).
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
@@ -204,9 +215,12 @@ On the owner's hardware:
 
 - [ ] Checksums: `cosign verify-blob --certificate checksums.txt.pem
       --signature checksums.txt.sig --certificate-identity-regexp
-      'https://github.com/robertherbaugh/kudurru/' --certificate-oidc-issuer
-      https://token.actions.githubusercontent.com checksums.txt`, then
-      `sha256sum -c checksums.txt` on the downloaded artifacts.
+      '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$'
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      checksums.txt`, then `sha256sum -c checksums.txt` on the downloaded
+      artifacts. The identity is publish.yml run from a release branch;
+      a looser pattern (the whole repository) would also accept a signature
+      made by any other workflow or branch of the repository.
 - [ ] Images: `cosign verify ghcr.io/robertherbaugh/kudurru:<version>` with the
       same identity flags (`publish.yml` already ran this for both ko
       images: `docker_signs` with `artifacts: manifests` signs the ko index

@@ -131,8 +131,10 @@ The reason is the most recent block of that name for that client within ten
 minutes: first the query log's in-memory tail (which has the query even before
 the database flush), then `querylog.db`. The query-log privacy mode limits the
 lookup: `full` matches client and name; `anonymize_client` matches the client's
-/24 or /48 (prefix) or the name alone (pseudonym); `hide_domains` and stricter
-modes, and a disabled query log, keep no name to match. Without a query-log
+/24 or /48 (prefix) or its daily pseudonym; `hide_domains` and stricter
+modes, and a disabled query log, keep no name to match. Under `prefix`, a
+device can therefore see the reason of a block another device of its network
+got for the same name in those ten minutes. Without a query-log
 row, the name is evaluated against the policy that applies to the client
 address now (what the blocking stage does for the question; response-side
 blocks are not visible that way). Without either, the page says why no reason
@@ -248,7 +250,10 @@ administrator sees the same requests. The spec is what the block page
 recorded; the status holds the state (`Pending`, `Approved`, `Denied`,
 `Expired`), `decidedBy`, `decidedAt`, the note, the allow entry and the earlier
 decisions of a request asked again. One object exists per recorded client and
-name. The serving snapshot does not include them, so a request never rebuilds
+name. Its name (`ur-<hex>`) is an HMAC of the two under a key derived from the
+encryption key, because allow-list entries show it as their request to anyone
+who reads lists; after an encryption key rotation, a client's next request for
+the same name is a new object. The serving snapshot does not include them, so a request never rebuilds
 it. Install the new CRD (the `kudurru-crds` chart, or `kubectl apply -f
 crds.yaml`) before upgrading the server.
 
@@ -259,9 +264,11 @@ and `hide_domains`; the /24 or /48 network address under `anonymize_client`
 with `anonymize: prefix` (the Requests page says the client is anonymised, and
 devices of the same network share one request per name); nothing under
 `anonymize: pseudonym`, `hide_domains_clients` and `nothing` ("hidden"; every
-anonymous device shares one request per name). The client's groups and
-policies are recorded in every mode. The name, contact and reason are what the
-user chose to type.
+anonymous device shares one request per name). Devices that share a request
+see its state and the administrator's note on the block page, and a request
+from any of them replaces the name, contact and reason of the pending one:
+write notes accordingly. The client's groups and policies are recorded in
+every mode. The name, contact and reason are what the user chose to type.
 
 ### Limits
 
@@ -293,6 +300,12 @@ update their status. For people: the resource `unblockrequests` has the verbs
 the query log. A Kubernetes identity needs `get`/`list` on
 `unblockrequests.kudurru.io` to read and the custom verb `decide` to approve or
 deny (`kubectl auth can-i decide unblockrequests.kudurru.io`).
+
+`decide` is enough to approve: the approval writes the allow list and attaches
+it to the policies itself, without `blocklists` or `policies` write
+permissions of the approver. An *everyone* approval allows the name for every
+client, also under strict or allow-only policies of the namespace. Grant
+`decide` to people you would trust to edit the Allowlist.
 
 ## HTTPS: why browsers warn
 

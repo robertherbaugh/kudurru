@@ -3,6 +3,7 @@ package unblock
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/netip"
@@ -63,8 +64,12 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	f := &fixture{t: t, st: st, clk: &clock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}, set: Defaults}
+	nameKey, err := NameKey(testEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.svc = New(Options{
-		Store: st, Node: "node-a", Now: f.clk.Now,
+		Store: st, Node: "node-a", Now: f.clk.Now, NameKey: nameKey,
 		Settings: func() config.UnblockRequests { return f.set },
 		Privacy:  func() (querylog.Mode, bool) { return f.mode, f.pseud },
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -142,10 +147,36 @@ func (f *fixture) allowRefs(policy string) []string {
 	return p.Spec.AllowListRefs
 }
 
+// testEncryptionKey stands in for the cluster encryption key.
+var testEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+
+// TestRequestNameIsKeyed: the object name, which allow-list entries show
+// to blocklists.read holders (viewers) as their request, is an HMAC under
+// a key derived from the encryption key; the plain hash of client and
+// domain would let a viewer recover the client address by trying the
+// addresses of a network.
+func TestRequestNameIsKeyed(t *testing.T) {
+	f := newFixture(t)
+	r := f.submit("192.168.37.201", "games.example", "")
+	for a := range 256 {
+		if r.Name == Name(nil, fmt.Sprintf("192.168.37.%d", a), "games.example") {
+			t.Fatalf("the name %s is the unkeyed hash of the client", r.Name)
+		}
+	}
+	key, _ := NameKey(testEncryptionKey)
+	if r.Name != Name(key, "192.168.37.201", "games.example") {
+		t.Fatalf("name %s is not the keyed name", r.Name)
+	}
+	if other, _ := NameKey([]byte("another key, another cluster....")); Name(other, "192.168.37.201", "games.example") == r.Name {
+		t.Fatal("the name does not depend on the key")
+	}
+}
+
 func TestSubmitCreatesAndDedupes(t *testing.T) {
 	f := newFixture(t)
 	r := f.submit("10.0.20.5", "games.example", "homework")
-	if r.Name != Name("10.0.20.5", "games.example") || r.Namespace != "default" || r.EffectiveState() != v1alpha1.UnblockPending || r.Status.State != v1alpha1.UnblockPending {
+	key, _ := NameKey(testEncryptionKey)
+	if r.Name != Name(key, "10.0.20.5", "games.example") || r.Namespace != "default" || r.EffectiveState() != v1alpha1.UnblockPending || r.Status.State != v1alpha1.UnblockPending {
 		t.Fatalf("request %s/%s state %q", r.Namespace, r.Name, r.Status.State)
 	}
 	if r.Spec.Client != "10.0.20.5" || r.Spec.ClientPrivacy != v1alpha1.UnblockClientFull || r.Spec.Node != "node-a" || r.Spec.Submissions != 1 || store.ManagedBy(r) != Manager {
@@ -261,6 +292,106 @@ func TestApproveEveryoneAndExpiry(t *testing.T) {
 	r = f.submit("10.0.20.5", "games.example", "again")
 	if r.EffectiveState() != v1alpha1.UnblockPending || len(r.Status.History) != 1 || r.Status.History[0].State != v1alpha1.UnblockExpired {
 		t.Fatalf("re-request %+v", r.Status)
+	}
+}
+
+// TestExpiryKeepsAManualEntry: an operator who replaces a time-limited
+// approval's entry with one of their own (same rule) keeps it when the
+// approval ends; only entries of origin unblock are released.
+func TestExpiryKeepsAManualEntry(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour, Actor: "user:admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.lists.RemoveRule(ctx, "default", EveryoneList, "games.example", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryExact,
+		Values: []string{"games.example"}, Comment: "permanent, ticket 42", Origin: v1alpha1.OriginAPI, Actor: "user:operator"}); err != nil {
+		t.Fatal(err)
+	}
+	f.clk.Add(2 * time.Hour)
+	if res, err := f.svc.Sweep(ctx); err != nil || res.Ended != 1 {
+		t.Fatalf("sweep %+v %v", res, err)
+	}
+	if got := f.list(EveryoneList); !slices.Equal(got, []string{"games.example"}) {
+		t.Fatalf("ui-allow after the approval ended %v, want the manual entry", got)
+	}
+}
+
+// racingStore runs hook once, right before the first Approved status
+// write: the requester re-posting the block page form while an approval
+// is in flight.
+type racingStore struct {
+	store.Store
+	hook func()
+}
+
+func (r *racingStore) UpdateStatus(ctx context.Context, obj store.Object) error {
+	if u, ok := obj.(*v1alpha1.UnblockRequest); ok && u.Status.State == v1alpha1.UnblockApproved && r.hook != nil {
+		h := r.hook
+		r.hook = nil
+		h()
+	}
+	return r.Store.UpdateStatus(ctx, obj)
+}
+
+// TestApprovalRacingAResubmission: a re-submission between the allow
+// entry write and the status write (a resource version conflict) does
+// not fail the approval, and the time-limited entry is still removed
+// when it ends. Before, the approval failed after writing the entry, and
+// its retry found the entry present (added false), so it was never
+// removed: the approval became permanent.
+func TestApprovalRacingAResubmission(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	rs := &racingStore{Store: f.st}
+	f.svc.opts.Store = rs
+	f.svc.lists = domainlist.New(domainlist.Options{Store: rs, Now: f.clk.Now})
+	r := f.submit("10.0.20.5", "games.example", "please")
+	rs.hook = func() { f.submit("10.0.20.5", "games.example", "please!!") }
+	out, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour, Actor: "user:admin"})
+	if err != nil {
+		t.Fatalf("approve racing a re-submission: %v", err)
+	}
+	if a := out.Request.Status.Allow; out.Request.Status.State != v1alpha1.UnblockApproved || a == nil || !a.Added || out.Request.Spec.Reason != "please!!" {
+		t.Fatalf("approved %+v spec %+v", out.Request.Status, out.Request.Spec)
+	}
+	f.clk.Add(2 * time.Hour)
+	if res, err := f.svc.Sweep(ctx); err != nil || res.Ended != 1 {
+		t.Fatalf("sweep %+v %v", res, err)
+	}
+	if got := f.list(EveryoneList); got != nil {
+		t.Fatalf("ui-allow after the 1h approval ended %v", got)
+	}
+}
+
+// failingStatusStore fails every Approved status write.
+type failingStatusStore struct{ store.Store }
+
+func (f failingStatusStore) UpdateStatus(ctx context.Context, obj store.Object) error {
+	if u, ok := obj.(*v1alpha1.UnblockRequest); ok && u.Status.State == v1alpha1.UnblockApproved {
+		return errors.New("store unavailable")
+	}
+	return f.Store.UpdateStatus(ctx, obj)
+}
+
+// TestFailedApprovalRemovesItsEntry: an approval whose status cannot be
+// written takes the entry it added off the list again.
+func TestFailedApprovalRemovesItsEntry(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	fs := failingStatusStore{Store: f.st}
+	f.svc.opts.Store = fs
+	f.svc.lists = domainlist.New(domainlist.Options{Store: fs, Now: f.clk.Now})
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour}); err == nil {
+		t.Fatal("approve succeeded")
+	}
+	if got := f.list(EveryoneList); got != nil {
+		t.Fatalf("ui-allow after a failed approval %v", got)
 	}
 }
 
