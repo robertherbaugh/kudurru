@@ -230,3 +230,43 @@ func TestStructuredSourceEntries(t *testing.T) {
 	h.do(http.MethodPatch, base, "operator", map[string]any{"remove": []string{"a.example"}}).want(http.StatusUnprocessableEntity)
 	h.do(http.MethodPatch, base, "operator", map[string]any{"disable": []string{"c.example"}}).want(http.StatusBadRequest)
 }
+
+// TestSourcePatchIsLinear: switching off every entry of a large source
+// in one PATCH stays fast. The entries branch parsed every entry's rule
+// key once per value (10000 x 10000 parses at the schema limits, tens of
+// minutes of CPU for one operator request), and the exclude branch
+// scanned spec.sources[].exclude once per value.
+func TestSourcePatchIsLinear(t *testing.T) {
+	const n = 2000
+	values := make([]string, n)
+	entries := make([]v1alpha1.ListEntry, n)
+	for i := range n {
+		values[i] = fmt.Sprintf("host%05d.example", i)
+		entries[i] = v1alpha1.ListEntry{Value: values[i]}
+	}
+	now := func() time.Time { return time.Unix(0, 0) }
+	start := time.Now()
+	src := &v1alpha1.ListSource{Name: "ui", Entries: entries}
+	res := &SourceEntriesResult{}
+	if err := applySourcePatch(src, &SourceEntriesPatch{Disable: values}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	if res.Excluded != n || len(res.Disabled) != n {
+		t.Fatalf("entries: excluded %d, disabled %d", res.Excluded, len(res.Disabled))
+	}
+	url := &v1alpha1.ListSource{Name: "feed", URL: "https://lists.example/hosts.txt", Format: "domains"}
+	res = &SourceEntriesResult{}
+	if err := applySourcePatch(url, &SourceEntriesPatch{Disable: values}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	res = &SourceEntriesResult{}
+	if err := applySourcePatch(url, &SourceEntriesPatch{Enable: values[:n/2]}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	if res.Excluded != n/2 || len(res.Enabled) != n/2 || url.Exclude[0] != values[n/2] {
+		t.Fatalf("exclude: excluded %d, enabled %d", res.Excluded, len(res.Enabled))
+	}
+	if d := time.Since(start); d > 30*time.Second { // minutes before
+		t.Fatalf("%d values took %v", n, d)
+	}
+}
