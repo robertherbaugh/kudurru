@@ -2,6 +2,7 @@ package unblock
 
 import (
 	"context"
+	"fmt"
 	"errors"
 	"io"
 	"log/slog"
@@ -63,8 +64,12 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	f := &fixture{t: t, st: st, clk: &clock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}, set: Defaults}
+	nameKey, err := NameKey(testEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.svc = New(Options{
-		Store: st, Node: "node-a", Now: f.clk.Now,
+		Store: st, Node: "node-a", Now: f.clk.Now, NameKey: nameKey,
 		Settings: func() config.UnblockRequests { return f.set },
 		Privacy:  func() (querylog.Mode, bool) { return f.mode, f.pseud },
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -142,10 +147,36 @@ func (f *fixture) allowRefs(policy string) []string {
 	return p.Spec.AllowListRefs
 }
 
+// testEncryptionKey stands in for the cluster encryption key.
+var testEncryptionKey = []byte("0123456789abcdef0123456789abcdef")
+
+// TestRequestNameIsKeyed: the object name, which allow-list entries show
+// to blocklists.read holders (viewers) as their request, is an HMAC under
+// a key derived from the encryption key; the plain hash of client and
+// domain would let a viewer recover the client address by trying the
+// addresses of a network.
+func TestRequestNameIsKeyed(t *testing.T) {
+	f := newFixture(t)
+	r := f.submit("192.168.37.201", "games.example", "")
+	for a := range 256 {
+		if r.Name == Name(nil, fmt.Sprintf("192.168.37.%d", a), "games.example") {
+			t.Fatalf("the name %s is the unkeyed hash of the client", r.Name)
+		}
+	}
+	key, _ := NameKey(testEncryptionKey)
+	if r.Name != Name(key, "192.168.37.201", "games.example") {
+		t.Fatalf("name %s is not the keyed name", r.Name)
+	}
+	if other, _ := NameKey([]byte("another key, another cluster....")); Name(other, "192.168.37.201", "games.example") == r.Name {
+		t.Fatal("the name does not depend on the key")
+	}
+}
+
 func TestSubmitCreatesAndDedupes(t *testing.T) {
 	f := newFixture(t)
 	r := f.submit("10.0.20.5", "games.example", "homework")
-	if r.Name != Name("10.0.20.5", "games.example") || r.Namespace != "default" || r.EffectiveState() != v1alpha1.UnblockPending || r.Status.State != v1alpha1.UnblockPending {
+	key, _ := NameKey(testEncryptionKey)
+	if r.Name != Name(key, "10.0.20.5", "games.example") || r.Namespace != "default" || r.EffectiveState() != v1alpha1.UnblockPending || r.Status.State != v1alpha1.UnblockPending {
 		t.Fatalf("request %s/%s state %q", r.Namespace, r.Name, r.Status.State)
 	}
 	if r.Spec.Client != "10.0.20.5" || r.Spec.ClientPrivacy != v1alpha1.UnblockClientFull || r.Spec.Node != "node-a" || r.Spec.Submissions != 1 || store.ManagedBy(r) != Manager {

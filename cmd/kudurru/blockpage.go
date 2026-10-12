@@ -33,14 +33,19 @@ func querylogPrivacy(reload *config.Reloadable) func() (querylog.Mode, bool) {
 
 // newUnblockBook is the unblock request book (internal/unblock): requests
 // in the default namespace, the client recorded as querylog.privacy
-// allows.
-func newUnblockBook(st store.Store, reload *config.Reloadable, node string, logger *slog.Logger) *unblock.Service {
+// allows, object names keyed by the encryption key.
+func newUnblockBook(st store.Store, reload *config.Reloadable, node string, encKey []byte, logger *slog.Logger) (*unblock.Service, error) {
+	nameKey, err := unblock.NameKey(encKey)
+	if err != nil {
+		return nil, err
+	}
 	return unblock.New(unblock.Options{
 		Store: st, Namespace: bootstrap.DefaultNamespace, Node: node,
 		Settings: func() config.UnblockRequests { return reload.Current().UnblockRequests },
 		Privacy:  querylogPrivacy(reload),
+		NameKey:  nameKey,
 		Logger:   logger,
-	})
+	}), nil
 }
 
 // Self-signed block page certificate under <node.dataDir>/keys/ when

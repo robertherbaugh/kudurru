@@ -250,7 +250,10 @@ administrator sees the same requests. The spec is what the block page
 recorded; the status holds the state (`Pending`, `Approved`, `Denied`,
 `Expired`), `decidedBy`, `decidedAt`, the note, the allow entry and the earlier
 decisions of a request asked again. One object exists per recorded client and
-name. The serving snapshot does not include them, so a request never rebuilds
+name. Its name (`ur-<hex>`) is an HMAC of the two under a key derived from the
+encryption key, because allow-list entries show it as their request to anyone
+who reads lists; after an encryption key rotation, a client's next request for
+the same name is a new object. The serving snapshot does not include them, so a request never rebuilds
 it. Install the new CRD (the `kudurru-crds` chart, or `kubectl apply -f
 crds.yaml`) before upgrading the server.
 

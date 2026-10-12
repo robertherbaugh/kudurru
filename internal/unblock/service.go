@@ -2,6 +2,8 @@ package unblock
 
 import (
 	"context"
+	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -57,6 +59,8 @@ type Options struct {
 	// Privacy returns querylog.privacy and whether querylog.anonymize is
 	// pseudonym; nil records clients in full.
 	Privacy func() (querylog.Mode, bool)
+	// NameKey keys the object names (Name, NameKey); nil hashes unkeyed.
+	NameKey []byte
 	// Now is the clock; nil is time.Now.
 	Now    func() time.Time
 	Logger *slog.Logger
@@ -312,17 +316,43 @@ func (s *Service) clientForm(client netip.Addr) (string, v1alpha1.UnblockClientP
 }
 
 // Name is the object name of the request of client (as recorded) for
-// domain: one object per pair, so repeated requests update it.
-func Name(client, domain string) string {
-	sum := sha256.Sum256([]byte(client + "\x00" + domain))
+// domain: one object per pair, so repeated requests update it. It is
+// HMAC-SHA256 under key (Options.NameKey) because the name is shown where
+// the client is not: allow-list entries carry it as their request, and
+// blocklists.read holders read those. Unkeyed, a /16 of candidate
+// addresses is hashed in milliseconds. A nil key (tests) uses SHA-256.
+func Name(key []byte, client, domain string) string {
+	msg := []byte(client + "\x00" + domain)
+	var sum []byte
+	if key == nil {
+		h := sha256.Sum256(msg)
+		sum = h[:]
+	} else {
+		m := hmac.New(sha256.New, key)
+		m.Write(msg)
+		sum = m.Sum(nil)
+	}
 	return "ur-" + hex.EncodeToString(sum[:8])
+}
+
+// NameKeyInfo is the HKDF info that derives Options.NameKey from the
+// cluster encryption key.
+const NameKeyInfo = "kudurru/unblock-request-name/v1"
+
+// NameKey derives Options.NameKey from the cluster encryption key, which
+// every node shares, so every node names a client's request alike.
+func NameKey(encryptionKey []byte) ([]byte, error) {
+	if len(encryptionKey) == 0 {
+		return nil, nil
+	}
+	return hkdf.Key(sha256.New, encryptionKey, nil, NameKeyInfo, 32)
 }
 
 // Lookup returns the indexed request of client for domain, nil when
 // there is none.
 func (s *Service) Lookup(client netip.Addr, domain string) *v1alpha1.UnblockRequest {
 	c, _ := s.clientForm(client)
-	return s.Get(s.opts.Namespace, Name(c, domain))
+	return s.Get(s.opts.Namespace, Name(s.opts.NameKey, c, domain))
 }
 
 // Block is why the name was blocked, as the block page found it.
@@ -355,7 +385,7 @@ const maxHistory = 20
 // request would exceed unblockRequests.maxPending.
 func (s *Service) Submit(ctx context.Context, sub Submission) (*v1alpha1.UnblockRequest, error) {
 	client, privacy := s.clientForm(sub.Client)
-	name := Name(client, sub.Domain)
+	name := Name(s.opts.NameKey, client, sub.Domain)
 	key := keyOf(s.opts.Namespace, name)
 	existing := &v1alpha1.UnblockRequest{}
 	if err := s.opts.Store.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
