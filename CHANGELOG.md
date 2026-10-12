@@ -44,6 +44,21 @@ a real server instead of its mocks.
   compiled block lists; the OpenAPI document of the forwarded `/auth` and
   `/iam` routes matches the handlers (D127); zone deep links with dots load
   the dashboard instead of a 404.
+- Zones can be deleted: `DELETE /zones/{zone}` (and `kudurru zones delete`)
+  removes the zone with every record set that references it, in one
+  transaction on the sqlite driver; `?dryRun=true` reports the record set
+  and record counts first. Zones or record sets owned by files,
+  integrations or Kubernetes refuse with `managed_by` and the root zone `.`
+  with `default_zone`. `DELETE /objects/dnszones/{name}` no longer orphans
+  record sets: a zone they reference answers 409 `zone_not_empty` (D148).
+- The zone page has Delete zone (with a dry-run preview and the zone name
+  typed to confirm) and a Zone settings section that edits what the wizard
+  set (name servers, TTLs, SOA, query access; a forward zone's upstream
+  group and DNSSEC validation); the Zones list deletes per row. Record
+  deletes confirm in a dialog.
+- A password change (`revokeTokens`, a checkbox in the dialog) or `kudurru
+  admin reset-password --revoke-tokens` can also revoke the user's API
+  tokens.
 - Blocked services and safe search (D60, D120, D124-D126):
   `Policy.spec.blockedServices` from an embedded, kudurru-authored catalogue
   of 32 services, and `safeSearch`/`safeSearchMode` for Google, Bing,
