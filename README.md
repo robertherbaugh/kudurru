@@ -66,7 +66,7 @@ Kubernetes:
 
 ```sh
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2 --set license.existingSecret=kudurru-license   # two replicas need a license key (free for personal use); see LICENSING.md
 kubectl apply -f config/samples/   # DNSZone, DNSRecordSet, BlockList, ClientGroup, Policy
 kubectl get zones
 ```

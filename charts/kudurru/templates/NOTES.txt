@@ -36,6 +36,24 @@ The CRDs come from the kudurru-crds chart; install it first if you have not:
   kubectl -n {{ $ns }} port-forward svc/{{ $fullname }}-api 9153:9153
   curl -s localhost:9153/metrics | grep kudurru_build_info
 
+{{- if and (not .Values.license.key) (not .Values.license.existingSecret) }}
+
+5. License. No license key is configured, so kudurru runs with the free
+   license: one node, two policies, and none of the licensed features (roles
+   beyond the built-in administrator, OIDC, the audit trail, long-term
+   statistics, unblock requests, the dnsdist and keepalived edge,
+   integrations). DNS answering is not affected.
+{{- if gt (int .Values.replicaCount) 1 }}
+   replicaCount is {{ .Values.replicaCount }}, which is over the limit of one node:
+   changes through the API and the dashboard answer 402 license_required until
+   a key is in place. Changes with kubectl are not affected.
+{{- end }}
+   A free personal key covers up to 3 nodes for non-commercial use
+   (https://kudurru.io/license). Put it in a Secret and set the value:
+  kubectl -n {{ $ns }} create secret generic kudurru-license --from-file=license.key=./license.key
+  helm upgrade {{ .Release.Name }} ... --set license.existingSecret=kudurru-license
+{{- end }}
+
 Keep the encryption key Secret {{ include "kudurru.encryptionKeySecret" . }}: it seals
 sessions and stored secrets and derives the node-to-node credentials. Rotation
 is described in docs/deploy/runbooks.md.

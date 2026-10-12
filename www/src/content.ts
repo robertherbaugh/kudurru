@@ -50,7 +50,7 @@ export const LICENSE_ROWS: LicenseRow[] = [
 
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
-  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer, OIDC and RBAC.";
+  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Source-available and free for personal use; a license key adds OIDC, RBAC and more.";
 
 export function docs(path = "/"): string {
   return DOCS_URL + path;
@@ -67,6 +67,8 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
+  // A page of its own: not prefixed with the home page path like the anchors.
+  { label: "License", href: "/license/" },
 ];
 
 // The README's lineage table: what each reference project contributed.
@@ -424,7 +426,7 @@ export const REGISTERS: Register[] = [
     points: [
       "Helm charts kudurru and kudurru-crds, rendered and checked across 42 value combinations",
       "Each object records who manages it: the API, a file, an integration or Kubernetes. Two sources of truth cannot happen",
-      "An external-dns webhook provider, and a read-only watch of DNSEndpoint",
+      "An external-dns webhook provider (needs a license key, free for personal use), and a read-only watch of DNSEndpoint",
       "The same YAML works in Docker: kudurru apply -f zone.yaml",
     ],
     figure: { value: "42", caption: "chart value combinations rendered and checked with kubeconform on every change" },
@@ -434,7 +436,7 @@ export const REGISTERS: Register[] = [
     id: "edge",
     label: "Edge and VIP",
     title: "dnsdist in front. A VIP that follows health.",
-    lead: "kudurru supervises the programs that do this best instead of rewriting them. dnsdist and keepalived stay unmodified, in their own containers, and kudurru renders, checks and runs them.",
+    lead: "kudurru supervises the programs that do this best instead of rewriting them. dnsdist and keepalived stay unmodified, in their own containers, and kudurru renders, checks and runs them. The supervisors need a license key; a free personal key covers up to 3 nodes.",
     points: [
       "kudurru edge run renders dnsdist's configuration, runs --check-config before every swap and tracks backends by health",
       "PROXYv2 with an authenticated TLV keeps the real client IP for groups and the query log",
@@ -449,7 +451,7 @@ export const REGISTERS: Register[] = [
 export const SHOTS: { id: string; label: string; file: string; caption: string }[] = [
   { id: "dashboard", label: "Dashboard", file: "dashboard.png", caption: "Two nodes, 24 hours: queries by answer type and by client." },
   { id: "query-log", label: "Query log", file: "query-detail.png", caption: "Every row opens to the list, rule, cache state and node behind the answer." },
-  { id: "long-term", label: "Long-term", file: "long-term.png", caption: "Rollups for weeks and months without keeping every query." },
+  { id: "long-term", label: "Long-term", file: "long-term.png", caption: "Rollups for weeks and months without keeping every query (a license key unlocks periods over 24 hours)." },
   { id: "zones", label: "Zones", file: "zone-detail.png", caption: "A primary zone with its serial, records, BIND import and export, and NOTIFY." },
   { id: "upstreams", label: "Upstreams", file: "upstreams.png", caption: "Upstream groups with their strategy, servers, health and round-trip times." },
   { id: "nodes", label: "Nodes", file: "nodes.png", caption: "Every node with its readiness, version and role, and the state of dnsdist and the VIP." },

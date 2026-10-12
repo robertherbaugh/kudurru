@@ -90,10 +90,14 @@ The navigation list is at the left. It has four sections.
 | Overview | **Dashboard**, **Query log**, **Long-term** |
 | Filtering | **Lists**, **Domains**, **Allowlist**, **Denylist**, **Groups**, **Clients**, **Policies**, **Requests** |
 | DNS | **Zones**, **Upstreams** |
-| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **Access & audit** |
+| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **License**, **Access & audit** |
 
 A number in a red or yellow badge next to a page shows the count of
 messages (**Diagnosis**) or of open requests (**Requests**).
+
+The page **License** shows the license of the node. Some pages need a
+license key: **Long-term**, **Requests** and the audit log. A page that
+needs a key says so. See [Chapter 13](13-license.md).
 
 ### The top bar
 

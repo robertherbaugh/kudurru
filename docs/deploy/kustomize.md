@@ -39,6 +39,13 @@ kubectl apply --server-side -k config/default          # or config/overlays/<nam
 kubectl apply -k config/samples                        # optional examples
 ```
 
+The manifests read an optional Secret `kudurru-license` (key `license.key`) as
+`KUDURRU_LICENSE_KEY`; without it kudurru runs with the free license (one node,
+no edge). To use a key: `kubectl -n kudurru-system create secret generic
+kudurru-license --from-file=license.key=./license.key`. With the default two
+replicas and no key, changes through the API and the dashboard answer
+`402 license_required` ([LICENSING.md](../../LICENSING.md)).
+
 Or straight from a release: `kubectl apply --server-side -f
 https://github.com/robertherbaugh/kudurru/releases/download/v0.1.0/install.yaml`.
 

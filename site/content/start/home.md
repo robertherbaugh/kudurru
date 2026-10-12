@@ -119,7 +119,8 @@ keep in BIND format import with `kudurru import bind <zone> -f file.zone`.
   that `kudurru restore -f` applies again; a copy of the data volume taken
   with the container stopped also keeps users, tokens and the query log.
 - **Encrypted DNS** (DoT, DoH, DoQ): add the listeners and a certificate, or
-  put dnsdist in front with `deploy/compose/single-edge`; see
+  put dnsdist in front with `deploy/compose/single-edge` (the edge needs a
+  [license key](/project/licensing/)); see
   [encrypted transports](/deploy/docker/#encrypted-transports).
 - **Coming from Pi-hole or AdGuard Home?** The [migration guides](/migrate/)
   map their settings onto kudurru objects.

@@ -36,8 +36,8 @@ The mapping below is the whole job for most installations.
 | Upstream DNS servers | [`upstreams.groups`](/reference/configuration/#upstreams.groups) | Several named groups with a strategy each; a Policy can pick one per client group |
 | Rate limiting | [`ratelimit.*`](/reference/configuration/#ratelimit.enabled): queries per minute per IPv4 /32 and /24 (and IPv6 prefixes) | UDP only; TCP and the encrypted transports are not limited |
 | Privacy level | [`querylog.privacy`](/reference/configuration/#querylog.privacy): `full`, `anonymize_client`, `hide_domains`, `hide_domains_clients`, `nothing` | Applied once, when a query is logged |
-| Long-term data | rollups kept 35 days per minute, 400 days per hour and daily forever; raw rows for [`querylog.retention.raw`](/reference/configuration/#querylog.retention.raw) | The dashboard marks merged top lists as approximate |
-| Web interface password | the local `admin` user (reset on the host with `kudurru admin reset-password admin`), other local users, or OIDC login | Roles: viewer, auditor, operator, zone-admin, admin |
+| Long-term data | rollups kept 35 days per minute, 400 days per hour and daily forever; raw rows for [`querylog.retention.raw`](/reference/configuration/#querylog.retention.raw) | The dashboard marks merged top lists as approximate. Statistics older than 24 hours need a [license key](/project/licensing/) |
+| Web interface password | the local `admin` user (reset on the host with `kudurru admin reset-password admin`), other local users, or OIDC login | Roles: viewer, auditor, operator, zone-admin, admin. Roles other than the built-in administrator, and OIDC, need a [license key](/project/licensing/) |
 | Pi-hole API | `/api/v1`, see the [REST API reference](/reference/api/) | A Pi-hole v6 compatible API is planned for v1.0 |
 | Teleporter | `kudurru backup --out file.yaml` and `kudurru restore -f file.yaml` | kudurru's own format, not a Teleporter archive |
 | `pihole.toml` | `kudurru.yaml` and the settings file, see the [settings reference](/reference/configuration/) | |

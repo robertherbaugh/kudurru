@@ -73,6 +73,10 @@ in this guide is an example.
 CAUTION: Keep a copy of `secrets/encryption_key` in a safe place. If you
 lose the key, kudurru cannot read the secrets that it stored.
 
+NOTE: kudurru runs without a license key. A key unlocks more than one node
+and some features. To use a key, add `-e KUDURRU_LICENSE_KEY=<key>` to the
+command in step 3. See [Chapter 13](13-license.md).
+
 Without a configuration file, kudurru uses these defaults:
 
 - It listens for plain DNS on port 53.

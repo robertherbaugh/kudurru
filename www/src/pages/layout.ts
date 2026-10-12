@@ -43,7 +43,7 @@ function header(assets: Assets, home: boolean): Html {
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">${icon.menu}<span>Menu</span></button>
     <nav id="site-nav" class="nav" aria-label="Primary">
       <ul class="nav-anchors">
-        ${NAV.map((l) => html`<li><a href="${prefix}${l.href}">${l.label}</a></li>`)}
+        ${NAV.map((l) => html`<li><a href="${l.href.startsWith("/") ? l.href : prefix + l.href}">${l.label}</a></li>`)}
       </ul>
       <ul class="nav-out">
         <li>${external(DOCS_URL, html`Docs ${icon.out}`)}</li>

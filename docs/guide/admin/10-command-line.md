@@ -179,6 +179,8 @@ Chapter 11 explains what a backup holds.
 | `kudurru config schema` | List all settings with their scope and flags |
 | `kudurru config show` | Show the effective configuration |
 | `kudurru completion <shell>` | Print a script for shell completion |
+| `kudurru license status` | Show the license that a node uses (state, plan, nodes, features) |
+| `kudurru license verify <key>` | Check a license key without a running node |
 | `kudurru version` | Show the version |
 
 Use `kudurru <command> --help` for the options of each command. The

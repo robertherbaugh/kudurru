@@ -27,6 +27,12 @@ The `kudurru-dnsdist` and `kudurru-keepalived` images (supervisors
 
 ## Prepare every host
 
+The dnsdist and keepalived containers need a license key that includes the
+edge: set `KUDURRU_LICENSE_KEY` in the environment of every host (the compose
+files pass it to all three containers). Without a key they stop at the start.
+A free personal key covers up to 3 nodes for non-commercial use
+([LICENSING.md](../../LICENSING.md)).
+
 1. Replace the example addresses (10.0.0.11-13, VIP 10.0.0.53/24, `eth0`) in
    the three `docker-compose.yml` files: `--backends`, `--peers`, `--vip` and
    `KUDURRU_LISTENERS__PROXYPROTOCOLFROM` (exact `/32`s of the three hosts,

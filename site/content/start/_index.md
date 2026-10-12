@@ -10,6 +10,11 @@ supervisors that run dnsdist (`kudurru edge run`) and keepalived
 (`kudurru vip run`) in their own containers. Which of them you need depends on
 the deployment shape:
 
+kudurru is source-available: personal use is free, and a license key unlocks
+more than one node and some features (the dnsdist and keepalived edge among
+them). See [Licensing](/project/licensing/) for what is free, what a key
+unlocks and what a missing key changes. DNS answering never depends on a key.
+
 | Shape | Source of truth | Guide |
 |---|---|---|
 | One container (Docker, Podman) or a Linux package | `state.db` on a volume | [One container](/deploy/docker/) |

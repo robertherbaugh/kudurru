@@ -205,3 +205,18 @@ describe("the license text", () => {
     expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/text/");
   });
 });
+
+describe("the navigation", () => {
+  test("links the license page from every page, and never builds a path with two slashes", () => {
+    for (const name of Object.keys(pages)) {
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages[name]!)?.[1] ?? "";
+      expect(nav).toContain('href="/license/">License</a>');
+      expect(nav).not.toContain('href="//');
+    }
+    // The anchors still lead to the home page sections from the other pages.
+    const nav404 = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages["404.html"]!)?.[1] ?? "";
+    expect(nav404).toContain('href="/#pipeline"');
+    const navHome = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages["index.html"]!)?.[1] ?? "";
+    expect(navHome).toContain('href="#pipeline"');
+  });
+});

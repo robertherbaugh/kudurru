@@ -31,6 +31,11 @@ kubectl apply -k config/samples/
 kubectl get zone,rrset,blocklist,cg,pol -A
 ```
 
+Two replicas need a license key: without one kudurru runs as one node, so
+changes through the API and the dashboard answer `402 license_required` until
+you add a key (a free personal key covers 3 nodes) or set `replicaCount=1`
+([license key](/deploy/helm/#license-key)). DNS answering is not affected.
+
 The defaults follow the Restricted Pod Security Standard: two replicas, a
 PodDisruptionBudget, topology spread and one mixed-protocol `LoadBalancer`
 Service with `externalTrafficPolicy: Local`, because client addresses are
@@ -55,13 +60,15 @@ what client groups and the query log are about.
   [settings reference](/reference/configuration/). Keys flagged *restart*
   roll the pods through the ConfigMap checksum.
 - external-dns writes records through kudurru's webhook provider
-  (`externalDNS.webhook.*`); the records land in `DNSRecordSet` objects
-  managed by `integration:external-dns`.
+  (`externalDNS.webhook.*`; it needs a license key that includes
+  integrations); the records land in `DNSRecordSet` objects managed by
+  `integration:external-dns`.
 
 ## Access
 
-People sign in with OIDC (`auth.oidc.providers`) or the local admin; their
-roles come from role bindings (viewer, auditor, operator, zone-admin,
+People sign in with OIDC (`auth.oidc.providers`) or the local admin; OIDC and
+roles other than the built-in administrator need a license key
+([what a key unlocks](/project/licensing/)). Their roles come from role bindings (viewer, auditor, operator, zone-admin,
 admin, scoped per zone). ServiceAccount tokens are authorized with a
 SubjectAccessReview against the aggregated ClusterRoles the chart renders
 from `internal/rbac/permissions.yaml`; with `rbac.aggregateToDefaultRoles`

@@ -216,3 +216,19 @@ link at the bottom opens the object.
 | `PriorityTie` | Two policies match the same clients with the same priority | Give one policy a higher priority |
 
 The messages go away when the cause goes away.
+
+## License
+
+Open **System** > **License**. The page shows the license of the node:
+
+- the state of the key, the plan and the date that the key ends;
+- the number of nodes in use and the limit of nodes;
+- the limit of policies;
+- each feature, with the text **Included** or **Needs a key**.
+
+The page is read-only. You put a key on a node with the command line or the
+environment of the node. [Chapter 13](13-license.md) shows how.
+
+A banner at the top of each page tells you about a key that is invalid,
+expired or close to its end. The banner also tells you if the cluster has
+more nodes than the key allows.

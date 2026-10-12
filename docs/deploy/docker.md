@@ -20,6 +20,11 @@ docker run -d --name kudurru --restart unless-stopped \
 dig @127.0.0.1 example.com
 ```
 
+kudurru runs without a license key. A key unlocks more than one node and the
+features listed in [LICENSING.md](../../LICENSING.md); add
+`-e KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key` (a file in the secrets
+directory) or `-e KUDURRU_LICENSE_KEY=<key>`.
+
 Without a mounted `kudurru.yaml` the built-in defaults apply: plain DNS on
 :53 forwarding to 1.1.1.1 and 9.9.9.9, the starter blocklist, the query log.
 The image runs as uid 65532 and binds :53 because Docker starts the

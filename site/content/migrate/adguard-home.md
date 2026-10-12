@@ -40,7 +40,7 @@ hand.
 | DNS rewrites | records in a primary [`DNSZone`](/reference/crds/dnszone/) of your own (`kudurru records add`) | Per-policy answer rewrites (`Policy.spec.rewrites`) are planned for v0.2 |
 | Blocked services, safe search | the kudurru-owned catalogue of decision D60 | Not every build has it yet: check your version's changelog. Without it, list a service's domains in a BlockList |
 | Parental control, safe browsing web services | none | Use blocklists |
-| Query log and statistics | the dashboard; [`querylog.privacy`](/reference/configuration/#querylog.privacy) and `querylog.retention.*` | Per node, with rollups for long-term views |
+| Query log and statistics | the dashboard; [`querylog.privacy`](/reference/configuration/#querylog.privacy) and `querylog.retention.*` | Per node, with rollups for long-term views (reading them needs a [license key](/project/licensing/)) |
 | Encryption settings (DoT, DoH, DoQ) | `listeners.dot`, `doh`, `doq`, `doh3` with a certificate, or dnsdist in front | See [encrypted transports](/deploy/docker/#encrypted-transports) |
 | DHCP server | none | Keep DHCP on your router or a DHCP server |
 | DNSSEC | not yet | Validation is planned for v0.2 |

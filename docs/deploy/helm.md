@@ -29,6 +29,13 @@ Standard (uid 65532, read-only root, all capabilities dropped except
 `NET_BIND_SERVICE`, `net.ipv4.ip_unprivileged_port_start=0` so the
 non-root process binds :53).
 
+**Two replicas need a license key.** Without one kudurru runs as one node, so
+a default install (two replicas) is over the node limit: DNS answers as usual,
+but changes through the API and the dashboard answer `402 license_required`
+until you add a key (a free personal key covers 3 nodes) or set
+`replicaCount=1`. Changes with `kubectl` are not affected. See
+[License key](#license-key).
+
 ### First login
 
 The chart generates three Secrets once and keeps them on uninstall
@@ -104,6 +111,10 @@ there.
 
 ### Audit log
 
+Events are always recorded and shipped; reading them (the Audit tab,
+`GET /api/v1/audit`, `kudurru audit`) needs a license key that includes the
+audit trail, and answers `402 license_required` without one.
+
 In mode=kubernetes every replica records the changes it makes in its own
 audit spool (`audit-spool.db`) and copies them into `AuditLog` objects
 (`audit.kudurru.io`) in the release namespace. Every replica reads all of
@@ -167,6 +178,9 @@ outside the Baseline level; label the namespace
 or set `net.ipv4.ip_unprivileged_port_start=53` on the hosts.
 
 ### Edge (dnsdist)
+
+The dnsdist and keepalived supervisors need a license key that includes the
+edge; without one they stop at the start (see [License key](#license-key)).
 
 With `edge.enabled` the dns Service selects the edge pods; kudurru listens
 on `edge.backendPort` (5353) and accepts PROXYv2 only from

@@ -199,6 +199,9 @@ If you cannot sign in, you can make a token on the host. See
 
 ## Read the audit log
 
+NOTE: The audit log needs a license key. Without a key, the page asks for one.
+See [Chapter 13](13-license.md).
+
 kudurru writes an entry to the audit log for each change that comes
 through the API. The role Auditor or Admin can read it.
 
