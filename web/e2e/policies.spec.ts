@@ -6,6 +6,7 @@
 import { badLines, env, expect, expectRendered, main, settle, test } from './fixtures';
 import { query } from './support/dns';
 import { choose } from './support/astryx';
+import { adminApi, object } from './support/api';
 import { BLOCKLIST } from './support/kudurru';
 
 const unique = () => Math.random().toString(36).slice(2, 8);
@@ -163,4 +164,55 @@ test.describe('dark scheme', () => {
       await expectRendered(page);
     }
   });
+});
+
+test('a policy blocks the whole AI category; the grid searches and filters', async ({ page }) => {
+  const name = `e2e-ai-${unique()}`;
+  const api = await adminApi(page);
+  const dns = env('KUDURRU_E2E_DNS');
+  // Before: the stub upstream answers.
+  for (const host of ['chat.openai.com', 'claude.ai']) expect((await query(dns, host)).a).not.toContain('0.0.0.0');
+  await api.put(`/objects/policies/default/${name}`, object('Policy', name, { clientGroupRefs: ['default'], priority: 100 }));
+  try {
+    await page.goto(`/policies/default/${name}`);
+    await settle(page);
+    const sec = main(page).getByTestId('section-services');
+
+    // Search filters by name and by domain.
+    const search = sec.getByRole('textbox', { name: 'Search services' });
+    await search.fill('claude.ai');
+    await expect(sec.getByRole('button', { name: /^Claude/ })).toBeVisible();
+    await expect(sec.getByRole('button', { name: /YouTube/ })).toHaveCount(0);
+    await expect(sec.getByText(/^Showing 1 of \d+$/)).toBeVisible();
+    await search.fill('');
+
+    // The AI tab shows only that category, with its count.
+    const aiTab = sec.getByRole('tab', { name: /^AI · \d+$/ });
+    await aiTab.click();
+    await expect(aiTab).toHaveAttribute('aria-selected', 'true');
+    await expect(sec.getByRole('heading', { level: 3, name: 'Gaming' })).toHaveCount(0);
+    const ai = sec.getByTestId('category-ai');
+    await ai.getByRole('switch', { name: 'Block the whole category' }).click();
+    await expect(ai.getByRole('button', { name: /^ChatGPT/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(ai.getByText(/including services a catalogue update adds/)).toBeVisible();
+    await expect(sec.getByRole('tab', { name: /^AI · (\d+) · \1 blocked$/ })).toBeVisible();
+    await sec.getByRole('button', { name: 'Save services' }).click();
+    await expect(sec.getByRole('button', { name: 'Save services' })).toHaveCount(0);
+
+    // Blocked only lists the blocked ones.
+    await sec.getByRole('tab', { name: /^All/ }).click();
+    await sec.getByRole('button', { name: 'Blocked only' }).click();
+    await expect(sec.getByRole('button', { name: /YouTube/ })).toHaveCount(0);
+    await expect(sec.getByRole('button', { name: /^Perplexity/ })).toBeVisible();
+    await expectRendered(page);
+
+    const saved = await api.get<{ spec: { blockedCategories?: string[] } }>(`/objects/policies/default/${name}`);
+    expect(saved.body.spec.blockedCategories).toEqual(['ai']);
+    // The DNS listener blocks the category's services.
+    for (const host of ['chat.openai.com', 'claude.ai']) {
+      await expect.poll(async () => (await query(dns, host)).a, { message: `${host} is blocked`, timeout: 20_000 }).toContain('0.0.0.0');
+    }
+  } finally {
+    await api.del(`/objects/policies/default/${name}`);
+  }
 });

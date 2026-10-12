@@ -1,6 +1,6 @@
-// The Settings explainer of blocking.catalogue.adguardServicesURL: what
-// the opt-in does, its licence, and the state of the import from
-// GET /catalogue (sources).
+// The Settings row extra of blocking.catalogue.adguardServicesURL (whose
+// help explains the opt-in and its GPL-3.0 licence): the state of the
+// import from GET /catalogue (sources), nothing while it is off.
 import { Banner } from '@astryxdesign/core/Banner';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
@@ -16,10 +16,6 @@ export function AdGuardImportNote() {
   const src = info.data?.sources?.find((s) => s.id === 'adguard');
   return (
     <VStack gap={2} data-testid="adguard-import-note">
-      <Text type="supporting" display="block">
-        Off by default. When set, this server downloads AdGuard&apos;s HostlistsRegistry blocked-services file (GPL-3.0) and adds its services to the Blocked services grid,
-        marked &quot;AdGuard · GPL-3.0&quot;. kudurru does not ship that data; kudurru&apos;s own entries (Apache-2.0) win when both have a service.
-      </Text>
       {src ? (
         src.loaded ? (
           <Text type="supporting" display="block">
