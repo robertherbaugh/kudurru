@@ -308,3 +308,25 @@ func contextWithCancel(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Cleanup(cancel)
 	return ctx, cancel
 }
+
+// A release build trusts the licensor's keys and nothing else: the throwaway
+// key of the dashboard suite exists only under -tags licensetest.
+func TestDefaultBuildTrustsNoTestKey(t *testing.T) {
+	if len(testKeys) != 0 {
+		t.Skip("built with -tags licensetest")
+	}
+	ring, err := EmbeddedKeyring()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ring["e2e-test"]; ok {
+		t.Fatal("the e2e test key is trusted by a default build")
+	}
+	raw, err := os.ReadFile("testdata/e2e-license.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(string(raw), ring); !errors.Is(err, ErrUnknownKey) {
+		t.Fatalf("the e2e key verifies in a default build: %v", err)
+	}
+}

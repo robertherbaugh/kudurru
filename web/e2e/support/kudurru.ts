@@ -23,6 +23,8 @@ export const ZONE = { object: 'lan.example', apex: 'lan.example.', host: 'nas.la
 /** The block list of the run and one name on it. */
 export const BLOCKLIST = { name: 'e2e-ads', blocked: 'ads.example.net', alsoBlocked: 'tracker.example.org' };
 export const ADMIN_USER = 'admin';
+/** The signed key of the e2e node: all features, 10 nodes, no expiry in sight. */
+export const E2E_LICENSE_KEY = path.join(REPO_DIR, 'internal', 'license', 'testdata', 'e2e-license.key');
 
 const OBJECTS = `apiVersion: kudurru.io/v1alpha1
 kind: DNSZone
@@ -75,7 +77,7 @@ export function locateBinary(): string {
       throw new Error('no bin/kudurru and no built dashboard in web/dist: run `make web-e2e` (or `make web-build build`) first');
     }
     console.log(`e2e: building ${p}`);
-    const r = spawnSync('go', ['build', '-trimpath', '-o', p, './cmd/kudurru'], {
+    const r = spawnSync('go', ['build', '-trimpath', '-tags', 'licensetest', '-o', p, './cmd/kudurru'], {
       cwd: REPO_DIR,
       env: { ...process.env, CGO_ENABLED: '0' },
       stdio: 'inherit',
@@ -113,6 +115,8 @@ export interface ServerOptions {
   adminPassword?: string;
   /** Node name. */
   node?: string;
+  /** Run without a license key (the community license). */
+  community?: boolean;
 }
 
 export interface Server {
@@ -148,6 +152,10 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
     if (v !== undefined && !k.startsWith('KUDURRU_')) env[k] = v;
   }
   env.KUDURRU_ENCRYPTION_KEY_FILE = keyFile;
+  // Every licensed feature is on, with a throwaway test key that only a binary
+  // built with -tags licensetest trusts (make web-e2e; internal/license/testkey.go).
+  // ServerOptions.community runs a node without a key instead.
+  if (!opts.community) env.KUDURRU_LICENSE_KEY_FILE = E2E_LICENSE_KEY;
   if (opts.adminPassword !== undefined) {
     const pwFile = path.join(dir, 'admin.password');
     fs.writeFileSync(pwFile, opts.adminPassword, { mode: 0o600 });

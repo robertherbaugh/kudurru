@@ -18,9 +18,20 @@ import (
 //go:embed keys/*.pub
 var keyFS embed.FS
 
+// testKeys are extra trusted keys; only a build with -tags licensetest sets
+// them (testkey.go).
+var testKeys Keyring
+
 // EmbeddedKeyring returns the keyring compiled into the binary.
 func EmbeddedKeyring() (Keyring, error) {
-	return keyringFrom(keyFS, "keys")
+	ring, err := keyringFrom(keyFS, "keys")
+	if err != nil {
+		return nil, err
+	}
+	for kid, pub := range testKeys {
+		ring[kid] = pub
+	}
+	return ring, nil
 }
 
 func keyringFrom(fsys fs.FS, dir string) (Keyring, error) {
