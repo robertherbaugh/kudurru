@@ -89,6 +89,14 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    | Build watch paths, include | `site/*`, `docs/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
    | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` |
 
+   Before the first release the `release` branch is still the initial commit,
+   with no `site/`, so a build of it stops with "root directory not found".
+   Until `release` carries the site, set the production branch to `main`
+   (after the pull request that adds the site is merged) or to the branch
+   that has it, and switch it to `release` when the first release is cut.
+   A build of any other branch is a preview and runs the non-production
+   deploy command.
+
    The build reads `docs/`, `api/` and the root markdown files outside the
    root directory; Workers Builds clones the whole repository. `make` downloads
    the pinned Hugo release into `bin/` and checks its SHA-256 (it needs `curl`,
