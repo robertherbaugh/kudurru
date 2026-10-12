@@ -37,6 +37,11 @@ export const ENABLED_OPTIONS: SelectOption[] = [
   { value: 'false', label: 'Disabled only' },
 ];
 
+export const KIND_OPTIONS: SelectOption[] = [
+  { value: 'entry', label: 'Entries' },
+  { value: 'exception', label: 'List exceptions', help: 'Entries switched off in one list only (on that list\u2019s page or with "Only in list").' },
+];
+
 export const ORIGIN_LABEL: Record<DomainOrigin, string> = {
   manual: 'manual',
   querylog: 'query log',

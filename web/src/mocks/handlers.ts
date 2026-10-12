@@ -1773,7 +1773,7 @@ function entriesPage(request: Request, action: DomainAction | undefined) {
   const sp = new URL(request.url).searchParams;
   const ns = sp.get('namespace') || undefined;
   const all = collectEntries(db, action, ns);
-  const matching = filterEntries(all, { type: sp.get('type'), enabled: sp.get('enabled'), scope: sp.get('scope'), q: sp.get('q') });
+  const matching = filterEntries(all, { kind: sp.get('kind'), type: sp.get('type'), enabled: sp.get('enabled'), scope: sp.get('scope'), q: sp.get('q') });
   const limit = Math.min(Math.max(Number(sp.get('limit') ?? '100') || 100, 1), 1000);
   const start = Number(sp.get('continue') ?? '0') || 0;
   const next = start + limit < matching.length ? String(start + limit) : undefined;

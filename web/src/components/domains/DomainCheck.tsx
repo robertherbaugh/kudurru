@@ -5,15 +5,33 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Heading } from '@astryxdesign/core/Heading';
+import { Link } from '@astryxdesign/core/Link';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { useApi } from '../../api/context';
+import type { DomainEntry } from '../../api/types';
+import { refPath, shortRef } from '../../lib/domains';
 import { formatError } from '../fields/formats';
 import { TextField } from '../fields/TextField';
 import { ErrorBanner } from '../Feedback';
+
+/** Whether a list exception's rule covers the name ("x", "||x^", "*.x" of a parent, "/re/"). */
+export function exceptionMatches(e: Pick<DomainEntry, 'value' | 'type'>, name: string): boolean {
+  const v = e.value.toLowerCase();
+  if (e.type === 'regex' || (v.startsWith('/') && v.endsWith('/') && v.length > 2)) {
+    try {
+      return new RegExp(v.replace(/^\/(.*)\/$/, '$1')).test(name);
+    } catch {
+      return false;
+    }
+  }
+  const base = v.startsWith('||') ? v.slice(2).replace(/\^$/, '') : v.startsWith('*.') ? v.slice(2) : v;
+  if (base === name) return true;
+  return (v.startsWith('||') || v.startsWith('*.')) && name.endsWith(`.${base}`);
+}
 
 export function DomainCheck() {
   const api = useApi();
@@ -22,9 +40,22 @@ export function DomainCheck() {
   const [client, setClient] = useState('');
   const [errors, setErrors] = useState<{ name?: string; client?: string }>({});
   const m = useMutation({
-    mutationFn: () => api.runtime.dig({ name: name.trim().replace(/\.$/, ''), type: 'A', ...(client.trim() ? { client: client.trim() } : {}) }),
+    mutationFn: async () => {
+      const n = name.trim().replace(/\.$/, '').toLowerCase();
+      const r = await api.runtime.dig({ name: n, type: 'A', ...(client.trim() ? { client: client.trim() } : {}) });
+      // Entries of lists switched off for this name (list exceptions), so the verdict can say why.
+      let exceptions: DomainEntry[] = [];
+      try {
+        const page = await api.domains.list(undefined, { kind: 'exception', q: n, limit: 100 });
+        exceptions = page.items.filter((e) => e.kind === 'exception' && e.enabled && exceptionMatches(e, n));
+      } catch {
+        // Older servers or no blocklists.read: the verdict alone.
+      }
+      return { r, exceptions };
+    },
   });
-  const r = m.data;
+  const r = m.data?.r;
+  const exceptions = m.data?.exceptions ?? [];
   const blocked = r?.status_class === 'blocked';
   return (
     <VStack as="section" gap={3} className="k-panel" aria-labelledby={titleId}>
@@ -66,6 +97,20 @@ export function DomainCheck() {
             </Text>
           ) : null}
         </HStack>
+      ) : null}
+      {r && exceptions.length ? (
+        <VStack gap={1} data-testid="domain-check-exceptions">
+          {exceptions.map((e) => (
+            <Text key={e.id} type="supporting">
+              <Text type="code">{e.value}</Text> is switched off in{' '}
+              <Link href={refPath('lists', e.lists[0]?.list ?? '')} hasUnderline>
+                {shortRef(e.lists[0]?.list ?? '')}
+              </Link>{' '}
+              (a list exception): that list {e.action === 'allow' ? 'does not block' : 'does not allow'} it
+              {e.stillMatchedBy.length ? `; still ${e.action === 'allow' ? 'blocked' : 'allowed'} by ${e.stillMatchedBy.map((o) => shortRef(o.list)).join(', ')}` : ''}.
+            </Text>
+          ))}
+        </VStack>
       ) : null}
     </VStack>
   );

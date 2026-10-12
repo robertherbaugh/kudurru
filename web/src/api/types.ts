@@ -932,8 +932,11 @@ export interface DomainEntriesQuery {
   action?: DomainAction;
   type?: DomainEntryType;
   enabled?: 'true' | 'false';
-  /** "everyone" or a group "ns/name". */
+  /** Only entries, or only list exceptions (entries switched off in one list). */
+  kind?: 'entry' | 'exception';
+  /** "everyone", a group "ns/name", or "list:ns/name" for the exceptions of one list. */
   scope?: string;
+  /** Substring of the value or comment (and of the list name for exceptions). */
   q?: string;
   limit?: number;
   continue?: string;

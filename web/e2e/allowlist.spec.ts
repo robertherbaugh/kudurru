@@ -320,3 +320,66 @@ test('the entries tables fit without scrolling sideways at 1280 and 1440 px', as
     await removeEntries(api, 'deny', [denied]);
   }
 });
+
+test('an entry switched off in a URL list shows on the Allowlist as a list exception; switching it there blocks it again', async ({ page }) => {
+  const api = await adminApi(page);
+  const f = await setup(api);
+  const host = f.hosts[0];
+  try {
+    await page.goto(`/lists/default/${f.name}`);
+    await settle(page);
+    await page.getByTestId('source-stub').getByRole('button', { name: 'Entries' }).click();
+    const browser = page.getByTestId('entries-browser');
+    await browser.getByRole('row').filter({ hasText: host }).getByRole('switch', { name: `${host} enabled` }).click({ force: true });
+    await expect(toast(page, `${host} switched off in ${f.name}`)).toBeVisible();
+    await waitBlocked(api, host, f.client, false);
+
+    await browser.getByRole('link', { name: 'Allowlist as list exceptions' }).click();
+    await expect(page).toHaveURL(new RegExp(`/allowlist\\?kind=exception&scope=list%3Adefault%2F${f.name}$`));
+    await settle(page);
+    const row = page.getByTestId(`entry-${host}`);
+    await expect(row).toContainText('list exception');
+    await expect(row.getByRole('link', { name: `Only list ${f.name}` })).toHaveAttribute('href', `/lists/default/${f.name}`);
+    await expect(page.getByTestId(`entry-${f.hosts[1]}`)).toHaveCount(0);
+
+    const sw = row.getByRole('switch', { name: `${host} switched off in ${f.name}` });
+    await expect(sw).toBeChecked();
+    await sw.click({ force: true });
+    await expect(toast(page, new RegExp(`switched back on in ${f.name}: that list blocks it again`))).toBeVisible();
+    // The row stays, switched off, so it can be switched off in the list again.
+    await expect(sw).not.toBeChecked();
+    await waitBlocked(api, host, f.client, true);
+    await expect(await dig(page, host, f.client)).toContainText(/blocked/i);
+    const stored = await api.get<{ spec: { sources: { exclude?: string[] }[] } }>(`/objects/blocklists/default/${f.name}`);
+    expect(stored.body.spec.sources[0]?.exclude ?? []).toEqual([]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('"Only in list" in the Allowlist add dialog switches a name off in that list only', async ({ page }) => {
+  const api = await adminApi(page);
+  const f = await setup(api);
+  const host = f.hosts[1];
+  try {
+    await page.goto('/allowlist');
+    await settle(page);
+    await page.getByRole('button', { name: 'Add to the Allowlist' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add to the Allowlist' });
+    await choose(selector(dialog, /^Applies to/), 'Only in list …');
+    await dialog.getByRole('textbox', { name: /^Domains/ }).fill(host);
+    await choose(selector(dialog, /^Block list/), `default/${f.name}`);
+    await dialog.getByRole('button', { name: 'Switch off', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(toast(page, new RegExp(`^Switched 1 off in ${f.name} only`))).toBeVisible();
+
+    await waitBlocked(api, host, f.client, false);
+    await waitBlocked(api, f.hosts[0], f.client, true);
+    await expect(await dig(page, host, f.client)).not.toContainText(/blocked/i);
+    // Nothing was added to the Allowlist: the row is a list exception.
+    const r = await api.get<{ items: DomainEntry[] }>(`/allowlist?q=${encodeURIComponent(host)}`);
+    expect(r.body.items.filter((e) => e.value === host).map((e) => (e as DomainEntry & { kind: string }).kind)).toEqual(['exception']);
+  } finally {
+    await f.cleanup();
+  }
+});

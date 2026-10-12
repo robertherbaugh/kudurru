@@ -188,7 +188,8 @@ export function collectEntries(db: MockDB, action?: DomainAction, ns?: string): 
   }
   const out = [...byKey.values()];
   for (const e of out) e.overrides = overridesOf(db, e);
-  return out.sort((a, b) => (b.created ?? '').localeCompare(a.created ?? '') || a.value.localeCompare(b.value));
+  out.sort((a, b) => (b.created ?? '').localeCompare(a.created ?? '') || a.value.localeCompare(b.value));
+  return [...out, ...collectExceptions(db, action, ns)];
 }
 
 export function listInfos(db: MockDB, action?: DomainAction, ns?: string): DomainListInfo[] {
@@ -223,6 +224,7 @@ export function unattachedOf(db: MockDB, action?: DomainAction, ns?: string): Do
 }
 
 export interface EntryFilters {
+  kind?: string | null;
   type?: string | null;
   enabled?: string | null;
   scope?: string | null;
@@ -233,10 +235,12 @@ export function filterEntries(items: DomainEntry[], f: EntryFilters): DomainEntr
   const q = (f.q ?? '').toLowerCase();
   return items.filter(
     (e) =>
+      (!f.kind || e.kind === f.kind) &&
       (!f.type || e.type === f.type) &&
       (!f.enabled || String(e.enabled) === f.enabled) &&
-      (!f.scope || (f.scope === 'everyone' ? e.everyone : e.groups.includes(f.scope))) &&
-      (!q || e.value.toLowerCase().includes(q) || (e.comment ?? '').toLowerCase().includes(q)),
+      (!f.scope ||
+        (f.scope === 'everyone' ? e.everyone : f.scope.startsWith('list:') ? e.kind === 'exception' && e.lists[0]?.list === f.scope.slice(5) : e.groups.includes(f.scope))) &&
+      (!q || e.value.toLowerCase().includes(q) || (e.comment ?? '').toLowerCase().includes(q) || (e.kind === 'exception' && (e.lists[0]?.list ?? '').toLowerCase().includes(q))),
   );
 }
 
@@ -304,7 +308,14 @@ export function recount(db: MockDB, l: BlockList): void {
       const off = (s.exclude ?? []).filter((x) => s.inline?.includes(x)).length;
       return { ...prev, name, entries: s.inline.length - off, ...(off ? { excluded: off } : {}) };
     }
-    return prev;
+    // url and configMap sources: count against the cached body.
+    const items = sourceItems(l, s, name);
+    if (!items) return prev;
+    const known = new Set(items.map((e) => e.value));
+    const off = (s.exclude ?? []).filter((x) => known.has(x)).length;
+    const stale = (s.exclude ?? []).filter((x) => !known.has(x));
+    const { excluded: _e, staleExcludes: _s, ...rest } = prev;
+    return { ...rest, name, entries: items.length - off, ...(off ? { excluded: off } : {}), ...(stale.length ? { staleExcludes: stale } : {}) };
   });
   const entries = sources.reduce((n, s) => n + (s.enabled === false ? 0 : (s.entries ?? 0)), 0);
   l.status = { ...(l.status ?? {}), entries, ruleCount: entries, sources };
@@ -329,7 +340,7 @@ export interface WriteResult {
 }
 
 function find(db: MockDB, ns: string, action: DomainAction, type: DomainEntryType, value: string): DomainEntry | undefined {
-  return collectEntries(db, action, ns).find((e) => e.type === type && e.value === value);
+  return collectEntries(db, action, ns).find((e) => e.kind === 'entry' && e.type === type && e.value === value);
 }
 
 function merge(into: WriteResult, r: { attached: string[]; skipped: string[] }) {
@@ -339,6 +350,7 @@ function merge(into: WriteResult, r: { attached: string[]; skipped: string[] }) 
 
 /** POST /allowlist|/denylist. */
 export function createEntries(db: MockDB, action: DomainAction, body: DomainEntriesCreate, actor: string, origin?: { origin: ListSourceEntry['origin']; request?: string }): WriteResult {
+  if (body.list) return createExceptions(db, action, body);
   const ns = body.namespace || 'default';
   const type = body.type ?? 'exact';
   if (!Array.isArray(body.values) || body.values.length < 1 || body.values.length > 1000) throw new WriteError(400, 'invalid', 'values: 1 to 1000 values');
@@ -412,6 +424,14 @@ function lockedError(c: { list: BlockList }): WriteError {
 
 /** PATCH /allowlist/{id}. */
 export function patchEntry(db: MockDB, action: DomainAction, id: string, body: DomainEntryPatch): WriteResult {
+  if (parseExceptionId(id)) {
+    if (body.comment !== undefined || body.value !== undefined || body.type !== undefined || body.scope !== undefined || body.groups !== undefined) {
+      throw new WriteError(422, 'unprocessable', 'a list exception has only its switch', "edit the list's entries on its page, or add an Allowlist or Denylist entry");
+    }
+    if (body.enabled === undefined) throw new WriteError(400, 'invalid', 'body: enabled is required for a list exception');
+    const row = setException(db, action, id, body.enabled);
+    return { items: row ? [row] : [], processed: { success: [{ item: row?.value ?? id }], errors: [] }, attached: [], skipped: [], flushed: 1 };
+  }
   const { k, copies, locked } = mustFind(db, action, id);
   if (locked) throw lockedError(locked);
   const type = body.type ?? k.type;
@@ -460,6 +480,10 @@ export function patchEntry(db: MockDB, action: DomainAction, id: string, body: D
 
 /** DELETE /allowlist/{id}. */
 export function deleteEntry(db: MockDB, action: DomainAction, id: string): void {
+  if (parseExceptionId(id)) {
+    setException(db, action, id, false);
+    return;
+  }
   const { copies, locked } = mustFind(db, action, id);
   if (locked) throw lockedError(locked);
   for (const c of [...copies].reverse()) {
@@ -479,7 +503,7 @@ export function batchEntries(db: MockDB, action: DomainAction, ids: string[], op
       res.processed.success.push({ item: id });
       res.flushed += 1;
     } catch (e) {
-      res.processed.errors.push({ item: parseId(id)?.value ?? id, error: (e as Error).message });
+      res.processed.errors.push({ item: parseId(id)?.value ?? parseExceptionId(id)?.value ?? id, error: (e as Error).message });
     }
   }
   return res;
@@ -593,4 +617,162 @@ export function switchEntries(src: ListSource, items: ListEntry[], enable: strin
   if (ex.size) src.exclude = [...ex];
   else delete src.exclude;
   return { enabled, disabled };
+}
+
+// ---------------------------------------------------------------------------
+// List exceptions: an entry switched off in one list (spec.sources[].exclude
+// of a list that is not a ui list). Block-list exceptions are Allowlist rows,
+// allow-list exceptions Denylist rows.
+
+const EXC = 'exc';
+
+export function exceptionId(ns: string, list: string, source: string, value: string): string {
+  return btoa(unescape(encodeURIComponent(`${EXC}|${ns}|${list}|${source}|${value}`)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+export function parseExceptionId(id: string): { ns: string; list: string; source: string; value: string } | null {
+  try {
+    const raw = decodeURIComponent(escape(atob(id.replace(/-/g, '+').replace(/_/g, '/'))));
+    const [tag, ns, list, source, ...rest] = raw.split('|');
+    if (tag !== EXC || !ns || !list || source === undefined) return null;
+    return { ns, list, source, value: rest.join('|') };
+  } catch {
+    return null;
+  }
+}
+
+/** The action whose page shows the exceptions of l: block lists on the Allowlist, allow lists on the Denylist. */
+function exceptionAction(l: BlockList): DomainAction {
+  return l.spec.mode === 'allow' ? 'deny' : 'allow';
+}
+
+function typeOfRule(v: string): DomainEntryType {
+  if (v.length > 2 && v.startsWith('/') && v.endsWith('/')) return 'regex';
+  if (v.startsWith('||') || v.startsWith('*.')) return 'wildcard';
+  return 'exact';
+}
+
+function bareName(v: string): string {
+  return v.replace(/^\|\|/, '').replace(/\^$/, '').replace(/^\*\./, '');
+}
+
+/** Lists of the same mode (not ui lists) that still have the name switched on. */
+function stillMatched(db: MockDB, l: BlockList, value: string): { list: string; rule: string }[] {
+  const name = bareName(value);
+  const out: { list: string; rule: string }[] = [];
+  for (const o of db.lists) {
+    if (o === l || uiListInfo(o) || (o.spec.mode === 'allow') !== (l.spec.mode === 'allow') || nsOf(o) !== nsOf(l)) continue;
+    for (const s of o.spec.sources) {
+      const hit = (s.inline ?? []).find((r) => !(s.exclude ?? []).includes(r) && (r === name || r === `||${name}^` || r === `0.0.0.0 ${name}`));
+      if (hit) {
+        out.push({ list: refOf(o), rule: hit });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function exceptionRow(db: MockDB, l: BlockList, source: string, value: string, enabled: boolean): DomainEntry {
+  const owner = l.metadata.annotations?.[MANAGED];
+  const action = exceptionAction(l);
+  const why = readOnlyReason(owner);
+  return {
+    id: exceptionId(nsOf(l), l.metadata.name, source, value),
+    kind: 'exception',
+    action,
+    namespace: nsOf(l),
+    value,
+    type: typeOfRule(value),
+    rule: value,
+    enabled,
+    everyone: false,
+    groups: [],
+    lists: [{ list: refOf(l), source, ...(owner ? { managedBy: owner } : {}) }],
+    policies: db.policies.filter((p) => refers(p, l.spec.mode === 'allow' ? 'allowListRefs' : 'blockListRefs', l)).map(refOf),
+    origin: 'list',
+    overrides: [{ list: refOf(l), rule: value }],
+    stillMatchedBy: stillMatched(db, l, value),
+    readOnly: !!why,
+    ...(why ? { readOnlyReason: why } : {}),
+  };
+}
+
+/** The exceptions in effect: excluded values that the source still has. */
+export function collectExceptions(db: MockDB, action?: DomainAction, ns?: string): DomainEntry[] {
+  const out: DomainEntry[] = [];
+  for (const l of db.lists) {
+    if (uiListInfo(l) || !inScope(l, ns) || (action && exceptionAction(l) !== action)) continue;
+    l.spec.sources.forEach((src, i) => {
+      if (!src.exclude?.length) return;
+      const name = sourceName(i, src);
+      const items = sourceItems(l, src, name);
+      const known = new Set((items ?? []).map((e) => e.value));
+      for (const v of src.exclude) if (known.has(v)) out.push(exceptionRow(db, l, name, v, true));
+    });
+  }
+  return out.sort((a, b) => a.value.localeCompare(b.value));
+}
+
+function exceptionTarget(db: MockDB, action: DomainAction, id: string) {
+  const k = parseExceptionId(id);
+  if (!k) return null;
+  const l = db.lists.find((x) => nsOf(x) === k.ns && x.metadata.name === k.list);
+  const i = l ? l.spec.sources.findIndex((s, j) => sourceName(j, s) === k.source) : -1;
+  const src = l?.spec.sources[i];
+  if (!l || !src || exceptionAction(l) !== action) throw new WriteError(404, 'not_found', `no ${action} list exception ${id}`);
+  if (!apiOwned(l.metadata.annotations?.[MANAGED])) throw lockedError({ list: l });
+  return { k, l, src };
+}
+
+/** Sets an exception: true switches the list's entry off (exclusion), false back on. */
+function setException(db: MockDB, action: DomainAction, id: string, on: boolean): DomainEntry | null {
+  const t = exceptionTarget(db, action, id);
+  if (!t) return null;
+  const ex = new Set(t.src.exclude ?? []);
+  if (on) ex.add(t.k.value);
+  else ex.delete(t.k.value);
+  if (ex.size) t.src.exclude = [...ex];
+  else delete t.src.exclude;
+  recount(db, t.l);
+  return exceptionRow(db, t.l, t.k.source, t.k.value, on);
+}
+
+/** POST /allowlist {values, list, source?}: switch the names off in that list only. */
+export function createExceptions(db: MockDB, action: DomainAction, body: DomainEntriesCreate & { list?: string; source?: string }): WriteResult {
+  const ns = body.namespace || 'default';
+  const ref = (body.list ?? '').includes('/') ? (body.list ?? '') : `${ns}/${body.list ?? ''}`;
+  const l = db.lists.find((x) => refOf(x) === ref);
+  if (!l) throw new WriteError(404, 'not_found', `BlockList ${ref} not found`);
+  if ((body.groups ?? []).length) throw new WriteError(400, 'invalid', 'groups: a list exception applies to its list only');
+  if (uiListInfo(l) || exceptionAction(l) !== action) {
+    throw new WriteError(422, 'unprocessable', `${ref} is ${l.spec.mode === 'allow' ? 'an allow' : 'a block'} list: its exceptions belong on the ${exceptionAction(l) === 'allow' ? 'Allowlist' : 'Denylist'}`);
+  }
+  if (!apiOwned(l.metadata.annotations?.[MANAGED])) throw lockedError({ list: l });
+  const res: WriteResult = { items: [], processed: { success: [], errors: [] }, attached: [], skipped: [], flushed: 0 };
+  for (const raw of body.values) {
+    const v = raw.trim();
+    let hit = false;
+    l.spec.sources.forEach((src, i) => {
+      const name = sourceName(i, src);
+      if (body.source && body.source !== name) return;
+      const items = sourceItems(l, src, name) ?? [];
+      const rule = items.find((e) => e.value === v || bareName(e.value) === bareName(v))?.value;
+      if (!rule) return;
+      src.exclude = [...new Set([...(src.exclude ?? []), rule])];
+      res.items.push(exceptionRow(db, l, name, rule, true));
+      hit = true;
+    });
+    if (hit) {
+      res.processed.success.push({ item: v });
+      res.flushed += 1;
+    } else {
+      res.processed.errors.push({ item: v, error: `not in ${ref}${body.source ? ` (source ${body.source})` : ''}` });
+    }
+  }
+  if (res.flushed) recount(db, l);
+  return res;
 }

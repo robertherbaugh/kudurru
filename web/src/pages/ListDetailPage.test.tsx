@@ -226,6 +226,7 @@ describe('EntriesBrowser on every kind of source', () => {
     expect(await within(browser).findByText(/81,236 rules, 2 switched off/)).toBeInTheDocument();
     expect(within(browser).getByText(/affects only this list/)).toBeInTheDocument();
     expect(within(browser).getByRole('link', { name: 'Allowlist' })).toHaveAttribute('href', '/allowlist');
+    expect(within(browser).getByRole('link', { name: 'Allowlist as list exceptions' })).toHaveAttribute('href', '/allowlist?kind=exception&scope=list%3Adefault%2Fstevenblack');
     // URL sources take no add or remove.
     expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
     expect(within(browser).getByText('1 switched-off entry is no longer in the source')).toBeInTheDocument();

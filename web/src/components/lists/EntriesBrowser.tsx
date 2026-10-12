@@ -227,9 +227,13 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
         </Text>
       ) : (
         <Text type="supporting">
-          Switching off an entry of an imported list affects only this list; to allow a domain everywhere use the{' '}
-          <Link href="/allowlist" hasUnderline>
-            Allowlist
+          Switching off an entry of an imported list affects only this list; to {ui === 'deny' ? 'allow' : 'block'} a domain everywhere use the{' '}
+          <Link href={ui === 'deny' ? '/allowlist' : '/denylist'} hasUnderline>
+            {ui === 'deny' ? 'Allowlist' : 'Denylist'}
+          </Link>
+          . The entries switched off here show on the{' '}
+          <Link href={`${actionPath(ui === 'deny' ? 'allow' : 'deny')}?kind=exception&scope=${encodeURIComponent(`list:${ns}/${name}`)}`} hasUnderline>
+            {ui === 'deny' ? 'Allowlist' : 'Denylist'} as list exceptions
           </Link>
           .
         </Text>
