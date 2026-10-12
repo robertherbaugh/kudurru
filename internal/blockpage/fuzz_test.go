@@ -27,7 +27,7 @@ var pageElements = map[string]bool{
 func FuzzBlockPage(f *testing.F) {
 	for _, s := range []string{
 		"ads.example", "ADS.Example.:8080", "<script>alert(1)</script>", `"><img src=x onerror=alert(1)>`,
-		"javascript:alert(1)", "a‮bc", "x\r\ny", "[::1]:80", "1.2.3.4", "_dmarc.example", "-a.example",
+		"javascript:alert(1)", "a\u202ebc", "x\r\ny", "[::1]:80", "1.2.3.4", "_dmarc.example", "-a.example",
 		strings.Repeat("a.", 140), "</title><svg/onload=alert(1)>", "&lt;b&gt;", "\x00\x01",
 	} {
 		f.Add(s, s, s)
