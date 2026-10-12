@@ -597,6 +597,39 @@ func (s *Server) upsertZoneRecord(ctx context.Context, in *upsertRecordInput) (*
 	}
 	ns, name := s.splitRef(name, in.Namespace)
 	k, _ := kindByPlural("dnsrecordsets")
+	// The client sends one endpoint, not a resourceVersion: a write that
+	// loses a race (the controller updating the record set's status, a
+	// second client) is re-read and re-applied.
+	for attempt := 1; ; attempt++ {
+		out, err := s.upsertRecordOnce(ctx, z, k, ns, name, ep)
+		if lostRace(err) {
+			if attempt < patchAttempts {
+				continue
+			}
+			return nil, errRecordRace(ns, name)
+		}
+		return out, err
+	}
+}
+
+// errRecordRace is the answer when every attempt lost the race: the client
+// sent no If-Match, so a 412 naming one would mislead.
+func errRecordRace(ns, name string) *Error {
+	what := "the record set"
+	if name != "" {
+		what = "record set " + ns + "/" + name
+	}
+	return errConflict(what+" kept changing while the record was written", "try again")
+}
+
+// lostRace reports a write refused because the object changed since it was
+// read.
+func lostRace(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && (apiErr.Status == http.StatusPreconditionFailed || apiErr.Body.Key == KeyConflict)
+}
+
+func (s *Server) upsertRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, k kindInfo, ns, name string, ep v1alpha1.Endpoint) (*recordOutput, error) {
 	rs := &v1alpha1.DNSRecordSet{}
 	created := false
 	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: ns, Name: name}, rs); errors.Is(err, store.ErrNotFound) {
@@ -653,9 +686,35 @@ func (s *Server) deleteZoneRecord(ctx context.Context, in *deleteRecordInput) (*
 	if err != nil {
 		return nil, err
 	}
+	// As upsertZoneRecord: a lost race is re-read and re-applied; a record
+	// set an earlier attempt already wrote counts as found.
+	found := false
+	for attempt := 1; ; attempt++ {
+		f, err := s.deleteRecordOnce(ctx, z, in)
+		found = found || f
+		if lostRace(err) {
+			if attempt < patchAttempts {
+				continue
+			}
+			return nil, errRecordRace("", "")
+		}
+		if err != nil {
+			return nil, err
+		}
+		break
+	}
+	if !found {
+		return nil, errNotFound(fmt.Sprintf("record %s %s in zone %s", in.Name, strings.ToUpper(in.Type), z.Name))
+	}
+	return &emptyOutput{}, nil
+}
+
+// deleteRecordOnce removes the endpoints of in from every record set of z
+// and reports whether any record set had one.
+func (s *Server) deleteRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, in *deleteRecordInput) (bool, error) {
 	sets, err := s.zoneRecordSets(ctx, z.Name)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	var onlyNS, onlyName string
 	if in.RecordSet != "" {
@@ -680,27 +739,24 @@ func (s *Server) deleteZoneRecord(ctx context.Context, in *deleteRecordInput) (*
 		}
 		found = true
 		if owner := store.ManagedBy(rs); !apiMayDelete(owner) {
-			return nil, errManagedBy(store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, owner)
+			return found, errManagedBy(store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, owner)
 		}
 		if len(keep) == 0 {
 			if err := s.deleteObject(ctx, k, rs, rs.ResourceVersion); err != nil {
-				return nil, err
+				return found, err
 			}
 			continue
 		}
 		rs.Spec.Endpoints = keep
 		body, err := typedObject(rs)
 		if err != nil {
-			return nil, storeError(err)
+			return found, storeError(err)
 		}
 		if _, err := s.writeObject(ctx, writeRequest{kind: k, body: body, namespace: rs.Namespace, name: rs.Name, ifMatch: rs.ResourceVersion}); err != nil {
-			return nil, err
+			return found, err
 		}
 	}
-	if !found {
-		return nil, errNotFound(fmt.Sprintf("record %s %s in zone %s", in.Name, strings.ToUpper(in.Type), z.Name))
-	}
-	return &emptyOutput{}, nil
+	return found, nil
 }
 
 func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput, error) {

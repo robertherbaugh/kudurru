@@ -228,3 +228,76 @@ func TestImportChunks(t *testing.T) {
 		t.Fatalf("chunk 1: %v %d", err, len(rs.Spec.Endpoints))
 	}
 }
+
+// racingStore bumps a DNSRecordSet's resourceVersion right after the API
+// reads it, the way the controller's status update does, races times (-1:
+// every time).
+type racingStore struct {
+	store.Store
+	races int
+}
+
+func (s *racingStore) bump(ctx context.Context, o store.Object) {
+	if s.races == 0 {
+		return
+	}
+	rs, ok := o.(*v1alpha1.DNSRecordSet)
+	if !ok {
+		return
+	}
+	if s.races > 0 {
+		s.races--
+	}
+	next := rs.DeepCopy()
+	next.Status.ObservedGeneration++
+	if err := s.UpdateStatus(ctx, next); err != nil {
+		panic(err)
+	}
+}
+
+func (s *racingStore) Get(ctx context.Context, key store.Key, into store.Object) error {
+	if err := s.Store.Get(ctx, key, into); err != nil {
+		return err
+	}
+	if key.Kind == "DNSRecordSet" {
+		s.bump(ctx, into)
+	}
+	return nil
+}
+
+func (s *racingStore) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	l, err := s.Store.List(ctx, kind, opts)
+	if err == nil && kind == "DNSRecordSet" && len(l.Items) > 0 {
+		s.bump(ctx, l.Items[0])
+	}
+	return l, err
+}
+
+// TestZoneRecordWriteRetriesALostRace is the regression test of a 409 from
+// POST /zones/{zone}/records for one client writing records one after the
+// other: the record set's status changed between the API's read and its
+// write (If-Match on the version it read). The API re-reads and re-applies.
+func TestZoneRecordWriteRetriesALostRace(t *testing.T) {
+	rs := &racingStore{}
+	h := newHarness(t, func(o *Options) { rs.Store = o.Store; o.Store = rs })
+	h.seed("api", zoneObj("example", "example.com."))
+	h.do(http.MethodPost, "/api/v1/zones/example/records", "operator", ep("www", "A", "192.0.2.1")).want(http.StatusCreated)
+
+	rs.races = 1
+	h.do(http.MethodPost, "/api/v1/zones/example/records", "operator", ep("mail", "A", "192.0.2.2")).want(http.StatusCreated)
+	rs.races = 1
+	h.do(http.MethodDelete, "/api/v1/zones/example/records/www/A", "operator", nil).want(http.StatusNoContent)
+	var list struct {
+		Items []ZoneRecord `json:"items"`
+	}
+	h.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&list)
+	if len(list.Items) != 1 || list.Items[0].DNSName != "mail.example.com" {
+		t.Fatalf("records %+v", list.Items)
+	}
+
+	// The retries are bounded: a record set that keeps changing answers 409.
+	rs.races = -1
+	if r := h.do(http.MethodPost, "/api/v1/zones/example/records", "operator", ep("ftp", "A", "192.0.2.3")); r.Code != http.StatusConflict {
+		t.Fatalf("always losing: %d %s", r.Code, r.Body.String())
+	}
+}

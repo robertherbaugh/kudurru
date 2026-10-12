@@ -196,6 +196,11 @@ pipeline.
   which the rate limiter does not cover) grew them by every name, about
   2 GB an hour at the query log's peak rate. A full hour is read from the
   fact table instead.
+- Zone records: `POST /zones/{zone}/records` and the record delete
+  sometimes answered 409 to a single client writing records one after
+  another (the record set's status changed between the API's read and its
+  write); the API now re-reads and re-applies, and answers 409 "try again"
+  only when every attempt loses.
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission
