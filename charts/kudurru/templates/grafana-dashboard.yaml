@@ -1,0 +1,21 @@
+{{- if .Values.grafanaDashboard.enabled }}
+# files/kudurru-overview.json is a copy of deploy/grafana/kudurru-overview.json
+# (make chart-assets; the deploy tests fail on drift).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kudurru.fullname" . }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    {{- with .Values.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  kudurru-overview.json: |-
+    {{- .Files.Get "files/kudurru-overview.json" | nindent 4 }}
+{{- end }}

@@ -1,0 +1,16 @@
+apiVersion: kudurru.io/v1alpha1
+kind: Policy
+metadata:
+  name: kids
+  namespace: dns
+spec:
+  clientGroupRefs: [kids]
+  blockListRefs: [default-ads, adult]
+  blockMode: zeroIP
+  blockTTL: 10m
+  schedule:
+    weekdays: [mon, tue, wed, thu, fri]
+    start: "08:00"
+    end: "20:00"
+    tz: Europe/Berlin
+  priority: 10

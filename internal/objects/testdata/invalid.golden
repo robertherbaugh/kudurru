@@ -1,0 +1,91 @@
+[
+  {
+    "severity": "error",
+    "reason": "Invalid",
+    "source": "kudurru.yaml",
+    "document": 1,
+    "object": "ClientGroup/default/inline-bad",
+    "fields": [
+      "spec.clients[0]"
+    ],
+    "message": "ClientGroup.kudurru.io \"inline-bad\" is invalid: spec.clients[0]: Invalid value: exactly one of ip, cidr, mac, clientID, hostname or nameGlob must be set",
+    "hint": "fix the listed fields and retry: spec.clients[0]"
+  },
+  {
+    "severity": "error",
+    "reason": "Invalid",
+    "source": "objects.d/b-bad.yaml",
+    "document": 2,
+    "object": "DNSZone/typo",
+    "fields": [
+      "spec.ttl"
+    ],
+    "message": "DNSZone.kudurru.io \"typo\" is invalid: strict decoding error: unknown field \"spec.ttl\"",
+    "hint": "fix the listed fields and retry: spec.ttl"
+  },
+  {
+    "severity": "error",
+    "reason": "Invalid",
+    "source": "objects.d/b-bad.yaml",
+    "document": 3,
+    "object": "DNSZone/nodot",
+    "fields": [
+      "spec.zoneName"
+    ],
+    "message": "DNSZone.kudurru.io \"nodot\" is invalid: spec.zoneName: Invalid value: \"nodot.example\": spec.zoneName in body should match '^([a-zA-Z0-9_-]+\\.)*$|^\\.$'",
+    "hint": "fix the listed fields and retry: spec.zoneName"
+  },
+  {
+    "severity": "error",
+    "reason": "UnknownKind",
+    "source": "objects.d/b-bad.yaml",
+    "document": 4,
+    "object": "Zone/wrongkind",
+    "message": "kudurru.io/v1alpha1 Zone is not a kudurru.io kind",
+    "hint": "known kinds: BlockList, ClientGroup, DNSRecordSet, DNSZone, Policy, UnblockRequest"
+  },
+  {
+    "severity": "error",
+    "reason": "NotAnObject",
+    "source": "objects.d/b-bad.yaml",
+    "document": 5,
+    "message": "document is a string, not a mapping",
+    "hint": "each document must be one object with apiVersion, kind, metadata and spec"
+  },
+  {
+    "severity": "error",
+    "reason": "NotAnObject",
+    "source": "objects.d/b-bad.yaml",
+    "document": 6,
+    "message": "apiVersion, kind and metadata.name are required",
+    "hint": "objects are CRD-shaped: apiVersion: kudurru.io/v1alpha1, kind, metadata.name, spec"
+  },
+  {
+    "severity": "error",
+    "reason": "Invalid",
+    "source": "objects.d/b-bad.yaml",
+    "document": 7,
+    "object": "BlockList/default/oneof",
+    "fields": [
+      "spec.sources[0]"
+    ],
+    "message": "BlockList.kudurru.io \"oneof\" is invalid: spec.sources[0]: Invalid value: exactly one of url, inline, configMapRef or entries must be set",
+    "hint": "fix the listed fields and retry: spec.sources[0]"
+  },
+  {
+    "severity": "error",
+    "reason": "InvalidYAML",
+    "source": "objects.d/b-bad.yaml",
+    "document": 8,
+    "message": "yaml: unmarshal errors:\n  line 4: key \"priority\" already set in map",
+    "hint": "objects already applied from this source are kept until it parses again"
+  },
+  {
+    "severity": "error",
+    "reason": "InvalidYAML",
+    "source": "objects.d/c-syntax.yaml",
+    "document": 1,
+    "message": "yaml: line 3: did not find expected ',' or '}'",
+    "hint": "objects already applied from this source are kept until it parses again"
+  }
+]

@@ -1,0 +1,26 @@
+{{- /*
+  Images: absolute URLs pass through. A relative path is resolved against
+  the source file's directory in the repository (so docs/ keeps its images
+  next to the markdown, and GitHub renders them), then:
+
+  - an image under docs/guide/images is a file of this site (hugo.yaml
+    mounts it at /guide/images), served from the site's own origin;
+  - any other repository image would be fetched from GitHub's raw host,
+    which fails for a private repository and which the site's content
+    security policy (static/_headers) does not allow: that is a warning, and
+    the build runs with --panicOnWarning (make docs-site).
+*/ -}}
+{{- $u := urls.Parse .Destination -}}
+{{- $src := .Destination -}}
+{{- if not (or $u.IsAbs (hasPrefix $src "/")) -}}
+  {{- $path := path.Join (path.Dir (partial "repo-path.html" .Page)) $u.Path -}}
+  {{- if hasPrefix $path "docs/guide/images/" -}}
+    {{- $src = relURL (strings.TrimPrefix "docs/" $path) -}}
+  {{- else -}}
+    {{- warnf "%s: image %q is not served by the site: put it under docs/guide/images or use an absolute URL" .Page.String .Destination -}}
+  {{- end -}}
+{{- else if hasPrefix $src "/" -}}
+  {{- $src = relURL (strings.TrimPrefix "/" $src) -}}
+{{- end -}}
+<img src="{{ $src }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }} loading="lazy">
+{{- /* chomp trailing newline */ -}}

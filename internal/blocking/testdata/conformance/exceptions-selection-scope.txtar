@@ -1,0 +1,22 @@
+The same lists as exceptions.txtar evaluated with scope=selection: any @@
+rule of any block list cancels every deny rule, as in AdGuard Home's merged
+engine.
+
+-- list ads block adblock --
+||example.org^
+@@||safe.example.org^
+||tracker.example^
+@@|tracker.example^
+-- list other block adblock --
+||safe.example.org^
+||shared.example^
+@@||shared.example^
+-- options --
+scope=selection
+-- expect --
+example.org               block ads ||example.org^
+safe.example.org          allow ads @@||safe.example.org^
+www.safe.example.org      allow ads @@||safe.example.org^
+tracker.example           allow ads @@|tracker.example^
+www.tracker.example       block ads ||tracker.example^
+shared.example            allow other @@||shared.example^

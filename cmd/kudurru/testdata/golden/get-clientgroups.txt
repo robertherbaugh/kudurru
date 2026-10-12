@@ -1,0 +1,2 @@
+NAME   MEMBERS   READY   AGE
+kids   3         True    7d

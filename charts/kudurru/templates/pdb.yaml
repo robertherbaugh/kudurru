@@ -1,0 +1,17 @@
+{{- $kind := include "kudurru.workloadKind" . -}}
+{{- if and .Values.podDisruptionBudget.enabled (or (eq $kind "DaemonSet") (gt (int (include "kudurru.replicas" .)) 1)) }}
+# A single-replica PDB with minAvailable 1 would block every node drain, so
+# the budget exists only for DaemonSets and more than one replica.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kudurru.selectorLabels" . | nindent 6 }}
+{{- end }}

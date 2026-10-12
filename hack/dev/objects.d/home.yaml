@@ -1,0 +1,36 @@
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: { name: home-example }
+spec:
+  zoneName: home.example.
+  type: primary
+  soa: { mname: ns1.home.example., rname: hostmaster.home.example. }
+  nameservers: [ns1.home.example.]
+  policy: { queryAccess: allow, zoneTransfer: useNetworkACL, transferACL: ["127.0.0.0/8"] }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: DNSRecordSet
+metadata: { name: hosts, namespace: default }
+spec:
+  zoneRef: { name: home-example }
+  endpoints:
+    - { dnsName: ns1.home.example, recordType: A, targets: ["127.0.0.1"] }
+    - { dnsName: nas.home.example, recordType: A, targets: ["10.0.0.20"], recordTTL: 300 }
+    - { dnsName: "*.apps.home.example", recordType: CNAME, targets: [nas.home.example] }
+---
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata: { name: dev-ads, namespace: default }
+spec:
+  mode: block
+  sources:
+    - inline: ["||ads.example.net^", "tracker.example.org"]
+      format: adblock
+---
+apiVersion: kudurru.io/v1alpha1
+kind: Policy
+metadata: { name: default-blocking, namespace: default }
+spec:
+  clientGroupRefs: [default]
+  blockListRefs: [dev-ads]
+  priority: 10

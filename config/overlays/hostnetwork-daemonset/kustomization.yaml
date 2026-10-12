@@ -1,0 +1,23 @@
+# kudurru as a hostNetwork DaemonSet: every node answers on its own :53
+# (bare metal, no LoadBalancer). resources.yaml is rendered from the chart
+# with hostNetwork.enabled=true (make kustomize). Host networking is outside
+# the Baseline Pod Security level, so the namespace is privileged.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kudurru-system
+resources:
+  - ../../namespace
+  - ../../crd
+  - ../../rbac
+  - resources.yaml
+patches:
+  - target:
+      kind: Namespace
+      name: kudurru-system
+    patch: |-
+      - op: replace
+        path: /metadata/labels/pod-security.kubernetes.io~1enforce
+        value: privileged
+      - op: replace
+        path: /metadata/labels/pod-security.kubernetes.io~1warn
+        value: privileged

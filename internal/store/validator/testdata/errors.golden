@@ -1,0 +1,95 @@
+## DNSZone/zoneName without trailing dot
+{
+  "error": {
+    "key": "invalid",
+    "message": "DNSZone.kudurru.io \"home-example-com\" is invalid: spec.zoneName: Invalid value: \"home.example.com\": spec.zoneName in body should match '^([a-zA-Z0-9_-]+\\.)*$|^\\.$'",
+    "hint": "fix the listed fields and retry: spec.zoneName",
+    "fields": [
+      "spec.zoneName"
+    ]
+  }
+}
+
+## DNSZone/zone type enum
+{
+  "error": {
+    "key": "invalid",
+    "message": "DNSZone.kudurru.io \"home-example-com\" is invalid: [spec.type: Unsupported value: \"master\": supported values: \"primary\", \"forward\", \"secondary\", \"stub\", \"external\", \"catalog\", \"secondaryCatalog\", <nil>: Invalid value: null: some validation rules were not checked because the object was invalid; correct the existing errors to complete validation]",
+    "hint": "fix the listed fields and retry: spec.type",
+    "fields": [
+      "spec.type"
+    ]
+  }
+}
+
+## DNSZone/name not a DNS subdomain
+{
+  "error": {
+    "key": "invalid",
+    "message": "DNSZone.kudurru.io \"Home_Zone\" is invalid: metadata.name: Invalid value: \"Home_Zone\": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')",
+    "hint": "fix the listed fields and retry: metadata.name",
+    "fields": [
+      "metadata.name"
+    ]
+  }
+}
+
+## DNSRecordSet/targets missing
+{
+  "error": {
+    "key": "invalid",
+    "message": "DNSRecordSet.kudurru.io \"nas\" is invalid: [spec.endpoints[0].targets: Required value, <nil>: Invalid value: null: some validation rules were not checked because the object was invalid; correct the existing errors to complete validation]",
+    "hint": "fix the listed fields and retry: spec.endpoints[0].targets",
+    "fields": [
+      "spec.endpoints[0].targets"
+    ]
+  }
+}
+
+## BlockList/source with url and inline
+{
+  "error": {
+    "key": "invalid",
+    "message": "BlockList.kudurru.io \"default-ads\" is invalid: spec.sources[0]: Invalid value: exactly one of url, inline, configMapRef or entries must be set",
+    "hint": "fix the listed fields and retry: spec.sources[0]",
+    "fields": [
+      "spec.sources[0]"
+    ]
+  }
+}
+
+## ClientGroup/client with ip and cidr
+{
+  "error": {
+    "key": "invalid",
+    "message": "ClientGroup.kudurru.io \"kids\" is invalid: spec.clients[0]: Invalid value: exactly one of ip, cidr, mac, clientID, hostname or nameGlob must be set",
+    "hint": "fix the listed fields and retry: spec.clients[0]",
+    "fields": [
+      "spec.clients[0]"
+    ]
+  }
+}
+
+## Policy/schedule start without leading zero
+{
+  "error": {
+    "key": "invalid",
+    "message": "Policy.kudurru.io \"kids\" is invalid: spec.schedule.start: Invalid value: \"8:00\": spec.schedule.start in body should match '^([01][0-9]|2[0-3]):[0-5][0-9]$'",
+    "hint": "fix the listed fields and retry: spec.schedule.start",
+    "fields": [
+      "spec.schedule.start"
+    ]
+  }
+}
+
+## DNSZone/zoneName changed on update
+{
+  "error": {
+    "key": "invalid",
+    "message": "DNSZone.kudurru.io \"home-example-com\" is invalid: spec.zoneName: Invalid value: \"lab.example.com.\": zoneName is immutable",
+    "hint": "fix the listed fields and retry: spec.zoneName",
+    "fields": [
+      "spec.zoneName"
+    ]
+  }
+}

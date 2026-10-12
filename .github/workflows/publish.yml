@@ -1,0 +1,387 @@
+# Publishes a tagged release: goreleaser (archives, deb/rpm/apk, ko images,
+# the GitHub release), the Helm charts, the -hostnetwork image and the
+# supervisor images, all cosign-signed. Called by release-candidate.yml (v<VERSION>-rc.<N>, a GitHub
+# pre-release, no `latest`) and release.yml (v<VERSION>, `latest`) after they
+# push the tag; workflow_dispatch re-publishes an existing tag by hand.
+# docs/release-checklist.md, "Release pipeline".
+name: publish
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing git tag to publish (v<version> or v<version>-rc.<N>)
+        type: string
+        required: true
+      previous-tag:
+        description: Tag the changelog starts from (empty lets goreleaser pick)
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to publish (v<version> or v<version>-rc.<N>)
+        type: string
+        required: true
+      previous-tag:
+        description: Tag the changelog starts from (empty lets goreleaser pick)
+        type: string
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  # The tests run in their own job with a read-only token and no Go module
+  # or build cache: nothing a test (or a poisoned cache entry) does can reach
+  # the release job's write permissions or signing identity.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.3.0
+      - name: Test before publishing
+        run: make test
+      - name: Chart render matrix and kubeconform
+        run: make helm-check
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # GitHub release and assets
+      packages: write        # ghcr.io images and Helm charts
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    steps:
+      # The tag must be a release tag, and a hand-run publish must start from
+      # a release branch: the signing identity (publish.yml@<branch>) is what
+      # `cosign verify` checks (docs/release-checklist.md, section 5).
+      - name: Check the tag and the branch
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! [[ "${TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::tag ${TAG} is not v<MAJOR.MINOR.PATCH> or v<MAJOR.MINOR.PATCH>-rc.<N>"; exit 1
+          fi
+          if [[ "${GITHUB_REF}" != refs/heads/release && "${GITHUB_REF}" != refs/heads/release-candidate ]]; then
+            echo "::error::publish runs from the release or release-candidate branch, not ${GITHUB_REF}"; exit 1
+          fi
+      # refs/tags/: a bare name would check out a branch of the same name
+      # first. No credentials stay in .git/config for the build and tests.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # goreleaser's before hook builds the dashboard bundle into web/dist.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.6.5
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.3.0
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # The ko images' base: distroless with /var/lib/kudurru and
+      # /run/kudurru owned by 65532, which ko cannot create (a fresh named
+      # volume takes their owner; images/base/Dockerfile). goreleaser gets
+      # the pushed digests, not the tags.
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Base image tags
+        id: basetag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}
+        id: base
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          sbom: true
+          tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.title=kudurru-base
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
+        id: debugbase
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/base
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=gcr.io/distroless/static:debug-nonroot@sha256:2a581fcbda6320d4d17fd6ff4774bb96e4825d2be9c2bca59f0777b429997f51
+          sbom: true
+          tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.title=kudurru-base
+      - name: Sign the base images by digest
+        run: |
+          cosign sign --yes "ghcr.io/robertherbaugh/kudurru-base@${{ steps.base.outputs.digest }}"
+          cosign sign --yes "ghcr.io/robertherbaugh/kudurru-base@${{ steps.debugbase.outputs.digest }}"
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser
+          version: v2.18.3
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KO_DOCKER_REPO: ghcr.io/robertherbaugh/kudurru
+          KUDURRU_BASE_IMAGE: ghcr.io/robertherbaugh/kudurru-base@${{ steps.base.outputs.digest }}
+          KUDURRU_DEBUG_BASE_IMAGE: ghcr.io/robertherbaugh/kudurru-base@${{ steps.debugbase.outputs.digest }}
+          # A release commit can carry both its last rc tag and the release
+          # tag; name the one being published.
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag }}
+          GORELEASER_PREVIOUS_TAG: ${{ inputs.previous-tag }}
+      - name: Verify the ko image signatures (docker_signs, artifacts manifests)
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          for ref in "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"; do
+            cosign verify "${ref}" \
+              --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            echo "verified ${ref}"
+          done
+      # SLSA build provenance for the ko images, pushed next to them (the
+      # archives' provenance is the step below); goreleaser attaches their
+      # SPDX SBOMs.
+      - name: Resolve the ko image digests
+        id: ko
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          for v in plain debug; do
+            ref="ghcr.io/robertherbaugh/kudurru:${version}"; [ "$v" = debug ] && ref="${ref}-debug"
+            digest=$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' | jq -r .digest)
+            [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            echo "${v}=${digest}" >> "$GITHUB_OUTPUT"
+          done
+      - name: Build provenance for ghcr.io/robertherbaugh/kudurru
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/robertherbaugh/kudurru
+          subject-digest: ${{ steps.ko.outputs.plain }}
+          push-to-registry: true
+      - name: Build provenance for ghcr.io/robertherbaugh/kudurru (-debug)
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/robertherbaugh/kudurru
+          subject-digest: ${{ steps.ko.outputs.debug }}
+          push-to-registry: true
+      - name: Fresh named volumes are writable in the released images
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          hack/volume-check.sh "ghcr.io/robertherbaugh/kudurru:${version}" "ghcr.io/robertherbaugh/kudurru:${version}-debug"
+      - name: Build provenance for the release artifacts
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/checksums.txt
+      - name: Push the Helm charts to oci://ghcr.io/robertherbaugh/charts
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          mkdir -p bin/charts
+          for chart in kudurru-crds kudurru; do
+            helm package "charts/${chart}" --version "${version}" --app-version "${version}" -d bin/charts
+            out=$(helm push "bin/charts/${chart}-${version}.tgz" oci://ghcr.io/robertherbaugh/charts 2>&1)
+            echo "${out}"
+            digest=$(echo "${out}" | awk '/^Digest:/ {print $2}')
+            cosign sign --yes "ghcr.io/robertherbaugh/charts/${chart}@${digest}"
+          done
+  hostnetwork-image:
+    # <version>-hostnetwork: the binary of the ko image the release job just
+    # pushed with the file capability cap_net_bind_service=+ep, which ko
+    # cannot set (images/hostnetwork/Dockerfile). The chart's
+    # hostNetwork.enabled runs it: the ip_unprivileged_port_start sysctl is
+    # not available on the host network. The final stage only copies files,
+    # so arm64 needs no QEMU.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write        # ghcr.io image
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.6.5
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive the tags (<version>-hostnetwork, latest-hostnetwork for a release)
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          tags="ghcr.io/robertherbaugh/kudurru:${version}-hostnetwork"
+          case "${version}" in
+            *-*) ;;
+            *) tags="${tags},ghcr.io/robertherbaugh/kudurru:latest-hostnetwork" ;;
+          esac
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+      # Build FROM the digest the release job signed, not the tag, which
+      # anything with packages: write could move in between (V3).
+      - name: Resolve and verify the kudurru image digest
+        id: base
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "ghcr.io/robertherbaugh/kudurru:${VERSION}" --format '{{json .Manifest}}' | jq -r .digest)
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          cosign verify "ghcr.io/robertherbaugh/kudurru@${digest}" \
+            --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          echo "image=ghcr.io/robertherbaugh/kudurru@${digest}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ghcr.io/robertherbaugh/kudurru:${{ steps.tag.outputs.version }}-hostnetwork
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/hostnetwork
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          sbom: true
+          build-args: |
+            KUDURRU_IMAGE=${{ steps.base.outputs.image }}
+          tags: ${{ steps.tag.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ steps.tag.outputs.version }}-hostnetwork
+            org.opencontainers.image.title=kudurru
+            org.opencontainers.image.description=kudurru with cap_net_bind_service=+ep for host networking
+      - name: Sign the image by digest
+        run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
+      - name: Build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/robertherbaugh/kudurru
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Fresh named volumes are writable in the image
+        run: hack/volume-check.sh "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
+  supervisor-images:
+    # kudurru-dnsdist and kudurru-keepalived aggregate the GPL programs with
+    # the kudurru supervisor binary from the ko image the release job just
+    # pushed (images/*/Dockerfile, docs/release-checklist.md §4).
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write        # ghcr.io images
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [dnsdist, keepalived]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        with:
+          cosign-release: v2.6.5
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive the image tag (<program version>-k<kudurru version>)
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          version="${TAG#v}"
+          case "${IMAGE}" in
+            dnsdist)    program=$(sed -n 's/^ARG DNSDIST_IMAGE=.*:\(.*\)$/\1/p' images/dnsdist/Dockerfile) ;;
+            keepalived) program=$(sed -n 's/^ARG KEEPALIVED_VERSION=\(.*\)$/\1/p' images/keepalived/Dockerfile) ;;
+          esac
+          test -n "${program}"
+          echo "kudurru=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${program}-k${version}" >> "$GITHUB_OUTPUT"
+      # Build FROM the digest the release job signed, not the tag, which
+      # anything with packages: write could move in between.
+      - name: Resolve and verify the kudurru image digest
+        id: base
+        env:
+          VERSION: ${{ steps.tag.outputs.kudurru }}
+        run: |
+          digest=$(docker buildx imagetools inspect "ghcr.io/robertherbaugh/kudurru:${VERSION}" --format '{{json .Manifest}}' | jq -r .digest)
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          cosign verify "ghcr.io/robertherbaugh/kudurru@${digest}" \
+            --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          echo "image=ghcr.io/robertherbaugh/kudurru@${digest}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/${{ matrix.image }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          sbom: true
+          build-args: |
+            KUDURRU_IMAGE=${{ steps.base.outputs.image }}
+          tags: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+      - name: Sign the image by digest
+        run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+      - name: Build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

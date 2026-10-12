@@ -1,0 +1,70 @@
+{
+  "origin": "User-supplied logo images; original generation tool, model, and prompts are unknown.",
+  "files": [
+    {
+      "file": "clay/kudurru-logo-clay.png",
+      "originalFilename": "Clay kudurru horizontal logo-3.png",
+      "sha256": "715c09024c42eefab693f5b1315f7ceb6c2ec0cdc4dd049105f0504fce274e73"
+    },
+    {
+      "file": "clay/kudurru-logo-clay-tagline.png",
+      "originalFilename": "Clay kudurru social preview-1.png",
+      "sha256": "3921eb6595f4c44b0d05b08c1a591365594d2b92d31ba2cebe346f08a939aab7"
+    },
+    {
+      "file": "clay/kudurru-mark-clay.png",
+      "originalFilename": "Clay kudurru tablet mark-2.png",
+      "sha256": "004ed46b2ffda61d64aff5fc6f858ac5da8d47e25bd4bb20c7ed4b9fdb3a776f"
+    },
+    {
+      "file": "ink/kudurru-logo-ink.png",
+      "originalFilename": "Ink monochrome kudurru logo-2.png",
+      "sha256": "11d65225dd8ac4b4dd53afa05ab02fabe5c9f229893498280730926d46b5ec32"
+    },
+    {
+      "file": "ink/kudurru-mark-ink.png",
+      "originalFilename": "Monochrome ink kudurru tablet mark-1.png",
+      "sha256": "b4abfb763cf80101e4e45941199dc891b32e7120b224879963c7453773482fa5"
+    },
+    {
+      "file": "ink/kudurru-logo-ink-tagline.png",
+      "originalFilename": "Monochrome kudurru logo with tagline-3.png",
+      "sha256": "7c1ca90c3103f7e924619f07c8ad6dd4e446c39284e80095d369a45c9ee2c3c8"
+    },
+    {
+      "file": "mixed/kudurru-mark-clay.png",
+      "originalFilename": "Isolated clay tablet logo with cutout k-1.png",
+      "sha256": "6dd35d4c924f9d44f6a987828c108beac573ffd37662a24efdff82af3a80395e"
+    },
+    {
+      "file": "mixed/kudurru-logo-mixed-tagline-ink.png",
+      "originalFilename": "Kudurru clay tablet and ink wordmark-2.png",
+      "sha256": "777478431eb23ffeac1583d33e9a777de7f2314a5bb5d3567eb2dd20b6db61a3"
+    },
+    {
+      "file": "mixed/kudurru-logo-mixed.png",
+      "originalFilename": "Kudurru clay tablet logo lockup.png",
+      "sha256": "e81f8dc50046e0146b7a1d3f22ee7f88585eb7a5f2e6cead16270565fe4784e5"
+    },
+    {
+      "file": "mixed/kudurru-logo-mixed-tagline-paper.png",
+      "originalFilename": "Kudurru clay tablet logo variant-1.png",
+      "sha256": "ae404cfc12e8f9746a8f6c24e29ce9c65ca209387decb057f2f218db1b003145"
+    },
+    {
+      "file": "paper/kudurru-logo-paper.png",
+      "originalFilename": "Monochrome kudurru logo, transparent background-2.png",
+      "sha256": "3a2f3876acf51d7c5ac761c1d75f7d8150f3adb2c5671f07eff2d08b90afcfeb"
+    },
+    {
+      "file": "paper/kudurru-logo-paper-tagline.png",
+      "originalFilename": "Paper kudurru logo with lowercase tagline-3.png",
+      "sha256": "bb599584bb4ae02142d3ed588cf95d4133ca44387d527917988437c5238cf125"
+    },
+    {
+      "file": "paper/kudurru-mark-paper.png",
+      "originalFilename": "Paper kudurru tablet with k cutout-1.png",
+      "sha256": "7a79586000924caf26cb1d476dff5e21f1cfab2b8b1ba79fc4935d8a3129aa7e"
+    }
+  ]
+}

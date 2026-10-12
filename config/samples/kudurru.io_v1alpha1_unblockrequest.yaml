@@ -1,0 +1,24 @@
+# Written by the block page, not by hand: a user asked to allow a blocked
+# name. Approve or deny it in the dashboard (Requests) or through
+# POST /api/v1/unblockrequests/{namespace}/{name}/approve|deny.
+apiVersion: kudurru.io/v1alpha1
+kind: UnblockRequest
+metadata:
+  name: ur-3f2a9c1b7d4e6a80
+  namespace: default
+spec:
+  domain: www.example-shop.com
+  client: 192.168.1.23
+  clientPrivacy: full
+  groups: [default/kids]
+  policies: [default/kids]
+  node: kudurru-0
+  requesterName: Sam
+  reason: I need it for a school project.
+  block:
+    kind: list
+    list: default/ads
+    rule: "||example-shop.com^"
+    policy: default/kids
+  requestedAt: "2026-10-11T09:30:00Z"
+  submissions: 1

@@ -1,0 +1,3 @@
+NAME               ZONE                TYPE      SERIAL       RECORDS   READY   MANAGED-BY
+home-example-com   home.example.com.   primary   2026100101   12        True    api
+lab-example-com    lab.example.com.    forward   0            0         False   file:objects.d/zones.yaml

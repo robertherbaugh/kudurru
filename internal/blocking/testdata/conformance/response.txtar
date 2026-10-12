@@ -1,0 +1,26 @@
+Response-side checks: CNAME targets and answer addresses are checked
+against the allow lists first and then the deny lists.
+
+-- list ads block adblock --
+||tracker.example^
+@@||ok.tracker.example^
+192.0.2.66
+@@198.51.100.1
+||198.51.100.1^
+-- list fix allow domains --
+allowed-cname.example
+-- list other block hosts --
+0.0.0.0 allowed-cname.example
+-- counts ads --
+rules=5 exceptions=2 entries=5
+-- expect --
+cname:cdn.tracker.example     block ads ||tracker.example^
+cname:CDN.Tracker.Example.    block ads ||tracker.example^
+cname:ok.tracker.example      pass    # in-list exception
+cname:allowed-cname.example   pass    # allow lists apply to answers too
+cname:clean.example           pass
+ip:192.0.2.66                 block ads 192.0.2.66
+ip:::ffff:192.0.2.66          block ads 192.0.2.66
+ip:192.0.2.67                 pass
+ip:198.51.100.1               pass    # in-list IP exception
+tracker.example               block ads ||tracker.example^

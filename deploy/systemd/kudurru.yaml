@@ -1,0 +1,26 @@
+# /etc/kudurru/kudurru.yaml installed by the kudurru package (a config file:
+# upgrades keep your edits). Every key is listed by `kudurru config schema`;
+# docs/architecture.md §6.2 explains the two scopes.
+node:
+  dataDir: /var/lib/kudurru
+store:
+  driver: sqlite
+listeners:
+  dns:
+    - address: "0.0.0.0:53"
+      protocols: [udp, tcp]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "127.0.0.1:8081" }
+  metrics: { address: "127.0.0.1:9153" }
+  internal: { address: "127.0.0.1:8082" }
+upstreams:
+  groups:
+    default:
+      servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
+      strategy: parallel_best
+      timeout: 2s
+  bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
+objectsDir: /etc/kudurru/objects.d
+log:
+  level: info
+  format: json

@@ -1,0 +1,153 @@
+# PrometheusRule for kudurru (docs/architecture.md §11.6). Every metric used
+# here is emitted by the binary today; deploy/assets_test.go fails when an
+# expression names a metric the code does not register. The Helm chart ships
+# a copy (charts/kudurru/files/prometheus-rules.yaml, `make chart-assets`).
+#
+# The edge and VIP alerts read the supervisors' metrics (`kudurru edge run`
+# :8084, `kudurru vip run` :8085); they only fire when those are scraped too
+# (the Helm chart's <release>-edge PodMonitor does).
+#
+# §11.6 alerts not shipped yet, because their metric does not exist (see
+# docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
+# KudurruDNSSECKeyExpiring (kudurru_dnssec_key_expiry_timestamp_seconds, v1.0).
+#
+# Without the Prometheus Operator, load spec.groups as a plain rule file:
+#   yq '.spec' deploy/prometheus/rules.yaml > kudurru.rules.yml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kudurru
+  labels:
+    app.kubernetes.io/name: kudurru
+    app.kubernetes.io/part-of: kudurru
+spec:
+  groups:
+    - name: kudurru.dns
+      rules:
+        - alert: KudurruServfailRatio
+          expr: |
+            sum by (instance) (rate(kudurru_dns_responses_total{rcode="SERVFAIL"}[5m]))
+              / sum by (instance) (rate(kudurru_dns_responses_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: More than 5% of answers from {{ $labels.instance }} are SERVFAIL.
+            description: Check upstream health (kudurru_upstream_healthy), the zone cache state and the query log filtered by status_class=servfail.
+        - alert: KudurruLatencyP95High
+          expr: |
+            histogram_quantile(0.95, sum by (instance, le) (rate(kudurru_dns_request_duration_seconds_bucket[5m]))) > 0.25
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: p95 query latency on {{ $labels.instance }} is above 250 ms.
+        - alert: KudurruProxyProtocolRejected
+          expr: |
+            sum by (instance) (increase(kudurru_dns_dropped_total{reason="proxy_unauthenticated"}[10m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} dropped PROXYv2 headers without a valid TLV 0xE0 secret."
+            description: The edge and kudurru disagree on the PROXYv2 secret, or something other than the edge sends PROXYv2 headers (§3.3).
+    - name: kudurru.upstreams
+      rules:
+        - alert: KudurruUpstreamUnhealthy
+          expr: kudurru_upstream_healthy == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Upstream {{ $labels.upstream }} is unhealthy on {{ $labels.instance }}.
+    - name: kudurru.cluster
+      rules:
+        - alert: KudurruNoLeader
+          expr: max(kudurru_leader{role="controller"}) == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: No kudurru node holds the controller lease.
+            description: Status, serials, blocklist downloads and NOTIFY stop until a leader is elected; serving continues.
+        - alert: KudurruServingFromSnapshot
+          expr: kudurru_store_snapshot_serving == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.instance }} serves from local.db; the apiserver has been unreachable for 15 minutes."
+        - alert: KudurruSnapshotStale
+          expr: kudurru_store_snapshot_age_seconds > 43200
+          labels:
+            severity: critical
+          annotations:
+            summary: The local.db snapshot of {{ $labels.instance }} is older than 12 hours.
+            description: At store.kube.snapshot.maxAge (24 h) primary zones answer SERVFAIL while forwarding continues (§4.4).
+        - alert: KudurruObjectDiagnoses
+          expr: kudurru_objects_diagnoses{severity="error"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: File-managed objects on {{ $labels.instance }} have errors.
+            description: See the warnings logged by the objects loader or GET /api/v1/info/messages.
+    - name: kudurru.zones
+      rules:
+        - alert: KudurruSerialDivergence
+          expr: max by (zone) (kudurru_zone_serial) != min by (zone) (kudurru_zone_serial)
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Nodes have served different SOA serials for zone {{ $labels.zone }} for 10 minutes.
+            description: A node that lags keeps answering from an old copy of the zone. Compare GET /internal/zones on the nodes, then check that node's zone cache (kudurru_zonecache_build_errors_total, kudurru_store_snapshot_serving).
+    - name: kudurru.edge
+      rules:
+        - alert: KudurruEdgeBackendDown
+          expr: kudurru_edge_backend_up == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: dnsdist on {{ $labels.instance }} reports kudurru backend {{ $labels.backend }} down.
+            description: The edge stops sending queries to that node. Check its readiness (/healthz/ready) and the health.kudurru.internal. answer (lameduck drains on purpose, D51).
+        - alert: KudurruVIPNoMaster
+          expr: max by (vip) (kudurru_vip_master) == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: No keepalived node holds VIP {{ $labels.vip }}.
+            description: Clients of the VIP get no answers. Check the VRRP probe (kudurru health --vrrp) and the keepalived supervisors' logs.
+    - name: kudurru.blocking
+      rules:
+        - alert: KudurruBlocklistStale
+          expr: max by (list) (kudurru_blocklist_stale) == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Blocklist {{ $labels.list }} is served from an older body because its last download failed.
+        - alert: KudurruBlocklistNotRefreshed
+          expr: time() - max by (list) (kudurru_blocklist_last_update_timestamp_seconds) > 3 * 86400
+          labels:
+            severity: warning
+          annotations:
+            summary: Blocklist {{ $labels.list }} has not refreshed for three days (3 x the default blocking.refreshInterval).
+    - name: kudurru.querylog
+      rules:
+        - alert: KudurruQuerylogDrops
+          expr: sum by (instance) (increase(kudurru_querylog_dropped_total[10m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: Query log events were dropped on {{ $labels.instance }}.
+        - alert: KudurruQuerylogNearCap
+          # 10737418240 = the default querylog.retention.maxDBBytes (10GiB);
+          # adjust it together with the setting.
+          expr: kudurru_querylog_db_bytes / 10737418240 > 0.9
+          for: 30m
+          labels:
+            severity: info
+          annotations:
+            summary: querylog.db on {{ $labels.instance }} is above 90% of querylog.retention.maxDBBytes; the oldest rows are being deleted.

@@ -1,0 +1,13 @@
+;; ->>HEADER<<- status: NOERROR
+;; flags: qr rd ra
+;; kudurru status: forwarded, upstream: default, client: 127.0.0.1
+
+;; QUESTION SECTION:
+;www.example.com.	IN	A
+
+;; ANSWER SECTION:
+www.example.com.	300	IN	CNAME	edge.example.net.
+edge.example.net.	60	IN	A	93.184.216.34
+
+;; Query time: 12.5 msec
+;; SERVER: SERVER (node node-a)

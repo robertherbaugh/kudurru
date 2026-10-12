@@ -1,0 +1,4 @@
+TIME                 CLIENT                 TYPE   DOMAIN                                    STATUS              RCODE         MS  UPSTREAM/LIST
+2026-10-11 11:59:05  192.168.1.25           A      host5.example.com                         forwarded           NOERROR      7.5  default
+2026-10-11 12:00:06  192.168.1.30           AAAA   cdn.example.net                           cached              NOERROR      2.0  -
+2026-10-11 12:00:08  192.168.1.24           A      ads.example.net                           blocked_list        NOERROR      0.2  ads: ||ads.example.net^

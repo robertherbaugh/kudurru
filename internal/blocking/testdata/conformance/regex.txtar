@@ -1,0 +1,30 @@
+Regex rules in adblock lists and in Pi-hole style regex lists.
+
+-- list r block adblock --
+/^ad[sx]?[0-9]*\./
+/TRACK(er|ing)\.example$/
+@@/^ads\.safe\./
+/(/
+/^banner\./$important
+-- list pi block regex --
+# one RE2 expression per line
+(\.|^)doubleclick\.net$
+/^slashed\./
+^pixel\.;querytype=AAAA
+-- counts r --
+rules=3 exceptions=1 unsupported=1 invalid=1 entries=3
+-- counts pi --
+rules=2 unsupported=1 invalid=0 entries=2
+-- expect --
+ads.example.com          block r /^ad[sx]?[0-9]*\./
+ad12.example.com         block r /^ad[sx]?[0-9]*\./
+bad.example.com          pass
+mytracker.example        block r /TRACK(er|ing)\.example$/   # upper-case regex compiled case-insensitively
+tracking.example.net     pass
+ads.safe.example         allow r @@/^ads\.safe\./
+banner.example           pass    # $important is unsupported in v0.1
+doubleclick.net          block pi /(\.|^)doubleclick\.net$/
+stats.doubleclick.net    block pi /(\.|^)doubleclick\.net$/
+notdoubleclick.net       pass
+slashed.example          block pi /^slashed\./
+pixel.example            pass    # Pi-hole ;querytype= extension is unsupported

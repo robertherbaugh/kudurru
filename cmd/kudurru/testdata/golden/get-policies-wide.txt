@@ -1,0 +1,3 @@
+NAME      GROUPS   PRIORITY   READY   AGE   BLOCKLISTS   ALLOWLISTS   UPSTREAM   MANAGED-BY
+default   -        0          True    40d   ads          allow        -          bootstrap
+kids      kids     10         True    7d    ads          -            family     -

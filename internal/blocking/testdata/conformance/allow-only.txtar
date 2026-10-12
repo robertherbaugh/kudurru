@@ -1,0 +1,20 @@
+Allow-only mode (a kids' device): only names on the allow lists resolve.
+Response-side checks still apply the deny lists but not allow-only.
+
+-- list kids allow domains --
+school.example
+||edu.example^
+-- list ads block adblock --
+||ads.example^
+-- options --
+allowOnly
+-- expect --
+school.example         allow kids school.example
+www.school.example     block - -
+x.edu.example          allow kids ||edu.example^
+edu.example            allow kids ||edu.example^
+ads.example            block - -
+random.example         block - -
+cname:ads.example      block ads ||ads.example^
+cname:x.edu.example    pass
+cname:random.example   pass
