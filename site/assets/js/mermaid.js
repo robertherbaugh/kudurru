@@ -12,5 +12,7 @@
     theme: dark ? 'dark' : 'neutral',
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
   });
-  mermaid.run({ querySelector: '.prose pre.mermaid' });
+  // suppressErrors: a diagram that fails shows Mermaid's error graphic and
+  // the page's other diagrams still draw.
+  mermaid.run({ querySelector: '.prose pre.mermaid', suppressErrors: true });
 })();
