@@ -6,7 +6,37 @@ on:
 permissions:
   contents: read
 jobs:
+  # A change that touches nothing outside docs/ cannot affect any job below
+  # (no build, test or check reads docs/), so they are skipped; docs.yml
+  # still builds and checks the docs. Jobs are skipped rather than the
+  # workflow filtered with paths-ignore, because a skipped job satisfies a
+  # required status check and a workflow that never runs does not.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Run everything unless git can list the changes and every one is
+          # under docs/ (a new branch or an unreachable force-pushed base
+          # runs everything).
+          code=true
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -qv '^docs/' <<<"$files"; then
+              code=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
   go:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -40,6 +70,8 @@ jobs:
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.
   web:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,6 +107,8 @@ jobs:
   # page in Chromium. The HTML report and the traces of failed tests are
   # uploaded when it fails.
   web-e2e:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -120,6 +154,8 @@ jobs:
   # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
   # secondary and as a forwarding target, and the OIDC login against dex.
   e2e:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -150,6 +186,8 @@ jobs:
         run: make test-auth-e2e
   # Fuzzing: every target of hack/fuzz.sh for 60 s, one matrix job each.
   fuzz-targets:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.list.outputs.targets }}
@@ -186,6 +224,8 @@ jobs:
             bin/fuzz/
           retention-days: 14
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -200,6 +240,8 @@ jobs:
   # rendered kudurru.yaml loaded through config.Load, the kustomize overlays,
   # and kubeconform against the Kubernetes 1.30 schemas and the CRDs.
   helm:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -229,6 +271,8 @@ jobs:
           version: v2.18.3
           args: check
   licenses:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
