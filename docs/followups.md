@@ -90,11 +90,14 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | Embed pre-compressed dashboard assets to cut the binary impact from ~1.8 MB to ~0.55 MB (D75 headroom) | ui report | v0.1.x (moved from M4: size headroom only, the binary is within its budget) |
+| Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
+| Allowlist/Denylist: policies managed by a file or an integration are reported as `unattached` but cannot be fixed from the UI; offer an "attach" action that prints the YAML to add to the file | allowlist stream | v0.1.x |
+| Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
+| Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow | allowlist stream | v0.2 |
 | Astryx conformance pass over the older page scaffolding: raw `<div>`/`<span>` layout and `k-*` classes in styles.css (e.g. `k-form-grid`, ShapeField rows) → Stack/Grid/Section/Layout/Table and tokens, per web/AGENTS.md; target an empty styles.css apart from documented exceptions | UX round 3 (D141) | v0.1.x |
 | Self-host the brand fonts (Inter, JetBrains Mono; docs/brand) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
 | Settings schema `Shape` has no help field, so list items and map keys show no help of their own (fields and enum options do) | UX round 3 | v0.2 |
 | Query log: a "Policy" suggest box (the server answers `/queries/suggestions?field=policy`; the SPA's suggestion types lack it) and a "Request unblock"/"Requests" link on blocked rows | UX round | v0.1.x |
-| Domains page: "Block domain" appends to the `ui` source even while that source is switched off, so the entry has no effect until it is switched back on; warn or switch it on | UX round | v0.1.x |
 | Unify `fields/ChoiceCards` with the inline choice cards of the list wizard | UX round | v0.1.x |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
 ## CLI

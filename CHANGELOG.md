@@ -108,6 +108,14 @@ a real server instead of its mocks.
   and the `unblockrequests` RBAC resource; `unblockRequests.*` settings.
   **Kubernetes: install the new CRD (`kudurru-crds` chart) before upgrading
   the server.**
+- Allowlist and Denylist pages (Filtering), next to the combined Domains
+  page: one row per entry with an enable switch, type (exact, wildcard,
+  regex), scope (everyone or client groups), comment, origin and the list it
+  lives in; bulk actions and an "Is it allowed?" check. Single entries of any
+  list, imported URL lists included, can be switched off
+  (`spec.sources[].exclude`, kept across refreshes); the entries browser
+  opens for every source type. Existing `ui-allow`/`ui-deny` entries are
+  migrated (D143).
 - Every form control is an Astryx component (Selector, NumberInput, Switch,
   CheckboxInput/CheckboxList, RadioList, MultiSelector, Typeahead,
   DateTimeInput, TextInput/TextArea) through `components/fields/`, with the
