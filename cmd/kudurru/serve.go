@@ -307,6 +307,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalSrv    *internalapi.Server
 		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
+		qlTail         *querylog.Tail
+		qlReader       *sqlitelog.Reader
+		queryUpstreams func() []upstream.ServerStatus
 	)
 	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
 		creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{
@@ -321,7 +324,15 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
-			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues), CatalogueImport: catalogueImportBody(catalogues),
+			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
+				out, err := internalapi.ReadLocalQuerylog(ctx, qlReader, q)
+				if err == nil && q.Kind == "upstreams" && queryUpstreams != nil {
+					out.Servers = queryUpstreams()
+				}
+				return out, err
+			},
+			QueryTail: func() *querylog.Tail { return qlTail },
+			Address:   cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues), CatalogueImport: catalogueImportBody(catalogues),
 			Status: func(ctx context.Context) internalapi.Status {
 				leader, _ := membership.Leader(ctx)
 				var ls []internalapi.ListStatus
@@ -376,8 +387,6 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		collector querylog.Collector // nil interface when disabled
 		qlAsync   *querylog.Async
 		qlWriter  *sqlitelog.Writer
-		qlTail    *querylog.Tail
-		qlReader  *sqlitelog.Reader
 	)
 	if cfg.Querylog.Enabled {
 		qlMetrics := querylog.NewMetrics(reg)
@@ -428,6 +437,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	fwd := upstreamstage.NewStage(upSet)
+	queryUpstreams = func() []upstream.ServerStatus { return fwd.Set().Status() }
 	hostname, _ := os.Hostname()
 
 	// Ingress rate limiting (§7.1 step 2).

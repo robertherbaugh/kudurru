@@ -4,7 +4,7 @@
 // the last seen id goes into ?last_event_id= on the new connection so the
 // server replays what was missed (EventSource cannot set headers).
 import { useEffect, useRef, useState } from 'react';
-import type { QueryRow } from '../api/types';
+import type { QueryRow, ScopeInfo } from '../api/types';
 
 export type TailState = 'off' | 'connecting' | 'live' | 'retrying' | 'unsupported';
 
@@ -14,16 +14,21 @@ export interface LiveTailOptions {
   enabled: boolean;
   /** Called with each batch of new rows, oldest first. */
   onRows: (rows: QueryRow[]) => void;
+  onScope?: (scope: ScopeInfo) => void;
 }
 
 /** Opens the stream while enabled; returns its state. */
-export function useLiveTail({ url, enabled, onRows }: LiveTailOptions): TailState {
+export function useLiveTail({ url, enabled, onRows, onScope }: LiveTailOptions): TailState {
   const [state, setState] = useState<TailState>('off');
   const lastId = useRef<string | undefined>(undefined);
   const handler = useRef(onRows);
   handler.current = onRows;
+  const scopeHandler = useRef(onScope);
+  scopeHandler.current = onScope;
+  const previousURL = useRef(url);
 
   useEffect(() => {
+    if (previousURL.current !== url) { lastId.current = undefined; previousURL.current = url; }
     if (!enabled) {
       setState('off');
       return undefined;
@@ -54,6 +59,9 @@ export function useLiveTail({ url, enabled, onRows }: LiveTailOptions): TailStat
         // ignore malformed events
       }
     };
+    es.addEventListener('scope', ((ev: MessageEvent<string>) => {
+      try { scopeHandler.current?.(JSON.parse(ev.data) as ScopeInfo); } catch { /* ignore malformed events */ }
+    }) as EventListener);
     es.addEventListener('query', onQuery as EventListener);
     es.onmessage = onQuery;
     es.onopen = () => setState('live');
