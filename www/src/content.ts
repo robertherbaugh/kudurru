@@ -10,6 +10,14 @@ export const CHARTS = "oci://ghcr.io/robertherbaugh/charts";
 
 // The license page (/license/): follows LICENSING.md and internal/license.
 export const LICENSE_CONTACT = "hello@kudurru.io";
+// The license server that issues free personal keys: its origin, no path. The
+// form posts to /api/v1/public/key-requests below it. Override at build time
+// with WWW_LICENSE_API; the CSP (src/headers.ts) allows exactly this origin,
+// and the server's PUBLIC_FORM_ORIGINS must list https://kudurru.io.
+export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
+// A business request is not sent to the server: it opens this subject in the
+// visitor's mail program with every field filled in.
+export const BUSINESS_SUBJECT = "Business License";
 export const LICENSE_FREE_NODES = 3;
 export const LICENSE_FREE_POLICIES = 2;
 

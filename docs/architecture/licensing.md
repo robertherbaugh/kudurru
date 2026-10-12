@@ -121,7 +121,9 @@ edge deployment does not start.
 docs/m3/ui.md, "Licensed features"). A page whose feature is locked shows a
 short explanation instead of its content and makes none of the requests the
 server would refuse with 402. The public page is [kudurru.io/license](https://kudurru.io/license)
-(`www/src/pages/license.ts`, content in `www/src/content.ts`), and the
+(`www/src/pages/license.ts`, content in `www/src/content.ts`); its "Request a
+key" form sends a personal request to the license server and opens a mail to
+hello@kudurru.io for anything else (`www/README.md`, "The Request a key form"), and the
 administrator guide has a chapter on it (`docs/guide/admin/13-license.md`).
 
 ## Test builds

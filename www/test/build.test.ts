@@ -129,3 +129,47 @@ describe("the license page", () => {
     expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/");
   });
 });
+
+describe("the key request form", () => {
+  test("is on the license page only, posts to the license server's public endpoint, and is hidden without script", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("data-license-form");
+    expect(page).toContain('data-endpoint="https://licenses.kudurru.io/api/v1/public/key-requests"');
+    expect(page).not.toMatch(/<form[^>]*\saction=/); // the CSP has form-action 'none'; submission is script-driven
+    expect(pages["index.html"]).not.toContain("data-license-form");
+  });
+
+  test("has the fields the personal and the business request need", () => {
+    const page = pages["license/index.html"]!;
+    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "company", "business-nodes", "business-use", "website"]) {
+      expect(page).toContain(`name="${name}"`);
+    }
+    // The server's limits are on the inputs too.
+    expect(page).toMatch(/name="personal-use"[^>]*maxlength="1000"/);
+    expect(page).toMatch(/name="name"[^>]*maxlength="200"/);
+    // The honeypot is out of the accessibility tree and the tab order.
+    expect(page).toMatch(/aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1"/);
+  });
+
+  test("says where a business request goes", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("opens an email to hello@kudurru.io with the subject Business License");
+  });
+
+  test("the headers file lets only the form's origin through connect-src", async () => {
+    const headers = await readFile(join(out, "_headers"), "utf8");
+    expect(headers).toContain("connect-src 'self' https://licenses.kudurru.io;");
+  });
+
+  test("WWW_LICENSE_API is honoured and checked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "www-api-"));
+    try {
+      await build({ outDir: dir, version: "9.8.7", licenseApi: "https://licenses.example.org" });
+      expect(await readFile(join(dir, "license/index.html"), "utf8")).toContain('data-endpoint="https://licenses.example.org/api/v1/public/key-requests"');
+      expect(await readFile(join(dir, "_headers"), "utf8")).toContain("connect-src 'self' https://licenses.example.org;");
+      await expect(build({ outDir: dir, version: "9.8.7", licenseApi: "not a url" })).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -20,7 +20,7 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 |---|---|
 | `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, the README and `bench/baseline.txt`; change them here when a feature ships or moves |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
-| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu. The page is complete without it |
+| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
 | `src/styles/site.css` | The stylesheet. It imports `docs/brand/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
 | `build.ts` | Renders the pages, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
@@ -40,6 +40,29 @@ RFC 3849 are documentation placeholders.
 
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
+
+## The "Request a key" form
+
+`/license/` has a form with two kinds of request. A **personal** request is
+sent from the visitor's browser to the license server
+(`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
+empty honeypot `website`; the server emails a confirmation link and then the
+key, and a `202` is the answer to any valid request). A **business or other**
+request is never sent to a server: the browser opens a mail to
+`hello@kudurru.io` with the subject `Business License` and the name, business,
+email, number of nodes and details in the body, and shows the same text to
+copy if no mail program opens.
+
+The license server's origin is `https://licenses.kudurru.io` unless
+`WWW_LICENSE_API` names another one at build time (set it in the Cloudflare
+build variables). Three things must agree with it:
+
+- the site's CSP allows exactly that origin in `connect-src` (`src/headers.ts`
+  writes it into `_headers`; the build fails on a malformed URL);
+- the server's CORS list (`PUBLIC_FORM_ORIGINS`) contains `https://kudurru.io`
+  and exposes `Retry-After`;
+- the server's limits are the form's (name 200, email 254, use 1000
+  characters), kept in `src/client/license.ts`.
 
 ## How Cloudflare serves it
 

@@ -1,10 +1,51 @@
 import { html, type Html } from "../html.ts";
-import { LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_ROWS, REPO_URL } from "../content.ts";
+import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_ROWS, REPO_URL } from "../content.ts";
 import { external } from "./layout.ts";
 
 // /license/: what is free, what a key unlocks, how to get and use one.
 // The rules in full are LICENSING.md; this page is its short form.
-export function license(): Html {
+const REQUEST_PATH = "/api/v1/public/key-requests"; // the license server's public form endpoint
+
+// The form: a personal request goes to the license server, anything else
+// opens the visitor's mail program (src/client/license.ts). It needs script,
+// so without script the two mail links of the "Get a key" text stand in.
+function requestForm(licenseApi: string): Html {
+  const endpoint = new URL(REQUEST_PATH, licenseApi).toString();
+  return html`<form class="licform" data-license-form data-endpoint="${endpoint}" novalidate aria-labelledby="lic-req-title">
+      <h2 id="lic-req-title">Request a key</h2>
+      <fieldset class="licform-kind">
+        <legend>What is it for?</legend>
+        <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Personal or non-commercial: a home, a homelab, study, a hobby, a charity or a school. Free.</span></label>
+        <label class="licform-choice"><input type="radio" name="kind" value="business"> <span>A business, or anything else. We reply by email.</span></label>
+      </fieldset>
+      <div class="licform-grid">
+        <label class="licform-field"><span>Your name</span><input type="text" name="name" autocomplete="name" maxlength="200" required></label>
+        <label class="licform-field"><span>Email address</span><input type="email" name="email" autocomplete="email" maxlength="254" required></label>
+      </div>
+      <div data-panel="personal">
+        <label class="licform-field"><span>What do you run kudurru for?</span><textarea name="personal-use" rows="3" maxlength="1000" required></textarea></label>
+        <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I use the key for non-commercial purposes only. A personal key covers up to ${LICENSE_FREE_NODES} nodes.</span></label>
+      </div>
+      <div data-panel="business" hidden>
+        <div class="licform-grid">
+          <label class="licform-field"><span>Business or organization</span><input type="text" name="company" autocomplete="organization" maxlength="160" required></label>
+          <label class="licform-field"><span>Number of nodes</span><input type="number" name="business-nodes" min="1" max="10000" inputmode="numeric" required></label>
+        </div>
+        <label class="licform-field"><span>Details (the features you need, your timeline; optional)</span><textarea name="business-use" rows="3" maxlength="1500"></textarea></label>
+      </div>
+      <div class="licform-trap" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <div class="licform-problems" data-problems-box hidden><ul data-problems></ul></div>
+      <div class="actions"><button class="btn btn-primary" type="submit">Request a key</button></div>
+      <p class="licform-status" data-status role="status" aria-live="polite"></p>
+      <div class="licform-mail" data-mail hidden>
+        <pre class="mono" id="lic-mail-text" data-mail-text></pre>
+        <button class="more" type="button" data-copy="lic-mail-text"><span>Copy</span></button>
+      </div>
+      <p class="fine">A personal request goes to our license server, which emails you a link to confirm your address and then your key. A business request is not sent anywhere: it opens an email to ${LICENSE_CONTACT} with the subject ${BUSINESS_SUBJECT} and your details filled in.</p>
+    </form>`;
+}
+
+export function license(licenseApi: string): Html {
   const mail = (subject: string) => `mailto:${LICENSE_CONTACT}?subject=${encodeURIComponent(subject)}`;
   return html`<section class="sec" aria-labelledby="lic-title">
   <div class="wrap narrow">
@@ -36,7 +77,9 @@ export function license(): Html {
 </section>
 <section class="sec" aria-labelledby="lic-get-title">
   <div class="wrap narrow">
+    ${requestForm(licenseApi)}
     <h2 id="lic-get-title">Get a key</h2>
+    <p class="nojs-note">The form needs JavaScript. Without it, write to us:</p>
     <p><strong>A free personal key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes and is for non-commercial use only.</p>
     <p><strong>A business.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the company, the number of nodes and the features you need. A business key comes with a commercial agreement.</p>
     <h2 id="lic-use-title">Use a key</h2>

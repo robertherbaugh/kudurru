@@ -1656,6 +1656,125 @@ main,
   color: var(--fg-2);
 }
 
+/* The "Request a key" form of /license/ (needs script: hidden without it) */
+.licform {
+  display: none;
+  margin: 8px 0 56px;
+  padding: 28px;
+  border: 1px solid var(--line-2);
+  background: var(--ink-2);
+}
+.js .licform {
+  display: grid;
+  gap: 20px;
+}
+.nojs-note {
+  margin-top: 16px;
+}
+.js .nojs-note {
+  display: none;
+}
+.licform h2 {
+  margin: 0;
+}
+.licform fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.licform legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--fg-2);
+}
+.licform-choice,
+.licform-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.licform-choice input,
+.licform-check input {
+  margin-top: 4px;
+  accent-color: var(--clay);
+}
+.licform-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.licform-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 0;
+}
+.licform-field > span {
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--fg-2);
+}
+.licform input[type="text"],
+.licform input[type="email"],
+.licform input[type="number"],
+.licform textarea {
+  width: 100%;
+  padding: 11px 12px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+}
+.licform textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+.licform input:hover,
+.licform textarea:hover {
+  border-color: var(--fg-3);
+}
+.licform-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.licform-problems {
+  padding: 12px 16px;
+  border-left: 2px solid var(--st-blocked);
+  background: var(--ink-3);
+}
+.licform-problems ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.licform-status {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--fg);
+}
+.licform-mail {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.licform-mail pre {
+  width: 100%;
+  white-space: pre-wrap;
+}
+.licform [hidden] {
+  display: none;
+}
+
 /* Motion */
 @keyframes pulse {
   0%,
