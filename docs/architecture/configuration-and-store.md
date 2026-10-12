@@ -246,6 +246,7 @@ sequenceDiagram
 ## Not built yet
 
 The `follower` (v0.2) and `raft` (v1.0) drivers, the `cluster.role: static`
-read-only mode for compose twins, scatter-gather across nodes, and a
+read-only mode for compose twins, scatter-gather of health and stats
+across nodes (the node list is already gathered), and a
 `roles:` setting. See [the design record §4](../architecture.md#4-data-model-storage-replication-ha)
 for the plan.

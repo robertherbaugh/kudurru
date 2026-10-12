@@ -102,7 +102,7 @@ code. The main gaps between the two:
 |---|---|
 | 13 pipeline stages (`local`, `rewrite`, `dnssec`, `postprocess`, …) | 7 stages; the other names are reserved in `pipeline.Order` |
 | `follower` and `raft` store drivers | `kube` and `sqlite` only |
-| scatter-gather across nodes (node list, cluster stats) | each node answers for itself; `/nodes/{other}/health` returns 501 |
+| scatter-gather across nodes | the node list is gathered (`GET /nodes` lists every replica and fetches its status over `:8082`); `/nodes/{other}/health` returns 501 and `scope=cluster` stats are answered by the serving node |
 | cluster-wide temporary disable of blocking | per node, in memory |
 | client match by MAC, hostname, DoT/DoH client ID | match by IP and CIDR (the index supports the rest; no transport fills them in) |
 | `cluster.role: static` read-only twins | no such key; each twin is an independent sqlite node |

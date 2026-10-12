@@ -40,8 +40,9 @@ the dnsdist API, whose key the supervisor writes to the shared
   with `hostNetwork.enabled`, and to a single-replica StatefulSet with the
   sqlite driver in `mode: standalone`.
 - The **headless Service** (`publishNotReadyAddresses`) gives every pod a
-  stable name: replicas find the leader on `:8082` through it, and the edge
-  reads its EndpointSlice to build the backend list.
+  stable name. Its EndpointSlice is how replicas find the leader on `:8082`,
+  how the Nodes page lists every replica (and fetches each one's status),
+  and how the edge builds its backend list.
 - Probes use the ops port: startup, readiness and liveness on
   `/healthz/*` (:8081). `preStop` runs `kudurru lameduck`, so a pod fails
   readiness and drains before it stops.

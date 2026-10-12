@@ -36,7 +36,7 @@ address decides policies, ACLs and the query log.
 flowchart TD
     P(["UDP datagram or TCP/DoT connection"]) --> SIG{"starts with the<br/>PROXYv2 signature?"}
     SIG -- "no" --> PEER["client = transport peer"]
-    SIG -- "yes" --> LIST{"peer listed in<br/>listeners.proxyProtocolFrom?<br/>(exact hosts only)"}
+    SIG -- "yes" --> LIST{"peer listed in<br/>listeners.proxyProtocolFrom?<br/>(hosts, or CIDRs when<br/>a secret is set)"}
     LIST -- "no" --> DROP1["drop<br/>proxy_untrusted_peer"]
     LIST -- "yes" --> SEC{"secret file<br/>configured?"}
     SEC -- "yes" --> TLV{"TLV 0xE0 equals<br/>the secret?"}

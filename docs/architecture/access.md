@@ -191,7 +191,7 @@ allows it, and the audit record names the path.
 
 | Route | Used by |
 |---|---|
-| `GET /internal/status` | edge supervisors, diagnostics |
+| `GET /internal/status` | the Nodes page (`GET /api/v1/nodes` fetches every peer's status), edge supervisors |
 | `GET /internal/lists/{digest}` | replicas pulling list bodies from the leader |
 | `GET /internal/zones` | edge supervisors (zone serials) |
 | `GET /internal/catalogue`, `/internal/catalogue/adguard` | replicas pulling the services catalogue |
