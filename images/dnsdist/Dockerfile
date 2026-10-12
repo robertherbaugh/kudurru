@@ -31,7 +31,9 @@ ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
 FROM ${KUDURRU_IMAGE} AS kudurru
 
 FROM ${DNSDIST_IMAGE}@${DNSDIST_DIGEST}
-COPY --from=kudurru /usr/local/bin/kudurru /usr/local/bin/kudurru
+# ko puts the binary at /ko-app/kudurru (the Dockerfile at the repository
+# root mirrors that layout).
+COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru
 COPY README.md /usr/share/doc/kudurru-dnsdist/README.md
 COPY LICENSE.dnsdist /usr/share/doc/kudurru-dnsdist/LICENSE.dnsdist
 USER root

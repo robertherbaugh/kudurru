@@ -64,7 +64,9 @@ RUN apk add --no-cache libcrypto3 libmagic iproute2 tini \
  && chmod 1777 /run/kudurru
 COPY --from=build /out/usr/sbin/keepalived /usr/sbin/keepalived
 COPY --from=build /out/usr/share/keepalived/COPYING /usr/share/doc/kudurru-keepalived/COPYING
-COPY --from=kudurru /usr/local/bin/kudurru /usr/local/bin/kudurru
+# ko puts the binary at /ko-app/kudurru (the Dockerfile at the repository
+# root mirrors that layout).
+COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru
 COPY README.md /usr/share/doc/kudurru-keepalived/README.md
 VOLUME ["/run/kudurru"]
 EXPOSE 8085/tcp
