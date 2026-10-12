@@ -1,3 +1,17 @@
+# Runners (every workflow): Ubicloud, billed per minute and linearly in
+# vCPUs, so a larger runner only pays off when the job speeds up about as
+# much as the core count grows. Measured on the same topology (2 vCPU = 1
+# physical core): the `go` job's steps take 1318 s on 2 vCPU, 675 s on 4 and
+# 551 s on 8; vitest 263 s, 92 s and 57 s (it runs cores-1 workers). Jobs
+# that compile Go or run parallel test workers (go, web, web-e2e, e2e,
+# dev-image, edge, publish's test and release) use standard-4: half the wall
+# time for about the same cost, and the `go` job is the critical path of
+# this workflow. Short, network-bound or wait-bound jobs, and the fuzz matrix
+# (60 s of fuzzing a job whatever the size), stay on standard-2; the
+# supervisor images build natively on standard-2 x64 and arm64 runners
+# instead of under QEMU. 8 vCPU doubles the price per minute for 18 % less
+# time on the `go` job, about 1.6x the cost per run.
+# Pinned to Ubuntu 24.04, the image ubuntu-latest was.
 name: ci
 on:
   push:
@@ -12,7 +26,7 @@ jobs:
   # workflow filtered with paths-ignore, because a skipped job satisfies a
   # required status check and a workflow that never runs does not.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
@@ -37,7 +51,7 @@ jobs:
   go:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -72,7 +86,7 @@ jobs:
   web:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     defaults:
       run:
         working-directory: web
@@ -109,7 +123,7 @@ jobs:
   web-e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -156,7 +170,7 @@ jobs:
   e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -188,7 +202,7 @@ jobs:
   fuzz-targets:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
       targets: ${{ steps.list.outputs.targets }}
     steps:
@@ -197,7 +211,7 @@ jobs:
         run: echo "targets=$(hack/fuzz.sh --list | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
   fuzz:
     needs: fuzz-targets
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -226,7 +240,7 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -242,7 +256,7 @@ jobs:
   helm:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -273,7 +287,7 @@ jobs:
   licenses:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0

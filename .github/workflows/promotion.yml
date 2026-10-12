@@ -13,7 +13,7 @@ permissions:
   contents: read
 jobs:
   promotion:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - name: Source branch
         env:
