@@ -15,13 +15,13 @@ jobs:
   site:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
       # The pinned Hugo release (HUGO_VERSION and its SHA-256 in the Makefile).
       - name: Cache Hugo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: bin/hugo-*
           key: hugo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
@@ -34,12 +34,12 @@ jobs:
         run: make docs-site
       - name: Check the HTML (links, assets, fragments)
         run: make docs-check-links
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
       - name: Check the Workers config (wrangler deploy --dry-run)
         run: make docs-check-workers
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: docs-site
           path: site/public

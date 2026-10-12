@@ -206,6 +206,12 @@ pipeline.
   reused, so with only `tls://1.1.1.1` configured about a third of the
   names in a burst failed with SERVFAIL. A REFUSED answer from a DoT server
   is now asked again once on a fresh connection.
+- Release pipeline: every action is pinned by commit SHA (Dependabot keeps
+  them current) and goreleaser, helm and cosign by version; the tests run
+  in a separate read-only job without a Go cache before anything is
+  published; every image gets build provenance and the Dockerfile-built
+  images an SBOM; a release refuses a candidate whose publish did not
+  finish (`hack/candidate-published.sh`).
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission

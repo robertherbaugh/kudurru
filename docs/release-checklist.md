@@ -200,6 +200,15 @@ On the owner's hardware:
       (linux/amd64, linux/arm64), plus `latest` and `latest-debug` for a
       release. Build provenance is attested for the
       archives, packages and checksums.
+- [ ] publish.yml's `test` job (read-only token, no Go cache) runs `make
+      test` and `make helm-check` on the tag before the `release` job starts.
+      The tools are pinned: goreleaser v2.18.3, helm v4.3.0, cosign v2.6.5,
+      and every action by commit SHA (Dependabot, `.github/dependabot.yml`;
+      `TestWorkflowActionsPinned`). Every image gets SLSA build provenance
+      pushed next to it (`gh attestation verify oci://<image>@<digest>
+      --owner robertherbaugh`); the Dockerfile-built images (base,
+      -hostnetwork, supervisors) also carry a BuildKit SBOM attestation, the
+      ko images goreleaser's SPDX SBOM.
 - [ ] The workflow packages both charts with `--version <version>
       --app-version <version>`, pushes them to
       `oci://ghcr.io/robertherbaugh/charts` and cosign-signs each chart digest.
@@ -217,6 +226,12 @@ On the owner's hardware:
       `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>`: the ko
       image's binary with `cap_net_bind_service=+ep`, for the chart's
       `hostNetwork.enabled`. It cosign-signs the digest.
+
+A release refuses a candidate whose publish did not finish: promotion.yml
+(on the pull request into `release`) and release.yml (before tagging) run
+`hack/candidate-published.sh v<VERSION>-rc.<N>`, which needs the
+candidate's GitHub pre-release with `checksums.txt`. Re-run publish.yml for
+the candidate tag first.
 
 ## 5. Verify what was published
 

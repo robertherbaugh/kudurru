@@ -86,7 +86,6 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| Release workflows: pin third-party actions by SHA with Dependabot for `github-actions`; pin goreleaser, helm and cosign versions; run `make test` and `make helm-check` in a separate read-only job before the release job and disable setup-go's cache there; refuse to promote a candidate whose publish failed (`gh release view`); image build provenance (`attest-build-provenance` with `subject-digest`, `push-to-registry`) and SBOMs for the supervisor images | docs/m5/security-v0.1-round.md | v0.1.x |
 | Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | docs/m5/security-v0.1-round.md | before v0.1.0 |
 | Optional `httpsOnly` for `blocking.catalogue.adguardServicesURL` (and BlockList URLs): a plain-http document can be changed in transit | docs/m5/security-v0.1-round.md | v0.2 |
 

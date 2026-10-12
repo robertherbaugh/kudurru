@@ -32,10 +32,11 @@ jobs:
           fi
       # The default ref is the merge of the PR into the base branch: what
       # the push after merging will tag.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
       - name: Dry-run the tag
+        id: tag
         env:
           BASE: ${{ github.base_ref }}
         run: |
@@ -43,3 +44,11 @@ jobs:
             release-candidate) hack/release-tag.sh rc ;;
             release)           hack/release-tag.sh release ;;
           esac
+      # A release ships its last candidate: refuse one whose publish did not
+      # finish (no GitHub pre-release, or still a draft).
+      - name: The candidate was published
+        if: github.base_ref == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC: ${{ steps.tag.outputs.rc }}
+        run: hack/candidate-published.sh "${RC}"

@@ -379,3 +379,34 @@ func TestReleaseTagScript(t *testing.T) {
 	git("tag", "v0.2.0-rc.1")
 	want("release", "tag", "v0.2.0", "previous", "v0.1.0", "rc", "v0.2.0-rc.1")
 }
+
+// TestWorkflowActionsPinned: every third-party action in the workflows is
+// pinned by commit SHA with its version as a comment (Dependabot updates
+// both, .github/dependabot.yml); local reusable workflows are exempt.
+func TestWorkflowActionsPinned(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(repoRoot(t), ".github", "workflows", "*.yml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("workflows: %v %v", files, err)
+	}
+	uses := regexp.MustCompile(`(?m)^\s*(?:-\s+)?uses:\s*(\S+)(.*)$`)
+	pinned := regexp.MustCompile(`^[\w.-]+/[\w./-]+@[0-9a-f]{40}$`)
+	version := regexp.MustCompile(`^\s+# v\d+\.\d+\.\d+$`)
+	for _, f := range files {
+		b, err := os.ReadFile(f) //nolint:gosec // repository files
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range uses.FindAllStringSubmatch(string(b), -1) {
+			ref, rest := m[1], m[2]
+			if strings.HasPrefix(ref, "./") {
+				continue
+			}
+			if !pinned.MatchString(ref) || !version.MatchString(rest) {
+				t.Errorf("%s: %s%s is not pinned as owner/repo@<sha> # vX.Y.Z", filepath.Base(f), ref, rest)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot(t), ".github", "dependabot.yml")); err != nil {
+		t.Errorf("the github-actions pins need .github/dependabot.yml: %v", err)
+	}
+}
