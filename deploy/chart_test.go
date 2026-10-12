@@ -2,6 +2,7 @@ package deploy_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
@@ -340,7 +342,17 @@ var chartCases = []chartCase{
 		}
 	}},
 	{name: "bootstrap-token", values: "auth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
-		r.wantObject(t, "Secret", "kudurru-bootstrap-token")
+		secret := r.object(t, "Secret", "kudurru-bootstrap-token")
+		enc, _ := dig(secret, "data", "token").(string)
+		raw, err := base64.StdEncoding.DecodeString(enc)
+		if err != nil {
+			t.Fatalf("token is not base64: %v", err)
+		}
+		// The generated value must be a wire token kudurru accepts: its id
+		// is lower case, which randAlphaNum alone does not give.
+		if _, ok := tokens.Parse(string(raw)); !ok {
+			t.Errorf("generated bootstrap token %q is not a kudurru token", raw)
+		}
 	}},
 	{name: "seed-objects", values: seedObjects, wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		z := r.object(t, "DNSZone", "home")
