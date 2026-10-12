@@ -59,6 +59,10 @@ Repository settings the pipeline relies on (once):
       rebase (a branch ruleset can restrict the merge method per branch):
       `release-candidate` must keep `main`'s history, or the next promotion
       conflicts and the release tree check fails.
+- [ ] Promotion pull requests need an approving review by a maintainer
+      (CODEOWNERS for `.github/` and `hack/release-tag.sh`): the `promotion`
+      check runs the workflow and script of the pull request itself, so a
+      pull request that edits them can pass its own check.
 - [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
 - [ ] A branch ruleset refuses branches named `v*`. publish.yml checks out
       `refs/tags/<tag>`, so a branch named like the next tag can no longer
