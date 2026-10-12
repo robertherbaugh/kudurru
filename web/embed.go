@@ -31,7 +31,7 @@ var dist embed.FS
 
 // FS is the built dashboard rooted at the bundle directory: index.html at
 // the top, hashed files under assets/.
-var FS fs.FS = mustSub(dist, "dist")
+var FS = mustSub(dist, "dist")
 
 func mustSub(f fs.FS, dir string) fs.FS {
 	sub, err := fs.Sub(f, dir)
