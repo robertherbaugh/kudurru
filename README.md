@@ -24,28 +24,14 @@ And the things none of them had together: **Kubernetes CRDs as the source of tru
 
 ## How it fits together
 
-```
-                      clients (Do53 / DoT / DoH / DoQ / DoH3)
-                                   │
-            ┌──────────────────────▼───────────────────────┐   optional edge tier (GPL, separate container)
-            │ dnsdist  :53/:853/:443   packet cache         │   PID 1 = `kudurru edge run` (render → check → exec)
-            └──────────────────────┬───────────────────────┘
-                     PROXYv2 (client IP preserved)  → :5353 (or :53 when no edge)
-┌───────────────────────────────────▼─────────────────────────────────────────────────┐
-│ kudurru node (every replica)                                                         │
-│  dnsserver ─▶ PIPELINE  ingress ▸ identify ▸ control ▸ local ▸ authoritative ▸ blocking │
-│                      ▸ rewrite ▸ cache ▸ dnssec-validate ▸ upstream ▸ postprocess ▸ log │
-│       ▲ reads lock-free snapshots of zone trees, policies, compiled blocklists, upstreams │
-│  zonecache ◀── Store.Watch ──────────────────┐  ──▶ local.db (last-good snapshot)        │
-│  api (REST + UI + SSE)  querylog (ring→SQLite→rollups→sinks)  ops/metrics  internal     │
-│  controller / listfetcher / notifier / signer / integrations  [leader-only]  ─┼─┐       │
-└──────────────────────────────────────────────────────────────────────────────┼─┼───────┘
-   STORE (config)   kube driver: CRDs via the apiserver (replicated by k8s etcd) ◀┘ │
-                    sqlite driver: /var/lib/kudurru/state.db (docker)            ◀──┘
-   VIP (bare metal) keepalived (VRRPv3) with PID 1 = `kudurru vip run`; in k8s: kube-vip / MetalLB / cloud LB
-```
+![kudurru at a glance: clients, the optional dnsdist edge, one kudurru node with its seven-stage pipeline, the in-memory snapshot, its listeners and leader-only loops, the store below and the internet on the right](docs/architecture/diagrams/overview.excalidraw.svg)
 
-Principles that shaped it (the full list is in the [architecture](docs/architecture.md)):
+The [architecture tour](docs/architecture/README.md) walks through it with a
+diagram per topic: a query's journey, policies and blocking, block lists,
+upstreams and the cache, zones, the store, deployment shapes, access and
+observability.
+
+Principles that shaped it (the full list is in the [design record](docs/architecture.md#1-vision--principles)):
 
 - **One object model, one `Store` interface, zero consensus code in v0.1.** In Kubernetes the apiserver is the replicated store; in Docker it is embedded SQLite. Follower mode (v0.2) and raft (v1.0) arrive behind the same interface.
 - **Exactly one writer per object.** Every object records who manages it (API, a file, an integration, Kubernetes), so two sources of truth are structurally impossible.
@@ -101,10 +87,12 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 - [kudurru.io](https://kudurru.io): the project website ([source](www/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
 - [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
-- [Architecture](docs/architecture.md): the complete design, decision log and glossary.
+- [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (repository only, not on the docs site).
+- [Design record](docs/architecture.md): the v0.1 design, the decision log and the glossary.
 - [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
 - [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.
-- [Research notes](docs/research/): point-in-time studies of the reference projects that the architecture cites.
+- [Research notes](docs/research/): point-in-time studies of the reference projects that the design record cites.
+- Engineering notes: milestone reports ([M1](docs/m1/README.md), [M2](docs/m2/README.md), [M3/M4](docs/m3/README.md), [M5](docs/m5/README.md)), [spikes](docs/spikes/README.md) and [follow-ups](docs/followups.md).
 - [Contributing](CONTRIBUTING.md): licensing rules (no GPL or EUPL code is ever ported), layout, and how to build.
 - [Branding kit](docs/brand/README.md): logos, icons, color tokens, usage rules, and original artwork.
 
@@ -119,7 +107,7 @@ charts/             Helm charts: kudurru and kudurru-crds
 config/             kustomize tree, CRD bases, samples
 deploy/             docker compose profiles, Grafana dashboard, Prometheus rules
 images/             dnsdist and keepalived supervisor images (GPL binaries, digest-pinned)
-docs/               architecture, research, open questions
+docs/               guide and deploy docs (published); architecture tour, design record, research, engineering notes (repo only)
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)

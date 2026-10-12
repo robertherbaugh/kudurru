@@ -7,4 +7,7 @@
   `cd web && bun run astryx -- component <Name> --dense` before using it.
   Docs: `bun run astryx -- docs <topic>`; search: `bun run astryx -- search "<query>"`.
 - The UI rules in docs/m3/ui.md ("Pages, wizards and dialogs") apply on top.
-- Everything else: docs/architecture.md, CONTRIBUTING.md, docs/followups.md.
+- How it works today, with diagrams: docs/architecture/ (keep its pages and
+  diagrams in step with the code when you change a flow it shows).
+- Everything else: docs/architecture.md (design record and decision log),
+  CONTRIBUTING.md, docs/followups.md.

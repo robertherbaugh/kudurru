@@ -1,4 +1,9 @@
-# kudurru architecture
+# kudurru architecture: the design record
+
+> This is the v0.1 design as it was accepted, with the decision log (§16)
+> that amends it. For how the code works today, with a diagram for every
+> flow, read the [architecture tour](architecture/README.md); where the two
+> differ, the tour follows the code and says so.
 
 | | |
 |---|---|
@@ -100,6 +105,8 @@ Explicitly **not** used: embedded etcd (1 GB floor, bespoke join, fsync-sensitiv
 `store.Elector` is backed by a Kubernetes `Lease` (kube driver), "always leader" (sqlite driver), "never leader" (follower driver, v0.2) and raft leadership (v1.0).
 
 ### 3.2 Diagram
+
+The planned shape. The node as built (seven stages, no signer or integrations yet) is drawn in the [tour's overview](architecture/README.md).
 
 ```
                       clients (Do53 / DoT / DoH / DoQ / DoH3)
