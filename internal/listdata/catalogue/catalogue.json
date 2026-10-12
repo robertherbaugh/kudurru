@@ -118,13 +118,13 @@
       "category": "ai",
       "rules": [
         "||chatgpt.com^",
-        "||chat.com^",
         "||openai.com^",
         "||oaistatic.com^",
         "||oaiusercontent.com^",
-        "||sora.com^"
+        "||sora.com^",
+        "||oaistatsig.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps and https://openai.com/index/sora-is-here/",
       "note": "Also blocks the OpenAI API (api.openai.com) and Sora, so other apps built on OpenAI models may stop working."
     },
     {
@@ -167,7 +167,7 @@
         "||copilot.microsoft.com^",
         "||copilot.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; copilot.com (its canonical address) from https://copilot.microsoft.com/",
       "note": "Microsoft sign-in and Copilot inside Windows, Edge, Bing and Microsoft 365 (copilot.cloud.microsoft) use shared hosts and stay reachable."
     },
     {
@@ -180,7 +180,7 @@
         "||perplexity.com^",
         "||pplx.ai^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://status.perplexity.com/ and https://x.com/perplexity_ai/status/1717953875678794158"
     },
     {
       "id": "mistral",
@@ -188,8 +188,7 @@
       "name": "Mistral Vibe (Le Chat)",
       "category": "ai",
       "rules": [
-        "||mistral.ai^",
-        "||lechat.ai^"
+        "||mistral.ai^"
       ],
       "source": "first-party domains of the service",
       "note": "Also blocks the Mistral API and docs on mistral.ai."
@@ -202,7 +201,7 @@
       "rules": [
         "||deepseek.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://api-docs.deepseek.com/"
     },
     {
       "id": "grok",
@@ -214,7 +213,7 @@
         "||x.ai^",
         "||grokusercontent.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://docs.x.ai/build/enterprise.md and https://grok.com/",
       "related": [
         "twitter"
       ],
@@ -228,7 +227,7 @@
       "rules": [
         "||meta.ai^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://about.fb.com/news/2024/04/meta-ai-assistant-built-with-llama-3/",
       "related": [
         "facebook",
         "instagram",
@@ -243,10 +242,9 @@
       "category": "ai",
       "rules": [
         "||character.ai^",
-        "||c.ai^",
-        "||characterai.io^"
+        "||c.ai^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://support.character.ai/hc/en-us/articles/51616603958427-Creator-Leaderboard"
     },
     {
       "id": "poe",
@@ -256,7 +254,7 @@
         "||poe.com^",
         "||poecdn.net^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://creator.poe.com/docs/script-bots/quick-start"
     },
     {
       "id": "huggingface",
@@ -265,10 +263,9 @@
       "rules": [
         "||huggingface.co^",
         "||hf.co^",
-        "||hf.space^",
-        "||huggingface.com^"
+        "||hf.space^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://huggingface.co/docs/hub/models-downloading and https://huggingface.co/docs/hub/spaces-embed",
       "note": "Also blocks model downloads for developer tools and apps that fetch models from Hugging Face."
     },
     {
@@ -292,7 +289,7 @@
         "||stability.ai^",
         "||stableaudio.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://stability.ai/news-updates/sharing-a-new-way-to-work-with-stable-audio"
     },
     {
       "id": "runway",
@@ -300,10 +297,9 @@
       "category": "ai",
       "rules": [
         "||runwayml.com^",
-        "||runway.com^",
-        "||runwayusercontent.com^"
+        "||runwayml.cloud^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://help.runwayml.com/hc/en-us/articles/51474557342227-Identifying-and-troubleshooting-network-issues"
     },
     {
       "id": "suno",
@@ -313,15 +309,14 @@
         "||suno.com^",
         "||suno.ai^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://github.com/suno-ai/bark"
     },
     {
       "id": "elevenlabs",
       "name": "ElevenLabs",
       "category": "ai",
       "rules": [
-        "||elevenlabs.io^",
-        "||elevenlabs.com^"
+        "||elevenlabs.io^"
       ],
       "source": "first-party domains of the service"
     },
@@ -335,7 +330,7 @@
         "||replicateassets.com^",
         "||replicate.ai^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://replicate.com/docs/topics/predictions/output-files, https://replicate.com/ and https://github.com/replicate/cog",
       "note": "Also blocks the Replicate API, so apps that generate images or video through Replicate may stop working."
     },
     {
@@ -345,7 +340,7 @@
       "rules": [
         "||pi.ai^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://inflection.ai/"
     },
     {
       "id": "tiktok",
@@ -382,10 +377,9 @@
         "||fbcdn.net^",
         "||fbsbx.com^",
         "||messenger.com^",
-        "||m.me^",
-        "||fb.watch^"
+        "||m.me^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from http://web.archive.org/web/20250616231514/https://www.workplace.com/resources/tech/it-configuration/networking and the other vendor pages under Domain citations",
       "related": [
         "instagram",
         "threads",
@@ -400,14 +394,14 @@
       "rules": [
         "||instagram.com^",
         "||cdninstagram.com^",
-        "||ig.me^",
-        "||instagr.am^"
+        "||ig.me^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/ig-me-links and https://developers.facebook.com/documentation/threads/threads-profiles",
       "related": [
         "facebook",
         "threads"
-      ]
+      ],
+      "note": "Threads also loads images from cdninstagram.com, so blocking Instagram affects Threads too."
     },
     {
       "id": "threads",
@@ -418,7 +412,7 @@
         "||threads.net^",
         "||threads.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://developers.facebook.com/documentation/threads/overview",
       "related": [
         "instagram",
         "facebook"
@@ -450,7 +444,7 @@
         "||twimg.com^",
         "||t.co^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://help.x.com/en/using-x/url-shortener and https://docs.x.com/x-api/fundamentals/data-dictionary"
     },
     {
       "id": "reddit",
@@ -570,7 +564,7 @@
         "||mastodon.online^",
         "||joinmastodon.org^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://joinmastodon.org/about",
       "note": "Covers only the flagship mastodon.social and mastodon.online servers and joinmastodon.org; other Mastodon servers are not blocked."
     },
     {
@@ -636,7 +630,7 @@
         "||whatsapp.net^",
         "||wa.me^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from http://web.archive.org/web/20241228071158/https://developers.facebook.com/docs/whatsapp/guides/network-requirements/ and https://faq.whatsapp.com/5913398998672934",
       "related": [
         "facebook"
       ]
@@ -906,7 +900,7 @@
       "rules": [
         "||tv.apple.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.apple.com/apple-tv-plus/",
       "related": [
         "applemusic"
       ],
@@ -1065,10 +1059,9 @@
       "name": "Apple Music",
       "category": "music",
       "rules": [
-        "||music.apple.com^",
-        "||applemusic.com^"
+        "||music.apple.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://support.apple.com/guide/music-web/welcome/web",
       "related": [
         "appletv"
       ],
@@ -1100,11 +1093,9 @@
         "||steamcontent.com^",
         "||steamserver.net^",
         "||steamusercontent.com^",
-        "||steamgames.com^",
-        "||steam-chat.com^",
-        "||s.team^"
+        "||steamgames.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://help.steampowered.com/en/faqs/view/2EA8-4D75-DA21-31EB and https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v1/?cellid=0"
     },
     {
       "id": "epicgames",
@@ -1112,13 +1103,13 @@
       "name": "Epic Games",
       "category": "gaming",
       "rules": [
-        "||epicgames.com^",
-        "||epicgames.dev^"
+        "||epicgames.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.epicgames.com/help/c-202300000001639/a202300000012358",
       "related": [
         "fortnite"
-      ]
+      ],
+      "note": "Epic Online Services (epicgames.dev), which games from other publishers use for sign-in and crossplay, is not blocked."
     },
     {
       "id": "fortnite",
@@ -1140,11 +1131,9 @@
       "rules": [
         "||roblox.com^",
         "||rbxcdn.com^",
-        "||rbx.com^",
-        "||robloxlabs.com^",
-        "||rbxinfra.com^"
+        "||rbx.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://en.help.roblox.com/hc/en-us/articles/115005744663 and https://hackerone.com/roblox/policy_scopes"
     },
     {
       "id": "minecraft",
@@ -1153,10 +1142,9 @@
       "rules": [
         "||minecraft.net^",
         "||mojang.com^",
-        "||minecraftservices.com^",
         "||minecraft-services.net^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://edusupport.minecraft.net/hc/en-us/articles/360047118992",
       "related": [
         "xbox"
       ],
@@ -1171,10 +1159,9 @@
         "||riotgames.com^",
         "||leagueoflegends.com^",
         "||playvalorant.com^",
-        "||riotcdn.net^",
-        "||pvp.net^"
+        "||riotcdn.net^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://playvalorant.com/en-us/download/",
       "related": [
         "valorant"
       ]
@@ -1190,7 +1177,7 @@
         "||xboxservices.com^",
         "||gamepass.com^"
       ],
-      "source": "first-party domains of the service; xboxlive.com and xbox.com from https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network",
+      "source": "first-party domains of the service; host names from https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network, https://www.xbox.com/en-US/ and https://www.xbox.com/en-US/play",
       "related": [
         "minecraft"
       ],
@@ -1206,7 +1193,7 @@
         "||playstation.net^",
         "||sonyentertainmentnetwork.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.playstation.com/en-us/",
       "note": "Sony account sign-in (account.sony.com) is shared with other Sony services and stays reachable."
     },
     {
@@ -1216,16 +1203,9 @@
       "category": "gaming",
       "rules": [
         "||nintendo.com^",
-        "||nintendo.net^",
-        "||nintendowifi.net^",
-        "||nintendo.co.jp^",
-        "||nintendo.co.uk^",
-        "||nintendo.de^",
-        "||nintendo.eu^",
-        "||nintendo-europe.com^",
-        "||nintendo.com.au^"
+        "||nintendo.net^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; nintendo.net from https://www.nintendo.com/us/ and https://ec.nintendo.com/",
       "note": "Games already on the console keep working offline; this blocks online play, the eShop, system updates and the Nintendo Account."
     },
     {
@@ -1237,10 +1217,9 @@
         "||blizzard.com^",
         "||battlenet.com.cn^",
         "||blizzard.cn^",
-        "||worldofwarcraft.com^",
         "||playoverwatch.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://overwatch.blizzard.com/en-us/ and https://www.blizzard.cn/",
       "note": "Blizzard games sold on Steam or consoles still sign in with Battle.net accounts, so this stops those too."
     },
     {
@@ -1249,10 +1228,7 @@
       "name": "EA app",
       "category": "gaming",
       "rules": [
-        "||ea.com^",
-        "||origin.com^",
-        "||eaplay.com^",
-        "||easports.com^"
+        "||ea.com^"
       ],
       "source": "first-party domains of the service",
       "note": "EA games bought on Steam or Epic also sign in through EA accounts, so this stops those too."
@@ -1263,11 +1239,9 @@
       "category": "gaming",
       "rules": [
         "||ubisoft.com^",
-        "||ubi.com^",
-        "||ubisoftconnect.com^",
-        "||uplay.com^"
+        "||ubi.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.ubisoft.com/en-us/ubisoft-connect/download",
       "note": "Ubisoft games bought on Steam or Epic also sign in through Ubisoft Connect, so this stops those too."
     },
     {
@@ -1275,8 +1249,7 @@
       "name": "VALORANT",
       "category": "gaming",
       "rules": [
-        "||playvalorant.com^",
-        "||pvp.net^"
+        "||playvalorant.com^"
       ],
       "source": "first-party domains of the service",
       "requires": [
@@ -1296,7 +1269,7 @@
         "||gogalaxy.com^",
         "||gog-statics.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.gog.com/en/ and https://www.gog.com/galaxy",
       "note": "GOG games are DRM-free, so installed games keep working."
     },
     {
@@ -1307,7 +1280,7 @@
         "||itch.io^",
         "||itch.zone^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://itch.io/",
       "note": "Games already downloaded keep working."
     },
     {
@@ -1319,9 +1292,6 @@
         "||hoyolab.com^",
         "||mihoyo.com^",
         "||yuanshen.com^",
-        "||starrails.com^",
-        "||zenlesszonezero.com^",
-        "||honkaiimpact3.com^",
         "||bh3.com^"
       ],
       "source": "first-party domains of the service"
@@ -1332,13 +1302,11 @@
       "category": "gaming",
       "rules": [
         "||supercell.com^",
-        "||supercell.net^",
         "||clashofclans.com^",
         "||clashroyale.com^",
         "||brawlstars.com^",
-        "||haydaygame.com^",
-        "||boombeachgame.com^",
-        "||squadbusters.com^"
+        "||squadbusters.com^",
+        "||hayday.com^"
       ],
       "source": "first-party domains of the service"
     },
@@ -1347,9 +1315,7 @@
       "name": "Rockstar Games",
       "category": "gaming",
       "rules": [
-        "||rockstargames.com^",
-        "||rockstar.com^",
-        "||rsg.sc^"
+        "||rockstargames.com^"
       ],
       "source": "first-party domains of the service",
       "note": "Rockstar games bought on Steam or Epic also sign in through the Rockstar Games Launcher, so this stops their online play too."
@@ -1360,7 +1326,6 @@
       "category": "gaming",
       "rules": [
         "||pubg.com^",
-        "||playbattlegrounds.com^",
         "||pubgmobile.com^",
         "||battlegroundsmobileindia.com^"
       ],
@@ -1394,15 +1359,14 @@
         "||amazon.com.tr^",
         "||amazon.com.be^",
         "||amazon.eg^",
-        "||amzn.to^",
-        "||amzn.eu^",
-        "||a.co^"
+        "||amazon.ie^",
+        "||amazon.co.za^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; country sites from https://www.amazon.com/customer-preferences/country",
       "related": [
         "primevideo"
       ],
-      "note": "Prime Video, Alexa, Kindle and Audible sign in through amazon.com, so they stop working too; image CDNs shared with IMDb and Prime Video stay reachable."
+      "note": "Also stops Prime Video, Alexa, Kindle, Audible and the AWS console and sign-in (aws.amazon.com), which use amazon.com; AWS services on amazonaws.com and the image CDNs shared with IMDb and Prime Video stay reachable."
     },
     {
       "id": "ebay",
@@ -1426,12 +1390,13 @@
         "||ebay.pl^",
         "||ebay.com.sg^",
         "||ebay.com.hk^",
-        "||ebay.us^",
         "||ebaystatic.com^",
         "||ebayimg.com^",
-        "||ebaydesc.com^"
+        "||ebay.com.my^",
+        "||ebay.ph^",
+        "||ebay.com.tw^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; country sites from https://developer.ebay.com/api-docs/static/rest-request-components.html, https://developer.ebay.com/devzone/xml/docs/reference/ebay/types/PictureDetailsType.html and https://www.ebay.com/"
     },
     {
       "id": "temu",
@@ -1442,7 +1407,7 @@
         "||kwcdn.com^",
         "||temucdn.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://www.temu.com/"
     },
     {
       "id": "shein",
@@ -1452,7 +1417,6 @@
         "||shein.com^",
         "||ltwebstatic.com^",
         "||shein.co.uk^",
-        "||shein.in^",
         "||shein.tw^",
         "||shein.se^",
         "||shein.com.mx^",
@@ -1460,7 +1424,7 @@
         "||shein.com.co^",
         "||shein.com.hk^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; country sites (the page's alternate-language links) from https://www.shein.co.uk/"
     },
     {
       "id": "aliexpress",
@@ -1473,7 +1437,7 @@
         "||aliexpress.ru^",
         "||aliexpress-media.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.aliexpress.com/ and https://aliexpress.ru/",
       "note": "alicdn.com is shared with Alibaba and Taobao and stays reachable."
     },
     {
@@ -1482,10 +1446,9 @@
       "category": "shopping",
       "rules": [
         "||etsy.com^",
-        "||etsystatic.com^",
-        "||etsy.me^"
+        "||etsystatic.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://www.etsy.com/"
     },
     {
       "id": "walmart",
@@ -1497,7 +1460,7 @@
         "||walmart.ca^",
         "||wal.co^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://corporate.walmart.com/about/international/markets/canada and https://www.walmart.com/"
     },
     {
       "id": "tinder",
@@ -1507,7 +1470,7 @@
         "||tinder.com^",
         "||gotinder.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://hackerone.com/tinder/policy_scopes",
       "related": [
         "hinge",
         "okcupid",
@@ -1521,21 +1484,20 @@
       "name": "Bumble",
       "category": "dating",
       "rules": [
-        "||bumble.com^",
-        "||bumbcdn.com^"
+        "||bumble.com^"
       ],
       "source": "first-party domains of the service",
       "related": [
         "badoo"
-      ]
+      ],
+      "note": "Bumble does not publish the host names its app uses, so this blocks bumble.com; the app may keep working."
     },
     {
       "id": "hinge",
       "name": "Hinge",
       "category": "dating",
       "rules": [
-        "||hinge.co^",
-        "||hingeaws.net^"
+        "||hinge.co^"
       ],
       "source": "first-party domains of the service",
       "related": [
@@ -1543,7 +1505,8 @@
         "okcupid",
         "match",
         "pof"
-      ]
+      ],
+      "note": "Hinge does not publish the host names its app uses, so this blocks hinge.co; the app may keep working."
     },
     {
       "id": "okcupid",
@@ -1553,7 +1516,7 @@
         "||okcupid.com^",
         "||okccdn.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://www.okcupid.com/press",
       "related": [
         "tinder",
         "hinge",
@@ -1567,10 +1530,9 @@
       "category": "dating",
       "rules": [
         "||grindr.com^",
-        "||grindr.mobi^",
-        "||grindr.io^"
+        "||grindr.mobi^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://hackerone.com/grindr/policy_scopes"
     },
     {
       "id": "match",
@@ -1593,10 +1555,9 @@
       "category": "dating",
       "rules": [
         "||badoo.com^",
-        "||badoocdn.com^",
-        "||badoo.app^"
+        "||badoocdn.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://hackerone.com/bumble/policy_scopes",
       "related": [
         "bumble"
       ]
@@ -1761,7 +1722,7 @@
         "||cnn.io^",
         "||cnn.it^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://x.com/CNN and https://www.cnn.com/"
     },
     {
       "id": "bbc",
@@ -1770,10 +1731,9 @@
       "rules": [
         "||bbc.com^",
         "||bbc.co.uk^",
-        "||bbci.co.uk^",
-        "||bbc.in^"
+        "||bbci.co.uk^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; bbci.co.uk from https://www.bbc.co.uk/",
       "note": "Includes BBC iPlayer and BBC Sounds, which run on bbc.co.uk."
     },
     {
@@ -1785,7 +1745,7 @@
         "||nyt.com^",
         "||nyti.ms^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://github.com/nytimes/public_api_specs/blob/master/top_stories/top_stories_v2.md and https://x.com/NYTScience",
       "note": "Also blocks NYT Games (Wordle, Connections), Cooking and Wirecutter, which are on nytimes.com."
     },
     {
@@ -1793,12 +1753,10 @@
       "name": "Fox News",
       "category": "news",
       "rules": [
-        "||foxnews.com^",
-        "||fncstatic.com^",
-        "||foxnation.com^"
+        "||foxnews.com^"
       ],
       "source": "first-party domains of the service",
-      "note": "Fox Business and Fox entertainment sites are not included."
+      "note": "Covers foxnews.com, including Fox Nation (nation.foxnews.com); Fox Business and Fox entertainment sites are not included."
     },
     {
       "id": "theguardian",
@@ -1807,10 +1765,9 @@
       "rules": [
         "||theguardian.com^",
         "||guim.co.uk^",
-        "||guardian.co.uk^",
         "||guardianapis.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://open-platform.theguardian.com/documentation/search and https://www.theguardian.com/"
     },
     {
       "id": "quora",
@@ -1818,10 +1775,9 @@
       "category": "forums",
       "rules": [
         "||quora.com^",
-        "||quoracdn.net^",
         "||qr.ae^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://help.quora.com/hc/en-us/articles/360022808612"
     },
     {
       "id": "4chan",
@@ -1833,7 +1789,7 @@
         "||4cdn.org^",
         "||4channel.org^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://github.com/4chan/4chan-API and https://www.4chan.org/faq"
     },
     {
       "id": "stackexchange",
@@ -1849,7 +1805,7 @@
         "||mathoverflow.net^",
         "||stackapps.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://api.stackexchange.com/docs/types/site and https://stackexchange.com/sites?view=list",
       "note": "Stack Overflow for Teams (stackoverflowteams.com) and the company site stackoverflow.co are not blocked."
     },
     {
@@ -1931,7 +1887,7 @@
         "||boxcloud.com^",
         "||boxenterprise.net^"
       ],
-      "source": "first-party domains of the service; core domains from https://support.box.com/hc/en-us/articles/360043696434-Allowing-Box-Domains-on-Your-Network"
+      "source": "first-party domains of the service; core domains from https://docs.box.com/en/box-admin-tools/box-security/configuring-a-firewall-for-box-applications-and-services"
     },
     {
       "id": "mega",
@@ -1941,10 +1897,9 @@
       "rules": [
         "||mega.nz^",
         "||mega.co.nz^",
-        "||mega.io^",
-        "||mega.app^"
+        "||mega.io^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; official domains from https://help.mega.io/security/data-protection/official-domains"
     },
     {
       "id": "wetransfer",
@@ -1970,7 +1925,7 @@
         "||notionusercontent.com^",
         "||notion-static.com^"
       ],
-      "source": "first-party domains of the service; Notion-owned domains from https://www.notion.com/help/allowlist-ip"
+      "source": "first-party domains of the service; Notion-owned domains from https://www.notion.com/help/allowlist-ip and https://www.notion.com/help/network-control"
     },
     {
       "id": "slack",
@@ -1999,7 +1954,7 @@
         "||zoomgov.com^",
         "||zoomapp.cloud^"
       ],
-      "source": "first-party domains of the service; core domains from https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060548",
+      "source": "first-party domains of the service; core domains from https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060548 and https://www.zoomgov.com/",
       "note": "Zoom media servers are reached by IP address; this blocks sign-in, joining and the web client, not a meeting already in progress."
     },
     {
@@ -2018,8 +1973,7 @@
       "name": "NordVPN",
       "category": "vpn",
       "rules": [
-        "||nordvpn.com^",
-        "||nordvpn.net^"
+        "||nordvpn.com^"
       ],
       "source": "first-party domains of the service",
       "note": "VPN apps connect by IP address; this blocks the website, sign-up and app updates, not an established tunnel. Nord Account is shared with NordPass."
@@ -2030,8 +1984,7 @@
       "name": "ExpressVPN",
       "category": "vpn",
       "rules": [
-        "||expressvpn.com^",
-        "||expressvpn.net^"
+        "||expressvpn.com^"
       ],
       "source": "first-party domains of the service",
       "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
@@ -2065,9 +2018,10 @@
       "category": "vpn",
       "rules": [
         "||privateinternetaccess.com^",
-        "||piavpn.com^"
+        "||piaservers.net^",
+        "||piaproxy.net^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://github.com/pia-foss/manual-connections and https://github.com/pia-foss/desktop",
       "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
     },
     {
@@ -2075,8 +2029,7 @@
       "name": "CyberGhost",
       "category": "vpn",
       "rules": [
-        "||cyberghostvpn.com^",
-        "||cyberghost.com^"
+        "||cyberghostvpn.com^"
       ],
       "source": "first-party domains of the service",
       "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
@@ -2089,7 +2042,7 @@
         "||windscribe.com^",
         "||windscribe.net^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://github.com/Windscribe/wsnet",
       "note": "VPN apps connect to servers by IP address; this blocks the website, sign-up and app updates, not an established tunnel."
     },
     {
@@ -2120,7 +2073,7 @@
         "||psiphon.ca^",
         "||psiphon3.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; host names from https://psiphon.ca/en/download.html",
       "note": "Psiphon connects by IP and also ships through cloud-storage mirrors and email; this blocks its website and main download sites only."
     },
     {
@@ -2142,7 +2095,7 @@
         "||binance.us^",
         "||bnbstatic.com^"
       ],
-      "source": "first-party domains of the service; bnbstatic.com from https://x.com/BinanceHelpDesk/status/1464954119832154114",
+      "source": "first-party domains of the service; host names from https://www.binance.com/en/official-verification and https://x.com/BinanceHelpDesk/status/1464954119832154114",
       "note": "Binance.US is a separately run US exchange under the same brand."
     },
     {
@@ -2150,8 +2103,7 @@
       "name": "Coinbase",
       "category": "crypto",
       "rules": [
-        "||coinbase.com^",
-        "||cbhq.net^"
+        "||coinbase.com^"
       ],
       "source": "first-party domains of the service"
     },
@@ -2163,7 +2115,7 @@
         "||kraken.com^",
         "||krak.app^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://www.kraken.com/"
     },
     {
       "id": "cryptocom",
@@ -2186,9 +2138,10 @@
         "||bybit.kz^",
         "||bybit.tr^",
         "||bybit-tr.com^",
-        "||bybitgeorgia.ge^"
+        "||bybitgeorgia.ge^",
+        "||bybit.id^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; official domains from https://www.bybit.com/en/verification/"
     },
     {
       "id": "okx",
@@ -2196,12 +2149,11 @@
       "category": "crypto",
       "rules": [
         "||okx.com^",
-        "||okex.com^",
         "||okx.ac^",
         "||okx.cab^",
         "||okx.reise^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; official domains from https://www.okx.com/support-center/channel-verification"
     },
     {
       "id": "kucoin",
@@ -2218,7 +2170,7 @@
         "||kucoin.tr^",
         "||kucoin.th^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; official domains from https://www.kucoin.com/cert"
     }
   ],
   "safeSearch": [
