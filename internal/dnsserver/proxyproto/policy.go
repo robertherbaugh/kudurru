@@ -152,6 +152,12 @@ func parsePeer(entry string) (netip.Prefix, error) {
 	if err != nil {
 		return netip.Prefix{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: %w", entry, err)
 	}
+	if a := pfx.Addr(); a.Is4In6() {
+		if pfx.Bits() < 96 {
+			return netip.Prefix{}, fmt.Errorf("proxyproto: proxyProtocolFrom entry %q: IPv4-mapped prefix must be at least /96", entry)
+		}
+		pfx = netip.PrefixFrom(a.Unmap(), pfx.Bits()-96)
+	}
 	return pfx.Masked(), nil
 }
 
