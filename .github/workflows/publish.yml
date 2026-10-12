@@ -162,6 +162,19 @@ jobs:
           test -n "${program}"
           echo "kudurru=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${program}-k${version}" >> "$GITHUB_OUTPUT"
+      # Build FROM the digest the release job signed, not the tag, which
+      # anything with packages: write could move in between.
+      - name: Resolve and verify the kudurru image digest
+        id: base
+        env:
+          VERSION: ${{ steps.tag.outputs.kudurru }}
+        run: |
+          digest=$(docker buildx imagetools inspect "ghcr.io/robertherbaugh/kudurru:${VERSION}" --format '{{json .Manifest}}' | jq -r .digest)
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          cosign verify "ghcr.io/robertherbaugh/kudurru@${digest}" \
+            --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          echo "image=ghcr.io/robertherbaugh/kudurru@${digest}" >> "$GITHUB_OUTPUT"
       - name: Build and push ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
         id: build
         uses: docker/build-push-action@v6
@@ -171,7 +184,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:${{ steps.tag.outputs.kudurru }}
+            KUDURRU_IMAGE=${{ steps.base.outputs.image }}
           tags: ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}:${{ steps.tag.outputs.tag }}
       - name: Sign the image by digest
         run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-${{ matrix.image }}@${{ steps.build.outputs.digest }}"
