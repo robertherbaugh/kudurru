@@ -11,7 +11,9 @@ agreement.
 | A business, or anyone using it for a commercial purpose | Evaluate it | A commercial agreement and a business key. Write to the contact below. |
 
 The licence is the [PolyForm Noncommercial License 1.0.0](LICENSE)
-([SPDX](https://spdx.org/licenses/PolyForm-Noncommercial-1.0.0.html)). It
+([SPDX](https://spdx.org/licenses/PolyForm-Noncommercial-1.0.0.html)). The text
+is also on [kudurru.io](https://kudurru.io/license/text/) and in the
+[docs](https://docs.kudurru.io/project/license/), all from the one `LICENSE` file. It
 allows any noncommercial purpose; personal use, research, hobby projects and
 use by charities, schools and public bodies count as noncommercial. Anything
 else is commercial and is not licensed by this repository.

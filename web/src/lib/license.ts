@@ -9,8 +9,11 @@ export const LICENSE_CONTACT = 'hello@kudurru.io';
 /** The page that explains the license and how to get a key. */
 export const LICENSE_PAGE_URL = 'https://kudurru.io/license';
 
-/** Where the licensing rules for people are written down. */
-export const LICENSING_URL = 'https://github.com/robertherbaugh/kudurru/blob/main/LICENSING.md';
+/** Where the licensing rules for people are written down (docs, from LICENSING.md). */
+export const LICENSING_URL = 'https://docs.kudurru.io/project/licensing/';
+
+/** The license text itself, on the project's website (also in the docs). */
+export const LICENSE_TEXT_URL = 'https://kudurru.io/license/text/';
 
 export interface FeatureInfo {
   /** The license.Feature value in GET /license `features`. */

@@ -120,7 +120,11 @@ edge deployment does not start.
 (`web/src/pages/LicensePage.tsx`, `components/LicenseBanner.tsx`; see
 docs/m3/ui.md, "Licensed features"). A page whose feature is locked shows a
 short explanation instead of its content and makes none of the requests the
-server would refuse with 402. The public page is [kudurru.io/license](https://kudurru.io/license)
+server would refuse with 402. The license text is published from the one `LICENSE` file on kudurru.io
+(`/license/text/`, rendered by `www/src/markdown.ts`, with a plain text
+download) and in the docs (`site/hugo.yaml` mounts `LICENSE` and `LICENSING.md`
+as `/project/license/` and `/project/licensing/`); the dashboard, the README and
+the key form link to them. The public page is [kudurru.io/license](https://kudurru.io/license)
 (`www/src/pages/license.ts`, content in `www/src/content.ts`); its "Request a
 key" form sends a personal request to the license server and opens a mail to
 hello@kudurru.io for anything else (`www/README.md`, "The Request a key form"), and the

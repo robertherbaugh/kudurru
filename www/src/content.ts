@@ -19,8 +19,12 @@ export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
 // visitor's mail program with every field filled in.
 export const BUSINESS_SUBJECT = "Business License";
 export const LICENSE_FREE_NODES = 3;
-// What a personal key is certified against: the license text itself.
-export const LICENSE_TEXT_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0";
+// The license text: our own copy, rendered from the repository's LICENSE
+// (/license/text/), the docs' copy, and the upstream original.
+export const LICENSE_TEXT_PATH = "/license/text/";
+export const LICENSE_TEXT_FILE = "/license/text/PolyForm-Noncommercial-1.0.0.txt";
+export const LICENSE_UPSTREAM_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0";
+export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)";
 export const LICENSE_FREE_POLICIES = 2;
 
 export interface LicenseRow {

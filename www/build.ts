@@ -8,11 +8,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { DEFAULT_LICENSE_API, SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
+import { DEFAULT_LICENSE_API, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
 import { headersFile, rulesFor } from "./src/headers.ts";
 import { layout, type Assets } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
-import { license } from "./src/pages/license.ts";
+import { license, licenseText } from "./src/pages/license.ts";
+import { renderMarkdown } from "./src/markdown.ts";
 
 const ROOT = import.meta.dir;
 const REPO = resolve(ROOT, "..");
@@ -154,6 +155,22 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
       version,
     ),
   );
+  // The license text: one source, the repository's LICENSE.
+  const licenseSource = await readFile(join(REPO, "LICENSE"), "utf8");
+  await put(
+    join(outDir, "license/text/index.html"),
+    layout(
+      {
+        path: LICENSE_TEXT_PATH,
+        title: "PolyForm Noncommercial License 1.0.0 · kudurru",
+        description: "The license of kudurru: the PolyForm Noncommercial License 1.0.0, in full.",
+        body: licenseText(renderMarkdown(licenseSource, LICENSE_TEXT_PATH)),
+        assets,
+      },
+      version,
+    ),
+  );
+  await put(join(outDir, LICENSE_TEXT_FILE), licenseSource);
   await put(
     join(outDir, "licenses/index.html"),
     layout(
@@ -176,7 +193,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/license/", "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      ["/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

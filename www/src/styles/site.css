@@ -1742,6 +1742,18 @@ main,
 .licform textarea:hover {
   border-color: var(--fg-3);
 }
+.license-text h2 {
+  margin-top: 40px;
+  font-size: 1.5rem;
+}
+.license-text blockquote {
+  margin: 16px 0 0;
+  padding: 4px 0 4px 20px;
+  border-left: 2px solid var(--clay-hi);
+}
+.license-text p {
+  max-width: 68ch;
+}
 .licform-trap {
   position: absolute;
   left: -9999px;

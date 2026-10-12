@@ -69,7 +69,7 @@ function footer(assets: Assets, version: string): Html {
     )}
   </div>
   <div class="wrap foot-legal">
-    <p>kudurru is source-available under the PolyForm Noncommercial License 1.0.0: personal use is free, businesses need an agreement. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
+    <p>kudurru is source-available under the <a href="/license/text/">PolyForm Noncommercial License 1.0.0</a>: personal use is free, businesses need an agreement. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
   </div>
 </footer>`;

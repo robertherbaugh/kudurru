@@ -1,6 +1,7 @@
 import { html, type Html } from "../html.ts";
-import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_ROWS, LICENSE_TEXT_URL, REPO_URL } from "../content.ts";
+import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED_NOTICE, LICENSE_ROWS, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, LICENSE_UPSTREAM_URL, REPO_URL, docs } from "../content.ts";
 import { external } from "./layout.ts";
+import type { Rendered } from "../markdown.ts";
 
 // /license/: what is free, what a key unlocks, how to get and use one.
 // The rules in full are LICENSING.md; this page is its short form.
@@ -24,7 +25,7 @@ function requestForm(licenseApi: string): Html {
       </div>
       <div data-panel="personal">
         <label class="licform-field"><span>What do you run kudurru for?</span><textarea name="personal-use" rows="3" maxlength="1000" required></textarea></label>
-        <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (<a href="${LICENSE_TEXT_URL}" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).</span></label>
+        <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (<a href="${LICENSE_TEXT_PATH}" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).</span></label>
       </div>
       <div data-panel="business" hidden>
         <div class="licform-grid">
@@ -89,7 +90,23 @@ KUDURRU_LICENSE_KEY=&lt;key&gt;
 KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key
 &lt;node.dataDir&gt;/license.key</pre>
     <p>In Helm, set <code>license.existingSecret</code> to a Secret with the key; in Compose, set <code>KUDURRU_LICENSE_KEY</code>. <code>kudurru license status</code> shows what a node runs with and the dashboard has a License page.</p>
-    <p>The full rules are in ${external(`${REPO_URL}/blob/main/LICENSING.md`, "LICENSING.md")}.</p>
+    <h2 id="lic-read-title">Read the license</h2>
+    <p>The license is the <a href="${LICENSE_TEXT_PATH}">PolyForm Noncommercial License 1.0.0</a>; the full text is on this site. The rules for people, what a key unlocks and what a missing key changes, are in the ${external(docs("/project/licensing/"), "licensing page of the docs")}, and the docs carry the ${external(docs("/project/license/"), "license text")} too. The source is in ${external(REPO_URL, "the repository")} (<code>LICENSE</code> and <code>LICENSING.md</code>).</p>
+  </div>
+</section>`;
+}
+
+// /license/text/: the license itself, rendered from the repository's LICENSE
+// file at build time (src/markdown.ts), so the site, the docs and the
+// repository show one text.
+export function licenseText(r: Rendered): Html {
+  return html`<section class="sec" aria-labelledby="lic-text-title">
+  <div class="wrap narrow">
+    <p class="label">License</p>
+    <h1 id="lic-text-title" class="page-title">${r.title}</h1>
+    <p class="reg-lead">This is the license of kudurru. It is the text of the ${external(LICENSE_UPSTREAM_URL, "PolyForm Noncommercial License 1.0.0")}, unchanged, and the same as the <code>LICENSE</code> file of the repository. <a href="${LICENSE_TEXT_FILE}">Download it as text</a>. What it means for you, and how to get a key, is on <a href="/license/">License and keys</a>.</p>
+    <div class="license-text">${r.body}</div>
+    <p class="fine mono">${LICENSE_REQUIRED_NOTICE}</p>
   </div>
 </section>`;
 }

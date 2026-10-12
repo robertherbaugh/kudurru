@@ -15,7 +15,7 @@ import { useLicense } from '../api/hooks';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatExact } from '../lib/format';
-import { FEATURES, LICENSE_CONTACT, LICENSE_PAGE_URL, LICENSING_URL, planLabel, stateLabel, stateTone, type FeatureInfo } from '../lib/license';
+import { FEATURES, LICENSE_CONTACT, LICENSE_PAGE_URL, LICENSE_TEXT_URL, LICENSING_URL, planLabel, stateLabel, stateTone, type FeatureInfo } from '../lib/license';
 
 type Row = FeatureInfo & { included: boolean } & Record<string, unknown>;
 
@@ -131,7 +131,8 @@ export default function LicensePage() {
           </Text>
           <Text as="p">
             A free personal key covers up to 3 nodes for non-commercial use; write to <Link href={`mailto:${LICENSE_CONTACT}`}>{LICENSE_CONTACT}</Link> for one, or for a commercial agreement. What each license includes is on{' '}
-            <Link href={LICENSE_PAGE_URL}>kudurru.io/license</Link>, and the rules are in <Link href={LICENSING_URL}>LICENSING.md</Link>.
+            <Link href={LICENSE_PAGE_URL}>kudurru.io/license</Link>, the rules are in the <Link href={LICENSING_URL}>licensing docs</Link> and the license is the{' '}
+            <Link href={LICENSE_TEXT_URL}>PolyForm Noncommercial License 1.0.0</Link>.
           </Text>
         </VStack>
       </Panel>
