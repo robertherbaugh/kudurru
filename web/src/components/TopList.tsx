@@ -42,7 +42,7 @@ export function TopList({ title, dim, blocked = false, data, isLoading, error, e
       header: dim === 'domains' ? 'Domain' : dim === 'clients' ? 'Client' : dim === 'upstreams' ? 'Upstream' : dim === 'lists' ? 'List' : 'Zone',
       width: proportional(3, { minWidth: 140 }),
       renderCell: (i) => (
-        <Text wordBreak="break-word">
+        <Text maxLines={2}>
           <Link href={drillHref(dim, i.key, blocked, extra)} color="inherit" hasUnderline tooltip="Show these queries in the log">
             {i.name ? `${i.name}` : i.key}
           </Link>
