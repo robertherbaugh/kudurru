@@ -82,9 +82,10 @@ func (s *Server) registerAuth() {
 	authed := perm{authenticated: true}
 	// Own tokens: every built-in role holds tokens.own, including the
 	// zone-scoped zone-admin, whose binding cannot satisfy a cluster-scope
-	// check; the routes therefore need a principal only, and the auth
-	// handler scopes them to the caller. A token never carries more than
-	// its owner's bindings (§8.6).
+	// check; the routes therefore need a principal only here, and the auth
+	// handler checks tokens.own at any scope the caller holds and scopes
+	// them to the caller. A token never carries more than its owner's
+	// bindings (§8.6).
 	tokens := authed
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
 	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, SessionInfo{})

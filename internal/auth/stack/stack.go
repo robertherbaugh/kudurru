@@ -91,7 +91,8 @@ type Options struct {
 	// APIPrefix is the API base path; default /api/v1.
 	APIPrefix string
 	// ClientIP returns the client address of a request after the
-	// RealIP(trustedProxies) step; default the RemoteAddr host.
+	// RealIP(trustedProxies) step (login lockouts, token lastUsedIP);
+	// default the RemoteAddr host.
 	ClientIP func(*http.Request) string
 	// HTTPClient talks to identity providers; default 15 s timeout.
 	HTTPClient *http.Client
@@ -217,7 +218,8 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	if s.users, err = users.New(users.Options{Store: opts.Store, Logger: log, Now: opts.Now}); err != nil {
 		return nil, err
 	}
-	if s.tokens, err = tokens.New(tokens.Options{Store: opts.Store, MaxLifetime: cfg.Auth.Tokens.MaxLifetime.Std(), Namespace: opts.Namespace, Logger: log, Now: opts.Now}); err != nil {
+	if s.tokens, err = tokens.New(tokens.Options{Store: opts.Store, MaxLifetime: cfg.Auth.Tokens.MaxLifetime.Std(), Namespace: opts.Namespace,
+		ClientIP: opts.ClientIP, Logger: log, Now: opts.Now}); err != nil {
 		return nil, err
 	}
 	s.roleBindings = objcache.New[*internalv1.RoleBinding](opts.Store, internalv1.KindRoleBinding, objcache.Options{Logger: log})

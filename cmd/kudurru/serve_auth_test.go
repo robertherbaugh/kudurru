@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
@@ -104,5 +106,70 @@ func TestLoginLockoutCountsClientsBehindTrustedProxy(t *testing.T) {
 	}
 	if code := login("198.51.100.8", "admin-password-1"); code != http.StatusOK {
 		t.Fatalf("another client behind the same proxy: %d, want 200", code)
+	}
+}
+
+// TestTokenLastUsedIPBehindTrustedProxy is the regression test of the M5
+// security finding "token lastUsedIP records the reverse proxy": the
+// tokens step read RemoteAddr, so behind listeners.api.trustedProxies
+// every token showed the proxy's address.
+func TestTokenLastUsedIPBehindTrustedProxy(t *testing.T) {
+	ts, _ := authAPI(t, func(cfg *config.Config) {
+		cfg.Listeners.API.TrustedProxies = []string{"127.0.0.1/32", "::1/128"}
+	})
+	do := func(method, path, body string, hdr ...string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(method, ts.URL+"/api/v1"+path, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		for i := 0; i+1 < len(hdr); i += 2 {
+			req.Header.Set(hdr[i], hdr[i+1])
+		}
+		res, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = res.Body.Close() })
+		return res
+	}
+	decodeInto := func(res *http.Response, v any) {
+		t.Helper()
+		if err := json.NewDecoder(res.Body).Decode(v); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res := do(http.MethodPost, "/auth/login", `{"username":"admin","password":"admin-password-1"}`)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login: %d", res.StatusCode)
+	}
+	var me struct{ CSRF string }
+	decodeInto(res, &me)
+	var cookie string
+	for _, c := range res.Cookies() {
+		cookie = c.Name + "=" + c.Value
+	}
+	res = do(http.MethodPost, "/auth/tokens", `{"description":"ci"}`, "Cookie", cookie, "X-Kudurru-CSRF", me.CSRF)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create token: %d", res.StatusCode)
+	}
+	var tok struct{ ID, Token string }
+	decodeInto(res, &tok)
+
+	if res := do(http.MethodGet, "/auth/me", "", "Authorization", "Bearer "+tok.Token, "X-Forwarded-For", "198.51.100.9"); res.StatusCode != http.StatusOK {
+		t.Fatalf("token request: %d", res.StatusCode)
+	}
+	// lastUsedIP is written by the tokens runnable and reaches the cache
+	// through the store watch.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var info struct{ LastUsedIP string }
+		decodeInto(do(http.MethodGet, "/auth/tokens/"+tok.ID, "", "Cookie", cookie), &info)
+		if info.LastUsedIP == "198.51.100.9" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("lastUsedIP = %q, want the client behind the proxy, 198.51.100.9", info.LastUsedIP)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

@@ -10,7 +10,7 @@ import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { qk, useApi, useCan, useSession } from '../api/context';
+import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
 import type { AuditEvent, CreatedToken, IamRoleBinding, RbacScope } from '../api/types';
 import { ChangePasswordButton } from '../components/AccountMenu';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
@@ -90,6 +90,7 @@ function Tokens() {
   const qc = useQueryClient();
   const notify = useNotify();
   const can = useCan();
+  const { data: session } = useSession();
   const [description, setDescription] = useState('');
   const [expires, setExpires] = useState('720h');
   const [role, setRole] = useState('');
@@ -123,7 +124,7 @@ function Tokens() {
     },
     onError: (err) => notify.error(err, 'Could not revoke the token'),
   });
-  const allowed = can('tokens', 'own') || can('tokens', 'write');
+  const allowed = (!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write');
   return (
     <section className="k-panel" aria-labelledby="tok-title">
       <h2 id="tok-title" className="k-h3">
