@@ -18,7 +18,7 @@ const FALLBACK: Record<SeriesKey, string> = {
 
 /** Resolves a CSS custom property on an element (default: the app root). */
 export function cssVar(name: string, el?: Element | null): string {
-  const target = el ?? document.querySelector('.k-app') ?? document.documentElement;
+  const target = el ?? document.getElementById('astryx-app-shell-main') ?? document.documentElement;
   try {
     return getComputedStyle(target).getPropertyValue(name).trim();
   } catch {
@@ -54,12 +54,13 @@ let probe: HTMLSpanElement | null = null;
 
 function resolveColor(value: string, el?: Element | null): string {
   if (typeof document === 'undefined') return '';
-  const host = el ?? document.querySelector('.k-app') ?? document.body;
+  const host = el ?? document.getElementById('astryx-app-shell-main') ?? document.body;
   if (!host) return '';
   if (!probe) {
     probe = document.createElement('span');
     probe.setAttribute('aria-hidden', 'true');
-    probe.className = 'k-visually-hidden';
+    // Out of view and out of the layout (CSSOM styles, allowed by the CSP).
+    Object.assign(probe.style, { position: 'absolute', inlineSize: '1px', blockSize: '1px', overflow: 'hidden', clipPath: 'inset(50%)' });
   }
   host.appendChild(probe);
   probe.style.color = '';

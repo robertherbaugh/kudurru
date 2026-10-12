@@ -12,6 +12,7 @@
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { createContext, useContext, useId, useState, type FormEvent, type ReactNode } from 'react';
 
 export interface FrameContext {
@@ -71,7 +72,11 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
   // closed with their content not rendered yet.
   const titleId = useId();
   const ctx: FrameContext = {
-    title: <span id={titleId}>{title}</span>,
+    title: (
+      <Text type="inherit" color="inherit" id={titleId}>
+        {title}
+      </Text>
+    ),
     subtitle,
     onClose: isDismissable ? onClose : undefined,
     markDirty: () => {
@@ -107,7 +112,7 @@ export function FormDialog({ isOpen, onClose, title, subtitle, width = 520, foot
 }
 
 export interface DialogFormProps {
-  /** Without it the frame is a plain <div> (an informational dialog). */
+  /** Without it the frame is a plain group (an informational dialog). */
   onSubmit?: () => void;
   noValidate?: boolean;
   footer?: ReactNode;

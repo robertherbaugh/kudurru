@@ -2,7 +2,7 @@
 // GET /settings) for the policy and forward-zone forms. Without
 // settings.read it falls back to a text input.
 import { DEFAULT_GROUP, useUpstreamGroups } from '../lib/upstreams';
-import { Link } from '../lib/router';
+import { Link } from '@astryxdesign/core/Link';
 import { SelectField } from './fields/SelectField';
 import { TextField } from './fields/TextField';
 
