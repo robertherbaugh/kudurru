@@ -2369,6 +2369,7 @@ type Event struct {
 	ResourceVersion *string     `json:"resource_version,omitempty"`
 	Result          string      `json:"result"`
 	Ts              time.Time   `json:"ts"`
+	Uid             *string     `json:"uid,omitempty"`
 }
 
 // Flags defines model for Flags.

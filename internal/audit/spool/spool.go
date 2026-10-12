@@ -245,6 +245,9 @@ func (s *Spool) Record(ctx context.Context, ev audit.Event) error {
 
 // Read implements audit.Reader.
 func (s *Spool) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) {
+	if q.Cursor != "" {
+		return nil, audit.ErrBadCursor
+	}
 	var where []string
 	var args []any
 	add := func(cond string, a ...any) {

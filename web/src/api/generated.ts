@@ -2242,6 +2242,7 @@ export interface components {
             result: string;
             /** Format: date-time */
             ts: string;
+            uid?: string;
         };
         Flags: {
             AD: boolean;

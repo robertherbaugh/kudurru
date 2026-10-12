@@ -15,6 +15,21 @@ section lists. The milestone reports in [docs/m1](docs/m1/README.md),
 and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
 D126 record what changed on the way.
 
+### Multi-node data (after 0.1.0-rc.3)
+
+- Audit in mode=kubernetes ([#10](https://github.com/robertherbaugh/kudurru/issues/10)):
+  the Audit tab no longer fails with "events are not stored on this node".
+  Every replica records the kube driver's writes and its API actions in an
+  audit spool (`audit-spool.db`, D156) and ships them into immutable
+  `AuditLog` objects (`audit.kudurru.io`, new in the `kudurru-crds` chart,
+  D157), so every replica shows the same events and they survive pod
+  restarts. New hostOnly keys `audit.store` and `audit.retention`.
+- "All nodes" in the scope selector
+  ([#9](https://github.com/robertherbaugh/kudurru/issues/9)): a cluster
+  request answered by one replica now says so (`requested_scope`, and the
+  scope note reads "only: other nodes are not included yet"), and a request
+  for another node answers 501 instead of this node's data (D155).
+
 ### Dashboard and API fixes (v0.1 fix round)
 
 Fixes made before the first tag, after the dashboard was first run against

@@ -2047,6 +2047,9 @@
           "ts": {
             "format": "date-time",
             "type": "string"
+          },
+          "uid": {
+            "type": "string"
           }
         },
         "required": [

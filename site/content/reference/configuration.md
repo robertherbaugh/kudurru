@@ -217,6 +217,13 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="auth.adminSocket.path"></a>`auth.adminSocket.path` | `string` | `/run/kudurru/kudurru.sock` | node | **Admin socket path.** Path of the local socket of the `kudurru admin` command (reset-password, create-token, list-users), e.g. /run/kudurru/kudurru.sock: the way back in when every admin password is lost. Only uid 0, the server's own user and auth.adminSocket.group may use it. Empty turns it off.<br>*host-only, restart*<br>Environment: `KUDURRU_AUTH__ADMINSOCKET__PATH` |
 | <a id="auth.adminSocket.group"></a>`auth.adminSocket.group` | `int` | `-1` | node | **Admin socket group (gid).** Group id (gid) whose members may also use the admin socket, e.g. 1000; -1 (default) allows only root and the server's own user.<br>Allowed: at least -1.<br>*host-only, restart*<br>Environment: `KUDURRU_AUTH__ADMINSOCKET__GROUP` |
 
+## audit
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="audit.store"></a>`audit.store` | `string` | `auto` | cluster | **Audit log store.** Where audit events are kept so every node can show them: auto (default) uses auditlog with the kube store driver and local otherwise; auditlog keeps them in AuditLog objects in the release namespace, read by every replica and kept across restarts; local keeps them on each node (state.db with the sqlite driver, audit-spool.db with kube), so a replica shows only its own. Every event is also a "log":"audit" log line.<br>Allowed: one of auto \| auditlog \| local.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__STORE` |
+| <a id="audit.retention"></a>`audit.retention` | `duration` | `9600h` | cluster | **Keep audit events for.** How long stored audit events are kept, e.g. 9600h (400 days); at least 24h. The log lines are kept by your log system, not by kudurru.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__RETENTION` |
+
 ## rbac
 
 | Key | Type | Default | Scope | Description |

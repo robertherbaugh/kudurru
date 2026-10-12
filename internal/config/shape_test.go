@@ -189,8 +189,8 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 				t.Errorf("%s: %v does not list %v", k.Path, err, want)
 			}
 			for _, v := range want {
-				if v == "customIP" || v == "blockPage" {
-					continue // needs blocking.customIP.v4/v6, blockPage.enabled
+				if v == "customIP" || v == "blockPage" || k.Path == "audit.store" && v == "auditlog" {
+					continue // needs blocking.customIP.v4/v6, blockPage.enabled, store.driver kube
 				}
 				if err := validateWith(t, k.Path, v); err != nil {
 					t.Errorf("%s=%s rejected: %v", k.Path, v, err)

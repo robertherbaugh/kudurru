@@ -54,10 +54,12 @@ func Run(t *testing.T, open func(t *testing.T) Store) {
 		}
 		return evs
 	}
+	// The fixture's events are recorded one minute apart, so time order
+	// is recording order in every store.
 	ordered := func(t *testing.T, evs []audit.Event, desc bool) {
 		t.Helper()
 		for i := 1; i < len(evs); i++ {
-			if (evs[i].ID > evs[i-1].ID) == desc || evs[i].ID == evs[i-1].ID {
+			if evs[i].Time.After(evs[i-1].Time) == desc || evs[i].Time.Equal(evs[i-1].Time) {
 				t.Fatalf("events %d and %d out of order (desc=%v)", evs[i-1].ID, evs[i].ID, desc)
 			}
 		}
@@ -71,7 +73,7 @@ func Run(t *testing.T, open func(t *testing.T) Store) {
 		}
 		ordered(t, evs, false)
 		first := evs[0]
-		if first.ID <= 0 || first.Action != "dnszone.update" || first.Actor.Name != "alice" || first.Resource.Name != "zone-0" ||
+		if first.Position() == "" || first.Action != "dnszone.update" || first.Actor.Name != "alice" || first.Resource.Name != "zone-0" ||
 			first.Result != audit.ResultSuccess || !first.Time.Equal(base) {
 			t.Fatalf("first event %+v", first)
 		}
@@ -115,21 +117,16 @@ func Run(t *testing.T, open func(t *testing.T) Store) {
 				evs := read(t, st, q)
 				ordered(t, evs, desc)
 				for _, ev := range evs {
-					if seen[ev.ID] {
+					if seen[ev.Time.Unix()] {
 						t.Fatalf("desc=%v: event %d on two pages", desc, ev.ID)
 					}
-					seen[ev.ID] = true
+					seen[ev.Time.Unix()] = true
 				}
 				pages++
 				if len(evs) < q.Limit {
 					break
 				}
-				last := evs[len(evs)-1].ID
-				if desc {
-					q.BeforeID = last
-				} else {
-					q.AfterID = last
-				}
+				q.After(evs[len(evs)-1])
 			}
 			if len(seen) != 30 || pages != 5 {
 				t.Fatalf("desc=%v: %d events in %d pages", desc, len(seen), pages)
@@ -137,7 +134,9 @@ func Run(t *testing.T, open func(t *testing.T) Store) {
 		}
 		// A filtered page continues after its last event.
 		evs := read(t, st, audit.Query{Actor: "bob", Limit: 4})
-		rest := read(t, st, audit.Query{Actor: "bob", Limit: 100, AfterID: evs[len(evs)-1].ID})
+		next := audit.Query{Actor: "bob", Limit: 100}
+		next.After(evs[len(evs)-1])
+		rest := read(t, st, next)
 		if len(evs)+len(rest) != 10 {
 			t.Fatalf("filtered pages %d + %d, want 10", len(evs), len(rest))
 		}

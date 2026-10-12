@@ -460,3 +460,42 @@ func TestStoreErrorNotStored(t *testing.T) {
 		t.Fatalf("storeError(ErrNotStored) = %v", storeError(audit.ErrNotStored))
 	}
 }
+
+// cursorReader is a cluster-wide audit store: opaque cursors, ids that
+// repeat across nodes.
+type cursorReader struct{ got []audit.Query }
+
+func (c *cursorReader) Read(_ context.Context, q audit.Query) ([]audit.Event, error) {
+	c.got = append(c.got, q)
+	switch {
+	case q.AfterID != 0 || q.BeforeID != 0 || q.Cursor != "" && q.Cursor != "c1.next":
+		return nil, audit.ErrBadCursor
+	case q.Cursor == "":
+		return []audit.Event{{ID: 7, UID: "aaaa-7", Cursor: "c1.next", Action: "a.b"}, {ID: 7, UID: "bbbb-7", Cursor: "c1.next", Action: "a.c"}}, nil
+	}
+	return []audit.Event{{ID: 8, UID: "aaaa-8", Cursor: "c1.end", Action: "a.d"}}, nil
+}
+
+func TestAuditOpaqueCursor(t *testing.T) {
+	rd := &cursorReader{}
+	h := newHarness(t, func(o *Options) { o.AuditReader = rd })
+	var page AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?limit=2", "admin", nil).want(http.StatusOK).json(&page)
+	if page.CursorNext != "c1.next" || len(page.Items) != 2 || page.Items[1].UID != "bbbb-7" {
+		t.Fatalf("page %+v", page)
+	}
+	var second AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?limit=2&cursor=c1.next", "admin", nil).want(http.StatusOK).json(&second)
+	if second.CursorNext != "" || len(second.Items) != 1 || rd.got[1].Cursor != "c1.next" {
+		t.Fatalf("second page %+v, query %+v", second, rd.got[1])
+	}
+	// A cursor of another store (an event id) is a 400, not a 500.
+	h.do(http.MethodGet, "/api/v1/audit?cursor=12", "admin", nil).want(http.StatusBadRequest)
+	h.do(http.MethodGet, "/api/v1/audit?cursor=garbage", "admin", nil).want(http.StatusBadRequest)
+	// The export pages with the opaque cursor.
+	rd.got = nil
+	r := h.do(http.MethodGet, "/api/v1/audit/export", "admin", nil).want(http.StatusOK)
+	if n := strings.Count(r.Body.String(), "\n"); n != 2 || len(rd.got) != 1 {
+		t.Fatalf("export %d lines, %d reads: %s", n, len(rd.got), r.Body.String())
+	}
+}

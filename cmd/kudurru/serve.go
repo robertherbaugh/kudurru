@@ -623,9 +623,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		auditReader = audit.SQLite{Store: ss}
 		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
 	}
+	var auditLogs *auditLogStore
 	if auditSpool != nil {
 		auditReader = auditSpool
 		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
+		// audit.store auditlog: every replica reads every node's events.
+		if cfg.AuditStore() == config.AuditStoreAuditLog {
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, logger); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+			if auditLogs != nil {
+				auditReader = auditLogs.reader
+			}
+		}
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
@@ -798,14 +808,24 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
+	auditRetention := cfg.Audit.Retention.Std()
 	if ss, ok := st.(*sqlite.Store); ok {
-		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Logger: logger}).Run); err != nil {
+		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Retention: auditRetention, Logger: logger}).Run); err != nil {
 			return err
 		}
 	}
-	// Every node prunes its own audit spool.
+	// Every node prunes its own audit spool; the leader prunes the
+	// AuditLog batches, which every node ships its spool into.
 	if auditSpool != nil {
-		if err := add("audit-spool-prune", false, (&audit.Pruner{Name: "spool", Prune: auditSpool.Prune, Logger: logger}).Run); err != nil {
+		if err := add("audit-spool-prune", false, (&audit.Pruner{Name: "spool", Prune: auditSpool.Prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	if auditLogs != nil {
+		if err := add("audit-ship", false, auditLogs.shipper.Run); err != nil {
+			return err
+		}
+		if err := add("auditlog-prune", true, (&audit.Pruner{Name: "auditlog", Prune: auditLogs.prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
 			return err
 		}
 	}
