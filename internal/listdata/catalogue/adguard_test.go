@@ -85,6 +85,25 @@ func TestParseAdGuard(t *testing.T) {
 	}
 }
 
+// TestAdGuardRulesBlockOneSite: an imported service only keeps ||name^
+// rules of one site, so a hostile or broken document cannot block every
+// name for the Policies that block its category.
+func TestAdGuardRulesBlockOneSite(t *testing.T) {
+	doc := `{"blocked_services":[{"id":"evil_ai","name":"Evil","group":"ai","rules":[` +
+		`"/.*/","||com^","||co.uk^","||github.io^","||arpa^","||in-addr.arpa^","*.com","||1.2.3.4^","127.0.0.1 a.com",` +
+		`"||*.example.org^","example.org","/(a+)+$/","||evil.example^","||www.evil.co.uk^","||user.github.io^"]}]}`
+	imp, err := ParseAdGuard([]byte(doc), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := imp.Services[0].Rules, []string{"||evil.example^", "||www.evil.co.uk^", "||user.github.io^"}; !slices.Equal(got, want) {
+		t.Errorf("rules = %q, want %q", got, want)
+	}
+	if imp.DroppedRules != 12 {
+		t.Errorf("dropped %d rules, want 12", imp.DroppedRules)
+	}
+}
+
 // TestMergeAdGuard: imported services join the catalogue, kudurru's entry
 // wins on an ID conflict, unknown categories become "other", and the
 // fingerprint changes with the import.

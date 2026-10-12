@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // The opt-in AdGuard import (blocking.catalogue.adguardServicesURL): the
@@ -27,13 +30,19 @@ import (
 // are DNS-label-like, so "_" becomes "-" ("amazon_streaming" ->
 // "amazon-streaming"). Rules are adblock rules; a rule kudurru cannot
 // apply as a plain block entry is dropped (counted in DroppedRules) and a
-// service left without rules is skipped. icon_svg is ignored: the
-// dashboard draws a monogram for imported services.
+// service left without rules is skipped. Only rules of the form
+// ||<name>^ are imported, where name is a host name below a public
+// suffix: the document is third-party data, and a service rule such as
+// ||com^ or /.*/ would block every name for each Policy that blocks the
+// service's category. icon_svg is ignored: the dashboard draws a monogram
+// for imported services.
 //
 // Merge rules (Holder): a kudurru service with the same ID wins and the
 // imported one is dropped (counted as shadowed), so enabling the import
-// never changes what an existing Policy blocks; AdGuard's groups map to
-// kudurru categories (adguardGroups), anything else to "other".
+// never changes what an existing Policy's blockedServices block; AdGuard's
+// groups map to kudurru categories (adguardGroups), anything else to
+// "other", and a Policy that blocks a whole category (blockedCategories)
+// blocks the imported services of that category too.
 
 // AdGuard import constants.
 const (
@@ -146,12 +155,13 @@ func ParseAdGuard(b []byte, origin string) (*Import, error) {
 	return imp, nil
 }
 
-// usableRules keeps the rules that compile to a plain block entry, at
-// most maxRules, and counts the others.
+// usableRules keeps the rules that are a plain block entry of a name
+// below a public suffix (adguardRule), at most maxRules, and counts the
+// others.
 func usableRules(in []string) (out []string, dropped int) {
 	for _, r := range in {
 		r = strings.TrimSpace(r)
-		if r == "" || strings.ContainsAny(r, "\n\r") || len(out) == maxRules {
+		if r == "" || strings.ContainsAny(r, "\n\r") || len(out) == maxRules || !adguardRule(r) {
 			dropped++
 			continue
 		}
@@ -162,6 +172,24 @@ func usableRules(in []string) (out []string, dropped int) {
 		out = append(out, r)
 	}
 	return out, dropped
+}
+
+// adguardRule reports whether r is ||<name>^ for a canonical host name
+// that is not an IP address and not itself a public suffix (com, co.uk,
+// github.io), so it blocks one site and its subdomains.
+func adguardRule(r string) bool {
+	host, ok := strings.CutPrefix(r, "||")
+	if !ok {
+		return false
+	}
+	if host, ok = strings.CutSuffix(host, "^"); !ok || !strings.Contains(host, ".") || !canonicalHost(host) {
+		return false
+	}
+	if _, err := netip.ParseAddr(host); err == nil {
+		return false
+	}
+	suffix, _ := publicsuffix.PublicSuffix(host)
+	return suffix != host
 }
 
 // otherCategory is added when an import needs CategoryOther and the
