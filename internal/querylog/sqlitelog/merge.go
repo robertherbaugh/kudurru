@@ -3,7 +3,6 @@ package sqlitelog
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/binary"
 	"math"
 	"math/bits"
@@ -152,7 +151,7 @@ type UpstreamShard struct {
 	TotalInWindow int64                   `json:"total_in_window"`
 }
 
-func (r *Reader) summaryDistinct(ctx context.Context, tx *sql.Tx, s *snapshot, win Window, out *SummaryShard) error {
+func (r *Reader) summaryDistinct(ctx context.Context, tx *rtx, s *snapshot, win Window, out *SummaryShard) error {
 	for _, dim := range []struct {
 		src  keyedSource
 		dict string

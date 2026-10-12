@@ -414,6 +414,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		qlAsync   *querylog.Async
 		qlWriter  *sqlitelog.Writer
 	)
+	listedDomains := func() int64 {
+		if sn := zc.Snapshot(); sn != nil {
+			return domainsOnLists(sn.Objects.Lists())
+		}
+		return 0
+	}
 	if cfg.Querylog.Enabled {
 		qlMetrics := querylog.NewMetrics(reg)
 		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
@@ -431,12 +437,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return err
 			}
 			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
-			opts.DomainsOnLists = func() int64 {
-				if sn := zc.Snapshot(); sn != nil {
-					return domainsOnLists(sn.Objects.Lists())
-				}
-				return 0
-			}
+			opts.DomainsOnLists = listedDomains
 			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
 				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
@@ -679,7 +680,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// The query log in the central database (D160): this node copies its
 	// querylog.db rows and rollups; the leader keeps the partitions.
 	var qlShipper *pgquerylog.Shipper
+	var centralQuerylog *sqlitelog.Reader
+	var centralPurger api.QuerylogPurger
 	if centralDB != nil && cfg.Database.Querylog.Ship {
+		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
+			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains})
+		centralPurger = pgquerylog.Purger{DB: centralDB}
 		if qlWriter == nil {
 			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
 		} else {
@@ -693,7 +699,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	apiSrv, err := api.New(api.Options{
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		Querylog: qlReader, Tail: qlTail,
+		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,

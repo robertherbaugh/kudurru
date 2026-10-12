@@ -35,9 +35,11 @@ func writer(t *testing.T, node string, fc *testclock.FakeClock) *sqlitelog.Write
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = w.Close() })
+	nextID = 0 // event ids start over with every file
 	return w
 }
 
+// nextID stamps test events (the collector's job), per file.
 var nextID uint64
 
 func ev(node string, ts time.Time, client, name string, st pipeline.Status) *querylog.Event {

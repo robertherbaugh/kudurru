@@ -28,7 +28,13 @@ type Scope struct {
 	Nodes []NodeResult `json:"nodes"`
 	// Partial is true when at least one node failed or timed out.
 	Partial bool `json:"partial"`
+	// Source is "central" when the central database answered (D161);
+	// empty for a node's own querylog.db.
+	Source string `json:"source,omitempty"`
 }
+
+// SourceCentral is Scope.Source of answers from the central database.
+const SourceCentral = "central"
 
 // NodeResult is one node's part in a response.
 type NodeResult struct {
@@ -281,6 +287,9 @@ type QueryPage struct {
 	// filter (ignoring the cursor).
 	RecordsTotal    int64 `json:"records_total"`
 	RecordsFiltered int64 `json:"records_filtered"`
+	// RecordsCapped is set when the counts stopped at 100 001 (the central
+	// database does not count every row of a large log).
+	RecordsCapped bool `json:"records_capped,omitempty"`
 	// EarliestTSDisk is the oldest row in querylog.db, EarliestTSMemory
 	// the oldest event in the hot ring (date-picker bounds).
 	EarliestTSDisk   *time.Time `json:"earliest_ts_disk,omitempty"`

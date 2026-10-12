@@ -32,7 +32,7 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 	start := time.Now()
 	win := r.window(q.Window)
 	var out *SummaryShard
-	err := r.read(ctx, true, func(tx *sql.Tx, s *snapshot) error {
+	err := r.read(ctx, true, func(tx *rtx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
 		res := &Summary{Window: win, Rcodes: map[string]int64{}, Protocols: map[string]int64{}, Types: map[string]int64{}}
 		series, approx, err := r.baseSeries(ctx, tx, s, from, until, 0)
@@ -78,7 +78,7 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 			return err
 		}
 		qs.UniqueDomains = uniq
-		types, _, _, err := r.keyed(ctx, tx, s, r.qtypeSource(s), from, until, 0, "", "a DESC", 0, false)
+		types, _, _, err := r.keyed(ctx, tx, s, r.qtypeSource(s), from, until, 0, "", "sum(a) DESC", 0, false)
 		if err != nil {
 			return err
 		}
@@ -86,9 +86,7 @@ func (r *Reader) summary(ctx context.Context, q SummaryQuery, merge bool) (*Summ
 			res.Types[querylog.QTypeName(uint16(t.k))] += t.a //nolint:gosec // qtype column holds uint16
 		}
 		res.Approximate = approx || a2 || a3
-		if f := r.w.opts.DomainsOnLists; f != nil {
-			res.DomainsOnLists = f()
-		}
+		res.DomainsOnLists = r.domainsOnLists()
 		out = &SummaryShard{Summary: *res}
 		if merge {
 			out.Histogram.Sum, out.Histogram.Count = b[cLatSum], b[cLatCnt]
@@ -175,7 +173,7 @@ func (r *Reader) Timeseries(ctx context.Context, q TimeseriesQuery) (*Timeseries
 	start := time.Now()
 	win := r.window(q.Window)
 	var out *Timeseries
-	err := r.read(ctx, false, func(tx *sql.Tx, s *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
 		step := stepSeconds(q.Step, win, s.now)
 		from, until := floorTo(win.From.Unix(), step), win.Until.Unix()
 		series, approx, err := r.baseSeries(ctx, tx, s, from, until, step)
@@ -210,16 +208,18 @@ func topN(n int) int {
 
 // top runs a ranked keyed query and resolves names with resolve.
 func (r *Reader) top(ctx context.Context, dim string, q TopQuery, withHours bool,
-	src func(s *snapshot) keyedSource, resolve func(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]TopItem, error)) (*TopList, error) {
+	src func(s *snapshot) keyedSource, resolve func(ctx context.Context, tx *rtx, ids []int64) (map[int64]TopItem, error)) (*TopList, error) {
 	start := time.Now()
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *TopList
-	err := r.read(ctx, withHours, func(tx *sql.Tx, s *snapshot) error {
+	err := r.read(ctx, withHours, func(tx *rtx, s *snapshot) error {
 		from, until := win.From.Unix(), win.Until.Unix()
-		having, order, count := "a-b > 0", "a-b DESC, k", func(kr keyedRow) int64 { return kr.a - kr.b }
+		// Aggregates spelt out: PostgreSQL does not see output aliases in
+		// HAVING or in ORDER BY expressions.
+		having, order, count := "sum(a)-sum(b) > 0", "sum(a)-sum(b) DESC, k", func(kr keyedRow) int64 { return kr.a - kr.b }
 		if q.Blocked {
-			having, order, count = "b > 0", "b DESC, k", func(kr keyedRow) int64 { return kr.b }
+			having, order, count = "sum(b) > 0", "sum(b) DESC, k", func(kr keyedRow) int64 { return kr.b }
 		}
 		rows, _, approx, err := r.keyed(ctx, tx, s, src(s), from, until, 0, having, order, n, false)
 		if err != nil {
@@ -290,13 +290,13 @@ func (r *Reader) TopZones(ctx context.Context, q TopQuery) (*TopList, error) {
 }
 
 // names resolves ids of a name-only dictionary.
-func (r *Reader) names(table, col string) func(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]TopItem, error) {
-	return func(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]TopItem, error) {
+func (r *Reader) names(table, col string) func(ctx context.Context, tx *rtx, ids []int64) (map[int64]TopItem, error) {
+	return func(ctx context.Context, tx *rtx, ids []int64) (map[int64]TopItem, error) {
 		out := map[int64]TopItem{}
 		if len(ids) == 0 {
 			return out, nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id, `+col+` FROM `+table+` WHERE id IN (SELECT value FROM json_each(?))`, idsJSON(ids)) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
+		rows, err := tx.QueryContext(ctx, `SELECT id, `+col+` FROM `+table+` WHERE `+r.d.inIDs("id"), r.d.idsArg(ids)) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +313,7 @@ func (r *Reader) names(table, col string) func(ctx context.Context, tx *sql.Tx, 
 	}
 }
 
-func (r *Reader) clientNames(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]TopItem, error) {
+func (r *Reader) clientNames(ctx context.Context, tx *rtx, ids []int64) (map[int64]TopItem, error) {
 	out := map[int64]TopItem{}
 	if len(ids) == 0 {
 		return out, nil
@@ -323,7 +323,7 @@ func (r *Reader) clientNames(ctx context.Context, tx *sql.Tx, ids []int64) (map[
 	// touchInterval but outlives raw retention and fact-less privacy modes.
 	rows, err := tx.QueryContext(ctx, `SELECT d.id, d.ip, coalesce(d.name,''), coalesce(d.grp,''), coalesce(d.last_seen,0),
 		coalesce((SELECT max(q.ts) FROM query q WHERE q.client = d.id),0)
-		FROM dict_client d WHERE d.id IN (SELECT value FROM json_each(?))`, idsJSON(ids))
+		FROM dict_client d WHERE `+r.d.inIDs("d.id"), r.d.idsArg(ids))
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +373,7 @@ func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard,
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *UpstreamShard
-	err := r.read(ctx, false, func(tx *sql.Tx, s *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
 		from, until := floorTo(win.From.Unix(), 60), win.Until.Unix()
 		segs := cover(from, until, []tier{
 			{table: "rollup_upstream_1h", res: 3600, done: s.hourDone, keep: HourRetention},
@@ -395,7 +395,7 @@ func (r *Reader) UpstreamShard(ctx context.Context, q TopQuery) (*UpstreamShard,
 				parts = append(parts, `SELECT upstream, `+strings.Join(upCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 				args = append(args, sg.from, sg.until)
 			}
-			rows, err := tx.QueryContext(ctx, `SELECT upstream, `+sumCols(upCols)+` FROM (`+strings.Join(parts, " UNION ALL ")+`) GROUP BY upstream`, args...) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
+			rows, err := tx.QueryContext(ctx, `SELECT upstream, `+sumCols(upCols)+` FROM (`+strings.Join(parts, " UNION ALL ")+`) AS u GROUP BY upstream`, args...) //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 			if err != nil {
 				return fmt.Errorf("sqlitelog: upstreams: %w", err)
 			}
@@ -480,11 +480,11 @@ func (r *Reader) ClientTimeseries(ctx context.Context, q ClientTimeseriesQuery) 
 	win := r.window(q.Window)
 	n := candidateN(q.N, q.Candidates)
 	var out *ClientTimeseries
-	err := r.read(ctx, false, func(tx *sql.Tx, s *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, s *snapshot) error {
 		step := stepSeconds(q.Step, win, s.now)
 		from, until := floorTo(win.From.Unix(), step), win.Until.Unix()
 		src := r.clientSource(s)
-		top, _, approx, err := r.keyed(ctx, tx, s, src, from, until, 0, "", "a DESC, k", n, false)
+		top, _, approx, err := r.keyed(ctx, tx, s, src, from, until, 0, "", "sum(a) DESC, k", n, false)
 		if err != nil {
 			return err
 		}
@@ -544,17 +544,20 @@ func (r *Reader) RecentBlocked(ctx context.Context, n int) (*RecentBlocked, erro
 	start := time.Now()
 	n = topN(n)
 	var out *RecentBlocked
-	err := r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
 		var parts []string
 		var args []any
 		for st := pipeline.StatusBlockedList; st <= pipeline.StatusBlockedRateLimit; st++ {
-			parts = append(parts, `SELECT * FROM (SELECT id, ts, status, client, domain, list FROM query WHERE status=? ORDER BY ts DESC LIMIT ?)`)
+			parts = append(parts, `SELECT * FROM (SELECT id, ts, status, client, domain, list, node FROM query WHERE status=? ORDER BY ts DESC LIMIT ?) AS s`+strconv.Itoa(len(parts)))
 			args = append(args, int64(st), n)
 		}
 		//nolint:gosec // identifiers and expressions are package constants; values are bound parameters
-		rows, err := tx.QueryContext(ctx, `SELECT b.id, b.ts, b.status, coalesce(c.ip,''), coalesce(c.name,''), coalesce(d.name,''), coalesce(l.name,'')
+		// The row's node: one on a node's file, every node's in the
+		// central database.
+		rows, err := tx.QueryContext(ctx, `SELECT b.id, b.ts, b.status, coalesce(c.ip,''), coalesce(c.name,''), coalesce(d.name,''), coalesce(l.name,''), coalesce(nd.name,'')
 			FROM (`+strings.Join(parts, " UNION ALL ")+`) b
 			LEFT JOIN dict_client c ON c.id=b.client LEFT JOIN dict_domain d ON d.id=b.domain LEFT JOIN dict_list l ON l.id=b.list
+			LEFT JOIN dict_node nd ON nd.id=b.node
 			ORDER BY b.ts DESC, b.id DESC LIMIT ?`, append(args, n)...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: recent blocked: %w", err)
@@ -564,10 +567,9 @@ func (r *Reader) RecentBlocked(ctx context.Context, n int) (*RecentBlocked, erro
 		for rows.Next() {
 			var it BlockedItem
 			var id, ts, st int64
-			if err := rows.Scan(&id, &ts, &st, &it.Client, &it.ClientName, &it.Domain, &it.List); err != nil {
+			if err := rows.Scan(&id, &ts, &st, &it.Client, &it.ClientName, &it.Domain, &it.List, &it.Node); err != nil {
 				return err
 			}
-			it.Node = r.w.opts.Node
 			it.ID, it.TS, it.Status = uint64(id), time.UnixMicro(ts).UTC(), pipeline.Status(st).String() //nolint:gosec // ids and statuses are small non-negative ints
 			res.Items = append(res.Items, it)
 		}

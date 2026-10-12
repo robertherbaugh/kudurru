@@ -164,6 +164,11 @@ type Options struct {
 	Querylog *sqlitelog.Reader
 	Tail     *querylog.Tail
 	Purger   QuerylogPurger
+	// CentralQuerylog answers scope=cluster from the central database
+	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
+	// this node's rows; nil without a central database.
+	CentralQuerylog *sqlitelog.Reader
+	CentralPurger   QuerylogPurger
 	// Upstreams and ResponseCache back upstream status and /cache/flush.
 	// Upstreams is an *upstream.Set, or UpstreamStatusFunc over the
 	// upstream stage when the set is swapped on settings reloads.

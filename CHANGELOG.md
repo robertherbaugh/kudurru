@@ -29,11 +29,10 @@ D126 record what changed on the way.
   node. With it, the audit log of every node, Docker and compose included,
   is kept in one hash chain there (`audit.store: database`, D159); each
   node keeps its own copy and sends it when the database is reachable.
-- "All nodes" in the scope selector
-  ([#9](https://github.com/robertherbaugh/kudurru/issues/9)): a cluster
-  request answered by one replica now says so (`requested_scope`, and the
-  scope note reads "only: other nodes are not included yet"), and a request
-  for another node answers 501 instead of this node's data (D155).
+- With a central database every node also sends its query log and
+  statistics there (`database.querylog.*`, D160), and **All nodes** reads
+  them instead of asking every replica: every node's queries, charts and
+  top lists, including those of replicas that are down or gone (D161).
 
 ### Dashboard and API fixes (v0.1 fix round)
 

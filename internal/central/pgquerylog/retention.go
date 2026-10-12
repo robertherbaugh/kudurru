@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -97,4 +98,30 @@ func partitions(ctx context.Context, tx pgx.Tx) (map[string]int64, error) {
 		out[name] = d.UnixMicro()
 	}
 	return out, rows.Err()
+}
+
+// Purger deletes the per-query rows of every node from the central
+// database older than before, or all of them when before is zero
+// (DELETE /api/v1/querylog with a central database). Statistics are kept,
+// as on a node. Rows a node has not shipped yet arrive later, and other
+// nodes' own query logs are not purged.
+type Purger struct {
+	DB *central.DB
+}
+
+// Purge implements api.QuerylogPurger.
+func (p Purger) Purge(ctx context.Context, before time.Time) (int64, error) {
+	var n int64
+	err := p.DB.Tx(ctx, func(tx pgx.Tx) error {
+		var res pgconn.CommandTag
+		var err error
+		if before.IsZero() {
+			res, err = tx.Exec(ctx, `DELETE FROM query`)
+		} else {
+			res, err = tx.Exec(ctx, `DELETE FROM query WHERE ts < $1`, before.UnixMicro())
+		}
+		n = res.RowsAffected()
+		return err
+	})
+	return n, err
 }

@@ -92,6 +92,19 @@ rows one by one.
 Statistics of a node that stops for good during an hour that it has not
 summarised yet lose that part hour; the individual queries are kept.
 
+## The dashboard's All nodes view
+
+With the query log in the database, **All nodes** in the scope selector
+reads it: every node's queries, charts, totals and top lists, the same on
+whichever node serves the page (D161). The scope note reads "All nodes:
+… (central database)" and names a node whose statistics are more than five
+minutes behind. Without the database, **All nodes** asks every replica and
+misses those that are down or replaced. **This node** and a chosen node
+still read that node's own `querylog.db`, which is real time. The live
+tail streams from the replicas, so it is off in the central view; choose a
+node to follow it. Purging the query log deletes this node's rows and every
+node's rows in the database; other nodes keep their own copies.
+
 ## Upgrades and mixed versions
 
 The database records `schema_version` and `compat_version` in

@@ -167,8 +167,9 @@ type suggestionsInput struct {
 }
 
 type queryActionInput struct {
-	ID   uint64 `path:"id"`
-	Body struct {
+	ID    uint64 `path:"id"`
+	Scope string `query:"scope" enum:"node,cluster," doc:"cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database)."`
+	Body  struct {
 		Action string `json:"action" enum:"allow,deny"`
 		// Namespace of the UI list (default "default").
 		Namespace string `json:"namespace,omitempty"`
@@ -183,6 +184,10 @@ type purgeInput struct {
 type PurgeResult struct {
 	Deleted int64  `json:"deleted"`
 	Node    string `json:"node"`
+	// CentralDeleted counts the rows of every node deleted from the
+	// central database; absent without one. Other nodes' own query logs
+	// are not purged.
+	CentralDeleted *int64 `json:"central_deleted,omitempty"`
 	Took
 }
 
@@ -593,17 +598,28 @@ func (s *Server) purgeQuerylog(ctx context.Context, in *purgeInput) (*purgeOutpu
 		before = t
 	}
 	n, err := s.opts.Purger.Purge(ctx, before)
-	s.recordAction(ctx, "querylog.purge", audit.Resource{Kind: "querylog"}, err, nil, map[string]any{"before": in.Before, "deleted": n})
+	out := &PurgeResult{Deleted: n, Node: s.opts.NodeName}
+	after := map[string]any{"before": in.Before, "deleted": n}
+	if err == nil && s.opts.CentralPurger != nil {
+		var c int64
+		c, err = s.opts.CentralPurger.Purge(ctx, before)
+		out.CentralDeleted, after["central_deleted"] = &c, c
+	}
+	s.recordAction(ctx, "querylog.purge", audit.Resource{Kind: "querylog"}, err, nil, after)
 	if err != nil {
 		return nil, storeError(err)
 	}
-	return &purgeOutput{Body: &PurgeResult{Deleted: n, Node: s.opts.NodeName}}, nil
+	return &purgeOutput{Body: out}, nil
 }
 
 func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*processedOutput, error) {
-	r, err := s.reader()
-	if err != nil {
-		return nil, err
+	// A row of the central database's log has the database's id (D161).
+	r := s.opts.CentralQuerylog
+	if in.Scope != sqlitelog.ScopeCluster || r == nil {
+		var err error
+		if r, err = s.reader(); err != nil {
+			return nil, err
+		}
 	}
 	page, err := r.Queries(ctx, sqlitelog.QueryFilter{Cursor: strconv.FormatUint(in.ID+1, 10), Limit: 1})
 	if err != nil {

@@ -56,12 +56,12 @@ var blockedIn = func() string {
 // the window) and filter by policy: the column has no index of its own
 // (§11.2 keeps four).
 var (
-	policyCountsSQL = `SELECT count(*), coalesce(sum(status IN ` + blockedIn + `),0) FROM query
+	policyCountsSQL = `SELECT count(*), coalesce(sum(CASE WHEN status IN ` + blockedIn + ` THEN 1 ELSE 0 END),0) FROM query
 		WHERE ts>=?2 AND ts<?3 AND policy=?1`
 	//nolint:gosec // blockedIn is built from the status constants; values are bound parameters
 	policyTopBlockedSQL = `SELECT d.name, count(*) AS c FROM query q JOIN dict_domain d ON d.id=q.domain
 		WHERE q.ts>=?2 AND q.ts<?3 AND q.policy=?1 AND q.status IN ` + blockedIn + `
-		GROUP BY q.domain ORDER BY c DESC, d.name LIMIT ?4`
+		GROUP BY d.id, d.name ORDER BY c DESC, d.name LIMIT ?4`
 )
 
 // PolicyStats counts the queries policy ("namespace/name") decided in w
@@ -75,7 +75,7 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 	}
 	n = min(n, MaxTopN)
 	out := &PolicyStats{Window: w, Policy: policy, TopBlocked: []PolicyDomain{}, TopClients: []PolicyClient{}}
-	err := r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
 		var id int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM dict_policy WHERE name=?`, policy).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -106,7 +106,7 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 		}
 		rows, err = tx.QueryContext(ctx, `SELECT c.ip, coalesce(c.name,''), count(*) AS n FROM query q JOIN dict_client c ON c.id=q.client
 			WHERE q.ts>=?2 AND q.ts<?3 AND q.policy=?1
-			GROUP BY q.client ORDER BY n DESC, c.ip, c.name LIMIT ?4`, id, from, until, n)
+			GROUP BY c.id, c.ip, c.name ORDER BY n DESC, c.ip, c.name LIMIT ?4`, id, from, until, n)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: policy top clients: %w", err)
 		}
@@ -137,7 +137,7 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 // on disk, so the count is approximate at the window's start.
 func (r *Reader) ClientsSeenByGroup(ctx context.Context, since time.Time) (map[string]int, error) {
 	out := map[string]int{}
-	err := r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
 		rows, err := tx.QueryContext(ctx, `SELECT grp, count(DISTINCT CASE WHEN ip<>'' THEN ip ELSE name END) FROM dict_client
 			WHERE grp IS NOT NULL AND grp<>'' AND coalesce(last_seen,0) >= ? GROUP BY grp`, since.Unix())
 		if err != nil {

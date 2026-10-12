@@ -15,6 +15,7 @@ package central
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -80,6 +82,9 @@ type DB struct {
 	opts    Options
 	pool    *pgxpool.Pool
 	metrics *metrics
+
+	sqlOnce sync.Once
+	sqlDB   *sql.DB
 
 	mu    sync.Mutex
 	state State
@@ -138,7 +143,22 @@ func ParseDSN(dsn string) (*pgxpool.Config, error) {
 }
 
 // Close closes the pool.
-func (d *DB) Close() { d.pool.Close() }
+func (d *DB) Close() {
+	if d.sqlDB != nil {
+		_ = d.sqlDB.Close()
+	}
+	d.pool.Close()
+}
+
+// SQL returns a database/sql handle on the pool (the pgx driver) once the
+// database is ready, for readers written against database/sql.
+func (d *DB) SQL() (*sql.DB, error) {
+	if _, err := d.Pool(); err != nil {
+		return nil, err
+	}
+	d.sqlOnce.Do(func() { d.sqlDB = stdlib.OpenDBFromPool(d.pool) })
+	return d.sqlDB, nil
+}
 
 // Pool returns the pool once the database is ready.
 func (d *DB) Pool() (*pgxpool.Pool, error) {
