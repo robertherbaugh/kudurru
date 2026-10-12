@@ -227,9 +227,13 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
         </Text>
       ) : (
         <Text type="supporting">
-          Switching off an entry of an imported list affects only this list; to allow a domain everywhere use the{' '}
-          <Link href="/allowlist" hasUnderline>
-            Allowlist
+          Switching off an entry of an imported list affects only this list; to {ui === 'deny' ? 'allow' : 'block'} a domain everywhere use the{' '}
+          <Link href={ui === 'deny' ? '/allowlist' : '/denylist'} hasUnderline>
+            {ui === 'deny' ? 'Allowlist' : 'Denylist'}
+          </Link>
+          . The entries switched off here show on the{' '}
+          <Link href={`${actionPath(ui === 'deny' ? 'allow' : 'deny')}?kind=exception&scope=${encodeURIComponent(`list:${ns}/${name}`)}`} hasUnderline>
+            {ui === 'deny' ? 'Allowlist' : 'Denylist'} as list exceptions
           </Link>
           .
         </Text>
@@ -351,6 +355,17 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
             <Text type="supporting">{query ? `No entry contains "${query}".` : disabledOnly ? 'No entry is switched off.' : 'No entries.'}</Text>
           }
           columns={[
+            { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
+            {
+              key: 'value',
+              header: 'Entry',
+              width: proportional(4),
+              renderCell: (r) => (
+                <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
+                  {r.value}
+                </Text>
+              ),
+            },
             {
               key: 'enabled',
               header: 'Enabled',
@@ -366,17 +381,6 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                   disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
                   onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
                 />
-              ),
-            },
-            { key: 'line', header: 'Line', width: pixel(72), align: 'end', renderCell: (r) => <Text type="supporting">{r.line}</Text> },
-            {
-              key: 'value',
-              header: 'Entry',
-              width: proportional(4),
-              renderCell: (r) => (
-                <Text type="code" wordBreak="break-all" hasStrikethrough={!r.enabled}>
-                  {r.value}
-                </Text>
               ),
             },
           ]}

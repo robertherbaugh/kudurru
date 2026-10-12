@@ -13,7 +13,10 @@ Two ways to change what a block list does without editing it at its origin:
 
 Switching an entry of an imported list off affects only that list: another
 list that contains the same name still blocks it. To let a name through
-everywhere, allow it.
+everywhere, allow it. Both show on the Allowlist: switched-off entries of
+block lists are listed there as **list exceptions** (and those of allow
+lists on the Denylist), so the Allowlist is the one place that shows every
+name kudurru lets through on purpose.
 
 ## Entry types
 
@@ -128,6 +131,22 @@ that has no body yet answers 503 ("the fetched body ... is not on this node
 yet"); `stale: true` means the node still serves an older body than the
 published digest.
 
+### List exceptions on the Allowlist and Denylist
+
+Every exclusion of a block list is a row of the Allowlist, every exclusion
+of an allow list a row of the Denylist (the ui lists themselves excepted):
+kind `exception`, origin `list`, the list and source it lives in, the
+policies that use the list, and the other lists that still match the name
+(`stillMatchedBy`; the exception does not change them). It has a switch and
+nothing else: on means the entry is switched off in its list (the
+exception is in effect); switching it off, or deleting it, removes the
+exclusion, so the list's entry applies again. The Add dialog's scope
+"Only in list …" creates exceptions: `POST /api/v1/allowlist` with
+`{values, list, source?}` switches the entries of that list (in every
+source that has the name, or in `source`) off; a name the list does not
+contain is refused per value. Filters: `kind=entry|exception`,
+`scope=list:<ns/name>`; `q` also matches the list name.
+
 File- and Kubernetes-managed lists are read-only through the API (edit the
 file or the object). The starter list (`starter`, seeded on first boot,
 managed by `bootstrap`) can be tweaked: like any API edit of a first-boot
@@ -153,10 +172,10 @@ before the migration still remove their entry when they end.
 
 | Route | |
 |---|---|
-| `GET /api/v1/allowlist`, `/denylist` | `?namespace=&type=exact\|wildcard\|regex&enabled=true\|false&scope=everyone\|<ns/group>&q=&limit=&continue=`; items, totals, the lists, unattached policies |
+| `GET /api/v1/allowlist`, `/denylist` | `?namespace=&kind=entry\|exception&type=exact\|wildcard\|regex&enabled=true\|false&scope=everyone\|<ns/group>\|list:<ns/name>&q=&limit=&continue=`; items (entries and list exceptions), totals, the lists, unattached policies |
 | `GET /api/v1/domains` | both, `?action=allow\|deny` and the same filters |
-| `POST /api/v1/allowlist`, `/denylist` | `{values[], type?, namespace?, groups?, comment?, enabled?, origin?}`; refused values in `processed.errors` |
-| `GET`, `PATCH`, `DELETE /api/v1/allowlist/{id}` | PATCH `{enabled?, comment?, value?, type?, scope?: everyone\|groups, groups?}` |
+| `POST /api/v1/allowlist`, `/denylist` | `{values[], type?, namespace?, groups?, comment?, enabled?, origin?}`, or `{values[], list, source?}` for list exceptions; refused values in `processed.errors` |
+| `GET`, `PATCH`, `DELETE /api/v1/allowlist/{id}` | PATCH `{enabled?, comment?, value?, type?, scope?: everyone\|groups, groups?}`; a list exception takes only `{enabled}` |
 | `POST /api/v1/allowlist:batch` | `{ids[], op: enable\|disable\|delete}` |
 | `GET /api/v1/blocklists/{ns}/{name}/sources/{source}/entries` | every source type; `?q=&enabled=&limit=&continue=`; items `{value, line, enabled}` |
 | `PATCH …/entries` | `{enable?, disable?}` for every source type, `{add?, remove?}` for inline sources |

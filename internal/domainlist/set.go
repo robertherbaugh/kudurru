@@ -33,9 +33,24 @@ type Copy struct {
 	Entry v1alpha1.ListEntry
 }
 
+// Kinds of Entry.
+const (
+	// KindEntry is an entry of the Allowlist or Denylist itself.
+	KindEntry = "entry"
+	// KindException is an entry of another list switched off there
+	// (spec.sources[].exclude): an exception that list makes for the name.
+	// An excluded entry of a block list is shown on the Allowlist, one of
+	// an allow list on the Denylist. Its only copy names the list and the
+	// source; Value is the exclude value as written.
+	KindException = "exception"
+)
+
 // Entry is one logical allow or deny entry: every copy of (namespace,
-// type, value) in the action's lists of the namespace.
+// type, value) in the action's lists of the namespace, or one list
+// exception (Kind).
 type Entry struct {
+	// Kind is KindEntry or KindException.
+	Kind      string
 	Namespace string
 	Action    Action
 	Type      v1alpha1.EntryType
@@ -50,10 +65,22 @@ type Entry struct {
 }
 
 // ID is the entry's API identifier.
-func (e *Entry) ID() string { return ID(e.Namespace, e.Type, e.Value) }
+func (e *Entry) ID() string {
+	if e.Kind == KindException {
+		_, list, _ := strings.Cut(e.Copies[0].List, "/")
+		return ExceptionID(e.Namespace, list, e.Copies[0].Source, e.Value)
+	}
+	return ID(e.Namespace, e.Type, e.Value)
+}
 
-// Rule is the rule the entry compiles to.
-func (e *Entry) Rule() string { return v1alpha1.EntryRule(e.Type, e.Value) }
+// Rule is the rule the entry compiles to; for an exception the rule of
+// the list it switches off.
+func (e *Entry) Rule() string {
+	if e.Kind == KindException {
+		return e.Value
+	}
+	return v1alpha1.EntryRule(e.Type, e.Value)
+}
 
 // Primary is the copy whose switch, comment and provenance the entry
 // shows.
@@ -102,11 +129,14 @@ type Unattached struct {
 }
 
 // Set is every ui list of the namespaces read, with its entries and the
-// policies that apply them.
+// policies that apply them, and the exceptions other lists make.
 type Set struct {
 	entries    map[Action][]*Entry
 	Lists      []ListInfo
 	Unattached []Unattached
+	// ExceptionPolicies are the policies ("namespace/name") that reference
+	// each list ("namespace/name") with exceptions.
+	ExceptionPolicies map[string][]string
 }
 
 // Entries returns the logical entries of action, newest first, then by
@@ -116,21 +146,36 @@ func (s *Set) Entries(a Action) []*Entry { return s.entries[a] }
 // Find returns the entry (namespace, type, value) of action.
 func (s *Set) Find(a Action, ns string, t v1alpha1.EntryType, value string) *Entry {
 	for _, e := range s.entries[a] {
-		if e.Namespace == ns && e.Type == t && e.Value == value {
+		if e.Kind == KindEntry && e.Namespace == ns && e.Type == t && e.Value == value {
 			return e
 		}
 	}
 	return nil
 }
 
-// Load reads the ui lists of ns (every namespace when ns is empty) and the
-// policies that reference them.
+// FindException returns the exception (list, source, value) of ns, or nil.
+func (s *Set) FindException(ns, list, source, value string) *Entry {
+	for _, a := range []Action{Allow, Deny} {
+		for _, e := range s.entries[a] {
+			if e.Kind == KindException && e.Namespace == ns && e.Copies[0].List == ns+"/"+list && e.Copies[0].Source == source && e.Value == value {
+				return e
+			}
+		}
+	}
+	return nil
+}
+
+// Load reads the ui lists of ns (every namespace when ns is empty), the
+// exceptions every other list makes, and the policies that reference
+// them.
 func (s *Service) Load(ctx context.Context, ns string) (*Set, error) {
-	var lists []*v1alpha1.BlockList
+	var lists, others []*v1alpha1.BlockList
 	if err := s.each(ctx, "BlockList", ns, func(o store.Object) {
 		if bl, ok := o.(*v1alpha1.BlockList); ok {
 			if a, _, ok := ParseListName(bl.Name); ok && listMode(bl) == a.Mode() {
 				lists = append(lists, bl)
+			} else {
+				others = append(others, bl)
 			}
 		}
 	}); err != nil {
@@ -144,7 +189,53 @@ func (s *Service) Load(ctx context.Context, ns string) (*Set, error) {
 	}); err != nil {
 		return nil, err
 	}
-	return buildSet(lists, pols), nil
+	set := buildSet(lists, pols)
+	set.addExceptions(others, pols)
+	return set, nil
+}
+
+// addExceptions adds a KindException entry for every exclude value of a
+// URL, ConfigMap or inline source of lists: on the Allowlist for block
+// lists, on the Denylist for allow lists.
+func (s *Set) addExceptions(lists []*v1alpha1.BlockList, pols []*v1alpha1.Policy) {
+	s.ExceptionPolicies = map[string][]string{}
+	slices.SortFunc(lists, func(a, b *v1alpha1.BlockList) int {
+		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
+	})
+	for _, bl := range lists {
+		a := Allow
+		if listMode(bl) == "allow" {
+			a = Deny
+		}
+		key := bl.Namespace + "/" + bl.Name
+		owner := store.ManagedBy(bl)
+		var exc []*Entry
+		for i, src := range bl.Spec.Sources {
+			if len(src.Entries) > 0 {
+				continue
+			}
+			for _, v := range src.Exclude {
+				t, _, ok := FromRule(v, parser.Format(src.Format))
+				if !ok {
+					t = v1alpha1.EntryExact
+				}
+				exc = append(exc, &Entry{
+					Kind: KindException, Namespace: bl.Namespace, Action: a, Type: t, Value: v,
+					Copies: []Copy{{List: key, Source: sourceName(i, src), ManagedBy: owner, Entry: v1alpha1.ListEntry{Value: v, Type: t}}},
+				})
+			}
+		}
+		if len(exc) == 0 {
+			continue
+		}
+		for _, p := range pols {
+			if p.Namespace == bl.Namespace && (slices.Contains(p.Spec.BlockListRefs, bl.Name) || slices.Contains(p.Spec.AllowListRefs, bl.Name)) {
+				s.ExceptionPolicies[key] = append(s.ExceptionPolicies[key], p.Namespace+"/"+p.Name)
+			}
+		}
+		slices.Sort(s.ExceptionPolicies[key])
+		s.entries[a] = append(s.entries[a], exc...)
+	}
 }
 
 func listMode(bl *v1alpha1.BlockList) v1alpha1.ListMode {
@@ -204,7 +295,7 @@ func buildSet(lists []*v1alpha1.BlockList, pols []*v1alpha1.Policy) *Set {
 			key := bl.Namespace + "\x00" + string(a) + "\x00" + string(c.Entry.Type) + "\x00" + c.Entry.Value
 			e := byKey[key]
 			if e == nil {
-				e = &Entry{Namespace: bl.Namespace, Action: a, Type: c.Entry.Type, Value: c.Entry.Value}
+				e = &Entry{Kind: KindEntry, Namespace: bl.Namespace, Action: a, Type: c.Entry.Type, Value: c.Entry.Value}
 				byKey[key] = e
 				set.entries[a] = append(set.entries[a], e)
 			}

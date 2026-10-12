@@ -69,26 +69,6 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
 
   const columns: TableColumn<DomainEntry>[] = [
     {
-      key: 'enabled',
-      header: 'On',
-      width: pixel(64),
-      renderCell: (e) => {
-        const why = lockReason(e, canWrite);
-        return (
-          <Switch
-            label={`${e.value} enabled`}
-            isLabelHidden
-            size="sm"
-            value={e.enabled}
-            isLoading={pending.has(e.id)}
-            isDisabled={!!why || pending.has(e.id)}
-            disabledMessage={why || undefined}
-            onChange={(on) => onToggle(e, on)}
-          />
-        );
-      },
-    },
-    {
       key: 'value',
       header: 'Domain',
       width: proportional(3, { minWidth: 190 }),
@@ -108,7 +88,15 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       key: 'type',
       header: 'Type',
       width: pixel(96),
-      renderCell: (e) => <Token size="sm" color={TYPE_COLOR[e.type]} label={TYPE_LABEL[e.type]} />,
+      renderCell: (e) =>
+        e.kind === 'exception' ? (
+          <VStack gap={0.5} align="start">
+            <Token size="sm" color="orange" label="exception" description="list exception: an entry switched off in one list" />
+            <Token size="sm" color={TYPE_COLOR[e.type]} label={TYPE_LABEL[e.type]} />
+          </VStack>
+        ) : (
+          <Token size="sm" color={TYPE_COLOR[e.type]} label={TYPE_LABEL[e.type]} />
+        ),
     },
     {
       key: 'scope',
@@ -120,13 +108,33 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       key: 'comment',
       header: 'Comment',
       width: proportional(2, { minWidth: 130 }),
-      renderCell: (e) => <CommentCell e={e} locked={!!lockReason(e, canWrite)} onSave={(c) => onComment(e, c)} />,
+      renderCell: (e) => <CommentCell e={e} locked={e.kind === 'exception' || !!lockReason(e, canWrite)} onSave={(c) => onComment(e, c)} />,
     },
     {
       key: 'created',
       header: 'Added',
       width: proportional(1.5, { minWidth: 120 }),
       renderCell: (e) => <AddedCell e={e} />,
+    },
+    {
+      key: 'enabled',
+      header: 'On',
+      width: pixel(64),
+      renderCell: (e) => {
+        const why = lockReason(e, canWrite);
+        return (
+          <Switch
+            label={e.kind === 'exception' ? `${e.value} switched off in ${shortRef(e.lists[0]?.list ?? '', e.namespace)}` : `${e.value} enabled`}
+            isLabelHidden
+            size="sm"
+            value={e.enabled}
+            isLoading={pending.has(e.id)}
+            isDisabled={!!why || pending.has(e.id)}
+            disabledMessage={why || undefined}
+            onChange={(on) => onToggle(e, on)}
+          />
+        );
+      },
     },
     {
       key: 'actions',
@@ -136,8 +144,19 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
         const why = lockReason(e, canWrite);
         return (
           <HStack gap={0.5}>
-            <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Edit ${e.value}`} onClick={() => onEdit(e)} />
-            <Button label="Delete" size="sm" variant="ghost" isIconOnly icon={<Trash2 size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Delete ${e.value}`} onClick={() => onDelete(e)} />
+            {e.kind === 'exception' ? null : (
+              <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} isDisabled={!!why} tooltip={why || `Edit ${e.value}`} onClick={() => onEdit(e)} />
+            )}
+            <Button
+              label="Delete"
+              size="sm"
+              variant="ghost"
+              isIconOnly
+              icon={<Trash2 size={16} aria-hidden="true" />}
+              isDisabled={!!why}
+              tooltip={why || (e.kind === 'exception' ? `Switch ${e.value} back on in ${shortRef(e.lists[0]?.list ?? '', e.namespace)}` : `Delete ${e.value}`)}
+              onClick={() => onDelete(e)}
+            />
           </HStack>
         );
       },
@@ -165,18 +184,34 @@ function DomainCell({ e }: { e: DomainEntry }) {
       <Text type="code" wordBreak="break-all" hasStrikethrough={!e.enabled}>
         {e.value}
       </Text>
-      <Text type="supporting" size="sm">
-        In{' '}
-        {e.lists.map((l, i) => (
-          <Text key={`${l.list}/${l.source}`} type="inherit">
-            {i ? ', ' : ''}
-            <Link href={refPath('lists', l.list)} color="inherit" hasUnderline>
-              {shortRef(l.list, e.namespace)}
-            </Link>
+      {e.kind === 'exception' ? (
+        e.stillMatchedBy.length ? (
+          <Text type="supporting" size="sm">
+            {e.action === 'allow' ? 'Still blocked by ' : 'Still allowed by '}
+            {e.stillMatchedBy.map((o, i) => (
+              <Text key={o.list} type="inherit">
+                {i ? ', ' : ''}
+                <Link href={refPath('lists', o.list)} color="inherit" hasUnderline>
+                  {shortRef(o.list, e.namespace)}
+                </Link>
+              </Text>
+            ))}
           </Text>
-        ))}
-      </Text>
-      {e.overrides.length ? (
+        ) : null
+      ) : (
+        <Text type="supporting" size="sm">
+          In{' '}
+          {e.lists.map((l, i) => (
+            <Text key={`${l.list}/${l.source}`} type="inherit">
+              {i ? ', ' : ''}
+              <Link href={refPath('lists', l.list)} color="inherit" hasUnderline>
+                {shortRef(l.list, e.namespace)}
+              </Link>
+            </Text>
+          ))}
+        </Text>
+      )}
+      {e.kind !== 'exception' && e.overrides.length ? (
         <Text type="supporting" size="sm">
           {e.action === 'allow' ? 'Overrides block list ' : 'Overridden by allow list '}
           {e.overrides.map((o, i) => (
@@ -199,6 +234,20 @@ function DomainCell({ e }: { e: DomainEntry }) {
 }
 
 function ScopeCell({ e }: { e: DomainEntry }) {
+  const own = e.lists[0];
+  if (e.kind === 'exception' && own) {
+    return (
+      <VStack gap={0.5} align="start">
+        <Text size="sm">Only list</Text>
+        <Link href={refPath('lists', own.list)} size="sm">
+          {shortRef(own.list, e.namespace)}
+        </Link>
+        <Text type="supporting" size="sm">
+          {e.policies.length ? `used by ${e.policies.map((p) => shortRef(p, e.namespace)).join(', ')}` : 'used by no policy'}
+        </Text>
+      </VStack>
+    );
+  }
   return (
     <HStack gap={1} wrap="wrap">
       {e.everyone ? <Token size="sm" color="green" label="Everyone" /> : null}
@@ -210,6 +259,22 @@ function ScopeCell({ e }: { e: DomainEntry }) {
 }
 
 function AddedCell({ e }: { e: DomainEntry }) {
+  const own = e.lists[0];
+  if (e.kind === 'exception' && own) {
+    return (
+      <VStack gap={0.5}>
+        <Text size="sm">
+          switched off in{' '}
+          <Link href={refPath('lists', own.list)} size="sm">
+            {shortRef(own.list, e.namespace)}
+          </Link>
+        </Text>
+        <Text type="supporting" size="sm">
+          source {own.source}
+        </Text>
+      </VStack>
+    );
+  }
   const who = actorName(e.createdBy);
   const origin =
     e.origin === 'unblock' && e.request ? (

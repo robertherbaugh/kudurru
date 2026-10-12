@@ -39,7 +39,6 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
       <table className="k-table" aria-label="Sources">
         <thead>
           <tr>
-            <th scope="col">Enabled</th>
             <th scope="col">Type</th>
             <th scope="col">Name</th>
             <th scope="col">Source</th>
@@ -50,6 +49,7 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
             </th>
             <th scope="col">Last fetched</th>
             <th scope="col">Error</th>
+            <th scope="col">Enabled</th>
             <th scope="col">
               <span className="k-visually-hidden">Actions</span>
             </th>
@@ -64,17 +64,6 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
             const on = sourceEnabled(src);
             return (
               <tr key={`${i}-${name}`} data-testid={`source-${name}`} data-enabled={on} className={on ? undefined : 'k-row-off'}>
-                <td>
-                  <Switch
-                    label={`Source ${name} enabled`}
-                    isLabelHidden
-                    size="sm"
-                    value={on}
-                    isLoading={pending === i}
-                    isDisabled={!editable || busy}
-                    onChange={(v) => onToggle(i, v)}
-                  />
-                </td>
                 <td>
                   <span className="k-source-kind" title={label}>
                     <Icon size={16} aria-hidden="true" />
@@ -122,6 +111,17 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
                   )}
                 </td>
                 <td className="k-small k-break">{on && st?.error ? <span className="k-error-text">{st.error}</span> : <span className="k-muted">–</span>}</td>
+                <td>
+                  <Switch
+                    label={`Source ${name} enabled`}
+                    isLabelHidden
+                    size="sm"
+                    value={on}
+                    isLoading={pending === i}
+                    isDisabled={!editable || busy}
+                    onChange={(v) => onToggle(i, v)}
+                  />
+                </td>
                 <td className="k-nowrap k-row-actions">
                   <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${name}`} onClick={() => onBrowse(i)} />
                   {editable ? (

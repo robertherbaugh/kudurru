@@ -41,7 +41,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a Allowlist entry
-         * @description Removes every copy; a list left empty is deleted and its policy references removed.
+         * @description Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
          */
         delete: operations["deleteAllowlistEntry"];
         options?: never;
@@ -644,7 +644,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a Denylist entry
-         * @description Removes every copy; a list left empty is deleted and its policy references removed.
+         * @description Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
          */
         delete: operations["deleteDenylistEntry"];
         options?: never;
@@ -1938,6 +1938,8 @@ export interface components {
             enabled?: boolean;
             /** @description ClientGroups (ns/name or a name in namespace); empty applies to everyone. */
             groups?: string[] | null;
+            /** @description Switch the value off in this list only (a list exception) instead of adding an entry: ns/name or a name in namespace. */
+            list?: string;
             /** @description Default the server's default namespace. */
             namespace?: string;
             /**
@@ -1945,6 +1947,8 @@ export interface components {
              * @enum {string}
              */
             origin?: "manual" | "querylog" | "api";
+            /** @description With list: only this source (default every source that has the value). */
+            source?: string;
             /**
              * @description Default exact.
              * @enum {string}
@@ -1968,12 +1972,20 @@ export interface components {
             groups: string[];
             /** @description Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}. */
             id: string;
+            /**
+             * @description entry: an Allowlist or Denylist entry. exception: an entry of the list in lists[0] switched off there (spec.sources[].exclude); it only affects that list, its switch is the exclusion (off switches the list's entry back on) and nothing else of it can be edited.
+             * @enum {string}
+             */
+            kind: "entry" | "exception";
             lists: components["schemas"]["DomainEntryList"][];
             /** Format: date-time */
             modified?: string;
             namespace: string;
-            /** @enum {string} */
-            origin: "manual" | "querylog" | "unblock" | "api" | "migrated";
+            /**
+             * @description list for an exception.
+             * @enum {string}
+             */
+            origin: "manual" | "querylog" | "unblock" | "api" | "migrated" | "list";
             overrides: components["schemas"]["DomainOverride"][];
             /** @description Policies that reference the entry's lists, ns/name. */
             policies: string[];
@@ -1983,6 +1995,8 @@ export interface components {
             request?: string;
             /** @description The rule as compiled and shown in the query log: name, *.name or /expression/. */
             rule: string;
+            /** @description exception only: other lists that still match the name; the exception does not affect them. */
+            stillMatchedBy: components["schemas"]["DomainOverride"][];
             /** @enum {string} */
             type: "exact" | "wildcard" | "regex";
             /** @description exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes. */
@@ -3440,13 +3454,15 @@ export interface operations {
     listAllowlist: {
         parameters: {
             query?: {
+                /** @description Only entries, or only list exceptions. */
+                kind?: "entry" | "exception";
                 /** @description Only this namespace (default: every namespace). */
                 namespace?: string;
                 type?: "exact" | "wildcard" | "regex";
                 enabled?: "true" | "false";
-                /** @description everyone, or a ClientGroup (ns/name). */
+                /** @description everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list. */
                 scope?: string;
-                /** @description Substring of the value or comment, case-insensitive. */
+                /** @description Substring of the value, comment or list, case-insensitive. */
                 q?: string;
                 /** @description Page size (default 100). */
                 limit?: number;
@@ -7496,13 +7512,15 @@ export interface operations {
     listDenylist: {
         parameters: {
             query?: {
+                /** @description Only entries, or only list exceptions. */
+                kind?: "entry" | "exception";
                 /** @description Only this namespace (default: every namespace). */
                 namespace?: string;
                 type?: "exact" | "wildcard" | "regex";
                 enabled?: "true" | "false";
-                /** @description everyone, or a ClientGroup (ns/name). */
+                /** @description everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list. */
                 scope?: string;
-                /** @description Substring of the value or comment, case-insensitive. */
+                /** @description Substring of the value, comment or list, case-insensitive. */
                 q?: string;
                 /** @description Page size (default 100). */
                 limit?: number;
@@ -8601,13 +8619,15 @@ export interface operations {
             query?: {
                 /** @description Only Allowlist (allow) or Denylist (deny) entries. */
                 action?: "allow" | "deny";
+                /** @description Only entries, or only list exceptions. */
+                kind?: "entry" | "exception";
                 /** @description Only this namespace (default: every namespace). */
                 namespace?: string;
                 type?: "exact" | "wildcard" | "regex";
                 enabled?: "true" | "false";
-                /** @description everyone, or a ClientGroup (ns/name). */
+                /** @description everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list. */
                 scope?: string;
-                /** @description Substring of the value or comment, case-insensitive. */
+                /** @description Substring of the value, comment or list, case-insensitive. */
                 q?: string;
                 /** @description Page size (default 100). */
                 limit?: number;

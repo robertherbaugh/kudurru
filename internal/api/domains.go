@@ -34,7 +34,11 @@ type DomainOverride struct {
 // DomainEntry is one Allowlist or Denylist entry (every copy of namespace,
 // type and value across the action's lists).
 type DomainEntry struct {
-	ID        string            `json:"id" doc:"Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}."`
+	ID string `json:"id" doc:"Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}."`
+	// Kind is entry (an Allowlist or Denylist entry) or exception (an entry
+	// of another list switched off there: on the Allowlist for block
+	// lists, on the Denylist for allow lists).
+	Kind      string            `json:"kind" enum:"entry,exception" doc:"entry: an Allowlist or Denylist entry. exception: an entry of the list in lists[0] switched off there (spec.sources[].exclude); it only affects that list, its switch is the exclusion (off switches the list's entry back on) and nothing else of it can be edited."`
 	Action    string            `json:"action" enum:"allow,deny"`
 	Namespace string            `json:"namespace"`
 	Value     string            `json:"value" doc:"exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes."`
@@ -49,12 +53,16 @@ type DomainEntry struct {
 	Created   *time.Time        `json:"created,omitempty"`
 	CreatedBy string            `json:"createdBy,omitempty" doc:"The actor that added the entry (user:alice)."`
 	Modified  *time.Time        `json:"modified,omitempty"`
-	Origin    string            `json:"origin" enum:"manual,querylog,unblock,api,migrated"`
+	Origin    string            `json:"origin" enum:"manual,querylog,unblock,api,migrated,list" doc:"list for an exception."`
 	Request   string            `json:"request,omitempty" doc:"The UnblockRequest (ns/name) whose approval added the entry."`
 	// Overrides are, for an allow entry, the block lists that contain the
 	// name (allow wins over them); for a deny entry, the allow lists that
 	// win over it. Empty for regex entries.
-	Overrides      []DomainOverride `json:"overrides" nullable:"false"`
+	Overrides []DomainOverride `json:"overrides" nullable:"false"`
+	// StillMatchedBy, for an exception, are the other lists that still
+	// match the name (block lists for an Allowlist exception, allow lists
+	// for a Denylist one): the exception does not change them.
+	StillMatchedBy []DomainOverride `json:"stillMatchedBy" nullable:"false" doc:"exception only: other lists that still match the name; the exception does not affect them."`
 	ReadOnly       bool             `json:"readOnly"`
 	ReadOnlyReason string           `json:"readOnlyReason,omitempty"`
 }
@@ -98,6 +106,13 @@ type DomainEntriesCreate struct {
 	Comment   string   `json:"comment,omitempty" maxLength:"500"`
 	Enabled   *bool    `json:"enabled,omitempty" doc:"Default true."`
 	Origin    string   `json:"origin,omitempty" enum:"manual,querylog,api" doc:"Where the entry was added from (default manual)."`
+	// List and Source make list exceptions instead: the entries of that
+	// list (ns/name or a name in namespace) whose rule names the value are
+	// switched off there (spec.sources[].exclude); only that list is
+	// affected. A block list's for /allowlist, an allow list's for
+	// /denylist.
+	List   string `json:"list,omitempty" maxLength:"300" doc:"Switch the value off in this list only (a list exception) instead of adding an entry: ns/name or a name in namespace."`
+	Source string `json:"source,omitempty" maxLength:"300" doc:"With list: only this source (default every source that has the value)."`
 }
 
 // DomainEntryPatch is the body of PATCH /allowlist/{id} and /denylist/{id}.
@@ -127,22 +142,24 @@ type DomainWriteResult struct {
 }
 
 type domainListInput struct {
+	Kind      string `query:"kind" enum:"entry,exception" doc:"Only entries, or only list exceptions."`
 	Namespace string `query:"namespace" doc:"Only this namespace (default: every namespace)."`
 	Type      string `query:"type" enum:"exact,wildcard,regex"`
 	Enabled   string `query:"enabled" enum:"true,false"`
-	Scope     string `query:"scope" doc:"everyone, or a ClientGroup (ns/name)."`
-	Q         string `query:"q" doc:"Substring of the value or comment, case-insensitive."`
+	Scope     string `query:"scope" doc:"everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list."`
+	Q         string `query:"q" doc:"Substring of the value, comment or list, case-insensitive."`
 	Limit     int    `query:"limit" minimum:"0" maximum:"1000" doc:"Page size (default 100)."`
 	Continue  string `query:"continue"`
 }
 
 type domainsListInput struct {
 	Action    string `query:"action" enum:"allow,deny" doc:"Only Allowlist (allow) or Denylist (deny) entries."`
+	Kind      string `query:"kind" enum:"entry,exception" doc:"Only entries, or only list exceptions."`
 	Namespace string `query:"namespace" doc:"Only this namespace (default: every namespace)."`
 	Type      string `query:"type" enum:"exact,wildcard,regex"`
 	Enabled   string `query:"enabled" enum:"true,false"`
-	Scope     string `query:"scope" doc:"everyone, or a ClientGroup (ns/name)."`
-	Q         string `query:"q" doc:"Substring of the value or comment, case-insensitive."`
+	Scope     string `query:"scope" doc:"everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list."`
+	Q         string `query:"q" doc:"Substring of the value, comment or list, case-insensitive."`
 	Limit     int    `query:"limit" minimum:"0" maximum:"1000" doc:"Page size (default 100)."`
 	Continue  string `query:"continue"`
 }
@@ -190,7 +207,7 @@ func (s *Server) registerDomainLists() {
 			actions = []domainlist.Action{domainlist.Action(in.Action)}
 		}
 		return s.listDomainEntries(ctx, actions, &domainListInput{
-			Namespace: in.Namespace, Type: in.Type, Enabled: in.Enabled, Scope: in.Scope, Q: in.Q, Limit: in.Limit, Continue: in.Continue,
+			Kind: in.Kind, Namespace: in.Namespace, Type: in.Type, Enabled: in.Enabled, Scope: in.Scope, Q: in.Q, Limit: in.Limit, Continue: in.Continue,
 		})
 	})
 	for _, a := range []domainlist.Action{domainlist.Allow, domainlist.Deny} {
@@ -232,8 +249,14 @@ func (s *Server) registerDomainLists() {
 			return s.patchDomainEntry(ctx, a, in.ID, &in.Body)
 		})
 		del := operation(http.MethodDelete, path+"/{id}", "delete"+title+"Entry", "Delete a "+title+" entry", tag)
-		del.Description = "Removes every copy; a list left empty is deleted and its policy references removed."
+		del.Description = "Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again."
 		register(s, withStatus(del, http.StatusNoContent), perm{resource: "blocklists", verb: "write"}, func(ctx context.Context, in *domainIDInput) (*emptyOutput, error) {
+			if _, _, _, _, ok := domainlist.ParseExceptionID(in.ID); ok {
+				if _, err := s.setException(ctx, a, in.ID, false); err != nil {
+					return nil, err
+				}
+				return &emptyOutput{}, nil
+			}
 			ns, t, v, err := domainlist.ParseID(in.ID)
 			if err != nil {
 				return nil, domainError(err)
@@ -327,7 +350,11 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 		}
 	}
 	scope := strings.TrimSpace(in.Scope)
-	if scope != "" && scope != "everyone" && !strings.Contains(scope, "/") {
+	listScope, byList := strings.CutPrefix(scope, "list:")
+	if byList && !strings.Contains(listScope, "/") {
+		listScope = s.namespaceOr(in.Namespace) + "/" + listScope
+	}
+	if !byList && scope != "" && scope != "everyone" && !strings.Contains(scope, "/") {
 		scope = s.namespaceOr(in.Namespace) + "/" + scope
 	}
 	q := strings.ToLower(strings.TrimSpace(in.Q))
@@ -352,11 +379,13 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 	out.Total = len(all)
 	n := 0
 	for _, e := range all {
-		if in.Type != "" && string(e.Type) != in.Type ||
+		if in.Kind != "" && e.Kind != in.Kind ||
+			in.Type != "" && string(e.Type) != in.Type ||
 			in.Enabled != "" && strconv.FormatBool(e.Enabled()) != in.Enabled ||
-			scope == "everyone" && !e.Everyone ||
-			scope != "" && scope != "everyone" && !slices.Contains(e.Groups, scope) ||
-			q != "" && !strings.Contains(strings.ToLower(e.Value), q) && !strings.Contains(strings.ToLower(e.Primary().Comment), q) {
+			byList && (e.Kind != domainlist.KindException || e.Copies[0].List != listScope) ||
+			!byList && scope == "everyone" && !e.Everyone ||
+			!byList && scope != "" && scope != "everyone" && !slices.Contains(e.Groups, scope) ||
+			q != "" && !domainMatches(e, q) {
 			continue
 		}
 		out.Matched++
@@ -386,6 +415,14 @@ func (s *Server) listDomainEntries(ctx context.Context, actions []domainlist.Act
 	return &domainListOutput{Body: out}, nil
 }
 
+// domainMatches is the q search: the value, the comment or a list name.
+func domainMatches(e *domainlist.Entry, q string) bool {
+	if strings.Contains(strings.ToLower(e.Value), q) || strings.Contains(strings.ToLower(e.Primary().Comment), q) {
+		return true
+	}
+	return slices.ContainsFunc(e.Copies, func(c domainlist.Copy) bool { return strings.Contains(strings.ToLower(c.List), q) })
+}
+
 // domainView is the API form of e.
 func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntry {
 	p := e.Primary()
@@ -393,7 +430,13 @@ func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntr
 		ID: e.ID(), Action: string(e.Action), Namespace: e.Namespace, Value: e.Value, Type: string(e.Type), Rule: e.Rule(),
 		Enabled: e.Enabled(), Comment: p.Comment, Everyone: e.Everyone, Groups: nonNil(slices.Clone(e.Groups)),
 		Lists: []DomainEntryList{}, Policies: []string{}, Created: timePtr(p.Created), CreatedBy: p.CreatedBy, Modified: timePtr(p.Modified),
-		Origin: string(p.Origin), Request: p.Request, Overrides: []DomainOverride{},
+		Origin: string(p.Origin), Request: p.Request, Overrides: []DomainOverride{}, StillMatchedBy: []DomainOverride{}, Kind: e.Kind,
+	}
+	if v.Kind == "" {
+		v.Kind = domainlist.KindEntry
+	}
+	if e.Kind == domainlist.KindException {
+		return s.exceptionView(v, e, set)
 	}
 	if v.Origin == "" {
 		v.Origin = string(v1alpha1.OriginManual)
@@ -421,6 +464,47 @@ func (s *Server) domainView(e *domainlist.Entry, set *domainlist.Set) DomainEntr
 		v.ReadOnly, v.ReadOnlyReason = true, "a list of this entry is managed by "+owner+"; change it there"
 	}
 	v.Overrides = s.domainOverrides(e)
+	return v
+}
+
+// exceptionView completes the API form of a list exception.
+func (s *Server) exceptionView(v DomainEntry, e *domainlist.Entry, set *domainlist.Set) DomainEntry {
+	c := e.Copies[0]
+	v.Origin = "list"
+	managed := c.ManagedBy
+	if managed == "api" {
+		managed = ""
+	}
+	v.Lists = []DomainEntryList{{List: c.List, Source: c.Source, ManagedBy: managed}}
+	if set != nil {
+		v.Policies = nonNil(slices.Clone(set.ExceptionPolicies[c.List]))
+	}
+	v.Overrides = []DomainOverride{{List: c.List, Rule: e.Value}}
+	if c.ManagedBy != "" && c.ManagedBy != "api" && c.ManagedBy != "bootstrap" {
+		v.ReadOnly, v.ReadOnlyReason = true, "the list is managed by "+c.ManagedBy+"; change it there"
+	}
+	t, name, ok := domainlist.FromRule(e.Value, "")
+	if !ok || s.opts.Cache == nil {
+		return v
+	}
+	snap := s.opts.Cache.Snapshot()
+	if snap == nil || snap.Objects.Lists() == nil {
+		return v
+	}
+	n := domainlist.MatchName(t, name)
+	if n == "" {
+		return v
+	}
+	hits := snap.Objects.Lists().Contains(n)
+	if e.Action == domainlist.Deny {
+		hits = snap.Objects.Lists().ContainsAllow(n)
+	}
+	for list, rule := range hits {
+		if list != c.List {
+			v.StillMatchedBy = append(v.StillMatchedBy, DomainOverride{List: list, Rule: rule})
+		}
+	}
+	slices.SortFunc(v.StillMatchedBy, func(a, b DomainOverride) int { return strings.Compare(a.List, b.List) })
 	return v
 }
 
@@ -459,6 +543,9 @@ func (s *Server) domainOverrides(e *domainlist.Entry) []DomainOverride {
 }
 
 func (s *Server) findDomainEntry(ctx context.Context, a domainlist.Action, id string) (*domainlist.Entry, *domainlist.Set, error) {
+	if ns, list, source, value, ok := domainlist.ParseExceptionID(id); ok {
+		return s.exceptionEntry(ctx, a, ns, list, source, value)
+	}
 	ns, t, v, err := domainlist.ParseID(id)
 	if err != nil {
 		return nil, nil, domainError(err)
@@ -500,6 +587,9 @@ func (s *Server) createDomainEntries(ctx context.Context, a domainlist.Action, i
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
+	if in.List != "" {
+		return s.createExceptions(ctx, a, in)
+	}
 	t, err := domainlist.ParseType(in.Type)
 	if err != nil {
 		return nil, domainError(err)
@@ -538,6 +628,19 @@ func (s *Server) createDomainEntries(ctx context.Context, a domainlist.Action, i
 func (s *Server) patchDomainEntry(ctx context.Context, a domainlist.Action, id string, in *DomainEntryPatch) (*domainWriteOutput, error) {
 	if err := s.readOnly(); err != nil {
 		return nil, err
+	}
+	if _, _, _, _, ok := domainlist.ParseExceptionID(id); ok {
+		if in.Comment != nil || in.Value != nil || in.Type != nil || in.Scope != nil || len(in.Groups) > 0 {
+			return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable, "a list exception has only its switch", "edit the list's entries on its page, or add an Allowlist or Denylist entry")
+		}
+		if in.Enabled == nil {
+			return nil, errInvalid("body: enabled is required for a list exception")
+		}
+		v, err := s.setException(ctx, a, id, *in.Enabled)
+		if err != nil {
+			return nil, err
+		}
+		return &domainWriteOutput{Body: &DomainWriteResult{Items: []DomainEntry{*v}, Processed: ProcessedItems{Success: []ProcessedItem{{Item: id}}, Errors: []ProcessedItem{}}, Attached: []string{}, Skipped: []string{}}}, nil
 	}
 	ns, t, v, err := domainlist.ParseID(id)
 	if err != nil {
@@ -581,7 +684,20 @@ func (s *Server) batchDomainEntries(ctx context.Context, a domainlist.Action, in
 	processed := ProcessedItems{Success: []ProcessedItem{}, Errors: []ProcessedItem{}}
 	total := &domainlist.Result{}
 	byNS := map[string][]string{}
+	var exceptions []DomainEntry
 	for _, id := range in.IDs {
+		if _, _, _, _, ok := domainlist.ParseExceptionID(id); ok {
+			ev, err := s.setException(ctx, a, id, in.Op == "enable")
+			if err != nil {
+				processed.Errors = append(processed.Errors, ProcessedItem{Item: id, Error: errorMessage(err)})
+				continue
+			}
+			processed.Success = append(processed.Success, ProcessedItem{Item: id})
+			if in.Op != "delete" {
+				exceptions = append(exceptions, *ev)
+			}
+			continue
+		}
 		ns, t, v, err := domainlist.ParseID(id)
 		if err == nil {
 			var res *domainlist.Result
@@ -621,6 +737,7 @@ func (s *Server) batchDomainEntries(ctx context.Context, a domainlist.Action, in
 		}
 		out.Items = append(out.Items, res.Items...)
 	}
+	out.Items = append(out.Items, exceptions...)
 	out.Flushed = s.flushNames(total.Names)
 	return &domainWriteOutput{Body: out}, nil
 }

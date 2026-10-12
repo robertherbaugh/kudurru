@@ -18,8 +18,8 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../../api/context';
-import type { ClientGroup, DomainAction, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainListInfo, DomainUnattached } from '../../api/types';
-import { ACTION_LABEL, ACTION_OPTIONS, actionPath, ENABLED_OPTIONS, entriesWord, refField, refPath, shortRef, TYPE_OPTIONS, uiListAction } from '../../lib/domains';
+import type { BlockList, ClientGroup, DomainAction, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainListInfo, DomainUnattached } from '../../api/types';
+import { ACTION_LABEL, ACTION_OPTIONS, actionPath, ENABLED_OPTIONS, entriesWord, KIND_OPTIONS, refField, refPath, shortRef, TYPE_OPTIONS, uiListAction } from '../../lib/domains';
 import { formatExact } from '../../lib/format';
 import { useSearchParams } from '../../lib/router';
 import { SelectField, type SelectOption } from '../fields/SelectField';
@@ -38,8 +38,8 @@ export interface DomainEntriesViewProps {
 
 const TITLE = { allow: 'Allowlist', deny: 'Denylist', all: 'Domains' };
 const INTRO = {
-  allow: 'Domains and expressions that are never blocked, whatever the block lists say: for everyone or for some client groups. They live in the ui-allow lists, which every policy the dashboard manages uses.',
-  deny: 'Domains and expressions blocked on top of the block lists: for everyone or for some client groups. They live in the ui-deny lists. An allow entry for the same name still wins.',
+  allow: 'Domains and expressions that are never blocked, whatever the block lists say: for everyone or for some client groups. They live in the ui-allow lists, which every policy the dashboard manages uses. Entries switched off in a single block list show here too, as list exceptions.',
+  deny: 'Domains and expressions blocked on top of the block lists: for everyone or for some client groups. They live in the ui-deny lists. An allow entry for the same name still wins. Entries switched off in a single allow list show here too, as list exceptions.',
   all: 'Every allow and deny entry in one table, like Pi-hole’s Domains page. Big imported lists are on the Lists page; switch off single entries of those on the list itself.',
 };
 
@@ -71,6 +71,8 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
     if (q) f.q = q;
     const a = sp.get('action');
     if (!action && (a === 'allow' || a === 'deny')) f.action = a;
+    const kind = sp.get('kind');
+    if (kind === 'entry' || kind === 'exception') f.kind = kind;
     return f;
   }, [sp, action]);
   const filterKey = JSON.stringify(filters);
@@ -88,10 +90,14 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const [cursors, setCursors] = useState<string[]>(['']);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [seenFilters, setSeenFilters] = useState(filterKey);
+  // List exceptions switched back on drop out of GET; they stay on screen
+  // (switched off, so they can be switched on again) until the filters change.
+  const [kept, setKept] = useState<ReadonlyMap<string, DomainEntry>>(new Map());
   if (seenFilters !== filterKey) {
     setSeenFilters(filterKey);
     setCursors(['']);
     setSelected(new Set());
+    setKept(new Map());
   }
   const page = cursors.length - 1;
   const cursor = cursors[page] ?? '';
@@ -102,14 +108,32 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
     placeholderData: keepPreviousData,
   });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups') });
+  const blockLists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists') });
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<DomainEntry | null>(null);
   const [deleting, setDeleting] = useState<DomainEntry[] | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const items = q.data?.items ?? [];
+  const items = useMemo(() => {
+    const fetched = q.data?.items ?? [];
+    const ids = new Set(fetched.map((e) => e.id));
+    const extra = [...kept.values()].filter((e) => !ids.has(e.id));
+    return extra.length ? [...fetched, ...extra] : fetched;
+  }, [q.data, kept]);
   const chosen = items.filter((e) => selected.has(e.id));
+  /** Remembers exceptions a write switched back on (their list's entry applies again). */
+  const keep = (written: DomainEntry[]) => {
+    const off = written.filter((e) => e.kind === 'exception' && !e.enabled);
+    const on = new Set(written.filter((e) => e.kind === 'exception' && e.enabled).map((e) => e.id));
+    if (!off.length && !on.size) return;
+    setKept((prev) => {
+      const next = new Map(prev);
+      for (const e of off) next.set(e.id, e);
+      for (const id of on) next.delete(id);
+      return next;
+    });
+  };
 
   /** Replaces entries in every cached page (optimistic updates and write answers). */
   const patchCache = (fn: (e: DomainEntry) => DomainEntry) =>
@@ -127,12 +151,22 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
     },
     onError: (err, v, ctx) => {
       for (const [k, data] of ctx?.snapshot ?? []) qc.setQueryData(k, data);
-      notify.error(err, `Could not ${v.enabled ? 'enable' : 'disable'} ${v.entry.value}`);
+      notify.error(err, `Could not ${v.entry.kind === 'exception' ? (v.enabled ? 'switch off' : 'switch back on') : v.enabled ? 'enable' : 'disable'} ${v.entry.value}`);
     },
     onSuccess: (r, v) => {
-      const saved = r.items.find((e) => e.id === v.entry.id);
-      if (saved) patchCache((e) => (e.id === saved.id ? saved : e));
-      notify.success(writeSummary(`${v.entry.value} ${v.enabled ? 'enabled' : 'disabled'}.`, r, v.entry.action));
+      const saved = r.items.find((e) => e.id === v.entry.id) ?? (v.entry.kind === 'exception' ? { ...v.entry, enabled: v.enabled } : undefined);
+      if (saved) {
+        patchCache((e) => (e.id === saved.id ? saved : e));
+        keep([saved]);
+      }
+      const list = shortRef(v.entry.lists[0]?.list ?? '');
+      const head =
+        v.entry.kind === 'exception'
+          ? v.enabled
+            ? `${v.entry.value} switched off in ${list} again.`
+            : `${v.entry.value} switched back on in ${list}: that list ${v.entry.action === 'allow' ? 'blocks' : 'allows'} it again.`
+          : `${v.entry.value} ${v.enabled ? 'enabled' : 'disabled'}.`;
+      notify.success(writeSummary(head, r, v.entry.action));
     },
     onSettled: (_r, _e, v) => {
       setPending((p) => {
@@ -166,10 +200,10 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
       for (const [a, ids] of byAction) {
         if (v.op === 'delete' && ids.length === 1 && ids[0]) {
           await api.domains.delete(a, ids[0]);
-          results.push({ action: a, skipped: [] as string[], attached: [] as string[], errors: [] as { item: string; error: string }[] });
+          results.push({ action: a, skipped: [] as string[], attached: [] as string[], errors: [] as { item: string; error?: string }[], items: [] as DomainEntry[] });
         } else {
           const r = await api.domains.batch(a, { ids, op: v.op });
-          results.push({ action: a, skipped: r.skipped ?? [], attached: r.attached ?? [], errors: r.processed?.errors ?? [] });
+          results.push({ action: a, skipped: r.skipped ?? [], attached: r.attached ?? [], errors: r.processed?.errors ?? [], items: r.items ?? [] });
         }
       }
       return results;
@@ -180,7 +214,13 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
       const verb = v.op === 'delete' ? 'Deleted' : v.op === 'enable' ? 'Enabled' : 'Disabled';
       const first = results[0];
       if (done) notify.success(writeSummary(`${verb} ${done} ${entriesWord(done)}.`, { attached: results.flatMap((r) => r.attached), skipped: results.flatMap((r) => r.skipped) }, first?.action ?? 'allow'));
-      for (const f of failed) notify.error(new Error(`${f.item}: ${f.error}`));
+      for (const f of failed) notify.error(new Error(`${f.item}: ${f.error ?? 'failed'}`));
+      if (v.op === 'delete') {
+        const gone = new Set(v.entries.map((e) => e.id));
+        setKept((prev) => new Map([...prev].filter(([id]) => !gone.has(id))));
+      } else {
+        keep(results.flatMap((r) => r.items));
+      }
       setSelected(new Set());
       setDeleting(null);
       invalidate();
@@ -194,6 +234,13 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
       const ref = `${g.metadata.namespace ?? 'default'}/${g.metadata.name}`;
       return { value: ref, label: shortRef(ref) };
     }),
+    // The exceptions of one list: block lists on the Allowlist, allow lists on the Denylist.
+    ...(blockLists.data?.items ?? [])
+      .filter((l) => !uiListAction(l.metadata.name) && (!action || (action === 'allow') === (l.spec.mode !== 'allow')))
+      .map((l) => {
+        const ref = `${l.metadata.namespace ?? 'default'}/${l.metadata.name}`;
+        return { value: `list:${ref}`, label: `Only list ${shortRef(ref)}` };
+      }),
   ];
   const anyFilter = Object.keys(filters).length > 0;
   const lists = q.data?.lists ?? [];
@@ -255,14 +302,15 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
         {!action ? <SelectField label="Action" isLabelHidden value={filters.action ?? ''} options={ACTION_OPTIONS} emptyLabel="Allow and deny" onChange={(v) => setParams({ action: v || null })} /> : null}
         <SelectField label="Type" isLabelHidden value={filters.type ?? ''} options={TYPE_OPTIONS} emptyLabel="All types" onChange={(v) => setParams({ type: v || null })} />
         <SelectField label="Enabled" isLabelHidden value={filters.enabled ?? ''} options={ENABLED_OPTIONS} emptyLabel="Enabled and disabled" onChange={(v) => setParams({ enabled: v || null })} />
-        <SelectField label="Applies to" isLabelHidden value={filters.scope ?? ''} options={scopeOptions} emptyLabel="Everyone and every group" onChange={(v) => setParams({ scope: v || null })} />
+        <SelectField label="Applies to" isLabelHidden value={filters.scope ?? ''} options={scopeOptions} emptyLabel="Everyone, every group and list" onChange={(v) => setParams({ scope: v || null })} />
+        <SelectField label="Kind" isLabelHidden value={filters.kind ?? ''} options={KIND_OPTIONS} emptyLabel="Entries and list exceptions" onChange={(v) => setParams({ kind: v || null })} />
         {anyFilter ? (
           <Button
             label="Clear filters"
             variant="ghost"
             onClick={() => {
               setSearch('');
-              setParams({ q: null, type: null, enabled: null, scope: null, action: null });
+              setParams({ q: null, type: null, enabled: null, scope: null, action: null, kind: null });
             }}
           />
         ) : null}

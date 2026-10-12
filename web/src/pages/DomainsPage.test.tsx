@@ -7,7 +7,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { collectEntries } from '../mocks/domains';
 import { mockDB } from '../mocks/handlers';
-import { findSelector, getSelector, pick } from '../test/controls';
+import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp, uiEntryValues } from '../test/utils';
 import AllowlistPage from './AllowlistPage';
@@ -302,5 +302,108 @@ describe('DomainsPage', () => {
     fireEvent.click(within(screen.getByRole('toolbar', { name: 'Bulk actions' })).getByRole('button', { name: 'Disable' }));
     await waitFor(() => expect(entry('deny', 'tracking.example-shop.com')?.enabled).toBe(false));
     expect(entry('allow', 's.youtube.com')?.enabled).toBe(false);
+  });
+});
+
+describe('list exceptions on the Allowlist', () => {
+  const steven = () => mockDB().lists.find((l) => l.metadata.name === 'stevenblack');
+  const exclude = () => steven()?.spec.sources[0]?.exclude ?? [];
+  const exceptionSwitch = (value: string) => within(screen.getByTestId(`entry-${value}`)).getByRole('switch', { name: `${value} switched off in stevenblack` });
+
+  it('shows entries switched off in a block list as their own rows', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    const r = await row('ads.unified.example');
+    expect(within(r).getByText('exception')).toBeInTheDocument();
+    expect(within(r).getByText('Only list')).toBeInTheDocument();
+    for (const link of within(r).getAllByRole('link', { name: 'stevenblack' })) expect(link).toHaveAttribute('href', '/lists/default/stevenblack');
+    expect(within(r).getByText(/used by default, kids-bedtime, iot-strict/)).toBeInTheDocument();
+    expect(within(r).getByText('source unified')).toBeInTheDocument();
+    expect(within(r).getByRole('switch')).toBeChecked();
+    // Only the switch and Delete: nothing else of an exception can be edited.
+    expect(within(r).queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(within(r).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Add comment' })).toBeNull();
+    // The stale exclude (no longer in the body) is not an exception.
+    expect(screen.queryByTestId('entry-gone.tracker.example')).toBeNull();
+  });
+
+  it('switches the list entry back on and keeps the row to switch it off again', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    await row('ads.unified.example');
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    fireEvent.click(exceptionSwitch('ads.unified.example'));
+    await waitFor(() => expect(exclude()).not.toContain('ads.unified.example'));
+    expect(await screen.findByText(/^ads\.unified\.example switched back on in stevenblack: that list blocks it again\./)).toBeInTheDocument();
+    // GET no longer lists it; the row stays, switched off.
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeChecked());
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    fireEvent.click(exceptionSwitch('ads.unified.example'));
+    await waitFor(() => expect(exclude()).toContain('ads.unified.example'));
+  });
+
+  it('removes an exception with a confirmation that says the list blocks it again', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    await waitFor(() => expect(within(screen.getByTestId('entry-track.unified.example')).getByRole('button', { name: 'Delete' })).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(within(screen.getByTestId('entry-track.unified.example')).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Switch track.unified.example back on in stevenblack?' });
+    expect(within(dialog).getByText(/will be blocked again by stevenblack/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Switch back on' }));
+    await waitFor(() => expect(exclude()).not.toContain('track.unified.example'));
+    await waitFor(() => expect(screen.queryByTestId('entry-track.unified.example')).toBeNull());
+  });
+
+  it('filters by kind and by list', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    await row('s.youtube.com');
+    pick(await findSelector(/^Kind/), 'List exceptions');
+    await waitFor(() => expect(screen.queryByTestId('entry-s.youtube.com')).toBeNull());
+    expect(await row('ads.unified.example')).toBeInTheDocument();
+    expect(window.location.search).toBe('?kind=exception');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    pick(await findSelector(/^Applies to/), 'Only list stevenblack');
+    await waitFor(() => expect(screen.queryByTestId('entry-s.youtube.com')).toBeNull());
+    expect(window.location.search).toBe('?scope=list%3Adefault%2Fstevenblack');
+    expect(await row('track.unified.example')).toBeInTheDocument();
+  });
+
+  it('switches several exceptions back on in one batch', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist?kind=exception' });
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    fireEvent.click(within(screen.getByTestId('entry-ads.unified.example')).getByRole('checkbox', { name: 'Select ads.unified.example' }));
+    fireEvent.click(within(screen.getByTestId('entry-track.unified.example')).getByRole('checkbox', { name: 'Select track.unified.example' }));
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Bulk actions' })).getByRole('button', { name: 'Disable' }));
+    await waitFor(() => expect(exclude()).toEqual(['gone.tracker.example']));
+    // Both rows stay, switched off.
+    await waitFor(() => expect(exceptionSwitch('track.unified.example')).not.toBeChecked());
+    expect(exceptionSwitch('ads.unified.example')).not.toBeChecked();
+  });
+
+  it('adds an exception "Only in list" from the add dialog', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    const dialog = await openAdd('Add to the Allowlist');
+    pick(getSelector(/^Applies to/, dialog), 'Only in list …');
+    expect(within(dialog).queryByRole('textbox', { name: /^Comment/ })).toBeNull();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Domains/ }), { target: { value: 'pixel.unified.example\nnot-there.example' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Switch off 2' }));
+    expect(await within(dialog).findByText('Choose a list')).toBeInTheDocument();
+    const lists = await findSelector(/^Block list/, dialog);
+    // Block lists only (no allow lists, no ui lists).
+    expect(optionLabels(lists)).not.toContain('default/ui-deny');
+    pick(lists, 'default/stevenblack');
+    expect(await findSelector(/^Source/, dialog)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Switch off 2' }));
+    await waitFor(() => expect(exclude()).toContain('pixel.unified.example'));
+    expect(await within(dialog).findByText('not in default/stevenblack')).toBeInTheDocument();
+    expect(await screen.findByText(/^Switched 1 off in stevenblack only/)).toBeInTheDocument();
+    expect(collectEntries(mockDB(), 'allow').some((e) => e.kind === 'exception' && e.value === 'pixel.unified.example')).toBe(true);
+  });
+
+  it('explains a name that matches an exception in the check box', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist' });
+    const panel = await screen.findByRole('region', { name: 'Is it allowed?' });
+    fireEvent.change(within(panel).getByRole('textbox', { name: /^Name/ }), { target: { value: 'ads.unified.example' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Check' }));
+    const why = await within(panel).findByTestId('domain-check-exceptions');
+    expect(why).toHaveTextContent('ads.unified.example is switched off in stevenblack (a list exception): that list does not block it.');
   });
 });

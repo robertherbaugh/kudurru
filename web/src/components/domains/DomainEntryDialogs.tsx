@@ -9,23 +9,31 @@ import { Button } from '@astryxdesign/core/Button';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { qk, useApi } from '../../api/context';
-import type { DomainAction, DomainEntry, DomainEntryPatch, DomainEntryType, DomainWriteResult } from '../../api/types';
-import { ACTION_LABEL, ACTION_OPTIONS, firstValueError, normaliseValue, skippedText, splitValues, TYPE_OPTIONS, TYPE_PLACEHOLDER, valueError } from '../../lib/domains';
+import type { BlockList, DomainAction, DomainEntry, DomainEntryPatch, DomainEntryType, DomainWriteResult } from '../../api/types';
+import { ACTION_LABEL, ACTION_OPTIONS, firstValueError, normaliseValue, shortRef, skippedText, splitValues, TYPE_OPTIONS, TYPE_PLACEHOLDER, uiListAction, valueError } from '../../lib/domains';
+import { sourceName } from '../../lib/lists';
 import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { SelectField, type SelectOption } from '../fields/SelectField';
 import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
 import { useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
 
-type Scope = 'everyone' | 'groups';
+type Scope = 'everyone' | 'groups' | 'list';
 
 const SCOPE_OPTIONS: SelectOption[] = [
   { value: 'everyone', label: 'Everyone', help: 'Every client of the policies of the namespace.' },
   { value: 'groups', label: 'Some client groups', help: 'Only the clients of the chosen groups (through the policies that cover them).' },
 ];
+
+/** The third scope of the add dialog: switch the name off in one list only (a list exception). */
+function listScopeOption(action: DomainAction): SelectOption {
+  return action === 'allow'
+    ? { value: 'list', label: 'Only in list …', help: 'Switches the name off in one block list only; other lists that block it still do, and nothing is added to the Allowlist.' }
+    : { value: 'list', label: 'Only in list …', help: 'Switches the name off in one allow list only; other lists that allow it still do, and nothing is added to the Denylist.' };
+}
 
 /** Refreshes everything an entry write can change: the entry pages, the lists behind them and the policies they were attached to. */
 export function useInvalidateDomains(): () => void {
@@ -45,10 +53,27 @@ export function writeSummary(head: string, r: Pick<DomainWriteResult, 'attached'
   return parts.join(' ');
 }
 
-function ScopeFields({ scope, groups, onScope, onGroups, showError, isDisabled }: { scope: Scope; groups: string[]; onScope: (s: Scope) => void; onGroups: (g: string[]) => void; showError: boolean; isDisabled?: boolean }) {
+function ScopeFields({
+  scope,
+  groups,
+  onScope,
+  onGroups,
+  showError,
+  isDisabled,
+  listAction,
+}: {
+  scope: Scope;
+  groups: string[];
+  onScope: (s: Scope) => void;
+  onGroups: (g: string[]) => void;
+  showError: boolean;
+  isDisabled?: boolean;
+  /** Offer "Only in list …" (the add dialog). */
+  listAction?: DomainAction;
+}) {
   return (
     <>
-      <SelectField label="Applies to" value={scope} options={SCOPE_OPTIONS} onChange={(v) => onScope(v as Scope)} isDisabled={isDisabled} />
+      <SelectField label="Applies to" value={scope} options={listAction ? [...SCOPE_OPTIONS, listScopeOption(listAction)] : SCOPE_OPTIONS} onChange={(v) => onScope(v as Scope)} isDisabled={isDisabled} />
       {scope === 'groups' ? (
         <ObjectRefPicker
           kind="clientgroups"
@@ -85,12 +110,19 @@ export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = '
   const [scope, setScope] = useState<Scope>('everyone');
   const [groups, setGroups] = useState<string[]>([]);
   const [comment, setComment] = useState('');
+  const [list, setList] = useState<string[]>([]);
+  const [source, setSource] = useState('');
   const [tried, setTried] = useState(false);
   const [rejected, setRejected] = useState<{ item: string; error: string }[]>([]);
   const act = fixed ?? action;
-  const values = splitValues(type, text);
-  const bad = firstValueError(type, values);
-  const scopeOK = scope === 'everyone' || groups.length > 0;
+  const inList = scope === 'list';
+  // "Only in list": the names or rules as that list has them; the list checks them.
+  const values = inList ? splitValues('exact', text) : splitValues(type, text);
+  const bad = inList ? null : firstValueError(type, values);
+  const scopeOK = scope === 'everyone' || (scope === 'groups' ? groups.length > 0 : list.length > 0);
+  const lists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists'), enabled: open && inList });
+  const chosenList = (lists.data?.items ?? []).find((l) => `${l.metadata.namespace ?? 'default'}/${l.metadata.name}` === list[0]);
+  const sourceOptions: SelectOption[] = (chosenList?.spec.sources ?? []).map((src, i) => ({ value: sourceName(i, src), label: sourceName(i, src), detail: src.url ?? (src.inline ? `${src.inline.length} inline entries` : undefined) }));
   const stored = type === 'wildcard' && values.length && !bad ? values.map((v) => normaliseValue(type, v)) : [];
 
   const reset = () => {
@@ -106,18 +138,27 @@ export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = '
 
   const m = useMutation({
     mutationFn: () =>
-      api.domains.create(act, {
-        values,
-        type,
-        namespace,
-        ...(scope === 'groups' ? { groups } : {}),
-        ...(comment.trim() ? { comment: comment.trim() } : {}),
-        origin: 'manual',
-      }),
+      api.domains.create(
+        act,
+        inList
+          ? { values, namespace, list: list[0] ?? '', ...(source ? { source } : {}) }
+          : {
+              values,
+              type,
+              namespace,
+              ...(scope === 'groups' ? { groups } : {}),
+              ...(comment.trim() ? { comment: comment.trim() } : {}),
+              origin: 'manual',
+            },
+      ),
     onSuccess: (r) => {
       const ok = r.processed?.success.length ?? r.items.length;
       const errors = r.processed?.errors ?? [];
-      if (ok) notify.success(writeSummary(`Added ${ok} to the ${ACTION_LABEL[act]}.`, r, act));
+      if (ok) {
+        notify.success(
+          inList ? `Switched ${ok} off in ${shortRef(list[0] ?? '')} only; it shows on the ${ACTION_LABEL[act]} as a list exception.` : writeSummary(`Added ${ok} to the ${ACTION_LABEL[act]}.`, r, act),
+        );
+      }
       invalidate();
       if (errors.length) {
         // Keep the rejected values in the box so they can be fixed.
@@ -146,31 +187,35 @@ export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = '
       footer={
         <>
           <Button label="Cancel" variant="ghost" onClick={close} />
-          <Button type="submit" label={values.length > 1 ? `Add ${values.length}` : 'Add'} variant="primary" isDisabled={!values.length || !!bad} isLoading={m.isPending} />
+          <Button type="submit" label={`${inList ? 'Switch off' : 'Add'}${values.length > 1 ? ` ${values.length}` : ''}`} variant="primary" isDisabled={!values.length || !!bad} isLoading={m.isPending} />
         </>
       }
     >
       <VStack gap={4}>
         {!fixed ? <SelectField label="Action" value={action} options={ACTION_OPTIONS} onChange={(v) => setAction(v as DomainAction)} /> : null}
-        <SelectField
-          label="Type"
-          value={type}
-          options={TYPE_OPTIONS}
-          onChange={(v) => {
-            setType(v as DomainEntryType);
-            setRejected([]);
-          }}
-        />
+        {!inList ? (
+          <SelectField
+            label="Type"
+            value={type}
+            options={TYPE_OPTIONS}
+            onChange={(v) => {
+              setType(v as DomainEntryType);
+              setRejected([]);
+            }}
+          />
+        ) : null}
         <TextAreaField
-          label={type === 'regex' ? 'Expressions' : 'Domains'}
+          label={!inList && type === 'regex' ? 'Expressions' : 'Domains'}
           help={
-            stored.length
+            inList
+              ? 'The names or rules as the list has them (e.g. tracker.example or ||cdn.example^), one per line.'
+              : stored.length
               ? `Saved as ${stored.slice(0, 3).join(', ')}${stored.length > 3 ? ` and ${stored.length - 3} more` : ''}.`
               : type === 'regex'
                 ? 'One expression per line.'
                 : 'One per line, or separated by spaces or commas.'
           }
-          placeholder={TYPE_PLACEHOLDER[type]}
+          placeholder={inList ? 'tracker.example\n||cdn.example^' : TYPE_PLACEHOLDER[type]}
           rows={4}
           hasSpellCheck={false}
           mono
@@ -181,8 +226,28 @@ export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = '
           }}
           error={bad ? `${bad.value}: ${bad.error}` : tried && !values.length ? 'Enter at least one value' : undefined}
         />
-        <ScopeFields scope={scope} groups={groups} onScope={setScope} onGroups={setGroups} showError={tried} />
-        <TextField label="Comment" isOptional value={comment} onChange={(v) => setComment(v.slice(0, 500))} placeholder="Why this entry exists" />
+        <ScopeFields scope={scope} groups={groups} onScope={setScope} onGroups={setGroups} showError={tried} listAction={act} />
+        {inList ? (
+          <>
+            <ObjectRefPicker
+              kind="blocklists"
+              label={act === 'allow' ? 'Block list' : 'Allow list'}
+              value={list}
+              onChange={(v) => {
+                setList(v);
+                setSource('');
+              }}
+              filter={(o) => !uiListAction(o.metadata.name) && ((o as BlockList).spec.mode === 'allow') === (act === 'deny')}
+              description={`The ${act === 'allow' ? 'block' : 'allow'} list to switch the names off in; only that list changes.`}
+              error={tried && !list.length ? 'Choose a list' : undefined}
+            />
+            {chosenList ? (
+              <SelectField label="Source" isOptional value={source} options={sourceOptions} emptyLabel="Every source that has the name" onChange={setSource} help="Narrow it to one source of the list." />
+            ) : null}
+          </>
+        ) : (
+          <TextField label="Comment" isOptional value={comment} onChange={(v) => setComment(v.slice(0, 500))} placeholder="Why this entry exists" />
+        )}
         {rejected.length ? (
           <Banner status="warning" title={`${rejected.length} not added`} collapsible={false}>
             <List density="compact">
@@ -218,7 +283,7 @@ export function EditEntryDialog({ entry, onClose }: { entry: DomainEntry; onClos
     if (type !== entry.type) p.type = type;
     if (v !== entry.value || type !== entry.type) p.value = v;
     if (scope !== initialScope || (scope === 'groups' && [...groups].sort().join() !== [...entry.groups].sort().join())) {
-      p.scope = scope;
+      p.scope = scope === 'groups' ? 'groups' : 'everyone';
       if (scope === 'groups') p.groups = groups;
     }
     if (comment.trim() !== (entry.comment ?? '')) p.comment = comment.trim();
@@ -271,6 +336,28 @@ export function EditEntryDialog({ entry, onClose }: { entry: DomainEntry; onClos
 
 export function DeleteEntriesDialog({ entries, busy, onConfirm, onClose }: { entries: DomainEntry[]; busy: boolean; onConfirm: () => void; onClose: () => void }) {
   const one = entries.length === 1 ? entries[0] : undefined;
+  const exceptions = entries.filter((e) => e.kind === 'exception');
+  if (one?.kind === 'exception') {
+    const list = shortRef(one.lists[0]?.list ?? '', one.namespace);
+    return (
+      <FormDialog
+        isOpen
+        onClose={onClose}
+        title={`Switch ${one.value} back on in ${list}?`}
+        width={460}
+        footer={
+          <>
+            <Button label="Cancel" variant="ghost" onClick={onClose} />
+            <Button label="Switch back on" variant="destructive" isLoading={busy} onClick={onConfirm} />
+          </>
+        }
+      >
+        <Text type="supporting">
+          The list exception goes away and the entry of {list} applies again: {one.value} will be {one.action === 'allow' ? 'blocked' : 'allowed'} again by {list} for the clients of its policies.
+        </Text>
+      </FormDialog>
+    );
+  }
   return (
     <FormDialog
       isOpen
@@ -288,12 +375,17 @@ export function DeleteEntriesDialog({ entries, busy, onConfirm, onClose }: { ent
         {!one ? (
           <List density="compact">
             {entries.slice(0, 12).map((e) => (
-              <ListItem key={e.id} label={e.value} description={e.action === 'allow' ? 'allow' : 'deny'} />
+              <ListItem key={e.id} label={e.value} description={e.kind === 'exception' ? `switched off in ${shortRef(e.lists[0]?.list ?? '', e.namespace)}` : e.action === 'allow' ? 'allow' : 'deny'} />
             ))}
           </List>
         ) : null}
         {entries.length > 12 ? <Text type="supporting">and {entries.length - 12} more</Text> : null}
         <Text type="supporting">They leave every list they are on, for everyone and every group. To keep one for later, switch it off instead.</Text>
+        {exceptions.length ? (
+          <Text type="supporting">
+            {exceptions.length === 1 ? 'The list exception among them is removed' : `The ${exceptions.length} list exceptions among them are removed`}: their lists block or allow those names again.
+          </Text>
+        ) : null}
       </VStack>
     </FormDialog>
   );

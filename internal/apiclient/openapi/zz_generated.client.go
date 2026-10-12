@@ -233,9 +233,28 @@ func (e DomainEntryAction) Valid() bool {
 	}
 }
 
+// Defines values for DomainEntryKind.
+const (
+	DomainEntryKindEntry     DomainEntryKind = "entry"
+	DomainEntryKindException DomainEntryKind = "exception"
+)
+
+// Valid indicates whether the value is a known member of the DomainEntryKind enum.
+func (e DomainEntryKind) Valid() bool {
+	switch e {
+	case DomainEntryKindEntry:
+		return true
+	case DomainEntryKindException:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DomainEntryOrigin.
 const (
 	DomainEntryOriginApi      DomainEntryOrigin = "api"
+	DomainEntryOriginList     DomainEntryOrigin = "list"
 	DomainEntryOriginManual   DomainEntryOrigin = "manual"
 	DomainEntryOriginMigrated DomainEntryOrigin = "migrated"
 	DomainEntryOriginQuerylog DomainEntryOrigin = "querylog"
@@ -246,6 +265,8 @@ const (
 func (e DomainEntryOrigin) Valid() bool {
 	switch e {
 	case DomainEntryOriginApi:
+		return true
+	case DomainEntryOriginList:
 		return true
 	case DomainEntryOriginManual:
 		return true
@@ -920,6 +941,24 @@ func (e UnblockRequestState) Valid() bool {
 	}
 }
 
+// Defines values for ListAllowlistParamsKind.
+const (
+	ListAllowlistParamsKindEntry     ListAllowlistParamsKind = "entry"
+	ListAllowlistParamsKindException ListAllowlistParamsKind = "exception"
+)
+
+// Valid indicates whether the value is a known member of the ListAllowlistParamsKind enum.
+func (e ListAllowlistParamsKind) Valid() bool {
+	switch e {
+	case ListAllowlistParamsKindEntry:
+		return true
+	case ListAllowlistParamsKindException:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAllowlistParamsType.
 const (
 	ListAllowlistParamsTypeExact    ListAllowlistParamsType = "exact"
@@ -1034,6 +1073,24 @@ func (e ListClientsParamsScope) Valid() bool {
 	}
 }
 
+// Defines values for ListDenylistParamsKind.
+const (
+	ListDenylistParamsKindEntry     ListDenylistParamsKind = "entry"
+	ListDenylistParamsKindException ListDenylistParamsKind = "exception"
+)
+
+// Valid indicates whether the value is a known member of the ListDenylistParamsKind enum.
+func (e ListDenylistParamsKind) Valid() bool {
+	switch e {
+	case ListDenylistParamsKindEntry:
+		return true
+	case ListDenylistParamsKindException:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListDenylistParamsType.
 const (
 	ListDenylistParamsTypeExact    ListDenylistParamsType = "exact"
@@ -1085,6 +1142,24 @@ func (e ListDomainEntriesParamsAction) Valid() bool {
 	case ListDomainEntriesParamsActionAllow:
 		return true
 	case ListDomainEntriesParamsActionDeny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListDomainEntriesParamsKind.
+const (
+	ListDomainEntriesParamsKindEntry     ListDomainEntriesParamsKind = "entry"
+	ListDomainEntriesParamsKindException ListDomainEntriesParamsKind = "exception"
+)
+
+// Valid indicates whether the value is a known member of the ListDomainEntriesParamsKind enum.
+func (e ListDomainEntriesParamsKind) Valid() bool {
+	switch e {
+	case ListDomainEntriesParamsKindEntry:
+		return true
+	case ListDomainEntriesParamsKindException:
 		return true
 	default:
 		return false
@@ -1859,11 +1934,17 @@ type DomainEntriesCreate struct {
 	// Groups ClientGroups (ns/name or a name in namespace); empty applies to everyone.
 	Groups *[]string `json:"groups,omitempty"`
 
+	// List Switch the value off in this list only (a list exception) instead of adding an entry: ns/name or a name in namespace.
+	List *string `json:"list,omitempty"`
+
 	// Namespace Default the server's default namespace.
 	Namespace *string `json:"namespace,omitempty"`
 
 	// Origin Where the entry was added from (default manual).
 	Origin *DomainEntriesCreateOrigin `json:"origin,omitempty"`
+
+	// Source With list: only this source (default every source that has the value).
+	Source *string `json:"source,omitempty"`
 
 	// Type Default exact.
 	Type *DomainEntriesCreateType `json:"type,omitempty"`
@@ -1895,10 +1976,15 @@ type DomainEntry struct {
 	Groups []string `json:"groups"`
 
 	// Id Opaque, URL-safe identifier for /allowlist/{id} and /denylist/{id}.
-	Id        string            `json:"id"`
+	Id string `json:"id"`
+
+	// Kind entry: an Allowlist or Denylist entry. exception: an entry of the list in lists[0] switched off there (spec.sources[].exclude); it only affects that list, its switch is the exclusion (off switches the list's entry back on) and nothing else of it can be edited.
+	Kind      DomainEntryKind   `json:"kind"`
 	Lists     []DomainEntryList `json:"lists"`
 	Modified  *time.Time        `json:"modified,omitempty"`
 	Namespace string            `json:"namespace"`
+
+	// Origin list for an exception.
 	Origin    DomainEntryOrigin `json:"origin"`
 	Overrides []DomainOverride  `json:"overrides"`
 
@@ -1911,8 +1997,11 @@ type DomainEntry struct {
 	Request *string `json:"request,omitempty"`
 
 	// Rule The rule as compiled and shown in the query log: name, *.name or /expression/.
-	Rule string          `json:"rule"`
-	Type DomainEntryType `json:"type"`
+	Rule string `json:"rule"`
+
+	// StillMatchedBy exception only: other lists that still match the name; the exception does not affect them.
+	StillMatchedBy []DomainOverride `json:"stillMatchedBy"`
+	Type           DomainEntryType  `json:"type"`
 
 	// Value exact: ads.example.com; wildcard: *.example.com; regex: the RE2 expression without slashes.
 	Value string `json:"value"`
@@ -1921,7 +2010,10 @@ type DomainEntry struct {
 // DomainEntryAction defines model for DomainEntry.Action.
 type DomainEntryAction string
 
-// DomainEntryOrigin defines model for DomainEntry.Origin.
+// DomainEntryKind entry: an Allowlist or Denylist entry. exception: an entry of the list in lists[0] switched off there (spec.sources[].exclude); it only affects that list, its switch is the exclusion (off switches the list's entry back on) and nothing else of it can be edited.
+type DomainEntryKind string
+
+// DomainEntryOrigin list for an exception.
 type DomainEntryOrigin string
 
 // DomainEntryType defines model for DomainEntry.Type.
@@ -3439,21 +3531,27 @@ type ZoneSummary struct {
 
 // ListAllowlistParams defines parameters for ListAllowlist.
 type ListAllowlistParams struct {
+	// Kind Only entries, or only list exceptions.
+	Kind *ListAllowlistParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Namespace Only this namespace (default: every namespace).
 	Namespace *string                     `form:"namespace,omitempty" json:"namespace,omitempty"`
 	Type      *ListAllowlistParamsType    `form:"type,omitempty" json:"type,omitempty"`
 	Enabled   *ListAllowlistParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
 
-	// Scope everyone, or a ClientGroup (ns/name).
+	// Scope everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list.
 	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Q Substring of the value or comment, case-insensitive.
+	// Q Substring of the value, comment or list, case-insensitive.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Page size (default 100).
 	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
 	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
 }
+
+// ListAllowlistParamsKind defines parameters for ListAllowlist.
+type ListAllowlistParamsKind string
 
 // ListAllowlistParamsType defines parameters for ListAllowlist.
 type ListAllowlistParamsType string
@@ -3654,21 +3752,27 @@ type ListClientsParamsScope string
 
 // ListDenylistParams defines parameters for ListDenylist.
 type ListDenylistParams struct {
+	// Kind Only entries, or only list exceptions.
+	Kind *ListDenylistParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Namespace Only this namespace (default: every namespace).
 	Namespace *string                    `form:"namespace,omitempty" json:"namespace,omitempty"`
 	Type      *ListDenylistParamsType    `form:"type,omitempty" json:"type,omitempty"`
 	Enabled   *ListDenylistParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
 
-	// Scope everyone, or a ClientGroup (ns/name).
+	// Scope everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list.
 	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Q Substring of the value or comment, case-insensitive.
+	// Q Substring of the value, comment or list, case-insensitive.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Page size (default 100).
 	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
 	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
 }
+
+// ListDenylistParamsKind defines parameters for ListDenylist.
+type ListDenylistParamsKind string
 
 // ListDenylistParamsType defines parameters for ListDenylist.
 type ListDenylistParamsType string
@@ -3681,15 +3785,18 @@ type ListDomainEntriesParams struct {
 	// Action Only Allowlist (allow) or Denylist (deny) entries.
 	Action *ListDomainEntriesParamsAction `form:"action,omitempty" json:"action,omitempty"`
 
+	// Kind Only entries, or only list exceptions.
+	Kind *ListDomainEntriesParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Namespace Only this namespace (default: every namespace).
 	Namespace *string                         `form:"namespace,omitempty" json:"namespace,omitempty"`
 	Type      *ListDomainEntriesParamsType    `form:"type,omitempty" json:"type,omitempty"`
 	Enabled   *ListDomainEntriesParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
 
-	// Scope everyone, or a ClientGroup (ns/name).
+	// Scope everyone, a ClientGroup (ns/name), or list:<ns/name> for the exceptions of one list.
 	Scope *string `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Q Substring of the value or comment, case-insensitive.
+	// Q Substring of the value, comment or list, case-insensitive.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Page size (default 100).
@@ -3699,6 +3806,9 @@ type ListDomainEntriesParams struct {
 
 // ListDomainEntriesParamsAction defines parameters for ListDomainEntries.
 type ListDomainEntriesParamsAction string
+
+// ListDomainEntriesParamsKind defines parameters for ListDomainEntries.
+type ListDomainEntriesParamsKind string
 
 // ListDomainEntriesParamsType defines parameters for ListDomainEntries.
 type ListDomainEntriesParamsType string
@@ -4239,7 +4349,7 @@ type ClientInterface interface {
 
 	// DeleteAllowlistEntry Delete a Allowlist entry
 	//
-	// Removes every copy; a list left empty is deleted and its policy references removed.
+	// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 	//
 	// Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
 	DeleteAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4629,7 +4739,7 @@ type ClientInterface interface {
 
 	// DeleteDenylistEntry Delete a Denylist entry
 	//
-	// Removes every copy; a list left empty is deleted and its policy references removed.
+	// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 	//
 	// Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
 	DeleteDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5208,7 +5318,7 @@ func (c *Client) CreateAllowlistEntries(ctx context.Context, body CreateAllowlis
 
 // DeleteAllowlistEntry Delete a Allowlist entry
 //
-// Removes every copy; a list left empty is deleted and its policy references removed.
+// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 //
 // Corresponds with DELETE /allowlist/{id} (the `DeleteAllowlistEntry` operationId).
 func (c *Client) DeleteAllowlistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6198,7 +6308,7 @@ func (c *Client) CreateDenylistEntries(ctx context.Context, body CreateDenylistE
 
 // DeleteDenylistEntry Delete a Denylist entry
 //
-// Removes every copy; a list left empty is deleted and its policy references removed.
+// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 //
 // Corresponds with DELETE /denylist/{id} (the `DeleteDenylistEntry` operationId).
 func (c *Client) DeleteDenylistEntry(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7596,6 +7706,18 @@ func NewListAllowlistRequest(server string, params *ListAllowlistParams) (*http.
 		// styled parameters, preserving literal commas as delimiters
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
 
 		if params.Namespace != nil {
 
@@ -10051,6 +10173,18 @@ func NewListDenylistRequest(server string, params *ListDenylistParams) (*http.Re
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Namespace != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -10589,6 +10723,18 @@ func NewListDomainEntriesRequest(server string, params *ListDomainEntriesParams)
 		if params.Action != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "action", *params.Action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -14116,7 +14262,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteAllowlistEntryWithResponse Delete a Allowlist entry
 	//
-	// Removes every copy; a list left empty is deleted and its policy references removed.
+	// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14566,7 +14712,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteDenylistEntryWithResponse Delete a Denylist entry
 	//
-	// Removes every copy; a list left empty is deleted and its policy references removed.
+	// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -25711,7 +25857,7 @@ func (c *ClientWithResponses) CreateAllowlistEntriesWithResponse(ctx context.Con
 
 // DeleteAllowlistEntryWithResponse Delete a Allowlist entry
 //
-// Removes every copy; a list left empty is deleted and its policy references removed.
+// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -26521,7 +26667,7 @@ func (c *ClientWithResponses) CreateDenylistEntriesWithResponse(ctx context.Cont
 
 // DeleteDenylistEntryWithResponse Delete a Denylist entry
 //
-// Removes every copy; a list left empty is deleted and its policy references removed.
+// Removes every copy; a list left empty is deleted and its policy references removed. For a list exception: removes the exclusion, so the list's entry applies again.
 //
 // Returns a wrapper object for the known response body format(s).
 //
