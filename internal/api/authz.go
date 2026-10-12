@@ -213,8 +213,9 @@ func unsafeMethod(m string) bool {
 }
 
 // authorizeMW is the Authorize step of §8.8 for one operation: 401 without
-// a principal, the CSRF check for cookie sessions, then the declared
-// permission at the route's scope (403 with missing{} otherwise).
+// a principal (403 for a dropped session's CSRF failure), the CSRF check
+// for cookie sessions, then the route's declared permission (403 with
+// missing{} otherwise).
 func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		op := ctx.Operation()
@@ -226,7 +227,11 @@ func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 		}
 		pr, ok := auth.PrincipalFrom(ctx.Context())
 		if !ok {
-			s.writeHumaError(ctx, errUnauthenticated())
+			if e := auth.CSRFFailure(ctx.Context()); e != nil {
+				s.writeHumaError(ctx, &Error{Status: e.Status, Body: ErrorBody{Key: e.Key, Message: e.Message, Hint: e.Hint}})
+			} else {
+				s.writeHumaError(ctx, errUnauthenticated())
+			}
 			return
 		}
 		if s.opts.CSRF != nil && pr.AuthMethod == "cookie" && unsafeMethod(ctx.Method()) {

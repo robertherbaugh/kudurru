@@ -948,7 +948,9 @@ Grafana-style service accounts owning N tokens; wire format `kdr_<12-char id>_<4
 
 ### 8.8 Middleware order
 
-`Recover → RequestID → RealIP(trustedProxies) → SecurityHeaders → AccessLog → CrossOriginProtection → RateLimit(auth routes) → Authenticate(bearer kdr_ | bearer JWT by iss | k8s SA token | cookie+CSRF | unix peer | internal token) → LoadPrincipal(disabled? mustChange? sessionsValidAfter?) → Authorize(resource, verb, scope; SAR for k8s identities) → Handler → Audit(outcome, before/after, authz path)`.
+`Recover → RequestID → RealIP(trustedProxies) → SecurityHeaders → AccessLog → CrossOriginProtection → Authenticate(bearer kdr_ | bearer JWT by iss | k8s SA token | cookie+CSRF | unix peer | internal token) → LoadPrincipal(disabled? mustChange? sessionsValidAfter?) → Authorize(resource, verb, scope; SAR for k8s identities) → Handler → Audit(outcome, before/after, authz path)`.
+
+Login throttling is enforced by the users-store lockouts in §8.7, before password verification. `api.Options.RateLimit` is an optional hook for `/api/v1/auth/login`; `kudurru serve` leaves it unset and adds no request-rate limiter. A cookie CSRF failure is recorded during authentication and returns 403 `csrf` on protected routes; public routes such as login continue anonymously.
 
 ---
 
