@@ -92,10 +92,14 @@ cloud address; a residential address may get a different limit.
 Live heap after a forced GC, profiled under a unique-name flood: 133 MB
 (DNS cache 200k entries ~45 MB, query-log queue ~30 MB, response buffers).
 RSS runs higher because of GC headroom and the query log's memory-mapped
-database: in the soak, RSS was 619 MB, of which 276 MB was anonymous (the Go
-runtime) and 343 MB was clean file-backed pages (querylog.db, mapped up to
-`mmap_size` = 256 MiB per database, and the binary), which the kernel
-reclaims under pressure. The cache is bounded (200k entries here,
+database. 15 minutes into the soak (1.8M rows), RSS was 801 MB: 300 MB
+anonymous (the Go runtime, `go_memstats_sys_bytes` 312 MB, flat) and
+466 MB of clean file-backed pages of querylog.db. Each SQLite connection
+maps up to `mmap_size` = 256 MiB of the file and Linux counts every mapping,
+so RSS grows with the database up to about connections × 256 MiB plus the
+anonymous part. The kernel reclaims those pages under memory pressure; size
+container memory limits by the anonymous part plus a margin, not by RSS. The
+cache is bounded (200k entries here,
 evictions by capacity), and goroutines and fds stay flat under load.
 
 ## Upgrade
@@ -149,7 +153,9 @@ mix at a steady 2,000 q/s, and a sampler every minute (RSS, heap,
 goroutines, fds, query-log size, rows and drops, CPU, dig latency, and the
 time of `/stats/summary`, `/queries` and `/stats/top`).
 
-First 15 minutes: goroutines 104-105, fds 39-42, no query-log drops, CPU
-40-50% of one core, heap in use 160-210 MB.
+First 15 minutes (1.8M rows, 242 MB database): goroutines 104-105, fds
+39-42, no query-log drops, CPU 40-50% of one core, heap in use 160-210 MB,
+anonymous memory 300 MB. Stats reads over the filling hour reached 3.2 s
+(see "Known limits").
 
 Results are added here when the run ends.
