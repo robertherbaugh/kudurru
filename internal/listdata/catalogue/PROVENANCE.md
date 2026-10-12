@@ -8,8 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 | Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
 | Schema version | 2 |
 | Catalogue version | `2026.10.12` |
-| SHA-256 | `575e421c03ccd4916ccb3ca295374be5050c0207e60edc9a68ea219a93a4b0a1` |
-| Size | 66,497 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
+| SHA-256 | `4f0d7d887444cd11311f2536ececea33445e0ab9a793bc6095b108bd9ba905f4` |
+| Size | 66,673 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
 | Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |
@@ -69,14 +69,14 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | betfair | Betfair | gambling | 6 | first-party domains of the service |
 | service | betway | Betway | gambling | 13 | first-party domains of the service |
 | service | bilibili | Bilibili | video | 8 | first-party domains of the service |
-| service | binance | Binance | crypto | 3 | first-party domains of the service |
+| service | binance | Binance | crypto | 3 | first-party domains of the service; bnbstatic.com from https://x.com/BinanceHelpDesk/status/1464954119832154114 |
 | service | bluesky | Bluesky | social | 5 | first-party domains of the service; relay host from https://bsky.network/ |
 | service | box | Box | productivity | 5 | first-party domains of the service; core domains from https://support.box.com/hc/en-us/articles/360043696434-Allowing-Box-Domains-on-Your-Network |
 | service | bumble | Bumble | dating | 2 | first-party domains of the service |
 | service | bybit | Bybit | crypto | 8 | first-party domains of the service |
 | service | characterai | Character.AI | ai | 3 | first-party domains of the service |
 | service | chatgpt | ChatGPT | ai | 6 | first-party domains of the service |
-| service | claude | Claude | ai | 8 | first-party domains of the service; host names from https://claude.com/docs/claude-science/network-requirements |
+| service | claude | Claude | ai | 5 | first-party domains of the service; host names from https://claude.com/docs/claude-science/network-requirements and https://claude.com/docs/third-party/claude-desktop/telemetry |
 | service | cnn | CNN | news | 3 | first-party domains of the service |
 | service | coinbase | Coinbase | crypto | 2 | first-party domains of the service |
 | service | copilot | Microsoft Copilot | ai | 2 | first-party domains of the service |
@@ -98,9 +98,9 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | expressvpn | ExpressVPN | vpn | 2 | first-party domains of the service |
 | service | facebook | Facebook | social | 9 | first-party domains of the service |
 | service | fanduel | FanDuel | gambling | 3 | first-party domains of the service |
-| service | fortnite | Fortnite | gaming | 2 | first-party domains of the service |
+| service | fortnite | Fortnite | gaming | 1 | first-party domains of the service |
 | service | foxnews | Fox News | news | 3 | first-party domains of the service |
-| service | gemini | Google Gemini | ai | 6 | first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and https://knowledge.workspace.google.com/admin/getting-started/set-up-a-google-workspace-host-name-allowlist |
+| service | gemini | Google Gemini | ai | 6 | first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other vendor pages under Domain citations |
 | service | gog | GOG | gaming | 3 | first-party domains of the service |
 | service | googledrive | Google Drive | productivity | 6 | first-party domains of the service; Drive and Docs host names from https://knowledge.workspace.google.com/admin/drive/drive-and-sites-firewall-and-proxy-settings |
 | service | grindr | Grindr | dating | 3 | first-party domains of the service |
@@ -114,7 +114,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | imgur | Imgur | social | 2 | first-party domains of the service |
 | service | instagram | Instagram | social | 4 | first-party domains of the service |
 | service | itchio | itch.io | gaming | 2 | first-party domains of the service |
-| service | kakaotalk | KakaoTalk | messaging | 8 | first-party domains of the service; talk-apps host name from http://developers.kakao.com/docs/ko/reference/firewall |
+| service | kakaotalk | KakaoTalk | messaging | 2 | first-party domains of the service; host names from https://developers.kakao.com/docs/ko/reference/firewall and https://open.kakao.com/ |
 | service | kick | Kick | video | 1 | first-party domains of the service |
 | service | kraken | Kraken | crypto | 2 | first-party domains of the service |
 | service | kucoin | KuCoin | crypto | 9 | first-party domains of the service |
@@ -138,7 +138,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | okcupid | OkCupid | dating | 2 | first-party domains of the service |
 | service | okru | OK (Odnoklassniki) | social | 3 | first-party domains of the service |
 | service | okx | OKX | crypto | 5 | first-party domains of the service |
-| service | onedrive | OneDrive | productivity | 8 | first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports |
+| service | onedrive | OneDrive | productivity | 8 | first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other vendor pages under Domain citations |
 | service | pandora | Pandora | music | 3 | first-party domains of the service |
 | service | paramountplus | Paramount+ | video | 3 | first-party domains of the service |
 | service | peacock | Peacock | video | 2 | first-party domains of the service |
@@ -146,7 +146,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | pi | Pi | ai | 1 | first-party domains of the service |
 | service | pinterest | Pinterest | social | 8 | first-party domains of the service |
 | service | playstation | PlayStation Network | gaming | 3 | first-party domains of the service |
-| service | plex | Plex | video | 4 | first-party domains of the service; plex.direct and app.plex.tv from https://support.plex.tv/articles/206225077-how-to-use-secure-server-connections/ |
+| service | plex | Plex | video | 2 | first-party domains of the service; plex.direct and app.plex.tv from https://support.plex.tv/articles/206225077-how-to-use-secure-server-connections/ |
 | service | plutotv | Pluto TV | video | 2 | first-party domains of the service |
 | service | poe | Poe | ai | 2 | first-party domains of the service |
 | service | pof | Plenty of Fish | dating | 2 | first-party domains of the service |
@@ -165,7 +165,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | runway | Runway | ai | 3 | first-party domains of the service |
 | service | shein | SHEIN | shopping | 10 | first-party domains of the service |
 | service | signal | Signal | messaging | 6 | first-party domains of the service |
-| service | slack | Slack | productivity | 7 | first-party domains of the service; host names from https://slack.com/help/articles/360001603387-Manage-Slack-connection-issues |
+| service | slack | Slack | productivity | 7 | first-party domains of the service; host names from https://docs.slack.dev/faq and the other vendor pages under Domain citations |
 | service | snapchat | Snapchat | social | 6 | first-party domains of the service |
 | service | soundcloud | SoundCloud | music | 3 | first-party domains of the service |
 | service | spotify | Spotify | music | 6 | first-party domains of the service |
@@ -202,9 +202,37 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | williamhill | William Hill | gambling | 4 | first-party domains of the service |
 | service | windscribe | Windscribe | vpn | 2 | first-party domains of the service |
 | service | xbox | Xbox network | gaming | 4 | first-party domains of the service; xboxlive.com and xbox.com from https://learn.microsoft.com/en-us/gaming/gdk/_content/gc/getstarted/config-dev-kit-software/configure-dev-network |
-| service | youtube | YouTube | video | 10 | first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users |
+| service | youtube | YouTube | video | 7 | first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users and https://support.google.com/youtubekids/answer/9406390 |
 | service | youtubemusic | YouTube Music | music | 1 | first-party domains of the service |
 | service | zoom | Zoom | productivity | 4 | first-party domains of the service; core domains from https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0060548 |
+
+## Domain citations
+
+The vendor page each host name of these entries comes from, where an
+entry draws on more than one page. A domain that no vendor page names
+and that is not the service's own brand domain is left out.
+
+| Service | Domains | Page |
+|---|---|---|
+| binance | `bin.bnbstatic.com` | https://x.com/BinanceHelpDesk/status/1464954119832154114 |
+| claude | `claude.ai`, `claude.com`, `api.anthropic.com`, `claudemcpcontent.com` | https://claude.com/docs/claude-science/network-requirements |
+| claude | `claudeusercontent.com` | https://claude.com/docs/third-party/claude-desktop/telemetry |
+| gemini | `gemini.google.com`, `gemini.google` | https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings |
+| gemini | `aistudio.google.com` | https://knowledge.workspace.google.com/admin/getting-started/set-up-a-google-workspace-host-name-allowlist |
+| gemini | `generativelanguage.googleapis.com` | https://ai.google.dev/api |
+| gemini | `bard.google.com` | https://blog.google/technology/ai/try-bard/ |
+| gemini | `makersuite.google.com` | https://developers.googleblog.com/en/make-with-makersuite-part-1-an-introduction/ |
+| kakaotalk | `talk-apps.kakao.com` | https://developers.kakao.com/docs/ko/reference/firewall |
+| kakaotalk | `open.kakao.com` | https://open.kakao.com/ |
+| onedrive | `onedrive.live.com`, `onedrive.com`, `1drv.com`, `storage.live.com`, `skyapi.live.net`, `skydrive.live.com`, `livefilestore.com` | https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports |
+| onedrive | `1drv.ms` | https://support.microsoft.com/en-us/office/share-files-and-folders-in-microsoft-onedrive-9fcc2f7d-de0c-4cec-93b0-a82024800c07 |
+| slack | `slack.com`, `slack-edge.com`, `slackb.com` | https://docs.slack.dev/faq |
+| slack | `slack-msgs.com` | https://docs.slack.dev/changelog/2017/04/01/start-using-rtm-connect-and-stop-using-rtm-start |
+| slack | `slack-files.com` | https://docs.slack.dev/messaging/working-with-files |
+| slack | `slack-redir.net` | https://slack.com/help/articles/204399413 |
+| slack | `slack-imgs.com` | https://api.slack.com/robots |
+| youtube | `youtube.com`, `youtu.be`, `ytimg.com`, `youtube-nocookie.com`, `youtubei.googleapis.com`, `youtube.googleapis.com` | https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users |
+| youtube | `youtubekids.com` | https://support.google.com/youtubekids/answer/9406390 |
 
 ## Safe search
 

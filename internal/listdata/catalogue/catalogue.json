@@ -137,12 +137,9 @@
         "||claude.com^",
         "||anthropic.com^",
         "||claudeusercontent.com^",
-        "||claudemcpcontent.com^",
-        "||claudemcpclient.com^",
-        "||claude.site^",
-        "||clau.de^"
+        "||claudemcpcontent.com^"
       ],
-      "source": "first-party domains of the service; host names from https://claude.com/docs/claude-science/network-requirements",
+      "source": "first-party domains of the service; host names from https://claude.com/docs/claude-science/network-requirements and https://claude.com/docs/third-party/claude-desktop/telemetry",
       "note": "Also blocks the Anthropic API (api.anthropic.com), so other apps built on Claude may stop working."
     },
     {
@@ -158,7 +155,7 @@
         "||makersuite.google.com^",
         "||generativelanguage.googleapis.com^"
       ],
-      "source": "first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and https://knowledge.workspace.google.com/admin/getting-started/set-up-a-google-workspace-host-name-allowlist",
+      "source": "first-party domains of the service; host names from https://knowledge.workspace.google.com/admin/gemini/gemini-app-firewall-settings and the other vendor pages under Domain citations",
       "note": "Gemini inside Android, Chrome, Google Search and Workspace apps runs on shared Google hosts and stays reachable."
     },
     {
@@ -746,17 +743,11 @@
       "name": "KakaoTalk",
       "category": "messaging",
       "rules": [
-        "||kakaotalk.com^",
-        "||talk.kakao.com^",
-        "||katalk.kakao.com^",
-        "||booking-loco.kakao.com^",
-        "||ticket-loco.kakao.com^",
-        "||talk-pilsner.kakao.com^",
         "||talk-apps.kakao.com^",
         "||open.kakao.com^"
       ],
-      "source": "first-party domains of the service; talk-apps host name from http://developers.kakao.com/docs/ko/reference/firewall",
-      "note": "Kakao Account sign-in and other Kakao services on kakao.com stay reachable."
+      "source": "first-party domains of the service; host names from https://developers.kakao.com/docs/ko/reference/firewall and https://open.kakao.com/",
+      "note": "Blocks KakaoTalk Open Chat and KakaoTalk links. Kakao does not publish the host names of its chat servers, so the KakaoTalk app may keep working; Kakao Account sign-in and other Kakao services on kakao.com stay reachable."
     },
     {
       "id": "youtube",
@@ -766,19 +757,17 @@
       "rules": [
         "||youtube.com^",
         "||youtu.be^",
-        "||yt.be^",
         "||ytimg.com^",
-        "||googlevideo.com^",
         "||youtube-nocookie.com^",
         "||youtubei.googleapis.com^",
         "||youtube.googleapis.com^",
-        "||youtubekids.com^",
-        "||yt3.ggpht.com^"
+        "||youtubekids.com^"
       ],
-      "source": "first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users",
+      "source": "first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users and https://support.google.com/youtubekids/answer/9406390",
       "related": [
         "youtubemusic"
-      ]
+      ],
+      "note": "Google also lists ytimg.com and youtube-nocookie.com among Google Meet's host names, so parts of Meet that show YouTube content may stop working. The video servers (googlevideo.com), which Google lists for Meet as well, are not blocked."
     },
     {
       "id": "twitch",
@@ -942,9 +931,7 @@
       "category": "video",
       "rules": [
         "||plex.tv^",
-        "||plex.direct^",
-        "||plexapp.com^",
-        "||plex.app^"
+        "||plex.direct^"
       ],
       "source": "first-party domains of the service; plex.direct and app.plex.tv from https://support.plex.tv/articles/206225077-how-to-use-secure-server-connections/",
       "note": "Blocking plex.direct also stops secure connections to a Plex server on the home network."
@@ -1138,8 +1125,7 @@
       "name": "Fortnite",
       "category": "gaming",
       "rules": [
-        "||fortnite.com^",
-        "||fortnite.net^"
+        "||fortnite.com^"
       ],
       "source": "first-party domains of the service",
       "requires": [
@@ -1916,7 +1902,7 @@
         "||skydrive.live.com^",
         "||livefilestore.com^"
       ],
-      "source": "first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports",
+      "source": "first-party domains of the service; OneDrive host names from https://learn.microsoft.com/en-us/sharepoint/required-urls-and-ports and the other vendor pages under Domain citations",
       "note": "Personal OneDrive only: OneDrive for work or school runs on SharePoint (sharepoint.com) and Microsoft sign-in, both shared and still reachable."
     },
     {
@@ -2000,7 +1986,7 @@
         "||slack-redir.net^",
         "||slack-msgs.com^"
       ],
-      "source": "first-party domains of the service; host names from https://slack.com/help/articles/360001603387-Manage-Slack-connection-issues"
+      "source": "first-party domains of the service; host names from https://docs.slack.dev/faq and the other vendor pages under Domain citations"
     },
     {
       "id": "zoom",
@@ -2156,7 +2142,7 @@
         "||binance.us^",
         "||bnbstatic.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; bnbstatic.com from https://x.com/BinanceHelpDesk/status/1464954119832154114",
       "note": "Binance.US is a separately run US exchange under the same brand."
     },
     {
