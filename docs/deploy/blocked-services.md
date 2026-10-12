@@ -226,7 +226,7 @@ download, else the embedded one. `GET /api/v1/catalogue` reports `origin`, `vers
       "id": "fortnite",
       "name": "Fortnite",
       "category": "gaming",
-      "rules": ["||fortnite.com^", "||fortnite.net^"],
+      "rules": ["||fortnite.com^"],
       "source": "first-party domains of the service",
       "requires": ["epicgames"],
       "note": "Fortnite signs in and updates through Epic Games, so block Epic Games as well to stop it."
