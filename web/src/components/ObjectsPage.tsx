@@ -195,7 +195,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
     {
       key: 'managed',
       header: 'Managed by',
-      width: proportional(1.5, { minWidth: 136 }),
+      width: proportional(1.5, { minWidth: 120 }),
       renderCell: ({ obj: o }) => <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />,
     },
     {
@@ -217,7 +217,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       // Room for Open, and for a row action (Refresh) beside it.
-      width: rowActions ? proportional(2, { minWidth: 160 }) : pixel(80),
+      width: rowActions ? proportional(2, { minWidth: 160 }) : proportional(0.9, { minWidth: 72 }),
       align: 'end',
       renderCell: ({ obj: o }) => (
         <HStack gap={1} hAlign="end" vAlign="center">
