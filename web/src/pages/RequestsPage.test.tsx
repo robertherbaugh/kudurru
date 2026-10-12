@@ -125,7 +125,7 @@ describe('RequestsPage', () => {
     fireEvent.click(await within(await row('tiktokv.com')).findByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
     const scope = getSelector('Scope', dialog);
-    expect(within(dialog).getByText(/attached to the default policy and the requester's policies/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/attached to every policy kudurru may edit/)).toBeInTheDocument();
     pick(scope, /^The requester's group/);
     expect(within(dialog).getByText('Adds it to ui-allow-kids, attached to the policies of client group kids only.')).toBeInTheDocument();
     pick(getSelector('Match', dialog), 'This name and its subdomains');

@@ -184,40 +184,88 @@ func names(objs []store.Object) []string {
 }
 
 func TestDebounce(t *testing.T) {
+	const window = 200 * time.Millisecond
 	st := memory.New()
-	c := newCache(t, st, Options{Debounce: 200 * time.Millisecond})
-	var publishes atomic.Int64
-	c.OnPublish(func(*Snapshot) { publishes.Add(1) })
+	c := newCache(t, st, Options{Debounce: window})
+	// The test waits on what the publish hook saw, not on c.Snapshot(): the
+	// hooks run after the snapshot is stored, so a count read as soon as
+	// Snapshot shows a change can miss the rebuild that published it (under
+	// load the burst's rebuild was then counted with the spaced changes).
+	var (
+		mu        sync.Mutex
+		published []*Snapshot
+	)
+	c.OnPublish(func(s *Snapshot) {
+		mu.Lock()
+		published = append(published, s)
+		mu.Unlock()
+	})
+	since := func(i int) []*Snapshot {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(published[i:])
+	}
+	count := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(published)
+	}
+	// waitPublished waits for a published snapshot satisfying cond and
+	// returns the snapshots published from index from up to that one.
+	waitPublished := func(from int, what string, cond func(*Snapshot) bool) []*Snapshot {
+		t.Helper()
+		var out []*Snapshot
+		eventually(t, 5*time.Second, what, func() bool {
+			for i, s := range since(from) {
+				if cond(s) {
+					out = since(from)[:i+1]
+					return true
+				}
+			}
+			return false
+		})
+		return out
+	}
 	startCache(t, c)
-	waitState(t, c, Live)
-	base := publishes.Load()
+	waitPublished(0, "a Live snapshot", func(s *Snapshot) bool { return s.State == Live })
+	base := count()
 
-	// A burst well inside one window folds into one rebuild.
+	// A burst well inside one window folds into one rebuild. The margin
+	// (half the window) leaves room for the store's asynchronous watch
+	// delivery under load.
 	start := time.Now()
 	for i := range 50 {
 		apply(t, st, rrset("apps", "r"+itoa(i), "home", nil))
 	}
 	burst := time.Since(start)
-	eventually(t, 5*time.Second, "50 record sets", func() bool { return c.Snapshot().Objects.Count(KindDNSRecordSet) == 50 })
+	snaps := waitPublished(base, "50 record sets", func(s *Snapshot) bool { return s.Objects.Count(KindDNSRecordSet) == 50 })
 	visible := time.Since(start)
-	got := publishes.Load() - base
-	if burst < 150*time.Millisecond && got != 1 {
+	if got := len(snaps); burst < window/2 && got != 1 {
 		t.Errorf("a %s burst of 50 changes produced %d rebuilds, want 1", burst, got)
-	}
-	if got > 3 {
+	} else if got > 3 {
 		t.Errorf("%d rebuilds for one burst", got)
 	}
-	if visible < 200*time.Millisecond {
-		t.Errorf("changes visible after %s, before the 200 ms debounce window", visible)
+	if visible < window {
+		t.Errorf("changes visible after %s, before the %s debounce window", visible, window)
 	}
-	// Two changes far apart are two rebuilds.
-	base = publishes.Load()
+
+	// Two changes further apart than the window are two rebuilds: zone b
+	// arrives a full window after zone a was published. Only rebuilds that
+	// changed the zone count are counted: a change can reach a rebuild
+	// after its kick was drained and leave one no-op rebuild behind.
+	base = count()
 	apply(t, st, zone("a", "a.example."))
-	eventually(t, 5*time.Second, "zone a", func() bool { return c.Snapshot().Objects.Count(KindDNSZone) == 1 })
-	time.Sleep(300 * time.Millisecond)
+	waitPublished(base, "zone a", func(s *Snapshot) bool { return s.Objects.Count(KindDNSZone) == 1 })
+	time.Sleep(window)
 	apply(t, st, zone("b", "b.example."))
-	eventually(t, 5*time.Second, "zone b", func() bool { return c.Snapshot().Objects.Count(KindDNSZone) == 2 })
-	if got := publishes.Load() - base; got != 2 {
+	snaps = waitPublished(base, "zone b", func(s *Snapshot) bool { return s.Objects.Count(KindDNSZone) == 2 })
+	got, zones := 0, 0
+	for _, s := range snaps {
+		if n := s.Objects.Count(KindDNSZone); n != zones {
+			got, zones = got+1, n
+		}
+	}
+	if got != 2 {
 		t.Errorf("two spaced changes produced %d rebuilds, want 2", got)
 	}
 }

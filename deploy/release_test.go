@@ -203,6 +203,23 @@ func TestDockerfile(t *testing.T) {
 	if i, j := strings.Index(s, "AS debug"), strings.Index(s, "AS release"); i > j {
 		t.Errorf("the release stage must be last so a plain docker build produces it")
 	}
+	// ko's layout, which the derived images copy from either image.
+	if !strings.Contains(s, "COPY --from=build /out/kudurru /ko-app/kudurru") || !strings.Contains(s, `ENTRYPOINT ["/ko-app/kudurru"]`) {
+		t.Errorf("the Dockerfile must put the binary where ko does (/ko-app/kudurru)")
+	}
+	for _, f := range []string{"images/dnsdist/Dockerfile", "images/keepalived/Dockerfile"} {
+		if !strings.Contains(string(readRepoFile(t, f)), "COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru") {
+			t.Errorf("%s must copy /ko-app/kudurru, the path of the ko release image", f)
+		}
+	}
+	// The -hostnetwork variant: the ko binary with the file capability, on
+	// the base of the kudurru ko entry.
+	hn := string(readRepoFile(t, "images/hostnetwork/Dockerfile"))
+	for _, want := range []string{"FROM " + base["kudurru"] + "\n", "COPY --from=kudurru /ko-app/kudurru", "setcap cap_net_bind_service=+ep", "USER 65532:65532", `ENTRYPOINT ["/ko-app/kudurru"]`} {
+		if !strings.Contains(hn, want) {
+			t.Errorf("images/hostnetwork/Dockerfile lacks %q", want)
+		}
+	}
 }
 
 // TestVersionFile checks VERSION, the source of the release candidate and

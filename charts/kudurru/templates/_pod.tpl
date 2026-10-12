@@ -318,6 +318,7 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
 {{- $root := .root -}}
 {{- $e := $root.Values.edge -}}
 {{- $s := $root.Values.service -}}
+{{- $rootStart := include "kudurru.edge.rootStart" (dict "root" $root "sidecar" .sidecar) -}}
 - name: dnsdist
   image: {{ include "kudurru.edge.image" $root }}
   imagePullPolicy: {{ $e.image.pullPolicy }}
@@ -360,6 +361,9 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
     {{- end }}
     {{- if $e.ebpf.enabled }}
     - --ebpf
+    {{- end }}
+    {{- if $rootStart }}
+    - --dnsdist-user=953:953
     {{- end }}
     {{- with $e.extraArgs }}
     {{- toYaml . | nindent 4 }}
@@ -413,8 +417,20 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
     failureThreshold: 3
   securityContext:
     {{- $sc := deepCopy $e.securityContext -}}
-    {{- if $e.ebpf.enabled }}
-    {{- $_ := set $sc "capabilities" (dict "drop" (list "ALL") "add" (list "NET_BIND_SERVICE" "BPF" "SYS_ADMIN")) }}
+    {{- if $rootStart }}
+    {{- /* Added capabilities are only effective for root (Kubernetes sets no
+    ambient capabilities), so the supervisor and dnsdist start as root with
+    every other capability dropped; dnsdist binds, creates the eBPF maps and
+    switches to 953 (--dnsdist-user), keeping capabilities_to_retain. SETUID
+    and SETGID let it switch, KILL lets the supervisor signal it afterwards.
+    Group 953 keeps the API key readable for the keepalived probe. */}}
+    {{- $caps := list "NET_BIND_SERVICE" "SETUID" "SETGID" "KILL" }}
+    {{- if $e.ebpf.enabled }}{{ $caps = concat $caps (list "BPF" "SYS_ADMIN") }}{{ end }}
+    {{- $_ := set $sc "runAsNonRoot" false }}
+    {{- $_ := set $sc "runAsUser" 0 }}
+    {{- $_ := set $sc "runAsGroup" 953 }}
+    {{- $_ := set $sc "allowPrivilegeEscalation" false }}
+    {{- $_ := set $sc "capabilities" (dict "drop" (list "ALL") "add" $caps) }}
     {{- end }}
     {{- toYaml $sc | nindent 4 }}
   resources:

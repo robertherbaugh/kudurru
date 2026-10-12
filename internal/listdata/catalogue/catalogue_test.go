@@ -75,15 +75,23 @@ func TestEmbedded(t *testing.T) {
 	}
 	// No service blocks the DoH/DoT host of a well-known upstream resolver,
 	// so blocking a service never cuts the node off from its upstreams.
-	for _, host := range []string{"dns.google", "cloudflare-dns.com", "one.one.one.one", "dns.quad9.net", "dns.adguard-dns.com",
-		"dns.nextdns.io", "dns.mullvad.net", "doh.opendns.com", "dns.controld.com", "freedns.controld.com"} {
+	for _, host := range []string{"dns.google", "dns.google.com", "cloudflare-dns.com", "one.one.one.one", "security.cloudflare-dns.com",
+		"family.cloudflare-dns.com", "mozilla.cloudflare-dns.com", "dns.quad9.net", "dns11.quad9.net", "dns.adguard-dns.com",
+		"family.adguard-dns.com", "dns.nextdns.io", "dns.mullvad.net", "doh.opendns.com", "doh.familyshield.opendns.com",
+		"dns.umbrella.com", "dns.controld.com", "freedns.controld.com", "doh.cleanbrowsing.org", "dns0.eu", "doh.dns.sb",
+		"dns.alidns.com", "doh.pub", "dns.pub", "doh.360.cn", "common.dot.dns.yandex.net", "dns.twnic.tw", "ordns.he.net",
+		"dns.switch.ch", "dns.digitale-gesellschaft.ch"} {
 		if hits := snap.Contains(host); len(hits) > 0 {
 			t.Errorf("upstream resolver %s is blocked by %v", host, hits)
 		}
 	}
-	// Shared sign-in and infrastructure stay reachable.
+	// Shared sign-in and infrastructure stay reachable, including the
+	// shared hosts that services' notes promise stay reachable.
 	for _, host := range []string{"accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com",
-		"www.apple.com", "www.google.com", "www.microsoft.com", "fonts.gstatic.com", "d1.cloudfront.net", "ajax.googleapis.com"} {
+		"www.apple.com", "www.google.com", "www.microsoft.com", "fonts.gstatic.com", "d1.cloudfront.net", "ajax.googleapis.com",
+		"meet.google.com", "rr1---sn-abc.googlevideo.com", "www.googleapis.com", "accounts.kakao.com", "kauth.kakao.com",
+		"account.sony.com", "account.proton.me", "copilot.cloud.microsoft", "contoso.sharepoint.com", "s3.amazonaws.com",
+		"ae01.alicdn.com", "wx.sinaimg.cn", "i.okcdn.ru", "i.mycdn.me", "www.qq.com"} {
 		if hits := snap.Contains(host); len(hits) > 0 {
 			t.Errorf("shared host %s is blocked by %v", host, hits)
 		}

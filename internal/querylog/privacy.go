@@ -284,6 +284,16 @@ func hideClient(ev *Event) {
 	ev.Flags.ECS = false
 }
 
+// Pseudonym returns the name a's queries are logged under today when the
+// filter replaces clients with pseudonyms (anonymize_client with
+// pseudonym), else "".
+func (p *Privacy) Pseudonym(a netip.Addr) string {
+	if p == nil || p.mode != PrivacyAnonymizeClient || !p.pseudonym || !a.IsValid() {
+		return ""
+	}
+	return p.pseudonymFor(a.Unmap())
+}
+
 // pseudonymFor returns "anon-" and 12 hex digits of HMAC-SHA256(daily key,
 // address); the key rotates at UTC midnight.
 func (p *Privacy) pseudonymFor(a netip.Addr) string {

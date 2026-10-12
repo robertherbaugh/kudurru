@@ -66,11 +66,17 @@ app.kubernetes.io/component: edge
 {{- end -}}
 
 {{/* Images */}}
+{{/*
+hostNetwork pods run the <tag>-hostnetwork variant: the same binary with
+cap_net_bind_service=+ep, because the ip_unprivileged_port_start sysctl is
+not available on the host network (images/hostnetwork/Dockerfile). A digest
+is used as given.
+*/}}
 {{- define "kudurru.image" -}}
 {{- if .Values.image.digest -}}
 {{ .Values.image.repository }}@{{ .Values.image.digest }}
 {{- else -}}
-{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{ if .Values.hostNetwork.enabled }}{{ .Values.hostNetwork.imageTagSuffix }}{{ end }}
 {{- end -}}
 {{- end -}}
 
@@ -102,6 +108,20 @@ app.kubernetes.io/component: edge
 {{- if .Values.edge.enabled -}}
 {{- if eq .Values.vip.provider "keepalived" }}daemonset{{ else }}{{ .Values.edge.mode }}{{ end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+"true" when the dnsdist container starts as root and dnsdist drops to 953:
+eBPF DynBlocks (BPF maps need CAP_BPF/CAP_SYS_ADMIN, which Kubernetes only
+makes effective for root), or dnsdist on the host network (the edge
+DaemonSet, or the sidecar of a hostNetwork kudurru pod), where the
+ip_unprivileged_port_start sysctl that lets 953 bind :53 is not available.
+Takes (dict "root" $ "sidecar" bool).
+*/}}
+{{- define "kudurru.edge.rootStart" -}}
+{{- $v := .root.Values -}}
+{{- $hostNet := ternary $v.hostNetwork.enabled (eq (include "kudurru.edge.mode" .root) "daemonset") (eq (toString .sidecar) "true") -}}
+{{- if or $v.edge.ebpf.enabled $hostNet }}true{{ end -}}
 {{- end -}}
 
 {{/* "true" when a separate edge workload (not the sidecar) fronts kudurru. */}}
@@ -255,6 +275,9 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if include "kudurru.anyTLS" . -}}
 {{- if and $v.edge.enabled (not $v.edge.tlsSecretName) }}{{ fail "service.dot/doh/doq/doh3 with edge.enabled need edge.tlsSecretName (dnsdist terminates TLS)" }}{{ end -}}
 {{- if and (not $v.edge.enabled) (not $v.tls.secretName) }}{{ fail "service.dot/doh/doq/doh3 need tls.secretName (a kubernetes.io/tls Secret)" }}{{ end -}}
+{{- end -}}
+{{- if and $v.hostNetwork.enabled $v.hostNetwork.imageTagSuffix (not (has "NET_BIND_SERVICE" ((($v.securityContext | default dict).capabilities | default dict).add | default list))) -}}
+{{- fail "hostNetwork.enabled runs the -hostnetwork image, whose binary carries cap_net_bind_service=+ep: securityContext.capabilities.add must keep NET_BIND_SERVICE, or the kernel refuses to start it" -}}
 {{- end -}}
 {{- if and (eq $v.mode "kubernetes") $v.hostNetwork.enabled (or $v.persistence.querylog.enabled $v.persistence.local.enabled) -}}
 {{- fail "persistence.querylog/local need per-pod claims, which a hostNetwork DaemonSet cannot have; use extraVolumes (hostPath) instead" -}}

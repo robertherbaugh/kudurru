@@ -23,9 +23,15 @@ dig @127.0.0.1 example.com
 Without a mounted `kudurru.yaml` the built-in defaults apply: plain DNS on
 :53 forwarding to 1.1.1.1 and 9.9.9.9, the starter blocklist, the query log.
 The image runs as uid 65532 and binds :53 because Docker starts the
-container's unprivileged port range at 0; with `--network host` the host's
-`net.ipv4.ip_unprivileged_port_start` applies instead (set it to 53 or use
-the packages below).
+container's unprivileged port range at 0. With `--network host` the host's
+`net.ipv4.ip_unprivileged_port_start` applies instead: run the
+`-hostnetwork` image (`ghcr.io/robertherbaugh/kudurru:0.1.0-hostnetwork`,
+the same binary with the file capability `cap_net_bind_service=+ep`), set the
+sysctl to 53 on the host, or use the packages below. The `-hostnetwork`
+image needs `NET_BIND_SERVICE` among the container's capabilities (Docker's
+default set has it; with `--cap-drop ALL` add `--cap-add NET_BIND_SERVICE`),
+otherwise it does not start ("exec /ko-app/kudurru: operation not
+permitted").
 
 ## docker compose
 

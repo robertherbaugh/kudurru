@@ -319,15 +319,8 @@ func (s *Service) Update(ctx context.Context, a Action, ns string, t v1alpha1.En
 	if e == nil {
 		return nil, fmt.Errorf("%w: %s %s %q in namespace %s", ErrNotFound, a, t, value, ns)
 	}
-	if owner := e.ReadOnly(); owner != "" {
-		c := e.Copies[0]
-		for _, cp := range e.Copies {
-			if !writableOwner(cp.ManagedBy) {
-				c = cp
-			}
-		}
-		lns, lname, _ := strings.Cut(c.List, "/")
-		return nil, &store.ErrManagedBy{Key: store.Key{Kind: "BlockList", Namespace: lns, Name: lname}, Owner: owner}
+	if err := readOnly(e); err != nil {
+		return nil, err
 	}
 	newType, newValue := t, value
 	if p.Type != nil {
@@ -412,8 +405,26 @@ func (s *Service) Update(ctx context.Context, a Action, ns string, t v1alpha1.En
 	return res, nil
 }
 
+// readOnly is the managedBy error of an entry with a copy in a list
+// kudurru may not write, nil when every copy is writable.
+func readOnly(e *Entry) error {
+	owner := e.ReadOnly()
+	if owner == "" {
+		return nil
+	}
+	c := e.Copies[0]
+	for _, cp := range e.Copies {
+		if !writableOwner(cp.ManagedBy) {
+			c = cp
+		}
+	}
+	lns, lname, _ := strings.Cut(c.List, "/")
+	return &store.ErrManagedBy{Key: store.Key{Kind: "BlockList", Namespace: lns, Name: lname}, Owner: owner}
+}
+
 // Delete removes the entry (namespace, type, value) of action from every
-// list that holds it.
+// list that holds it. An entry with a copy in a list managed elsewhere is
+// refused before any list is written.
 func (s *Service) Delete(ctx context.Context, a Action, ns string, t v1alpha1.EntryType, value string) (*Result, error) {
 	set, err := s.Load(ctx, ns)
 	if err != nil {
@@ -422,6 +433,9 @@ func (s *Service) Delete(ctx context.Context, a Action, ns string, t v1alpha1.En
 	e := set.Find(a, ns, t, value)
 	if e == nil {
 		return nil, fmt.Errorf("%w: %s %s %q in namespace %s", ErrNotFound, a, t, value, ns)
+	}
+	if err := readOnly(e); err != nil {
+		return nil, err
 	}
 	res := &Result{}
 	for _, c := range e.Copies {
@@ -442,10 +456,12 @@ func (s *Service) Delete(ctx context.Context, a Action, ns string, t v1alpha1.En
 }
 
 // RemoveRule takes the entry whose rule is rule ("example.com",
-// "*.example.com", or a legacy "||example.com^") off the list ns/name;
-// the list is deleted and detached once it holds nothing else. It is how
-// an unblock approval releases its entry.
-func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string) error {
+// "*.example.com", or a legacy "||example.com^") off the list ns/name,
+// when its origin is origin ("" for any); the list is deleted and
+// detached once it holds nothing else. It is how an unblock approval
+// releases its entry (origin unblock), so an entry someone added by hand
+// with the same rule meanwhile stays.
+func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string, origin v1alpha1.EntryOrigin) error {
 	a, _, ok := ParseListName(name)
 	if !ok {
 		a = Allow
@@ -454,7 +470,7 @@ func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string) error {
 	_, err := s.mutate(ctx, ns, name, a, false, func(entries []v1alpha1.ListEntry) ([]v1alpha1.ListEntry, bool) {
 		n := len(entries)
 		entries = slices.DeleteFunc(entries, func(x v1alpha1.ListEntry) bool {
-			return RuleKey(v1alpha1.EntryRule(typeOf(x), x.Value)) == key
+			return RuleKey(v1alpha1.EntryRule(typeOf(x), x.Value)) == key && (origin == "" || x.Origin == origin)
 		})
 		return entries, len(entries) != n
 	})

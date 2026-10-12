@@ -343,6 +343,31 @@ func TestReadOnlyList(t *testing.T) {
 	}
 }
 
+// TestDeleteWithAManagedCopy: deleting an entry that also has a copy in a
+// list managed elsewhere is refused before any list is written; before,
+// the writable copy was deleted (and its emptied list detached) and only
+// then was the managed one refused.
+func TestDeleteWithAManagedCopy(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.Add(ctx, AddRequest{Action: Allow, Namespace: "default", Type: v1alpha1.EntryExact, Values: []string{"x.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	kids := &v1alpha1.BlockList{ObjectMeta: meta("ui-allow-kids"), Spec: v1alpha1.BlockListSpec{Mode: "allow", Sources: []v1alpha1.ListSource{{Name: SourceName, Entries: []v1alpha1.ListEntry{{Value: "x.example"}}}}}}
+	if _, err := f.st.Apply(ctx, kids, store.ApplyOptions{Manager: "file"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Delete(ctx, Allow, "default", v1alpha1.EntryExact, "x.example"); !store.IsManagedBy(err) {
+		t.Fatalf("delete with a file-managed copy: %v", err)
+	}
+	if bl := f.list(AllowList); bl == nil || !slices.Equal(entries(bl), []string{"exact:x.example"}) {
+		t.Fatalf("ui-allow after the refused delete %+v", bl)
+	}
+	if !slices.Contains(f.policy("default").Spec.AllowListRefs, AllowList) {
+		t.Error("ui-allow was detached by the refused delete")
+	}
+}
+
 // TestMigration: legacy inline lines of ui-allow (the Domains page and
 // approvals before structured entries) become entries; lines that are not
 // entries stay; an approval's line takes its request as provenance; the
@@ -414,7 +439,7 @@ func TestMigration(t *testing.T) {
 		t.Errorf("second Migrate = %d, %v", n, err)
 	}
 	// The approval releases its entry by the old spelling.
-	if err := f.svc.RemoveRule(ctx, "default", AllowList, "||b.example^"); err != nil {
+	if err := f.svc.RemoveRule(ctx, "default", AllowList, "||b.example^", ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := entries(f.list(AllowList)); slices.Contains(got, "wildcard:*.b.example") {

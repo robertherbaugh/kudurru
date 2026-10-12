@@ -59,7 +59,7 @@ spec:
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
-        runAsNonRoot: {{ not $keepalived }}
+        runAsNonRoot: {{ not (or $keepalived (include "kudurru.edge.rootStart" (dict "root" . "sidecar" false))) }}
         fsGroup: 953
         seccompProfile:
           type: RuntimeDefault
@@ -91,6 +91,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          ports:
+            # Supervisor /healthz/*, /status, /metrics (kudurru_vip_*).
+            - name: vip-health
+              containerPort: 8085
+              protocol: TCP
           # keepalived manages addresses and sends VRRP: NET_ADMIN, NET_RAW,
           # NET_BROADCAST as root. Not Restricted PSS: the namespace needs the
           # privileged level (docs/deploy/helm.md).

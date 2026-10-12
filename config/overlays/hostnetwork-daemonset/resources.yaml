@@ -226,7 +226,7 @@ spec:
                 resourceFieldRef:
                   divisor: "1"
                   resource: limits.memory
-          image: ghcr.io/robertherbaugh/kudurru:0.1.0-rc.1
+          image: ghcr.io/robertherbaugh/kudurru:0.1.0-rc.1-hostnetwork
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:

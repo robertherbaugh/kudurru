@@ -226,7 +226,7 @@ download, else the embedded one. `GET /api/v1/catalogue` reports `origin`, `vers
       "id": "fortnite",
       "name": "Fortnite",
       "category": "gaming",
-      "rules": ["||fortnite.com^", "||fortnite.net^"],
+      "rules": ["||fortnite.com^"],
       "source": "first-party domains of the service",
       "requires": ["epicgames"],
       "note": "Fortnite signs in and updates through Epic Games, so block Epic Games as well to stop it."
@@ -350,11 +350,15 @@ What the opt-in does:
   needs a restart.
 - The file's format: an object with `blocked_services`, each
   `{id, name, rules, group}` (a bare array is read too, `icon_svg` is
-  ignored and the dashboard draws a monogram), at most 16 MiB. IDs become
+  ignored and the dashboard draws a monogram), at most 16 MiB and 1000
+  entries. IDs become
   kudurru IDs with `_` replaced by `-` (`amazon_streaming` becomes
-  `amazon-streaming`). Rules that are not plain block rules are dropped,
-  and entries without a usable rule, name or ID are skipped
-  (`GET /api/v1/catalogue` counts both).
+  `amazon-streaming`). Only rules of the form `||<name>^` are kept, where
+  the name is below a public suffix (`||tiktok.com^`, not `||com^`,
+  `||co.uk^`, an IP address or a regex), so a broken or hostile file cannot
+  make a service, and every policy that blocks its category, block every
+  name. Other rules are dropped, and entries without a usable rule, name or
+  ID are skipped (`GET /api/v1/catalogue` counts both).
 - Imported services join the catalogue next to kudurru's own, with
   `origin: adguard`, `license: GPL-3.0` and
   `source: adguard-hostlists-registry`; the grid marks them

@@ -31,15 +31,19 @@ ARG KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:0.1.0-dev
 FROM ${KUDURRU_IMAGE} AS kudurru
 
 FROM ${DNSDIST_IMAGE}@${DNSDIST_DIGEST}
-COPY --from=kudurru /usr/local/bin/kudurru /usr/local/bin/kudurru
+# ko puts the binary at /ko-app/kudurru (the Dockerfile at the repository
+# root mirrors that layout).
+COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru
 COPY README.md /usr/share/doc/kudurru-dnsdist/README.md
 COPY LICENSE.dnsdist /usr/share/doc/kudurru-dnsdist/LICENSE.dnsdist
 USER root
 # /run/kudurru is 1777: the first container to mount the empty named volume
 # seeds its mode, and kudurru (65532), dnsdist (953) and keepalived_script
-# (953) all write there.
+# (953) all write there. /etc/dnsdist is group-writable for a supervisor
+# started as root with group 953 and no CAP_DAC_OVERRIDE (--dnsdist-user:
+# eBPF, host networking).
 RUN mkdir -p /etc/dnsdist /run/kudurru /certs \
- && chown -R 953:953 /etc/dnsdist \
+ && chown -R 953:953 /etc/dnsdist && chmod 0775 /etc/dnsdist \
  && chmod 1777 /run/kudurru
 USER 953
 VOLUME ["/run/kudurru"]

@@ -154,6 +154,32 @@ a real server instead of its mocks.
   loaded under the CSP) and the Astryx reset stylesheet is loaded, which
   evens out some spacing.
 
+### Security review (v0.1 round)
+
+[docs/m5/security-v0.1-round.md](docs/m5/security-v0.1-round.md) reviews the
+block page, unblock requests, allowlists, catalogue fetchers and the release
+pipeline.
+
+- Release pipeline: `publish` checks out `refs/tags/<tag>` without persisted
+  credentials, runs only from the release branches with a valid tag, builds
+  the supervisor images from the verified kudurru digest, and every
+  `cosign verify` pins `publish.yml@refs/heads/release(-candidate)`.
+- The guarded list client checks every request URL, redirects included, so a
+  redirect through an HTTP(S) proxy cannot reach cloud metadata; the
+  catalogue refreshers are covered too.
+- The AdGuard import keeps only single-site `||name^` rules and at most 1000
+  services.
+- Unblock requests: object names are keyed (a viewer could recover the
+  requester's address from an allow-list entry); a re-submission racing an
+  approval no longer makes a time-limited approval permanent; the end of an
+  approval leaves a manual entry with the same rule alone; the block page
+  matches the client's own pseudonym.
+- Allowlist and entries APIs: no partial delete when a copy is managed
+  elsewhere; linear source patches and list exceptions; at most 4
+  concurrent parses of cached list bodies per node.
+- The approve dialog and API say that an everyone approval is attached to
+  every policy kudurru may edit.
+
 ### DNS serving
 
 - One binary, `kudurru serve`, with a fixed stage pipeline: ingress,
@@ -283,7 +309,7 @@ a real server instead of its mocks.
 ### Deployment and packaging
 
 - Helm charts `kudurru` and `kudurru-crds` (CRDs kept on uninstall),
-  validated over 34 value permutations with kubeconform; kustomize bases
+  validated over 42 value permutations with kubeconform; kustomize bases
   rendered from the chart; OIDC providers through `auth.oidc.providers`.
 - Compose profiles: single instance, single instance behind dnsdist, and a
   three-node HA set with dnsdist and keepalived.
@@ -303,14 +329,41 @@ a real server instead of its mocks.
   images now embed the built dashboard (goreleaser runs `make web-build`),
   and the `<major>.<minor>` image tag is gone.
 - Binary-size budget in CI (`make size`).
+- Host networking: `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork`
+  (and `latest-hostnetwork`) is the release binary with the file capability
+  `cap_net_bind_service=+ep`, built from the ko image by `publish.yml`; the
+  chart's `hostNetwork.enabled` runs it with `NET_BIND_SERVICE` added and
+  `allowPrivilegeEscalation: false`, so uid 65532 binds :53 without the host
+  sysctl (`make hostnetwork-check`).
+- The supervisor images copy the binary from `/ko-app/kudurru`, where ko
+  puts it (they copied a path only the local Dockerfile image had); the
+  Dockerfile now uses ko's layout.
+- Edge: `kudurru edge run --dnsdist-user`; with `edge.ebpf.enabled` and on
+  the host network (edge DaemonSet, keepalived, compose HA) the dnsdist
+  container starts as root with a minimal capability set and dnsdist
+  switches to uid 953 after binding and creating the BPF maps (eBPF could
+  not create its maps, and the host-network edge could not bind :53, as
+  uid 953). With `serviceMonitor` or `podMonitor` the chart scrapes the
+  supervisors (:8084, :8085) through a `<release>-edge` PodMonitor.
+- The dashboard is embedded precompressed (gzip, optional brotli): the
+  binary shrinks by 1.8 MB.
+
+### Documentation
+
+- User and administrator guide in [docs/guide](docs/guide/README.md): the
+  block page and access requests for users, and install, daily work, the
+  command line, maintenance and troubleshooting for administrators. It is
+  written in Simplified Technical English (ASD-STE100) with screenshots of
+  the dashboard and of the block page. `python3 hack/guide-lint.py` checks
+  sentence and paragraph length, unapproved words, links and figure numbers;
+  `web/scripts/guide-screenshots.mjs` takes the screenshots again. The docs
+  site lists the guide under **Guide**.
 
 ### Known limitations
 
 See [docs/followups.md](docs/followups.md) for the full list. Notably: no
 DNSSEC signing or validation (v1.0), no follower/raft replication (v0.2),
 cluster-scope stats are per node, the blocking toggle is per node (v0.2), the
-dnsdist console diff-apply is v0.2, the chart's `edge.ebpf.enabled` does not
-work in the non-root edge container and hostNetwork pods need the host's
-`net.ipv4.ip_unprivileged_port_start=0` (both v0.1.x), and the two-node VRRP
+dnsdist console diff-apply is v0.2, and the two-node VRRP
 behaviour still needs runs on real hardware
 ([docs/release-checklist.md](docs/release-checklist.md)).

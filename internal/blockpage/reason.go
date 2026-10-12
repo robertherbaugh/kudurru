@@ -132,8 +132,8 @@ const tailScan = 8192
 // and then querylog.db, newest first within Window. The privacy mode
 // decides what can be matched: under full the client address and the
 // name; under anonymize_client the name and the client's /24 or /48
-// (prefix) or the name alone (pseudonym); hide_domains and stricter modes
-// keep no name to match, so no reason is shown.
+// (prefix) or its pseudonym; hide_domains and stricter modes keep no name
+// to match, so no reason is shown.
 type QuerylogFinder struct {
 	// Tail is the live tail; nil skips it.
 	Tail *querylog.Tail
@@ -142,6 +142,10 @@ type QuerylogFinder struct {
 	// Privacy returns the current querylog.privacy and querylog.anonymize
 	// settings; nil means full.
 	Privacy func() (mode querylog.Mode, pseudonym bool)
+	// Pseudonym returns the client name a client's queries are logged
+	// under with pseudonyms (querylog.Async.Pseudonym); nil or "" matches
+	// no row, so the page never shows another device's block.
+	Pseudonym func(client netip.Addr) string
 	// Disabled is true when querylog.enabled is false.
 	Disabled bool
 }
@@ -164,12 +168,18 @@ func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain str
 	if f.Privacy != nil {
 		mode, pseudonym = f.Privacy()
 	}
-	match := client.Unmap()
+	match, name := client.Unmap(), ""
 	switch mode {
 	case querylog.PrivacyFull:
 	case querylog.PrivacyAnonymizeClient:
 		if pseudonym {
-			match = netip.Addr{} // any client
+			if f.Pseudonym != nil && match.IsValid() {
+				name = f.Pseudonym(match)
+			}
+			if name == "" {
+				return Reason{}, false, noteNotFound
+			}
+			match = netip.Addr{}
 		} else if match.IsValid() {
 			bits := 24
 			if match.Is6() {
@@ -182,12 +192,12 @@ func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain str
 	}
 	since := now.Add(-Window)
 	if f.Tail != nil {
-		if r, ok := f.scanTail(match, domain, since); ok {
+		if r, ok := f.scanTail(match, name, domain, since); ok {
 			return r, true, ""
 		}
 	}
 	if f.Reader != nil {
-		filter := sqlitelog.QueryFilter{Domain: domain, Status: pageStatuses, Since: since, Limit: 1}
+		filter := sqlitelog.QueryFilter{Domain: domain, Status: pageStatuses, Since: since, Limit: 1, Client: name}
 		if match.IsValid() {
 			filter.Client = match.String()
 		}
@@ -212,7 +222,7 @@ func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain str
 		select {
 		case <-ctx.Done():
 		case <-t.C:
-			if r, ok := f.scanTail(match, domain, since); ok {
+			if r, ok := f.scanTail(match, name, domain, since); ok {
 				return r, true, ""
 			}
 		}
@@ -223,9 +233,9 @@ func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain str
 // tailRetry is the pause before the second look at the live tail.
 const tailRetry = 100 * time.Millisecond
 
-// scanTail finds the newest page-status event for domain (and match, when
-// valid) at or after since.
-func (f *QuerylogFinder) scanTail(match netip.Addr, domain string, since time.Time) (Reason, bool) {
+// scanTail finds the newest page-status event for domain of match (when
+// valid) or the client name (when not empty) at or after since.
+func (f *QuerylogFinder) scanTail(match netip.Addr, name, domain string, since time.Time) (Reason, bool) {
 	evs := f.Tail.Recent(tailScan, 0)
 	for i := len(evs) - 1; i >= 0; i-- {
 		ev := evs[i]
@@ -235,7 +245,7 @@ func (f *QuerylogFinder) scanTail(match netip.Addr, domain string, since time.Ti
 		if _, ok := pageStatus(ev.Status.String()); !ok || strings.TrimSuffix(ev.Name, ".") != domain {
 			continue
 		}
-		if match.IsValid() && ev.Client.Unmap() != match {
+		if match.IsValid() && ev.Client.Unmap() != match || name != "" && ev.ClientName != name {
 			continue
 		}
 		r := reasonOf(ev.Status, ev.EDE, ev.HasEDE, ev.List, ev.Rule)

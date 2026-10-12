@@ -24,8 +24,8 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
 | Step | Workflow | What it publishes |
 |---|---|---|
 | Push to a pull request against `main` (same repository, not Dependabot) | `dev-image.yml` | `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` from the PR's head commit with the dashboard bundle, linux/amd64 and linux/arm64, unsigned. Every push overwrites the same tag; `kudurru version` reports `<VERSION>-dev.<PR>` and the commit. |
-| Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>` and `<VERSION>-rc.<N>-debug`, charts and supervisor images at that version. |
-| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug` and `latest-debug`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
+| Push to `release-candidate` (a merge from `main`) | `release-candidate.yml` | Tags `v<VERSION>-rc.<N>` (N is one more than the highest candidate of that VERSION), then `publish.yml`: the GitHub pre-release, images `<VERSION>-rc.<N>`, `<VERSION>-rc.<N>-debug` and `<VERSION>-rc.<N>-hostnetwork`, charts and supervisor images at that version. |
+| Push to `release` (a merge from `release-candidate`) | `release.yml` | Tags `v<VERSION>`, then `publish.yml`: the GitHub release, images `<VERSION>`, `latest`, `<VERSION>-debug`, `latest-debug`, `<VERSION>-hostnetwork` and `latest-hostnetwork`, charts and supervisor images, then `docs-pages.yml` publishes the docs site from the tag. |
 | Pull request into `release-candidate` or `release` | `promotion.yml` | Nothing: fails unless the source branch is `main` (for `release-candidate`) or `release-candidate` (for `release`), and dry-runs the tag the merge would create. |
 
 `hack/release-tag.sh rc|release` computes the tags and refuses:
@@ -40,7 +40,10 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
   `promotion` check (or the `release` workflow).
 
 Re-running a workflow at the same commit reuses its tag. To re-publish an
-existing tag by hand, run `publish` with workflow_dispatch and the tag.
+existing tag by hand, run `publish` with workflow_dispatch and the tag, on
+the `release` branch (a final tag) or `release-candidate` (a candidate);
+publish refuses other branches, because the branch is part of the signing
+identity that `cosign verify` checks (section 5).
 
 The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
 workflow, which is why the branch workflows call `publish.yml` and
@@ -56,9 +59,21 @@ Repository settings the pipeline relies on (once):
       rebase (a branch ruleset can restrict the merge method per branch):
       `release-candidate` must keep `main`'s history, or the next promotion
       conflicts and the release tree check fails.
+- [ ] Promotion pull requests need an approving review by a maintainer
+      (CODEOWNERS for `.github/` and `hack/release-tag.sh`): the `promotion`
+      check runs the workflow and script of the pull request itself, so a
+      pull request that edits them can pass its own check.
 - [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
+- [ ] A branch ruleset refuses branches named `v*`. publish.yml checks out
+      `refs/tags/<tag>`, so a branch named like the next tag can no longer
+      stand in for it, but it would still confuse anyone checking out the
+      bare name.
 - [ ] The `github-pages` environment allows deployments from the `release`
       branch (docs-pages runs in the context of the `release` push).
+- [ ] Settings → Pages: Source "GitHub Actions" and Custom domain
+      `docs.kudurru.io` (DNS CNAME to `robertherbaugh.github.io`, then
+      "Enforce HTTPS"); the docs workflow reads the address from
+      `configure-pages`.
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
       write access (it does when the first image was pushed by a workflow
       of this repository).
@@ -89,8 +104,9 @@ Repository settings the pipeline relies on (once):
 - [ ] CHANGELOG.md: the section for the version, with the date on the GA
       release.
 - [ ] The distroless bases are pinned by digest (`tag@sha256:<index digest>`)
-      in `.goreleaser.yaml` (`base_image`) and the Dockerfile, the same
-      digests in both (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
+      in `.goreleaser.yaml` (`base_image`), the Dockerfile and
+      images/hostnetwork/Dockerfile, the same digests everywhere
+      (`TestDockerfile`). To bump: `curl -sI -H 'Accept:
       application/vnd.oci.image.index.v1+json'
       https://gcr.io/v2/distroless/static/manifests/nonroot` (and
       `debug-nonroot`), take `docker-content-digest`.
@@ -192,14 +208,23 @@ On the owner's hardware:
       linux/amd64 and linux/arm64 and cosign-signs each digest (the program
       versions come from the Dockerfile ARGs). Check both jobs succeeded;
       the image READMEs carry the GPL notices and source offer.
+- [ ] The `hostnetwork-image` job (after `release`) builds and pushes
+      `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork` (and
+      `latest-hostnetwork` for a release) from `images/hostnetwork` with
+      `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>`: the ko
+      image's binary with `cap_net_bind_service=+ep`, for the chart's
+      `hostNetwork.enabled`. It cosign-signs the digest.
 
 ## 5. Verify what was published
 
 - [ ] Checksums: `cosign verify-blob --certificate checksums.txt.pem
       --signature checksums.txt.sig --certificate-identity-regexp
-      'https://github.com/robertherbaugh/kudurru/' --certificate-oidc-issuer
-      https://token.actions.githubusercontent.com checksums.txt`, then
-      `sha256sum -c checksums.txt` on the downloaded artifacts.
+      '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$'
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      checksums.txt`, then `sha256sum -c checksums.txt` on the downloaded
+      artifacts. The identity is publish.yml run from a release branch;
+      a looser pattern (the whole repository) would also accept a signature
+      made by any other workflow or branch of the repository.
 - [ ] Images: `cosign verify ghcr.io/robertherbaugh/kudurru:<version>` with the
       same identity flags (`publish.yml` already ran this for both ko
       images: `docker_signs` with `artifacts: manifests` signs the ko index

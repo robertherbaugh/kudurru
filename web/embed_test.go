@@ -5,10 +5,14 @@ import (
 	"compress/gzip"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 )
@@ -48,12 +52,42 @@ func TestIndexAssetsPresent(t *testing.T) {
 	}
 	for _, m := range assetRef.FindAllSubmatch(b, -1) {
 		name := string(m[1])
-		if _, err := fs.Stat(FS, name); err != nil {
+		_, err := fs.Stat(FS, name)
+		if err != nil {
+			_, err = fs.Stat(FS, name+".gz") // precompressed by web/scripts/compress.ts
+		}
+		if err != nil {
 			t.Errorf("index.html references %s, which is not in the embedded bundle (commit only the placeholder web/dist/index.html, or run make web-build before go build)", name)
 		}
 	}
 	if !Built() && len(assetRef.FindAll(b, -1)) != 0 {
 		t.Error("the placeholder index.html must not reference bundle assets")
+	}
+}
+
+// TestEmbeddedBundleIsPrecompressed keeps the binary small: a built bundle
+// holds its compressible files only as .gz (web/scripts/compress.ts, run by
+// `bun run build`), apart from index.html, whose <base href> the handler
+// rewrites.
+func TestEmbeddedBundleIsPrecompressed(t *testing.T) {
+	if !Built() {
+		t.Skip("placeholder bundle; make web-build embeds the real one")
+	}
+	err := fs.WalkDir(FS, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || name == "index.html" {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if compressible(mime.TypeByExtension(path.Ext(name))) && info.Size() >= 1024 {
+			t.Errorf("%s (%d bytes) is embedded uncompressed; bun run build stores it as %s.gz", name, info.Size(), name)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -162,6 +196,119 @@ func TestHandlerGzipAndETag(t *testing.T) {
 	if rec.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("gzip;q=0 still got Content-Encoding %q", rec.Header().Get("Content-Encoding"))
 	}
+}
+
+func gzipBytes(t *testing.T, b []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestHandlerPrecompressed covers files stored only as <name>.gz (and
+// <name>.br): served as stored to clients that accept the encoding,
+// inflated for those that do not, one ETag per representation.
+func TestHandlerPrecompressed(t *testing.T) {
+	js := []byte(strings.Repeat("console.log('precompressed');\n", 100))
+	css := []byte(strings.Repeat("body{margin:0}\n", 100))
+	jsGz, cssGz := gzipBytes(t, js), gzipBytes(t, css)
+	both := []byte(strings.Repeat("raw and gz\n", 200))
+	bothGz := gzipBytes(t, both)
+	fsys := testFS()
+	fsys["assets/app-2.js.gz"] = &fstest.MapFile{Data: jsGz}
+	fsys["assets/app-2.js.br"] = &fstest.MapFile{Data: []byte("stored brotli bytes")}
+	fsys["assets/app-2.css.gz"] = &fstest.MapFile{Data: cssGz}
+	fsys["third-party-licenses.txt"] = &fstest.MapFile{Data: both}
+	fsys["third-party-licenses.txt.gz"] = &fstest.MapFile{Data: bothGz}
+	fsys["assets/broken-4.js.gz"] = &fstest.MapFile{Data: []byte("not gzip")}
+	h := Handler(Options{FS: fsys})
+
+	get := func(method, p, accept string, hdr ...string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, p, nil)
+		if accept != "" {
+			req.Header.Set("Accept-Encoding", accept)
+		}
+		for i := 0; i+1 < len(hdr); i += 2 {
+			req.Header.Set(hdr[i], hdr[i+1])
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	etags := map[string]bool{}
+	check := func(rec *httptest.ResponseRecorder, enc string, body []byte, etagSuffix string) {
+		t.Helper()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d", rec.Code)
+		}
+		if got := rec.Header().Get("Content-Encoding"); got != enc {
+			t.Errorf("Content-Encoding = %q, want %q", got, enc)
+		}
+		if rec.Header().Get("Vary") != "Accept-Encoding" {
+			t.Errorf("Vary = %q", rec.Header().Get("Vary"))
+		}
+		if !bytes.Equal(rec.Body.Bytes(), body) {
+			t.Errorf("body (%s) differs from the stored or inflated bytes", enc)
+		}
+		etag := rec.Header().Get("ETag")
+		if !strings.HasSuffix(etag, etagSuffix+`"`) || etags[etag] {
+			t.Errorf("ETag %q: want a fresh one ending in %q", etag, etagSuffix)
+		}
+		etags[etag] = true
+	}
+
+	rec := get(http.MethodGet, "/assets/app-2.js", "gzip, br")
+	check(rec, "br", []byte("stored brotli bytes"), "-br")
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") || rec.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Errorf("headers %v", rec.Header())
+	}
+	gzRec := get(http.MethodGet, "/assets/app-2.js", "gzip")
+	check(gzRec, "gzip", jsGz, "-gz")
+	idRec := get(http.MethodGet, "/assets/app-2.js", "")
+	check(idRec, "", js, "")
+	if rec := get(http.MethodGet, "/assets/app-2.js", "br;q=0, gzip;q=0"); rec.Header().Get("Content-Encoding") != "" || !bytes.Equal(rec.Body.Bytes(), js) || rec.Header().Get("ETag") != idRec.Header().Get("ETag") {
+		t.Errorf("q=0 for both codings must get the identity representation, got %v", rec.Header())
+	}
+	check(get(http.MethodGet, "/assets/app-2.css", "br, gzip"), "gzip", cssGz, "-gz")
+
+	// A raw file with a stored .gz sends the stored bytes, not a re-gzip.
+	check(get(http.MethodGet, "/third-party-licenses.txt", "gzip"), "gzip", bothGz, "-gz")
+
+	if rec := get(http.MethodGet, "/assets/app-2.js", "gzip", "If-None-Match", gzRec.Header().Get("ETag")); rec.Code != http.StatusNotModified {
+		t.Errorf("conditional GET = %d, want 304", rec.Code)
+	}
+	if rec := get(http.MethodHead, "/assets/app-2.js", ""); rec.Code != http.StatusOK || rec.Body.Len() != 0 || rec.Header().Get("Content-Length") != strconv.Itoa(len(js)) {
+		t.Errorf("HEAD = %d, %d body bytes, Content-Length %q", rec.Code, rec.Body.Len(), rec.Header().Get("Content-Length"))
+	}
+	if rec := get(http.MethodGet, "/assets/broken-4.js", ""); rec.Code != http.StatusInternalServerError {
+		t.Errorf("corrupt .gz inflated for an identity client = %d, want 500", rec.Code)
+	}
+	if rec := get(http.MethodGet, "/assets/gone-5.js", "gzip"); rec.Code != http.StatusNotFound {
+		t.Errorf("missing asset = %d", rec.Code)
+	}
+
+	// Concurrent identity requests inflate once (go test -race).
+	fresh := Handler(Options{FS: fsys})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := httptest.NewRecorder()
+			fresh.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/app-2.css", nil))
+			if !bytes.Equal(rec.Body.Bytes(), css) {
+				t.Error("concurrent identity body differs")
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestNormalizeBasePath(t *testing.T) {

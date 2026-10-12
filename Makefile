@@ -21,7 +21,7 @@ ENVTEST_K8S_VERSION ?= 1.37.x
 .PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
-.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
 
@@ -31,8 +31,10 @@ build:
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
 ## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
-## 60,362,000), 58,523,808 after the v0.1 UX round (linux/amd64, Go 1.27.2,
-## built dashboard). The project owner set the ceiling to 100,000,000 bytes
+## 60,362,000), 58,523,808 after the v0.1 UX round, 59,826,336 after the
+## catalogue round and 57,991,328 with the dashboard embedded precompressed
+## (web/scripts/compress.ts: 2.5 MiB of bundle as 0.75 MiB of gzip)
+## (linux/amd64, Go 1.27.2, built dashboard). The project owner set the ceiling to 100,000,000 bytes
 ## (D138); growth still needs a reason in the change that causes it, and
 ## cmd/kudurru TestNoTemplateExecution guards the one known 12 MB trap.
 SIZE_BUDGET ?= 100000000
@@ -349,12 +351,13 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 ## optional edge workflow. The unit tests only check the files structurally.
 EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
 EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
+EDGE_SUPERVISOR_IMAGE ?= kudurru-dnsdist:edge-check
 EDGE_KUDURRU_IMAGE    ?= ghcr.io/robertherbaugh/kudurru:$(VERSION)
 EDGE_CHECK_DIR        ?= bin/edge-check
 
 edge-images: docker
 	docker build -t $(EDGE_KEEPALIVED_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/keepalived
-	docker build -t kudurru-dnsdist:edge-check --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
+	docker build -t $(EDGE_SUPERVISOR_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
 
 edge-check: edge-images
 	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./internal/edge/...
@@ -369,8 +372,10 @@ edge-check: edge-images
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
 	# eBPF DynBlocks: --check-config creates the BPF maps, which needs
-	# CAP_SYS_ADMIN (or CAP_BPF) as an effective capability, so root.
-	docker run --rm --user 0 --cap-add SYS_ADMIN --entrypoint /bin/sh \
+	# CAP_BPF/CAP_SYS_ADMIN as an effective capability, so root with the
+	# chart's capability set (charts/kudurru _pod.tpl, kudurru.edge.rootStart).
+	docker run --rm --user 0:953 --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
+	  --cap-add KILL --cap-add BPF --cap-add SYS_ADMIN --security-opt no-new-privileges --entrypoint /bin/sh \
 	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; for d in /golden/*-ebpf/; do \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
@@ -379,7 +384,10 @@ edge-check: edge-images
 	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; umask 077; \
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
-	docker run --rm --entrypoint /usr/local/bin/kudurru kudurru-dnsdist:edge-check version
+	# The chart's root start at run time: dnsdist creates the maps, binds :53
+	# without the sysctl, switches to 953 keeping CAP_SYS_ADMIN, and stops.
+	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
+	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
 
 ## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
 ## UDP and TCP (split and mixed Services), rolling restart without unanswered
@@ -392,6 +400,20 @@ docker:
 
 docker-debug:
 	docker build --target debug -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-debug --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
+
+## docker-hostnetwork: the -hostnetwork variant of the `make docker` image
+## (images/hostnetwork/Dockerfile): the same binary with the file capability
+## cap_net_bind_service=+ep, for host networking (publish.yml builds it from
+## the ko image).
+docker-hostnetwork: docker
+	docker build -t ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork --build-arg KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:$(VERSION) images/hostnetwork
+
+## hostnetwork-check: uid 65532 in the -hostnetwork image binds :53 with
+## only NET_BIND_SERVICE and no_new_privs where the ip_unprivileged_port_start
+## sysctl does not apply, and neither the image without the capability nor
+## the plain image does (hack/hostnetwork-check.sh; needs Docker).
+hostnetwork-check: docker-hostnetwork
+	hack/hostnetwork-check.sh ghcr.io/robertherbaugh/kudurru:$(VERSION)-hostnetwork ghcr.io/robertherbaugh/kudurru:$(VERSION)
 
 clean:
 	rm -rf bin dist web/dist/assets

@@ -98,6 +98,10 @@ type Options struct {
 	// Namespace holds kudurru service accounts created by kudurru itself
 	// (bootstrap, break-glass); default "kudurru-system".
 	Namespace string
+	// ClientIP returns the client address of a request, recorded as a
+	// token's lastUsedIP: the API server's RealIP(trustedProxies) result
+	// (stack.Options.ClientIP); default the RemoteAddr host.
+	ClientIP func(*http.Request) string
 	// Logger; default discards.
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
@@ -145,6 +149,9 @@ func New(opts Options) (*Tokens, error) {
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
+	}
+	if opts.ClientIP == nil {
+		opts.ClientIP = remoteHost
 	}
 	return &Tokens{
 		st: opts.Store, opts: opts, log: opts.Logger,
@@ -359,14 +366,14 @@ func (t *Tokens) Authenticate(_ http.ResponseWriter, r *http.Request) (auth.Prin
 	if !strings.HasPrefix(raw, Prefix) {
 		return auth.Principal{}, nil, auth.ErrNoCredentials
 	}
-	p, err := t.Verify(r.Context(), raw, clientIP(r))
+	p, err := t.Verify(r.Context(), raw, t.opts.ClientIP(r))
 	if err != nil {
 		return auth.Principal{}, nil, err
 	}
 	return p, r, nil
 }
 
-func clientIP(r *http.Request) string {
+func remoteHost(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

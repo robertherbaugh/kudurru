@@ -78,11 +78,29 @@ func HTTPClient(allowLocal bool) *http.Client {
 	return guardedClient()
 }
 
+// guardTransport refuses every request, the first and each redirect, to
+// a literal local host before it is sent. Through an HTTP(S) proxy the
+// dialer only ever sees the proxy, so without it a redirect to
+// http://169.254.169.254/ would be fetched by the proxy.
+type guardTransport struct{ base http.RoundTripper }
+
+func (g guardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := checkURLHost(req.URL); err != nil {
+		if req.Body != nil {
+			_ = req.Body.Close()
+		}
+		return nil, err
+	}
+	return g.base.RoundTrip(req)
+}
+
 // guardedClient returns the default list client: DefaultHTTPTimeout, the
 // proxy from the environment, and a dialer that refuses local addresses
 // at connect time. The check runs on the resolved address of every
 // connection (redirect targets and DNS-rebinding answers included); dials
-// to a configured HTTP(S) proxy are allowed.
+// to a configured HTTP(S) proxy are allowed, and every request URL (the
+// first and each redirect target) is checked for a literal local host
+// first, which covers fetches through the proxy.
 func guardedClient() *http.Client {
 	proxies := proxyAddrs()
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
@@ -103,7 +121,7 @@ func guardedClient() *http.Client {
 		}
 		return guarded.DialContext(ctx, network, addr)
 	}
-	return &http.Client{Timeout: DefaultHTTPTimeout, Transport: tr}
+	return &http.Client{Timeout: DefaultHTTPTimeout, Transport: guardTransport{base: tr}}
 }
 
 // proxyAddrs lists the host:port of the HTTP(S) proxies named by the

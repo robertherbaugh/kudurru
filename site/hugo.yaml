@@ -56,6 +56,7 @@ outputs:
 menus:
   main:
     - {name: Get started, pageRef: /start, weight: 10}
+    - {name: Guide, pageRef: /guide, weight: 15}
     - {name: Deploy, pageRef: /deploy, weight: 20}
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
@@ -65,6 +66,21 @@ menus:
 
 # Order of the mounted pages that carry no front matter of their own.
 cascade:
+  - {weight: 1, target: {path: /guide/user-guide}}
+  - {weight: 2, target: {path: /guide/admin}}
+  - {weight: 3, target: {path: /guide/style}}
+  - {weight: 1, target: {path: /guide/admin/01-overview}}
+  - {weight: 2, target: {path: /guide/admin/02-install-and-sign-in}}
+  - {weight: 3, target: {path: /guide/admin/03-watch-the-network}}
+  - {weight: 4, target: {path: /guide/admin/04-lists-and-domains}}
+  - {weight: 5, target: {path: /guide/admin/05-groups-clients-policies}}
+  - {weight: 6, target: {path: /guide/admin/06-access-requests}}
+  - {weight: 7, target: {path: /guide/admin/07-zones-and-upstreams}}
+  - {weight: 8, target: {path: /guide/admin/08-system}}
+  - {weight: 9, target: {path: /guide/admin/09-people-and-tokens}}
+  - {weight: 10, target: {path: /guide/admin/10-command-line}}
+  - {weight: 11, target: {path: /guide/admin/11-maintenance}}
+  - {weight: 12, target: {path: /guide/admin/12-troubleshooting}}
   - {weight: 1, target: {path: /deploy/docker}}
   - {weight: 2, target: {path: /deploy/compose-ha}}
   - {weight: 3, target: {path: /deploy/helm}}
@@ -90,6 +106,13 @@ module:
     - {source: content, target: content}
     - {source: layouts, target: layouts}
     - {source: assets, target: assets}
+
+    # The user and administrator guide (docs/guide; its images are served from the repository).
+    - {source: ../docs/guide/README.md, target: content/guide/_index.md}
+    - {source: ../docs/guide/admin/README.md, target: content/guide/admin/_index.md}
+    - source: ../docs/guide
+      target: content/guide
+      files: ['! README.md', '! admin/README.md', '! images/**']
 
     # User and operator guides, runbooks.
     - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}

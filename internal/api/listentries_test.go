@@ -230,3 +230,91 @@ func TestStructuredSourceEntries(t *testing.T) {
 	h.do(http.MethodPatch, base, "operator", map[string]any{"remove": []string{"a.example"}}).want(http.StatusUnprocessableEntity)
 	h.do(http.MethodPatch, base, "operator", map[string]any{"disable": []string{"c.example"}}).want(http.StatusBadRequest)
 }
+
+// TestSourcePatchIsLinear: switching off every entry of a large source
+// in one PATCH stays fast. The entries branch parsed every entry's rule
+// key once per value (10000 x 10000 parses at the schema limits, tens of
+// minutes of CPU for one operator request), and the exclude branch
+// scanned spec.sources[].exclude once per value.
+func TestSourcePatchIsLinear(t *testing.T) {
+	const n = 2000
+	values := make([]string, n)
+	entries := make([]v1alpha1.ListEntry, n)
+	for i := range n {
+		values[i] = fmt.Sprintf("host%05d.example", i)
+		entries[i] = v1alpha1.ListEntry{Value: values[i]}
+	}
+	now := func() time.Time { return time.Unix(0, 0) }
+	start := time.Now()
+	src := &v1alpha1.ListSource{Name: "ui", Entries: entries}
+	res := &SourceEntriesResult{}
+	if err := applySourcePatch(src, &SourceEntriesPatch{Disable: values}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	if res.Excluded != n || len(res.Disabled) != n {
+		t.Fatalf("entries: excluded %d, disabled %d", res.Excluded, len(res.Disabled))
+	}
+	url := &v1alpha1.ListSource{Name: "feed", URL: "https://lists.example/hosts.txt", Format: "domains"}
+	res = &SourceEntriesResult{}
+	if err := applySourcePatch(url, &SourceEntriesPatch{Disable: values}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	res = &SourceEntriesResult{}
+	if err := applySourcePatch(url, &SourceEntriesPatch{Enable: values[:n/2]}, res, now); err != nil {
+		t.Fatal(err)
+	}
+	if res.Excluded != n/2 || len(res.Enabled) != n/2 || url.Exclude[0] != values[n/2] {
+		t.Fatalf("exclude: excluded %d, enabled %d", res.Excluded, len(res.Enabled))
+	}
+	if d := time.Since(start); d > 30*time.Second { // minutes before
+		t.Fatalf("%d values took %v", n, d)
+	}
+}
+
+// blockingBodies serves a body whose reader blocks until release is
+// closed, and says on opened when a parse has started.
+type blockingBodies struct {
+	opened  chan struct{}
+	release chan struct{}
+}
+
+func (b blockingBodies) OpenSourceBody(string, v1alpha1.ListSource) (io.ReadCloser, SourceBody, error) {
+	b.opened <- struct{}{}
+	return io.NopCloser(&blockingReader{release: b.release, rest: strings.NewReader("0.0.0.0 ads.example\n")}), SourceBody{Digest: "d1"}, nil
+}
+
+type blockingReader struct {
+	release chan struct{}
+	rest    io.Reader
+}
+
+func (r *blockingReader) Read(p []byte) (int, error) {
+	<-r.release
+	return r.rest.Read(p)
+}
+
+// TestBodyScanLimit: parses of cached list bodies (every viewer may page
+// GET …/entries, each a full parse) are capped per node; a request over
+// the cap waits briefly, then gets 503 with Retry-After.
+func TestBodyScanLimit(t *testing.T) {
+	defer func(n int, w time.Duration) { maxBodyScans, bodyScanWait = n, w }(maxBodyScans, bodyScanWait)
+	maxBodyScans, bodyScanWait = 1, 50*time.Millisecond
+	bodies := blockingBodies{opened: make(chan struct{}, 4), release: make(chan struct{})}
+	h := newHarness(t, func(o *Options) { o.ListBodies = bodies })
+	h.seed(store.ManagerBootstrap, starterList(1))
+	path := "/api/v1/blocklists/default/starter/sources/feed/entries"
+	done := make(chan int)
+	go func() { done <- h.do(http.MethodGet, path, "viewer", nil).Code }()
+	<-bodies.opened // the first request holds the only slot
+	over := h.do(http.MethodGet, path, "viewer", nil)
+	if over.Code != http.StatusServiceUnavailable || over.Header().Get("Retry-After") == "" {
+		t.Fatalf("parse over the cap: %d (Retry-After %q)", over.Code, over.Header().Get("Retry-After"))
+	}
+	close(bodies.release)
+	if code := <-done; code != http.StatusOK {
+		t.Fatalf("first request: %d", code)
+	}
+	if code := h.do(http.MethodGet, path, "viewer", nil).Code; code != http.StatusOK {
+		t.Fatalf("after the slot was freed: %d", code)
+	}
+}

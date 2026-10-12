@@ -8,8 +8,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
-    "build": "vite build && bun scripts/licenses.ts && bun scripts/budget.ts",
-    "preview": "vite preview",
+    "build": "vite build && bun scripts/licenses.ts && bun scripts/budget.ts && bun scripts/compress.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint --max-warnings 0 . && bun run themes:check",
     "test": "vitest run",

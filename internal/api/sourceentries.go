@@ -267,12 +267,43 @@ func (s *Server) listSourceEntries(ctx context.Context, in *sourceEntriesInput) 
 		}
 		out.StaleExcludes = ex.stale()
 	default:
-		if err := s.scanSourceBody(bl, src, idx, pg, ex); err != nil {
+		if err := s.scanSourceBody(ctx, bl, src, idx, pg, ex); err != nil {
 			return nil, err
 		}
 		out.StaleExcludes = ex.stale()
 	}
 	return &sourceEntriesOutput{ETag: bl.ResourceVersion, Body: out}, nil
+}
+
+// maxBodyScans caps the concurrent parses of cached list bodies (GET
+// …/entries, list exceptions) on one server: each parses the whole body,
+// about half a second of CPU and 76 MiB of allocations for a 60 MiB list,
+// and every viewer may page. Requests beyond it wait up to bodyScanWait
+// for a slot, then get 503 with Retry-After.
+var maxBodyScans = 4
+
+// bodyScanWait is how long a body parse waits for a slot.
+var bodyScanWait = 5 * time.Second
+
+// scanCheck is how many rules a body parse handles between checks of the
+// request context, so an abandoned request stops parsing.
+const scanCheck = 4096
+
+// acquireBodyScan takes a body parse slot; call release when done.
+func (s *Server) acquireBodyScan(ctx context.Context) (release func(), err error) {
+	t := time.NewTimer(bodyScanWait)
+	defer t.Stop()
+	select {
+	case s.bodyScans <- struct{}{}:
+		return func() { <-s.bodyScans }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-t.C:
+		e := newError(http.StatusServiceUnavailable, KeyUnavailable,
+			fmt.Sprintf("too many list bodies are being read on this node (%d at a time)", cap(s.bodyScans)), "retry shortly")
+		e.GetHeaders().Set("Retry-After", "5")
+		return nil, e
+	}
 }
 
 // errNoBody is the 503 of a URL or ConfigMap source this node holds no
@@ -285,11 +316,16 @@ func errNoBody(source string) *Error {
 
 // scanSourceBody pages through the rules of the cached body of a URL or
 // ConfigMap source.
-func (s *Server) scanSourceBody(bl *v1alpha1.BlockList, src *v1alpha1.ListSource, idx int, pg *entryPager, ex excludeSet) error {
+func (s *Server) scanSourceBody(ctx context.Context, bl *v1alpha1.BlockList, src *v1alpha1.ListSource, idx int, pg *entryPager, ex excludeSet) error {
 	name := blocking.SourceName(idx, *src)
 	if s.opts.ListBodies == nil {
 		return errNoBody(name)
 	}
+	release, err := s.acquireBodyScan(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	rc, body, err := s.opts.ListBodies.OpenSourceBody(bl.Namespace, *src)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -308,11 +344,18 @@ func (s *Server) scanSourceBody(bl *v1alpha1.BlockList, src *v1alpha1.ListSource
 			pg.out.Stale = true
 		}
 	}
+	n := 0
 	_, err = parser.Parse(rc, parser.Options{Format: parser.Format(src.Format), HostsSubdomains: src.Subdomains, KeepInvalid: -1, KeepUnsupported: -1}, func(r parser.Rule) error {
+		if n++; n%scanCheck == 0 && ctx.Err() != nil {
+			return ctx.Err()
+		}
 		v := r.String()
 		pg.add(SourceEntry{Value: v, Line: r.Line, Enabled: !ex.hit(v)})
 		return nil
 	})
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil && !errors.Is(err, io.EOF) {
 		return errUnavailable("source %q: %v", name, err)
 	}
@@ -430,15 +473,24 @@ func applySourcePatch(src *v1alpha1.ListSource, b *SourceEntriesPatch, res *Sour
 	}
 	if kind == "entries" {
 		t := now().UTC().Truncate(time.Second)
+		// Each entry's rule key once: up to 10000 values against up to
+		// 10000 entries, each key a parse, would otherwise take minutes.
+		byKey := make(map[string]int, len(src.Entries))
+		for i, e := range src.Entries {
+			if k := domainlist.RuleKey(v1alpha1.EntryRule(e.Type, e.Value)); k != "" {
+				if _, dup := byKey[k]; !dup {
+					byKey[k] = i
+				}
+			}
+		}
 		for _, list := range []struct {
 			values []string
 			on     bool
 			dst    *[]string
 		}{{b.Enable, true, &res.Enabled}, {b.Disable, false, &res.Disabled}} {
 			for _, v := range list.values {
-				key := domainlist.RuleKey(v)
-				i := slices.IndexFunc(src.Entries, func(e v1alpha1.ListEntry) bool { return domainlist.RuleKey(v1alpha1.EntryRule(e.Type, e.Value)) == key })
-				if i < 0 {
+				i, ok := byKey[domainlist.RuleKey(v)]
+				if !ok {
 					return errInvalid("%q is not an entry of this source", v)
 				}
 				e := &src.Entries[i]
@@ -463,7 +515,12 @@ func applySourcePatch(src *v1alpha1.ListSource, b *SourceEntriesPatch, res *Sour
 		}
 		return nil
 	}
-	// enable / disable through spec.sources[].exclude.
+	// enable / disable through spec.sources[].exclude, kept as a set
+	// while the values are applied (linear in values and excludes).
+	excluded := make(map[string]bool, len(src.Exclude))
+	for _, e := range src.Exclude {
+		excluded[e] = true
+	}
 	for _, v := range b.Disable {
 		rules, err := excludeRules(src, v)
 		if err != nil {
@@ -471,7 +528,8 @@ func applySourcePatch(src *v1alpha1.ListSource, b *SourceEntriesPatch, res *Sour
 		}
 		changed := false
 		for _, r := range rules {
-			if !slices.Contains(src.Exclude, r) {
+			if !excluded[r] {
+				excluded[r] = true
 				src.Exclude = append(src.Exclude, r)
 				changed = true
 			}
@@ -480,18 +538,25 @@ func applySourcePatch(src *v1alpha1.ListSource, b *SourceEntriesPatch, res *Sour
 			res.Disabled = append(res.Disabled, v)
 		}
 	}
+	reenable := map[string]bool{}
 	for _, v := range b.Enable {
-		drop := map[string]bool{v: true}
+		keys := []string{v}
 		if rules, err := excludeRules(src, v); err == nil {
-			for _, r := range rules {
-				drop[r] = true
+			keys = append(keys, rules...)
+		}
+		changed := false
+		for _, k := range keys {
+			if excluded[k] {
+				delete(excluded, k)
+				reenable[k], changed = true, true
 			}
 		}
-		n := len(src.Exclude)
-		src.Exclude = slices.DeleteFunc(src.Exclude, func(e string) bool { return drop[e] })
-		if len(src.Exclude) != n {
+		if changed {
 			res.Enabled = append(res.Enabled, v)
 		}
+	}
+	if len(reenable) > 0 {
+		src.Exclude = slices.DeleteFunc(src.Exclude, func(e string) bool { return reenable[e] })
 	}
 	if len(src.Exclude) == 0 {
 		src.Exclude = nil

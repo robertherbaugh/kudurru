@@ -30,7 +30,7 @@ make web-install   # bun install --frozen-lockfile
 make web-dev       # Vite dev server with the MSW mock API (no kudurru needed)
 make web-test      # vitest run
 make web-lint      # eslint (zero warnings) + built themes current + tsc --noEmit
-make web-build     # production bundle into web/dist + licence file + size budget
+make web-build     # production bundle into web/dist + licence file + size budget + precompression
 ```
 
 Inside `web/`: `bun run dev` proxies `/api` to `KUDURRU_API`
@@ -45,18 +45,28 @@ overwrites it and writes the hashed bundle into `web/dist/assets/` (ignored
 by git). Do not commit the built `index.html`: `TestIndexAssetsPresent` in
 this package fails when index.html references assets that are not embedded.
 
+The last build step, `scripts/compress.ts`, replaces every compressible file
+of at least 1 KiB except `index.html` with `<name>.gz` (gzip -9), so the
+binary embeds about 0.8 MiB instead of 2.6 MiB. `web.Handler` sends the
+stored gzip bytes with `Content-Encoding: gzip` (`Vary: Accept-Encoding`, an
+ETag per representation) and inflates a file once for a client without
+gzip. `KUDURRU_WEB_BROTLI=1 bun run build` also writes `<name>.br`, which
+the handler prefers for clients that accept `br`, at the price of embedding
+both. `web/dist` therefore holds no plain `.js`/`.css` after a build; serve
+it through the binary, not a static file server.
+
 ## Layout
 
 | Path | What |
 |---|---|
-| `embed.go`, `handler.go` | `web.FS` (the bundle) and `web.Handler` (SPA fallback, caching, gzip, CSP, `<base href>` rewrite) |
+| `embed.go`, `handler.go` | `web.FS` (the bundle) and `web.Handler` (SPA fallback, caching, precompressed gzip/brotli, CSP, `<base href>` rewrite) |
 | `src/api/` | the typed client: `types.ts` (wire types), `client.ts` (fetch, errors, CSRF), `endpoints.ts` (one function per route), `context.tsx` (session, permissions, node scope), `hooks.ts` |
 | `src/pages/` | one lazily loaded module per route (`src/routes.tsx` is the table) |
 | `src/components/` | shell, stat tiles, query-log table, record editor, generated object forms, settings rows, blocking control |
 | `src/charts/` | uPlot stacked bars and the ECharts donut, both reading colours from CSS |
 | `src/lib/` | router, base path, RR field model, settings metadata, formatting, ownership |
 | `src/mocks/` | MSW handlers and deterministic fixtures (3 zones, 50 records, 6 lists, 4 groups, 3 policies, 24 h of series, 500 query rows, 2 nodes) |
-| `scripts/` | `budget.ts` (initial-load gzip budget, default 600 KiB) and `licenses.ts` (dist/third-party-licenses.txt) |
+| `scripts/` | `budget.ts` (initial-load gzip budget, default 600 KiB), `licenses.ts` (dist/third-party-licenses.txt) and `compress.ts` (stores the bundle as .gz for the binary) |
 
 ## Generated API types
 
