@@ -1,6 +1,6 @@
 # Contributing to kudurru
 
-Thank you for helping build kudurru. This file covers the rules that are easy to get wrong; the design itself is in [docs/architecture.md](docs/architecture.md).
+Thank you for helping build kudurru. This file covers the rules that are easy to get wrong; how the code fits together is in the [architecture tour](docs/architecture/README.md), and the design and its decision log are in the [design record](docs/architecture.md).
 
 ## Licensing rule (read this first)
 

@@ -1,7 +1,11 @@
 # kudurru docs site (site/README.md). Content is mounted from docs/ and the
 # repository root, so every page stays plain markdown that GitHub renders;
 # only site/content holds pages of its own (landing pages, role pages,
-# migration guides and the generated references).
+# migration guides and the generated references). The architecture, the
+# design record and the engineering notes (docs/architecture, docs/m*,
+# docs/spikes, docs/research ...) are not published here: they are for
+# contributors and live in the repository, where links to them resolve to
+# GitHub.
 title: kudurru
 # The Pages workflow passes the real --baseURL; every template link goes
 # through relURL/RelPermalink so the site also works below a sub-path.
@@ -60,8 +64,6 @@ menus:
     - {name: Deploy, pageRef: /deploy, weight: 20}
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
-    - {name: Design, pageRef: /design, weight: 50}
-    - {name: Engineering notes, pageRef: /notes, weight: 60}
     - {name: Project, pageRef: /project, weight: 70}
 
 # Order of the mounted pages that carry no front matter of their own.
@@ -86,16 +88,6 @@ cascade:
   - {weight: 3, target: {path: /deploy/helm}}
   - {weight: 4, target: {path: /deploy/kustomize}}
   - {weight: 5, target: {path: /deploy/runbooks}}
-  - {weight: 1, target: {path: /design/architecture}}
-  - {weight: 2, target: {path: /design/open-questions}}
-  - {weight: 1, target: {path: /notes/m1}}
-  - {weight: 2, target: {path: /notes/m2}}
-  - {weight: 3, target: {path: /notes/m3}}
-  - {weight: 5, target: {path: /notes/m5}}
-  - {weight: 10, target: {path: /notes/spikes}}
-  - {weight: 11, target: {path: /notes/research}}
-  - {weight: 20, target: {path: /notes/followups}}
-  - {weight: 21, target: {path: /notes/release-checklist}}
   - {weight: 1, target: {path: /project/changelog}}
   - {weight: 2, target: {path: /project/security}}
   - {weight: 3, target: {path: /project/contributing}}
@@ -123,26 +115,6 @@ module:
     # User and operator guides, runbooks.
     - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}
     - {source: ../docs/deploy, target: content/deploy, files: ['! README.md']}
-
-    # Design.
-    - {source: ../docs/architecture.md, target: content/design/architecture.md}
-    - {source: ../docs/open-questions.md, target: content/design/open-questions.md}
-
-    # Engineering notes: milestone reports, spikes, research, follow-ups.
-    - {source: ../docs/m1/README.md, target: content/notes/m1/_index.md}
-    - {source: ../docs/m1, target: content/notes/m1, files: ['! README.md']}
-    - {source: ../docs/m2/README.md, target: content/notes/m2/_index.md}
-    - {source: ../docs/m2, target: content/notes/m2, files: ['! README.md']}
-    - {source: ../docs/m3/README.md, target: content/notes/m3/_index.md}
-    - {source: ../docs/m3, target: content/notes/m3, files: ['! README.md']}
-    - {source: ../docs/m5/README.md, target: content/notes/m5/_index.md}
-    - {source: ../docs/m5, target: content/notes/m5, files: ['! README.md']}
-    - {source: ../docs/spikes/README.md, target: content/notes/spikes/_index.md}
-    - {source: ../docs/spikes, target: content/notes/spikes, files: ['! README.md']}
-    - {source: ../docs/research/README.md, target: content/notes/research/_index.md}
-    - {source: ../docs/research, target: content/notes/research, files: ['! README.md']}
-    - {source: ../docs/followups.md, target: content/notes/followups.md}
-    - {source: ../docs/release-checklist.md, target: content/notes/release-checklist.md}
 
     # Project files from the repository root.
     - {source: ../CHANGELOG.md, target: content/project/changelog.md}

@@ -293,7 +293,7 @@ function roadmap(): Html {
       </li>`,
       )}
     </ol>
-    <p class="fine">Milestones and exit criteria: ${external(docs("/design/architecture/#13-roadmap"), "architecture, section 13")}.</p>
+    <p class="fine">Milestones and exit criteria: ${external(`${REPO_URL}/blob/main/docs/architecture.md#13-roadmap`, "design record, section 13")}.</p>
   </div>
 </section>`;
 }

@@ -25,9 +25,14 @@ amd64/arm64 pass `HUGO=/path/to/hugo`.
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
 | Reference | `site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
 | Reference → API explorer | `api/openapi.json`, rendered by the Scalar bundle in `internal/api/scalar` |
-| Design | `docs/architecture.md`, `docs/open-questions.md` |
-| Engineering notes | `docs/m1` ... `docs/m5`, `docs/spikes`, `docs/research`, `docs/followups.md`, `docs/release-checklist.md` |
 | Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
+
+The rest of `docs/` is for contributors and stays in the repository: the
+architecture tour (`docs/architecture/`), the design record and decision log
+(`docs/architecture.md`, `docs/open-questions.md`) and the engineering notes
+(`docs/m1` ... `docs/m5`, `docs/spikes`, `docs/research`, `docs/followups.md`,
+`docs/release-checklist.md`). A page of the site that links to one of them
+gets a GitHub URL (below).
 
 The mounts are in `hugo.yaml`. Pages from `docs/` need no front matter: the
 title is the first `#` heading, and the order within a section comes from the
@@ -37,7 +42,7 @@ title is the first `#` heading, and the order within a section comes from the
 ## Links
 
 Write links in `docs/` the way GitHub resolves them, relative to the file:
-`[runbooks](runbooks.md#upgrading)`, `[design](../architecture.md)`. The link
+`[runbooks](runbooks.md#upgrading)`, `[architecture](../architecture/README.md)`. The link
 hook (`layouts/_markup/render-link.html`) turns a link to a file that is a
 page into the page's URL, a link to a directory into its `README.md` page,
 and a link to any other repository file into a GitHub URL at the ref being
