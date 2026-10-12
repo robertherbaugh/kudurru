@@ -1,0 +1,3 @@
+NAME     ADMIN   DISABLED   MUST-CHANGE-PASSWORD   LAST-LOGIN
+admin    true    false      true                   2026-10-11 08:00:00
+viewer   false   true       false                  -

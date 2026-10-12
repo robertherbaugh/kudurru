@@ -1,0 +1,454 @@
+# kudurru Helm values (docs/architecture.md §5.2). Every value maps onto a
+# settings key of the binary (`kudurru config schema`), a KUDURRU_* variable
+# or a Kubernetes field. Values that need binary behaviour which has not
+# landed yet say so and are listed in docs/followups.md.
+
+# -- kubernetes: kube store driver (CRDs via the apiserver), a Deployment (a
+# DaemonSet with hostNetwork.enabled) and the Lease-elected controller.
+# standalone: sqlite store driver (state.db on a PVC), a StatefulSet with one
+# replica, no CRDs ("Pi-hole on k3s").
+mode: kubernetes
+
+# -- Replicas of the kudurru Deployment (mode=kubernetes without hostNetwork).
+# standalone always runs one replica; hostNetwork runs one pod per node.
+replicaCount: 2
+
+image:
+  repository: ghcr.io/robertherbaugh/kudurru
+  # -- Defaults to the chart appVersion.
+  tag: ""
+  # -- sha256:...; takes precedence over tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+# -- Cluster DNS domain, used for KUDURRU_HEADLESS_SERVICE
+# (<headless>.<namespace>.svc.<clusterDomain>).
+clusterDomain: cluster.local
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  # -- Least-privilege ClusterRole and Role for the kudurru ServiceAccount
+  # (§5.3, D77). mode=standalone needs no Kubernetes API access.
+  create: true
+  # -- kudurru-viewer/editor/admin aggregate into the built-in view/edit/admin.
+  aggregateToDefaultRoles: true
+
+# -- Port kudurru binds for plain DNS in the pod (listeners.dns). 53 needs
+# NET_BIND_SERVICE (kept in securityContext); 1053 is the escape hatch for
+# clusters that forbid it. With edge.enabled kudurru listens on
+# edge.backendPort instead and the edge owns 53.
+listen:
+  port: 53
+
+service:
+  dns:
+    type: LoadBalancer
+    port: 53
+    # -- false: one mixed-protocol Service (GA since 1.26). true: dns-udp and
+    # dns-tcp Services sharing one address (metallb.io/allow-shared-ip).
+    splitProtocols: false
+    loadBalancerIP: ""
+    loadBalancerClass: ""
+    loadBalancerSourceRanges: []
+    # -- Local preserves client addresses (per-client stats, client groups).
+    externalTrafficPolicy: Local
+    ipFamilyPolicy: PreferDualStack
+    ipFamilies: []
+    # -- PreferClose keeps traffic in-zone (Kubernetes 1.31+); empty omits it.
+    trafficDistribution: ""
+    annotations: {}
+  # Encrypted transports share the dns Service(s). They need tls.secretName,
+  # or edge.tlsSecretName when edge.enabled (dnsdist terminates them).
+  dot:
+    enabled: false
+    port: 853
+  doh:
+    enabled: false
+    port: 443
+  doq:
+    enabled: false
+    port: 853
+  doh3:
+    enabled: false
+    port: 443
+  api:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+  headless:
+    # -- Defaults to <fullname>-headless. Edge backends, list pulls between
+    # replicas (:8082), NOTIFY source; exported as KUDURRU_HEADLESS_SERVICE.
+    name: ""
+    publishNotReadyAddresses: true
+
+# -- kubernetes.io/tls Secret (tls.crt, tls.key) for the DoT/DoH/DoQ/DoH3
+# listeners of the kudurru pods, mounted at /etc/kudurru/tls.
+tls:
+  secretName: ""
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls: []
+
+# dnsdist edge tier (§3.6, §5.4). The supervisor (`kudurru edge run`) and its
+# image land in milestone M4; until then edge.enabled renders the target shape.
+edge:
+  enabled: false
+  # -- deployment: a Deployment behind the dns Service, backends from the
+  # headless EndpointSlice. sidecar: dnsdist in every kudurru pod (single-node
+  # clusters; loopback PROXYv2, no TLV). daemonset: a hostNetwork DaemonSet on
+  # the vip.keepalived nodes (forced by vip.provider=keepalived).
+  mode: deployment
+  replicas: 2
+  image:
+    repository: ghcr.io/robertherbaugh/kudurru-dnsdist
+    # -- Defaults to <dnsdistVersion>-k<appVersion>.
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  dnsdistVersion: 2.1.2
+  # -- Port kudurru listens on behind the edge (PROXYv2 only).
+  backendPort: 5353
+  # -- Short max_ttl packet cache for the authoritative pool, flushed on serial change.
+  authoritativeCache: false
+  dynblocks:
+    enabled: false
+  # -- eBPF DynBlocks: dnsdist creates BPF maps, which needs CAP_BPF and
+  # CAP_SYS_ADMIN. Kubernetes only makes added capabilities effective for
+  # root, so the dnsdist container then starts as root (group 953, every
+  # other capability dropped) and dnsdist switches to 953 after binding,
+  # keeping CAP_SYS_ADMIN (--dnsdist-user). Not Restricted or Baseline PSS:
+  # the namespace needs the privileged level. The host-network edge
+  # (daemonset mode) starts the same way without BPF and SYS_ADMIN.
+  ebpf:
+    enabled: false
+  # -- PROXYv2 TLV 0xE0 secret shared by the edge and kudurru pods (at least
+  # 32 bytes). Generated once and kept when empty and existingSecret is unset.
+  proxyProtocolSecret: ""
+  # -- Existing Secret with the key proxy-protocol-secret.
+  existingSecret: ""
+  # -- CIDRs kudurru accepts PROXYv2 headers from (listeners.proxyProtocolFrom):
+  # the edge pods' pod CIDR, or the node CIDR in daemonset mode. The TLV
+  # authenticates, the CIDR narrows exposure (D72). Narrow it to your pod CIDR.
+  proxyProtocolFrom:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - fc00::/7
+  # -- kubernetes.io/tls Secret for DoT/DoH/DoQ/DoH3 terminated on dnsdist.
+  tlsSecretName: ""
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 953
+    runAsGroup: 953
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop: [ALL]
+      add: [NET_BIND_SERVICE]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  extraArgs: []
+
+# VIP handling (D19). kube-vip and metallb only annotate the dns Service;
+# keepalived adds a keepalived container to a hostNetwork edge DaemonSet.
+vip:
+  # -- none | kube-vip | metallb | keepalived
+  provider: none
+  # -- kube-vip/metallb: the Service address (kube-vip.io/loadbalancerIPs,
+  # metallb.io/loadBalancerIPs). keepalived: the virtual_ipaddress in CIDR
+  # form, e.g. 10.0.0.53/24.
+  address: ""
+  # -- metallb.io/address-pool for vip.provider=metallb.
+  metallbPool: ""
+  keepalived:
+    image:
+      repository: ghcr.io/robertherbaugh/kudurru-keepalived
+      # -- Defaults to <keepalivedVersion>-k<appVersion>.
+      tag: ""
+      digest: ""
+      pullPolicy: IfNotPresent
+    keepalivedVersion: 2.4.3
+    # -- Nodes that may hold the VIP; the edge DaemonSet runs there and the
+    # supervisor renders unicast_peer from them.
+    nodeSelector:
+      kudurru.io/vip: "true"
+    tolerations: []
+    # -- Interface carrying the VIP (required with provider=keepalived).
+    interface: ""
+    # -- VRRP router id; host-only, never changed on re-render.
+    vrid: 53
+    # -- auth_hmac key. Generated once and kept when empty and existingSecret is unset.
+    hmacSecret: ""
+    # -- Existing Secret with the key vrrp-hmac.
+    existingSecret: ""
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+# -- Run kudurru in the host network namespace. mode=kubernetes switches to a
+# DaemonSet; dnsPolicy becomes ClusterFirstWithHostNet.
+hostNetwork:
+  enabled: false
+  # -- Appended to the image tag with hostNetwork.enabled: the -hostnetwork
+  # image carries cap_net_bind_service=+ep on the binary, because the
+  # ip_unprivileged_port_start sysctl that lets uid 65532 bind :53 is not
+  # available on the host network. It needs NET_BIND_SERVICE in
+  # securityContext.capabilities.add (the default). Empty keeps the plain
+  # tag (a custom image, or hosts with net.ipv4.ip_unprivileged_port_start=0).
+  imageTagSuffix: -hostnetwork
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Restricted Pod Security Standard. NET_BIND_SERVICE is the one capability
+# Restricted allows adding (binding :53 as uid 65532).
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop: [ALL]
+    add: [NET_BIND_SERVICE]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# -- The chart adds a labelSelector with the pod's selector labels.
+topologySpreadConstraints:
+  - topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    maxSkew: 1
+
+# -- system-cluster-critical when kudurru is the cluster resolver (§4.4).
+priorityClassName: ""
+# -- Never ClusterFirst for the DNS server itself.
+dnsPolicy: Default
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+terminationGracePeriodSeconds: 30
+# -- preStop runs `kudurru lameduck <n>s`: readiness fails and the health name answers SERVFAIL so endpoints and dnsdist drain before SIGTERM starts the
+# binary's own lameduck (readiness 503, then shutdown).
+lameduckSeconds: 5
+
+probes:
+  startup:
+    periodSeconds: 5
+    # -- 60 x 5 s, sized for blocklist compile (§5.2).
+    failureThreshold: 60
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 2
+  liveness:
+    periodSeconds: 10
+    failureThreshold: 3
+
+persistence:
+  # -- querylog.db on a PVC (never RWX/NFS: SQLite WAL). mode=kubernetes
+  # allows it only with replicaCount=1 because a Deployment's pods would share
+  # the claim; standalone uses a volumeClaimTemplate.
+  querylog:
+    enabled: false
+    storageClass: ""
+    size: 10Gi
+    accessModes: [ReadWriteOnce]
+  # -- local.db (last-good snapshot) on a PVC for "DNS before the control
+  # plane" clusters; same one-replica rule as querylog.
+  local:
+    enabled: false
+    storageClass: ""
+    size: 1Gi
+    accessModes: [ReadWriteOnce]
+  # -- mode=standalone: /var/lib/kudurru (state.db, querylog.db, lists) from
+  # the StatefulSet's volumeClaimTemplate; false uses an emptyDir (lab only).
+  standalone:
+    enabled: true
+    storageClass: ""
+    size: 5Gi
+    accessModes: [ReadWriteOnce]
+
+config:
+  # -- Node-scoped keys (node, listeners, store, log, tsigKeys, notify, ...).
+  # Rendered into the <fullname>-node ConfigMap whose checksum rolls the pods
+  # (D25). The chart sets node.dataDir, the listener addresses, store.driver
+  # and objectsDir from the values above; keys here are merged on top.
+  node:
+    log:
+      level: info
+      format: json
+  # -- Cluster-scoped keys (upstreams, cache, blocking, querylog, ratelimit):
+  # the Kudurru singleton. Rendered into the <fullname>-settings ConfigMap,
+  # mounted at /etc/kudurru/settings and read through KUDURRU_SETTINGS_FILE
+  # with hot reload (D106): changing them does not roll the pods.
+  settings:
+    upstreams:
+      groups:
+        default:
+          servers: ["1.1.1.1:53", "9.9.9.9:53"]
+          strategy: parallel_best
+          timeout: 2s
+
+# -- kudurru.io objects seeded once. mode=kubernetes: post-install hook
+# resources (Helm creates them once and never owns them; kubectl and the UI
+# do afterwards). mode=standalone: inline objects of the node file
+# (file-managed, re-applied on start).
+objects: []
+
+auth:
+  # -- Existing Secret (key "key": 32 random bytes, base64 or 64 hex digits)
+  # mounted as KUDURRU_ENCRYPTION_KEY_FILE. Empty: generated once and kept
+  # (helm.sh/resource-policy: keep).
+  encryptionKeySecret: ""
+  # -- Secret (key "key") with the previous key during a rotation
+  # (KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE); docs/deploy/runbooks.md.
+  encryptionKeyPreviousSecret: ""
+  # -- Existing Secret (keys "username", "password") for the first-start
+  # admin (KUDURRU_ADMIN_PASSWORD_FILE). Empty: generated once and kept.
+  bootstrapAdminSecret: ""
+  bootstrapToken:
+    # -- Create a kdr_ service-account token at first start
+    # (KUDURRU_BOOTSTRAP_TOKEN_FILE) for automation.
+    enabled: false
+    # -- Existing Secret with the key "token"; empty generates one.
+    existingSecret: ""
+  oidc:
+    # -- OpenID Providers for UI login and bearer ID tokens (§8.3), rendered
+    # into the settings key auth.identityProviders. Each entry: id (required,
+    # unique), issuer, clientID, clientSecretRef {name, key} (a Secret in the
+    # release namespace; mode=kubernetes) or clientSecretFile (mode=standalone,
+    # mounted with extraVolumes), redirectURL
+    # (https://<host>/api/v1/auth/oidc/<id>/callback), scopes, claimMappings,
+    # claimValidationRules, provisioning. Example:
+    #   - {id: corp, issuer: https://login.example.com, clientID: kudurru,
+    #      clientSecretRef: {name: kudurru-oidc, key: client-secret},
+    #      redirectURL: https://dns.example.com/api/v1/auth/oidc/corp/callback}
+    providers: []
+
+# -- serviceMonitor or podMonitor with edge.enabled also render the
+# <fullname>-edge PodMonitor on the supervisors' :8084 (and :8085 with
+# vip.provider=keepalived), with the labels and interval of podMonitor when
+# it is enabled, else of serviceMonitor.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+podMonitor:
+  # -- Alternative to serviceMonitor: scrapes every kudurru pod's :9153.
+  enabled: false
+  interval: 30s
+  labels: {}
+prometheusRule:
+  # -- The alert rules of deploy/prometheus/rules.yaml (§11.6).
+  enabled: false
+  labels: {}
+grafanaDashboard:
+  # -- ConfigMap with deploy/grafana/kudurru-overview.json for the Grafana
+  # dashboard sidecar.
+  enabled: false
+  labels:
+    grafana_dashboard: "1"
+  annotations: {}
+
+networkPolicy:
+  # -- Ingress policy: :5353 only from edge pods, :8082 only from kudurru and
+  # edge pods; DNS, API, ops and metrics as below. Egress is not restricted
+  # (upstreams, apiserver, list downloads).
+  enabled: false
+  # -- NetworkPolicyPeer list allowed to reach the API port; empty allows all.
+  apiFrom: []
+  # -- NetworkPolicyPeer list allowed to scrape :9153; empty allows all.
+  metricsFrom: []
+
+blockPage:
+  # -- Serve the block page (docs/deploy/blocking-page.md): blocked names
+  # answered with the blockPage response resolve to ipv4/ipv6, where a
+  # Service in front of the kudurru pods shows browsers why the name is
+  # blocked. Sets blockPage.enabled and blockPage.ipv4/ipv6 in the settings
+  # ConfigMap (config.settings.blockPage.* still win) and the
+  # listeners.blockPage.* node keys. Pick the response with
+  # config.settings.blocking.defaultResponse=blockPage or per Policy
+  # (spec.blockMode) / BlockList (spec.response).
+  enabled: false
+  # -- Address clients are sent to: the block page Service's load-balancer
+  # IP (also used as its loadBalancerIP). At least one of ipv4/ipv6 is
+  # required.
+  ipv4: ""
+  ipv6: ""
+  # -- Container ports of the block page listeners.
+  httpPort: 8090
+  https:
+    # -- Also serve HTTPS (self-signed certificate under the data volume, or
+    # tls.secretName via config.node.listeners.blockPage.tls). Browsers
+    # always warn: no certificate is valid for the blocked names.
+    enabled: false
+    port: 8493
+  service:
+    # -- Service type of <fullname>-blockpage; LoadBalancer gives it the
+    # address clients reach.
+    type: LoadBalancer
+    # -- Service ports (what browsers connect to).
+    httpPort: 80
+    httpsPort: 443
+    loadBalancerClass: ""
+    externalTrafficPolicy: Cluster
+    # -- Annotations, e.g. metallb.io/loadBalancerIPs or
+    # kube-vip.io/loadbalancerIPs naming ipv4.
+    annotations: {}
+
+externalDNS:
+  webhook:
+    # -- Serve the external-dns webhook provider contract on every replica
+    # (§5.6) at externalDNS.webhook.listen. The key lands with the API package.
+    enabled: false
+    port: 8888
+
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []

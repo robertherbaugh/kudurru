@@ -1,0 +1,143 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { cleanSpec, validateFields } from '../components/ObjectForm';
+import { mockDB } from '../mocks/handlers';
+import { SCHEMAS } from '../lib/objectSchemas';
+import { findSelector, getSelector, pick, valueOf } from '../test/controls';
+import { renderWithApp, uiEntryValues } from '../test/utils';
+import ListsPage, { inlineOnly } from './ListsPage';
+
+/** Clicks a button once the session has loaded and enabled it. */
+async function clickWhenEnabled(name: string): Promise<void> {
+  const btn = await screen.findByRole('button', { name });
+  await waitFor(() => expect(btn).not.toHaveAttribute('aria-disabled', 'true'));
+  fireEvent.click(btn);
+}
+
+describe('ListsPage', () => {
+  it('shows health, managed-by badges and keeps foreign objects out of the selection', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const file = await screen.findByTestId('row-regex-trackers');
+    expect(within(file).getByLabelText('Managed by file:objects.d/lists.yaml')).toBeInTheDocument();
+    expect(within(file).getByRole('checkbox', { name: 'Select regex-trackers' })).toBeDisabled();
+    expect(within(screen.getByTestId('row-oisd-small')).getByText('unavailable, cached')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-ui-deny')).getByText('invalid')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-starter')).getByText('OK')).toBeInTheDocument();
+  });
+
+  it('says "inline" under Updated for lists without anything to fetch', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const starter = await screen.findByTestId('row-starter');
+    expect(within(starter).getByText('inline')).toBeInTheDocument();
+    expect(inlineOnly([{ inline: ['a.example'] }])).toBe(true);
+    expect(inlineOnly([{ inline: ['a.example'] }, { url: 'https://x/y' }])).toBe(false);
+  });
+
+  it('counts enabled sources and links each row to the list page', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const family = await screen.findByTestId('row-family');
+    expect(within(family).getByText('3 of 4 enabled')).toBeInTheDocument();
+    expect(within(screen.getByTestId('row-stevenblack')).getByText('1 source')).toBeInTheDocument();
+    expect(within(family).getByRole('link', { name: 'family' })).toHaveAttribute('href', '/lists/default/family');
+    // File-managed lists open the same page (read-only there).
+    expect(within(screen.getByTestId('row-regex-trackers')).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/lists/default/regex-trackers');
+  });
+
+  it('opens the wizard for a new list in a dialog and asks before discarding it', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const add = await screen.findByRole('button', { name: 'New list' });
+    await waitFor(() => expect(add).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(add);
+    expect(window.location.search).toBe('?new=1');
+    const dialog = await screen.findByRole('dialog', { name: 'New list' });
+    expect(within(dialog).getByRole('list', { name: 'New list' })).toBeInTheDocument();
+
+    // Something entered: Cancel asks first; "Keep editing" keeps the wizard.
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Allow list/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Discard the new list?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Keep editing' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(within(dialog).getByRole('radio', { name: /Allow list/ })).toBeChecked();
+
+    // Discard closes it and drops ?new=1.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^close/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Discard the new list?' })).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New list' })).toBeNull());
+    expect(window.location.search).toBe('');
+  });
+
+  it('opens the wizard from ?new=1 and closes a pristine one without asking', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists?new=1' });
+    const dialog = await screen.findByRole('dialog', { name: 'New list' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New list' })).toBeNull());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(window.location.search).toBe('');
+  });
+
+  it('batch-deletes the selected lists after confirmation', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const row = await screen.findByTestId('row-stevenblack');
+    fireEvent.click(within(row).getByRole('checkbox', { name: 'Select stevenblack' }));
+    fireEvent.click(within(screen.getByTestId('row-ui-deny')).getByRole('checkbox', { name: 'Select ui-deny' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 2 selected' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(mockDB().lists.map((l) => l.metadata.name)).not.toContain('stevenblack'));
+    expect(mockDB().lists.map((l) => l.metadata.name)).not.toContain('ui-deny');
+    expect(await screen.findByText('Deleted 2 lists')).toBeInTheDocument();
+  });
+
+  it('adds domains to the Denylist with a typed choice and reports per-item results', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    await clickWhenEnabled('Add domains');
+    const dialog = await screen.findByRole('dialog');
+    expect(valueOf(getSelector(/^Action/, dialog))).toBe('deny');
+    const domains = within(dialog).getByRole('textbox', { name: /^Domains/ });
+    fireEvent.change(domains, { target: { value: 'not_a..domain' } });
+    expect(await within(dialog).findByText(/is not a domain name/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+    fireEvent.change(domains, { target: { value: 'ads.example.com\ntracking.example-shop.com' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add 2' }));
+    // The duplicate stays in the box with the reason; the new one is added.
+    expect(await within(dialog).findByText('1 not added')).toBeInTheDocument();
+    expect(within(dialog).getByText('already on the Denylist')).toBeInTheDocument();
+    expect(uiEntryValues('ui-deny')).toContain('ads.example.com');
+    expect(within(dialog).getByRole('textbox', { name: /^Domains/ })).toHaveValue('tracking.example-shop.com');
+  });
+
+  it('adds an allow regex through the Action and Type selects', async () => {
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    await clickWhenEnabled('Add domains');
+    const dialog = await screen.findByRole('dialog');
+    pick(await findSelector(/^Action/, dialog), 'Allow');
+    pick(getSelector(/^Type/, dialog), 'Regular expression');
+    const box = within(dialog).getByRole('textbox', { name: /^Expressions/ });
+    fireEvent.change(box, { target: { value: '(' } });
+    expect(await within(dialog).findByText(/Not a valid expression/)).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: '/^cdn[0-9]+\\.example\\.com$/' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Stored without the slashes, as a regex entry of ui-allow.
+    expect(uiEntryValues('ui-allow')).toContain('^cdn[0-9]+\\.example\\.com$');
+    expect(await screen.findByText('Added 1 to the Allowlist.')).toBeInTheDocument();
+  });
+});
+
+describe('generated form helpers', () => {
+  it('validates nested items by dotted path', () => {
+    const errs = validateFields(SCHEMAS.blocklists.fields, { mode: 'block', sources: [{ url: 'https://x.example/l.txt' }, { url: 'ftp://x' }], customIP: { v4: '300.1.1.1' } });
+    expect(errs).toEqual({ 'sources.1.url': 'An http(s) URL', 'customIP.v4': 'Not an IPv4 address' });
+  });
+
+  it('drops empty values before sending', () => {
+    expect(
+      cleanSpec(SCHEMAS.blocklists.fields, {
+        mode: 'block',
+        sources: [{ name: 'main', url: 'https://x.example/l.txt', inline: ['', ' '] }, {}],
+        refreshInterval: '  ',
+        customIP: { v4: '', v6: '' },
+      }),
+    ).toEqual({ mode: 'block', sources: [{ name: 'main', url: 'https://x.example/l.txt' }] });
+  });
+});

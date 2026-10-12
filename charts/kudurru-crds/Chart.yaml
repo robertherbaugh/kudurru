@@ -1,0 +1,8 @@
+apiVersion: v2
+name: kudurru-crds
+description: CustomResourceDefinitions for kudurru.io. Installed separately so Helm never deletes them on uninstall.
+type: application
+version: 0.1.0-rc.1
+appVersion: 0.1.0-rc.1
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/robertherbaugh/kudurru

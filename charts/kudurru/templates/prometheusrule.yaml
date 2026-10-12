@@ -1,0 +1,16 @@
+{{- if .Values.prometheusRule.enabled }}
+{{- /* files/prometheus-rules.yaml is a copy of deploy/prometheus/rules.yaml (make chart-assets; the deploy tests fail on drift). */ -}}
+{{- $rules := .Files.Get "files/prometheus-rules.yaml" | fromYaml }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- toYaml $rules.spec | nindent 2 }}
+{{- end }}

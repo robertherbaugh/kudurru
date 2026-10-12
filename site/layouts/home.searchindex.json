@@ -1,0 +1,20 @@
+{{- /*
+  The client-side search index (assets/js/site.js loads it on first use):
+  title, URL, section and the page text.
+*/ -}}
+{{- $items := slice -}}
+{{- range site.Pages -}}
+  {{- if and .File (not .Params.searchExclude) -}}
+    {{- $section := "" -}}
+    {{- if not .FirstSection.IsHome -}}
+      {{- $section = partialCached "title.html" .FirstSection .FirstSection.RelPermalink -}}
+    {{- end -}}
+    {{- $items = $items | append (dict
+      "t" (partialCached "title.html" . .RelPermalink)
+      "u" .RelPermalink
+      "s" $section
+      "c" (substr (.Plain | htmlUnescape) 0 40000)
+    ) -}}
+  {{- end -}}
+{{- end -}}
+{{- $items | jsonify -}}

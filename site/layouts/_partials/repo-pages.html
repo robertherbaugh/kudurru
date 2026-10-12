@@ -1,0 +1,12 @@
+{{- /*
+  A map from repository-relative source path to page, built once
+  (partialCached) for the link and image render hooks.
+*/ -}}
+{{- $s := newScratch -}}
+{{- $s.Set "pages" dict -}}
+{{- range $p := site.Pages -}}
+  {{- with partial "repo-path.html" $p -}}
+    {{- $s.SetInMap "pages" . $p -}}
+  {{- end -}}
+{{- end -}}
+{{- return $s.Get "pages" -}}

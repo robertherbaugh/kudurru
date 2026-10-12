@@ -1,0 +1,46 @@
+# /etc/kudurru/kudurru.yaml (docs/architecture.md §6.2). Every key is listed
+# by `kudurru config schema`; node-scoped keys are host-only, cluster-scoped
+# keys (upstreams, cache, blocking, querylog, ratelimit) are the settings the
+# UI edits. Objects (zones, lists, groups, policies) go into objects.d/.
+node:
+  dataDir: /var/lib/kudurru
+store:
+  driver: sqlite
+listeners:
+  dns:
+    - address: "0.0.0.0:53"
+      protocols: [udp, tcp]
+  api: { address: "0.0.0.0:8080" }
+  ops: { address: "0.0.0.0:8081" }
+  metrics: { address: "0.0.0.0:9153" }
+  # Block page listener (blockPage.enabled below; the ports in
+  # docker-compose.yml). :8090 in the container is published on host :80.
+  # blockPage: { http: "0.0.0.0:8090", https: "0.0.0.0:8493" }
+upstreams:
+  groups:
+    default:
+      servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
+      strategy: parallel_best
+      timeout: 2s
+  bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
+cache:
+  maxEntries: 200000
+blocking:
+  enabled: true
+  defaultResponse: zeroIP
+  # defaultResponse: blockPage   # with blockPage.enabled below
+# The block page (docs/deploy/blocking-page.md). ipv4 is the Docker host's
+# LAN address: the container's own address is not reachable by clients.
+# blockPage:
+#   enabled: true
+#   ipv4: 192.168.1.10
+#   contact: admin@example.net
+querylog:
+  enabled: true
+  privacy: full
+  retention:
+    raw: 720h
+    maxDBBytes: 10GiB
+log:
+  level: info
+  format: json

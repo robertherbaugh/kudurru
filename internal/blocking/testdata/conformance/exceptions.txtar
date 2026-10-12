@@ -1,0 +1,31 @@
+@@ precedence with the default list scope: an exception cancels deny rules
+of its own list only; allow-mode lists win across lists.
+
+-- list ads block adblock --
+||example.org^
+@@||safe.example.org^
+||tracker.example^
+@@|tracker.example^
+-- list other block adblock --
+||safe.example.org^
+||shared.example^
+-- list fix allow domains --
+allowed.example.org
+@@||alsoallowed.example^
+-- counts ads --
+rules=4 exceptions=2 unsupported=0 invalid=0 entries=4
+-- counts fix --
+rules=2 exceptions=0 entries=2
+-- expect --
+example.org               block ads ||example.org^
+www.example.org           block ads ||example.org^
+safe.example.org          block other ||safe.example.org^   # deviation: ads' @@ does not cancel other's deny
+www.safe.example.org      block other ||safe.example.org^
+tracker.example           allow ads @@|tracker.example^      # in-list exception, exact name only
+www.tracker.example       block ads ||tracker.example^
+allowed.example.org       allow fix allowed.example.org      # allow lists win across lists
+www.allowed.example.org   block ads ||example.org^           # domain entries of allow lists are exact too
+alsoallowed.example       allow fix ||alsoallowed.example^   # @@ in an allow list is an allow entry
+x.alsoallowed.example     allow fix ||alsoallowed.example^
+shared.example            block other ||shared.example^
+unrelated.example         pass

@@ -1,0 +1,22 @@
+{{- if and .Values.objects (not (include "kudurru.standalone" .)) }}
+{{- /*
+Seed objects (§5.2): post-install hook resources are created once and never
+owned by the release, so later kubectl/UI edits are not reverted by `helm
+upgrade` and `helm uninstall` leaves them. Needs the kudurru-crds chart.
+mode=standalone writes them into the node file's inline objects instead.
+*/ -}}
+{{- range $i, $obj := .Values.objects }}
+{{- $o := deepCopy $obj }}
+{{- $meta := $o.metadata | default dict }}
+{{- if and (ne $o.kind "DNSZone") (not $meta.namespace) }}
+{{- $_ := set $meta "namespace" $.Release.Namespace }}
+{{- end }}
+{{- $ann := $meta.annotations | default dict }}
+{{- $_ := set $ann "helm.sh/hook" "post-install" }}
+{{- $_ := set $ann "helm.sh/hook-weight" (printf "%d" (add 10 $i)) }}
+{{- $_ := set $meta "annotations" $ann }}
+{{- $_ := set $o "metadata" $meta }}
+---
+{{ toYaml $o }}
+{{- end }}
+{{- end }}

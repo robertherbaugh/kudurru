@@ -1,0 +1,64 @@
+# release-candidate -> release: every push (a merge from release-candidate)
+# tags v<VERSION>, then publish.yml builds and pushes the
+# ghcr.io/robertherbaugh/kudurru:<VERSION> and :latest images (and -debug),
+# the charts and the supervisor images, and creates the GitHub release. The
+# docs site (docs.kudurru.io) is deployed by Cloudflare Workers Builds from
+# the release branch, not by this workflow. hack/release-tag.sh refuses a
+# tree that differs from the latest v<VERSION>-rc.<N>, so a release ships
+# exactly what its last candidate shipped, and a VERSION that is already
+# released. docs/release-checklist.md, "Release pipeline".
+name: release
+on:
+  push:
+    branches: [release]
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  tag:
+    # Creating the branch is a push too; only merges publish.
+    if: ${{ !github.event.created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the tag
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      previous: ${{ steps.tag.outputs.previous }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - name: v<VERSION>, checked against the latest release candidate
+        id: tag
+        run: hack/release-tag.sh release
+      - name: The candidate was published
+        if: steps.tag.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC: ${{ steps.tag.outputs.rc }}
+        run: hack/candidate-published.sh "${RC}"
+      # Tags pushed with GITHUB_TOKEN start no workflow, so publish.yml is
+      # called below rather than triggered by the tag.
+      - name: Push the tag
+        if: steps.tag.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          RC: ${{ steps.tag.outputs.rc }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "kudurru ${TAG} (from ${RC})"
+          git push origin "refs/tags/${TAG}"
+  publish:
+    needs: tag
+    permissions:
+      contents: write        # GitHub release and assets
+      packages: write        # ghcr.io images and Helm charts
+      id-token: write        # cosign keyless signing, provenance
+      attestations: write    # SLSA build provenance
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      previous-tag: ${{ needs.tag.outputs.previous }}

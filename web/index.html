@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- web.Handler rewrites this href to the configured path prefix. -->
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="same-origin" />
+    <title>kudurru</title>
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f3ea" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#182522" />
+    <!-- public/: copied to the dist root; the paths resolve against <base href>. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>The kudurru dashboard needs JavaScript. The API lives under api/v1 and the CLI is <code>kudurru</code>.</noscript>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

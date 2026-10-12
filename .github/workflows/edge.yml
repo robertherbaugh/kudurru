@@ -1,0 +1,47 @@
+# Validates the rendered dnsdist and keepalived configurations with the real
+# programs inside the pinned images (`make edge-check`): builds the kudurru
+# image and both supervisor images (keepalived is compiled from source, a few
+# minutes), then runs `dnsdist --check-config` on the 12 golden dnsdist files
+# and `keepalived -t` on the 4 golden keepalived files, and runs the eBPF
+# case the way the chart does. `make hostnetwork-check` then builds the
+# -hostnetwork image and binds :53 as uid 65532 without the
+# ip_unprivileged_port_start sysctl, and `make volume-check` starts the
+# kudurru images on fresh named volumes. A failure fails the workflow; make it a
+# required check on main. docs/m3/edge.md.
+name: edge
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - internal/edge/**
+      - cmd/kudurru/edge.go
+      - cmd/kudurru/vip.go
+      - images/**
+      - Dockerfile
+      - hack/hostnetwork-check.sh
+      - hack/volume-check.sh
+      - hack/edge-root-check.sh
+      - .github/workflows/edge.yml
+  push:
+    branches: [main]
+    paths:
+      - internal/edge/**
+      - images/**
+      - Dockerfile
+permissions:
+  contents: read
+jobs:
+  edge-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Validate golden configurations in the pinned dnsdist and keepalived images
+        run: make edge-check
+      - name: The -hostnetwork image binds :53 with NET_BIND_SERVICE only
+        run: make hostnetwork-check
+      - name: Fresh named volumes are writable in every kudurru image
+        run: make volume-check

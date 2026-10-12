@@ -1,0 +1,9 @@
+:root {
+  --kudurru-ink: #182522;
+  --kudurru-clay: #B65C3A;
+  --kudurru-paper: #F7F3EA;
+  --kudurru-stone: #D9D1C2;
+  --kudurru-white: #FFFFFF;
+  --kudurru-font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --kudurru-font-mono: JetBrains Mono, ui-monospace, SFMono-Regular, Consolas, monospace;
+}

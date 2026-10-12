@@ -1,0 +1,57 @@
+# kudurru, single instance (docs/architecture.md §6.4).
+# Before the first start:
+#   mkdir -p secrets && openssl rand -base64 32 > secrets/encryption_key
+#   openssl rand -base64 18 > secrets/admin_password
+# dnsdist in front (DoT/DoH/DoQ termination, packet cache): ../single-edge.
+name: kudurru
+services:
+  kudurru:
+    image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8080:8080"           # API and UI
+      # Block page (blockPage in kudurru.yaml; docs/deploy/blocking-page.md):
+      # browsers sent to a blocked name land here. Host port 80 must be free.
+      # - "80:8090"
+      # - "443:8493"          # optional HTTPS: browsers always warn
+      # - "127.0.0.1:9153:9153"  # Prometheus metrics
+    environment:
+      KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      # Cluster settings edited in the UI or with `kudurru settings set` are
+      # written here (on the data volume; kudurru.yaml stays read-only).
+      KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
+      TZ: UTC
+    volumes:
+      - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro
+      - ./objects.d:/etc/kudurru/objects.d:ro
+      - kudurru-data:/var/lib/kudurru
+    secrets: [admin_password, encryption_key]
+    # uid 65532 binds :53 because Docker sets the container's unprivileged
+    # port range to start at 0; made explicit here.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/kudurru
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "kudurru", "health", "--ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 30s
+
+volumes:
+  kudurru-data: {}
+
+secrets:
+  admin_password:
+    file: ./secrets/admin_password
+  encryption_key:
+    file: ./secrets/encryption_key

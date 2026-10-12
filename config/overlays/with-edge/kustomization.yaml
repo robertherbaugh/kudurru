@@ -1,0 +1,14 @@
+# dnsdist edge Deployment in front of kudurru (§5.4): the dns Service
+# selects the edge pods, kudurru listens on :5353 for PROXYv2 with the TLV
+# secret from the kudurru-proxy-protocol Secret (create it first,
+# docs/deploy/kustomize.md). resources.yaml is rendered from the chart with
+# edge.enabled=true (make kustomize). The edge image is a milestone M4
+# deliverable.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kudurru-system
+resources:
+  - ../../namespace
+  - ../../crd
+  - ../../rbac
+  - resources.yaml

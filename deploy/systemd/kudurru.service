@@ -1,0 +1,55 @@
+# kudurru systemd unit, shipped in the deb/rpm/apk packages
+# (/usr/lib/systemd/system/kudurru.service). Configuration lives in
+# /etc/kudurru/kudurru.yaml, environment overrides and secret file paths in
+# /etc/kudurru/kudurru.env, state in /var/lib/kudurru.
+[Unit]
+Description=kudurru DNS server
+Documentation=https://github.com/robertherbaugh/kudurru
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kudurru
+Group=kudurru
+EnvironmentFile=-/etc/kudurru/kudurru.env
+ExecStart=/usr/bin/kudurru serve --config /etc/kudurru/kudurru.yaml
+Restart=on-failure
+RestartSec=2s
+# SIGTERM starts the lameduck: readiness 503, drain, then exit.
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+LimitNOFILE=1048576
+
+StateDirectory=kudurru
+StateDirectoryMode=0750
+RuntimeDirectory=kudurru
+RuntimeDirectoryMode=0750
+ConfigurationDirectory=kudurru
+
+# Bind :53/:443/:853 as an unprivileged user; nothing else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

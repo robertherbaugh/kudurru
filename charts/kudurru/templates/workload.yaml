@@ -1,0 +1,66 @@
+{{- include "kudurru.validate" . -}}
+{{- $kind := include "kudurru.workloadKind" . -}}
+# kudurru pods: Deployment (default), DaemonSet (hostNetwork.enabled) or
+# StatefulSet (mode=standalone, or per-pod persistence in mode=kubernetes).
+apiVersion: apps/v1
+kind: {{ $kind }}
+metadata:
+  name: {{ include "kudurru.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.labels" . | nindent 4 }}
+spec:
+  {{- if ne $kind "DaemonSet" }}
+  replicas: {{ include "kudurru.replicas" . }}
+  {{- end }}
+  {{- if eq $kind "StatefulSet" }}
+  serviceName: {{ include "kudurru.headlessName" . }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  {{- else if eq $kind "DaemonSet" }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  {{- else }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kudurru.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "kudurru.podTemplate" . | nindent 4 }}
+  {{- if eq $kind "StatefulSet" }}
+  {{- $p := dict -}}
+  {{- if include "kudurru.standalone" . }}
+  {{- if .Values.persistence.standalone.enabled }}{{ $p = .Values.persistence.standalone }}{{ end }}
+  {{- else if .Values.persistence.querylog.enabled }}
+  {{- $p = .Values.persistence.querylog }}
+  {{- else }}
+  {{- $p = .Values.persistence.local }}
+  {{- end }}
+  {{- if $p }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "kudurru.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $p.accessModes | nindent 10 }}
+        {{- if $p.storageClass }}
+        storageClassName: {{ $p.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $p.size }}
+  {{- end }}
+  {{- end }}

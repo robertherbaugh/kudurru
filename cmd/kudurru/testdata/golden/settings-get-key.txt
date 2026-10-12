@@ -1,0 +1,8 @@
+[
+  {
+    "key": "cache.maxEntries",
+    "value": 100000,
+    "scope": "cluster",
+    "flags": "-"
+  }
+]

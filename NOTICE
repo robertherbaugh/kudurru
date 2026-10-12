@@ -1,0 +1,203 @@
+kudurru
+Copyright 2026 Robert Herbaugh and the kudurru contributors
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this software except in compliance with the License. You may obtain a copy of
+the License at http://www.apache.org/licenses/LICENSE-2.0.
+
+This product will include software developed by third parties under permissive
+licences. Attributions are added to this file as the dependencies land:
+
+- blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
+  pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
+  internal/blocking/matcher adapts the design of blocky v0.35.0
+  cache/stringcache: the length-bucketed sorted concatenated-string exact
+  set searched by binary search, the cheapest-first matcher chain with
+  per-list matched-rule reporting, and the regex-count warning threshold.
+  internal/upstream takes the parallel_best strategy (race two randomly
+  chosen healthy upstreams, first usable answer wins) and the strict
+  strategy from blocky's resolver package, and internal/cache follows its
+  caching resolver (prefetch of entries hit often within a window, packed
+  messages as cache values, never caching conditional or local answers).
+  internal/policy and internal/stages/blocking follow its client-group
+  model (several groups per client, lists united across them) and its
+  block response types (zero IP, NXDOMAIN, custom IP) with response-side
+  CNAME inspection.
+  internal/listfetcher follows the design of its lists package: conditional
+  GET with ETag/Last-Modified, a sha256(url) disk cache written
+  tee-to-temp with an atomic rename, retries with cooldown,
+  maxErrorsPerSource, keep-old-on-failure, bounded download concurrency
+  and the fast/blocking/failOnError init strategies.
+  No blocky source file is copied verbatim.
+- dnsproxy (https://github.com/AdguardTeam/dnsproxy), Apache-2.0: linked as
+  the upstream client library of internal/upstream (plain, TCP, DoT, DoH,
+  DoQ, DoH3 and DNSCrypt transports, sdns:// stamps, bootstrap resolution;
+  also the independent DoT/DoH/DoQ/DoH3 client in the internal/dnsserver
+  tests); the dnsmasq-style "[/domain/]upstream" syntax accepted by
+  upstream.ImportDnsmasq follows its upstream configuration format; the DoQ
+  and DoH3 server structure in internal/dnsserver follows
+  proxy/serverquic.go and proxy/serverhttps.go. Its dependencies
+  AdguardTeam/golibs, AdguardTeam/dnscrypt and ameshkov/dnsstamps are
+  public domain (Unlicense) and robfig/cron/v3 is MIT, Copyright (C) 2012
+  Rob Figueiredo.
+- CoreDNS (https://github.com/coredns/coredns), Apache-2.0: zone tree,
+  secondary-transfer flow, test helpers; the DoQ and DoH3 listeners in
+  internal/dnsserver follow core/dnsserver/server_quic.go and
+  server_https3.go (stream worker pool, per-connection stream cap, RFC 9250
+  error handling, HTTP/3 connection limit). internal/zone adapts the design
+  of plugin/file/tree (a left-leaning red-black tree with one node per
+  owner name holding every RRset of that name, names ordered label by
+  label from the right; CoreDNS's tree is itself derived from the biogo
+  LLRB, BSD-3-Clause) and the lookup order of plugin/file/lookup.go (zone
+  cuts, exact match, CNAME chase, closest-encloser wildcard); the zone and
+  authoritative-stage golden tests follow the plugin/test.Case style. The
+  TransferProvider capability of internal/stages/authoritative
+  (Transfer(zone, serial) returning a channel of RR chunks, the single SOA
+  for a current serial, AXFR in place of IXFR without a journal) follows
+  the Transferer interface of plugin/transfer. No CoreDNS source file is
+  copied verbatim.
+- quic-go (https://github.com/quic-go/quic-go), MIT: QUIC and HTTP/3
+  transport for the DoQ and DoH3 listeners.
+- external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
+  Endpoint record shape and the webhook provider contract.
+  internal/integration/externaldns re-implements the webhook server side
+  studied in provider/webhook/api/httpapi.go (v0.23.0): the four routes,
+  the versioned media type checked byte for byte by the client, 204 on
+  apply, 413 for oversized bodies, and the JSON forms of plan.Changes and
+  endpoint.DomainFilter; its tests follow provider/webhook/api's test
+  flow. No external-dns source file is copied.
+- huma (https://github.com/danielgtaylor/huma), MIT, Copyright 2020 Daniel
+  G. Taylor: linked as the REST framework of internal/api (operations,
+  OpenAPI 3.1 document, request validation).
+- Scalar API Reference (https://github.com/scalar/scalar), MIT, Copyright
+  (c) 2023-present Scalar: the browser bundle of @scalar/api-reference
+  1.44.20 is embedded unmodified (gzipped) in internal/api/scalar and served
+  as the /api/v1/docs page; licence and provenance in that directory.
+- oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
+  generates internal/apiclient/openapi from api/openapi-3.0.json at
+  development time (not linked); the generated client links
+  github.com/oapi-codegen/runtime, Apache-2.0, and its dependency
+  github.com/apapsch/go-jsonmerge, MIT, Copyright (c) 2016-2019 Artur
+  Kraev.
+- Kubernetes apiextensions-apiserver (https://github.com/kubernetes/kubernetes,
+  module k8s.io/apiextensions-apiserver), Apache-2.0: linked as a library for
+  CRD schema, defaulting and CEL validation; the custom-resource admission
+  sequence in internal/store/validator mirrors pkg/registry/customresource.
+- go-oidc (https://github.com/coreos/go-oidc), Apache-2.0, with go-jose
+  (https://github.com/go-jose/go-jose), Apache-2.0: OIDC discovery, JWKS
+  and ID token verification; its oidctest helpers back the mock OpenID
+  Provider in tests.
+- golang.org/x/oauth2 and golang.org/x/crypto, BSD-3-Clause, Copyright The
+  Go Authors: authorization code + PKCE client; Argon2id password hashing
+  (golang.org/x/crypto/argon2) in internal/auth/users; bcrypt in tests only.
+  golang.org/x/sync, BSD-3-Clause, Copyright The Go Authors: singleflight
+  coalescing of identical cache misses in internal/cache.
+  golang.org/x/net/publicsuffix, BSD-3-Clause, Copyright The Go Authors:
+  the registrable domain (eTLD+1) recorded for query-log names in
+  internal/querylog/sqlitelog, which also stores querylog.db on
+  modernc.org/sqlite.
+  coalescing of identical cache misses in internal/cache and the bounded
+  download group of internal/listfetcher. golang.org/x/time, BSD-3-Clause,
+  Copyright The Go Authors: the per-peer token-bucket rate limiter of the
+  internal listener (internal/cluster/internalapi).
+- Kubernetes (https://github.com/kubernetes/kubernetes), Apache-2.0: the
+  shape of claimValidationRules and claimMappings follows the apiserver's
+  structured authentication configuration.
+- Kubernetes client libraries (https://github.com/kubernetes/client-go,
+  k8s.io/api, k8s.io/apimachinery, k8s.io/apiextensions-apiserver),
+  Apache-2.0: linked into the binary as dependencies of the kube store
+  driver (informers, server-side apply, coordination.k8s.io Lease leader
+  election); internal/controller uses the client-go rate-limited workqueue
+  and follows the client-go controller pattern (watch-fed cache, keyed
+  queue, periodic resync), and internal/controller/kubeevents uses its
+  core/v1 Event recorder.
+- controller-runtime (https://github.com/kubernetes-sigs/controller-runtime),
+  Apache-2.0: linked into the binary for the client and informer cache of
+  the kube store driver; its envtest package runs a control plane in the
+  driver's tests only. The Watch catch-up barrier is informed by its
+  read-your-writes consistency client, and the envtest binary layout
+  (bin/k8s/<version>-<os>-<arch>) follows its setup-envtest tool.
+- modernc.org/sqlite (https://gitlab.com/cznic/sqlite), BSD-3-Clause: linked
+  into the binary as the cgo-free SQLite behind state.db and local.db.
+- golang.org/x/sys, BSD-3-Clause, Copyright The Go Authors: SO_REUSEPORT on
+  the multi-socket DNS listeners. The multi-socket design (one socket and
+  read loop per CPU sharing the handler) follows CoreDNS's multisocket
+  plugin (Apache-2.0); no CoreDNS source file is copied.
+- dex (https://github.com/dexidp/dex), Apache-2.0: the OIDC end-to-end test
+  runs an unmodified dex release as a separate process; dex is not linked
+  into or distributed with kudurru.
+
+Dashboard bundle (web/, compiled into the binary when built with
+`make web-build`; web/dist/third-party-licenses.txt, generated at build
+time and embedded with the bundle, carries every licence text):
+
+- Astryx (https://github.com/facebook/astryx), MIT, Copyright (c) Meta
+  Platforms, Inc. and affiliates: @astryxdesign/core and the neutral,
+  stone and y2k themes 0.6.8, consumed as published (prebuilt CSS and
+  JS), with their dependencies @stylexjs/stylex and styleq (MIT),
+  intl-messageformat and @formatjs/* (MIT/BSD-3-Clause) and
+  css-mediaquery (BSD).
+- React and React DOM (https://react.dev), MIT, Copyright (c) Meta
+  Platforms, Inc. and affiliates.
+- TanStack Query, Table and Virtual (https://tanstack.com), MIT,
+  Copyright (c) Tanner Linsley.
+- uPlot (https://github.com/leeoniya/uPlot), MIT, Copyright (c) Leon
+  Sorokin.
+- Apache ECharts (https://echarts.apache.org), Apache-2.0: "Apache ECharts,
+  Copyright 2017-2026 The Apache Software Foundation. This product includes
+  software developed at The Apache Software Foundation
+  (https://www.apache.org/)." Its renderer ZRender is BSD-3-Clause,
+  Copyright (c) Baidu Inc., and tslib is 0BSD (Microsoft).
+- Lucide icons (https://lucide.dev), ISC, Copyright (c) Lucide Icons and
+  Contributors.
+
+The dashboard's information architecture is re-derived from
+docs/architecture.md §10; no Pi-hole (EUPL-1.2) markup, styles or
+JavaScript is used. Development-only tools (Vite, Vitest, ESLint, MSW,
+Testing Library, TypeScript) are not part of the bundle.
+
+Embedded data (compiled into the binary):
+
+- StevenBlack/hosts (https://github.com/StevenBlack/hosts), MIT, Copyright
+  (c) 2023 Steven Black: internal/listdata/stevenblack/hosts is
+  data/StevenBlack/hosts ("Steven Black's ad-hoc list") at commit
+  2025dea10a1d, unmodified, embedded as the first-boot starter BlockList;
+  the licence text and provenance file are in the same directory. Only
+  this MIT-licensed source of the project is used, never the unified hosts
+  file that aggregates sources under other licences.
+- The blocked-services and safe-search catalogue,
+  internal/listdata/catalogue/catalogue.json, is kudurru's own data
+  (Apache-2.0), written from each vendor's public documentation and the
+  services' first-party domains; PROVENANCE.md in the same directory names
+  the source of every entry. The Google safe-search domains are derived
+  from Google's published list of its search domains
+  (https://www.google.com/supported_domains), a list of facts. Nothing is
+  taken from AdGuard Home's GPL-3.0 blocked-services or safe-search tables.
+  The category icon names refer to Lucide icons, which the dashboard
+  bundles (lucide-react, ISC).
+- AdGuard HostlistsRegistry services (GPL-3.0) are not distributed with
+  kudurru in any form. blocking.catalogue.adguardServicesURL, off by
+  default, lets an administrator's own instance download them at runtime;
+  kudurru implements the file format only.
+- Dashboard Icons (https://github.com/homarr-labs/dashboard-icons),
+  Apache-2.0, Copyright (c) 2024 Bjorn Lammers, Meier Lukas, Thomas Camlong
+  and Homarr Labs: the 97 SVG logos in internal/listdata/catalogue/icons
+  are svg/<slug>.svg at commit 104a791794ef, some optimised with svgo; the
+  licence text and a provenance file naming every file and its checksum are
+  in the same directory. The logos are trademarks of their respective
+  owners, used only to identify the service, search engine or DNS provider
+  they name; no endorsement is implied and the licence grants no trademark
+  rights.
+
+Test data (not compiled into the binary):
+
+- StevenBlack/hosts (https://github.com/StevenBlack/hosts), MIT, Copyright
+  (c) 2023 Steven Black: internal/blocking/testdata/corpus/stevenblack/hosts
+  is data/StevenBlack/hosts at commit 2025dea10a1d, unmodified; licence and
+  provenance are in the same directory.
+
+dnsdist (GPL-2.0) and keepalived (GPL-2.0+) are not part of this software.
+They are distributed unmodified as separate programs in their own container
+images under images/, each carrying the GPL licence text and a source offer.
+No code from GPL or EUPL projects (Gravity, Technitium, AdGuard Home,
+urlfilter, Pi-hole) is included in kudurru.

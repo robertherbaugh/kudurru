@@ -1,0 +1,19 @@
+# kube-vip (Service mode): announce a fixed address for the DNS Service.
+# loadBalancerClass kube-vip.io/kube-vip-class makes kube-vip the only
+# controller that serves it. Replace 192.0.2.53 with yours.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../default
+patches:
+  - target:
+      kind: Service
+      name: kudurru-dns
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          kube-vip.io/loadbalancerIPs: 192.0.2.53
+      - op: add
+        path: /spec/loadBalancerClass
+        value: kube-vip.io/kube-vip-class

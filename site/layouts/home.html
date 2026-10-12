@@ -1,0 +1,53 @@
+{{ define "main" }}
+<main id="main" class="home">
+  <section class="hero">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="{{ "brand/kudurru-logo-mixed-paper-tagline.png" | relURL }}">
+      <img class="hero__logo" src="{{ "brand/kudurru-logo-mixed-tagline.png" | relURL }}" width="480" height="200" alt="kudurru: authority over every zone.">
+    </picture>
+    <h1 class="visually-hidden">kudurru documentation</h1>
+    <p class="hero__lead">{{ .Description | markdownify }}</p>
+    <p class="hero__actions">
+      {{- range .Params.actions }}
+        <a class="button{{ if .primary }} button--primary{{ end }}" href="{{ (site.GetPage .page).RelPermalink }}">{{ .label }}</a>
+      {{- end }}
+    </p>
+  </section>
+
+  {{- with site.GetPage "/start" }}
+  <section class="home__section" aria-labelledby="roles">
+    <h2 id="roles">Start where you are</h2>
+    <ul class="cards cards--roles">
+      {{- range .Pages }}
+      <li class="card">
+        <p class="card__eyebrow">{{ .Params.audience }}</p>
+        <a class="card__link" href="{{ .RelPermalink }}">{{ .Title }}</a>
+        <p>{{ .Description | markdownify }}</p>
+      </li>
+      {{- end }}
+    </ul>
+  </section>
+  {{- end }}
+
+  <section class="home__section" aria-labelledby="more">
+    <h2 id="more">Reference and background</h2>
+    <ul class="cards">
+      {{- range .Params.links }}
+        {{- $link := . }}
+        {{- with site.GetPage $link.page }}
+        <li class="card">
+          <a class="card__link" href="{{ .RelPermalink }}">{{ $link.label | default (partialCached "title.html" . .RelPermalink) }}</a>
+          <p>{{ ($link.text | default .Description) | markdownify }}</p>
+        </li>
+        {{- else }}
+          {{- warnf "home: links: no page %s" $link.page }}
+        {{- end }}
+      {{- end }}
+    </ul>
+  </section>
+
+  <section class="home__section prose">
+    {{ .Content }}
+  </section>
+</main>
+{{ end }}
