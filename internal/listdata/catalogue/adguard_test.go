@@ -186,7 +186,8 @@ func TestRefresherAdGuard(t *testing.T) {
 	if st := r.Status(); st.Kind != KindAdGuard || st.LastError != "" {
 		t.Errorf("status = %+v", st)
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, fileAdGuard)); err != nil || string(b) != adguardFixture {
+	b, err := os.ReadFile(filepath.Join(dir, fileAdGuard)) //nolint:gosec // G304: the test's temp dir
+	if err != nil || string(b) != adguardFixture {
 		t.Errorf("kept copy: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, fileDocument)); err == nil {

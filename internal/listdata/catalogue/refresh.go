@@ -381,14 +381,14 @@ func (r *Refresher) loadPersisted() {
 		return
 	}
 	docName, srcName := r.files()
-	src, err := os.ReadFile(filepath.Join(r.opts.Dir, srcName))
+	src, err := os.ReadFile(filepath.Join(r.opts.Dir, srcName)) //nolint:gosec // G304: the data directory and a fixed file name
 	if err != nil {
 		return
 	}
 	if string(bytes.TrimSpace(src)) != r.opts.URL {
 		return // downloaded from a URL no longer configured
 	}
-	body, err := os.ReadFile(filepath.Join(r.opts.Dir, docName))
+	body, err := os.ReadFile(filepath.Join(r.opts.Dir, docName)) //nolint:gosec // G304: the data directory and a fixed file name
 	if err != nil {
 		return
 	}
