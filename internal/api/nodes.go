@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -19,13 +20,13 @@ type NodeInfo struct {
 	Address string `json:"address,omitempty"`
 	Self    bool   `json:"self"`
 	Leader  bool   `json:"leader"`
-	// Ready is this node's readiness; nil for peers until scatter-gather
-	// over the internal listener lands.
+	// Ready is nil when the node's readiness is unknown.
 	Ready    *bool    `json:"ready,omitempty"`
 	Unready  []string `json:"unready,omitempty"`
 	Version  string   `json:"version,omitempty"`
 	State    string   `json:"state,omitempty" doc:"zonecache state: unsynced, fromSnapshot, live."`
 	Snapshot string   `json:"snapshotAge,omitempty" doc:"Age of the served local.db snapshot (fromSnapshot only)."`
+	Error    string   `json:"error,omitempty" doc:"Error fetching this node's status; readiness is unknown."`
 }
 
 type nodesOutput struct{ Body *List[NodeInfo] }
@@ -131,8 +132,9 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 		return nil, errUnavailable("membership: %v", err)
 	}
 	leader, _ := s.opts.Membership.Leader(ctx)
-	items := make([]NodeInfo, 0, len(peers))
-	for _, p := range peers {
+	items := make([]NodeInfo, len(peers))
+	var wg sync.WaitGroup
+	for i, p := range peers {
 		n := NodeInfo{Name: p.Name, Address: p.Address, Self: p.Self || p.Name == s.opts.NodeName, Leader: leader.Name == p.Name && leader.Name != ""}
 		if n.Self {
 			ready, unready := s.ready()
@@ -140,8 +142,24 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 			n.Version = s.opts.Version.Version
 			n.State, n.Snapshot = s.zoneState()
 		}
-		items = append(items, n)
+		items[i] = n
+		if !n.Self && s.opts.InternalClient != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				status, err := s.opts.InternalClient.Status(ctx, p.Address)
+				if err != nil {
+					items[i].Error = err.Error()
+					return
+				}
+				items[i].Ready, items[i].Unready = status.Ready, status.Unready
+				items[i].Version, items[i].State, items[i].Snapshot = status.Version, status.State, status.Snapshot
+			}()
+		}
 	}
+	wg.Wait()
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &nodesOutput{Body: newList(items, "")}, nil
 }

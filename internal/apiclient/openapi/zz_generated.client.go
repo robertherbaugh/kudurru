@@ -2626,10 +2626,13 @@ type NodeHealth struct {
 // NodeInfo defines model for NodeInfo.
 type NodeInfo struct {
 	Address *string `json:"address,omitempty"`
-	Leader  bool    `json:"leader"`
-	Name    string  `json:"name"`
-	Ready   *bool   `json:"ready,omitempty"`
-	Self    bool    `json:"self"`
+
+	// Error Error fetching this node's status; readiness is unknown.
+	Error  *string `json:"error,omitempty"`
+	Leader bool    `json:"leader"`
+	Name   string  `json:"name"`
+	Ready  *bool   `json:"ready,omitempty"`
+	Self   bool    `json:"self"`
 
 	// SnapshotAge Age of the served local.db snapshot (fromSnapshot only).
 	SnapshotAge *string `json:"snapshotAge,omitempty"`

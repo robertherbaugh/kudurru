@@ -102,13 +102,14 @@ func (s *Static) Peers(context.Context) ([]Peer, error) {
 type ResolveFunc func(ctx context.Context, identity string) (string, error)
 
 // ElectorMembership derives the leader from a store.Elector (the Lease
-// holder in Kubernetes) and resolves its identity through Resolve. Peers
-// lists only the leader and this node; the EndpointSlice source that
-// enumerates every replica lands with the Nodes page.
+// holder in Kubernetes) and resolves its identity through Resolve. Source
+// enumerates all replicas independently of the current leader.
 type ElectorMembership struct {
 	SelfName string
 	Elector  store.Elector
 	Resolve  ResolveFunc
+	// Source lists every replica; nil falls back to this node and the leader.
+	Source MembershipSource
 	// CacheTTL bounds how long a resolved leader address is reused; zero
 	// keeps it until the leader changes (fine for DNS names, too long for
 	// pod IPs: a leader pod that restarts under the same name gets a new
@@ -169,6 +170,29 @@ func (m *ElectorMembership) Leader(ctx context.Context) (Peer, error) {
 
 // Peers implements Membership.
 func (m *ElectorMembership) Peers(ctx context.Context) ([]Peer, error) {
+	if m.Source != nil {
+		eps, err := m.Source.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Peer, 0, len(eps)+1)
+		seen := make(map[string]bool, len(eps))
+		for _, ep := range eps {
+			name := ep.Name
+			if name == "" {
+				name = ep.InternalAddress
+			}
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, Peer{Name: name, Address: ep.InternalAddress, Self: name == m.SelfName})
+		}
+		if !seen[m.SelfName] {
+			out = append(out, Peer{Name: m.SelfName, Self: true})
+		}
+		return out, nil
+	}
 	out := []Peer{{Name: m.SelfName, Self: true}}
 	if l, err := m.Leader(ctx); err == nil && !l.Self {
 		out = append(out, l)

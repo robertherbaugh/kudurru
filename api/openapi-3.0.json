@@ -2768,6 +2768,10 @@
           "address": {
             "type": "string"
           },
+          "error": {
+            "description": "Error fetching this node's status; readiness is unknown.",
+            "type": "string"
+          },
           "leader": {
             "type": "boolean"
           },

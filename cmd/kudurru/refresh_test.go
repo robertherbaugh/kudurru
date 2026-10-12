@@ -80,9 +80,12 @@ func TestListRefresher(t *testing.T) {
 func TestLeaderResolverFallsBackToTheName(t *testing.T) {
 	byName := func(_ context.Context, pod string) (string, error) { return pod + ".svc:8082", nil }
 	for _, headless := range []string{"", "kudurru-headless.kudurru.svc.cluster.local"} {
-		r, err := leaderResolver(nil, headless, "8082", byName)
+		r, source, err := leaderResolver(nil, headless, "8082", byName)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if source != nil {
+			t.Fatal("no cluster config: unexpected membership source")
 		}
 		if got, _ := r(context.Background(), "kudurru-0"); got != "kudurru-0.svc:8082" {
 			t.Fatalf("%q: %q", headless, got)
@@ -90,8 +93,8 @@ func TestLeaderResolverFallsBackToTheName(t *testing.T) {
 	}
 	// With a cluster config the EndpointSlice client is built (no request
 	// is made until the leader is looked up).
-	r, err := leaderResolver(&rest.Config{Host: "https://127.0.0.1:1"}, "kudurru-headless.kudurru.svc.cluster.local", "8082", byName)
-	if err != nil || r == nil {
+	r, source, err := leaderResolver(&rest.Config{Host: "https://127.0.0.1:1"}, "kudurru-headless.kudurru.svc.cluster.local", "8082", byName)
+	if err != nil || r == nil || source == nil || source.Name() != "endpointslice:kudurru/kudurru-headless" {
 		t.Fatalf("endpointslice resolver: %v", err)
 	}
 	// The apiserver is unreachable: the DNS name is the fallback.
