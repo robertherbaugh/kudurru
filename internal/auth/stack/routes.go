@@ -439,6 +439,9 @@ func (s *Stack) me(r *http.Request, p auth.Principal, sess *auth.Session) MeResp
 type PasswordRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
+	// RevokeTokens also revokes every API token of the user (a changed
+	// password alone revokes sessions, not tokens).
+	RevokeTokens bool `json:"revokeTokens,omitempty"`
 }
 
 func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
@@ -477,6 +480,14 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 	if err := s.users.SetPassword(r.Context(), p.Name, req.NewPassword, false); err != nil {
 		writeErr(w, r, &auth.Error{Status: http.StatusInternalServerError, Key: "internal", Message: "could not change the password", Err: err})
 		return
+	}
+	if req.RevokeTokens {
+		n, err := s.tokens.RevokeOwner(r.Context(), p.ID)
+		if err != nil {
+			writeErr(w, r, &auth.Error{Status: http.StatusInternalServerError, Key: "internal", Message: "the password was changed, but its API tokens could not all be revoked", Err: err})
+			return
+		}
+		s.log.InfoContext(r.Context(), "api tokens revoked with a password change", "user", p.Name, "count", n)
 	}
 	p.MustChangePassword = false
 	var sess *auth.Session

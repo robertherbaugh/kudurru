@@ -2538,6 +2538,8 @@ export interface components {
             currentPassword: string;
             /** @description The new password (at least 12 characters, different from the current one). */
             newPassword: string;
+            /** @description Also revoke every API token of the user; a password change alone revokes sessions, not tokens. */
+            revokeTokens?: boolean;
         };
         Point: {
             /** Format: int64 */

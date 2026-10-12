@@ -400,6 +400,8 @@ export interface CreatedToken extends ApiToken {
 export interface PasswordChangeRequest {
   currentPassword: string;
   newPassword: string;
+  /** Also revoke every API token of the user (a change alone keeps them). */
+  revokeTokens?: boolean;
 }
 
 // ---------------------------------------------------------------------------

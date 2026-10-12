@@ -64,6 +64,7 @@ type (
 	PasswordChangeRequest struct {
 		CurrentPassword string `json:"currentPassword" doc:"The current password."`
 		NewPassword     string `json:"newPassword" doc:"The new password (at least 12 characters, different from the current one)."`
+		RevokeTokens    bool   `json:"revokeTokens,omitempty" doc:"Also revoke every API token of the user; a password change alone revokes sessions, not tokens."`
 	}
 
 	// CreateTokenRequest is the body of POST /auth/tokens.

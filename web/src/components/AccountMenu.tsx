@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { qk, useApiContext, useSession, useSignOut } from '../api/context';
 import type { Me } from '../api/types';
 import { errorText, useNotify } from './Feedback';
-import { TextField } from './fields/TextField';
+import { CheckboxField, TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
 
 /** The minimum length the server accepts (internal/auth/users MinPasswordLen). */
@@ -43,15 +43,17 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [revokeTokens, setRevokeTokens] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const reset = () => {
     setCurrent('');
     setNext('');
     setConfirm('');
+    setRevokeTokens(false);
     setErrors({});
   };
   const m = useMutation({
-    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next }),
+    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next, ...(revokeTokens ? { revokeTokens: true } : {}) }),
     onSuccess: (me) => {
       // Every other session is revoked; this one comes back re-issued.
       if (me && typeof me === 'object' && 'principal' in me) {
@@ -64,7 +66,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
       // was answered 403 (and 4xx answers are not retried): refetch it all,
       // the default-credentials banner's /auth/status included.
       void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
-      notify.success('Password changed; other sessions were signed out');
+      notify.success(revokeTokens ? 'Password changed; other sessions were signed out and your API tokens revoked' : 'Password changed; other sessions were signed out');
       reset();
       onClose();
     },
@@ -107,6 +109,12 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
         error={errors.next}
       />
       <TextField label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} error={errors.confirm} />
+      <CheckboxField
+        label="Also revoke my API tokens"
+        value={revokeTokens}
+        onChange={(v) => setRevokeTokens(v)}
+        help="Tokens keep working after a password change unless you revoke them here, e.g. when the old password may have leaked."
+      />
       <Text type="supporting" display="block">
         Changing the password signs out every other session of this account.
       </Text>

@@ -380,6 +380,47 @@ func TestMustChangePasswordFlow(t *testing.T) {
 	}
 }
 
+// TestPasswordChangeRevokesTokens: a password change keeps the user's API
+// tokens unless revokeTokens asks for them to go too.
+func TestPasswordChangeRevokesTokens(t *testing.T) {
+	e := newEnv(t, authtest.Memory(t), testConfig)
+	if _, err := e.s.Users().Create(e.ctx, users.CreateOptions{Name: "dora", Password: "dora-password-1", Groups: []string{"staff"}}); err != nil {
+		t.Fatal(err)
+	}
+	mint := func(cookie *http.Cookie, csrf string) string {
+		t.Helper()
+		tr := e.do(http.MethodPost, "/api/v1/auth/tokens", CreateTokenRequest{Description: "ci", ExpiresIn: "1h"}, withCookie(cookie), withHeader(auth.CSRFHeader, csrf))
+		if tr.code != 201 {
+			t.Fatalf("token create: %d %s", tr.code, tr.raw)
+		}
+		tok, _ := tr.body["token"].(string)
+		return tok
+	}
+	works := func(tok string) bool {
+		return e.do(http.MethodGet, "/api/v1/auth/me", nil, bearer(tok)).code == 200
+	}
+
+	cookie, csrf := e.login("dora", "dora-password-1")
+	kept := mint(cookie, csrf)
+	ch := e.do(http.MethodPost, "/api/v1/auth/password", PasswordRequest{CurrentPassword: "dora-password-1", NewPassword: "dora-password-2"}, withCookie(cookie), withHeader(auth.CSRFHeader, csrf))
+	if ch.code != 200 {
+		t.Fatalf("change: %d %s", ch.code, ch.raw)
+	}
+	if !works(kept) {
+		t.Fatal("a plain password change revoked the API token")
+	}
+
+	cookie, csrf = e.login("dora", "dora-password-2")
+	second := mint(cookie, csrf)
+	ch = e.do(http.MethodPost, "/api/v1/auth/password", PasswordRequest{CurrentPassword: "dora-password-2", NewPassword: "dora-password-3", RevokeTokens: true}, withCookie(cookie), withHeader(auth.CSRFHeader, csrf))
+	if ch.code != 200 {
+		t.Fatalf("change with revokeTokens: %d %s", ch.code, ch.raw)
+	}
+	if works(kept) || works(second) {
+		t.Fatal("revokeTokens left an API token working")
+	}
+}
+
 func TestLocalLoginModesAndLockout(t *testing.T) {
 	cfg := `
 auth:

@@ -167,6 +167,15 @@ func TestProtocol(t *testing.T) {
 		t.Fatalf("over maxLifetime: %d", code)
 	}
 
+	// reset-password --revoke-tokens revokes the user's API tokens too.
+	reset = ResetPasswordResponse{}
+	if code := f.call(t, http.MethodPost, "/admin/v1/reset-password", ResetPasswordRequest{Username: "admin", Password: "another-password", RevokeTokens: true}, &reset); code != 200 || reset.RevokedTokens != 1 {
+		t.Fatalf("reset with revokeTokens: %d %+v", code, reset)
+	}
+	if _, err := f.tokens.Verify(ctx, tok.Token, ""); err == nil {
+		t.Fatal("the personal token still works after reset-password --revoke-tokens")
+	}
+
 	// Other paths reach the API as the local root.
 	if code := f.call(t, http.MethodGet, "/api/v1/zones", nil, nil); code != http.StatusTeapot {
 		t.Fatalf("API passthrough: %d", code)

@@ -2682,6 +2682,9 @@ type PasswordChangeRequest struct {
 
 	// NewPassword The new password (at least 12 characters, different from the current one).
 	NewPassword string `json:"newPassword"`
+
+	// RevokeTokens Also revoke every API token of the user; a password change alone revokes sessions, not tokens.
+	RevokeTokens *bool `json:"revokeTokens,omitempty"`
 }
 
 // Point defines model for Point.

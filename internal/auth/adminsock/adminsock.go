@@ -183,6 +183,8 @@ type ResetPasswordRequest struct {
 	Password string `json:"password,omitempty"`
 	// Create makes a missing user (as a builtin admin) instead of 404.
 	Create bool `json:"create,omitempty"`
+	// RevokeTokens also revokes every API token of the user.
+	RevokeTokens bool `json:"revokeTokens,omitempty"`
 }
 
 // ResetPasswordResponse is its answer.
@@ -191,6 +193,7 @@ type ResetPasswordResponse struct {
 	Password           string `json:"password,omitempty"`
 	MustChangePassword bool   `json:"mustChangePassword"`
 	Created            bool   `json:"created,omitempty"`
+	RevokedTokens      int    `json:"revokedTokens,omitempty"`
 }
 
 func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +231,16 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "internal", err.Error())
 		return
 	}
-	s.opts.Logger.WarnContext(r.Context(), "admin socket: password reset", "username", name, "peer", peer(r))
+	if req.RevokeTokens {
+		n, err := s.opts.Tokens.RevokeOwner(r.Context(), users.PrincipalID(name))
+		resp.RevokedTokens = n
+		if err != nil {
+			s.opts.Logger.ErrorContext(r.Context(), "admin socket: revoking tokens after a password reset failed", "username", name, "err", err)
+			writeErr(w, r, http.StatusInternalServerError, "internal", fmt.Sprintf("the password was reset, but only %d API tokens were revoked: %v", n, err))
+			return
+		}
+	}
+	s.opts.Logger.WarnContext(r.Context(), "admin socket: password reset", "username", name, "peer", peer(r), "revokedTokens", resp.RevokedTokens)
 	writeJSON(w, http.StatusOK, resp)
 }
 
