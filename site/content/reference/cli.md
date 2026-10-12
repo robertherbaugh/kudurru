@@ -347,7 +347,7 @@ api        the API server answers (the CLI context, --server, or the local
 token      the CLI token is accepted (GET /auth/me)
 diagnoses  configuration diagnoses reported by the server (GET /info/messages)
 database   with database.dsn set: the central database answers, runs
-           PostgreSQL 15 or newer and has a schema this binary can use;
+           PostgreSQL 16 or newer and has a schema this binary can use;
            warns about sslmode=disable to another host
 vrrp       warns when `kudurru vip run --legacy` renders keepalived without
            auth_hmac (unauthenticated VRRP adverts); silent on nodes

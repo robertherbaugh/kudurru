@@ -335,7 +335,7 @@ config:
           timeout: 2s
 
 database:
-  # -- Optional central PostgreSQL 15+ database for the audit log, query log
+  # -- Optional central PostgreSQL 16+ database for the audit log, query log
   # and statistics of every replica (docs/deploy/postgres.md): an existing
   # Secret in the release namespace whose key dsnKey holds the connection
   # string, mounted as KUDURRU_DATABASE__DSN_FILE. CloudNativePG's
