@@ -525,6 +525,7 @@ export interface ClientTimeseries extends ScopeInfo, Window {
 
 export interface BlockedItem {
   id: number;
+  node: string;
   ts: string;
   domain: string;
   client: string;

@@ -138,9 +138,26 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		limit = DefaultLimit
 	}
 	limit = min(limit, MaxLimit)
-	var cursor int64
+	var cursor, cursorTS int64
+	order := "q.id DESC"
+	if f.TimeOrder {
+		order = "q.ts DESC, q.id DESC"
+	}
 	if f.Cursor != "" {
-		c, err := strconv.ParseInt(f.Cursor, 10, 64)
+		v := f.Cursor
+		if f.TimeOrder {
+			parts := strings.Split(v, ":")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("sqlitelog: invalid cursor")
+			}
+			var err error
+			cursorTS, err = strconv.ParseInt(parts[0], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("sqlitelog: invalid cursor")
+			}
+			v = parts[1]
+		}
+		c, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || c <= 0 {
 			return nil, fmt.Errorf("sqlitelog: invalid cursor %q", f.Cursor)
 		}
@@ -165,8 +182,13 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		pageWhere := append([]string{}, where...)
 		pageArgs := append([]any{}, args...)
 		if cursor > 0 {
-			pageWhere = append(pageWhere, `q.id<?`)
-			pageArgs = append(pageArgs, cursor)
+			if f.TimeOrder {
+				pageWhere = append(pageWhere, `(q.ts, q.id)<(?, ?)`)
+				pageArgs = append(pageArgs, cursorTS, cursor)
+			} else {
+				pageWhere = append(pageWhere, `q.id<?`)
+				pageArgs = append(pageArgs, cursor)
+			}
 		}
 		pcond := ""
 		if len(pageWhere) > 0 {
@@ -177,12 +199,12 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		rows, err := tx.QueryContext(ctx, `SELECT q.id, q.ts, q.latency_us, coalesce(n.name,''), q.proto, coalesce(c.ip,''), coalesce(c.name,''), coalesce(c.grp,''),
 			coalesce(d.name,''), coalesce(cn.name,''), q.qtype, q.qclass, q.status, q.rcode, q.reply_type, coalesce(u.addr,''), coalesce(z.name,''),
 			coalesce(l.name,''), coalesce(q.rule,''), q.dnssec, q.ede, q.flags, coalesce(q.ecs,''), q.trace_id, coalesce(q.answer,''), coalesce(p.name,'')
-			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY q.id DESC LIMIT ?) page JOIN query q ON q.id=page.id
+			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY `+order+` LIMIT ?) page JOIN query q ON q.id=page.id
 			LEFT JOIN dict_node n ON n.id=q.node LEFT JOIN dict_client c ON c.id=q.client
 			LEFT JOIN dict_domain d ON d.id=q.domain LEFT JOIN dict_domain cn ON cn.id=q.cname
 			LEFT JOIN dict_upstream u ON u.id=q.upstream LEFT JOIN dict_zone z ON z.id=q.zone LEFT JOIN dict_list l ON l.id=q.list
 			LEFT JOIN dict_policy p ON p.id=q.policy
-			ORDER BY q.id DESC`, append(pageArgs, limit+1)...)
+			ORDER BY `+order, append(pageArgs, limit+1)...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: queries: %w", err)
 		}
@@ -199,7 +221,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		}
 		if len(res.Queries) > limit {
 			res.Queries = res.Queries[:limit]
-			res.CursorNext = strconv.FormatUint(res.Queries[limit-1].ID, 10)
+			res.CursorNext = RowCursor(res.Queries[limit-1], f.TimeOrder)
 		}
 		var oldest sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {

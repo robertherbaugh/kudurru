@@ -70,12 +70,23 @@ Cloudflare dashboard:
    | Root directory | `www` |
    | Build command | `bun install --frozen-lockfile && bun run build` |
    | Deploy command | `bunx wrangler deploy` |
-   | Non-production branch deploy command | `bunx wrangler versions upload` (a preview URL per branch and pull request) |
+   | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
    | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION` |
    | Build variables | `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    The build reads `../VERSION`, `../docs/brand` and `../docs/guide/images`
    outside the root directory; Workers Builds clones the whole repository.
+   Each build uses the commit from the branch that triggered it. With
+   `release` as production, `main` and feature branches run the Preview
+   command; the command does not choose which branch to clone.
+
+   **Existing projects:** if Settings → Builds shows **Set up Worker
+   Previews**, complete that setup before using the Preview command. This
+   is a one-way switch from the older version URL preview system; follow
+   [Cloudflare's migration steps](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#existing-workers-connected-to-builds).
+   `wrangler.jsonc` includes the required `previews` block. This static site
+   needs no separate preview bindings; assets and compatibility settings
+   stay at the top level.
 
 2. **Main domain.** `kudurru.io` must be a zone on the same Cloudflare
    account. The first deploy attaches it as the Worker's custom domain
@@ -110,11 +121,16 @@ Cloudflare dashboard:
    above does not cover it. Do not add a DNS record for `docs` by hand:
    the first deploy of that Worker creates it.
 
-Version URLs (`preview_urls`) are served on `workers.dev`. `wrangler.jsonc`
-keeps the Worker's own `workers.dev` address off; if Cloudflare does not
-create version URLs with it off, set `"workers_dev": true` (every page
-carries a canonical link to kudurru.io, so the second address is not
-indexed as a duplicate).
+Worker Previews have their own URLs on `workers.dev`; production stays on
+`kudurru.io`. The Worker's production `workers.dev` address stays disabled.
+`preview_urls` also leaves version URLs available, but branch builds use
+`wrangler preview` rather than `wrangler versions upload`.
+
+If GitHub reports **Preview creation failed** and Cloudflare has no build
+log, preview provisioning may have failed before the build command started.
+Changing the GitHub Actions runner or adding flags to the deploy command
+cannot repair that stage. Contact Cloudflare with the Worker name, failing
+build ID and GitHub check URL so they can inspect its preview build state.
 
 [`www.yml`](../.github/workflows/www.yml) runs `make www-check` on every
 pull request that touches the site, the brand kit or the screenshots. It

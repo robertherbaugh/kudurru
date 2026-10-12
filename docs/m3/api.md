@@ -377,3 +377,44 @@ the zone cache, CLI switch to the generated client, audit columns. Closed or
 narrowed: the API side of `WithActor`, the 1.5 MiB cap, `CheckAPIWrite`,
 validate-unstructured-then-typed, `POST /dns/blocking`, REST exposure of
 `Set.Status()` and cache flush.
+
+### Query-log and stats scope (#9)
+
+`GET /queries`, `/queries/stream` and `/stats/*` honor
+`scope=cluster` and `scope=node&node=<name>`. Cluster reads contact the known
+members over the authenticated TLS internal listener, with a two-second
+timeout for remote reads. Local reads use the request's deadline. Responses
+list every requested node and set `partial: true`
+when any node fails. A selected node is served by that node; unknown nodes are
+404, and an unavailable selected node or a cluster with no readable nodes is
+503. A coordinator without a local query log can still read its peers.
+
+Cluster query pages sort by timestamp, then node name and row ID. Their opaque
+cursors retain the per-node positions, original membership and an upper time
+bound, so later inserts do not displace a traversal. Keep the filters when
+following a cursor; the page size may change. Historical cursor maps are limited
+to 64 nodes, including departed nodes retained as partial results; cluster query
+pagination returns 503 when initial membership exceeds this limit. Row identity
+is `(node, id)`.
+When a page is partial, restarting the search after recovery is necessary to
+obtain the missing node's complete history. Query-log storage and retention
+remain per node; aggregation cannot recover a replaced pod's lost emptyDir.
+
+Additive rollups are summed in common UTC buckets. Summary distinct counts
+are exact unions up to 10,000 hashes and use bounded HyperLogLog sketches above
+that threshold (`approximate: true`). Latency percentiles come from merged
+histograms. Top lists and client series merge up to four times the requested
+number of candidates per node and are marked approximate; top lists expose
+`cutoff_rank`. Domains-on-lists uses the largest reported compiled count,
+since the list configuration is replicated rather than additive. Upstream
+server health includes its node.
+
+Live tails multiplex privacy-transformed peer streams. Cluster SSE IDs are
+opaque per-node resume maps; node SSE IDs remain decimal. `event: scope`
+reports the initial contributing nodes and updates when a peer's availability
+changes. The dashboard displays these updates. Failed peers are retried with
+jittered exponential backoff up to 30 seconds, resuming from their last received
+ID; the backoff resets after a successful connection. Membership changes
+end the connection so EventSource reconnects against the current pods. Replay is bounded
+by each node's in-memory ring, as for a single-node stream. Subscribers and
+writes are bounded so slow dashboard clients cannot block DNS ingestion.

@@ -128,7 +128,7 @@ Optional integrator wiring, all behind configuration that does not exist yet (`e
   - It runs `dnsdist --check-config -C <case>/dnsdist.yml` and `-C <case>/dnsdist.conf` for every golden case inside the pinned upstream image, with the testdata mounted read-only at `/golden` and the certificate at `/certs`. The `dynblocks-ebpf` case runs as root with `--cap-add SYS_ADMIN`, because `--check-config` creates the BPF maps.
   - It runs `keepalived -t -f <golden>.conf` for every keepalived golden inside the built image, after writing 32-byte HMAC keys (mode 0600) to `/run/secrets/vrrp_hmac_53` and `_54`.
   - Finally it runs `kudurru version` from the built dnsdist image.
-- `.github/workflows/edge.yml` runs it on `ubuntu-latest` for PRs touching `ee/edge`, the two command files, `images/` or the Dockerfile, and on demand. Since the v0.1 fix round it is a real gate (no `continue-on-error`).
+- `.github/workflows/edge.yml` runs it on a Ubicloud `standard-4` runner (Ubuntu 24.04) for PRs touching `ee/edge`, the two command files, `images/` or the Dockerfile, and on demand. Since the v0.1 fix round it is a real gate (no `continue-on-error`).
 - The Lua validation helper (`newDNSPacketOverlay`, `getRecordsCountInSection`) only runs when a health check fires. That is covered by hardware spike (b), not by `--check-config`.
 
 First real run (v0.1 fix round, Docker 25 in the sandbox): all 12 dnsdist files and all 4 keepalived files pass. It found three problems, all fixed:

@@ -1339,7 +1339,7 @@ export const handlers = [
     const items = db.queries
       .filter((q) => q.status_class === 'blocked')
       .slice(0, n)
-      .map((q) => ({ id: q.id, ts: q.ts, domain: q.domain, client: q.client.ip, ...(q.client.name ? { client_name: q.client.name } : {}), ...(q.list ? { list: q.list } : {}), status: q.status }));
+      .map((q) => ({ id: q.id, node: q.node, ts: q.ts, domain: q.domain, client: q.client.ip, ...(q.client.name ? { client_name: q.client.name } : {}), ...(q.list ? { list: q.list } : {}), status: q.status }));
     return ok({ ...scopeInfo(url), items });
   }),
 
