@@ -496,3 +496,65 @@ www-check: www-install
 
 www-dev: www-install
 	cd www && $(BUN) run dev
+
+## license-server-*: the kudurru license portal in license-server/, the
+## licensor's service that issues license keys (Bun, TypeScript, Postgres
+## and an Astryx UI in one container; license-server/README.md). It is not
+## part of kudurru or its release and no node contacts it (D156); nothing
+## here deploys. The image builds from the repository root, because it
+## carries the trusted public keys of internal/license/keys.
+##   license-server-check: typecheck, lint, the server and UI tests and the
+##                         build. The database tests need TEST_DATABASE_URL,
+##                         for example the compose Postgres:
+##                         postgres://postgres:postgres@127.0.0.1:55432/postgres
+##                         (license-server-dev starts it); without it they
+##                         skip, and REQUIRE_DB=1 (CI) makes that a failure
+##   license-server-keys:  the development signing key and the Dex client
+##                         secret in license-server/dev/secrets (gitignored),
+##                         once; an existing key is kept (dev/README.md)
+##   license-server-dev:   Postgres, Dex and Mailpit in compose, the Bun
+##                         server on :8790 and Vite on http://localhost:5174/
+##                         (settings: license-server/dev/server.env)
+##   license-server-image: ghcr.io/robertherbaugh/kudurru-license-server:dev
+##   license-server-up:    that image with Postgres, Dex and Mailpit on
+##                         http://localhost:8791/ (dev users: dev/README.md);
+##                         license-server-down stops it and keeps the database
+##                         volume (add -v to the compose command to drop it)
+##   license-server-e2e:   the Playwright suite (license-server/e2e) against a
+##                         fresh compose stack, removed afterwards with its
+##                         volumes; the logs are printed when it fails
+## The image is built with `docker build`, not `compose --build`, so the
+## stack runs exactly what license-server-image produces (and compose's
+## build, which needs buildx 0.17 or later, is not involved).
+LICENSE_SERVER_COMPOSE := docker compose -f license-server/compose.yaml
+# The tag license-server/compose.yaml runs; change both together.
+LICENSE_SERVER_IMAGE   := ghcr.io/robertherbaugh/kudurru-license-server:dev
+.PHONY: license-server-install license-server-check license-server-keys license-server-dev license-server-image license-server-up license-server-down license-server-e2e
+license-server-install:
+	cd license-server && $(BUN) install --frozen-lockfile
+
+license-server-check: license-server-install
+	cd license-server && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run test && $(BUN) run build
+
+license-server-keys:
+	@[ -f license-server/dev/secrets/signing.key ] || (cd license-server && $(BUN) scripts/dev-keygen.ts)
+
+license-server-dev: license-server-install license-server-keys
+	$(LICENSE_SERVER_COMPOSE) up -d --wait postgres dex mailpit
+	cd license-server && $(BUN) --env-file=dev/server.env run dev
+
+license-server-image:
+	docker build -f license-server/Dockerfile --build-arg COMMIT=$(COMMIT) --build-arg BUILT_AT=$(DATE) -t $(LICENSE_SERVER_IMAGE) .
+
+license-server-up: license-server-image license-server-keys
+	$(LICENSE_SERVER_COMPOSE) --profile server up -d --wait
+
+license-server-down:
+	$(LICENSE_SERVER_COMPOSE) --profile server --profile e2e down
+
+license-server-e2e: license-server-install license-server-image license-server-keys
+	status=0; \
+	$(LICENSE_SERVER_COMPOSE) --profile e2e up -d --wait && (cd license-server && $(BUN) run e2e) || status=$$?; \
+	[ $$status -eq 0 ] || $(LICENSE_SERVER_COMPOSE) --profile e2e logs --no-color --tail 300; \
+	$(LICENSE_SERVER_COMPOSE) --profile e2e down -v; \
+	exit $$status

@@ -1,6 +1,11 @@
 # Dependabot keeps the SHA-pinned GitHub Actions current (the workflows pin
 # every third-party action by commit with the version as a comment, which
 # Dependabot updates together). One grouped pull request a week.
+#
+# The license portal (license-server/) is an internet-facing service that
+# holds the signing key, so its npm dependencies (exact versions in
+# package.json, bun.lock) are kept current too: minor and patch updates in
+# one grouped pull request a week, each major update on its own.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -12,3 +17,13 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+  - package-ecosystem: bun
+    directory: /license-server
+    schedule:
+      interval: weekly
+    groups:
+      license-server:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: license-server

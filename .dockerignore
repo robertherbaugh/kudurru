@@ -12,3 +12,6 @@ web/test-results
 site/public
 site/resources
 .claude
+# The license portal is not part of this image; its own image builds with
+# license-server/Dockerfile, whose Dockerfile.dockerignore replaces this file.
+license-server

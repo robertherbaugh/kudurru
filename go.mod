@@ -133,4 +133,6 @@ require (
 
 // Bun installs the dashboard dependencies into web/node_modules; some npm
 // packages ship .go files that must not join ./... (see web/README.md).
+// The same holds for the license portal's license-server/node_modules.
 ignore ./web/node_modules
+ignore ./license-server/node_modules
