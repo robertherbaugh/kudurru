@@ -99,6 +99,7 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 ## Documentation
 
+- [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
 - [Architecture](docs/architecture.md): the complete design, decision log and glossary.
 - [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
 - [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.

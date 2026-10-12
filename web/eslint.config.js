@@ -20,6 +20,9 @@ export default tseslint.config(
       'src/themes/*/*.doc.mjs',
       'playwright-report/**',
       'test-results/**',
+      // A Node tool for the screenshots of docs/guide/, not part of the app.
+      'scripts/guide-screenshots.mjs',
+      'scripts/guide-shots/**',
     ],
   },
   js.configs.recommended,

@@ -341,6 +341,17 @@ pipeline.
 - The dashboard is embedded precompressed (gzip, optional brotli): the
   binary shrinks by 1.8 MB.
 
+### Documentation
+
+- User and administrator guide in [docs/guide](docs/guide/README.md): the
+  block page and access requests for users, and install, daily work, the
+  command line, maintenance and troubleshooting for administrators. It is
+  written in Simplified Technical English (ASD-STE100) with screenshots of
+  the dashboard and of the block page. `python3 hack/guide-lint.py` checks
+  sentence and paragraph length, unapproved words, links and figure numbers;
+  `web/scripts/guide-screenshots.mjs` takes the screenshots again. The docs
+  site lists the guide under **Guide**.
+
 ### Known limitations
 
 See [docs/followups.md](docs/followups.md) for the full list. Notably: no
