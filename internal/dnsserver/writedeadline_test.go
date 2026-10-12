@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -42,28 +43,48 @@ func (s endlessTransfer) Serve(req *pipeline.Request, next pipeline.Next) (*pipe
 
 // TestTransferWriteDeadline: Limits.StreamWriteTimeout bounds each message
 // of a zone transfer (miekg/dns sets no write deadline itself), on TCP and
-// DoT. A client that keeps reading keeps the stream for longer than the
-// timeout; once it stops reading, the server gives up the stream.
+// DoT, with and without PROXYv2. A client that keeps reading keeps the
+// stream for longer than the timeout; once it stops reading, the server
+// gives up the stream.
 func TestTransferWriteDeadline(t *testing.T) {
 	// Long enough that a steady reader on a loaded CI runner never misses
 	// it: the stream keeps the socket buffer full, so every write waits for
 	// the reader to drain it, and a 200 ms deadline was cut by one stall.
 	const timeout = time.Second
-	for _, p := range []Protocol{ProtoTCP, ProtoDoT} {
-		t.Run(string(p), func(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		protocol Protocol
+		proxied  bool
+	}{
+		{"tcp", ProtoTCP, false},
+		{"dot", ProtoDoT, false},
+		{"tcp/proxy", ProtoTCP, true},
+		{"dot/proxy", ProtoDoT, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			stage := endlessTransfer{done: make(chan struct{})}
-			f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: p}}, stages: []pipeline.Stage{stage}, limits: Limits{StreamWriteTimeout: timeout}})
-			raw, err := net.Dial("tcp", f.addr(p))
+			opts := fixtureOpts{specs: []Spec{{Protocol: tc.protocol}}, stages: []pipeline.Stage{stage}, limits: Limits{StreamWriteTimeout: timeout}}
+			if tc.proxied {
+				opts.proxy = mustPolicy(t, []string{"127.0.0.1/32"}, nil)
+			}
+			f := startFixture(t, opts)
+			raw, err := net.Dial("tcp", f.addr(tc.protocol))
 			if err != nil {
 				t.Fatal(err)
 			}
-			conn := raw
-			if p == ProtoDoT {
-				tc := tls.Client(raw, &tls.Config{RootCAs: f.cert.Pool, ServerName: "localhost", NextProtos: []string{"dot"}, MinVersion: tls.VersionTLS12})
-				if err := tc.Handshake(); err != nil {
+			defer func() { _ = raw.Close() }()
+			if tc.proxied {
+				if _, err := raw.Write(ppHeader(t, proxyproto.TransportStream, f.addr(tc.protocol), nil)); err != nil {
 					t.Fatal(err)
 				}
-				conn = tc
+			}
+			conn := raw
+			if tc.protocol == ProtoDoT {
+				tlsConn := tls.Client(raw, &tls.Config{RootCAs: f.cert.Pool, ServerName: "localhost", NextProtos: []string{"dot"}, MinVersion: tls.VersionTLS12})
+				if err := tlsConn.Handshake(); err != nil {
+					t.Fatal(err)
+				}
+				conn = tlsConn
 			}
 			defer func() { _ = conn.Close() }()
 			co := &dns.Conn{Conn: conn}
