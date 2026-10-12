@@ -164,7 +164,11 @@ func (s *Server) registerObjects() {
 			return s.putObjectRoute(ctx, k, writeRequest{kind: k, body: in.Body, namespace: in.Namespace, name: in.Name, ifMatch: in.IfMatch})
 		})
 
-	register(s, withStatus(operation(http.MethodDelete, "/objects/{kind}/{name}", "deleteClusterObject", "Delete a cluster-scoped object", "objects"), http.StatusNoContent),
+	deleteClusterOp := withStatus(operation(http.MethodDelete, "/objects/{kind}/{name}", "deleteClusterObject", "Delete a cluster-scoped object", "objects"), http.StatusNoContent)
+	deleteClusterOp.Description = "A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty " +
+		"(error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone \".\" is " +
+		"409 default_zone (D148)."
+	register(s, deleteClusterOp,
 		byKind("delete"), func(ctx context.Context, in *deleteClusterObjectInput) (*emptyOutput, error) {
 			return s.deleteObjectRoute(ctx, in.Kind, "", in.Name, in.IfMatch, false)
 		})
@@ -187,6 +191,10 @@ func (s *Server) registerObjects() {
 	for _, k := range kinds {
 		k := k
 		op := operation(http.MethodPost, "/"+k.plural+":batchDelete", "batchDelete"+exportName(k.plural), "Delete several "+k.plural, k.plural)
+		if k.plural == "dnszones" {
+			op.Description = "Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets " +
+				"still reference fails with zone_not_empty and the root zone with default_zone (D148)."
+		}
 		register(s, op, perm{resource: k.resource, verb: "delete", scopable: k.zoneScoped()}, func(ctx context.Context, in *batchDeleteInput) (*processedOutput, error) {
 			return s.batchDelete(ctx, k, in)
 		})

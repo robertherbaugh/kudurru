@@ -5,11 +5,18 @@
 // owner named.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { useState, type ReactNode } from 'react';
 import type { AnyObject } from '../api/types';
 import { objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError, nameError, type FieldDef, type KindSchema } from '../lib/objectSchemas';
 import { errorText } from './Feedback';
+import { FieldGroup } from './fields/FieldGroup';
 import { NumberField } from './fields/NumberField';
 import { SelectField } from './fields/SelectField';
 import { SwitchField, TextAreaField, TextField } from './fields/TextField';
@@ -160,7 +167,7 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
 
   return (
     <DialogForm
-      className="k-form"
+      gap={3}
       noValidate
       onSubmit={() => {
         if (!readOnly) void submit();
@@ -173,7 +180,7 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
       }
     >
       {readOnly && own ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
-      <div className="k-form-grid">
+      <FormGrid>
         <TextField
           label="Name"
           value={name}
@@ -184,7 +191,7 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
           help={initial ? undefined : 'Lower-case letters, digits and "-"'}
         />
         {schema.namespaced ? <TextField label="Namespace" value={namespace} onChange={setNamespace} isReadOnly={!!initial} /> : null}
-      </div>
+      </FormGrid>
       <TextField label="Comment" value={comment} onChange={setComment} isDisabled={readOnly} isOptional />
       <SwitchField label="Enabled" value={enabled} onChange={setEnabled} isDisabled={readOnly} help="Disabled objects stay stored but take no effect." />
       <Fields fields={schema.fields} value={spec} onChange={setSpec} errors={errors} disabled={readOnly} />
@@ -192,9 +199,12 @@ export function ObjectForm({ schema, initial, defaultNamespace = 'default', onSu
         <Banner status="error" title="The server rejected the change" description={serverError} />
       ) : null}
       {Object.keys(errors).length > 0 ? (
-        <p className="k-error-text" role="alert">
-          Fix the {Object.keys(errors).length} highlighted field{Object.keys(errors).length === 1 ? '' : 's'}.
-        </p>
+        <FieldStatus
+          type="error"
+          variant="detached"
+          role="alert"
+          message={`Fix the ${Object.keys(errors).length} highlighted field${Object.keys(errors).length === 1 ? '' : 's'}.`}
+        />
       ) : null}
     </DialogForm>
   );
@@ -303,13 +313,12 @@ function Field({
     case 'object': {
       const obj = value && typeof value === 'object' ? (value as Obj) : {};
       return (
-        <fieldset className="k-fieldset">
-          <legend>{def.label}</legend>
-          {def.help ? <p className="k-muted k-small">{def.help}</p> : null}
-          <div className="k-form-grid">
+        <FieldGroup label={def.label}>
+          <Help text={def.help} />
+          <FormGrid>
             <Fields fields={def.fields} value={obj} onChange={(v) => onChange(v)} errors={errors} disabled={disabled} prefix={path} />
-          </div>
-        </fieldset>
+          </FormGrid>
+        </FieldGroup>
       );
     }
     case 'objects':
@@ -344,37 +353,66 @@ function ObjectsField({
     setShowBulk(false);
   };
   return (
-    <fieldset className="k-fieldset">
-      <legend>{def.label}</legend>
-      {def.help ? <p className="k-muted k-small">{def.help}</p> : null}
-      {value.length === 0 ? <p className="k-muted k-small">No {def.itemLabel}s yet.</p> : null}
+    <FieldGroup label={def.label}>
+      <Help text={def.help} />
+      {value.length === 0 ? <Text type="supporting">No {def.itemLabel}s yet.</Text> : null}
       {value.map((item, i) => (
-        <details key={i} className="k-array-entry" open={value.length <= 3 || Object.keys(errors).some((k) => k.startsWith(`${path}.${i}.`))}>
-          <summary>
-            <span className="k-mono">{def.summary ? def.summary(item ?? {}) : `${def.itemLabel} ${i + 1}`}</span>
-          </summary>
-          <div className="k-form-grid">
+        <Entry
+          key={i}
+          title={def.summary ? def.summary(item ?? {}) : `${def.itemLabel} ${i + 1}`}
+          defaultIsOpen={value.length <= 3}
+          hasErrors={Object.keys(errors).some((k) => k.startsWith(`${path}.${i}.`))}
+        >
+          <FormGrid>
             <Fields fields={def.fields} value={item ?? {}} onChange={(v) => onChange(value.map((x, j) => (j === i ? v : x)))} errors={errors} disabled={disabled} prefix={`${path}.${i}`} />
-          </div>
+          </FormGrid>
           {disabled ? null : (
-            <Button label={`Remove ${def.itemLabel}`} variant="ghost" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))} />
+            <HStack gap={2}>
+              <Button label={`Remove ${def.itemLabel}`} variant="ghost" size="sm" onClick={() => onChange(value.filter((_, j) => j !== i))} />
+            </HStack>
           )}
-        </details>
+        </Entry>
       ))}
       {disabled ? null : (
-        <div className="k-row">
+        <HStack gap={2} vAlign="center" wrap="wrap">
           <Button label={`Add ${def.itemLabel}`} variant="secondary" size="sm" onClick={() => onChange([...value, {}])} />
           <Button label="Add many" variant="ghost" size="sm" onClick={() => setShowBulk((s) => !s)} />
-        </div>
+        </HStack>
       )}
       {showBulk ? (
-        <div className="k-stack">
+        <VStack gap={2}>
           <TextAreaField label={`Add many ${def.itemLabel}s`} help="One per line or comma separated" value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} />
-          <div className="k-row">
+          <HStack gap={2} vAlign="center" wrap="wrap">
             <Button label={`Add ${bulk.split(/[\r\n,]+/).filter((s) => s.trim()).length || ''} ${def.itemLabel}s`.replace('  ', ' ')} size="sm" variant="primary" onClick={addMany} />
-          </div>
-        </div>
+          </HStack>
+        </VStack>
       ) : null}
-    </fieldset>
+    </FieldGroup>
+  );
+}
+
+/** The fields of a form in columns (at least 220 px each). */
+function FormGrid({ children }: { children: ReactNode }) {
+  return (
+    <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
+      {children}
+    </Grid>
+  );
+}
+
+/** Help under a group's label. */
+function Help({ text }: { text?: string | undefined }) {
+  return text ? <Text type="supporting">{text}</Text> : null;
+}
+
+/** One entry of a list of objects: collapsible, forced open while it has an error. */
+function Entry({ title, defaultIsOpen, hasErrors, children }: { title: string; defaultIsOpen: boolean; hasErrors: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultIsOpen);
+  return (
+    <Card padding={2}>
+      <Collapsible trigger={<Text type="code">{title}</Text>} isOpen={open || hasErrors} onOpenChange={setOpen}>
+        <VStack gap={2}>{children}</VStack>
+      </Collapsible>
+    </Card>
   );
 }

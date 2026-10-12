@@ -1248,9 +1248,25 @@ Flags:
 
 ## kudurru zones
 
-List, import, export and notify zones.
+List, import, export, notify and delete zones.
 
 Aliases: `zone`.
+
+### kudurru zones delete
+
+Delete a zone and every record set that references it.
+
+```text
+kudurru zones delete <zone> [flags]
+```
+
+Aliases: `rm`.
+
+Flags:
+
+```text
+      --dry-run   only report what would be deleted
+```
 
 ### kudurru zones export
 

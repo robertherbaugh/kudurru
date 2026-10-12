@@ -5,7 +5,14 @@
 // with the new matchers, each with a display name and comment).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { Code } from '@astryxdesign/core/Code';
+import { Link } from '@astryxdesign/core/Link';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
@@ -15,10 +22,11 @@ import { SelectField } from '../components/fields/SelectField';
 import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader } from '../components/layout/Page';
 import { formatExact, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
 import { clientHref, objectHref } from '../lib/policies';
-import { Link, useSearchParams } from '../lib/router';
+import { useSearchParams } from '../lib/router';
 
 export { matcherFor };
 
@@ -80,14 +88,91 @@ export default function ClientsPage() {
       return next;
     });
 
+  const columns: TableColumn<ClientRow>[] = [
+    {
+      key: 'select',
+      header: <VisuallyHidden>Select</VisuallyHidden>,
+      width: pixel(44),
+      renderCell: (c) => <CheckboxInput label={`Select ${c.name ?? c.key}`} isLabelHidden value={selected.has(c.key)} onChange={(on) => toggle(c, on)} />,
+    },
+    {
+      key: 'key',
+      header: 'Client',
+      width: proportional(3, { minWidth: 180 }),
+      renderCell: (c) => (
+        <Text>
+          <Link href={clientHref(c.key)} type="inherit" color="inherit" hasUnderline>
+            {c.name ?? c.key}
+          </Link>
+          {c.name ? (
+            <Text type="supporting">
+              {' '}
+              <Code color="inherit" size="inherit">
+                {c.key}
+              </Code>
+            </Text>
+          ) : null}
+        </Text>
+      ),
+    },
+    {
+      key: 'group',
+      header: 'Group',
+      width: proportional(1.5, { minWidth: 110 }),
+      renderCell: (c) =>
+        c.group ? (
+          <Link href={objectHref('groups', c.group)}>
+            <Badge variant={groupName(c.group) === 'default' ? 'neutral' : 'blue'} label={c.group.replace(/^default\//, '')} />
+          </Link>
+        ) : (
+          <Text color="secondary">–</Text>
+        ),
+    },
+    {
+      key: 'last_seen',
+      header: 'Last seen',
+      width: proportional(1.5, { minWidth: 110 }),
+      renderCell: (c) =>
+        c.last_seen ? (
+          <Tooltip content={c.last_seen}>
+            <Text>{formatRelative(c.last_seen)}</Text>
+          </Tooltip>
+        ) : (
+          <Text color="secondary">–</Text>
+        ),
+    },
+    {
+      key: 'count',
+      header: 'Queries (24 h)',
+      align: 'end',
+      renderCell: (c) => (
+        <Link href={`/queries?client=${encodeURIComponent(c.key)}`} color="inherit" hasUnderline>
+          <Text type="inherit" hasTabularNumbers>
+            {formatExact(c.count)}
+          </Text>
+        </Link>
+      ),
+    },
+    {
+      key: 'blocked',
+      header: 'Blocked',
+      align: 'end',
+      renderCell: (c) => (
+        <Link href={`/queries?client=${encodeURIComponent(c.key)}&status_class=blocked`} color="inherit" hasUnderline>
+          <Text type="inherit" hasTabularNumbers>
+            {formatExact(c.blocked)}
+          </Text>
+        </Link>
+      ),
+    },
+  ];
+
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>Clients</h1>
-          <p className="k-muted k-small">Every client seen in the last 24 hours, the client group it resolved to, and its query counts.</p>
-        </div>
-        <div className="k-actions">
+    <Page>
+      <PageHeader
+        title="Clients"
+        description="Every client seen in the last 24 hours, the client group it resolved to, and its query counts."
+        actions={
           <Button
             label={`Add ${selected.size || ''} to group`.replace('  ', ' ')}
             variant="primary"
@@ -97,68 +182,23 @@ export default function ClientsPage() {
               setAssigning(true);
             }}
           />
-        </div>
-      </div>
+        }
+      />
       <TextField label="Search clients" isLabelHidden startIcon="search" placeholder="Search by address, name or group" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       {inv.error ? <ErrorBanner error={inv.error} /> : null}
       {inv.isLoading ? <Loading /> : null}
       {inv.data ? (
-        <div className="k-panel k-table-wrap">
-          <table className="k-table" aria-label="Clients">
-            <thead>
-              <tr>
-                <th scope="col" className="k-col-check">
-                  <span className="k-visually-hidden">Select</span>
-                </th>
-                <th scope="col">Client</th>
-                <th scope="col">Group</th>
-                <th scope="col">Last seen</th>
-                <th scope="col" className="num">
-                  Queries (24 h)
-                </th>
-                <th scope="col" className="num">
-                  Blocked
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="k-muted">
-                    {search ? `No client matches "${search}".` : 'No queries in the last 24 hours.'}
-                  </td>
-                </tr>
-              ) : null}
-              {items.map((c) => (
-                <tr key={c.key}>
-                  <td className="k-col-check">
-                    <CheckboxInput label={`Select ${c.name ?? c.key}`} isLabelHidden value={selected.has(c.key)} onChange={(on) => toggle(c, on)} />
-                  </td>
-                  <td>
-                    <Link href={clientHref(c.key)}>{c.name ?? c.key}</Link>
-                    {c.name ? <span className="k-muted k-small k-mono"> {c.key}</span> : null}
-                  </td>
-                  <td>
-                    {c.group ? (
-                      <Link href={objectHref('groups', c.group)} className="k-badge-link">
-                        <Badge variant={groupName(c.group) === 'default' ? 'neutral' : 'blue'} label={c.group.replace(/^default\//, '')} />
-                      </Link>
-                    ) : (
-                      <span className="k-muted">–</span>
-                    )}
-                  </td>
-                  <td>{c.last_seen ? <span title={c.last_seen}>{formatRelative(c.last_seen)}</span> : <span className="k-muted">–</span>}</td>
-                  <td className="num">
-                    <Link href={`/queries?client=${encodeURIComponent(c.key)}`}>{formatExact(c.count)}</Link>
-                  </td>
-                  <td className="num">
-                    <Link href={`/queries?client=${encodeURIComponent(c.key)}&status_class=blocked`}>{formatExact(c.blocked)}</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card padding={0}>
+          <Table<ClientRow>
+            aria-label="Clients"
+            density="compact"
+            hasHover
+            idKey="key"
+            data={items}
+            columns={columns}
+            emptyState={<Text color="secondary">{search ? `No client matches "${search}".` : 'No queries in the last 24 hours.'}</Text>}
+          />
+        </Card>
       ) : null}
       <FormDialog
         isOpen={assigning}
@@ -176,6 +216,8 @@ export default function ClientsPage() {
         <SelectField label="Group" value={group} options={writable.map((g) => ({ value: g.metadata.name, label: g.metadata.name }))} onChange={setGroup} />
         <TextField label="Comment" value={comment} onChange={setComment} isOptional />
       </FormDialog>
-    </div>
+    </Page>
   );
 }
+
+type ClientRow = ClientItem & Record<string, unknown>;

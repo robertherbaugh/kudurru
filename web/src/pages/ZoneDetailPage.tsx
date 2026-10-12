@@ -1,10 +1,17 @@
 // One zone: its records flattened across record sets, the typed record
 // editor, BIND import/export, NOTIFY and the transfer status.
+import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
 import { FileInput } from '@astryxdesign/core/FileInput';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
@@ -12,14 +19,24 @@ import type { ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { RecordEditor } from '../components/RecordEditor';
+import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
+import { ZoneSettingsSection } from '../components/ZoneSettingsSection';
 import { ownership, readOnlyReason } from '../lib/managedBy';
-import { Link, useNavigate } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { dnsNameToOwner } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { TransferCell } from './ZonesPage';
 import { importSummary } from '../components/ZoneImportDialog';
+
+/** Zone names in the page title keep the heading size in the code font. */
+const MONO = { fontFamily: 'var(--font-family-code)' };
+
+type RecordRow = ZoneRecord & Record<string, unknown>;
+
+const recordKey = (r: RecordRow) => `${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}`;
 
 function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; onClose: () => void }) {
   const api = useApi();
@@ -89,7 +106,7 @@ function ExportDialog({ zone, open, onClose }: { zone: string; open: boolean; on
     >
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
-      {q.data ? <pre className="k-pre">{q.data}</pre> : null}
+      {q.data ? <CodeBlock aria-label="Zone file" code={q.data} language="plaintext" maxHeight={480} width="100%" /> : null}
     </FormDialog>
   );
 }
@@ -111,11 +128,13 @@ function ApexRedirect({ apex }: { apex: string }) {
   if (q.error) return <ErrorBanner error={q.error} />;
   if (q.data && !match) {
     return (
-      <div className="k-page">
-        <h1>{apex}</h1>
+      <Page>
+        <PageHeader title={apex} />
         <Banner status="warning" title="No such zone" description={`No zone has the apex ${apex}.`} />
-        <Link href="/zones">All zones</Link>
-      </div>
+        <Text>
+          <Link href="/zones">All zones</Link>
+        </Text>
+      </Page>
     );
   }
   return <Loading />;
@@ -129,6 +148,7 @@ export default function ZoneDetailPage({ params }: PageProps) {
 
 function ZoneDetail({ zone }: { zone: string }) {
   const api = useApi();
+  const navigate = useNavigate();
   const can = useCan();
   const qc = useQueryClient();
   const notify = useNotify();
@@ -136,6 +156,8 @@ function ZoneDetail({ zone }: { zone: string }) {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filter, setFilter] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [confirmRecord, setConfirmRecord] = useState<ZoneRecord | null>(null);
 
   const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone) });
   const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone) });
@@ -174,124 +196,155 @@ function ZoneDetail({ zone }: { zone: string }) {
 
   if (z.error) {
     return (
-      <div className="k-page">
-        <h1>Zone {zone}</h1>
+      <Page>
+        <PageHeader title={`Zone ${zone}`} />
         <ErrorBanner error={z.error} />
-        <Link href="/zones">Back to zones</Link>
-      </div>
+        <Text>
+          <Link href="/zones">Back to zones</Link>
+        </Text>
+      </Page>
     );
   }
   const zoneName = z.data?.zoneName ?? zone;
+  const columns: TableColumn<RecordRow>[] = [
+    {
+      key: 'dnsName',
+      header: 'Name',
+      width: proportional(2, { minWidth: 150 }),
+      renderCell: (r) => (
+        <VStack gap={0.5}>
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Text type="code" size="sm">{dnsNameToOwner(r.dnsName, zoneName)}</Text>
+            {r.kudurru?.disabled ? <Badge variant="warning" label="disabled" /> : null}
+          </HStack>
+          {r.kudurru?.comment ? <Text type="supporting">{r.kudurru.comment}</Text> : null}
+        </VStack>
+      ),
+    },
+    { key: 'recordType', header: 'Type', width: pixel(104), renderCell: (r) => <Text>{r.recordType}</Text> },
+    {
+      key: 'recordTTL',
+      header: 'TTL',
+      align: 'end',
+      width: pixel(80),
+      renderCell: (r) => (r.recordTTL !== undefined ? <Text hasTabularNumbers>{r.recordTTL}</Text> : <Text color="secondary">default</Text>),
+    },
+    {
+      key: 'targets',
+      header: 'Value',
+      width: proportional(3, { minWidth: 180 }),
+      renderCell: (r) => (
+        <VStack gap={0}>
+          {r.targets.map((t) => (
+            <Text key={t} type="code" size="sm" maxLines={2} wordBreak="break-all">
+              {t}
+            </Text>
+          ))}
+        </VStack>
+      ),
+    },
+    {
+      key: 'recordSet',
+      header: 'Record set',
+      width: proportional(2, { minWidth: 150 }),
+      renderCell: (r) => (
+        <HStack gap={1} vAlign="center" wrap="wrap">
+          <Text size="sm">{r.recordSet}</Text>
+          {r.managedBy && !ownership(r.managedBy).editable ? <ManagedBadge owner={r.managedBy} /> : null}
+        </HStack>
+      ),
+    },
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      width: pixel(176),
+      renderCell: (r) => {
+        const editable = zoneEditable && ownership(r.managedBy).editable && canWrite;
+        return (
+          <HStack gap={0.5}>
+            <Button label="Edit" size="sm" variant="ghost" isDisabled={!editable} onClick={() => setEditing(r)} />
+            <Button
+              label="Delete"
+              size="sm"
+              variant="ghost"
+              isDisabled={!editable || !can('records', 'delete')}
+              onClick={() => setConfirmRecord(r)}
+            />
+          </HStack>
+        );
+      },
+    },
+  ];
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/zones" className="k-small">
-            ← Zones
-          </Link>
-          <h1 className="k-mono">{zoneName}</h1>
-          {z.data ? (
-            <span className="k-row k-small">
+    <Page>
+      <PageHeader
+        back={{ href: '/zones', label: 'Zones' }}
+        title={
+          <Text type="inherit" style={MONO}>
+            {zoneName}
+          </Text>
+        }
+        meta={
+          z.data ? (
+            <>
               <Badge variant="neutral" label={z.data.type} />
-              <span>serial {z.data.serial}</span>
-              <span>{z.data.recordCount} records</span>
+              <Text size="sm">serial {z.data.serial}</Text>
+              <Text size="sm">{z.data.recordCount} records</Text>
               {z.data.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />}
               <ManagedBadge owner={z.data.managedBy} />
-            </span>
-          ) : null}
-        </div>
-        <div className="k-actions">
-          <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
-          <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
-          <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
-          <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
-        </div>
-      </div>
+            </>
+          ) : null
+        }
+        actions={
+          <>
+            <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
+            <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
+            <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
+            <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+            <Button
+              label="Delete zone"
+              variant="destructive"
+              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete')}
+              tooltip={
+                z.data?.deleteRefusal === 'default_zone'
+                  ? 'The root zone routes every other name; edit its settings instead'
+                  : z.data?.deleteRefusal === 'managed_by'
+                    ? 'The zone or some of its records are managed elsewhere'
+                    : !can('zones', 'delete')
+                      ? 'Needs zones.delete'
+                      : undefined
+              }
+              onClick={() => setDeleting(true)}
+            />
+          </>
+        }
+      />
       {z.data && !own.editable ? <Banner status="info" title={`Managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       {z.data && own.editable && z.data.type !== 'primary' ? (
         <Banner status="info" title={`A ${z.data.type} zone`} description="Records of secondary, forward and stub zones come from elsewhere and are read-only." />
       ) : null}
+      {z.data ? <ZoneSettingsSection zone={zone} own={own} /> : null}
       {z.data?.transfer ? (
-        <section className="k-panel" aria-labelledby="xfr">
-          <h2 id="xfr" className="k-h3">
-            Transfers and NOTIFY
-          </h2>
+        <Panel title="Transfers and NOTIFY" headingId="xfr">
           <TransferCell z={z.data} />
-        </section>
+        </Panel>
       ) : null}
 
       <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear />
       {recs.error ? <ErrorBanner error={recs.error} /> : null}
       {recs.isLoading ? <Loading /> : null}
       {recs.data ? (
-        <div className="k-panel k-table-wrap">
-          <table className="k-table" aria-label={`Records of ${zoneName}`}>
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Type</th>
-                <th scope="col" className="num">
-                  TTL
-                </th>
-                <th scope="col">Value</th>
-                <th scope="col">Record set</th>
-                <th scope="col">
-                  <span className="k-visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="k-muted">
-                    {filter ? 'No records match.' : 'No records yet.'}
-                  </td>
-                </tr>
-              ) : null}
-              {rows.map((r) => {
-                const recOwn = ownership(r.managedBy);
-                const editable = zoneEditable && recOwn.editable && canWrite;
-                return (
-                  <tr key={`${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}`}>
-                    <td className="k-mono">
-                      {dnsNameToOwner(r.dnsName, zoneName)}
-                      {r.kudurru?.disabled ? <Badge variant="warning" label="disabled" /> : null}
-                      {r.kudurru?.comment ? <div className="k-muted k-small">{r.kudurru.comment}</div> : null}
-                    </td>
-                    <td>{r.recordType}</td>
-                    <td className="num">{r.recordTTL ?? <span className="k-muted">default</span>}</td>
-                    <td className="k-mono k-break k-small">
-                      {r.targets.map((t) => (
-                        <div key={t}>{t}</div>
-                      ))}
-                    </td>
-                    <td className="k-small">
-                      {r.recordSet}
-                      {r.managedBy && !recOwn.editable ? (
-                        <>
-                          {' '}
-                          <ManagedBadge owner={r.managedBy} />
-                        </>
-                      ) : null}
-                    </td>
-                    <td className="k-nowrap">
-                      <Button label="Edit" size="sm" variant="ghost" isDisabled={!editable} onClick={() => setEditing(r)} />
-                      <Button
-                        label="Delete"
-                        size="sm"
-                        variant="ghost"
-                        isDisabled={!editable || !can('records', 'delete')}
-                        onClick={() => {
-                          if (window.confirm(`Delete ${r.dnsName} ${r.recordType}?`)) del.mutate(r);
-                        }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <Table<RecordRow>
+            aria-label={`Records of ${zoneName}`}
+            density="compact"
+            hasHover
+            idKey={recordKey}
+            data={rows as RecordRow[]}
+            columns={columns}
+            emptyState={<Text color="secondary">{filter ? 'No records match.' : 'No records yet.'}</Text>}
+          />
+        </Card>
       ) : null}
 
       <FormDialog
@@ -319,8 +372,24 @@ function ZoneDetail({ zone }: { zone: string }) {
           />
         ) : null}
       </FormDialog>
+      <AlertDialog
+        isOpen={confirmRecord !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRecord(null);
+        }}
+        title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} in record set ${confirmRecord.recordSet} is removed.` : ''}
+        cancelLabel="Keep it"
+        actionLabel="Delete record"
+        actionVariant="destructive"
+        isActionLoading={del.isPending}
+        onAction={() => {
+          if (confirmRecord) del.mutate(confirmRecord, { onSettled: () => setConfirmRecord(null) });
+        }}
+      />
+      <ZoneDeleteDialog zone={zone} zoneName={zoneName} isOpen={deleting} onClose={() => setDeleting(false)} onDeleted={() => navigate('/zones')} />
       <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} />
       <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} />
-    </div>
+    </Page>
   );
 }

@@ -11,6 +11,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useId, useState } from 'react';
 import type { EnumOption } from './EnumSelect';
+import { FieldGroup } from './FieldGroup';
 import { SelectField } from './SelectField';
 import { TextAreaField, TextField } from './TextField';
 
@@ -66,8 +67,7 @@ export function StringListField({
   const [paste, setPaste] = useState<string | null>(null);
   const set = (i: number, v: string) => onChange(value.map((x, j) => (j === i ? v : x)));
   return (
-    <fieldset className="k-fieldset k-list-field" aria-describedby={description ? `${id}-d` : undefined} disabled={isDisabled}>
-      <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
+    <FieldGroup label={label} isLabelHidden={isLabelHidden} describedBy={description ? `${id}-d` : undefined}>
       {value.length === 0 ? <Text type="supporting">None.</Text> : null}
       {value.map((v, i) => {
         const e = v.trim() && itemError ? itemError(v.trim()) : null;
@@ -112,6 +112,6 @@ export function StringListField({
         </Text>
       ) : null}
       {error ? <FieldStatus type="error" message={error} variant="detached" /> : null}
-    </fieldset>
+    </FieldGroup>
   );
 }

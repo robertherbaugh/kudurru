@@ -5,6 +5,11 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
+import { Center } from '@astryxdesign/core/Center';
+import { Divider } from '@astryxdesign/core/Divider';
+import { Heading } from '@astryxdesign/core/Heading';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
@@ -49,13 +54,13 @@ export function LoginPage() {
   };
 
   return (
-    <main className="k-login">
-      <Card className="k-login-card">
-        <div className="k-stack-lg">
-          <div className="k-stack">
+    <Center role="main" minHeight="100dvh" padding={4}>
+      <Card width="100%" maxWidth={420} padding={6}>
+        <VStack gap={4}>
+          <VStack gap={2}>
             <BrandLogo tagline alt="kudurru: authority over every zone." />
-            <h1 className="k-login-title">Sign in</h1>
-          </div>
+            <Heading level={1}>Sign in</Heading>
+          </VStack>
           {status.data?.hasDefaultCredentials ? (
             <Banner
               status="warning"
@@ -72,8 +77,9 @@ export function LoginPage() {
             />
           ) : null}
           {localEnabled ? (
-            <form
-              className="k-form"
+            <VStack
+              as="form"
+              gap={3}
               onSubmit={(e) => {
                 e.preventDefault();
                 void submit();
@@ -88,19 +94,18 @@ export function LoginPage() {
                 autoComplete="current-password"
                 isRequired
               />
-              {error ? (
-                <p className="k-error-text" role="alert">
-                  {error}
-                </p>
-              ) : null}
+              {/* An error Banner is role="alert": announced, and what the e2e looks for. */}
+              {error ? <Banner status="error" title={error} /> : null}
               <Button type="submit" label="Sign in" variant="primary" isLoading={busy} width="100%" />
-            </form>
+            </VStack>
           ) : (
-            <p className="k-muted">Local sign-in is disabled on this server.</p>
+            <Text color="secondary" as="p">
+              Local sign-in is disabled on this server.
+            </Text>
           )}
           {providers.length > 0 ? (
-            <div className="k-stack" role="group" aria-label="Single sign-on">
-              {localEnabled ? <p className="k-divider-text">or continue with</p> : null}
+            <VStack gap={2} role="group" aria-label="Single sign-on">
+              {localEnabled ? <Divider label="or continue with" /> : null}
               {providers.map((p) => (
                 <Button
                   key={p.id}
@@ -110,11 +115,11 @@ export function LoginPage() {
                   href={api.auth.oidcStartURL(p.id, loc.route === '/login' ? '/' : loc.route)}
                 />
               ))}
-            </div>
+            </VStack>
           ) : null}
-        </div>
+        </VStack>
       </Card>
-    </main>
+    </Center>
   );
 }
 

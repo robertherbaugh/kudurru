@@ -4,7 +4,7 @@
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
-  "description": "The kudurru dashboard SPA (docs/architecture.md \u00a710, decision D69).",
+  "description": "The kudurru dashboard SPA (docs/architecture.md §10, decision D69).",
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
@@ -26,7 +26,6 @@
     "@astryxdesign/theme-y2k": "0.6.8",
     "@stylexjs/stylex": "0.19.1",
     "@tanstack/react-query": "5.104.1",
-    "@tanstack/react-table": "8.21.3",
     "@tanstack/react-virtual": "3.14.14",
     "echarts": "6.1.0",
     "lucide-react": "1.55.0",

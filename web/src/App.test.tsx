@@ -31,7 +31,7 @@ describe('App', () => {
   it('navigates client side from a tile into the pre-filtered log', async () => {
     signIn('admin');
     renderApp('/');
-    const tile = await screen.findByRole('listitem', { name: /Queries blocked/ });
+    const tile = await screen.findByRole('link', { name: /Queries blocked/ });
     fireEvent.click(tile);
     expect(await screen.findByRole('heading', { level: 1, name: 'Query log' })).toBeInTheDocument();
     expect(window.location.search).toContain('status_class=blocked');

@@ -40,8 +40,6 @@
   --q-cached: var(--q-cached-strong);
   --q-blocked: var(--q-blocked-strong);
   --q-error: var(--q-error-strong);
-}
-:root[data-contrast='more'] .k-app {
   --color-border: currentColor;
   --color-text-secondary: var(--color-text-primary);
 }
@@ -451,10 +449,16 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
 .k-matcher { display: grid; grid-template-columns: minmax(150px, 200px) minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(130px, 1fr) auto; gap: 8px; align-items: start; padding-block-end: 10px; border-block-end: 1px solid var(--color-border); }
 @media (max-width: 900px) { .k-matcher { grid-template-columns: 1fr 1fr; } }
 
-/* Service logos: tiles (toggle buttons), stacks and lists. Monogram tones
-   keep white text above 4.5:1 in both schemes. */
-.k-service-icon { display: block; flex: none; border-radius: 6px; object-fit: contain; }
-.k-service-icon-pair { display: contents; }
+/* Service logos (ServiceIcon, ServiceGrid). A logo is an image in a fixed
+   square (ServiceIcon sets the size inline; object-fit keeps the artwork's
+   aspect ratio inside it), swapped for its dark-background variant like
+   the brand logo. A monogram fills the same square on one of eight theme
+   hues (each a background and text token pair, toneOf()). A tile is a
+   native toggle button (aria-pressed): the square, the name and the state
+   line one line each, and, while the catalogue holds AdGuard imports
+   (data-token-row on the grid), a reserved row for their licence token,
+   so every tile is equally tall. */
+.k-service-icon { display: block; flex: none; max-inline-size: none; border-radius: var(--radius-inner); object-fit: contain; }
 .k-icon-on-dark { display: none; }
 :root[data-theme='dark'] .k-icon-on-light { display: none; }
 :root[data-theme='dark'] .k-icon-on-dark { display: block; }
@@ -466,48 +470,44 @@ a.k-tile:hover { background-image: linear-gradient(var(--k-hover), var(--k-hover
   display: inline-grid;
   place-items: center;
   flex: none;
-  border-radius: 6px;
-  color: #fff;
-  font-weight: 700;
+  border-radius: var(--radius-inner);
   line-height: 1;
   letter-spacing: -0.02em;
-  background: #4f5b57;
   user-select: none;
+  background: var(--color-background-gray);
+  color: var(--color-text-gray);
 }
-.k-monogram[data-tone='0'] { background: #b3261e; }
-.k-monogram[data-tone='1'] { background: #8a4b00; }
-.k-monogram[data-tone='2'] { background: #1d6b30; }
-.k-monogram[data-tone='3'] { background: #0b6b72; }
-.k-monogram[data-tone='4'] { background: #1f4fb5; }
-.k-monogram[data-tone='5'] { background: #5b3cc4; }
-.k-monogram[data-tone='6'] { background: #a3195b; }
-.k-monogram[data-tone='7'] { background: #4f5b57; }
-.k-logo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.k-monogram[data-tone='0'] { background: var(--color-background-red); color: var(--color-text-red); }
+.k-monogram[data-tone='1'] { background: var(--color-background-orange); color: var(--color-text-orange); }
+.k-monogram[data-tone='2'] { background: var(--color-background-green); color: var(--color-text-green); }
+.k-monogram[data-tone='3'] { background: var(--color-background-teal); color: var(--color-text-teal); }
+.k-monogram[data-tone='4'] { background: var(--color-background-blue); color: var(--color-text-blue); }
+.k-monogram[data-tone='5'] { background: var(--color-background-purple); color: var(--color-text-purple); }
+.k-monogram[data-tone='6'] { background: var(--color-background-pink); color: var(--color-text-pink); }
+.k-monogram[data-tone='7'] { background: var(--color-background-gray); color: var(--color-text-gray); }
 .k-logo-tile {
   font: inherit;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 8px 10px;
-  border-radius: var(--radius-element, 8px);
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  align-content: start;
+  row-gap: var(--spacing-1-5);
+  min-inline-size: 0;
+  padding: var(--spacing-3) var(--spacing-2);
+  border-radius: var(--radius-element);
   border: 1px solid var(--color-border);
   background: var(--color-background-card, transparent);
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: center;
 }
+.k-logo-tile > * { max-inline-size: 100%; }
+[data-token-row] > .k-logo-tile { grid-template-rows: auto auto auto calc(var(--size-element-sm) - 8px); }
 .k-logo-tile:hover { background: var(--k-hover); border-color: var(--color-border-emphasized, var(--color-border)); }
 .k-logo-tile:focus-visible { outline: 2px solid var(--k-focus); outline-offset: 2px; }
 .k-logo-tile[aria-pressed='true'] { border-color: var(--color-accent); background: var(--color-accent-muted); box-shadow: inset 0 0 0 1px var(--color-accent); }
 .k-logo-tile:disabled { cursor: default; }
 .k-logo-tile:disabled:not([aria-pressed='true']) { opacity: 0.75; }
-.k-logo-name { font-size: var(--font-size-sm, 0.875rem); font-weight: var(--font-weight-medium, 500); overflow-wrap: anywhere; }
-.k-logo-meta { font-size: var(--font-size-xs, 0.75rem); color: var(--color-text-secondary); }
-.k-logo-tile[aria-pressed='true'] .k-logo-meta { color: var(--color-text-accent); font-weight: var(--font-weight-semibold, 600); }
-.k-logo-stack { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.k-logo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: var(--font-size-sm, 0.875rem); }
-.k-logo-list li { display: inline-flex; align-items: center; gap: 6px; }
 
 /* Unblock requests: what the requester typed keeps its line breaks. */
 .k-reason { white-space: pre-wrap; overflow-wrap: anywhere; max-inline-size: 48ch; }

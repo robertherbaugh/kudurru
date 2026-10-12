@@ -4,17 +4,18 @@
 // the entries table with its switches and row actions, bulk enable,
 // disable and delete (POST …:batch), the add / edit / delete dialogs, the
 // lists behind the entries and a warning for policies that should use
-// those lists but are managed elsewhere (`unattached`).
+// those lists but are managed elsewhere (`unattached`) with an "Attach"
+// dialog that shows the YAML to add to their definition. `?add=<domain>`
+// opens the add dialog with the domain filled in (the query log links to
+// it); the parameter is cleared when the dialog closes.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Heading } from '@astryxdesign/core/Heading';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Link } from '@astryxdesign/core/Link';
 import { StackItem } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { Toolbar } from '@astryxdesign/core/Toolbar';
-import { VStack } from '@astryxdesign/core/VStack';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../../api/context';
@@ -25,6 +26,8 @@ import { useSearchParams } from '../../lib/router';
 import { SelectField, type SelectOption } from '../fields/SelectField';
 import { TextField } from '../fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../Feedback';
+import { Page, PageHeader } from '../layout/Page';
+import { AttachDialog } from './AttachDialog';
 import { DomainCheck } from './DomainCheck';
 import { DomainEntriesTable } from './DomainEntriesTable';
 import { AddEntryDialog, DeleteEntriesDialog, EditEntryDialog, useInvalidateDomains, writeSummary } from './DomainEntryDialogs';
@@ -111,6 +114,10 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const blockLists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists') });
 
   const [adding, setAdding] = useState(false);
+  // ?add=<domain> (the query log's "Allow" / "Deny"): the add dialog, prefilled.
+  const addParam = sp.get('add');
+  const addOpen = adding || addParam !== null;
+  const [attaching, setAttaching] = useState<DomainUnattached | null>(null);
   const [editing, setEditing] = useState<DomainEntry | null>(null);
   const [deleting, setDeleting] = useState<DomainEntry[] | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
@@ -250,38 +257,42 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const writeTip = canWrite ? undefined : 'Needs blocklists.write';
 
   return (
-    <VStack gap={4} className="k-page">
-      <HStack gap={3} justify="between" align="start" wrap="wrap">
-        <VStack gap={1}>
-          <Heading level={1}>{TITLE[key]}</Heading>
-          <Text type="supporting">{INTRO[key]}</Text>
-          <HStack gap={3} wrap="wrap">
-            {action ? (
+    <Page>
+      <PageHeader
+        title={TITLE[key]}
+        description={INTRO[key]}
+        meta={
+          action ? (
+            <>
               <Link href="/domains" size="sm">
                 Allow and deny entries together
               </Link>
-            ) : (
-              <>
-                <Link href="/allowlist" size="sm">
-                  Allowlist only
-                </Link>
-                <Link href="/denylist" size="sm">
-                  Denylist only
-                </Link>
-              </>
-            )}
-            {action ? (
               <Link href={actionPath(action === 'allow' ? 'deny' : 'allow')} size="sm">
                 {ACTION_LABEL[action === 'allow' ? 'deny' : 'allow']}
               </Link>
-            ) : null}
-          </HStack>
-        </VStack>
-        <Button label={action ? `Add to the ${ACTION_LABEL[action]}` : 'Add domains'} variant="primary" isDisabled={!canWrite} tooltip={writeTip} onClick={() => setAdding(true)} />
-      </HStack>
+            </>
+          ) : (
+            <>
+              <Link href="/allowlist" size="sm">
+                Allowlist only
+              </Link>
+              <Link href="/denylist" size="sm">
+                Denylist only
+              </Link>
+            </>
+          )
+        }
+        actions={<Button label={action ? `Add to the ${ACTION_LABEL[action]}` : 'Add domains'} variant="primary" isDisabled={!canWrite} tooltip={writeTip} onClick={() => setAdding(true)} />}
+      />
 
       {unattached.map((u) => (
-        <Banner key={`${u.list}|${u.policy}`} status="warning" title={`Not applied for ${shortRef(u.policy)}`} description={unattachedText(u)} />
+        <Banner
+          key={`${u.list}|${u.policy}`}
+          status="warning"
+          title={`Not applied for ${shortRef(u.policy)}`}
+          description={unattachedText(u)}
+          endContent={<Button label="Attach" size="sm" variant="secondary" aria-label={`Attach ${shortRef(u.list)} to ${shortRef(u.policy)}`} onClick={() => setAttaching(u)} />}
+        />
       ))}
       {offLists.map((l) => (
         <Banner
@@ -298,7 +309,7 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
       ))}
 
       <HStack gap={2} wrap="wrap" align="end">
-        <TextField className="k-search" label="Search" isLabelHidden startIcon="search" placeholder="Search domains, expressions and comments" value={search} onChange={setSearch} hasClear />
+        <TextField fieldWidth={400} label="Search" isLabelHidden startIcon="search" placeholder="Search domains, expressions and comments" value={search} onChange={setSearch} hasClear />
         {!action ? <SelectField label="Action" isLabelHidden value={filters.action ?? ''} options={ACTION_OPTIONS} emptyLabel="Allow and deny" onChange={(v) => setParams({ action: v || null })} /> : null}
         <SelectField label="Type" isLabelHidden value={filters.type ?? ''} options={TYPE_OPTIONS} emptyLabel="All types" onChange={(v) => setParams({ type: v || null })} />
         <SelectField label="Enabled" isLabelHidden value={filters.enabled ?? ''} options={ENABLED_OPTIONS} emptyLabel="Enabled and disabled" onChange={(v) => setParams({ enabled: v || null })} />
@@ -370,15 +381,20 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
       <DomainCheck />
 
       <AddEntryDialog
-        key={`${key}-${adding ? 'open' : 'closed'}`}
-        open={adding}
-        onClose={() => setAdding(false)}
+        key={`${key}-${addOpen ? `open-${addParam ?? ''}` : 'closed'}`}
+        open={addOpen}
+        onClose={() => {
+          setAdding(false);
+          if (addParam !== null) setParams({ add: null });
+        }}
         {...(action ? { action } : { defaultAction: filters.action ?? 'deny' })}
         defaultType={filters.type ?? 'exact'}
+        defaultValue={addParam ?? ''}
       />
+      <AttachDialog unattached={attaching} onClose={() => setAttaching(null)} />
       {editing ? <EditEntryDialog key={editing.id} entry={editing} onClose={() => setEditing(null)} /> : null}
       {deleting ? <DeleteEntriesDialog entries={deleting} busy={batch.isPending} onClose={() => setDeleting(null)} onConfirm={() => batch.mutate({ entries: deleting, op: 'delete' })} /> : null}
-    </VStack>
+    </Page>
   );
 }
 

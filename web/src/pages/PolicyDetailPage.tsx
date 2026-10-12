@@ -9,26 +9,38 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Heading } from '@astryxdesign/core/Heading';
+import { Link } from '@astryxdesign/core/Link';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { Policy, PolicySpec, PolicyState } from '../api/types';
 import { EditableSection } from '../components/EditableSection';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { cleanPolicySpec, ContentCategoryFields, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../components/PolicyFields';
-import { EngineList } from '../components/ServiceGrid';
-import { ServiceIcon } from '../components/ServiceIcon';
+import { EngineList, LogoStack } from '../components/ServiceGrid';
 import { YamlDialog } from '../components/YamlDialog';
 import { contentCategoryOfList, ensureContentLists } from '../lib/contentCategories';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { blockResponseLabel, clientHref, objectHref, policyBadge, shortRef } from '../lib/policies';
-import { Link, useNavigate } from '../lib/router';
+import { useNavigate } from '../lib/router';
 import { sameSelection, selectionOf, withSelection, type ServiceSelection } from '../lib/serviceCatalogue';
 import { usePolicyState } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
+
+const BACK = { href: '/policies', label: 'Policies' };
 
 export default function PolicyDetailPage({ params }: PageProps) {
   const ns = params.ns ?? 'default';
@@ -80,13 +92,10 @@ export default function PolicyDetailPage({ params }: PageProps) {
 
   if (q.error) {
     return (
-      <div className="k-page">
-        <Link href="/policies" className="k-small">
-          ← Policies
-        </Link>
-        <h1>Policy {name}</h1>
+      <Page>
+        <PageHeader title={`Policy ${name}`} back={BACK} />
         <ErrorBanner error={q.error} />
-      </div>
+      </Page>
     );
   }
   if (!policy) return <Loading />;
@@ -102,27 +111,27 @@ export default function PolicyDetailPage({ params }: PageProps) {
   const fieldProps = { namespace: ns, self: `${ns}/${name}` };
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/policies" className="k-small">
-            ← Policies
-          </Link>
-          <h1>{name}</h1>
-          <span className="k-row k-small">
+    <Page>
+      <PageHeader
+        title={name}
+        back={BACK}
+        meta={
+          <>
             {badge ? <Badge variant={badge.variant} label={badge.label} /> : null}
-            <span>priority {spec.priority ?? 0}</span>
-            {ns !== 'default' ? <span className="k-muted">namespace {ns}</span> : null}
+            <Text size="sm">priority {spec.priority ?? 0}</Text>
+            {ns !== 'default' ? <Text type="supporting">namespace {ns}</Text> : null}
             <ManagedBadge owner={policy.metadata.annotations?.[MANAGED_BY]} />
-          </span>
-          {comment ? <p className="k-muted k-small">{comment}</p> : null}
-        </div>
-        <div className="k-actions">
-          <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
-          <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
-          <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('policies', 'delete')} tooltip={roReason || undefined} onClick={() => setConfirmDelete(true)} />
-        </div>
-      </div>
+          </>
+        }
+        description={comment || undefined}
+        actions={
+          <>
+            <Button label={enabled ? 'Disable' : 'Enable'} variant="secondary" isDisabled={!!roReason} tooltip={roReason || undefined} isLoading={toggle.isPending} onClick={() => toggle.mutate(!enabled)} />
+            <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
+            <Button label="Delete" variant="destructive" isDisabled={!!roReason || !can('policies', 'delete')} tooltip={roReason || undefined} onClick={() => setConfirmDelete(true)} />
+          </>
+        }
+      />
       {!own.editable ? <Banner status="info" title={`Read-only: managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
 
       <StatePanel state={state} derived={st.derived} loading={st.isLoading} error={st.error} />
@@ -166,14 +175,19 @@ export default function PolicyDetailPage({ params }: PageProps) {
         testId="section-safesearch"
         view={
           state?.safeSearch.enabled ? (
-            <div className="k-stack">
-              <span>
-                On, <strong>{state.safeSearch.mode === 'moderate' ? 'moderate (YouTube)' : 'strict'}</strong>
-              </span>
+            <VStack gap={2}>
+              <Text>
+                On,{' '}
+                <Text type="inherit" weight="semibold">
+                  {state.safeSearch.mode === 'moderate' ? 'moderate (YouTube)' : 'strict'}
+                </Text>
+              </Text>
               <EngineList engines={state.safeSearch.engines} mode={state.safeSearch.mode} />
-            </div>
+            </VStack>
           ) : (
-            <p className="k-muted">Off: search results are not filtered.</p>
+            <Text color="secondary" as="p">
+              Off: search results are not filtered.
+            </Text>
           )
         }
         edit={(d, set) => <SafeSearchFields spec={d} onChange={set} {...fieldProps} />}
@@ -186,25 +200,23 @@ export default function PolicyDetailPage({ params }: PageProps) {
         readOnlyReason={roReason}
         testId="section-how"
         view={
-          <dl className="k-kv">
-            <dt>Block response</dt>
-            <dd>{blockResponseLabel(state?.blockMode ?? spec.blockMode)}</dd>
-            <dt>Block TTL</dt>
-            <dd>{state?.blockTTL ?? spec.blockTTL ?? <span className="k-muted">default (blocking.blockTTL)</span>}</dd>
-            <dt>Upstream group</dt>
-            <dd>
+          <MetadataList>
+            <MetadataListItem label="Block response">{blockResponseLabel(state?.blockMode ?? spec.blockMode)}</MetadataListItem>
+            <MetadataListItem label="Block TTL">{state?.blockTTL ?? spec.blockTTL ?? <Text color="secondary">default (blocking.blockTTL)</Text>}</MetadataListItem>
+            <MetadataListItem label="Upstream group">
               {spec.upstreamGroup ? (
-                <>
-                  <Link href={`/upstreams/${encodeURIComponent(spec.upstreamGroup)}`}>{spec.upstreamGroup}</Link>
+                <HStack gap={1} vAlign="center" wrap="wrap">
+                  <Link href={`/upstreams/${encodeURIComponent(spec.upstreamGroup)}`} hasUnderline>
+                    {spec.upstreamGroup}
+                  </Link>
                   {state?.upstreamGroup && !state.upstreamGroup.exists ? <Badge variant="error" label="not configured" /> : null}
-                </>
+                </HStack>
               ) : (
-                <span className="k-muted">default</span>
+                <Text color="secondary">default</Text>
               )}
-            </dd>
-            <dt>Query log</dt>
-            <dd>{spec.queryLog === false ? 'Not logged' : 'Logged'}</dd>
-          </dl>
+            </MetadataListItem>
+            <MetadataListItem label="Query log">{spec.queryLog === false ? 'Not logged' : 'Logged'}</MetadataListItem>
+          </MetadataList>
         }
         edit={(d, set, showErrors) => <HowFields spec={d} onChange={set} showErrors={showErrors} {...fieldProps} />}
         validate={howError}
@@ -235,9 +247,9 @@ export default function PolicyDetailPage({ params }: PageProps) {
           </>
         }
       >
-        <p>Its groups fall back to their other policies (or the default policy). This cannot be undone.</p>
+        <Text as="p">Its groups fall back to their other policies (or the default policy). This cannot be undone.</Text>
       </FormDialog>
-    </div>
+    </Page>
   );
 }
 
@@ -249,156 +261,186 @@ function StatePanel({ state, derived, loading, error }: { state: PolicyState | u
   const ready = state.conditions.find((c) => c.type === 'Ready');
   const problems = state.conditions.filter((c) => c.type !== 'Ready' && c.status === 'True');
   return (
-    <section className="k-panel" aria-labelledby="policy-now" data-testid="policy-state">
-      <div className="k-panel-title">
-        <h2 id="policy-now">Right now</h2>
-        {derived ? <span className="k-muted k-small">derived from the objects; this server does not report policy state</span> : null}
-      </div>
-      <dl className="k-kv">
-        <dt>State</dt>
-        <dd>
-          <Badge variant={badge.variant} label={badge.label} /> <span className="k-muted k-small">{badge.help}</span>
-        </dd>
-        <dt>Schedule</dt>
-        <dd>
+    <Panel title="Right now" headingId="policy-now" data-testid="policy-state" actions={derived ? <Text type="supporting">derived from the objects; this server does not report policy state</Text> : null}>
+      <MetadataList>
+        <MetadataListItem label="State">
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Badge variant={badge.variant} label={badge.label} />
+            <Text type="supporting">{badge.help}</Text>
+          </HStack>
+        </MetadataListItem>
+        <MetadataListItem label="Schedule">
           {state.schedule ? (
-            <>
-              {state.schedule.error ? <span className="k-error-text">{state.schedule.error}; the policy applies at all times. </span> : null}
-              {state.schedule.summary} · {state.schedule.now ? 'on now' : 'off now'}
-              {next ? (
-                <span className="k-muted">
-                  {' '}
-                  · turns {state.schedule.now ? 'off' : 'on'} <time dateTime={next} title={formatDateTime(next)}>{formatRelative(next)}</time>
-                </span>
-              ) : null}
-            </>
+            <VStack gap={1}>
+              {state.schedule.error ? <FieldStatus type="error" variant="detached" message={`${state.schedule.error}; the policy applies at all times.`} /> : null}
+              <Text>
+                {state.schedule.summary} · {state.schedule.now ? 'on now' : 'off now'}
+                {next ? (
+                  <Text type="inherit" color="secondary">
+                    {' '}
+                    · turns {state.schedule.now ? 'off' : 'on'}{' '}
+                    <Tooltip content={formatDateTime(next)}>
+                      <time dateTime={next}>{formatRelative(next)}</time>
+                    </Tooltip>
+                  </Text>
+                ) : null}
+              </Text>
+            </VStack>
           ) : (
             'Always'
           )}
-        </dd>
-        <dt>Priority</dt>
-        <dd>{state.priority}</dd>
-        <dt>Shadowed by</dt>
-        <dd>
+        </MetadataListItem>
+        <MetadataListItem label="Priority">{state.priority}</MetadataListItem>
+        <MetadataListItem label="Shadowed by">
           {state.shadowedBy?.length ? (
-            state.shadowedBy.map((r, i) => (
-              <span key={r}>
-                {i ? ', ' : ''}
-                <Link href={objectHref('policies', r)}>{shortRef(r)}</Link>
-              </span>
-            ))
+            <Text>
+              {state.shadowedBy.map((r, i) => (
+                <Text key={r} type="inherit">
+                  {i ? ', ' : ''}
+                  <Link href={objectHref('policies', r)} type="inherit" hasUnderline>
+                    {shortRef(r)}
+                  </Link>
+                </Text>
+              ))}
+            </Text>
           ) : (
-            <span className="k-muted">nothing ranks higher for these groups</span>
+            <Text color="secondary">nothing ranks higher for these groups</Text>
           )}
-        </dd>
-        <dt>Conditions</dt>
-        <dd>
-          {ready ? (
-            <span>
-              <Badge variant={ready.status === 'True' ? 'success' : 'error'} label={ready.status === 'True' ? 'Ready' : 'Not ready'} /> <span className="k-small">{ready.message || ready.reason}</span>
-            </span>
-          ) : (
-            <span className="k-muted">not reconciled yet</span>
-          )}
-          {problems.map((c) => (
-            <div key={c.type} className="k-small">
-              <Badge variant="warning" label={c.type} /> {c.message || c.reason}
-            </div>
-          ))}
-        </dd>
-      </dl>
-    </section>
+        </MetadataListItem>
+        <MetadataListItem label="Conditions">
+          <VStack gap={1}>
+            {ready ? (
+              <HStack gap={1} vAlign="center" wrap="wrap">
+                <Badge variant={ready.status === 'True' ? 'success' : 'error'} label={ready.status === 'True' ? 'Ready' : 'Not ready'} />
+                <Text size="sm">{ready.message || ready.reason}</Text>
+              </HStack>
+            ) : (
+              <Text color="secondary">not reconciled yet</Text>
+            )}
+            {problems.map((c) => (
+              <HStack key={c.type} gap={1} vAlign="center" wrap="wrap">
+                <Badge variant="warning" label={c.type} />
+                <Text size="sm">{c.message || c.reason}</Text>
+              </HStack>
+            ))}
+          </VStack>
+        </MetadataListItem>
+      </MetadataList>
+    </Panel>
   );
 }
+
+type GroupRow = PolicyState['groups'][number] & Record<string, unknown>;
 
 function GroupsView({ state, ns }: { state: PolicyState | undefined; ns: string }) {
   if (!state) return null;
-  if (!state.groups.length) return <p className="k-muted">No groups: the policy applies to nobody.</p>;
-  return (
-    <div className="k-table-wrap">
-      <table className="k-table" aria-label="Groups of the policy">
-        <thead>
-          <tr>
-            <th scope="col">Group</th>
-            <th scope="col" className="num">
-              Matchers
-            </th>
-            <th scope="col" className="num">
-              Clients seen (24 h)
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {state.groups.map((g) => (
-            <tr key={g.ref}>
-              <td>
-                <Link href={objectHref('groups', g.ref, ns)}>{shortRef(g.ref)}</Link> {!g.exists ? <Badge variant="error" label="missing" /> : !g.enabled ? <Badge variant="neutral" label="disabled, skipped" /> : null}
-              </td>
-              <td className="num">{formatExact(g.clients)}</td>
-              <td className="num">{g.seen24h === undefined ? <span className="k-muted" title="No query log on this server">–</span> : formatExact(g.seen24h)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  if (!state.groups.length) return <Text color="secondary">No groups: the policy applies to nobody.</Text>;
+  const columns: TableColumn<GroupRow>[] = [
+    {
+      key: 'ref',
+      header: 'Group',
+      width: proportional(2, { minWidth: 160 }),
+      renderCell: (g) => (
+        <HStack gap={1} vAlign="center" wrap="wrap">
+          <Link href={objectHref('groups', g.ref, ns)} color="inherit" hasUnderline>
+            {shortRef(g.ref)}
+          </Link>
+          {!g.exists ? <Badge variant="error" label="missing" /> : !g.enabled ? <Badge variant="neutral" label="disabled, skipped" /> : null}
+        </HStack>
+      ),
+    },
+    { key: 'clients', header: 'Matchers', align: 'end', renderCell: (g) => <Text hasTabularNumbers>{formatExact(g.clients)}</Text> },
+    {
+      key: 'seen24h',
+      header: 'Clients seen (24 h)',
+      align: 'end',
+      renderCell: (g) =>
+        g.seen24h === undefined ? (
+          <Tooltip content="No query log on this server">
+            <Text color="secondary">–</Text>
+          </Tooltip>
+        ) : (
+          <Text hasTabularNumbers>{formatExact(g.seen24h)}</Text>
+        ),
+    },
+  ];
+  return <Table<GroupRow> aria-label="Groups of the policy" density="compact" idKey="ref" data={state.groups} columns={columns} />;
 }
+
+type ListRow = PolicyState['lists'][number] & Record<string, unknown>;
 
 function ListsView({ state, ns, allowOnly }: { state: PolicyState | undefined; ns: string; allowOnly: boolean }) {
   if (!state) return null;
+  // A disabled list: its row in secondary text.
+  const off = (l: ListRow) => l.exists && !l.enabled;
+  const columns: TableColumn<ListRow>[] = [
+    {
+      key: 'ref',
+      header: 'List',
+      width: proportional(2, { minWidth: 140 }),
+      renderCell: (l) => (
+        <Link href={objectHref('lists', l.ref, ns)} color={off(l) ? 'secondary' : 'inherit'} hasUnderline>
+          {shortRef(l.ref)}
+        </Link>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Used as',
+      width: proportional(1.5, { minWidth: 120 }),
+      renderCell: (l) => (
+        <HStack gap={1} vAlign="center" wrap="wrap">
+          <Badge variant={l.role === 'allow' ? 'green' : 'red'} label={l.role} />
+          {l.exists && l.mode !== l.role ? <Text type="supporting">(an {l.mode} list)</Text> : null}
+        </HStack>
+      ),
+    },
+    {
+      key: 'entries',
+      header: 'Entries',
+      align: 'end',
+      renderCell: (l) => (
+        <Text hasTabularNumbers color={off(l) ? 'secondary' : undefined}>
+          {formatExact(l.entries)}
+        </Text>
+      ),
+    },
+    {
+      key: 'sourcesEnabled',
+      header: 'Sources on',
+      align: 'end',
+      renderCell: (l) => (
+        <Text hasTabularNumbers color={off(l) ? 'secondary' : undefined}>
+          {l.sourcesEnabled} of {l.sourcesTotal}
+        </Text>
+      ),
+    },
+    {
+      key: 'ready',
+      header: 'Health',
+      renderCell: (l) =>
+        !l.exists ? (
+          <Badge variant="error" label="missing" />
+        ) : !l.enabled ? (
+          <Badge variant="neutral" label="disabled" />
+        ) : l.ready ? (
+          <Badge variant="success" label="ready" />
+        ) : (
+          <Badge variant="warning" label="not ready" />
+        ),
+    },
+  ];
   return (
-    <div className="k-stack">
+    <VStack gap={2}>
       {allowOnly ? <Banner status="warning" title="Allow only" description="Everything that is not on an allow list is blocked." /> : null}
       {state.lists.length ? (
-        <div className="k-table-wrap">
-          <table className="k-table" aria-label="Lists of the policy">
-            <thead>
-              <tr>
-                <th scope="col">List</th>
-                <th scope="col">Used as</th>
-                <th scope="col" className="num">
-                  Entries
-                </th>
-                <th scope="col" className="num">
-                  Sources on
-                </th>
-                <th scope="col">Health</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.lists.map((l) => (
-                <tr key={`${l.role}-${l.ref}`} className={l.exists && !l.enabled ? 'k-row-off' : undefined}>
-                  <td>
-                    <Link href={objectHref('lists', l.ref, ns)}>{shortRef(l.ref)}</Link>
-                  </td>
-                  <td>
-                    <Badge variant={l.role === 'allow' ? 'green' : 'red'} label={l.role} />
-                    {l.exists && l.mode !== l.role ? <span className="k-muted k-small"> (an {l.mode} list)</span> : null}
-                  </td>
-                  <td className="num">{formatExact(l.entries)}</td>
-                  <td className="num">
-                    {l.sourcesEnabled} of {l.sourcesTotal}
-                  </td>
-                  <td>
-                    {!l.exists ? (
-                      <Badge variant="error" label="missing" />
-                    ) : !l.enabled ? (
-                      <Badge variant="neutral" label="disabled" />
-                    ) : l.ready ? (
-                      <Badge variant="success" label="ready" />
-                    ) : (
-                      <Badge variant="warning" label="not ready" />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table<ListRow> aria-label="Lists of the policy" density="compact" idKey={(l) => `${l.role}-${l.ref}`} data={state.lists} columns={columns} />
       ) : (
-        <p className="k-muted">No lists.</p>
+        <Text color="secondary" as="p">
+          No lists.
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
 
@@ -406,24 +448,28 @@ function ListsView({ state, ns, allowOnly }: { state: PolicyState | undefined; n
 function ContentView({ state, ns }: { state: PolicyState | undefined; ns: string }) {
   if (!state) return null;
   const on = state.lists.filter((l) => l.role === 'block' && contentCategoryOfList(l.ref));
-  if (!on.length) return <p className="k-muted">None: no topic list applies.</p>;
+  if (!on.length) return <Text color="secondary">None: no topic list applies.</Text>;
   return (
-    <ul className="k-link-list k-stack-sm" aria-label="Content categories on">
+    <List density="compact" aria-label="Content categories on">
       {on.map((l) => (
-        <li key={l.ref}>
-          <Link href={objectHref('lists', l.ref, ns)}>{contentCategoryOfList(l.ref)?.name ?? l.ref}</Link>{' '}
-          {!l.exists ? (
-            <Badge variant="error" label="missing" />
-          ) : !l.enabled ? (
-            <Badge variant="neutral" label="disabled" />
-          ) : l.ready ? (
-            <span className="k-muted k-small">{formatExact(l.entries)} names</span>
-          ) : (
-            <Badge variant="warning" label="not ready" />
-          )}
-        </li>
+        <ListItem
+          key={l.ref}
+          label={contentCategoryOfList(l.ref)?.name ?? l.ref}
+          href={objectHref('lists', l.ref, ns)}
+          endContent={
+            !l.exists ? (
+              <Badge variant="error" label="missing" />
+            ) : !l.enabled ? (
+              <Badge variant="neutral" label="disabled" />
+            ) : l.ready ? (
+              <Text type="supporting">{formatExact(l.entries)} names</Text>
+            ) : (
+              <Badge variant="warning" label="not ready" />
+            )
+          }
+        />
       ))}
-    </ul>
+    </List>
   );
 }
 
@@ -437,28 +483,25 @@ function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy
   const dirty = draft !== null && !sameSelection(draft, current);
   const blocked = state?.effectiveServices ?? state?.services ?? [];
   return (
-    <section className="k-panel k-section" aria-labelledby="sec-services" data-testid="section-services">
-      <div className="k-panel-title">
-        <h2 id="sec-services">Blocked services</h2>
-        {blocked.length ? (
-          <ul className="k-logo-stack" aria-label="Blocked now">
-            {blocked.slice(0, 12).map((s) => (
-              <li key={s.id} title={s.known ? `${s.name}: ${s.rules} rules` : `${s.id}: not in the catalogue`}>
-                <ServiceIcon id={s.id} name={s.name} icon={s.icon} iconOnDark={s.iconOnDark} size={24} />
-              </li>
-            ))}
-            {blocked.length > 12 ? (
-              <li>
-                <span className="k-muted k-small">+{blocked.length - 12} more</span>
-              </li>
-            ) : null}
-          </ul>
-        ) : null}
-      </div>
+    <Panel
+      title="Blocked services"
+      headingId="sec-services"
+      data-testid="section-services"
+      actions={
+        blocked.length ? (
+          <LogoStack
+            label="Blocked now"
+            size={24}
+            items={blocked.slice(0, 12).map((s) => ({ id: s.id, name: s.name, icon: s.icon, iconOnDark: s.iconOnDark, tooltip: s.known ? `${s.name}: ${s.rules} rules` : `${s.id}: not in the catalogue` }))}
+            more={blocked.length - 12}
+          />
+        ) : null
+      }
+    >
       <ServicesFields spec={withSelection(policy.spec, value)} onChange={(s) => setDraft(selectionOf(s))} namespace={policy.metadata.namespace ?? 'default'} isDisabled={!!ro || saving} isLabelHidden />
       {error ? <ErrorBanner error={error} title="Could not save the blocked services" /> : null}
       {dirty ? (
-        <div className="k-row">
+        <HStack gap={2} vAlign="center" wrap="wrap">
           <Button
             label="Save services"
             variant="primary"
@@ -473,21 +516,21 @@ function ServicesSection({ policy, state, readOnlyReason: ro, onSave }: { policy
             }}
           />
           <Button label="Discard" variant="ghost" onClick={() => setDraft(null)} />
-          <span className="k-muted k-small">
+          <Text type="supporting">
             {value.blocked.length} service{value.blocked.length === 1 ? '' : 's'}, {value.categories.length} categor{value.categories.length === 1 ? 'y' : 'ies'}
             {value.allowed.length ? `, ${value.allowed.length} exception${value.allowed.length === 1 ? '' : 's'}` : ''}
-          </span>
-        </div>
+          </Text>
+        </HStack>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
 function ScheduleView({ state }: { state: PolicyState | undefined }) {
-  if (!state?.schedule) return <p>Always: no schedule.</p>;
+  if (!state?.schedule) return <Text as="p">Always: no schedule.</Text>;
   const next = state.schedule.nextChange;
   return (
-    <p>
+    <Text as="p">
       {state.schedule.summary}. {state.schedule.now ? 'On now' : 'Off now'}
       {next ? (
         <>
@@ -496,7 +539,7 @@ function ScheduleView({ state }: { state: PolicyState | undefined }) {
       ) : (
         '.'
       )}
-    </p>
+    </Text>
   );
 }
 
@@ -504,69 +547,85 @@ function ActivitySection({ policyRef, state, derived }: { policyRef: string; sta
   const log = `/queries?policy=${encodeURIComponent(policyRef)}`;
   const s = state?.stats24h;
   return (
-    <section className="k-panel k-section" aria-labelledby="sec-activity" data-testid="section-activity">
-      <div className="k-panel-title">
-        <h2 id="sec-activity">Last 24 hours</h2>
-        {!derived && s ? <Link href={log}>Open in the query log</Link> : null}
-      </div>
+    <Panel title="Last 24 hours" headingId="sec-activity" data-testid="section-activity" actions={
+        !derived && s ? (
+          <Link href={log} hasUnderline>
+            Open in the query log
+          </Link>
+        ) : null
+      }>
       {!state ? null : derived ? (
-        <p className="k-muted">This server does not attribute queries to policies yet; the statistics appear once it serves GET /policies/{'{namespace}'}/{'{name}'}/state.</p>
+        <Text color="secondary" as="p">
+          This server does not attribute queries to policies yet; the statistics appear once it serves GET /policies/{'{namespace}'}/{'{name}'}/state.
+        </Text>
       ) : !s ? (
-        <p className="k-muted">No query log on this server (querylog is off), so there are no statistics.</p>
+        <Text color="secondary" as="p">
+          No query log on this server (querylog is off), so there are no statistics.
+        </Text>
       ) : (
-        <div className="k-stack-lg">
-          <dl className="k-stat-row">
-            <div>
-              <dt>Queries</dt>
-              <dd>{formatExact(s.queries)}</dd>
-            </div>
-            <div>
-              <dt>Blocked</dt>
-              <dd>
-                <Link href={`${log}&status_class=blocked`}>{formatExact(s.blocked)}</Link>
-              </dd>
-            </div>
-            <div>
-              <dt>Blocked share</dt>
-              <dd>{formatPercent(s.blockedPercent)}</dd>
-            </div>
-          </dl>
-          <div className="k-grid k-grid-2">
-            <div className="k-stack">
-              <h3 className="k-h3">Top blocked domains</h3>
+        <VStack gap={4}>
+          <MetadataList orientation="horizontal">
+            <MetadataListItem label="Queries">
+              <Stat>{formatExact(s.queries)}</Stat>
+            </MetadataListItem>
+            <MetadataListItem label="Blocked">
+              <Link href={`${log}&status_class=blocked`} size="2xl" weight="semibold" hasUnderline>
+                {formatExact(s.blocked)}
+              </Link>
+            </MetadataListItem>
+            <MetadataListItem label="Blocked share">
+              <Stat>{formatPercent(s.blockedPercent)}</Stat>
+            </MetadataListItem>
+          </MetadataList>
+          <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+            <VStack gap={2}>
+              <Heading level={3}>Top blocked domains</Heading>
               {s.topBlocked.length ? (
-                <ol className="k-rank">
-                  {s.topBlocked.map((d) => (
-                    <li key={d.domain}>
-                      <Link href={`${log}&domain=${encodeURIComponent(d.domain)}`} className="k-mono">
-                        {d.domain}
-                      </Link>
-                      <span className="num">{formatExact(d.count)}</span>
-                    </li>
-                  ))}
-                </ol>
+                <RankList label="Top blocked domains" items={s.topBlocked.map((d) => ({ key: d.domain, label: d.domain, href: `${log}&domain=${encodeURIComponent(d.domain)}`, count: d.count }))} />
               ) : (
-                <p className="k-muted k-small">Nothing blocked.</p>
+                <Text type="supporting">Nothing blocked.</Text>
               )}
-            </div>
-            <div className="k-stack">
-              <h3 className="k-h3">Top clients</h3>
+            </VStack>
+            <VStack gap={2}>
+              <Heading level={3}>Top clients</Heading>
               {s.topClients.length ? (
-                <ol className="k-rank">
-                  {s.topClients.map((c) => (
-                    <li key={c.key}>
-                      <Link href={clientHref(c.key)}>{c.name ?? c.key}</Link>
-                      <span className="num">{formatExact(c.count)}</span>
-                    </li>
-                  ))}
-                </ol>
+                <RankList label="Top clients" items={s.topClients.map((c) => ({ key: c.key, label: c.name ?? c.key, href: clientHref(c.key), count: c.count }))} />
               ) : (
-                <p className="k-muted k-small">No queries.</p>
+                <Text type="supporting">No queries.</Text>
               )}
-            </div>
-          </div>
-        </div>
+            </VStack>
+          </Grid>
+        </VStack>
       )}
-    </section>
+    </Panel>
+  );
+}
+
+/** A figure of the 24 hours row. */
+function Stat({ children }: { children: ReactNode }) {
+  return (
+    <Text size="2xl" weight="semibold" hasTabularNumbers>
+      {children}
+    </Text>
+  );
+}
+
+/** A numbered top list: each row links to the query log, its count at the end. */
+function RankList({ label, items }: { label: string; items: { key: string; label: string; href: string; count: number }[] }) {
+  return (
+    <List listStyle="decimal" density="compact" aria-label={label}>
+      {items.map((i) => (
+        <ListItem
+          key={i.key}
+          label={i.label}
+          href={i.href}
+          endContent={
+            <Text type="supporting" hasTabularNumbers>
+              {formatExact(i.count)}
+            </Text>
+          }
+        />
+      ))}
+    </List>
   );
 }

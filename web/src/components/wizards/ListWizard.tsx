@@ -8,7 +8,6 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { CheckboxList, CheckboxListItem } from '@astryxdesign/core/CheckboxList';
 import { CodeBlock } from '@astryxdesign/core/CodeBlock';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
@@ -23,7 +22,6 @@ import { qk, useApi, useCan } from '../../api/context';
 import type { BlockList, BlockListSpec, BlockResponse, ListFormat, ListSource, Policy } from '../../api/types';
 import { DurationField } from '../fields/DurationField';
 import { ChoiceCards } from '../fields/ChoiceCards';
-import { FieldShell } from '../fields/FieldHelp';
 import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { SelectField } from '../fields/SelectField';
 import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
@@ -255,35 +253,30 @@ function ListWizard({ onClose }: ListWizardProps) {
             ['Well-known lists', CURATED_LISTS.filter((c) => !c.group), 'Published by their maintainers under their own licences; kudurru only fetches the URL you opt into.'],
             ['Block List Project topic lists', CURATED_LISTS.filter((c) => c.group === 'blp'), `One list per topic (also offered as content categories on a policy). ${BLP_LICENCE_NOTE}`],
           ] as const).map(([title, lists, help]) => (
-            <FieldShell key={title} help={help} describes="group">
-              {() => (
-                <CheckboxList
-                  label={title}
-                  value={s.curated.filter((id) => lists.some((c) => c.id === id))}
-                  onChange={(v) => set({ curated: [...s.curated.filter((id) => !lists.some((c) => c.id === id)), ...v] })}
-                  hasDividers
-                >
-                  {lists.map((c) => (
-                    <CheckboxListItem
-                      key={c.id}
-                      value={c.id}
-                      label={`${c.publisher} ${c.name}`}
-                      endContent={<Badge variant="neutral" label={c.licence} />}
-                      description={
-                        <VStack gap={0.5}>
-                          <Text type="supporting">
-                            {c.size}, {formatLabel(c.format).toLowerCase()}. {c.description}
-                          </Text>
-                          <Text type="code" size="sm" color="secondary" wordBreak="break-all">
-                            {c.url}
-                          </Text>
-                        </VStack>
-                      }
-                    />
-                  ))}
-                </CheckboxList>
-              )}
-            </FieldShell>
+            <ChoiceCards
+              key={title}
+              multiple
+              label={title}
+              help={help}
+              hasDividers
+              value={s.curated.filter((id) => lists.some((c) => c.id === id))}
+              onChange={(v) => set({ curated: [...s.curated.filter((id) => !lists.some((c) => c.id === id)), ...v] })}
+              choices={lists.map((c) => ({
+                value: c.id,
+                label: `${c.publisher} ${c.name}`,
+                endContent: <Badge variant="neutral" label={c.licence} />,
+                description: (
+                  <VStack gap={0.5}>
+                    <Text type="supporting">
+                      {c.size}, {formatLabel(c.format).toLowerCase()}. {c.description}
+                    </Text>
+                    <Text type="code" size="sm" color="secondary" wordBreak="break-all">
+                      {c.url}
+                    </Text>
+                  </VStack>
+                ),
+              }))}
+            />
           ))}
         </VStack>
       ) : null}

@@ -2,45 +2,63 @@
 // request page. Everything the requester typed (name, contact, reason) is
 // rendered as React text, never as HTML.
 import { Badge } from '@astryxdesign/core/Badge';
+import { Link } from '@astryxdesign/core/Link';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import type { ReactNode } from 'react';
 import type { UnblockBlock, UnblockRequest, UnblockState } from '../../api/types';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { clientHref, objectHref, shortRef } from '../../lib/policies';
-import { Link } from '../../lib/router';
 import { blockKindText, blockSource, stateTone } from '../../lib/unblock';
 
 export function StateBadge({ state }: { state: UnblockState }) {
+  return <Badge variant={stateTone(state)} label={state} data-testid="request-state" {...({ 'data-state': state } as object)} />;
+}
+
+/** A timestamp as "3 minutes ago" with the exact time in a tooltip. */
+export function When({ ts }: { ts: string | undefined }) {
+  if (!ts) return <Text type="inherit" color="secondary">–</Text>;
   return (
-    <span data-testid="request-state" data-state={state}>
-      <Badge variant={stateTone(state)} label={state} />
-    </span>
+    <Tooltip content={formatDateTime(ts)} hasHoverIndication={false}>
+      <Text type="inherit">
+        <time dateTime={ts}>{formatRelative(ts)}</time>
+      </Text>
+    </Tooltip>
   );
 }
 
-/** A timestamp as "3 minutes ago" with the exact time as its title. */
-export function When({ ts }: { ts: string | undefined }) {
-  if (!ts) return <span className="k-muted">–</span>;
+/** Free text someone typed (a reason, a note): line breaks kept, long words broken. */
+export function Typed({ children }: { children: ReactNode }) {
   return (
-    <time dateTime={ts} title={formatDateTime(ts)}>
-      {formatRelative(ts)}
-    </time>
+    <Text type="inherit" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+      {children}
+    </Text>
   );
 }
 
 /** The client as querylog.privacy allowed recording it. */
 export function ClientText({ r }: { r: Pick<UnblockRequest, 'client' | 'clientPrivacy'> }) {
-  if (r.clientPrivacy === 'hidden' || !r.client) return <span className="k-muted">hidden by query-log privacy</span>;
+  if (r.clientPrivacy === 'hidden' || !r.client) return <Text type="inherit" color="secondary">hidden by query-log privacy</Text>;
   if (r.clientPrivacy === 'prefix') {
     return (
-      <span>
-        <span className="k-mono">{r.client}</span> <span className="k-muted k-small">network address, anonymised by query-log privacy</span>
-      </span>
+      <Text type="inherit">
+        <Text type="code">{r.client}</Text> <Text type="supporting">network address, anonymised by query-log privacy</Text>
+      </Text>
     );
   }
   return (
-    <Link href={clientHref(r.client)} className="k-mono">
-      {r.client}
+    <Link type="inherit" href={clientHref(r.client)} hasUnderline>
+      <Text type="code" color="inherit">
+        {r.client}
+      </Text>
     </Link>
   );
+}
+
+/** A name as the unblock requests record it: lower case, no trailing dot (query-log names may have one). */
+export function domainKey(name: string): string {
+  return name.replace(/\.$/, '').toLowerCase();
 }
 
 /** What the requester typed about themselves: "name (contact)". */
@@ -50,16 +68,18 @@ export function requesterText(r: Pick<UnblockRequest, 'requesterName' | 'contact
 }
 
 export function RefLinks({ kind, refs, empty }: { kind: 'groups' | 'policies' | 'lists'; refs: string[]; empty: string }) {
-  if (!refs.length) return <span className="k-muted">{empty}</span>;
+  if (!refs.length) return <Text type="inherit" color="secondary">{empty}</Text>;
   return (
-    <span>
+    <Text type="inherit">
       {refs.map((g, i) => (
-        <span key={g}>
+        <Text type="inherit" key={g}>
           {i ? ', ' : ''}
-          <Link href={objectHref(kind, g)}>{shortRef(g)}</Link>
-        </span>
+          <Link type="inherit" href={objectHref(kind, g)} color="inherit" hasUnderline>
+            {shortRef(g)}
+          </Link>
+        </Text>
       ))}
-    </span>
+    </Text>
   );
 }
 
@@ -67,17 +87,17 @@ export function RefLinks({ kind, refs, empty }: { kind: 'groups' | 'policies' | 
 export function Requester({ r }: { r: UnblockRequest }) {
   const typed = requesterText(r);
   return (
-    <span className="k-stack-sm">
-      {typed ? <span className="k-break">{typed}</span> : null}
-      <span className="k-small">
+    <VStack gap={1.5}>
+      {typed ? <Typed>{typed}</Typed> : null}
+      <Text type="supporting" color="primary">
         <ClientText r={r} />
-      </span>
+      </Text>
       {r.groups.length ? (
-        <span className="k-small">
+        <Text type="supporting" color="primary">
           <RefLinks kind="groups" refs={r.groups} empty="" />
-        </span>
+        </Text>
       ) : null}
-    </span>
+    </VStack>
   );
 }
 
@@ -85,29 +105,42 @@ export function Requester({ r }: { r: UnblockRequest }) {
 function BlockSource({ list }: { list: string | undefined }) {
   const src = blockSource(list);
   if (!src) return null;
-  if (src.kind === 'list') return <Link href={objectHref('lists', src.ref)}>{shortRef(src.ref)}</Link>;
-  return <span>{src.kind === 'service' ? `service ${src.id}` : `safe search ${src.id}`}</span>;
+  if (src.kind === 'list') {
+    return (
+      <Link type="inherit" href={objectHref('lists', src.ref)} color="inherit" hasUnderline>
+        {shortRef(src.ref)}
+      </Link>
+    );
+  }
+  return <>{src.kind === 'service' ? `service ${src.id}` : `safe search ${src.id}`}</>;
 }
 
 /** Why the name was blocked when the request was made. */
 export function WhyBlocked({ block, detailed }: { block: UnblockBlock | undefined; detailed?: boolean }) {
-  if (!block) return <span className="k-muted">not recorded</span>;
+  if (!block) return <Text type="inherit" color="secondary">not recorded</Text>;
   return (
-    <span className="k-stack-sm">
-      <span>
+    <VStack gap={1.5}>
+      <Text type="inherit">
         {blockKindText(block)}
         {block.list ? (
           <>
             : <BlockSource list={block.list} />
           </>
         ) : null}
-      </span>
+      </Text>
       {block.policy ? (
-        <span className="k-small">
-          policy <Link href={objectHref('policies', block.policy)}>{shortRef(block.policy)}</Link>
-        </span>
+        <Text type="supporting" color="primary">
+          policy{' '}
+          <Link type="inherit" href={objectHref('policies', block.policy)} color="inherit" hasUnderline>
+            {shortRef(block.policy)}
+          </Link>
+        </Text>
       ) : null}
-      {detailed && block.rule ? <span className="k-mono k-small k-break">{block.rule}</span> : null}
-    </span>
+      {detailed && block.rule ? (
+        <Text type="code" maxLines={3} wordBreak="break-all">
+          {block.rule}
+        </Text>
+      ) : null}
+    </VStack>
   );
 }

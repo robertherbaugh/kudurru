@@ -3,14 +3,18 @@
 // per-entry validation, strategy as an EnumSelect with help, timeout with
 // presets), the per-server health/RTT/traffic table, and the hooks that
 // read and write upstreams.* with PATCH /settings.
+import { Grid } from '@astryxdesign/core/Grid';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { SettingsBody, UpstreamItem, UpstreamServer } from '../api/types';
 import { formatExact, formatMS, formatRelative } from '../lib/format';
-import { Link } from '../lib/router';
 import { serverError, serverLabel, splitServerName, STRATEGIES, timeoutError, upstreamsOf, type UpstreamGroupConfig } from '../lib/upstreams';
 import { DurationField, durationPresets } from './fields/DurationField';
 import { EnumSelect } from './fields/EnumSelect';
@@ -64,74 +68,75 @@ export function groupFieldErrors(g: UpstreamGroupConfig): Record<string, string>
 }
 
 export function HealthCell({ h, now }: { h: UpstreamServer | undefined; now: number }) {
-  if (!h) return <span className="k-muted">no data yet</span>;
+  if (!h) return <Text color="secondary">no data yet</Text>;
   const backoff = h.backoff_until && new Date(h.backoff_until).getTime() > now;
   if (h.healthy && !backoff) {
     return (
-      <span className="k-row">
-        <StatusDot variant="success" label="healthy" /> healthy
-      </span>
+      <HStack gap={2} vAlign="center">
+        <StatusDot variant="success" label="healthy" />
+        <Text>healthy</Text>
+      </HStack>
     );
   }
   return (
-    <span className="k-row">
-      <StatusDot variant="error" label="in backoff" /> {backoff ? `backoff, retried ${formatRelative(h.backoff_until, now)}` : 'unhealthy'}
-    </span>
+    <HStack gap={2} vAlign="center">
+      <StatusDot variant="error" label="in backoff" />
+      <Text>{backoff ? `backoff, retried ${formatRelative(h.backoff_until, now)}` : 'unhealthy'}</Text>
+    </HStack>
   );
 }
 
+interface ServerRow extends Record<string, unknown> {
+  entry: string;
+  display: string | undefined;
+  addr: string;
+  h: UpstreamServer | undefined;
+  t: UpstreamItem | undefined;
+}
+
+const num = (text: string) => <Text hasTabularNumbers>{text}</Text>;
+
 export function ServersTable({ name, g, servers, traffic }: { name: string; g: UpstreamGroupConfig; servers: UpstreamServer[] | undefined; traffic: UpstreamItem[] | null | undefined }) {
   const now = Date.now();
-  return (
-    <div className="k-table-wrap">
-      <table className="k-table" aria-label={`Servers of ${name}`}>
-        <thead>
-          <tr>
-            <th scope="col">Server</th>
-            <th scope="col">Health</th>
-            <th scope="col" className="num">
-              RTT
-            </th>
-            <th scope="col" className="num">
-              Failures in a row
-            </th>
-            <th scope="col" className="num">
-              Queries (24 h)
-            </th>
-            <th scope="col" className="num">
-              Avg / p95
-            </th>
-            <th scope="col" className="num">
-              Errors
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {g.servers.map((entry) => {
-            const { name: display, addr } = splitServerName(entry);
-            const h = healthFor(servers, name, entry);
-            const t = trafficFor(traffic, name, entry);
-            return (
-              <tr key={entry}>
-                <td>
-                  {display ? <strong>{display} </strong> : null}
-                  <span className="k-mono k-small k-break">{addr}</span>
-                </td>
-                <td>
-                  <HealthCell h={h} now={now} />
-                </td>
-                <td className="num">{h && h.rtt_ms > 0 ? formatMS(h.rtt_ms) : '–'}</td>
-                <td className="num">{h ? formatExact(h.consecutive_failures) : '–'}</td>
-                <td className="num">{t ? <Link href={`/queries?upstream=${encodeURIComponent(t.addr)}`}>{formatExact(t.total)}</Link> : '0'}</td>
-                <td className="num">{t ? `${formatMS(t.avg_ms)} / ${formatMS(t.p95_ms)}` : '–'}</td>
-                <td className="num">{t ? formatExact(t.errors + t.timeouts) : '–'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  const rows: ServerRow[] = g.servers.map((entry) => {
+    const { name: display, addr } = splitServerName(entry);
+    return { entry, display, addr, h: healthFor(servers, name, entry), t: trafficFor(traffic, name, entry) };
+  });
+  const columns: TableColumn<ServerRow>[] = [
+    {
+      key: 'entry',
+      header: 'Server',
+      width: proportional(3, { minWidth: 200 }),
+      renderCell: (r) => (
+        <HStack gap={1} vAlign="center" wrap="wrap">
+          {r.display ? <Text weight="semibold">{r.display}</Text> : null}
+          <Text type="code" size="sm" maxLines={2} wordBreak="break-all">
+            {r.addr}
+          </Text>
+        </HStack>
+      ),
+    },
+    { key: 'health', header: 'Health', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <HealthCell h={r.h} now={now} /> },
+    { key: 'rtt', header: 'RTT', align: 'end', width: pixel(90), renderCell: (r) => num(r.h && r.h.rtt_ms > 0 ? formatMS(r.h.rtt_ms) : '–') },
+    { key: 'failures', header: 'Failures in a row', align: 'end', width: pixel(140), renderCell: (r) => num(r.h ? formatExact(r.h.consecutive_failures) : '–') },
+    {
+      key: 'queries',
+      header: 'Queries (24 h)',
+      align: 'end',
+      width: pixel(130),
+      renderCell: (r) =>
+        r.t ? (
+          <Link href={`/queries?upstream=${encodeURIComponent(r.t.addr)}`} color="inherit" hasUnderline>
+            <Text hasTabularNumbers>{formatExact(r.t.total)}</Text>
+          </Link>
+        ) : (
+          num('0')
+        ),
+    },
+    { key: 'latency', header: 'Avg / p95', align: 'end', width: pixel(150), renderCell: (r) => num(r.t ? `${formatMS(r.t.avg_ms)} / ${formatMS(r.t.p95_ms)}` : '–') },
+    { key: 'errors', header: 'Errors', align: 'end', width: pixel(80), renderCell: (r) => num(r.t ? formatExact(r.t.errors + r.t.timeouts) : '–') },
+  ];
+  return <Table<ServerRow> aria-label={`Servers of ${name}`} density="compact" hasHover idKey="entry" data={rows} columns={columns} />;
 }
 
 export interface GroupFieldsProps {
@@ -147,7 +152,7 @@ export function GroupFields({ value, onChange, errors = {}, isDisabled, serversH
   return (
     <>
       {serversHidden ? null : <ServersField value={value.servers} onChange={(servers) => onChange({ ...value, servers })} error={errors.servers} isDisabled={isDisabled} />}
-      <div className="k-form-grid">
+      <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
         <EnumSelect label="Strategy" value={value.strategy || 'parallel_best'} options={[...STRATEGIES]} onChange={(strategy) => onChange({ ...value, strategy })} isDisabled={isDisabled} />
         <DurationField
           label="Timeout"
@@ -158,7 +163,7 @@ export function GroupFields({ value, onChange, errors = {}, isDisabled, serversH
           isDisabled={isDisabled}
           error={errors.timeout}
         />
-      </div>
+      </Grid>
     </>
   );
 }

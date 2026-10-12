@@ -6,6 +6,11 @@
 // it disagrees.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import type { Endpoint, ZoneRecord } from '../api/types';
 import { compose, dnsNameToOwner, ownerError, ownerToDNSName, parse, RECORD_TYPES, typeSpec, validate, type Errors, type Values } from '../lib/rr';
@@ -43,6 +48,9 @@ const TYPE_HELP: Record<string, string> = {
   NAPTR: 'Rewrite rules (ENUM, SIP).',
   raw: 'Any other type as presentation-format rdata.',
 };
+
+/** Fields side by side while each keeps 220 px (structural width). */
+const FORM_GRID = { minWidth: 220, repeat: 'fit' } as const;
 
 const TYPE_OPTIONS: EnumOption[] = RECORD_TYPES.map((t) => ({ value: t.type, label: t.label, help: TYPE_HELP[t.type] }));
 
@@ -128,7 +136,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
 
   return (
     <DialogForm
-      className="k-form"
+      gap={3}
       noValidate
       aria-label="Record"
       onSubmit={() => void submit()}
@@ -139,7 +147,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
         </>
       }
     >
-      <div className="k-form-grid">
+      <Grid columns={FORM_GRID} gap={3} align="start">
         <TextField
           label="Name"
           help={`Relative to ${zoneName.replace(/\.$/, '')}; @ is the apex, a trailing dot makes it absolute`}
@@ -160,62 +168,62 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
           }}
         />
         <SecondsField label="TTL" value={ttl} onChange={setTTL} emptyLabel="Zone default" error={shown.ttl} />
-      </div>
+      </Grid>
 
       {draft.targets.map((t, i) => (
-        <fieldset key={i} className="k-fieldset" aria-label={`Target ${i + 1}`}>
-          <legend>
-            {spec.single ? 'Target' : `Target ${i + 1}`}
-          </legend>
-          <div className="k-form-grid">
-            {spec.fields.map((f) =>
-              f.kind === 'enum' && f.options && f.options.length > 0 ? (
-                <EnumSelect
-                  key={f.key}
-                  label={f.label}
-                  options={f.options.map((o) => ({ value: o, label: o }))}
-                  emptyLabel="Choose…"
-                  value={t[f.key] ?? ''}
-                  error={shown.targets[i]?.[f.key]}
-                  onChange={(v) => setTarget(i, f.key, v)}
-                />
-              ) : (
-                <TextField
-                  key={f.key}
-                  label={f.label}
-                  help={f.help}
-                  placeholder={f.placeholder}
-                  value={t[f.key] ?? ''}
-                  onChange={(v) => setTarget(i, f.key, v)}
-                  isOptional={f.optional}
-                  error={shown.targets[i]?.[f.key]}
-                />
-              ),
-            )}
-          </div>
-          {draft.targets.length > 1 ? (
-            <Button label={`Remove target ${i + 1}`} size="sm" variant="ghost" onClick={() => setDraft((d) => ({ ...d, targets: d.targets.filter((_, j) => j !== i) }))} />
-          ) : null}
-        </fieldset>
+        <Card key={i} padding={3} role="group" aria-label={`Target ${i + 1}`}>
+          <VStack gap={2}>
+            <Text type="label" weight="semibold">
+              {spec.single ? 'Target' : `Target ${i + 1}`}
+            </Text>
+            <Grid columns={FORM_GRID} gap={3} align="start">
+              {spec.fields.map((f) =>
+                f.kind === 'enum' && f.options && f.options.length > 0 ? (
+                  <EnumSelect
+                    key={f.key}
+                    label={f.label}
+                    options={f.options.map((o) => ({ value: o, label: o }))}
+                    emptyLabel="Choose…"
+                    value={t[f.key] ?? ''}
+                    error={shown.targets[i]?.[f.key]}
+                    onChange={(v) => setTarget(i, f.key, v)}
+                  />
+                ) : (
+                  <TextField
+                    key={f.key}
+                    label={f.label}
+                    help={f.help}
+                    placeholder={f.placeholder}
+                    value={t[f.key] ?? ''}
+                    onChange={(v) => setTarget(i, f.key, v)}
+                    isOptional={f.optional}
+                    error={shown.targets[i]?.[f.key]}
+                  />
+                ),
+              )}
+            </Grid>
+            {draft.targets.length > 1 ? (
+              <HStack gap={2}>
+                <Button label={`Remove target ${i + 1}`} size="sm" variant="ghost" onClick={() => setDraft((d) => ({ ...d, targets: d.targets.filter((_, j) => j !== i) }))} />
+              </HStack>
+            ) : null}
+          </VStack>
+        </Card>
       ))}
       {spec.single ? null : (
-        <div>
+        <HStack gap={2}>
           <Button label="Add target" size="sm" variant="secondary" onClick={() => setDraft((d) => ({ ...d, targets: [...d.targets, {}] }))} />
-        </div>
+        </HStack>
       )}
 
-      <div className="k-form-grid">
+      <Grid columns={FORM_GRID} gap={3} align="start">
         <TextField label="Comment" value={comment} onChange={setComment} isOptional />
         <TextField label="Record set" help="The DNSRecordSet object this record is stored in" value={recordSet} onChange={setRecordSet} isReadOnly={!!initial} />
-      </div>
+      </Grid>
       <SwitchField label="Disabled" help="Keep the record but stop serving it" value={disabled} onChange={setDisabled} />
 
       {serverError ? <Banner status="error" title="The server rejected the record" description={serverError} /> : null}
-      {errors && hasErrors(errors) ? (
-        <p className="k-error-text" role="alert">
-          Fix the highlighted fields before saving.
-        </p>
-      ) : null}
+      {errors && hasErrors(errors) ? <FieldStatus type="error" variant="detached" message="Fix the highlighted fields before saving." /> : null}
     </DialogForm>
   );
 }

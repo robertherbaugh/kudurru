@@ -4,6 +4,7 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
+import { Text } from '@astryxdesign/core/Text';
 import { useMutation } from '@tanstack/react-query';
 import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTimeInput';
 import { useState } from 'react';
@@ -57,10 +58,10 @@ export function PurgeQueryLog({ onPurged }: { onPurged: (r: PurgeResult) => void
         {what === 'before' ? (
           <DateTimeInput label="Delete rows before" value={(before || undefined) as ISODateTimeString | undefined} onChange={(v) => setBefore(v ?? '')} hasClear />
         ) : null}
-        <p className="k-small">
+        <Text type="supporting" color="primary" as="p">
           {what === 'all' ? 'Every logged query of this node is deleted.' : 'Queries logged before this time are deleted.'} The long-term rollups are
           kept. This cannot be undone.
-        </p>
+        </Text>
         {m.error ? <Banner status="error" title="Nothing was deleted" description={errorText(m.error)} /> : null}
       </FormDialog>
     </>

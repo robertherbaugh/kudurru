@@ -86,6 +86,25 @@ describe('RequestsPage', () => {
     expect(screen.getAllByTestId(/^request-/).filter((e) => e.tagName === 'TR')).toHaveLength(6);
   });
 
+  it('filters by name through ?domain= (the query log links here), any state', async () => {
+    renderWithApp(<RequestsPage />, { route: '/requests?domain=Metrics.Roku.com.&state=all' });
+    await row('metrics.roku.com');
+    expect(screen.getAllByTestId(/^request-/).filter((e) => e.tagName === 'TR')).toHaveLength(1);
+    // The counts cover every name, so the state options show none.
+    expect(optionLabels(getSelector(/^State/))).toContain('All');
+    // The chip clears the filter.
+    const chip = screen.getByTestId('domain-filter');
+    expect(chip).toHaveTextContent('Domain: metrics.roku.com');
+    fireEvent.click(within(chip).getByRole('button'));
+    await waitFor(() => expect(screen.getAllByTestId(/^request-/).filter((e) => e.tagName === 'TR')).toHaveLength(6));
+    expect(window.location.search).toBe('?state=all');
+  });
+
+  it('says so when a name has no requests in the state', async () => {
+    renderWithApp(<RequestsPage />, { route: '/requests?domain=metrics.roku.com' });
+    expect(await screen.findByText('No pending requests for metrics.roku.com')).toBeInTheDocument();
+  });
+
   it('pages with the continue token', async () => {
     const base = mockDB().unblock[0]!;
     for (let i = 0; i < 60; i++) {

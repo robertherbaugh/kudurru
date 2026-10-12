@@ -4,13 +4,14 @@
 // cannot dismiss it.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { qk, useApiContext, useSession, useSignOut } from '../api/context';
 import type { Me } from '../api/types';
-import { Link } from '../lib/router';
 import { errorText, useNotify } from './Feedback';
 import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
@@ -140,8 +141,8 @@ export function AccountMenu() {
   const signOut = useSignOut();
   if (!data) return null;
   return (
-    <span className="k-row k-account">
-      <Link href="/access" className="k-account-name" title={`${data.principal.kind} ${data.principal.id}; roles: ${data.roles.join(', ') || 'none'}`}>
+    <HStack gap={1} vAlign="center">
+      <Link href="/access" color="inherit" size="sm" tooltip={`${data.principal.kind} ${data.principal.id}; roles: ${data.roles.join(', ') || 'none'}`}>
         {data.principal.name}
       </Link>
       <ChangePasswordButton iconOnly />
@@ -155,6 +156,6 @@ export function AccountMenu() {
         onClick={() => void signOut()}
       />
       {data.mustChangePassword && isLocalUser(data) ? <ChangePasswordDialog isOpen onClose={() => undefined} forced /> : null}
-    </span>
+    </HStack>
   );
 }

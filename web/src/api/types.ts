@@ -23,6 +23,8 @@ export interface ApiErrorBody {
     hint?: string | MissingPermission | Record<string, unknown>;
     /** The paths a 400 invalid failed on (settings: "upstreams.groups.corp.strategy"). */
     fields?: string[];
+    /** Every refused object when there are several (zone delete managed_by, zone_not_empty). */
+    objects?: ObjectOwner[];
   };
   took_ms?: number;
 }
@@ -306,6 +308,16 @@ export interface ZoneRecord {
 
 /** Result of POST /zones/{zone}/import (all or nothing: a bad line is a 400). */
 export type ZoneImportResult = S['ImportResult'];
+
+/**
+ * Result of DELETE /zones/{zone}: the record sets deleted with the zone, or
+ * with dryRun what would be (D148). Refusals are 409 managed_by (with
+ * error.objects) or default_zone; ZoneSummary.deleteRefusal predicts them.
+ */
+export type ZoneDeleteResult = S['ZoneDeleteResult'];
+
+/** One object of error.objects (managed_by of a zone delete, zone_not_empty). */
+export type ObjectOwner = S['ObjectOwner'];
 
 // ---------------------------------------------------------------------------
 // Auth (forwarded to internal/auth/stack; hand-written, see the header)
@@ -594,7 +606,8 @@ export interface QueriesPage extends ScopeInfo {
   earliest_ts_memory?: string;
 }
 
-export type SuggestionField = 'domain' | 'client' | 'upstream' | 'list' | 'zone';
+/** GET /queries/suggestions?field= (internal/api/stats.go suggestionsInput). */
+export type SuggestionField = 'domain' | 'client' | 'upstream' | 'list' | 'zone' | 'policy';
 
 export interface Suggestions {
   field: SuggestionField;

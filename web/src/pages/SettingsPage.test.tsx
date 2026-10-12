@@ -60,9 +60,9 @@ describe('SettingsList', () => {
   it('shows the human label, the path and the section of each key', () => {
     list(keys, { cache: { maxEntries: 50000 } });
     const r = row('cache.maxEntries');
-    expect(r.querySelector('.k-setting-label')).toHaveTextContent('Maximum entries');
+    expect(within(r).getByTestId('label-cache.maxEntries')).toHaveTextContent('Maximum entries');
     expect(within(r).getByRole('spinbutton', { name: 'Maximum entries' })).toBeInTheDocument();
-    expect(within(r).getByText('cache.maxEntries')).toHaveClass('k-mono');
+    expect(within(r).getByText('cache.maxEntries')).toBeInTheDocument();
     // A thin server help is completed from the shape.
     expect(within(r).getByTestId('help-cache.maxEntries')).toHaveTextContent('Cache size. A whole number, 0–1000000.');
     expect(screen.getByRole('heading', { name: 'Cache' })).toBeInTheDocument();

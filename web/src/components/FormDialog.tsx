@@ -11,6 +11,7 @@
 // dialog (aria-labelledby).
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { createContext, useContext, useId, useState, type FormEvent, type ReactNode } from 'react';
 
 export interface FrameContext {
@@ -110,7 +111,8 @@ export interface DialogFormProps {
   onSubmit?: () => void;
   noValidate?: boolean;
   footer?: ReactNode;
-  className?: string;
+  /** Space between the body's blocks (default 4; forms use 3). */
+  gap?: 3 | 4;
   'aria-label'?: string;
   children: ReactNode;
 }
@@ -120,7 +122,7 @@ export interface DialogFormProps {
  * dialog layout; anywhere else (tests, a page) it renders a plain form with
  * the actions in a row below the fields.
  */
-export function DialogForm({ onSubmit, noValidate, footer, className, children, ...aria }: DialogFormProps) {
+export function DialogForm({ onSubmit, noValidate, footer, gap = 4, children, ...aria }: DialogFormProps) {
   const frame = useContext(Frame);
   const submit = onSubmit
     ? (e: FormEvent) => {
@@ -132,15 +134,15 @@ export function DialogForm({ onSubmit, noValidate, footer, className, children, 
     const body = (
       <>
         {children}
-        {footer ? <div className="k-dialog-actions">{footer}</div> : null}
+        {footer ? <Actions>{footer}</Actions> : null}
       </>
     );
     return onSubmit ? (
-      <form className={className} noValidate={noValidate} onSubmit={submit} {...aria}>
+      <VStack as="form" gap={gap} {...formAttrs(noValidate)} onSubmit={submit} {...aria}>
         {body}
-      </form>
+      </VStack>
     ) : (
-      <div className={className}>{body}</div>
+      <VStack gap={gap}>{body}</VStack>
     );
   }
   const layout = (
@@ -155,25 +157,41 @@ export function DialogForm({ onSubmit, noValidate, footer, className, children, 
       }
       content={
         <LayoutContent>
-          <div className={className ?? 'k-stack-lg'}>{children}</div>
+          <VStack gap={gap}>{children}</VStack>
         </LayoutContent>
       }
       footer={
         footer ? (
           <LayoutFooter hasDivider>
-            <div className="k-dialog-actions">{footer}</div>
+            <Actions>{footer}</Actions>
           </LayoutFooter>
         ) : undefined
       }
     />
   );
+  // The frame fills the dialog (a flex column) so the Layout's content
+  // scrolls and its footer stays in view.
   return onSubmit ? (
-    <form className="k-dialog-frame" noValidate={noValidate} onSubmit={submit} onInput={frame.markDirty} onChange={frame.markDirty} {...aria}>
+    <StackItem as="form" size="fill" {...formAttrs(noValidate)} onSubmit={submit} onInput={frame.markDirty} onChange={frame.markDirty} {...aria}>
       {layout}
-    </form>
+    </StackItem>
   ) : (
-    <div className="k-dialog-frame" onInput={frame.markDirty} onChange={frame.markDirty}>
+    <StackItem size="fill" onInput={frame.markDirty} onChange={frame.markDirty}>
       {layout}
-    </div>
+    </StackItem>
+  );
+}
+
+/** <form> attributes the Astryx stack props do not type (they reach the element). */
+function formAttrs(noValidate: boolean | undefined): object {
+  return { noValidate };
+}
+
+/** Dialog actions: a right-aligned row that wraps on narrow screens. */
+function Actions({ children }: { children: ReactNode }) {
+  return (
+    <HStack gap={2} hAlign="end" vAlign="center" wrap="wrap">
+      {children}
+    </HStack>
   );
 }

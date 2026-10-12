@@ -1013,6 +1013,42 @@ func (e UnblockRequestState) Valid() bool {
 	}
 }
 
+// Defines values for ZoneDetailDeleteRefusal.
+const (
+	ZoneDetailDeleteRefusalDefaultZone ZoneDetailDeleteRefusal = "default_zone"
+	ZoneDetailDeleteRefusalManagedBy   ZoneDetailDeleteRefusal = "managed_by"
+)
+
+// Valid indicates whether the value is a known member of the ZoneDetailDeleteRefusal enum.
+func (e ZoneDetailDeleteRefusal) Valid() bool {
+	switch e {
+	case ZoneDetailDeleteRefusalDefaultZone:
+		return true
+	case ZoneDetailDeleteRefusalManagedBy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ZoneSummaryDeleteRefusal.
+const (
+	ZoneSummaryDeleteRefusalDefaultZone ZoneSummaryDeleteRefusal = "default_zone"
+	ZoneSummaryDeleteRefusalManagedBy   ZoneSummaryDeleteRefusal = "managed_by"
+)
+
+// Valid indicates whether the value is a known member of the ZoneSummaryDeleteRefusal enum.
+func (e ZoneSummaryDeleteRefusal) Valid() bool {
+	switch e {
+	case ZoneSummaryDeleteRefusalDefaultZone:
+		return true
+	case ZoneSummaryDeleteRefusalManagedBy:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAllowlistParamsKind.
 const (
 	ListAllowlistParamsKindEntry     ListAllowlistParamsKind = "entry"
@@ -2306,11 +2342,12 @@ type Error struct {
 
 // ErrorBody defines model for ErrorBody.
 type ErrorBody struct {
-	Fields  *[]string   `json:"fields,omitempty"`
-	Hint    interface{} `json:"hint,omitempty"`
-	Key     string      `json:"key"`
-	Message string      `json:"message"`
-	Missing *Missing    `json:"missing,omitempty"`
+	Fields  *[]string      `json:"fields,omitempty"`
+	Hint    interface{}    `json:"hint,omitempty"`
+	Key     string         `json:"key"`
+	Message string         `json:"message"`
+	Missing *Missing       `json:"missing,omitempty"`
+	Objects *[]ObjectOwner `json:"objects,omitempty"`
 }
 
 // Event defines model for Event.
@@ -2628,6 +2665,14 @@ type ObjectList struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// ObjectOwner defines model for ObjectOwner.
+type ObjectOwner struct {
+	Kind      string  `json:"kind"`
+	ManagedBy *string `json:"managedBy,omitempty"`
+	Name      string  `json:"name"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // PasswordChangeRequest defines model for PasswordChangeRequest.
@@ -3689,18 +3734,34 @@ type VersionOutputBody struct {
 	Version string  `json:"version"`
 }
 
+// ZoneDeleteResult defines model for ZoneDeleteResult.
+type ZoneDeleteResult struct {
+	DryRun         bool     `json:"dryRun"`
+	EndpointCount  int64    `json:"endpointCount"`
+	Flushed        int64    `json:"flushed"`
+	RecordSetCount int64    `json:"recordSetCount"`
+	RecordSets     []string `json:"recordSets"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs   float64 `json:"took_ms"`
+	Type     string  `json:"type"`
+	Zone     string  `json:"zone"`
+	ZoneName string  `json:"zoneName"`
+}
+
 // ZoneDetail defines model for ZoneDetail.
 type ZoneDetail struct {
-	ManagedBy       *string                `json:"managedBy,omitempty"`
-	Message         *string                `json:"message,omitempty"`
-	Name            string                 `json:"name"`
-	Object          map[string]interface{} `json:"object"`
-	Ready           bool                   `json:"ready"`
-	Reason          *string                `json:"reason,omitempty"`
-	RecordCount     int64                  `json:"recordCount"`
-	RecordSets      int64                  `json:"recordSets"`
-	ResourceVersion *string                `json:"resourceVersion,omitempty"`
-	Serial          int32                  `json:"serial"`
+	DeleteRefusal   *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
+	ManagedBy       *string                  `json:"managedBy,omitempty"`
+	Message         *string                  `json:"message,omitempty"`
+	Name            string                   `json:"name"`
+	Object          map[string]interface{}   `json:"object"`
+	Ready           bool                     `json:"ready"`
+	Reason          *string                  `json:"reason,omitempty"`
+	RecordCount     int64                    `json:"recordCount"`
+	RecordSets      int64                    `json:"recordSets"`
+	ResourceVersion *string                  `json:"resourceVersion,omitempty"`
+	Serial          int32                    `json:"serial"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64 `json:"took_ms"`
@@ -3708,6 +3769,9 @@ type ZoneDetail struct {
 	UpstreamGroup *string `json:"upstreamGroup,omitempty"`
 	ZoneName      string  `json:"zoneName"`
 }
+
+// ZoneDetailDeleteRefusal defines model for ZoneDetail.DeleteRefusal.
+type ZoneDetailDeleteRefusal string
 
 // ZoneRecord defines model for ZoneRecord.
 type ZoneRecord struct {
@@ -3724,19 +3788,23 @@ type ZoneRecord struct {
 
 // ZoneSummary defines model for ZoneSummary.
 type ZoneSummary struct {
-	ManagedBy       *string `json:"managedBy,omitempty"`
-	Message         *string `json:"message,omitempty"`
-	Name            string  `json:"name"`
-	Ready           bool    `json:"ready"`
-	Reason          *string `json:"reason,omitempty"`
-	RecordCount     int64   `json:"recordCount"`
-	RecordSets      int64   `json:"recordSets"`
-	ResourceVersion *string `json:"resourceVersion,omitempty"`
-	Serial          int32   `json:"serial"`
-	Type            string  `json:"type"`
-	UpstreamGroup   *string `json:"upstreamGroup,omitempty"`
-	ZoneName        string  `json:"zoneName"`
+	DeleteRefusal   *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
+	ManagedBy       *string                   `json:"managedBy,omitempty"`
+	Message         *string                   `json:"message,omitempty"`
+	Name            string                    `json:"name"`
+	Ready           bool                      `json:"ready"`
+	Reason          *string                   `json:"reason,omitempty"`
+	RecordCount     int64                     `json:"recordCount"`
+	RecordSets      int64                     `json:"recordSets"`
+	ResourceVersion *string                   `json:"resourceVersion,omitempty"`
+	Serial          int32                     `json:"serial"`
+	Type            string                    `json:"type"`
+	UpstreamGroup   *string                   `json:"upstreamGroup,omitempty"`
+	ZoneName        string                    `json:"zoneName"`
 }
+
+// ZoneSummaryDeleteRefusal defines model for ZoneSummary.DeleteRefusal.
+type ZoneSummaryDeleteRefusal string
 
 // ListAllowlistParams defines parameters for ListAllowlist.
 type ListAllowlistParams struct {
@@ -4328,6 +4396,15 @@ type ListUnblockRequestsParams struct {
 
 // ListUnblockRequestsParamsState defines parameters for ListUnblockRequests.
 type ListUnblockRequestsParamsState string
+
+// DeleteZoneParams defines parameters for DeleteZone.
+type DeleteZoneParams struct {
+	// DryRun Run every check and report what would be deleted, without deleting.
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+
+	// IfMatch Delete only when the zone's resourceVersion equals this value (412 otherwise).
+	IfMatch *string `json:"If-Match,omitempty"`
+}
 
 // ImportZoneParams defines parameters for ImportZone.
 type ImportZoneParams struct {
@@ -5044,12 +5121,16 @@ type ClientInterface interface {
 
 	// BatchDeleteDnszonesWithBody Delete several dnszones
 	//
+	// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
 	BatchDeleteDnszonesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// BatchDeleteDnszones Delete several dnszones
+	//
+	// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5185,6 +5266,8 @@ type ClientInterface interface {
 	PutObject(ctx context.Context, kind string, namespace string, name string, params *PutObjectParams, body PutObjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteClusterObject Delete a cluster-scoped object
+	//
+	// A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone "." is 409 default_zone (D148).
 	//
 	// Corresponds with DELETE /objects/{kind}/{name} (the `DeleteClusterObject` operationId).
 	DeleteClusterObject(ctx context.Context, kind string, name string, params *DeleteClusterObjectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5427,6 +5510,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /zones (the `ListZones` operationId).
 	ListZones(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteZone Delete a zone with every record set that references it
+	//
+	// Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone "."; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.
+	//
+	// Corresponds with DELETE /zones/{zone} (the `DeleteZone` operationId).
+	DeleteZone(ctx context.Context, zone string, params *DeleteZoneParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetZone Get one zone
 	//
@@ -6758,6 +6848,8 @@ func (c *Client) BatchDeleteDnsrecordsets(ctx context.Context, body BatchDeleteD
 
 // BatchDeleteDnszonesWithBody Delete several dnszones
 //
+// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
@@ -6774,6 +6866,8 @@ func (c *Client) BatchDeleteDnszonesWithBody(ctx context.Context, contentType st
 }
 
 // BatchDeleteDnszones Delete several dnszones
+//
+// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7139,6 +7233,8 @@ func (c *Client) PutObject(ctx context.Context, kind string, namespace string, n
 }
 
 // DeleteClusterObject Delete a cluster-scoped object
+//
+// A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone "." is 409 default_zone (D148).
 //
 // Corresponds with DELETE /objects/{kind}/{name} (the `DeleteClusterObject` operationId).
 func (c *Client) DeleteClusterObject(ctx context.Context, kind string, name string, params *DeleteClusterObjectParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7772,6 +7868,23 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 // Corresponds with GET /zones (the `ListZones` operationId).
 func (c *Client) ListZones(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListZonesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteZone Delete a zone with every record set that references it
+//
+// Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone "."; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.
+//
+// Corresponds with DELETE /zones/{zone} (the `DeleteZone` operationId).
+func (c *Client) DeleteZone(ctx context.Context, zone string, params *DeleteZoneParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteZoneRequest(c.Server, zone, params)
 	if err != nil {
 		return nil, err
 	}
@@ -14061,6 +14174,82 @@ func NewListZonesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDeleteZoneRequest constructs an http.Request for the DeleteZone method
+func NewDeleteZoneRequest(server string, zone string, params *DeleteZoneParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "zone", zone, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/zones/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.DryRun != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "dryRun", *params.DryRun, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewGetZoneRequest constructs an http.Request for the GetZone method
 func NewGetZoneRequest(server string, zone string) (*http.Request, error) {
 	var err error
@@ -15072,12 +15261,16 @@ type ClientWithResponsesInterface interface {
 
 	// BatchDeleteDnszonesWithBodyWithResponse Delete several dnszones
 	//
+	// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
 	BatchDeleteDnszonesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDeleteDnszonesResponse, error)
 
 	// BatchDeleteDnszonesWithResponse Delete several dnszones
+	//
+	// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -15241,6 +15434,8 @@ type ClientWithResponsesInterface interface {
 	PutObjectWithResponse(ctx context.Context, kind string, namespace string, name string, params *PutObjectParams, body PutObjectJSONRequestBody, reqEditors ...RequestEditorFn) (*PutObjectResponse, error)
 
 	// DeleteClusterObjectWithResponse Delete a cluster-scoped object
+	//
+	// A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone "." is 409 default_zone (D148).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15531,6 +15726,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /zones (the `ListZones` operationId).
 	ListZonesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListZonesResponse, error)
+
+	// DeleteZoneWithResponse Delete a zone with every record set that references it
+	//
+	// Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone "."; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /zones/{zone} (the `DeleteZone` operationId).
+	DeleteZoneWithResponse(ctx context.Context, zone string, params *DeleteZoneParams, reqEditors ...RequestEditorFn) (*DeleteZoneResponse, error)
 
 	// GetZoneWithResponse Get one zone
 	//
@@ -25483,6 +25687,110 @@ func (r ListZonesResponse) ContentType() string {
 	return ""
 }
 
+type DeleteZoneResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ZoneDeleteResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteZoneResponse) GetJSON200() *ZoneDeleteResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteZoneResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteZoneResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteZoneResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteZoneResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteZoneResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteZoneResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteZoneResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteZoneResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteZoneResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteZoneResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteZoneResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteZoneResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteZoneResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetZoneResponse200Headers the declared response headers of an HTTP 200 response for GetZone
 type GetZoneResponse200Headers struct {
 	ETag *string
@@ -27201,6 +27509,8 @@ func (c *ClientWithResponses) BatchDeleteDnsrecordsetsWithResponse(ctx context.C
 
 // BatchDeleteDnszonesWithBodyWithResponse Delete several dnszones
 //
+// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /dnszones:batchDelete (the `BatchDeleteDnszones` operationId).
@@ -27213,6 +27523,8 @@ func (c *ClientWithResponses) BatchDeleteDnszonesWithBodyWithResponse(ctx contex
 }
 
 // BatchDeleteDnszonesWithResponse Delete several dnszones
+//
+// Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -27514,6 +27826,8 @@ func (c *ClientWithResponses) PutObjectWithResponse(ctx context.Context, kind st
 }
 
 // DeleteClusterObjectWithResponse Delete a cluster-scoped object
+//
+// A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone "." is 409 default_zone (D148).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -28043,6 +28357,21 @@ func (c *ClientWithResponses) ListZonesWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListZonesResponse(rsp)
+}
+
+// DeleteZoneWithResponse Delete a zone with every record set that references it
+//
+// Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone "."; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /zones/{zone} (the `DeleteZone` operationId).
+func (c *ClientWithResponses) DeleteZoneWithResponse(ctx context.Context, zone string, params *DeleteZoneParams, reqEditors ...RequestEditorFn) (*DeleteZoneResponse, error) {
+	rsp, err := c.DeleteZone(ctx, zone, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteZoneResponse(rsp)
 }
 
 // GetZoneWithResponse Get one zone
@@ -36736,6 +37065,95 @@ func ParseListZonesResponse(rsp *http.Response) (*ListZonesResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteZoneResponse parses an HTTP response from a DeleteZoneWithResponse call
+func ParseDeleteZoneResponse(rsp *http.Response) (*DeleteZoneResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteZoneResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ZoneDeleteResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

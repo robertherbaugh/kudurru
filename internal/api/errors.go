@@ -26,18 +26,23 @@ const (
 	KeyNotFound        = "not_found"
 	KeyConflict        = "conflict"
 	KeyManagedBy       = "managed_by"
-	KeyPrecondition    = "precondition_failed"
-	KeyUnprocessable   = "unprocessable"
-	KeyTooLarge        = "too_large"
-	KeyRateLimited     = "rate_limited"
-	KeyReadOnly        = "read_only"
-	KeyHostOnly        = "host_only"
-	KeyEnvLocked       = "env_locked"
-	KeyNotImplemented  = "not_implemented"
-	KeyUnavailable     = "unavailable"
-	KeyInternal        = "internal"
-	KeyNotAcceptable   = "not_acceptable"
-	KeyMethod          = "method_not_allowed"
+	// KeyDefaultZone is the 409 of deleting the root zone "." (D148).
+	KeyDefaultZone = "default_zone"
+	// KeyZoneNotEmpty is the 409 of deleting a DNSZone that DNSRecordSets
+	// still reference through the object routes (D148).
+	KeyZoneNotEmpty   = "zone_not_empty"
+	KeyPrecondition   = "precondition_failed"
+	KeyUnprocessable  = "unprocessable"
+	KeyTooLarge       = "too_large"
+	KeyRateLimited    = "rate_limited"
+	KeyReadOnly       = "read_only"
+	KeyHostOnly       = "host_only"
+	KeyEnvLocked      = "env_locked"
+	KeyNotImplemented = "not_implemented"
+	KeyUnavailable    = "unavailable"
+	KeyInternal       = "internal"
+	KeyNotAcceptable  = "not_acceptable"
+	KeyMethod         = "method_not_allowed"
 	// KeyPasswordChange is the 403 of a local user who must change the
 	// password first (auth.Authorize answers the same key).
 	KeyPasswordChange = "password_change_required"
@@ -67,6 +72,19 @@ type ErrorBody struct {
 	Missing *Missing `json:"missing,omitempty"`
 	// Fields are the JSON paths of a validation failure.
 	Fields []string `json:"fields,omitempty"`
+	// Objects lists every object a refusal is about when there are several:
+	// the managed record sets of a zone delete (managed_by), the record sets
+	// that keep a zone from being deleted alone (zone_not_empty).
+	Objects []ObjectOwner `json:"objects,omitempty"`
+}
+
+// ObjectOwner names one object and its manager in ErrorBody.Objects.
+type ObjectOwner struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name"`
+	// ManagedBy is the object's single writer ("" when none is recorded).
+	ManagedBy string `json:"managedBy,omitempty"`
 }
 
 // Error is every non-2xx response body of the API. It implements

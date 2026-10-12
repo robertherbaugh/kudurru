@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"hash/maphash"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -365,6 +366,39 @@ func (c *Cache) Flush() {
 			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
 		}
 	}
+}
+
+// FlushZone removes every entry whose name is apex or below it (any type,
+// class, flags or ECS subnet) and returns how many went. apex is a domain
+// name, folded to lower case; "." matches every entry. It walks the whole
+// cache, so it is for rare operator actions such as deleting a zone.
+func (c *Cache) FlushZone(apex string) int {
+	apex = strings.ToLower(apex)
+	if !strings.HasSuffix(apex, ".") {
+		apex += "."
+	}
+	total := 0
+	for i := range c.shards {
+		sh := &c.shards[i]
+		var counts [2]int
+		sh.mu.Lock()
+		for k, e := range sh.m {
+			p, ok := k.Parts()
+			if !ok {
+				continue
+			}
+			if apex == "." || p.Name == apex || strings.HasSuffix(p.Name, "."+apex) {
+				counts[e.kind]++
+				sh.remove(e)
+			}
+		}
+		sh.mu.Unlock()
+		for kind, n := range counts {
+			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
+		}
+	}
+	return total
 }
 
 // Len returns the number of entries, including stale ones.

@@ -57,13 +57,14 @@ describe('StatTiles', () => {
   it('renders four links into the pre-filtered log', () => {
     renderWithApp(<StatTiles summary={summary} />);
     const list = screen.getByRole('list', { name: 'Summary' });
-    const links = within(list).getAllByRole('listitem');
-    expect(links).toHaveLength(4);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(list).getAllByRole('link')).toHaveLength(4);
     expect(screen.getByTestId('tile-total')).toHaveTextContent('128.4K');
-    expect(screen.getByTestId('tile-total')).toHaveAttribute('title', '128,431');
-    const blocked = screen.getByRole('listitem', { name: /Queries blocked: 21,833/ });
+    // The exact count is the tile's accessible name (and the value's tooltip).
+    expect(screen.getByRole('link', { name: 'Total queries (24h): 128,431' })).toBeInTheDocument();
+    const blocked = screen.getByRole('link', { name: /Queries blocked: 21,833/ });
     expect(blocked).toHaveAttribute('href', '/queries?status_class=blocked&since=2026-10-09T18%3A00%3A00Z');
-    expect(screen.getByRole('listitem', { name: /Domains on lists/ })).toHaveAttribute('href', '/lists');
+    expect(screen.getByRole('link', { name: /Domains on lists/ })).toHaveAttribute('href', '/lists');
   });
 
   it('shows an ellipsis while loading', () => {

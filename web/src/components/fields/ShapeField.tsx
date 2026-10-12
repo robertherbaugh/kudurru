@@ -4,7 +4,10 @@
 // text input, a row editor for string lists, and rows of fieldsets for
 // lists of objects and maps. It edits drafts (lib/shapes.ts), never JSON.
 import { Button } from '@astryxdesign/core/Button';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
+import { Trash2 } from 'lucide-react';
 import type { ObjectKind, SettingRef } from '../../api/types';
 import { emptyDraft, isMapDraft, keyError, str, type MapDraft } from '../../lib/shapes';
 import type { UiShape } from '../../lib/settingsMeta';
@@ -12,6 +15,7 @@ import { UpstreamGroupSelect } from '../UpstreamGroupSelect';
 import { BytesField } from './BytesField';
 import { DURATION_PRESETS, DurationField, durationPresets } from './DurationField';
 import { EnumSelect } from './EnumSelect';
+import { FieldGroup } from './FieldGroup';
 import { FORMAT_EXAMPLES, formatError } from './formats';
 import { NumberField } from './NumberField';
 import { ObjectRefPicker } from './ObjectRefPicker';
@@ -35,6 +39,16 @@ export interface ShapeFieldProps {
   isDisabled?: boolean | undefined;
   /** The key's default, shown as the placeholder of empty text inputs. */
   placeholder?: string | undefined;
+}
+
+/** Shapes drawn as a group of fields (they take a row's full width). */
+function isGroup(s: UiShape): boolean {
+  return s.type === 'object' || s.type === 'list' || s.type === 'map' || s.type === 'string[]';
+}
+
+/** A row's remove button: an icon, named "Remove <row>" (the name is its tooltip too). */
+function RemoveButton({ label, isDisabled, onClick }: { label: string; isDisabled?: boolean | undefined; onClick: () => void }) {
+  return <Button label={label} tooltip={label} size="sm" variant="ghost" isIconOnly icon={<Trash2 size={16} aria-hidden="true" />} isDisabled={isDisabled} onClick={onClick} />;
 }
 
 /** Help under a group of fields. */
@@ -98,9 +112,8 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
       return <MapRows label={label} isLabelHidden={isLabelHidden} description={description} shape={shape} value={value} onChange={onChange} isDisabled={isDisabled} />;
     case 'object':
       return (
-        <fieldset className="k-fieldset" disabled={isDisabled}>
-          <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
-          <div className="k-form-grid">
+        <FieldGroup label={label} isLabelHidden={isLabelHidden}>
+          <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">
             {(shape.fields ?? []).map((f) => {
               const o = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
               return (
@@ -115,9 +128,9 @@ export function ShapeField({ label, isLabelHidden, description, shape, value, on
                 />
               );
             })}
-          </div>
+          </Grid>
           <Help text={description} />
-        </fieldset>
+        </FieldGroup>
       );
     default:
       return <StringField label={label} isLabelHidden={isLabelHidden} description={description} shape={shape} value={value} onChange={onChange} isDisabled={isDisabled} placeholder={placeholder} />;
@@ -162,21 +175,31 @@ function StringField({ label, isLabelHidden, description, shape, value, onChange
 function ListRows({ label, isLabelHidden, description, shape, value, onChange, isDisabled }: Omit<ShapeFieldProps, 'placeholder'>) {
   const items: unknown[] = Array.isArray(value) ? (value as unknown[]) : [];
   const item = shape.items as UiShape;
+  // A group of fields per entry takes the full width, with Remove under it.
+  const wide = isGroup(item);
   return (
-    <fieldset className="k-fieldset" disabled={isDisabled}>
-      <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
+    <FieldGroup label={label} isLabelHidden={isLabelHidden}>
       {items.length === 0 ? <Text type="supporting">None.</Text> : null}
-      {items.map((x, i) => (
-        <div key={i} className="k-array-item" data-testid="list-row">
-          <ShapeField label={`${label} ${i + 1}`} shape={item} value={x} onChange={(v) => onChange(items.map((y, j) => (j === i ? v : y)))} isDisabled={isDisabled} />
-          <Button label={`Remove ${label} ${i + 1}`} size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(items.filter((_, j) => j !== i))} />
-        </div>
-      ))}
-      <span className="k-row">
+      {items.map((x, i) => {
+        const field = <ShapeField label={`${label} ${i + 1}`} shape={item} value={x} onChange={(v) => onChange(items.map((y, j) => (j === i ? v : y)))} isDisabled={isDisabled} />;
+        const remove = <RemoveButton label={`Remove ${label} ${i + 1}`} isDisabled={isDisabled} onClick={() => onChange(items.filter((_, j) => j !== i))} />;
+        return wide ? (
+          <VStack key={i} gap={2} data-testid="list-row">
+            {field}
+            <HStack gap={2}>{remove}</HStack>
+          </VStack>
+        ) : (
+          <HStack key={i} gap={2} vAlign="end" data-testid="list-row">
+            <StackItem size="fill">{field}</StackItem>
+            {remove}
+          </HStack>
+        );
+      })}
+      <HStack gap={2}>
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => onChange([...items, emptyDraft(item)])} />
-      </span>
+      </HStack>
       <Help text={description} />
-    </fieldset>
+    </FieldGroup>
   );
 }
 
@@ -189,52 +212,71 @@ function MapRows({ label, isLabelHidden, description, shape, value, onChange, is
   const counts = new Map<string, number>();
   for (const [k] of rows) counts.set(k.trim(), (counts.get(k.trim()) ?? 0) + 1);
   return (
-    <fieldset className="k-fieldset" disabled={isDisabled}>
-      <legend className={isLabelHidden ? 'k-visually-hidden' : undefined}>{label}</legend>
+    <FieldGroup label={label} isLabelHidden={isLabelHidden}>
       {rows.length === 0 ? <Text type="supporting">None.</Text> : null}
       {rows.map(([k, v], i) => {
         const dup = k.trim() && (counts.get(k.trim()) ?? 0) > 1;
-        return (
-          <div key={i} className="k-map-row" data-testid="map-row">
-            {shape.keys?.type === 'int' ? (
-              <NumberField
-                label={keyLabel}
-                isLabelHidden={i > 0}
-                value={k}
-                placeholder={shape.keyPlaceholder}
-                min={shape.keys.min}
-                max={shape.keys.max}
-                onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
-                isDisabled={isDisabled}
-                error={dup ? 'Listed twice' : undefined}
-              />
-            ) : (
-              <TextField
-                label={keyLabel}
-                isLabelHidden={i > 0}
-                value={k}
-                placeholder={shape.keyPlaceholder}
-                onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
-                isDisabled={isDisabled}
-                error={dup ? 'Listed twice' : (keyErr(k) ?? undefined)}
-              />
-            )}
-            <ShapeField
-              label={vshape.type === 'object' ? (k || `${keyLabel} ${i + 1}`) : 'Value'}
-              isLabelHidden={vshape.type !== 'object' && i > 0}
-              shape={vshape}
-              value={v}
-              onChange={(nv) => emit(rows.map((r, j) => (j === i ? [r[0], nv] : r)))}
+        const keyField =
+          shape.keys?.type === 'int' ? (
+            <NumberField
+              label={keyLabel}
+              isLabelHidden={i > 0}
+              value={k}
+              placeholder={shape.keyPlaceholder}
+              min={shape.keys.min}
+              max={shape.keys.max}
+              onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
               isDisabled={isDisabled}
+              error={dup ? 'Listed twice' : undefined}
             />
-            <Button label={`Remove ${k || `row ${i + 1}`}`} size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => emit(rows.filter((_, j) => j !== i))} />
-          </div>
+          ) : (
+            <TextField
+              label={keyLabel}
+              isLabelHidden={i > 0}
+              value={k}
+              placeholder={shape.keyPlaceholder}
+              onChange={(nk) => emit(rows.map((r, j) => (j === i ? [nk, r[1]] : r)))}
+              isDisabled={isDisabled}
+              error={dup ? 'Listed twice' : (keyErr(k) ?? undefined)}
+            />
+          );
+        const valueField = (
+          <ShapeField
+            label={vshape.type === 'object' ? (k || `${keyLabel} ${i + 1}`) : 'Value'}
+            isLabelHidden={vshape.type !== 'object' && i > 0}
+            shape={vshape}
+            value={v}
+            onChange={(nv) => emit(rows.map((r, j) => (j === i ? [r[0], nv] : r)))}
+            isDisabled={isDisabled}
+          />
+        );
+        const remove = <RemoveButton label={`Remove ${k || `row ${i + 1}`}`} isDisabled={isDisabled} onClick={() => emit(rows.filter((_, j) => j !== i))} />;
+        // A group of fields per value takes the full width under its key.
+        return isGroup(vshape) ? (
+          <VStack key={i} gap={2} data-testid="map-row">
+            <HStack gap={2} vAlign="end">
+              <StackItem size="fill">{keyField}</StackItem>
+              {remove}
+            </HStack>
+            {valueField}
+          </VStack>
+        ) : (
+          // Key and value side by side where there is room, stacked in a narrow column.
+          <HStack key={i} gap={2} vAlign="end" data-testid="map-row">
+            <StackItem size="fill">
+              <Grid columns={{ minWidth: 200, repeat: 'fit' }} gap={2} align="start">
+                {keyField}
+                {valueField}
+              </Grid>
+            </StackItem>
+            {remove}
+          </HStack>
         );
       })}
-      <span className="k-row">
+      <HStack gap={2}>
         <Button label="Add" size="sm" variant="secondary" isDisabled={isDisabled} onClick={() => emit([...rows, ['', emptyDraft(vshape)]])} />
-      </span>
+      </HStack>
       <Help text={description} />
-    </fieldset>
+    </FieldGroup>
   );
 }

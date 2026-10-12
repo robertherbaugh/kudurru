@@ -3,12 +3,21 @@
 // the number of inline entries, format, subdomains, the per-source status
 // ("N of M entries enabled" once single entries are switched off, last
 // fetch, error) and the entries browser, edit and delete actions. Every
-// kind of source opens the entries browser.
+// kind of source opens the entries browser. A disabled source's cells are
+// drawn in the secondary colour.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { Icon } from '@astryxdesign/core/Icon';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
-import { Database, FileText, Link as LinkIcon, ListChecks } from 'lucide-react';
-import type { BlockList } from '../../api/types';
+import { pixel, proportional, Table, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
+import { Database, FileText, Link as LinkIcon, ListChecks, Pencil, Trash2 } from 'lucide-react';
+import type { BlockList, ListSource, SourceStatus } from '../../api/types';
 import { formatExact, formatRelative } from '../../lib/format';
 import { enabledEntriesText, formatLabel, sourceEnabled, sourceKind, sourceName, sourceStatus, type SourceKind } from '../../lib/lists';
 
@@ -17,6 +26,17 @@ const KIND: Record<SourceKind, { label: string; Icon: typeof LinkIcon }> = {
   inline: { label: 'Inline entries', Icon: FileText },
   configMap: { label: 'ConfigMap', Icon: Database },
   entries: { label: 'Allow or deny entries', Icon: ListChecks },
+};
+
+/** One source as a table row (a type literal, as the Table's Record constraint needs). */
+type Row = { key: string; index: number; name: string; src: ListSource; kind: SourceKind; st: SourceStatus | undefined; on: boolean };
+
+/** Data attributes on each body row (tests and e2e find sources by them). */
+const rowAttrs: TablePlugin<Row> = {
+  transformBodyRow: (props, item) => ({
+    ...props,
+    htmlProps: { ...props.htmlProps, ...({ 'data-testid': `source-${item.name}`, 'data-enabled': String(item.on) } as Record<string, string>) },
+  }),
 };
 
 export interface SourcesTableProps {
@@ -34,115 +54,161 @@ export interface SourcesTableProps {
 export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDelete, onBrowse }: SourcesTableProps) {
   const sources = list.spec.sources;
   const busy = pending !== null && pending !== undefined;
-  return (
-    <div className="k-table-wrap">
-      <table className="k-table" aria-label="Sources">
-        <thead>
-          <tr>
-            <th scope="col">Type</th>
-            <th scope="col">Name</th>
-            <th scope="col">Source</th>
-            <th scope="col">Format</th>
-            <th scope="col">Subdomains</th>
-            <th scope="col" className="num">
-              Entries
-            </th>
-            <th scope="col">Last fetched</th>
-            <th scope="col">Error</th>
-            <th scope="col">Enabled</th>
-            <th scope="col">
-              <span className="k-visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sources.map((src, i) => {
-            const name = sourceName(i, src);
-            const kind = sourceKind(src);
-            const { label, Icon } = KIND[kind];
-            const st = sourceStatus(list, i);
-            const on = sourceEnabled(src);
-            return (
-              <tr key={`${i}-${name}`} data-testid={`source-${name}`} data-enabled={on} className={on ? undefined : 'k-row-off'}>
-                <td>
-                  <span className="k-source-kind" title={label}>
-                    <Icon size={16} aria-hidden="true" />
-                    <span className="k-visually-hidden">{label}</span>
-                  </span>
-                </td>
-                <td className="k-mono k-nowrap">{name}</td>
-                <td className="k-break">
-                  {kind === 'url' ? (
-                    <a href={src.url} target="_blank" rel="noopener noreferrer" className="k-mono k-small">
-                      {src.url}
-                    </a>
-                  ) : kind === 'inline' ? (
-                    <button type="button" className="k-linklike" onClick={() => onBrowse(i)} aria-label={`Browse the ${formatExact(src.inline?.length ?? 0)} inline entries of ${name}`}>
-                      {formatExact(src.inline?.length ?? 0)} inline entries
-                    </button>
-                  ) : kind === 'entries' ? (
-                    <button type="button" className="k-linklike" onClick={() => onBrowse(i)} aria-label={`Browse the ${formatExact(src.entries?.length ?? 0)} entries of ${name}`}>
-                      {formatExact(src.entries?.length ?? 0)} {list.spec.mode === 'allow' ? 'allow' : 'deny'} entries
-                    </button>
-                  ) : (
-                    <span className="k-mono k-small">
-                      ConfigMap {src.configMapRef?.namespace ? `${src.configMapRef.namespace}/` : ''}
-                      {src.configMapRef?.name}
-                    </span>
-                  )}
-                </td>
-                <td className="k-small">{formatLabel(src.format)}</td>
-                <td>{src.subdomains ? <Badge variant="info" label="yes" /> : <span className="k-muted k-small">no</span>}</td>
-                <td className="num" title={on ? undefined : 'Not counted while the source is disabled'}>
-                  {on ? enabledEntriesText(st) : <span className="k-muted">{st?.entries ? `${formatExact(st.entries)} (off)` : 'off'}</span>}
-                  {on && st?.invalid ? <div className="k-muted k-small">{formatExact(st.invalid)} invalid</div> : null}
-                </td>
-                <td className="k-small k-nowrap">
-                  {!on ? (
-                    <span className="k-muted">disabled</span>
-                  ) : kind === 'inline' || kind === 'entries' ? (
-                    <span className="k-muted" title="Inline entries are compiled from the object; there is nothing to fetch">
-                      compiled
-                    </span>
-                  ) : st?.lastFetched ? (
-                    <span title={st.lastFetched}>{formatRelative(st.lastFetched)}</span>
-                  ) : (
-                    <span className="k-muted">not yet</span>
-                  )}
-                </td>
-                <td className="k-small k-break">{on && st?.error ? <span className="k-error-text">{st.error}</span> : <span className="k-muted">–</span>}</td>
-                <td>
-                  <Switch
-                    label={`Source ${name} enabled`}
-                    isLabelHidden
-                    size="sm"
-                    value={on}
-                    isLoading={pending === i}
-                    isDisabled={!editable || busy}
-                    onChange={(v) => onToggle(i, v)}
-                  />
-                </td>
-                <td className="k-nowrap k-row-actions">
-                  <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${name}`} onClick={() => onBrowse(i)} />
-                  {editable ? (
-                    <>
-                      {kind !== 'entries' ? <Button label="Edit" size="sm" variant="ghost" onClick={() => onEdit(i)} /> : null}
-                      <Button
-                        label="Delete"
-                        size="sm"
-                        variant="ghost"
-                        isDisabled={sources.length === 1}
-                        tooltip={sources.length === 1 ? 'A list needs at least one source; delete the list instead' : undefined}
-                        onClick={() => onDelete(i)}
-                      />
-                    </>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  const rows: Row[] = sources.map((src, i) => {
+    const name = sourceName(i, src);
+    return { key: `${i}-${name}`, index: i, name, src, kind: sourceKind(src), st: sourceStatus(list, i), on: sourceEnabled(src) };
+  });
+  /** A cell's text: secondary while the source is off. */
+  const tone = (r: Row) => (r.on ? 'primary' : 'secondary');
+
+  const columns: TableColumn<Row>[] = [
+    {
+      // The type as an icon before the name (a column of its own does not fit at 1280 px).
+      key: 'name',
+      header: 'Name',
+      width: proportional(1.5, { minWidth: 104 }),
+      renderCell: (r) => {
+        const { label, Icon: KindIcon } = KIND[r.kind];
+        return (
+          <HStack gap={1.5} vAlign="center" wrap="nowrap">
+            <Tooltip content={label} hasHoverIndication={false}>
+              <Text color="secondary">
+                <Icon icon={KindIcon} size="sm" />
+                <VisuallyHidden>{label}</VisuallyHidden>
+              </Text>
+            </Tooltip>
+            <Text type="code" size="sm" color={tone(r)} textWrap="nowrap">
+              {r.name}
+            </Text>
+          </HStack>
+        );
+      },
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      width: proportional(2.5, { minWidth: 150 }),
+      renderCell: (r) =>
+        r.kind === 'url' ? (
+          <Link href={r.src.url} target="_blank" hasUnderline color={r.on ? 'primary' : 'secondary'} size="sm">
+            <Text type="code" size="sm" color="inherit" wordBreak="break-all" maxLines={3}>
+              {r.src.url}
+            </Text>
+          </Link>
+        ) : r.kind === 'inline' ? (
+          <Link label={`Browse the ${formatExact(r.src.inline?.length ?? 0)} inline entries of ${r.name}`} onClick={() => onBrowse(r.index)}>
+            {formatExact(r.src.inline?.length ?? 0)} inline entries
+          </Link>
+        ) : r.kind === 'entries' ? (
+          <Link label={`Browse the ${formatExact(r.src.entries?.length ?? 0)} entries of ${r.name}`} onClick={() => onBrowse(r.index)}>
+            {formatExact(r.src.entries?.length ?? 0)} {list.spec.mode === 'allow' ? 'allow' : 'deny'} entries
+          </Link>
+        ) : (
+          <Text type="code" size="sm" color={tone(r)} wordBreak="break-all">
+            ConfigMap {r.src.configMapRef?.namespace ? `${r.src.configMapRef.namespace}/` : ''}
+            {r.src.configMapRef?.name}
+          </Text>
+        ),
+    },
+    {
+      key: 'format',
+      header: 'Format',
+      width: proportional(1, { minWidth: 72 }),
+      renderCell: (r) => (
+        <Text size="sm" color={tone(r)}>
+          {formatLabel(r.src.format)}
+        </Text>
+      ),
+    },
+    {
+      key: 'subdomains',
+      header: 'Subdomains',
+      width: pixel(108),
+      renderCell: (r) => (r.src.subdomains ? <Badge variant="info" label="yes" /> : <Text type="supporting">no</Text>),
+    },
+    {
+      key: 'entries',
+      header: 'Entries',
+      width: pixel(92),
+      align: 'end',
+      renderCell: (r) =>
+        r.on ? (
+          <VStack gap={0}>
+            <Text>{enabledEntriesText(r.st)}</Text>
+            {r.st?.invalid ? <Text type="supporting">{formatExact(r.st.invalid)} invalid</Text> : null}
+          </VStack>
+        ) : (
+          <Tooltip content="Not counted while the source is disabled" hasHoverIndication={false}>
+            <Text color="secondary">{r.st?.entries ? `${formatExact(r.st.entries)} (off)` : 'off'}</Text>
+          </Tooltip>
+        ),
+    },
+    {
+      key: 'fetched',
+      header: 'Last fetched',
+      width: pixel(108),
+      renderCell: (r) =>
+        !r.on ? (
+          <Text type="supporting">disabled</Text>
+        ) : r.kind === 'inline' || r.kind === 'entries' ? (
+          <Tooltip content="Inline entries are compiled from the object; there is nothing to fetch" hasHoverIndication={false}>
+            <Text type="supporting">compiled</Text>
+          </Tooltip>
+        ) : r.st?.lastFetched ? (
+          <Text size="sm" textWrap="nowrap">
+            <time dateTime={r.st.lastFetched} title={r.st.lastFetched}>
+              {formatRelative(r.st.lastFetched)}
+            </time>
+          </Text>
+        ) : (
+          <Text type="supporting">not yet</Text>
+        ),
+    },
+    {
+      key: 'error',
+      header: 'Error',
+      width: proportional(1, { minWidth: 56 }),
+      renderCell: (r) =>
+        r.on && r.st?.error ? (
+          <FieldStatus type="error" variant="detached" message={r.st.error} />
+        ) : (
+          <Text type="supporting">–</Text>
+        ),
+    },
+    {
+      key: 'enabled',
+      header: 'Enabled',
+      width: pixel(76),
+      renderCell: (r) => (
+        <Switch label={`Source ${r.name} enabled`} isLabelHidden size="sm" value={r.on} isLoading={pending === r.index} isDisabled={!editable || busy} onChange={(v) => onToggle(r.index, v)} />
+      ),
+    },
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      width: pixel(editable ? 156 : 92),
+      renderCell: (r) => (
+        <HStack gap={0.5} wrap="nowrap">
+          <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${r.name}`} onClick={() => onBrowse(r.index)} />
+          {editable ? (
+            <>
+              {r.kind !== 'entries' ? <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} tooltip={`Edit ${r.name}`} onClick={() => onEdit(r.index)} /> : null}
+              <Button
+                label="Delete"
+                size="sm"
+                variant="ghost"
+                isIconOnly
+                icon={<Trash2 size={16} aria-hidden="true" />}
+                isDisabled={sources.length === 1}
+                tooltip={sources.length === 1 ? 'A list needs at least one source; delete the list instead' : `Delete ${r.name}`}
+                onClick={() => onDelete(r.index)}
+              />
+            </>
+          ) : null}
+        </HStack>
+      ),
+    },
+  ];
+
+  return <Table<Row> aria-label="Sources" density="compact" hasHover idKey="key" data={rows} columns={columns} plugins={{ rowAttrs }} />;
 }

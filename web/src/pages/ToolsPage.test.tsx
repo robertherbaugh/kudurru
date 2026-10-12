@@ -42,6 +42,9 @@ describe('ToolsPage dig', () => {
     expect(within(r).getByText('flags: rd ra')).toBeInTheDocument();
     expect(within(r).getByText('default/cloudflare')).toBeInTheDocument();
     expect(r.textContent).not.toMatch(/undefined|NaN/);
+    // The e2e specs take the panel's last polite live region as the result.
+    const panel = screen.getByRole('region', { name: 'Query (dig)' });
+    expect([...panel.querySelectorAll('[aria-live="polite"]')].at(-1)).toBe(r);
   });
 
   it('sends the transport and the DO bit, and shows a pipeline error', async () => {

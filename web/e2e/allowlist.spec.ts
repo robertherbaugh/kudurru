@@ -191,6 +191,30 @@ test('an Allowlist entry for everyone lets a blocked name through', async ({ pag
   }
 });
 
+test('a file-managed policy without the Allowlist: Attach shows the YAML for its file', async ({ page }) => {
+  // e2e-blocking (objects.d/e2e.yaml) has no allowListRefs, so once ui-allow
+  // exists it is reported as unattached; the dashboard never edits it.
+  const api = await adminApi(page);
+  const value = `attach-${suffix()}.example`;
+  await api.post('/allowlist', { values: [value], type: 'exact' });
+  try {
+    await page.goto('/allowlist');
+    await settle(page);
+    await expect(page.getByText('Not applied for e2e-blocking').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Attach ui-allow to e2e-blocking' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Attach ui-allow to e2e-blocking' });
+    await expect(dialog).toContainText('e2e-blocking is defined in objects.d/e2e.yaml on the kudurru host');
+    const yaml = dialog.getByTestId('attach-yaml');
+    await expect(yaml).toContainText('allowListRefs:');
+    await expect(yaml).toContainText('- ui-allow');
+    await expect(yaml.getByRole('button', { name: /copy/i })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close' }).last().click();
+    await expect(dialog).toBeHidden();
+  } finally {
+    await removeEntries(api, 'allow', [value]);
+  }
+});
+
 test('an Allowlist entry for a group lets only that group through', async ({ page }) => {
   const api = await adminApi(page);
   // The policies also use the run's file list, so ads.example.net is blocked

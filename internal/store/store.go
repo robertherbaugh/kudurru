@@ -124,6 +124,44 @@ type DeleteOptions struct {
 	Force   bool
 }
 
+// DeleteRequest is one delete of a cascade (DeleteAll, MultiDeleter).
+type DeleteRequest struct {
+	Key     Key
+	Options DeleteOptions
+}
+
+// MultiDeleter is implemented by drivers that delete several objects in one
+// transaction (sqlite, memory). DeleteMany applies the Delete contract to
+// every request in order and commits all of them or none: when one fails
+// (managed by another writer, closed, ...) nothing is deleted and the
+// error names its key. Requests for objects that do not exist are skipped.
+// The kube driver has no multi-object transaction and does not implement
+// it.
+type MultiDeleter interface {
+	DeleteMany(ctx context.Context, reqs []DeleteRequest) error
+}
+
+// DeleteAll deletes reqs in order: in one transaction when st is a
+// MultiDeleter (atomic is true; deleted is len(reqs) or 0), otherwise one
+// Delete after the other, stopping at the first failure, so the requests
+// before it are deleted and the rest are not (deleted counts them).
+// Objects that no longer exist count as deleted.
+func DeleteAll(ctx context.Context, st Store, reqs []DeleteRequest) (deleted int, atomic bool, err error) {
+	if md, ok := st.(MultiDeleter); ok {
+		if err := md.DeleteMany(ctx, reqs); err != nil {
+			return 0, true, err
+		}
+		return len(reqs), true, nil
+	}
+	for _, r := range reqs {
+		if err := st.Delete(ctx, r.Key, r.Options); err != nil && !errors.Is(err, ErrNotFound) {
+			return deleted, false, err
+		}
+		deleted++
+	}
+	return deleted, false, nil
+}
+
 // EventType is the kind of watch event.
 type EventType string
 

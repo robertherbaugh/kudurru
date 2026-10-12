@@ -229,7 +229,8 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
   };
 
   return (
-    <form className="k-dialog-frame" onSubmit={onSubmit} onInput={markDirty} onChange={markDirty} noValidate aria-label={label}>
+    // The form fills the dialog (a flex column) so the Layout's content scrolls and its footer stays in view.
+    <StackItem as="form" size="fill" {...formAttrs} onSubmit={onSubmit} onInput={markDirty} onChange={markDirty} aria-label={label}>
       <Layout
         height="fill"
         padding={4}
@@ -288,6 +289,9 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
           </LayoutFooter>
         }
       />
-    </form>
+    </StackItem>
   );
 }
+
+/** <form> attributes the Astryx stack props do not type (they reach the element). */
+const formAttrs: object = { noValidate: true };

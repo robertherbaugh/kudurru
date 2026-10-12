@@ -5,7 +5,10 @@
 // TTL, upstream group, query log) and When (schedule). Each takes the spec
 // and returns a new one; references are bare names in the policy's
 // namespace, as the API stores them.
+import { Card } from '@astryxdesign/core/Card';
+import { Code } from '@astryxdesign/core/Code';
 import { Grid } from '@astryxdesign/core/Grid';
+import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useApi } from '../api/context';
@@ -60,6 +63,9 @@ const groupDetail = (o: AnyObject) => {
 const allowList = isList('allow');
 const blockListFilter = isList('block');
 
+/** The fieldset keeps its semantics (legend, disabling every control inside); the Card around it draws the frame. */
+const FIELDSET_RESET = { border: 'none', minInlineSize: 0 } as const;
+
 // -- Who ----------------------------------------------------------------------
 
 export function whoError(spec: PolicySpec): string | null {
@@ -82,7 +88,7 @@ export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, s
   );
   const perr = priorityError(spec.priority);
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <ObjectRefPicker
         kind="clientgroups"
         label="Client groups"
@@ -108,18 +114,18 @@ export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, s
         width={260}
       />
       {others.length ? (
-        <p className="k-muted k-small" data-testid="priority-hint">
+        <Text type="supporting" as="p" data-testid="priority-hint">
           Other policies of these groups:{' '}
           {others.map((p, i) => (
-            <span key={p.metadata.name}>
+            <Text key={p.metadata.name} type="inherit">
               {i ? ', ' : ''}
-              <span className="k-mono">{p.metadata.name}</span> ({p.spec.priority ?? 0})
-            </span>
+              <Code color="inherit">{p.metadata.name}</Code> ({p.spec.priority ?? 0})
+            </Text>
           ))}
           .
-        </p>
+        </Text>
       ) : null}
-    </div>
+    </VStack>
   );
 }
 
@@ -127,7 +133,7 @@ export function WhoFields({ spec, onChange, namespace, isDisabled, showErrors, s
 
 export function WhatFields({ spec, onChange, namespace, isDisabled }: PolicyFieldsProps) {
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <ObjectRefPicker
         kind="blocklists"
         label="Block lists"
@@ -161,7 +167,7 @@ export function WhatFields({ spec, onChange, namespace, isDisabled }: PolicyFiel
         onChange={(on) => onChange({ ...spec, allowOnly: on || undefined })}
         isDisabled={isDisabled}
       />
-    </div>
+    </VStack>
   );
 }
 
@@ -184,29 +190,33 @@ export function ServicesFields({ spec, onChange, isDisabled, isLabelHidden }: Po
 export function ContentCategoryFields({ spec, onChange, isDisabled }: PolicyFieldsProps) {
   const refs = spec.blockListRefs ?? [];
   return (
-    <div className="k-stack">
+    <VStack gap={2}>
       <Text type="supporting" display="block">
         Large community lists of sites by topic from the Block List Project, downloaded by kudurru from their URL and refreshed like any list. Turning one on creates the
         block list <Text type="code">blp-…</Text> in this namespace if it does not exist yet. {BLP_LICENCE_NOTE}
       </Text>
       {CONTENT_GROUPS.map((g) => (
-        <fieldset key={g.id} className="k-fieldset">
-          <legend>{g.name}</legend>
-          <Grid columns={{ minWidth: 260 }} gap={3}>
-            {CONTENT_CATEGORIES.filter((c) => c.group === g.id).map((c) => (
-              <CheckboxField
-                key={c.id}
-                label={c.name}
-                help={`${c.description} ${c.size}.`}
-                value={refs.includes(contentListName(c.id))}
-                isDisabled={isDisabled}
-                onChange={(on) => onChange({ ...spec, blockListRefs: on ? [...refs.filter((r) => r !== contentListName(c.id)), contentListName(c.id)] : refs.filter((r) => r !== contentListName(c.id)) })}
-              />
-            ))}
-          </Grid>
-        </fieldset>
+        <Card key={g.id} padding={3}>
+          <VStack as="fieldset" gap={3} style={FIELDSET_RESET}>
+            <legend>
+              <Text type="label">{g.name}</Text>
+            </legend>
+            <Grid columns={{ minWidth: 260 }} gap={3}>
+              {CONTENT_CATEGORIES.filter((c) => c.group === g.id).map((c) => (
+                <CheckboxField
+                  key={c.id}
+                  label={c.name}
+                  help={`${c.description} ${c.size}.`}
+                  value={refs.includes(contentListName(c.id))}
+                  isDisabled={isDisabled}
+                  onChange={(on) => onChange({ ...spec, blockListRefs: on ? [...refs.filter((r) => r !== contentListName(c.id)), contentListName(c.id)] : refs.filter((r) => r !== contentListName(c.id)) })}
+                />
+              ))}
+            </Grid>
+          </VStack>
+        </Card>
       ))}
-    </div>
+    </VStack>
   );
 }
 
@@ -216,7 +226,7 @@ export function SafeSearchFields({ spec, onChange, isDisabled }: PolicyFieldsPro
   const engines = useSafeSearchEngines();
   const on = spec.safeSearch === true;
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <SwitchField
         label="Enforce safe search"
         help="Answer the search engines' and YouTube's host names with the vendor's safe-search address."
@@ -228,12 +238,12 @@ export function SafeSearchFields({ spec, onChange, isDisabled }: PolicyFieldsPro
         <EnumSelect label="Level" value={spec.safeSearchMode ?? 'strict'} options={SAFE_SEARCH_MODES} onChange={(v) => onChange({ ...spec, safeSearchMode: v === 'strict' ? undefined : (v as 'moderate') })} isDisabled={isDisabled} />
       ) : null}
       {engines.data ? (
-        <div className="k-stack">
-          <span className="k-muted k-small">{on ? 'Rewritten engines' : 'Engines it would rewrite'}</span>
+        <VStack gap={2}>
+          <Text type="supporting">{on ? 'Rewritten engines' : 'Engines it would rewrite'}</Text>
           <EngineList engines={engines.data.items} mode={spec.safeSearchMode ?? 'strict'} />
-        </div>
+        </VStack>
       ) : null}
-    </div>
+    </VStack>
   );
 }
 
@@ -255,7 +265,7 @@ export function howError(spec: PolicySpec): string | null {
 export function HowFields({ spec, onChange, isDisabled, showErrors }: PolicyFieldsProps) {
   const ttlErr = spec.blockTTL ? durationError(spec.blockTTL) : null;
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <EnumSelect
         label="Block response"
         description="What a blocked client gets back."
@@ -283,7 +293,7 @@ export function HowFields({ spec, onChange, isDisabled, showErrors }: PolicyFiel
         onChange={(on) => onChange({ ...spec, queryLog: on ? undefined : false })}
         isDisabled={isDisabled}
       />
-    </div>
+    </VStack>
   );
 }
 

@@ -356,6 +356,11 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/zones/{zone}/notify", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 202, map[string]any{"targets": []string{"192.0.2.53"}})
 	})
+	mux.HandleFunc("DELETE /api/v1/zones/{zone}", func(w http.ResponseWriter, r *http.Request) {
+		f.writeJSON(w, 200, map[string]any{"zone": r.PathValue("zone"), "zoneName": "home.example.com.", "type": "primary",
+			"dryRun": r.URL.Query().Get("dryRun") == "true", "recordSets": []string{"default/api-home-example-com", "apps/web"},
+			"recordSetCount": 2, "endpointCount": 5, "flushed": 0, "took_ms": 1})
+	})
 
 	mux.HandleFunc("GET /api/v1/blocklists", f.listObjectsKind("blocklists"))
 	mux.HandleFunc("POST /api/v1/blocklists/{ns}/{name}/refresh", func(w http.ResponseWriter, r *http.Request) {

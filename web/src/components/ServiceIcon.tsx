@@ -2,8 +2,13 @@
 // through ProviderIcon, upstream providers): the SVG the catalogue names (`icon`, a public API path served from the binary,
 // ux-plan C4, from homarr-labs/dashboard-icons; `iconOnDark` replaces it
 // on dark backgrounds, switched in CSS like the brand logo) or, when there
-// is none or it fails to load, a monogram on a colour picked from the ID.
+// is none or it fails to load, a monogram on a theme hue picked from the ID.
 // The name is always text next to it, so the image is decorative.
+//
+// A logo and a monogram take the same size × size square: the artwork
+// (most dashboard-icons SVGs are not square: Netflix is 282 × 512, Hulu
+// 512 × 169) is contained and centred in it.
+import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import { useApi } from '../api/context';
 
@@ -31,7 +36,7 @@ export function monogram(name: string): string {
   return ((w[0] ?? '?') + (/\d/.exec(w)?.[0] ?? '')).toUpperCase();
 }
 
-/** A stable tone 0..7 for an ID (styles.css .k-monogram[data-tone]). */
+/** A stable tone 0..7 for an ID (styles.css .k-monogram[data-tone]: one theme hue each). */
 export function toneOf(id: string): number {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -41,22 +46,44 @@ export function toneOf(id: string): number {
 export function ServiceIcon({ id, name, icon, iconOnDark, size = 32 }: ServiceIconProps) {
   const api = useApi();
   const [failed, setFailed] = useState(false);
-  const style = { inlineSize: size, blockSize: size };
+  const box = { inlineSize: size, blockSize: size };
   if (icon && !failed) {
     const img = (src: string, cls: string, testId: string) => (
-      <img className={`k-service-icon ${cls}`} src={api.catalogue.iconURL(src)} alt="" aria-hidden="true" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(true)} data-testid={testId} data-icon={id} />
+      <img
+        className={`k-service-icon${cls ? ` ${cls}` : ''}`}
+        src={api.catalogue.iconURL(src)}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        style={box}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        data-testid={testId}
+        data-icon={id}
+      />
     );
     if (!iconOnDark) return img(icon, '', `icon-${id}`);
     return (
-      <span className="k-service-icon-pair" aria-hidden="true" data-icon={id}>
+      <>
         {img(icon, 'k-icon-on-light', `icon-${id}`)}
         {img(iconOnDark, 'k-icon-on-dark', `icon-${id}-dark`)}
-      </span>
+      </>
     );
   }
   return (
-    <span className="k-monogram" data-tone={toneOf(id)} aria-hidden="true" style={{ ...style, fontSize: Math.round(size * 0.42) }} data-testid={`monogram-${id}`} data-icon="monogram">
+    <Text
+      className="k-monogram"
+      weight="bold"
+      color="inherit"
+      data-tone={toneOf(id)}
+      aria-hidden="true"
+      style={{ ...box, fontSize: Math.round(size * 0.42) }}
+      data-testid={`monogram-${id}`}
+      data-icon="monogram"
+    >
       {monogram(name)}
-    </span>
+    </Text>
   );
 }

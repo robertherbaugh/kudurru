@@ -2,6 +2,7 @@
 // request carries the choice as scope=cluster|node&node=<name>; with one
 // node both give the same answer, but the control and the parameter are
 // there from v0.1 so multi-node needs no UI change.
+import { Text } from '@astryxdesign/core/Text';
 import { useScope } from '../api/context';
 import { useNodes } from '../api/hooks';
 import { SelectField } from './fields/SelectField';
@@ -30,9 +31,9 @@ export function ScopeNote({ scope }: { scope?: { scope: string; nodes: { name: s
   if (!scope) return null;
   const failed = scope.nodes.filter((n) => !n.ok);
   return (
-    <span className="k-small k-muted" data-testid="scope-note">
+    <Text type="supporting" data-testid="scope-note">
       {scope.scope === 'node' ? `Node ${scope.nodes.map((n) => n.name).join(', ')}` : `All nodes: ${scope.nodes.map((n) => n.name).join(', ')}`}
       {scope.partial ? ` (partial: ${failed.map((n) => n.name).join(', ')} did not answer)` : ''}
-    </span>
+    </Text>
   );
 }

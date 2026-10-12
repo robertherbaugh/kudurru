@@ -751,7 +751,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Delete several dnszones */
+        /**
+         * Delete several dnszones
+         * @description Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).
+         */
         post: operations["batchDeleteDnszones"];
         delete?: never;
         options?: never;
@@ -1016,7 +1019,10 @@ export interface paths {
         /** Create or replace a cluster-scoped object */
         put: operations["putClusterObject"];
         post?: never;
-        /** Delete a cluster-scoped object */
+        /**
+         * Delete a cluster-scoped object
+         * @description A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone "." is 409 default_zone (D148).
+         */
         delete: operations["deleteClusterObject"];
         options?: never;
         head?: never;
@@ -1462,7 +1468,11 @@ export interface paths {
         get: operations["getZone"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a zone with every record set that references it
+         * @description Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone "."; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.
+         */
+        delete: operations["deleteZone"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2210,6 +2220,7 @@ export interface components {
             key: string;
             message: string;
             missing?: components["schemas"]["Missing"];
+            objects?: components["schemas"]["ObjectOwner"][] | null;
         };
         Event: {
             action: string;
@@ -2515,6 +2526,12 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
+        };
+        ObjectOwner: {
+            kind: string;
+            managedBy?: string;
+            name: string;
+            namespace?: string;
         };
         PasswordChangeRequest: {
             /** @description The current password. */
@@ -3528,7 +3545,27 @@ export interface components {
             took_ms: number;
             version: string;
         };
+        ZoneDeleteResult: {
+            dryRun: boolean;
+            /** Format: int64 */
+            endpointCount: number;
+            /** Format: int64 */
+            flushed: number;
+            /** Format: int64 */
+            recordSetCount: number;
+            recordSets: string[];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+            type: string;
+            zone: string;
+            zoneName: string;
+        };
         ZoneDetail: {
+            /** @enum {string} */
+            deleteRefusal?: "default_zone" | "managed_by";
             managedBy?: string;
             message?: string;
             name: string;
@@ -3568,6 +3605,8 @@ export interface components {
             targets: string[] | null;
         };
         ZoneSummary: {
+            /** @enum {string} */
+            deleteRefusal?: "default_zone" | "managed_by";
             managedBy?: string;
             message?: string;
             name: string;
@@ -13391,6 +13430,116 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteZone: {
+        parameters: {
+            query?: {
+                /** @description Run every check and report what would be deleted, without deleting. */
+                dryRun?: boolean;
+            };
+            header?: {
+                /** @description Delete only when the zone's resourceVersion equals this value (412 otherwise). */
+                "If-Match"?: string;
+            };
+            path: {
+                /** @description DNSZone object name. */
+                zone: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneDeleteResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

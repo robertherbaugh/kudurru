@@ -177,6 +177,34 @@ func (s *Store) Delete(_ context.Context, key store.Key, opts store.DeleteOption
 	return nil
 }
 
+// DeleteMany implements store.MultiDeleter: every request is checked
+// under the lock before anything is removed.
+func (s *Store) DeleteMany(_ context.Context, reqs []store.DeleteRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return store.ErrClosed
+	}
+	for _, r := range reqs {
+		prev, ok := s.objects[r.Key]
+		if !ok {
+			continue
+		}
+		if owner := store.ManagedBy(prev); owner != "" && r.Options.Manager != "" && owner != r.Options.Manager && !r.Options.Force {
+			return &store.ErrManagedBy{Key: r.Key, Owner: owner}
+		}
+	}
+	for _, r := range reqs {
+		prev, ok := s.objects[r.Key]
+		if !ok {
+			continue
+		}
+		delete(s.objects, r.Key)
+		s.broadcast(r.Key.Kind, store.Event{Type: store.Deleted, Object: prev})
+	}
+	return nil
+}
+
 // UpdateStatus implements store.Store. Status is whatever the caller set on
 // obj; metadata and spec are taken from the stored copy (the status
 // subresource contract).

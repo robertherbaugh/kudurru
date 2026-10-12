@@ -22,7 +22,8 @@ describe('RecordEditor', () => {
     fireEvent.change(field(/IPv4 address/), { target: { value: '192.168.1.300' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
     expect((await screen.findAllByText('Not an IPv4 address')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Fix the highlighted fields before saving.')).toBeInTheDocument();
+    // FieldStatus also speaks the message through a live region, so it may be in the document twice.
+    expect(screen.getAllByText('Fix the highlighted fields before saving.').length).toBeGreaterThan(0);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

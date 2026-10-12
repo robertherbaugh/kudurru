@@ -5,6 +5,10 @@
 // Hostname and name-pattern matchers of existing groups stay editable but
 // say that this version has no hostname source, so they never match.
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Divider } from '@astryxdesign/core/Divider';
+import { Grid } from '@astryxdesign/core/Grid';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import type { ClientItem, ClientMatcher } from '../../api/types';
@@ -105,6 +109,14 @@ export function matcherFromText(line: string): ClientMatcher {
   return { clientID: t };
 }
 
+/** The fieldset keeps its semantics (legend, disabling every control inside); the Card around it draws the frame. */
+const FIELDSET_RESET = { border: 'none', minInlineSize: 0 } as const;
+/** The matcher rows are an ordered list drawn by a Stack: no markers or indent. */
+const LIST_RESET = { listStyle: 'none', padding: 0, margin: 0 } as const;
+function fieldsetAttrs(disabled: boolean | undefined): object {
+  return { disabled };
+}
+
 export interface MatchersFieldProps {
   value: ClientMatcher[];
   onChange: (v: ClientMatcher[]) => void;
@@ -118,60 +130,77 @@ export function MatchersField({ value, onChange, isDisabled, showErrors }: Match
   const update = (i: number, m: ClientMatcher) => onChange(value.map((x, j) => (j === i ? m : x)));
   const lines = (bulk ?? '').split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean);
   return (
-    <fieldset className="k-fieldset" disabled={isDisabled}>
-      <legend>Members</legend>
-      <Text type="supporting" display="block">A client is in the group when any one matcher matches it. Exact addresses beat ranges, ranges beat client IDs.</Text>
-      {value.length === 0 ? <Text type="supporting" display="block">No matchers yet: the group matches nobody.</Text> : null}
-      <ol className="k-matchers" aria-label="Matchers">
-        {value.map((m, i) => {
-          const kind = matcherKind(m);
-          const def = KINDS.find((k) => k.value === kind);
-          const err = matcherError(m);
-          const touched = showErrors || matcherValue(m) !== '';
-          const options = KINDS.filter((k) => OFFERED.includes(k.value) || k.value === kind);
-          return (
-            <li key={i} className="k-matcher" data-testid={`matcher-${i}`}>
-              <EnumSelect label={`Matcher ${i + 1} kind`} value={kind} options={options} onChange={(k) => update(i, withSelector(m, k as MatcherKind, matcherValue(m)))} isDisabled={isDisabled} />
-              <TextField
-                label={def?.label ?? 'Value'}
-                aria-label={`Matcher ${i + 1} ${def?.label ?? 'value'}`}
-                mono
-                value={matcherValue(m)}
-                placeholder={def?.placeholder}
-                onChange={(v) => update(i, withSelector(m, kind, v))}
-                error={touched && err ? err : undefined}
+    <Card padding={3}>
+      <VStack as="fieldset" gap={3} style={FIELDSET_RESET} {...fieldsetAttrs(isDisabled)}>
+        <legend>
+          <Text type="label">Members</Text>
+        </legend>
+        <Text type="supporting" display="block">
+          A client is in the group when any one matcher matches it. Exact addresses beat ranges, ranges beat client IDs.
+        </Text>
+        {value.length === 0 ? (
+          <Text type="supporting" display="block">
+            No matchers yet: the group matches nobody.
+          </Text>
+        ) : null}
+        <VStack as="ol" gap={3} aria-label="Matchers" style={LIST_RESET}>
+          {value.map((m, i) => {
+            const kind = matcherKind(m);
+            const def = KINDS.find((k) => k.value === kind);
+            const err = matcherError(m);
+            const touched = showErrors || matcherValue(m) !== '';
+            const options = KINDS.filter((k) => OFFERED.includes(k.value) || k.value === kind);
+            return (
+              <VStack as="li" key={i} gap={3} data-testid={`matcher-${i}`}>
+                <HStack gap={2} vAlign="start">
+                  <StackItem size="fill">
+                    <Grid columns={{ minWidth: 150, repeat: 'fit' }} gap={2} align="start">
+                      <EnumSelect label={`Matcher ${i + 1} kind`} value={kind} options={options} onChange={(k) => update(i, withSelector(m, k as MatcherKind, matcherValue(m)))} isDisabled={isDisabled} />
+                      <TextField
+                        label={def?.label ?? 'Value'}
+                        aria-label={`Matcher ${i + 1} ${def?.label ?? 'value'}`}
+                        mono
+                        value={matcherValue(m)}
+                        placeholder={def?.placeholder}
+                        onChange={(v) => update(i, withSelector(m, kind, v))}
+                        error={touched && err ? err : undefined}
+                      />
+                      <TextField label="Display name" aria-label={`Matcher ${i + 1} display name`} value={m.name ?? ''} placeholder="kids-tablet" onChange={(v) => update(i, { ...m, name: v || undefined })} />
+                      <TextField label="Comment" aria-label={`Matcher ${i + 1} comment`} value={m.comment ?? ''} onChange={(v) => update(i, { ...m, comment: v || undefined })} />
+                    </Grid>
+                  </StackItem>
+                  <Button label="Remove" size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} tooltip={`Remove matcher ${i + 1}`} />
+                </HStack>
+                <Divider />
+              </VStack>
+            );
+          })}
+        </VStack>
+        {isDisabled ? null : (
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            <Button label="Add matcher" size="sm" variant="secondary" onClick={() => onChange([...value, { ip: '' }])} />
+            <Button label={bulk === null ? 'Paste many' : 'Close paste'} size="sm" variant="ghost" onClick={() => setBulk(bulk === null ? '' : null)} />
+          </HStack>
+        )}
+        {bulk !== null ? (
+          <VStack gap={2}>
+            <TextAreaField label="Paste addresses, ranges, MAC addresses or client IDs" help="One per line or comma separated; each line becomes a matcher of the kind it looks like." value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} mono />
+            <HStack gap={2} vAlign="center" wrap="wrap">
+              <Button
+                label={`Add ${lines.length || ''} matchers`.replace('  ', ' ')}
+                size="sm"
+                variant="primary"
+                isDisabled={lines.length === 0}
+                onClick={() => {
+                  onChange([...value, ...lines.map(matcherFromText)]);
+                  setBulk(null);
+                }}
               />
-              <TextField label="Display name" aria-label={`Matcher ${i + 1} display name`} value={m.name ?? ''} placeholder="kids-tablet" onChange={(v) => update(i, { ...m, name: v || undefined })} />
-              <TextField label="Comment" aria-label={`Matcher ${i + 1} comment`} value={m.comment ?? ''} onChange={(v) => update(i, { ...m, comment: v || undefined })} />
-              <Button label="Remove" size="sm" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} tooltip={`Remove matcher ${i + 1}`} />
-            </li>
-          );
-        })}
-      </ol>
-      {isDisabled ? null : (
-        <div className="k-row">
-          <Button label="Add matcher" size="sm" variant="secondary" onClick={() => onChange([...value, { ip: '' }])} />
-          <Button label={bulk === null ? 'Paste many' : 'Close paste'} size="sm" variant="ghost" onClick={() => setBulk(bulk === null ? '' : null)} />
-        </div>
-      )}
-      {bulk !== null ? (
-        <div className="k-stack">
-          <TextAreaField label="Paste addresses, ranges, MAC addresses or client IDs" help="One per line or comma separated; each line becomes a matcher of the kind it looks like." value={bulk} onChange={setBulk} rows={4} hasSpellCheck={false} mono />
-          <div className="k-row">
-            <Button
-              label={`Add ${lines.length || ''} matchers`.replace('  ', ' ')}
-              size="sm"
-              variant="primary"
-              isDisabled={lines.length === 0}
-              onClick={() => {
-                onChange([...value, ...lines.map(matcherFromText)]);
-                setBulk(null);
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-    </fieldset>
+            </HStack>
+          </VStack>
+        ) : null}
+      </VStack>
+    </Card>
   );
 }
 

@@ -5,52 +5,66 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { HStack } from '@astryxdesign/core/HStack';
+import { Code } from '@astryxdesign/core/Code';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { Link } from '@astryxdesign/core/Link';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Tab, TabList } from '@astryxdesign/core/TabList';
-import { VStack } from '@astryxdesign/core/VStack';
+import { pixel, proportional, Table, TableBody, TableCell, TableHeaderCell, TableRow, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
-import type { AuditEvent, CreatedToken, IamRoleBinding, RbacScope } from '../api/types';
+import type { ApiToken, AuditEvent, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { ChangePasswordButton } from '../components/AccountMenu';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
 import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatDateTime, formatRelative } from '../lib/format';
 import { useSearchParams } from '../lib/router';
+
+/** A relative time with the exact instant in its tooltip. */
+function Relative({ at }: { at: string }) {
+  return (
+    <Tooltip content={at}>
+      <Text type="inherit">{formatRelative(at)}</Text>
+    </Tooltip>
+  );
+}
 
 function Me() {
   const { data } = useSession();
   if (!data) return null;
   return (
-    <section className="k-panel" aria-labelledby="me-title">
-      <div className="k-panel-title">
-        <h2 id="me-title">Signed in as {data.principal.name}</h2>
-        <ChangePasswordButton />
-      </div>
-      <p className="k-small">
-        {data.principal.kind} <code>{data.principal.id}</code>
+    <Panel title={`Signed in as ${data.principal.name}`} headingId="me-title" actions={<ChangePasswordButton />}>
+      <Text type="supporting" color="primary" as="p">
+        {data.principal.kind} <Code>{data.principal.id}</Code>
         {data.principal.groups?.length ? `, groups ${data.principal.groups.join(', ')}` : ''}
-      </p>
-      <p className="k-row" aria-label="Roles">
-        {data.roles.length ? data.roles.map((r) => <Badge key={r} variant="blue" label={r} />) : <span className="k-muted k-small">No roles reported for this session.</span>}
-      </p>
-      <details>
-        <summary>Permissions</summary>
-        <table className="k-table">
-          <tbody>
-            {Object.entries(data.permissions).map(([res, verbs]) => (
-              <tr key={res}>
-                <th scope="row">{res}</th>
-                <td>{(verbs ?? []).join(', ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
-    </section>
+      </Text>
+      <HStack gap={2} vAlign="center" wrap="wrap" role="group" aria-label="Roles">
+        {data.roles.length ? data.roles.map((r) => <Badge key={r} variant="blue" label={r} />) : <Text type="supporting">No roles reported for this session.</Text>}
+      </HStack>
+      <Collapsible trigger={<Text>Permissions</Text>} defaultIsOpen={false} chevronPosition="start">
+        <VStack paddingBlockStart={2}>
+          <Table density="compact" aria-label="Permissions">
+            <TableBody>
+              {Object.entries(data.permissions).map(([res, verbs]) => (
+                <TableRow key={res}>
+                  <TableHeaderCell scope="row">{res}</TableHeaderCell>
+                  <TableCell>{(verbs ?? []).join(', ')}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </VStack>
+      </Collapsible>
+    </Panel>
   );
 }
 
@@ -84,6 +98,8 @@ export function parseScopes(s: string): string[] {
     .map((x) => x.trim())
     .filter(Boolean);
 }
+
+type TokenRow = ApiToken & Record<string, unknown>;
 
 function Tokens() {
   const api = useApi();
@@ -125,36 +141,87 @@ function Tokens() {
     onError: (err) => notify.error(err, 'Could not revoke the token'),
   });
   const allowed = (!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write');
+  const columns: TableColumn<TokenRow>[] = [
+    {
+      key: 'description',
+      header: 'Description',
+      width: proportional(2, { minWidth: 160 }),
+      renderCell: (t) => (
+        <Text type="inherit">
+          {t.description ? <Text type="inherit">{t.description}</Text> : <Text color="secondary">(no description)</Text>}{' '}
+          <Text type="code" size="sm" color="secondary">
+            kdr_{t.id}_…
+          </Text>
+        </Text>
+      ),
+    },
+    {
+      key: 'scopes',
+      header: 'Scopes',
+      width: proportional(1.5, { minWidth: 120 }),
+      renderCell: (t) =>
+        t.scopes?.length ? (
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            {t.scopes.map((s) => (
+              <Badge key={s} variant="neutral" label={s} />
+            ))}
+          </HStack>
+        ) : (
+          <Text type="supporting">all your roles</Text>
+        ),
+    },
+    { key: 'createdAt', header: 'Created', width: proportional(1.5, { minWidth: 150 }), renderCell: (t) => <Text>{formatDateTime(t.createdAt)}</Text> },
+    { key: 'expiresAt', header: 'Expires', width: proportional(1, { minWidth: 90 }), renderCell: (t) => (t.expiresAt ? <Relative at={t.expiresAt} /> : <Text>never</Text>) },
+    {
+      key: 'lastUsedAt',
+      header: 'Last used',
+      width: proportional(1.5, { minWidth: 120 }),
+      renderCell: (t) => (
+        <Text>
+          {t.lastUsedAt ? formatRelative(t.lastUsedAt) : 'never'}
+          {t.lastUsedIP ? <Text color="secondary"> from {t.lastUsedIP}</Text> : null}
+        </Text>
+      ),
+    },
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      width: pixel(96),
+      renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" onClick={() => del.mutate(t.id)} />,
+    },
+  ];
   return (
-    <section className="k-panel" aria-labelledby="tok-title">
-      <h2 id="tok-title" className="k-h3">
-        API tokens
-      </h2>
-      <p className="k-muted k-small">
-        Tokens act as you with your roles, or with the narrower scopes you give them. Use them as <code>Authorization: Bearer kdr_…</code> or with{' '}
-        <code>kudurru login --token</code>.
-      </p>
-      <form
+    <Panel
+      title="API tokens"
+      headingId="tok-title"
+      description={
+        <>
+          Tokens act as you with your roles, or with the narrower scopes you give them. Use them as <Code>Authorization: Bearer kdr_…</Code> or with{' '}
+          <Code>kudurru login --token</Code>.
+        </>
+      }
+    >
+      <VStack
+        as="form"
+        gap={2}
         onSubmit={(e) => {
           e.preventDefault();
           if (description.trim()) create.mutate();
         }}
       >
-        <VStack gap={2}>
-          <HStack gap={2} wrap="wrap" align="start">
-            <TextField label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
-            <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
-            <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
-            {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
-            {role && scopeKind === 'zone' ? (
-              <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
-            ) : null}
-          </HStack>
-          <HStack gap={2}>
-            <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
-          </HStack>
-        </VStack>
-      </form>
+        <HStack gap={2} wrap="wrap" align="start">
+          <TextField label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
+          <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
+          <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
+          {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
+          {role && scopeKind === 'zone' ? (
+            <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
+          ) : null}
+        </HStack>
+        <HStack gap={2}>
+          <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
+        </HStack>
+      </VStack>
       {created ? (
         <Banner
           status="success"
@@ -164,55 +231,21 @@ function Tokens() {
           onDismiss={() => setCreated(null)}
           collapsible={false}
         >
-          <pre className="k-pre" data-testid="new-token">
-            {created.token}
-          </pre>
+          <CodeBlock data-testid="new-token" code={created.token} width="100%" />
         </Banner>
       ) : null}
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.data ? (
-        <table className="k-table" aria-label="Your API tokens">
-          <thead>
-            <tr>
-              <th scope="col">Description</th>
-              <th scope="col">Scopes</th>
-              <th scope="col">Created</th>
-              <th scope="col">Expires</th>
-              <th scope="col">Last used</th>
-              <th scope="col">
-                <span className="k-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {q.data.items.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="k-muted">
-                  No tokens.
-                </td>
-              </tr>
-            ) : null}
-            {q.data.items.map((t) => (
-              <tr key={t.id}>
-                <td>
-                  {t.description || <span className="k-muted">(no description)</span>} <span className="k-mono k-muted k-small">kdr_{t.id}_…</span>
-                </td>
-                <td>{t.scopes?.length ? <span className="k-row">{t.scopes.map((s) => <Badge key={s} variant="neutral" label={s} />)}</span> : <span className="k-muted k-small">all your roles</span>}</td>
-                <td>{formatDateTime(t.createdAt)}</td>
-                <td>{t.expiresAt ? <span title={t.expiresAt}>{formatRelative(t.expiresAt)}</span> : 'never'}</td>
-                <td>
-                  {t.lastUsedAt ? formatRelative(t.lastUsedAt) : 'never'}
-                  {t.lastUsedIP ? <span className="k-muted"> from {t.lastUsedIP}</span> : null}
-                </td>
-                <td>
-                  <Button label="Revoke" size="sm" variant="ghost" onClick={() => del.mutate(t.id)} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table<TokenRow>
+          aria-label="Your API tokens"
+          density="compact"
+          idKey="id"
+          data={q.data.items as TokenRow[]}
+          columns={columns}
+          emptyState={<Text color="secondary">No tokens.</Text>}
+        />
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -231,6 +264,120 @@ function Diagnoses({ items }: { items: string[] | undefined }) {
   return <Banner status="warning" title="Some entries were ignored" description={items.join('; ')} />;
 }
 
+type UserRow = IamUser & Record<string, unknown>;
+type ServiceAccountRow = IamServiceAccount & Record<string, unknown>;
+type BindingRow = IamRoleBinding & Record<string, unknown>;
+type ProviderRow = IamIdentityProvider & Record<string, unknown>;
+
+const userColumns: TableColumn<UserRow>[] = [
+  {
+    key: 'name',
+    header: 'User',
+    width: proportional(2, { minWidth: 180 }),
+    renderCell: (u) => (
+      <HStack gap={1} vAlign="center" wrap="wrap">
+        <Text weight="semibold">{u.displayName || u.name}</Text>
+        {u.displayName ? (
+          <Text type="code" size="sm" color="secondary">
+            {u.name}
+          </Text>
+        ) : null}
+        {u.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
+        {u.disabled ? <Badge variant="warning" label="disabled" /> : null}
+        {u.mustChangePassword ? <Badge variant="orange" label="must change password" /> : null}
+      </HStack>
+    ),
+  },
+  { key: 'groups', header: 'Groups', width: proportional(1.5, { minWidth: 120 }), renderCell: (u) => <Text size="sm">{u.groups?.length ? u.groups.join(', ') : '–'}</Text> },
+  { key: 'lastLoginAt', header: 'Last sign-in', width: proportional(1, { minWidth: 110 }), renderCell: (u) => <Text size="sm">{u.lastLoginAt ? formatRelative(u.lastLoginAt) : 'never'}</Text> },
+  {
+    key: 'passwordChangedAt',
+    header: 'Password changed',
+    width: proportional(1, { minWidth: 130 }),
+    renderCell: (u) => <Text size="sm">{u.passwordChangedAt ? formatRelative(u.passwordChangedAt) : '–'}</Text>,
+  },
+];
+
+const serviceAccountColumns: TableColumn<ServiceAccountRow>[] = [
+  {
+    key: 'name',
+    header: 'Service account',
+    width: proportional(2, { minWidth: 200 }),
+    renderCell: (s) => (
+      <HStack gap={1} vAlign="center" wrap="wrap">
+        <Text type="code">
+          {s.namespace}/{s.name}
+        </Text>
+        {s.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
+        {s.disabled ? <Badge variant="warning" label="disabled" /> : null}
+      </HStack>
+    ),
+  },
+  { key: 'description', header: 'Description', width: proportional(2, { minWidth: 160 }), renderCell: (s) => <Text size="sm">{s.description || '–'}</Text> },
+  { key: 'tokens', header: 'Tokens', align: 'end', width: pixel(84), renderCell: (s) => <Text hasTabularNumbers>{s.tokens}</Text> },
+];
+
+const bindingColumns: TableColumn<BindingRow>[] = [
+  { key: 'role', header: 'Role', width: proportional(1, { minWidth: 190 }), renderCell: (b) => <Badge variant="blue" label={b.role} /> },
+  { key: 'scope', header: 'Scope', width: proportional(1, { minWidth: 120 }), renderCell: (b) => <Text size="sm">{scopeText(b.scope)}</Text> },
+  {
+    key: 'subjects',
+    header: 'Subjects',
+    width: proportional(2, { minWidth: 160 }),
+    renderCell: (b) => <Text size="sm">{(b.subjects ?? []).map((s) => `${s.kind} ${s.namespace ? `${s.namespace}/` : ''}${s.name}`).join(', ') || '–'}</Text>,
+  },
+  {
+    key: 'binding',
+    header: 'Binding',
+    width: proportional(2, { minWidth: 160 }),
+    renderCell: (b) => (
+      <Text size="sm">
+        <Text type="code" size="sm">
+          {bindingName(b)}
+        </Text>{' '}
+        <Text color="secondary">({b.managedBy ? `managed by ${b.managedBy}` : b.source === 'config' ? 'kudurru.yaml' : 'object'})</Text>
+      </Text>
+    ),
+  },
+];
+
+const providerColumns: TableColumn<ProviderRow>[] = [
+  {
+    key: 'id',
+    header: 'Provider',
+    width: proportional(1.5, { minWidth: 160 }),
+    renderCell: (p) => (
+      <HStack gap={1} vAlign="center" wrap="wrap">
+        <Text weight="semibold">{p.displayName || p.id}</Text>
+        <Text type="code" size="sm" color="secondary">
+          {p.id}
+        </Text>
+      </HStack>
+    ),
+  },
+  {
+    key: 'issuer',
+    header: 'Issuer',
+    width: proportional(2, { minWidth: 160 }),
+    renderCell: (p) => (
+      <Text type="code" size="sm">
+        {p.issuer}
+      </Text>
+    ),
+  },
+  {
+    key: 'clientID',
+    header: 'Client ID',
+    width: proportional(1, { minWidth: 120 }),
+    renderCell: (p) => (
+      <Text type="code" size="sm">
+        {p.clientID}
+      </Text>
+    ),
+  },
+  { key: 'source', header: 'Source', width: proportional(1, { minWidth: 100 }), renderCell: (p) => <Text size="sm">{p.source === 'config' ? 'kudurru.yaml' : (p.source ?? '–')}</Text> },
+];
+
 function Iam() {
   const api = useApi();
   const can = useCan();
@@ -238,154 +385,66 @@ function Iam() {
   const sas = useQuery({ queryKey: ['iam', 'sa'], queryFn: () => api.iam.serviceAccounts(), enabled: can('serviceaccounts', 'read') });
   const rbs = useQuery({ queryKey: ['iam', 'rb'], queryFn: () => api.iam.roleBindings(), enabled: can('rolebindings', 'read') });
   const idps = useQuery({ queryKey: ['iam', 'idp'], queryFn: () => api.iam.identityProviders(), enabled: can('identityproviders', 'read') });
-  const empty = (what: string, loading: boolean) => <p className="k-muted k-small">{loading ? 'Loading…' : `No ${what}.`}</p>;
+  const empty = (what: string, loading: boolean) => (
+    <Text type="supporting" as="p">
+      {loading ? 'Loading…' : `No ${what}.`}
+    </Text>
+  );
   return (
-    <div className="k-stack-lg">
+    <VStack gap={4}>
       <Banner
         status="info"
         title="Read-only in this release"
         description="Users are managed with `kudurru admin` on the host; service accounts, role bindings and identity providers are declared in kudurru.yaml or as objects (objects.d or Kubernetes). The write API arrives in v0.2."
       />
-      <section className="k-panel" aria-labelledby="iam-users">
-        <h2 id="iam-users" className="k-h3">
-          Local users
-        </h2>
+      <Panel title="Local users" headingId="iam-users">
         {users.error ? <ErrorBanner error={users.error} /> : null}
         <Diagnoses items={users.data?.diagnoses} />
         {users.data?.items.length ? (
-          <table className="k-table" aria-label="Local users">
-            <thead>
-              <tr>
-                <th scope="col">User</th>
-                <th scope="col">Groups</th>
-                <th scope="col">Last sign-in</th>
-                <th scope="col">Password changed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.data.items.map((u) => (
-                <tr key={u.name}>
-                  <td>
-                    <strong>{u.displayName || u.name}</strong>
-                    {u.displayName ? <span className="k-muted k-small k-mono"> {u.name}</span> : null}{' '}
-                    {u.builtinAdmin ? <Badge variant="blue" label="admin" /> : null} {u.disabled ? <Badge variant="warning" label="disabled" /> : null}{' '}
-                    {u.mustChangePassword ? <Badge variant="orange" label="must change password" /> : null}
-                  </td>
-                  <td className="k-small">{u.groups?.length ? u.groups.join(', ') : '–'}</td>
-                  <td className="k-small">{u.lastLoginAt ? formatRelative(u.lastLoginAt) : 'never'}</td>
-                  <td className="k-small">{u.passwordChangedAt ? formatRelative(u.passwordChangedAt) : '–'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table<UserRow> aria-label="Local users" density="compact" idKey="name" data={users.data.items as UserRow[]} columns={userColumns} />
         ) : (
           empty('local users', users.isLoading)
         )}
-      </section>
-      <section className="k-panel" aria-labelledby="iam-sa">
-        <h2 id="iam-sa" className="k-h3">
-          Service accounts
-        </h2>
+      </Panel>
+      <Panel title="Service accounts" headingId="iam-sa">
         {sas.error ? <ErrorBanner error={sas.error} /> : null}
         {sas.data?.items.length ? (
-          <table className="k-table" aria-label="Service accounts">
-            <thead>
-              <tr>
-                <th scope="col">Service account</th>
-                <th scope="col">Description</th>
-                <th scope="col" className="num">
-                  Tokens
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sas.data.items.map((s) => (
-                <tr key={`${s.namespace}/${s.name}`}>
-                  <td>
-                    <span className="k-mono">
-                      {s.namespace}/{s.name}
-                    </span>{' '}
-                    {s.builtinAdmin ? <Badge variant="blue" label="admin" /> : null} {s.disabled ? <Badge variant="warning" label="disabled" /> : null}
-                  </td>
-                  <td className="k-small">{s.description || '–'}</td>
-                  <td className="num">{s.tokens}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table<ServiceAccountRow>
+            aria-label="Service accounts"
+            density="compact"
+            idKey={(s) => `${s.namespace}/${s.name}`}
+            data={sas.data.items as ServiceAccountRow[]}
+            columns={serviceAccountColumns}
+          />
         ) : (
           empty('service accounts', sas.isLoading)
         )}
-      </section>
-      <section className="k-panel" aria-labelledby="iam-rb">
-        <h2 id="iam-rb" className="k-h3">
-          Role bindings
-        </h2>
+      </Panel>
+      <Panel title="Role bindings" headingId="iam-rb">
         {rbs.error ? <ErrorBanner error={rbs.error} /> : null}
         <Diagnoses items={rbs.data?.diagnoses} />
         {rbs.data?.items.length ? (
-          <table className="k-table" aria-label="Role bindings">
-            <thead>
-              <tr>
-                <th scope="col">Role</th>
-                <th scope="col">Scope</th>
-                <th scope="col">Subjects</th>
-                <th scope="col">Binding</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rbs.data.items.map((b) => (
-                <tr key={`${b.source}/${bindingName(b)}`}>
-                  <td>
-                    <Badge variant="blue" label={b.role} />
-                  </td>
-                  <td className="k-small">{scopeText(b.scope)}</td>
-                  <td className="k-small">{(b.subjects ?? []).map((s) => `${s.kind} ${s.namespace ? `${s.namespace}/` : ''}${s.name}`).join(', ') || '–'}</td>
-                  <td className="k-small">
-                    <span className="k-mono">{bindingName(b)}</span> <span className="k-muted">({b.managedBy ? `managed by ${b.managedBy}` : b.source === 'config' ? 'kudurru.yaml' : 'object'})</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table<BindingRow>
+            aria-label="Role bindings"
+            density="compact"
+            idKey={(b) => `${b.source}/${bindingName(b)}`}
+            data={rbs.data.items as BindingRow[]}
+            columns={bindingColumns}
+          />
         ) : (
           empty('role bindings', rbs.isLoading)
         )}
-      </section>
-      <section className="k-panel" aria-labelledby="iam-idp">
-        <h2 id="iam-idp" className="k-h3">
-          Identity providers
-        </h2>
+      </Panel>
+      <Panel title="Identity providers" headingId="iam-idp">
         {idps.error ? <ErrorBanner error={idps.error} /> : null}
         <Diagnoses items={idps.data?.diagnoses} />
         {idps.data?.items.length ? (
-          <table className="k-table" aria-label="Identity providers">
-            <thead>
-              <tr>
-                <th scope="col">Provider</th>
-                <th scope="col">Issuer</th>
-                <th scope="col">Client ID</th>
-                <th scope="col">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {idps.data.items.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <strong>{p.displayName || p.id}</strong> <span className="k-muted k-small k-mono">{p.id}</span>
-                  </td>
-                  <td className="k-mono k-small k-break">{p.issuer}</td>
-                  <td className="k-mono k-small">{p.clientID}</td>
-                  <td className="k-small">{p.source === 'config' ? 'kudurru.yaml' : (p.source ?? '–')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table<ProviderRow> aria-label="Identity providers" density="compact" idKey="id" data={idps.data.items as ProviderRow[]} columns={providerColumns} />
         ) : (
           empty('identity providers', idps.isLoading)
         )}
-      </section>
-    </div>
+      </Panel>
+    </VStack>
   );
 }
 
@@ -409,6 +468,56 @@ const AUDIT_KINDS: EnumOption[] = ['DNSZone', 'DNSRecordSet', 'BlockList', 'Clie
   label: k,
 }));
 
+/** An audit event with the row key it is listed under (events may carry no id). */
+type AuditRow = AuditEvent & { rowKey: string } & Record<string, unknown>;
+
+const auditColumns: TableColumn<AuditRow>[] = [
+  { key: 'ts', header: 'Time', width: pixel(210), renderCell: (a) => <Text textWrap="nowrap">{formatDateTime(a.ts)}</Text> },
+  { key: 'actor', header: 'Actor', width: proportional(1.5, { minWidth: 120 }), renderCell: (a) => <Text>{actorText(a.actor)}</Text> },
+  {
+    key: 'action',
+    header: 'Action',
+    width: proportional(1.5, { minWidth: 120 }),
+    renderCell: (a) => (
+      <Text type="code" size="sm">
+        {a.action}
+      </Text>
+    ),
+  },
+  {
+    key: 'resource',
+    header: 'Object',
+    width: proportional(2, { minWidth: 140 }),
+    renderCell: (a) => (
+      <Text type="code" size="sm">
+        {resourceText(a.resource)}
+      </Text>
+    ),
+  },
+  {
+    key: 'result',
+    header: 'Result',
+    width: proportional(1, { minWidth: 100 }),
+    renderCell: (a) => (
+      <VStack gap={0.5} align="start">
+        <Badge variant={a.result === 'success' ? 'success' : a.result === 'denied' ? 'warning' : 'error'} label={a.result} />
+        {a.reason ? <Text type="supporting">{a.reason}</Text> : null}
+      </VStack>
+    ),
+  },
+  {
+    key: 'from',
+    header: 'From',
+    width: proportional(1, { minWidth: 110 }),
+    renderCell: (a) => (
+      <VStack gap={0.5}>
+        <Text size="sm">{a.request?.ip ?? '–'}</Text>
+        {a.authz ? <Text type="supporting">via {a.authz}</Text> : null}
+      </VStack>
+    ),
+  },
+];
+
 function Audit() {
   const api = useApi();
   const [actor, setActor] = useState('');
@@ -420,16 +529,20 @@ function Audit() {
     initialPageParam: '',
     getNextPageParam: (last) => last.continue || last.cursor_next || undefined,
   });
-  const events = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
+  const events = useMemo<AuditRow[]>(() => (q.data?.pages.flatMap((p) => p.items) ?? []).map((a, i) => ({ ...a, rowKey: a.id !== undefined ? String(a.id) : `${a.ts}-${i}` })), [q.data]);
   return (
-    <section className="k-panel" aria-labelledby="audit-title">
-      <div className="k-panel-title">
-        <h2 id="audit-title">Audit log</h2>
-        <span className="k-muted k-small">Newest first</span>
-        <a href={api.audit.exportURL()} download="audit.jsonl">
-          Export
-        </a>
-      </div>
+    <Panel
+      title="Audit log"
+      headingId="audit-title"
+      actions={
+        <>
+          <Text type="supporting">Newest first</Text>
+          <Link href={api.audit.exportURL()} download="audit.jsonl" hasUnderline>
+            Export
+          </Link>
+        </>
+      }
+    >
       <HStack gap={2} wrap="wrap" align="start">
         <TextField label="Actor" startIcon="search" value={actor} onChange={setActor} hasClear />
         <EnumSelect label="Kind" value={kind} options={AUDIT_KINDS} onChange={setKind} emptyLabel="Any kind" />
@@ -437,52 +550,24 @@ function Audit() {
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
       {q.data ? (
-        <div className="k-table-wrap">
-          <table className="k-table" aria-label="Audit entries">
-            <thead>
-              <tr>
-                <th scope="col">Time</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Action</th>
-                <th scope="col">Object</th>
-                <th scope="col">Result</th>
-                <th scope="col">From</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="k-muted">
-                    No audit events{actor || kind ? ' match' : ''}.
-                  </td>
-                </tr>
-              ) : null}
-              {events.map((a, i) => (
-                <tr key={a.id ?? `${a.ts}-${i}`}>
-                  <td className="k-nowrap">{formatDateTime(a.ts)}</td>
-                  <td>{actorText(a.actor)}</td>
-                  <td className="k-mono k-small">{a.action}</td>
-                  <td className="k-mono k-small">{resourceText(a.resource)}</td>
-                  <td>
-                    <Badge variant={a.result === 'success' ? 'success' : a.result === 'denied' ? 'warning' : 'error'} label={a.result} />
-                    {a.reason ? <div className="k-muted k-small">{a.reason}</div> : null}
-                  </td>
-                  <td className="k-small">
-                    {a.request?.ip ?? '–'}
-                    {a.authz ? <div className="k-muted">via {a.authz}</div> : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <VStack gap={2}>
+          <Table<AuditRow>
+            aria-label="Audit entries"
+            density="compact"
+            verticalAlign="top"
+            idKey="rowKey"
+            data={events}
+            columns={auditColumns}
+            emptyState={<Text color="secondary">No audit events{actor || kind ? ' match' : ''}.</Text>}
+          />
           {q.hasNextPage ? (
-            <div className="k-row">
+            <HStack gap={2}>
               <Button label="Load older events" variant="secondary" size="sm" isLoading={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()} />
-            </div>
+            </HStack>
           ) : null}
-        </div>
+        </VStack>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -491,10 +576,8 @@ export default function AccessPage() {
   const tab = sp.get('tab') ?? 'me';
   const can = useCan();
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Access &amp; audit</h1>
-      </div>
+    <Page>
+      <PageHeader title="Access & audit" />
       <TabList value={tab} onChange={(v) => setParams({ tab: v === 'me' ? null : v })} aria-label="Access sections">
         <Tab value="me" label="You & tokens" />
         <Tab value="iam" label="Identity" />
@@ -508,6 +591,6 @@ export default function AccessPage() {
       ) : null}
       {tab === 'iam' ? <Iam /> : null}
       {tab === 'audit' ? <Audit /> : null}
-    </div>
+    </Page>
   );
 }

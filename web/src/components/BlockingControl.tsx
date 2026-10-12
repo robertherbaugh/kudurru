@@ -4,14 +4,17 @@
 // only shows what the server reports back.
 import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
+import { Link } from '@astryxdesign/core/Link';
+import { Stack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
+import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useCan } from '../api/context';
 import { useBlocking, useSetBlocking } from '../api/hooks';
 import type { BlockingState } from '../api/types';
 import { formatCountdown, parseDuration } from '../lib/format';
-import { Link } from '../lib/router';
 import { useCountdown } from '../lib/useCountdown';
 import { useNotify } from './Feedback';
 import { DurationField, durationPresets } from './fields/DurationField';
@@ -49,6 +52,26 @@ export interface BlockingPanelProps {
   compact?: boolean;
 }
 
+/** The panel's frame: a column in the sidebar, a wrapping row elsewhere. */
+function Frame({ compact, children }: { compact?: boolean; children: ReactNode }) {
+  return (
+    <Stack direction={compact ? 'vertical' : 'horizontal'} gap={2} align={compact ? 'stretch' : 'center'} wrap={compact ? 'nowrap' : 'wrap'} data-testid="blocking-panel">
+      {children}
+    </Stack>
+  );
+}
+
+/** The state sentence: small in the sidebar. */
+function StatusText({ compact, children }: { compact?: boolean; children: ReactNode }) {
+  return compact ? (
+    <Text type="supporting" color="primary">
+      {children}
+    </Text>
+  ) : (
+    <Text>{children}</Text>
+  );
+}
+
 /** Presentational blocking switch; BlockingControl wires it to the API. */
 export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpire, compact }: BlockingPanelProps) {
   const [open, setOpen] = useState(false);
@@ -58,20 +81,20 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
   const left = useCountdown(until, onExpire);
 
   if (!state) {
-    return <span className="k-muted k-small">Blocking state unknown</span>;
+    return <Text type="supporting">Blocking state unknown</Text>;
   }
   if (state.configured === false) {
     // blocking.enabled is false: the switch would have no effect.
     return (
-      <div className={compact ? 'k-stack' : 'k-row'} data-testid="blocking-panel">
-        <span className="k-row">
+      <Frame compact={compact}>
+        <HStack gap={2} vAlign="center">
           <StatusDot variant="neutral" label="off in settings" />
-          <span>Blocking is turned off in the settings</span>
-        </span>
-        <Link href="/settings" className="k-small">
+          <StatusText compact={compact}>Blocking is turned off in the settings</StatusText>
+        </HStack>
+        <Link href="/settings" size="sm">
           Turn on blocking.enabled
         </Link>
-      </div>
+      </Frame>
     );
   }
 
@@ -98,11 +121,11 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
       : 'Blocking disabled indefinitely';
 
   return (
-    <div className={compact ? 'k-stack' : 'k-row'} data-testid="blocking-panel">
-      <span className="k-row" aria-live="polite">
+    <Frame compact={compact}>
+      <HStack gap={2} vAlign="center" aria-live="polite">
         <StatusDot variant={state.blocking ? 'success' : 'warning'} label={state.blocking ? 'enabled' : 'disabled'} />
-        <span>{status}</span>
-      </span>
+        <StatusText compact={compact}>{status}</StatusText>
+      </HStack>
       {state.blocking ? (
         <Button
           label="Disable blocking"
@@ -130,37 +153,37 @@ export function BlockingPanel({ state, fetchedAt, canToggle, busy, onSet, onExpi
         width={420}
         footer={<Button label="Cancel" variant="ghost" onClick={() => setOpen(false)} />}
       >
-        <p className="k-muted k-small">
+        <Text type="supporting" as="p">
           Queries are answered without block lists until blocking re-enables. Allow lists, zones and policies keep working.
-        </p>
-        <div className="k-row" role="group" aria-label="Disable for">
+        </Text>
+        <HStack gap={2} vAlign="center" wrap="wrap" role="group" aria-label="Disable for">
           {BLOCKING_PRESETS.map((p) => (
             <Button key={p.label} label={p.label} variant="secondary" onClick={() => disable(p.seconds)} />
           ))}
-        </div>
-        <form
+        </HStack>
+        {/* The help hangs under the field, so the button goes below it rather than beside. */}
+        <VStack
+          as="form"
+          gap={3}
           onSubmit={(e) => {
             e.preventDefault();
             submitCustom();
           }}
         >
-          {/* The help hangs under the field, so the button goes below it rather than beside. */}
-          <VStack gap={3}>
-            <DurationField
-              label="Other duration"
-              description="Custom takes minutes or a duration such as 90s or 1h30m"
-              value={custom}
-              onChange={(v) => setCustom(v)}
-              presets={BLOCKING_DURATIONS}
-              error={customError}
-            />
-            <HStack>
-              <Button type="submit" label="Disable" variant="primary" />
-            </HStack>
-          </VStack>
-        </form>
+          <DurationField
+            label="Other duration"
+            description="Custom takes minutes or a duration such as 90s or 1h30m"
+            value={custom}
+            onChange={(v) => setCustom(v)}
+            presets={BLOCKING_DURATIONS}
+            error={customError}
+          />
+          <HStack>
+            <Button type="submit" label="Disable" variant="primary" />
+          </HStack>
+        </VStack>
       </FormDialog>
-    </div>
+    </Frame>
   );
 }
 

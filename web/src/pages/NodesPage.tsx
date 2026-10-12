@@ -5,15 +5,66 @@
 // health components of this node on demand (GET /nodes/{name}/health).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
-import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { Card } from '@astryxdesign/core/Card';
+import { Grid } from '@astryxdesign/core/Grid';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { StatusDot, type StatusDotVariant } from '@astryxdesign/core/StatusDot';
+import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { qk, useApi } from '../api/context';
 import { useNodes } from '../api/hooks';
-import type { EdgeComponentState } from '../api/types';
+import type { EdgeComponentState, HealthComponent, NodeInfo } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatRelative } from '../lib/format';
 import { readiness } from '../lib/nodes';
+
+type NodeRow = NodeInfo & Record<string, unknown>;
+type ComponentRow = HealthComponent & { name: string } & Record<string, unknown>;
+
+/** A status dot with its words next to it (and an optional note after them). */
+function DotLabel({ variant, label, children }: { variant: StatusDotVariant; label: string; children?: ReactNode }) {
+  return (
+    <HStack gap={1} vAlign="center" wrap="wrap">
+      <StatusDot variant={variant} label={label} />
+      <Text type="inherit">{label}</Text>
+      {children}
+    </HStack>
+  );
+}
+
+const componentColumns: TableColumn<ComponentRow>[] = [
+  { key: 'name', header: 'Component', width: proportional(1, { minWidth: 120 }), renderCell: (c) => <Text weight="semibold">{c.name}</Text> },
+  {
+    key: 'ready',
+    header: 'State',
+    width: proportional(3, { minWidth: 160 }),
+    renderCell: (c) => (
+      <DotLabel variant={c.ready ? 'success' : 'error'} label={c.ready ? 'ready' : 'not ready'}>
+        {c.message ? <Text color="secondary">{c.message}</Text> : null}
+      </DotLabel>
+    ),
+  },
+  {
+    key: 'since',
+    header: 'Since',
+    width: pixel(140),
+    renderCell: (c) =>
+      c.since ? (
+        <Tooltip content={c.since}>
+          <Text size="sm">{formatRelative(c.since)}</Text>
+        </Tooltip>
+      ) : (
+        <Text size="sm">–</Text>
+      ),
+  },
+];
 
 function Health({ name }: { name: string }) {
   const api = useApi();
@@ -21,61 +72,42 @@ function Health({ name }: { name: string }) {
   if (q.error) return <ErrorBanner error={q.error} />;
   if (!q.data) return <Loading label={`Checking ${name}`} />;
   const h = q.data.health;
-  const components = Object.entries(h.components ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const components: ComponentRow[] = Object.entries(h.components ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([c, v]) => ({ ...v, name: c }));
   return (
-    <div className="k-stack">
-      <p className="k-row">
+    <VStack gap={2}>
+      <HStack gap={2} vAlign="center" wrap="wrap">
         <StatusDot variant={q.data.ready ? 'success' : 'error'} label={q.data.ready ? 'ready' : 'not ready'} />
-        <strong>{h.status ?? (q.data.ready ? 'ready' : 'not ready')}</strong>
-        {h.version ? <span className="k-muted k-small">version {h.version}</span> : null}
-      </p>
-      {h.unready?.length ? <p className="k-small">Waiting for: {h.unready.join(', ')}</p> : null}
+        <Text weight="semibold">{h.status ?? (q.data.ready ? 'ready' : 'not ready')}</Text>
+        {h.version ? <Text type="supporting">version {h.version}</Text> : null}
+      </HStack>
+      {h.unready?.length ? (
+        <Text type="supporting" color="primary" as="p">
+          Waiting for: {h.unready.join(', ')}
+        </Text>
+      ) : null}
       {components.length ? (
-        <table className="k-table" aria-label={`Health components of ${name}`}>
-          <thead>
-            <tr>
-              <th scope="col">Component</th>
-              <th scope="col">State</th>
-              <th scope="col">Since</th>
-            </tr>
-          </thead>
-          <tbody>
-            {components.map(([c, v]) => (
-              <tr key={c}>
-                <td>
-                  <strong>{c}</strong>
-                </td>
-                <td>
-                  <StatusDot variant={v.ready ? 'success' : 'error'} label={v.ready ? 'ready' : 'not ready'} /> {v.ready ? 'ready' : 'not ready'}
-                  {v.message ? <span className="k-muted"> {v.message}</span> : null}
-                </td>
-                <td className="k-small">{v.since ? <span title={v.since}>{formatRelative(v.since)}</span> : '–'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table<ComponentRow> aria-label={`Health components of ${name}`} density="compact" idKey="name" data={components} columns={componentColumns} />
       ) : (
-        <p className="k-muted">The node reported no components.</p>
+        <Text color="secondary" as="p">
+          The node reported no components.
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
 
 function EdgeRow({ label, c, off }: { label: string; c: EdgeComponentState | undefined; off: string }) {
   if (!c) return null;
   return (
-    <div>
-      <dt>{label}</dt>
-      <dd>
-        {c.enabled ? (
-          <>
-            <StatusDot variant={c.state && /fail|error|down|fault/i.test(c.state) ? 'error' : 'success'} label={c.state ?? 'enabled'} /> {c.state ?? 'enabled'}
-          </>
-        ) : (
-          <span className="k-muted">{off}</span>
-        )}
-      </dd>
-    </div>
+    <MetadataListItem label={label}>
+      {c.enabled ? (
+        <DotLabel variant={c.state && /fail|error|down|fault/i.test(c.state) ? 'error' : 'success'} label={c.state ?? 'enabled'} />
+      ) : (
+        <Text color="secondary">{off}</Text>
+      )}
+    </MetadataListItem>
   );
 }
 
@@ -86,141 +118,155 @@ export default function NodesPage() {
   const edge = useQuery({ queryKey: ['edge'], queryFn: () => api.cluster.edge() });
   const [open, setOpen] = useState<string | null>(null);
   const c = cluster.data;
+  const columns: TableColumn<NodeRow>[] = [
+    {
+      key: 'name',
+      header: 'Node',
+      width: proportional(2, { minWidth: 160 }),
+      renderCell: (n) => (
+        <VStack gap={0.5}>
+          <HStack gap={1} vAlign="center" wrap="wrap">
+            <Text weight="semibold">{n.name}</Text>
+            {n.self ? <Badge variant="neutral" label="this node" /> : null}
+          </HStack>
+          {n.address ? (
+            <Text type="code" size="sm" color="secondary">
+              {n.address}
+            </Text>
+          ) : null}
+        </VStack>
+      ),
+    },
+    {
+      key: 'ready',
+      header: 'Ready',
+      width: proportional(2, { minWidth: 140 }),
+      renderCell: (n) => {
+        const r = readiness(n);
+        return (
+          <VStack gap={0.5}>
+            <DotLabel variant={r.variant} label={r.label} />
+            {n.unready?.length ? <Text type="supporting">waiting for {n.unready.join(', ')}</Text> : null}
+          </VStack>
+        );
+      },
+    },
+    { key: 'state', header: 'Zones', width: proportional(1, { minWidth: 72 }), renderCell: (n) => <Text size="sm">{n.state ?? '–'}</Text> },
+    {
+      key: 'version',
+      header: 'Version',
+      width: proportional(1, { minWidth: 110 }),
+      renderCell: (n) => (
+        <Text type="code" size="sm">
+          {n.version ?? '–'}
+        </Text>
+      ),
+    },
+    {
+      key: 'leader',
+      header: 'Role',
+      width: proportional(1, { minWidth: 90 }),
+      renderCell: (n) => (n.leader ? <Badge variant="blue" label="leader" /> : <Text color="secondary">follower</Text>),
+    },
+    { key: 'snapshotAge', header: 'Snapshot age', width: proportional(1, { minWidth: 100 }), renderCell: (n) => <Text>{n.snapshotAge ?? '–'}</Text> },
+    {
+      key: 'health',
+      header: <VisuallyHidden>Health</VisuallyHidden>,
+      width: pixel(140),
+      renderCell: (n) => (
+        <Button
+          label={open === n.name ? 'Hide health' : 'Health'}
+          size="sm"
+          variant="ghost"
+          isDisabled={!n.self}
+          tooltip={n.self ? undefined : `Ask ${n.name} directly; other nodes' health needs scatter-gather`}
+          onClick={() => setOpen(open === n.name ? null : n.name)}
+        />
+      ),
+    },
+  ];
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <h1>Nodes</h1>
-        {c ? (
-          <span className="k-row k-small">
-            <Badge variant="neutral" label={`store ${c.driver}`} />
-            <span>leader {c.leader || 'none'}</span>
-            {c.readOnly ? <Badge variant="warning" label="read-only" /> : null}
-          </span>
-        ) : null}
-      </div>
+    <Page>
+      <PageHeader
+        title="Nodes"
+        meta={
+          c ? (
+            <>
+              <Badge variant="neutral" label={`store ${c.driver}`} />
+              <Text type="supporting" color="primary">
+                leader {c.leader || 'none'}
+              </Text>
+              {c.readOnly ? <Badge variant="warning" label="read-only" /> : null}
+            </>
+          ) : null
+        }
+      />
       {nodes.error ? <ErrorBanner error={nodes.error} /> : null}
       {nodes.isLoading ? <Loading /> : null}
       {nodes.data ? (
-        <div className="k-panel k-table-wrap">
-          <table className="k-table" aria-label="Nodes">
-            <thead>
-              <tr>
-                <th scope="col">Node</th>
-                <th scope="col">Ready</th>
-                <th scope="col">Zones</th>
-                <th scope="col">Version</th>
-                <th scope="col">Role</th>
-                <th scope="col">Snapshot age</th>
-                <th scope="col">
-                  <span className="k-visually-hidden">Health</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {nodes.data.items.map((n) => {
-                const r = readiness(n);
-                return (
-                  <tr key={n.name}>
-                    <td>
-                      <strong>{n.name}</strong> {n.self ? <Badge variant="neutral" label="this node" /> : null}
-                      {n.address ? <div className="k-muted k-small k-mono">{n.address}</div> : null}
-                    </td>
-                    <td>
-                      <StatusDot variant={r.variant} label={r.label} /> {r.label}
-                      {n.unready?.length ? <div className="k-muted k-small">waiting for {n.unready.join(', ')}</div> : null}
-                    </td>
-                    <td className="k-small">{n.state ?? '–'}</td>
-                    <td className="k-mono k-small">{n.version ?? '–'}</td>
-                    <td>{n.leader ? <Badge variant="blue" label="leader" /> : <span className="k-muted">follower</span>}</td>
-                    <td>{n.snapshotAge ?? '–'}</td>
-                    <td>
-                      <Button
-                        label={open === n.name ? 'Hide health' : 'Health'}
-                        size="sm"
-                        variant="ghost"
-                        isDisabled={!n.self}
-                        tooltip={n.self ? undefined : `Ask ${n.name} directly; other nodes' health needs scatter-gather`}
-                        onClick={() => setOpen(open === n.name ? null : n.name)}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Card>
+          <Table<NodeRow> aria-label="Nodes" density="compact" idKey="name" data={nodes.data.items} columns={columns} />
+        </Card>
       ) : null}
       {open ? (
-        <section className="k-panel" aria-labelledby="health-title">
-          <h2 id="health-title" className="k-h3">
-            Health of {open}
-          </h2>
+        <Panel title={`Health of ${open}`} headingId="health-title">
           <Health name={open} />
-        </section>
+        </Panel>
       ) : null}
-      <div className="k-grid k-grid-2">
-        <section className="k-panel" aria-labelledby="cluster-title">
-          <h2 id="cluster-title" className="k-h3">
-            Cluster
-          </h2>
+      <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+        <Panel title="Cluster" headingId="cluster-title">
           {cluster.error ? <ErrorBanner error={cluster.error} /> : null}
           {c ? (
-            <dl className="k-why-grid">
-              <div>
-                <dt>Store</dt>
-                <dd>{c.driver}</dd>
-              </div>
-              <div>
-                <dt>Leader</dt>
-                <dd>{c.leader || 'none'}</dd>
-              </div>
-              <div>
-                <dt>Nodes</dt>
-                <dd>{c.nodes}</dd>
-              </div>
-              <div>
-                <dt>Epoch</dt>
-                <dd className="k-mono">{c.epoch}</dd>
-              </div>
-              <div>
-                <dt>Object writes</dt>
-                <dd>{c.readOnly ? 'refused (objects are file-managed on every node)' : 'accepted'}</dd>
-              </div>
+            <MetadataList columns="multi">
+              <MetadataListItem label="Store">{c.driver}</MetadataListItem>
+              <MetadataListItem label="Leader">{c.leader || 'none'}</MetadataListItem>
+              <MetadataListItem label="Nodes">{c.nodes}</MetadataListItem>
+              <MetadataListItem label="Epoch">
+                <Text type="code">{c.epoch}</Text>
+              </MetadataListItem>
+              <MetadataListItem label="Object writes">{c.readOnly ? 'refused (objects are file-managed on every node)' : 'accepted'}</MetadataListItem>
               {c.clusterID ? (
-                <div>
-                  <dt>Cluster ID</dt>
-                  <dd className="k-mono k-small">{c.clusterID}</dd>
-                </div>
+                <MetadataListItem label="Cluster ID">
+                  <Text type="code" size="sm">
+                    {c.clusterID}
+                  </Text>
+                </MetadataListItem>
               ) : null}
-            </dl>
+            </MetadataList>
           ) : null}
-        </section>
-        <section className="k-panel" aria-labelledby="edge-title">
-          <h2 id="edge-title" className="k-h3">
-            Edge
-          </h2>
+        </Panel>
+        <Panel title="Edge" headingId="edge-title">
           {edge.error ? <ErrorBanner error={edge.error} /> : null}
           {edge.data ? (
             <>
-              <dl className="k-why-grid">
+              <MetadataList columns="multi">
                 <EdgeRow label="dnsdist" c={edge.data.edge} off="not running on this node" />
                 <EdgeRow label="VIP (keepalived)" c={edge.data.vip} off="not running on this node" />
-              </dl>
+              </MetadataList>
               {edge.data.backends.length ? (
-                <ul>
+                <List density="compact" aria-label="dnsdist backends">
                   {edge.data.backends.map((b) => (
-                    <li key={b.name}>
-                      <StatusDot variant={b.up ? 'success' : 'error'} label={b.up ? 'up' : 'down'} /> {b.name} <span className="k-mono k-muted">{b.address}</span>
-                    </li>
+                    <ListItem
+                      key={b.name}
+                      label={b.name}
+                      startContent={<StatusDot variant={b.up ? 'success' : 'error'} label={b.up ? 'up' : 'down'} />}
+                      endContent={
+                        <Text type="code" size="sm" color="secondary">
+                          {b.address}
+                        </Text>
+                      }
+                    />
                   ))}
-                </ul>
+                </List>
               ) : (
-                <p className="k-muted k-small">No dnsdist backends reported.</p>
+                <Text type="supporting" as="p">
+                  No dnsdist backends reported.
+                </Text>
               )}
             </>
           ) : null}
-        </section>
-      </div>
-    </div>
+        </Panel>
+      </Grid>
+    </Page>
   );
 }

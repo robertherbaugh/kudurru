@@ -6,26 +6,55 @@
 // and wizard: names link to the page and "New" opens the wizard in a modal
 // over the list (?new=1, so /policies?new=1 and /policies/new open it too).
 import { Button } from '@astryxdesign/core/Button';
-import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { Card } from '@astryxdesign/core/Card';
+import { Link } from '@astryxdesign/core/Link';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack, StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Switch } from '@astryxdesign/core/Switch';
+import { proportional, Table, useTableSelection, useTableSelectionState, type ColumnWidth, type TableColumn, type TablePlugin } from '@astryxdesign/core/Table';
+import { Text } from '@astryxdesign/core/Text';
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { qk, useApi, useCan } from '../api/context';
 import type { AnyObject } from '../api/types';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, withMeta } from '../lib/managedBy';
 import type { KindSchema } from '../lib/objectSchemas';
-import { Link, useNewParam, useSearchParams } from '../lib/router';
+import { useNewParam, useSearchParams } from '../lib/router';
 import { ErrorBanner, Loading, useNotify } from './Feedback';
 import { TextField } from './fields/TextField';
 import { FormDialog } from './FormDialog';
+import { Page, PageHeader } from './layout/Page';
 import { ManagedBadge } from './ManagedBadge';
 import { ObjectForm } from './ObjectForm';
 
 export interface Column<T> {
   header: string;
   cell: (obj: T) => ReactNode;
+  /** Horizontal alignment of the column (numbers: 'end'). */
+  align?: 'start' | 'center' | 'end';
+  /** Column width, e.g. proportional(2) for a wide column (default: proportional(1); 0.75 for numbers). */
+  width?: ColumnWidth;
+  /**
+   * @deprecated The table is an Astryx Table now; use `align`. Only `num`
+   * still has an effect (it aligns the column to the end).
+   */
   className?: string;
 }
+
+/** A table row: the object and its selection key. */
+interface Row<T> extends Record<string, unknown> {
+  id: string;
+  obj: T;
+}
+
+/** Each body row carries data-testid="row-<name>" (tests and e2e find rows by it). */
+const rowAttrs: TablePlugin<Row<AnyObject>> = {
+  transformBodyRow: (props, item) => ({
+    ...props,
+    htmlProps: { ...props.htmlProps, ...({ 'data-testid': `row-${item.obj.metadata.name}` } as Record<string, string>) },
+  }),
+};
 
 export interface ObjectsPageProps<T extends AnyObject> {
   title: string;
@@ -61,7 +90,7 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
   const search = sp.get('q') ?? '';
   const [editing, setEditing] = useState<T | 'new' | null>(null);
   const [creating, setCreating] = useNewParam();
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   const canWrite = can(schema.resource, 'write');
   const canDelete = can(schema.resource, 'delete');
@@ -117,139 +146,133 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
     onError: (err) => notify.error(err, 'Batch delete failed'),
   });
 
-  const selectable = items.filter((o) => objectOwnership(o).editable);
-  const allSelected = selectable.length > 0 && selectable.every((o) => selected.has(key(o)));
+  const rows = useMemo(() => items.map((o): Row<T> => ({ id: key(o), obj: o })), [items]);
+  const { selectionConfig } = useTableSelectionState({
+    data: rows,
+    idKey: 'id',
+    selectedKeys: selected,
+    setSelectedKeys: setSelected,
+    getIsItemEnabled: (r) => objectOwnership(r.obj).editable,
+  });
+  const selection = useTableSelection({ ...selectionConfig, getRowLabel: (r: Row<T>) => r.obj.metadata.name });
+
+  // Proportional widths only: a column's minWidth / weight sets the table's
+  // minimum width, so the floors stay low enough to fit 1280 px with the sidebar.
+  const tableColumns: TableColumn<Row<T>>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      width: proportional(1.2, { minWidth: 96 }),
+      renderCell: ({ obj: o }) => {
+        const comment = objectComment(o);
+        return (
+          <VStack gap={0.5} align="start">
+            <Text>
+              {detailPath ? (
+                <Link href={detailPath(o)} weight="semibold" color="inherit">
+                  {o.metadata.name}
+                </Link>
+              ) : (
+                <Button label={o.metadata.name} size="sm" variant="ghost" onClick={() => setEditing(o)} />
+              )}
+              {o.metadata.namespace && o.metadata.namespace !== 'default' ? <Text type="supporting"> ({o.metadata.namespace})</Text> : null}
+            </Text>
+            {comment ? <Text type="supporting">{comment}</Text> : null}
+          </VStack>
+        );
+      },
+    },
+    ...columns.map((c): TableColumn<Row<T>> => {
+      const align = c.align ?? (c.className?.split(/\s+/).includes('num') ? 'end' : undefined);
+      return {
+        key: `col-${c.header}`,
+        header: c.header,
+        align,
+        width: c.width ?? (align === 'end' ? proportional(0.75, { minWidth: 60 }) : proportional(1, { minWidth: 80 })),
+        renderCell: (r) => c.cell(r.obj),
+      };
+    }),
+    {
+      key: 'managed',
+      header: 'Managed by',
+      width: proportional(1.3, { minWidth: 100 }),
+      renderCell: ({ obj: o }) => <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />,
+    },
+    {
+      key: 'enabled',
+      header: 'Enabled',
+      width: proportional(0.9, { minWidth: 72 }),
+      renderCell: ({ obj: o }) => (
+        <Switch
+          label={`${o.metadata.name} enabled`}
+          isLabelHidden
+          size="sm"
+          value={objectEnabled(o)}
+          isDisabled={!objectOwnership(o).editable || !canWrite || toggle.isPending}
+          onChange={(on) => toggle.mutate({ obj: o, enabled: on })}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      // Room for Open, and for a row action (Refresh) beside it.
+      width: rowActions ? proportional(2, { minWidth: 160 }) : proportional(0.9, { minWidth: 72 }),
+      align: 'end',
+      renderCell: ({ obj: o }) => (
+        <HStack gap={1} hAlign="end" vAlign="center">
+          {rowActions?.(o)}
+          {detailPath ? (
+            <Button label="Open" size="sm" variant="ghost" href={detailPath(o)} />
+          ) : (
+            <Button label={objectOwnership(o).editable ? 'Edit' : 'View'} size="sm" variant="ghost" onClick={() => setEditing(o)} />
+          )}
+        </HStack>
+      ),
+    },
+  ];
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <h1>{title}</h1>
-          <p className="k-muted k-small">{description}</p>
-        </div>
-        <div className="k-actions">
-          {headerActions}
-          <Button
-            label={`New ${schema.singular}`}
-            variant="primary"
-            isDisabled={!canWrite}
-            tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`}
-            onClick={() => (CreateWizard ? setCreating(true) : setEditing('new'))}
-          />
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title={title}
+        description={description}
+        actions={
+          <>
+            {headerActions}
+            <Button
+              label={`New ${schema.singular}`}
+              variant="primary"
+              isDisabled={!canWrite}
+              tooltip={canWrite ? undefined : `Needs ${schema.resource}.write`}
+              onClick={() => (CreateWizard ? setCreating(true) : setEditing('new'))}
+            />
+          </>
+        }
+      />
       {children}
-      <div className="k-row">
-        <TextField className="k-search" label={`Search ${schema.plural}`} isLabelHidden startIcon="search" placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
-        <span className="k-spacer" />
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <TextField fieldWidth={400} label={`Search ${schema.plural}`} isLabelHidden startIcon="search" placeholder={`Search ${schema.plural} by name or comment`} value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
+        <StackItem size="fill" />
         {selected.size > 0 ? (
           <Button label={`Delete ${selected.size} selected`} variant="destructive" isDisabled={!canDelete} onClick={() => setConfirm(true)} />
         ) : null}
-      </div>
+      </HStack>
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
       {q.data ? (
-        <div className="k-panel k-table-wrap">
-          <table className="k-table" aria-label={title}>
-            <thead>
-              <tr>
-                <th scope="col" className="k-col-check">
-                  <CheckboxInput
-                    label={`Select all ${schema.plural}`}
-                    isLabelHidden
-                    value={allSelected ? true : selected.size > 0 ? 'indeterminate' : false}
-                    isDisabled={selectable.length === 0}
-                    onChange={(on) => setSelected(on ? new Set(selectable.map(key)) : new Set())}
-                  />
-                </th>
-                <th scope="col">Name</th>
-                {columns.map((c) => (
-                  <th key={c.header} scope="col" className={c.className}>
-                    {c.header}
-                  </th>
-                ))}
-                <th scope="col">Managed by</th>
-                <th scope="col">Enabled</th>
-                <th scope="col">
-                  <span className="k-visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length + 5} className="k-muted">
-                    {search ? `No ${schema.plural} match "${search}".` : `No ${schema.plural} yet.`}
-                  </td>
-                </tr>
-              ) : null}
-              {items.map((o) => {
-                const own = objectOwnership(o);
-                const k = key(o);
-                const comment = objectComment(o);
-                return (
-                  <tr key={k} data-testid={`row-${o.metadata.name}`}>
-                    <td className="k-col-check">
-                      <CheckboxInput
-                        label={`Select ${o.metadata.name}`}
-                        isLabelHidden
-                        value={selected.has(k)}
-                        isDisabled={!own.editable}
-                        onChange={(on) =>
-                          setSelected((prev) => {
-                            const next = new Set(prev);
-                            if (on) next.add(k);
-                            else next.delete(k);
-                            return next;
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      {detailPath ? (
-                        <Link href={detailPath(o)} className="k-row-link">
-                          {o.metadata.name}
-                        </Link>
-                      ) : (
-                        <button type="button" className="k-linklike" onClick={() => setEditing(o)}>
-                          {o.metadata.name}
-                        </button>
-                      )}
-                      {o.metadata.namespace && o.metadata.namespace !== 'default' ? <span className="k-muted k-small"> ({o.metadata.namespace})</span> : null}
-                      {comment ? <div className="k-muted k-small">{comment}</div> : null}
-                    </td>
-                    {columns.map((c) => (
-                      <td key={c.header} className={c.className}>
-                        {c.cell(o)}
-                      </td>
-                    ))}
-                    <td>
-                      <ManagedBadge owner={o.metadata.annotations?.[MANAGED_BY]} />
-                    </td>
-                    <td>
-                      <Switch
-                        label={`${o.metadata.name} enabled`}
-                        isLabelHidden
-                        size="sm"
-                        value={objectEnabled(o)}
-                        isDisabled={!own.editable || !canWrite || toggle.isPending}
-                        onChange={(on) => toggle.mutate({ obj: o, enabled: on })}
-                      />
-                    </td>
-                    <td className="k-nowrap">
-                      {rowActions?.(o)}
-                      {detailPath ? (
-                        <Button label="Open" size="sm" variant="ghost" href={detailPath(o)} />
-                      ) : (
-                        <Button label={own.editable ? 'Edit' : 'View'} size="sm" variant="ghost" onClick={() => setEditing(o)} />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Card padding={2}>
+          <Table<Row<T>>
+            aria-label={title}
+            density="compact"
+            hasHover
+            idKey="id"
+            data={rows}
+            columns={tableColumns}
+            plugins={{ selection, rowAttrs: rowAttrs as unknown as TablePlugin<Row<T>> }}
+            emptyState={<Text type="supporting">{search ? `No ${schema.plural} match "${search}".` : `No ${schema.plural} yet.`}</Text>}
+          />
+        </Card>
       ) : null}
 
       {CreateWizard ? <CreateWizard isOpen={creating} onClose={() => setCreating(false)} /> : null}
@@ -286,15 +309,15 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
           </>
         }
       >
-        <ul className="k-small">
+        <List density="compact" listStyle="disc">
           {[...selected].map((k) => (
-            <li key={k} className="k-mono">
-              {k.replace(/^default\//, '').replace(/^\//, '')}
-            </li>
+            <ListItem key={k} label={k.replace(/^default\//, '').replace(/^\//, '')} />
           ))}
-        </ul>
-        <p className="k-muted k-small">Policies that reference them stop using them. This cannot be undone.</p>
+        </List>
+        <Text type="supporting" as="p">
+          Policies that reference them stop using them. This cannot be undone.
+        </Text>
       </FormDialog>
-    </div>
+    </Page>
   );
 }

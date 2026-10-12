@@ -3,6 +3,8 @@
 // while a request is chosen (keyed by it), so every opening starts from a
 // fresh draft.
 import { Button } from '@astryxdesign/core/Button';
+import { Code } from '@astryxdesign/core/Code';
+import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import { useApproveUnblock, useDenyUnblock } from '../../api/hooks';
 import type { UnblockDecisionResult, UnblockMatch, UnblockRequest, UnblockScope } from '../../api/types';
@@ -148,20 +150,20 @@ export function DenyDialog({ request: r, onClose, onDone }: { request: UnblockRe
       }
     >
       {revoking && r.allow ? (
-        <p className="k-small">
+        <Text type="supporting" color="primary" as="p">
           The approval is in force.{' '}
           {r.allow.added ? (
             <>
-              <span className="k-mono">{r.allow.entry}</span> leaves {shortRef(r.allow.list)} and the name is blocked again.
+              <Code>{r.allow.entry}</Code> leaves {shortRef(r.allow.list)} and the name is blocked again.
             </>
           ) : (
             <>
-              <span className="k-mono">{r.allow.entry}</span> was on {shortRef(r.allow.list)} before the approval, so it stays there.
+              <Code>{r.allow.entry}</Code> was on {shortRef(r.allow.list)} before the approval, so it stays there.
             </>
           )}
-        </p>
+        </Text>
       ) : (
-        <p className="k-small">The name stays blocked. The user sees the decision on the block page.</p>
+        <Text type="supporting" color="primary" as="p">The name stays blocked. The user sees the decision on the block page.</Text>
       )}
       <NoteField value={note} onChange={setNote} />
     </FormDialog>

@@ -8,10 +8,18 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { Card } from '@astryxdesign/core/Card';
+import { Code } from '@astryxdesign/core/Code';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Heading } from '@astryxdesign/core/Heading';
 import { HStack } from '@astryxdesign/core/HStack';
+import { Link } from '@astryxdesign/core/Link';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ClientGroup, QueryRow } from '../api/types';
 import { writeSummary } from '../components/domains/DomainEntryDialogs';
@@ -19,12 +27,12 @@ import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { matcherFor } from '../components/fields/MatchersField';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
+import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { QueryLogTable } from '../components/QueryLogTable';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
 import { listEntryError } from '../lib/objectSchemas';
 import { identifyClient, objectHref, refOfObject, scheduleSummary, selectPolicy, shortRef, splitRef, TIER_TEXT, type Selection } from '../lib/policies';
-import { Link } from '../lib/router';
 import { useDeriveContext } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
 
@@ -108,151 +116,153 @@ export default function ClientDetailPage({ params }: PageProps) {
   const blockedPct = c && c.count ? (c.blocked / c.count) * 100 : undefined;
 
   return (
-    <div className="k-page">
-      <div className="k-page-header">
-        <div className="k-stack">
-          <Link href="/clients" className="k-small">
-            ← Clients
-          </Link>
-          <h1>{display ?? key}</h1>
-          <span className="k-row k-small">
-            {display ? <span className="k-mono">{key}</span> : null}
+    <Page>
+      <PageHeader
+        title={display ?? key}
+        back={{ href: '/clients', label: 'Clients' }}
+        meta={
+          <>
+            {display ? <Code>{key}</Code> : null}
             {c?.last_seen ? (
-              <span>
-                last seen <time dateTime={c.last_seen} title={formatDateTime(c.last_seen)}>{formatRelative(c.last_seen)}</time>
-              </span>
+              <Text size="sm">
+                last seen{' '}
+                <Tooltip content={formatDateTime(c.last_seen)}>
+                  <time dateTime={c.last_seen}>{formatRelative(c.last_seen)}</time>
+                </Tooltip>
+              </Text>
             ) : c ? null : (
-              <span className="k-muted">no queries in the last 24 hours</span>
+              <Text type="supporting">no queries in the last 24 hours</Text>
             )}
-          </span>
-        </div>
-      </div>
+          </>
+        }
+      />
       {clients.error ? <ErrorBanner error={clients.error} /> : null}
       {error ? <ErrorBanner error={error} /> : null}
 
-      <dl className="k-stat-row k-panel" aria-label="Last 24 hours">
-        <div>
-          <dt>Queries (24 h)</dt>
-          <dd>{formatExact(c?.count ?? 0)}</dd>
-        </div>
-        <div>
-          <dt>Blocked</dt>
-          <dd>
-            <Link href={`/queries?client=${encodeURIComponent(key)}&status_class=blocked`}>{formatExact(c?.blocked ?? 0)}</Link>
-          </dd>
-        </div>
-        <div>
-          <dt>Blocked share</dt>
-          <dd>{formatPercent(blockedPct)}</dd>
-        </div>
-      </dl>
+      <Card>
+        <MetadataList orientation="horizontal" aria-label="Last 24 hours">
+          <MetadataListItem label="Queries (24 h)">
+            <Stat>{formatExact(c?.count ?? 0)}</Stat>
+          </MetadataListItem>
+          <MetadataListItem label="Blocked">
+            <Link href={`/queries?client=${encodeURIComponent(key)}&status_class=blocked`} size="2xl" weight="semibold" hasUnderline>
+              {formatExact(c?.blocked ?? 0)}
+            </Link>
+          </MetadataListItem>
+          <MetadataListItem label="Blocked share">
+            <Stat>{formatPercent(blockedPct)}</Stat>
+          </MetadataListItem>
+        </MetadataList>
+      </Card>
 
       {!ready ? (
         <Loading />
       ) : (
-        <div className="k-grid k-grid-2">
-          <section className="k-panel k-section" aria-labelledby="sec-groups" data-testid="client-groups">
-            <h2 id="sec-groups" className="k-h3">
-              Groups
-            </h2>
+        <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+          <Panel title="Groups" headingId="sec-groups" data-testid="client-groups">
             {membership.groups.length ? (
-              <ul className="k-link-list k-stack">
+              <VStack as="ul" gap={2} style={LIST_RESET}>
                 {membership.groups.map((g) => {
                   const obj = ctx.groups.find((x) => refOfObject(x) === g);
                   const m = membership.matchers[g];
                   const removable = obj && objectOwnership(obj).editable && (obj.spec.clients ?? []).some((x) => x.ip === key || x.clientID === key);
                   return (
-                    <li key={g} className="k-row">
-                      <Link href={objectHref('groups', g)} className="k-badge-link">
+                    <HStack as="li" key={g} gap={2} vAlign="center" wrap="wrap">
+                      <Link href={objectHref('groups', g)}>
                         <Badge variant={splitRef(g).name === 'default' ? 'neutral' : 'blue'} label={shortRef(g)} />
                       </Link>
-                      <span className="k-muted k-small">{m ? `matched by ${m.ip ?? m.cidr ?? m.clientID}` : 'matches everyone'}</span>
+                      <Text type="supporting">{m ? `matched by ${m.ip ?? m.cidr ?? m.clientID}` : 'matches everyone'}</Text>
                       {removable ? <Button label="Remove" size="sm" variant="ghost" isDisabled={!can('clientgroups', 'write')} isLoading={removeFrom.isPending} onClick={() => removeFrom.mutate(obj)} tooltip={`Remove ${key} from ${shortRef(g)}`} /> : null}
-                    </li>
+                    </HStack>
                   );
                 })}
-              </ul>
+              </VStack>
             ) : (
-              <p className="k-muted">No group matches this client.</p>
+              <Text color="secondary" as="p">
+                No group matches this client.
+              </Text>
             )}
-            <p className="k-small">Matched by {TIER_TEXT[membership.tier]}.</p>
+            <Text size="sm" as="p">
+              Matched by {TIER_TEXT[membership.tier]}.
+            </Text>
             {c?.group && !membership.groups.includes(c.group) ? (
               <Banner status="info" title={`The last query resolved to ${shortRef(c.group)}`} description="Group changes apply to the next query; MAC and hostname matchers are not evaluated here." />
             ) : null}
-            <form
-              onSubmit={(e) => {
+            {/* The picker's help hangs under it, so the action goes below rather than beside. */}
+            <VStack
+              as="form"
+              gap={2}
+              onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 if (pick[0]) addTo.mutate(splitRef(pick[0]).name);
               }}
             >
-              {/* The picker's help hangs under it, so the action goes below rather than beside. */}
-              <VStack gap={2}>
-                <ObjectRefPicker
-                  kind="clientgroups"
-                  label="Add to group"
-                  sameNamespace
-                  value={pick}
-                  onChange={setPick}
-                  emptyLabel="Choose a group…"
-                  filter={(o) => writableGroups.includes(o as ClientGroup)}
-                  isDisabled={!can('clientgroups', 'write')}
-                />
-                <HStack>
-                  <Button type="submit" label="Add" variant="secondary" isDisabled={!pick[0] || !can('clientgroups', 'write')} isLoading={addTo.isPending} />
-                </HStack>
-              </VStack>
-            </form>
-          </section>
+              <ObjectRefPicker
+                kind="clientgroups"
+                label="Add to group"
+                sameNamespace
+                value={pick}
+                onChange={setPick}
+                emptyLabel="Choose a group…"
+                filter={(o) => writableGroups.includes(o as ClientGroup)}
+                isDisabled={!can('clientgroups', 'write')}
+              />
+              <HStack>
+                <Button type="submit" label="Add" variant="secondary" isDisabled={!pick[0] || !can('clientgroups', 'write')} isLoading={addTo.isPending} />
+              </HStack>
+            </VStack>
+          </Panel>
           <EffectivePolicy selection={selection} />
-        </div>
+        </Grid>
       )}
 
-      <section className="k-panel k-section" aria-labelledby="sec-quick">
-        <h2 id="sec-quick" className="k-h3">
-          Allow or deny a domain
-        </h2>
-        <p className="k-muted k-small">Adds the domain to ui-allow or ui-deny, the lists the query log's Allow and Deny buttons use; every policy with those lists follows.</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-          }}
-        >
-          <VStack gap={2}>
-            <TextField label="Domain" value={domain} onChange={setDomain} placeholder="ads.example.com" mono error={domainErr ?? undefined} />
-            <HStack gap={2} wrap="wrap">
-              <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
-              <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
-            </HStack>
-          </VStack>
-        </form>
-      </section>
+      <Panel title="Allow or deny a domain" headingId="sec-quick" description="Adds the domain to ui-allow or ui-deny, the lists the query log's Allow and Deny buttons use; every policy with those lists follows.">
+        <VStack as="form" gap={2} onSubmit={(e: FormEvent) => e.preventDefault()}>
+          <TextField label="Domain" value={domain} onChange={setDomain} placeholder="ads.example.com" mono error={domainErr ?? undefined} />
+          <HStack gap={2} wrap="wrap">
+            <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
+            <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
+          </HStack>
+        </VStack>
+      </Panel>
 
-      <section className="k-stack" aria-labelledby="sec-recent">
-        <div className="k-panel-title">
-          <h2 id="sec-recent" className="k-h3">
+      <VStack as="section" gap={2} aria-labelledby="sec-recent">
+        <HStack gap={2} hAlign="between" vAlign="center" wrap="wrap">
+          <Heading level={3} accessibilityLevel={2} id="sec-recent">
             Recent queries
-          </h2>
-          <Link href={`/queries?client=${encodeURIComponent(key)}`}>All queries of this client</Link>
-        </div>
+          </Heading>
+          <Link href={`/queries?client=${encodeURIComponent(key)}`} hasUnderline>
+            All queries of this client
+          </Link>
+        </HStack>
         {recent.error ? <ErrorBanner error={recent.error} title="The query log could not be read" /> : null}
         {recent.isLoading ? <Loading /> : null}
         {recent.data ? <QueryLogTable rows={recent.data.queries} hasMore={false} loadingMore={false} onLoadMore={() => undefined} canAct={canLists} onAction={(row, a) => rowAction.mutate({ row, action: a })} /> : null}
-      </section>
-    </div>
+      </VStack>
+    </Page>
+  );
+}
+
+/** Lists drawn by Stacks: no markers or indent. */
+const LIST_RESET = { listStyle: 'none', padding: 0, margin: 0 } as const;
+
+/** A figure of the 24 hours row. */
+function Stat({ children }: { children: ReactNode }) {
+  return (
+    <Text size="2xl" weight="semibold" hasTabularNumbers>
+      {children}
+    </Text>
   );
 }
 
 function EffectivePolicy({ selection }: { selection: Selection }) {
   const w = selection.winner;
   return (
-    <section className="k-panel k-section" aria-labelledby="sec-policy" data-testid="client-policy">
-      <h2 id="sec-policy" className="k-h3">
-        Policy right now
-      </h2>
+    <Panel title="Policy right now" headingId="sec-policy" data-testid="client-policy">
       {w ? (
-        <p>
-          <Link href={objectHref('policies', w.ref)}>
-            <strong>{shortRef(w.ref)}</strong>
+        <Text as="p">
+          <Link href={objectHref('policies', w.ref)} type="inherit" weight="semibold" hasUnderline>
+            {shortRef(w.ref)}
           </Link>{' '}
           decides:{' '}
           {selection.fallback
@@ -260,25 +270,32 @@ function EffectivePolicy({ selection }: { selection: Selection }) {
             : selection.active.length > 1
               ? `the highest priority (${w.policy.spec.priority ?? 0}) of ${selection.active.length} active policies; their lists are merged.`
               : 'the only active policy of its groups.'}
-        </p>
+        </Text>
       ) : (
-        <p>No policy applies: nothing is filtered for this client.</p>
+        <Text as="p">No policy applies: nothing is filtered for this client.</Text>
       )}
       {selection.candidates.length ? (
-        <ol className="k-policy-order" aria-label="Candidate policies">
-          {selection.candidates.map((c) => (
-            <li key={c.ref}>
-              <Link href={objectHref('policies', c.ref)}>{shortRef(c.ref)}</Link>{' '}
-              {c.active ? <Badge variant={c === w ? 'success' : 'info'} label={c === w ? 'decides' : 'active, lists merged'} /> : <Badge variant="neutral" label={c.off ?? 'off'} />}{' '}
-              <span className="k-muted k-small">
+        <VStack as="ol" gap={1.5} aria-label="Candidate policies" style={LIST_RESET}>
+          {selection.candidates.map((c, i) => (
+            <HStack as="li" key={c.ref} gap={2} vAlign="center" wrap="wrap">
+              <Text type="supporting" hasTabularNumbers>
+                {i + 1}.
+              </Text>
+              <Link href={objectHref('policies', c.ref)} hasUnderline>
+                {shortRef(c.ref)}
+              </Link>
+              {c.active ? <Badge variant={c === w ? 'success' : 'info'} label={c === w ? 'decides' : 'active, lists merged'} /> : <Badge variant="neutral" label={c.off ?? 'off'} />}
+              <Text type="supporting">
                 priority {c.policy.spec.priority ?? 0} · {c.policy.spec.schedule ? scheduleSummary(c.policy.spec.schedule) : 'always'}
-              </span>
-            </li>
+              </Text>
+            </HStack>
           ))}
-        </ol>
+        </VStack>
       ) : (
-        <p className="k-muted k-small">No policy names its groups.</p>
+        <Text type="supporting" as="p">
+          No policy names its groups.
+        </Text>
       )}
-    </section>
+    </Panel>
   );
 }

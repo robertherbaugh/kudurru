@@ -2030,6 +2030,15 @@
           },
           "missing": {
             "$ref": "#/components/schemas/Missing"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectOwner"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2931,6 +2940,28 @@
         "required": [
           "items",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "ObjectOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "managedBy": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
         ],
         "type": "object"
       },
@@ -5989,9 +6020,68 @@
         ],
         "type": "object"
       },
+      "ZoneDeleteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "endpointCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "flushed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "recordSetCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "recordSets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "type": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "zoneName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "zoneName",
+          "type",
+          "dryRun",
+          "recordSets",
+          "recordSetCount",
+          "endpointCount",
+          "flushed",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ZoneDetail": {
         "additionalProperties": false,
         "properties": {
+          "deleteRefusal": {
+            "enum": [
+              "default_zone",
+              "managed_by"
+            ],
+            "type": "string"
+          },
           "managedBy": {
             "type": "string"
           },
@@ -6107,6 +6197,13 @@
       "ZoneSummary": {
         "additionalProperties": false,
         "properties": {
+          "deleteRefusal": {
+            "enum": [
+              "default_zone",
+              "managed_by"
+            ],
+            "type": "string"
+          },
           "managedBy": {
             "type": "string"
           },
@@ -12922,6 +13019,7 @@
     },
     "/dnszones:batchDelete": {
       "post": {
+        "description": "Each zone is deleted alone, as DELETE /objects/dnszones/{name} does: a zone that record sets still reference fails with zone_not_empty and the root zone with default_zone (D148).",
         "operationId": "batchDeleteDnszones",
         "requestBody": {
           "content": {
@@ -15172,6 +15270,7 @@
     },
     "/objects/{kind}/{name}": {
       "delete": {
+        "description": "A DNSZone is deleted alone only when no DNSRecordSet references it: otherwise 409 zone_not_empty (error.objects lists them; DELETE /zones/{zone} deletes the zone with its record sets). The root zone \".\" is 409 default_zone (D148).",
         "operationId": "deleteClusterObject",
         "parameters": [
           {
@@ -19588,6 +19687,152 @@
       }
     },
     "/zones/{zone}": {
+      "delete": {
+        "description": "Deletes the DNSZone and every DNSRecordSet whose zoneRef names it, in any namespace (D148): in one transaction on the sqlite driver; on the kube driver record sets first and the zone last, so a failure keeps the zone and the delete can be retried. Needs zones.delete on the zone, and records.delete on it when record sets exist. 409 default_zone for the root zone \".\"; 409 managed_by (error.objects lists them) when the zone or a record set is managed by a file, an integration, Kubernetes or the system. ?dryRun=true runs every check and answers the same summary without deleting. Each object delete is audited by the store; the API adds one zones.delete event.",
+        "operationId": "deleteZone",
+        "parameters": [
+          {
+            "description": "DNSZone object name.",
+            "in": "path",
+            "name": "zone",
+            "required": true,
+            "schema": {
+              "description": "DNSZone object name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Run every check and report what would be deleted, without deleting.",
+            "explode": false,
+            "in": "query",
+            "name": "dryRun",
+            "schema": {
+              "description": "Run every check and report what would be deleted, without deleting.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Delete only when the zone's resourceVersion equals this value (412 otherwise).",
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "description": "Delete only when the zone's resourceVersion equals this value (412 otherwise).",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneDeleteResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete a zone with every record set that references it",
+        "tags": [
+          "zones"
+        ],
+        "x-kudurru-permission": {
+          "resource": "zones",
+          "scope": "zone",
+          "verb": "delete"
+        }
+      },
       "get": {
         "operationId": "getZone",
         "parameters": [

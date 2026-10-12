@@ -60,9 +60,9 @@ func zoneTable(zs []zoneSummary) *cli.Table {
 	return t
 }
 
-// newZonesCmd is `kudurru zones list|get|import|export|notify`.
+// newZonesCmd is `kudurru zones list|get|import|export|notify|delete`.
 func newZonesCmd(o *cliOpts) *cobra.Command {
-	cmd := &cobra.Command{Use: "zones", Aliases: []string{"zone"}, Short: "List, import, export and notify zones"}
+	cmd := &cobra.Command{Use: "zones", Aliases: []string{"zone"}, Short: "List, import, export, notify and delete zones"}
 	list := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -99,7 +99,51 @@ func newZonesCmd(o *cliOpts) *cobra.Command {
 			return o.render(cmd, raw, func(bool) (*cli.Table, error) { return zoneTable([]zoneSummary{z}), nil })
 		},
 	}
-	cmd.AddCommand(list, get, newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o))
+	cmd.AddCommand(list, get, newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
+	return cmd
+}
+
+// newZoneDeleteCmd is `kudurru zones delete <zone>`: DELETE /zones/{zone},
+// the zone with every record set that references it (D148).
+func newZoneDeleteCmd(o *cliOpts) *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:               "delete <zone>",
+		Aliases:           []string{"rm"},
+		Short:             "Delete a zone and every record set that references it",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: o.completeZones,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, _, err := o.client()
+			if err != nil {
+				return err
+			}
+			q := url.Values{}
+			if dryRun {
+				q.Set("dryRun", "true")
+			}
+			var raw json.RawMessage
+			if err := c.Do(cmd.Context(), http.MethodDelete, "/zones/"+apiclient.Seg(args[0]), q, nil, &raw); err != nil {
+				return err
+			}
+			f, _ := o.format()
+			if f.Structured() {
+				return cli.WriteStructured(cmd.OutOrStdout(), f, raw)
+			}
+			var res struct {
+				RecordSetCount int `json:"recordSetCount"`
+				EndpointCount  int `json:"endpointCount"`
+			}
+			_ = json.Unmarshal(raw, &res)
+			verb := "deleted"
+			if dryRun {
+				verb = "would be deleted (dry run)"
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "zone %s %s with %d record sets (%d records)\n", args[0], verb, res.RecordSetCount, res.EndpointCount)
+			return err
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "only report what would be deleted")
 	return cmd
 }
 
