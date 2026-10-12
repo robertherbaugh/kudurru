@@ -374,6 +374,27 @@ install_kudurru false
 # An admin-role token for the API calls (auth.bootstrapToken).
 TOKEN=$(kubectl -n "$NS" get secret kudurru-bootstrap-token -o jsonpath='{.data.token}' | base64 -d)
 
+log "bootstrap and API defaults use the release namespace (#22)"
+release_defaults() {
+  local pod=$1 resource name
+  for resource in clientgroups policies; do
+    check "$pod" "/$resource/$NS/default" --arg ns "$NS" '.metadata.namespace == $ns'
+  done
+  for name in starter ui-allow ui-deny; do
+    check "$pod" "/blocklists/$NS/$name" --arg ns "$NS" '.metadata.namespace == $ns'
+  done
+  check "$pod" "/policies/$NS/default" \
+    '(.spec.allowListRefs | index("ui-allow")) != null and (.spec.blockListRefs | index("ui-deny")) != null'
+  check "$pod" "/clientgroups/$NS/namespace-check" --arg ns "$NS" '.metadata.namespace == $ns'
+}
+pod=$(pod_names | head -1)
+api "$pod" POST /clientgroups \
+  '{"apiVersion":"kudurru.io/v1alpha1","kind":"ClientGroup","metadata":{"name":"namespace-check"},"spec":{"clients":[{"ip":"192.0.2.254"}]}}' >/dev/null
+for action in allow deny; do
+  api "$pod" POST "/${action}list" '{"values":["namespace-check.invalid"],"type":"exact"}' >/dev/null
+done
+on_every_pod 120 "defaults in $NS" release_defaults
+
 log "replicas spread over the nodes"
 kubectl -n "$NS" get pods -l "$SELECTOR" -o wide
 spread=$(kubectl -n "$NS" get pods -l "$SELECTOR" -o json | jq '[.items[].spec.nodeName] | unique | length')

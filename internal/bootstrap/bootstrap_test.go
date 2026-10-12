@@ -44,6 +44,86 @@ var (
 	policyKey = store.Key{Kind: "Policy", Namespace: DefaultNamespace, Name: DefaultPolicyName}
 )
 
+func TestResolveNamespace(t *testing.T) {
+	for _, tc := range []struct {
+		name, release, want string
+		policies            []string
+		manager             string
+	}{
+		{name: "fresh release", release: "dns", want: "dns"},
+		{name: "default release", release: "default", want: "default"},
+		{name: "legacy bootstrap", release: "dns", want: "default", policies: []string{"default"}, manager: store.ManagerBootstrap},
+		{name: "edited legacy policy", release: "dns", want: "default", policies: []string{"default"}, manager: store.ManagerAPI},
+		{name: "release policy", release: "dns", want: "dns", policies: []string{"dns"}, manager: store.ManagerAPI},
+		{name: "release takes precedence", release: "dns", want: "dns", policies: []string{"default", "dns"}, manager: store.ManagerBootstrap},
+		{name: "other namespace", release: "dns", want: "dns", policies: []string{"other"}, manager: store.ManagerAPI},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			var before []store.Object
+			for _, ns := range tc.policies {
+				pol := &v1alpha1.Policy{ObjectMeta: metav1.ObjectMeta{Name: DefaultPolicyName, Namespace: ns},
+					Spec: v1alpha1.PolicySpec{BlockListRefs: []string{"custom"}}}
+				obj, err := st.Apply(ctx, pol, store.ApplyOptions{Manager: tc.manager})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var saved v1alpha1.Policy
+				if err := st.Get(ctx, store.KeyOf(obj), &saved); err != nil {
+					t.Fatal(err)
+				}
+				before = append(before, &saved)
+			}
+			ns, err := ResolveNamespace(ctx, st, tc.release)
+			if err != nil || ns != tc.want {
+				t.Fatalf("namespace = %q, %v; want %q", ns, err, tc.want)
+			}
+			for _, obj := range before {
+				var after v1alpha1.Policy
+				if err := st.Get(ctx, store.KeyOf(obj), &after); err != nil || !reflect.DeepEqual(obj, &after) {
+					t.Fatalf("namespace selection changed %s: %+v, %v", store.KeyOf(obj), after, err)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveNamespaceReadFailure(t *testing.T) {
+	st := newStore(t)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveNamespace(context.Background(), st, "dns"); !errors.Is(err, store.ErrClosed) {
+		t.Fatalf("must propagate a failed namespace probe: %v", err)
+	}
+}
+
+func TestSeedResolvedNamespace(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	ns, err := ResolveNamespace(ctx, st, "dns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Seed(ctx, st, Options{Namespace: ns, Validator: testValidator(t), StarterBlockList: func(context.Context) (*v1alpha1.BlockList, error) {
+		return &v1alpha1.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "starter"},
+			Spec: v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{{Inline: []string{"ads.example"}}}}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []store.Key{
+		{Kind: "BlockList", Namespace: "dns", Name: "starter"},
+		{Kind: "ClientGroup", Namespace: "dns", Name: DefaultClientGroupName},
+		{Kind: "Policy", Namespace: "dns", Name: DefaultPolicyName},
+		rootKey,
+	}
+	if !res.FirstBoot || !reflect.DeepEqual(res.Created, want) {
+		t.Fatalf("seeds = %+v, want %v", res, want)
+	}
+}
+
 func TestSeedFirstBoot(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)

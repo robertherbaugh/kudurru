@@ -5,6 +5,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { AddEntryDialog } from '../components/domains/DomainEntryDialogs';
 import { collectEntries } from '../mocks/domains';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
@@ -35,6 +36,22 @@ async function openAdd(name: RegExp | string): Promise<HTMLElement> {
 }
 
 describe('AllowlistPage', () => {
+  it.each([undefined, 'dns'])('lets the server default the namespace unless %s was chosen', async (namespace) => {
+    let body: Record<string, unknown> | undefined;
+    server.use(
+      http.post(`${API}/allowlist`, async ({ request }) => {
+        body = await request.json() as Record<string, unknown>;
+        return HttpResponse.json({ items: [], processed: { success: [{ item: 'allowed.example' }], errors: [] } });
+      }),
+    );
+    renderWithApp(<AddEntryDialog open onClose={() => {}} action="allow" namespace={namespace} />);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Domains/ }), { target: { value: 'allowed.example' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body?.namespace).toBe(namespace);
+  });
+
   it('shows one row per allow entry with type, scope, comment, origin, list and overrides', async () => {
     renderWithApp(<AllowlistPage />, { route: '/allowlist' });
     expect(await screen.findByRole('heading', { level: 1, name: 'Allowlist' })).toBeInTheDocument();

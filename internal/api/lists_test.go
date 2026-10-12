@@ -104,6 +104,46 @@ func TestAddDomains(t *testing.T) {
 	}
 }
 
+func TestReleaseNamespaceDefaults(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.DefaultNamespace = "dns" })
+	ctx := context.Background()
+	for _, obj := range []struct{ kind, plural string }{
+		{"ClientGroup", "clientgroups"},
+		{"Policy", "policies"},
+		{"BlockList", "blocklists"},
+	} {
+		doc := map[string]any{
+			"apiVersion": "kudurru.io/v1alpha1", "kind": obj.kind,
+			"metadata": map[string]any{"name": "default"}, "spec": map[string]any{},
+		}
+		if obj.kind == "BlockList" {
+			doc["spec"] = map[string]any{"sources": []any{map[string]any{"inline": []string{"ads.example"}}}}
+		}
+		h.do(http.MethodPost, "/api/v1/"+obj.plural, "operator", doc).want(http.StatusCreated)
+		h.do(http.MethodGet, "/api/v1/"+obj.plural+"/dns/default", "viewer", nil).want(http.StatusOK)
+		h.do(http.MethodGet, "/api/v1/"+obj.plural+"/default/default", "viewer", nil).want(http.StatusNotFound)
+	}
+	for _, action := range []string{"allow", "deny"} {
+		h.do(http.MethodPost, "/api/v1/domains/"+action+"/exact", "operator",
+			map[string]any{"domains": []string{action + ".example"}}).want(http.StatusOK)
+		h.do(http.MethodPost, "/api/v1/"+action+"list", "operator",
+			map[string]any{"values": []string{action + ".dashboard.example"}, "type": "exact"}).want(http.StatusOK)
+	}
+	var pol v1alpha1.Policy
+	if err := h.st.Get(ctx, store.Key{Kind: "Policy", Namespace: "dns", Name: "default"}, &pol); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(pol.Spec.AllowListRefs, UIAllowList) || !slices.Contains(pol.Spec.BlockListRefs, UIDenyList) {
+		t.Fatalf("UI lists must attach to the release policy: %+v", pol.Spec)
+	}
+	for _, name := range []string{UIAllowList, UIDenyList} {
+		var bl v1alpha1.BlockList
+		if err := h.st.Get(ctx, store.Key{Kind: "BlockList", Namespace: "dns", Name: name}, &bl); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestRefreshList(t *testing.T) {
 	var refreshed []string
 	h := newHarness(t, func(o *Options) {

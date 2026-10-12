@@ -201,6 +201,21 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	defer func() { _ = st.Close() }()
 
+	// Use the release namespace for seeds, policy fallback and API writes.
+	// Preserve the namespace of a legacy default policy on upgrades.
+	releaseNamespace := bootstrap.DefaultNamespace
+	namespace := bootstrap.DefaultNamespace
+	if cfg.Store.Driver == "kube" {
+		releaseNamespace = kube.PodNamespace()
+		namespace, err = bootstrap.ResolveNamespace(ctx, st, releaseNamespace)
+		if err != nil {
+			return err
+		}
+		if namespace != releaseNamespace {
+			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
+		}
+	}
+
 	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
 	// so store writes and API actions are recorded in the node's audit
 	// spool (audit-spool.db) and as "log":"audit" lines. The wrapper goes
@@ -224,7 +239,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// First boot: root forward zone, default client group and policy (§6.4).
-	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
+	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Namespace: namespace, Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
@@ -266,11 +281,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err := zc.Register(zoneview.Builder(logger)); err != nil {
 		return err
 	}
-	// Blocked-services and safe-search catalogue (D60): embedded, replaced
+	// Blocked services and safe-search catalog (D60): embedded, replaced
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
 	// services import (blocking.catalogue.adguardServicesURL).
-	catalogues := catalogue.NewHolder(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace, Services: catalogues}, logger)); err != nil {
+	catalogs := catalogue.NewHolder(nil)
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs}, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -359,7 +374,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return out, err
 			},
 			QueryTail: func() *querylog.Tail { return qlTail },
-			Address:   cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues), CatalogueImport: catalogueImportBody(catalogues),
+			Address:   cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogs), CatalogueImport: catalogueImportBody(catalogs),
 			Status: func(ctx context.Context) internalapi.Status {
 				leader, _ := membership.Leader(ctx)
 				var ls []internalapi.ListStatus
@@ -397,14 +412,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
 		Objects: listObjs, Cache: lists, Sink: flushingListSink{next: zc, flush: edgeFlush}, Membership: membership, Client: internalClient,
 		Downloader: downloader, RefreshInterval: cfg.Blocking.RefreshInterval.Std(),
-		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded, Extra: catalogues,
+		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded, Extra: catalogs,
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {
 		return err
 	}
 	checker.Register("blocklists", listResolver.Ready)
-	catRefreshers, err := newCatalogueRefreshers(cfg, catalogues, membership, internalClient, logger)
+	catRefreshers, err := newCatalogueRefreshers(cfg, catalogs, membership, internalClient, logger)
 	if err != nil {
 		return err
 	}
@@ -491,7 +506,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
 	bopts := blockingstage.OptionsFromConfig(cfg)
-	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogues
+	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogs
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
 		return err
@@ -503,7 +518,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// for the API preview; its listener runs when blockPage.enabled.
 	// Unblock requests (the block page's form, /unblockrequests): the book
 	// indexes them on every node; the leader expires and prunes them.
-	unblockBook, err := newUnblockBook(st, reload, cfg.Node.Name, encKey, logger)
+	unblockBook, err := newUnblockBook(st, reload, namespace, cfg.Node.Name, encKey, logger)
 	if err != nil {
 		return err
 	}
@@ -606,7 +621,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
 	stackOpts.Kube = restCfg
 	if cfg.Store.Driver == "kube" {
-		stackOpts.Namespace = kube.PodNamespace()
+		stackOpts.Namespace = releaseNamespace
 	}
 	if internalCreds != nil {
 		stackOpts.InternalToken = internalCreds.ValidToken
@@ -715,8 +730,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Roles:       ids.Roles,
 		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
-		DefaultNamespace: bootstrap.DefaultNamespace,
-		Catalogue:        catalogueAPI(catalogues, catRefreshers),
+		DefaultNamespace: namespace,
+		Catalogue:        catalogueAPI(catalogs, catRefreshers),
 		BlockPage:        blockPage,
 		Unblock:          unblockBook,
 	})
@@ -733,7 +748,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogues.HasService, KnownCategory: catalogues.HasCategory, ServicesChanged: catalogues.Subscribe()})
+	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()})
 	if err != nil {
 		return err
 	}

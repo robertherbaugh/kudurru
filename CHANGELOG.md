@@ -17,6 +17,11 @@ D126 record what changed on the way.
 
 ### Multi-node data (after 0.1.0-rc.3)
 
+- Kubernetes defaults ([#22](https://github.com/robertherbaugh/kudurru/issues/22)):
+  fresh installs seed blocking objects in the release namespace, which
+  also holds the policy fallback, API defaults, UI lists and unblock
+  requests. Existing installs keep `default` until a default policy exists
+  in the release namespace; their objects are not moved or overwritten.
 - Audit in mode=kubernetes ([#10](https://github.com/robertherbaugh/kudurru/issues/10)):
   the Audit tab no longer fails with "events are not stored on this node".
   Every replica records the kube driver's writes and its API actions in an

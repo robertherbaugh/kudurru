@@ -117,6 +117,23 @@ func TestIdentificationWithoutDefaultGroup(t *testing.T) {
 	}
 }
 
+func TestReleaseNamespaceFallback(t *testing.T) {
+	ix := Build(Input{
+		ClientGroups: []*v1alpha1.ClientGroup{group("dns", "default")},
+		Policies: []*v1alpha1.Policy{
+			pol("default", "default", v1alpha1.PolicySpec{BlockMode: "zeroIP"}),
+			pol("dns", "default", v1alpha1.PolicySpec{BlockMode: "nxdomain"}),
+		},
+	}, Options{DefaultNamespace: "dns"})
+	m := ix.Identify(pipeline.Client{})
+	if !slices.Equal(m.GroupIDs, []string{"dns/default"}) {
+		t.Fatalf("default group = %v, want dns/default", m.GroupIDs)
+	}
+	if d := ix.Select(m, time.Now()); d.Policy != "dns/default" || !d.Fallback || d.BlockMode != "nxdomain" {
+		t.Fatalf("release policy must be the fallback: %+v", d)
+	}
+}
+
 func TestInvalidMatchersAreDiagnosed(t *testing.T) {
 	ix := Build(Input{ClientGroups: []*v1alpha1.ClientGroup{group(ns, "bad",
 		v1alpha1.ClientMatcher{IP: "10.0.0.300"},
