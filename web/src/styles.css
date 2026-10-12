@@ -40,8 +40,6 @@
   --q-cached: var(--q-cached-strong);
   --q-blocked: var(--q-blocked-strong);
   --q-error: var(--q-error-strong);
-}
-:root[data-contrast='more'] .k-app {
   --color-border: currentColor;
   --color-text-secondary: var(--color-text-primary);
 }
