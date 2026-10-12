@@ -22,9 +22,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # refs/tags/: a bare tag name would check out a branch of the same
+      # name first. Started by hand, the branch it runs on is built.
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref && format('refs/tags/{0}', inputs.ref) || github.ref }}
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod

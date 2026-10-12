@@ -57,6 +57,10 @@ Repository settings the pipeline relies on (once):
       `release-candidate` must keep `main`'s history, or the next promotion
       conflicts and the release tree check fails.
 - [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
+- [ ] A branch ruleset refuses branches named `v*`. publish.yml checks out
+      `refs/tags/<tag>`, so a branch named like the next tag can no longer
+      stand in for it, but it would still confuse anyone checking out the
+      bare name.
 - [ ] The `github-pages` environment allows deployments from the `release`
       branch (docs-pages runs in the context of the `release` push).
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
