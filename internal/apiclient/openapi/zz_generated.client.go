@@ -80,6 +80,42 @@ func (e BlockingStateScope) Valid() bool {
 	}
 }
 
+// Defines values for CatalogueServiceOrigin.
+const (
+	CatalogueServiceOriginAdguard CatalogueServiceOrigin = "adguard"
+	CatalogueServiceOriginKudurru CatalogueServiceOrigin = "kudurru"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueServiceOrigin enum.
+func (e CatalogueServiceOrigin) Valid() bool {
+	switch e {
+	case CatalogueServiceOriginAdguard:
+		return true
+	case CatalogueServiceOriginKudurru:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogueSourceInfoId.
+const (
+	CatalogueSourceInfoIdAdguard CatalogueSourceInfoId = "adguard"
+	CatalogueSourceInfoIdKudurru CatalogueSourceInfoId = "kudurru"
+)
+
+// Valid indicates whether the value is a known member of the CatalogueSourceInfoId enum.
+func (e CatalogueSourceInfoId) Valid() bool {
+	switch e {
+	case CatalogueSourceInfoIdAdguard:
+		return true
+	case CatalogueSourceInfoIdKudurru:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DNSQueryRequestProto.
 const (
 	DNSQueryRequestProtoDoh  DNSQueryRequestProto = "doh"
@@ -350,6 +386,42 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	case IdentityProviderInfoSourceConfig:
 		return true
 	case IdentityProviderInfoSourceObject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyEffectiveServiceOrigin.
+const (
+	PolicyEffectiveServiceOriginAdguard PolicyEffectiveServiceOrigin = "adguard"
+	PolicyEffectiveServiceOriginKudurru PolicyEffectiveServiceOrigin = "kudurru"
+)
+
+// Valid indicates whether the value is a known member of the PolicyEffectiveServiceOrigin enum.
+func (e PolicyEffectiveServiceOrigin) Valid() bool {
+	switch e {
+	case PolicyEffectiveServiceOriginAdguard:
+		return true
+	case PolicyEffectiveServiceOriginKudurru:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyEffectiveServiceVia.
+const (
+	PolicyEffectiveServiceViaCategory PolicyEffectiveServiceVia = "category"
+	PolicyEffectiveServiceViaService  PolicyEffectiveServiceVia = "service"
+)
+
+// Valid indicates whether the value is a known member of the PolicyEffectiveServiceVia enum.
+func (e PolicyEffectiveServiceVia) Valid() bool {
+	switch e {
+	case PolicyEffectiveServiceViaCategory:
+		return true
+	case PolicyEffectiveServiceViaService:
 		return true
 	default:
 		return false
@@ -1573,6 +1645,24 @@ type BlockingState struct {
 // BlockingStateScope defines model for BlockingState.Scope.
 type BlockingStateScope string
 
+// CatalogueCategory defines model for CatalogueCategory.
+type CatalogueCategory struct {
+	Description *string `json:"description,omitempty"`
+
+	// Icon A Lucide icon name (kebab-case).
+	Icon *string `json:"icon,omitempty"`
+
+	// Id The ID Policy.spec.blockedCategories names.
+	Id   string `json:"id"`
+	Name string `json:"name"`
+
+	// Order Sort order (ascending).
+	Order int64 `json:"order"`
+
+	// Services Services in the category.
+	Services int64 `json:"services"`
+}
+
 // CatalogueIcon defines model for CatalogueIcon.
 type CatalogueIcon struct {
 	// Id The icon slug (the homarr-labs/dashboard-icons file name).
@@ -1587,6 +1677,8 @@ type CatalogueIcon struct {
 
 // CatalogueInfo defines model for CatalogueInfo.
 type CatalogueInfo struct {
+	Categories int64 `json:"categories"`
+
 	// Digest SHA-256 of the catalogue document.
 	Digest   string  `json:"digest"`
 	Homepage *string `json:"homepage,omitempty"`
@@ -1600,8 +1692,9 @@ type CatalogueInfo struct {
 	SafeSearchEngines int64             `json:"safeSearchEngines"`
 
 	// SchemaVersion Catalogue document schema version.
-	SchemaVersion int64 `json:"schemaVersion"`
-	Services      int64 `json:"services"`
+	SchemaVersion int64                 `json:"schemaVersion"`
+	Services      int64                 `json:"services"`
+	Sources       []CatalogueSourceInfo `json:"sources"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -1620,7 +1713,7 @@ type CatalogueRefresh struct {
 
 // CatalogueService defines model for CatalogueService.
 type CatalogueService struct {
-	// Category video, social, messaging, gaming, music, ai, dating, ...
+	// Category The category ID (GET /catalogue/categories): ai, social, video, ...
 	Category string `json:"category"`
 
 	// Domains The service's rules as list text (||domain^).
@@ -1635,16 +1728,67 @@ type CatalogueService struct {
 	// Id The ID Policy.spec.blockedServices names.
 	Id string `json:"id"`
 
+	// License SPDX licence of the entry (Apache-2.0, or GPL-3.0 for imported services).
+	License string `json:"license"`
+
 	// List The list name the query log records for this service's blocks (service:<id>).
 	List string `json:"list"`
 	Name string `json:"name"`
 
+	// Note A caveat about blocking the service.
+	Note *string `json:"note,omitempty"`
+
+	// Origin kudurru, or adguard for a service of the opt-in AdGuard import.
+	Origin CatalogueServiceOrigin `json:"origin"`
+
+	// Related Services of the same vendor or closely tied to it.
+	Related *[]string `json:"related,omitempty"`
+
+	// Requires Services this one also depends on: block them too to stop it (Fortnite requires epicgames).
+	Requires *[]string `json:"requires,omitempty"`
+
 	// Rules Number of rules (||domain^).
 	Rules int64 `json:"rules"`
 
-	// Source Where the entry comes from: a vendor documentation URL or "first-party domains of the service".
+	// Source Where the entry comes from: a vendor documentation URL or "first-party domains of the service"; adguard-hostlists-registry for imported services.
 	Source string `json:"source"`
 }
+
+// CatalogueServiceOrigin kudurru, or adguard for a service of the opt-in AdGuard import.
+type CatalogueServiceOrigin string
+
+// CatalogueSourceInfo defines model for CatalogueSourceInfo.
+type CatalogueSourceInfo struct {
+	// Digest SHA-256 of the document in service; absent before the first successful download.
+	Digest *string `json:"digest,omitempty"`
+
+	// DroppedRules Imported rules left out because they are not plain block rules.
+	DroppedRules *int64 `json:"droppedRules,omitempty"`
+
+	// Id kudurru: the catalogue document (embedded or blocking.catalogue.url). adguard: the opt-in import of blocking.catalogue.adguardServicesURL.
+	Id CatalogueSourceInfoId `json:"id"`
+
+	// License SPDX licence of the source's data (Apache-2.0 for kudurru, GPL-3.0 for AdGuard's).
+	License string `json:"license"`
+
+	// Loaded A document of this source is in service.
+	Loaded  bool              `json:"loaded"`
+	Name    string            `json:"name"`
+	Origin  string            `json:"origin"`
+	Refresh *CatalogueRefresh `json:"refresh,omitempty"`
+
+	// Services Services this source contributes to the catalogue in service.
+	Services int64 `json:"services"`
+
+	// Shadowed Imported services left out because the kudurru catalogue has the same ID (kudurru's entry wins).
+	Shadowed *int64 `json:"shadowed,omitempty"`
+
+	// Skipped Imported entries left out: an ID kudurru cannot use, a duplicate, no name, or no usable rule.
+	Skipped *int64 `json:"skipped,omitempty"`
+}
+
+// CatalogueSourceInfoId kudurru: the catalogue document (embedded or blocking.catalogue.url). adguard: the opt-in import of blocking.catalogue.adguardServicesURL.
+type CatalogueSourceInfoId string
 
 // ClientItem defines model for ClientItem.
 type ClientItem struct {
@@ -2185,6 +2329,16 @@ type ListApplyResult struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ListCatalogueCategory defines model for ListCatalogueCategory.
+type ListCatalogueCategory struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string             `json:"continue,omitempty"`
+	Items    []CatalogueCategory `json:"items"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
 // ListCatalogueIcon defines model for ListCatalogueIcon.
 type ListCatalogueIcon struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -2404,6 +2558,25 @@ type Point struct {
 	Ts            time.Time `json:"ts"`
 }
 
+// PolicyCategory defines model for PolicyCategory.
+type PolicyCategory struct {
+	// Allowed Of those, the ones allowedServices excepts.
+	Allowed int64 `json:"allowed"`
+
+	// Icon A Lucide icon name.
+	Icon *string `json:"icon,omitempty"`
+	Id   string  `json:"id"`
+
+	// Known The catalogue in service has the category.
+	Known bool `json:"known"`
+
+	// Name The catalogue name; the ID when unknown.
+	Name string `json:"name"`
+
+	// Services Services in the category now.
+	Services int64 `json:"services"`
+}
+
 // PolicyClient defines model for PolicyClient.
 type PolicyClient struct {
 	Count int64   `json:"count"`
@@ -2416,6 +2589,31 @@ type PolicyDomain struct {
 	Count  int64  `json:"count"`
 	Domain string `json:"domain"`
 }
+
+// PolicyEffectiveService defines model for PolicyEffectiveService.
+type PolicyEffectiveService struct {
+	Category *string `json:"category,omitempty"`
+
+	// Icon Logo path, /api/v1/catalogue/icons/{slug}.svg; absent when there is none.
+	Icon *string `json:"icon,omitempty"`
+
+	// IconOnDark The logo drawn for dark backgrounds, when the default one is dark artwork.
+	IconOnDark *string                      `json:"iconOnDark,omitempty"`
+	Id         string                       `json:"id"`
+	Known      bool                         `json:"known"`
+	Name       string                       `json:"name"`
+	Origin     PolicyEffectiveServiceOrigin `json:"origin"`
+	Rules      int64                        `json:"rules"`
+
+	// Via service: named in blockedServices; category: a service of a blocked category.
+	Via PolicyEffectiveServiceVia `json:"via"`
+}
+
+// PolicyEffectiveServiceOrigin defines model for PolicyEffectiveService.Origin.
+type PolicyEffectiveServiceOrigin string
+
+// PolicyEffectiveServiceVia service: named in blockedServices; category: a service of a blocked category.
+type PolicyEffectiveServiceVia string
 
 // PolicyGroup defines model for PolicyGroup.
 type PolicyGroup struct {
@@ -2509,10 +2707,19 @@ type PolicyState struct {
 	// Active enabled and the schedule allows it now (an invalid schedule applies at all times).
 	Active bool `json:"active"`
 
+	// AllowedServices The spec.allowedServices entries: services of a blocked category this policy does not block.
+	AllowedServices []PolicyService `json:"allowedServices"`
+
 	// BlockMode spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list.
-	BlockMode  string      `json:"blockMode"`
-	BlockTTL   *string     `json:"blockTTL,omitempty"`
-	Conditions []Condition `json:"conditions"`
+	BlockMode string  `json:"blockMode"`
+	BlockTTL  *string `json:"blockTTL,omitempty"`
+
+	// Categories The spec.blockedCategories entries.
+	Categories []PolicyCategory `json:"categories"`
+	Conditions []Condition      `json:"conditions"`
+
+	// EffectiveServices Every service the policy blocks with the catalogue in service: blockedServices, then the services of blockedCategories minus allowedServices.
+	EffectiveServices []PolicyEffectiveService `json:"effectiveServices"`
 
 	// Enabled false while the kudurru.io/enabled annotation is "false".
 	Enabled   bool          `json:"enabled"`
@@ -2525,7 +2732,9 @@ type PolicyState struct {
 	Priority   int64            `json:"priority"`
 	SafeSearch PolicySafeSearch `json:"safeSearch"`
 	Schedule   *PolicySchedule  `json:"schedule,omitempty"`
-	Services   []PolicyService  `json:"services"`
+
+	// Services The spec.blockedServices entries.
+	Services []PolicyService `json:"services"`
 
 	// ShadowedBy Enabled policies (namespace/name, rank order) that outrank this one for at least one of its client groups: they decide for those clients and their settings win; the lists of all active policies still apply.
 	ShadowedBy *[]string       `json:"shadowedBy,omitempty"`
@@ -4513,6 +4722,11 @@ type ClientInterface interface {
 	// Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 	GetCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListCatalogueCategories Categories Policy.spec.blockedCategories can block
+	//
+	// Corresponds with GET /catalogue/categories (the `ListCatalogueCategories` operationId).
+	ListCatalogueCategories(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCatalogueIcons Logos embedded in this build
 	//
 	// Corresponds with GET /catalogue/icons (the `ListCatalogueIcons` operationId).
@@ -5892,6 +6106,21 @@ func (c *Client) FlushCache(ctx context.Context, params *FlushCacheParams, body 
 // Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 func (c *Client) GetCatalogue(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCatalogueRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCatalogueCategories Categories Policy.spec.blockedCategories can block
+//
+// Corresponds with GET /catalogue/categories (the `ListCatalogueCategories` operationId).
+func (c *Client) ListCatalogueCategories(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCatalogueCategoriesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -9384,6 +9613,33 @@ func NewGetCatalogueRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/catalogue")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCatalogueCategoriesRequest constructs an http.Request for the ListCatalogueCategories method
+func NewListCatalogueCategoriesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/catalogue/categories")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -14430,6 +14686,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /catalogue (the `GetCatalogue` operationId).
 	GetCatalogueWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCatalogueResponse, error)
 
+	// ListCatalogueCategoriesWithResponse Categories Policy.spec.blockedCategories can block
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /catalogue/categories (the `ListCatalogueCategories` operationId).
+	ListCatalogueCategoriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueCategoriesResponse, error)
+
 	// ListCatalogueIconsWithResponse Logos embedded in this build
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -18200,6 +18463,89 @@ func (r GetCatalogueResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCatalogueResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCatalogueCategoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ListCatalogueCategory
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON200() *ListCatalogueCategory {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListCatalogueCategoriesResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCatalogueCategoriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCatalogueCategoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCatalogueCategoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCatalogueCategoriesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -26277,6 +26623,19 @@ func (c *ClientWithResponses) GetCatalogueWithResponse(ctx context.Context, reqE
 	return ParseGetCatalogueResponse(rsp)
 }
 
+// ListCatalogueCategoriesWithResponse Categories Policy.spec.blockedCategories can block
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /catalogue/categories (the `ListCatalogueCategories` operationId).
+func (c *ClientWithResponses) ListCatalogueCategoriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCatalogueCategoriesResponse, error) {
+	rsp, err := c.ListCatalogueCategories(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCatalogueCategoriesResponse(rsp)
+}
+
 // ListCatalogueIconsWithResponse Logos embedded in this build
 //
 // Returns a wrapper object for the known response body format(s).
@@ -30222,6 +30581,74 @@ func ParseGetCatalogueResponse(rsp *http.Response) (*GetCatalogueResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CatalogueInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCatalogueCategoriesResponse parses an HTTP response from a ListCatalogueCategoriesWithResponse call
+func ParseListCatalogueCategoriesResponse(rsp *http.Response) (*ListCatalogueCategoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCatalogueCategoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListCatalogueCategory
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

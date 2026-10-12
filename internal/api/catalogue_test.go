@@ -18,7 +18,7 @@ func TestCatalogueRoutes(t *testing.T) {
 	var info CatalogueInfo
 	h.do(http.MethodGet, "/api/v1/catalogue", "viewer", nil).want(http.StatusOK).json(&info)
 	emb := catalogue.Embedded()
-	if info.SchemaVersion != 1 || info.Version != emb.Version || info.Origin != "embedded" || info.Digest != emb.Digest() ||
+	if info.SchemaVersion != catalogue.SchemaVersion || info.Version != emb.Version || info.Origin != "embedded" || info.Digest != emb.Digest() ||
 		info.Services != len(emb.Services) || info.SafeSearchEngines != len(emb.SafeSearch) {
 		t.Errorf("info = %+v", info)
 	}

@@ -62,3 +62,47 @@ func TestPolicyBlockedServices(t *testing.T) {
 		return cond(e.policy("home", "kids").Status.Conditions, v1alpha1.ConditionDegraded) == "False/AsExpected"
 	})
 }
+
+// TestPolicyBlockedCategories: unknown blockedCategories IDs make the
+// Policy Degraded{UnknownCategory}; an unknown service as well makes it
+// UnknownService, and allowedServices IDs are checked like services.
+func TestPolicyBlockedCategories(t *testing.T) {
+	var mu sync.Mutex
+	cats := map[string]bool{"ai": true}
+	changed := make(chan struct{}, 1)
+	e := newEnv(t, func(o *Options) {
+		o.KnownService = func(id string) bool { return id == "chatgpt" }
+		o.KnownCategory = func(id string) bool { mu.Lock(); defer mu.Unlock(); return cats[id] }
+		o.ServicesChanged = changed
+	})
+	e.start()
+	e.apply(&v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Namespace: "home", Name: "kids"}})
+	pol := &v1alpha1.Policy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "home", Name: "kids"},
+		Spec:       v1alpha1.PolicySpec{ClientGroupRefs: []string{"kids"}, BlockedCategories: []string{"ai", "retro"}, AllowedServices: []string{"chatgpt"}},
+	}
+	e.apply(pol)
+	e.eventually("unknown category", func() bool {
+		return cond(e.policy("home", "kids").Status.Conditions, v1alpha1.ConditionDegraded) == "True/UnknownCategory"
+	})
+	if msg := condition(e.policy("home", "kids").Status.Conditions, v1alpha1.ConditionDegraded).Message; !strings.Contains(msg, `category "retro" (blockedCategories)`) || strings.Contains(msg, `"ai"`) {
+		t.Errorf("message %q", msg)
+	}
+	pol = e.policy("home", "kids").DeepCopy()
+	pol.Spec.AllowedServices = []string{"chatgpt", "nothing"}
+	e.apply(pol)
+	e.eventually("unknown allowed service", func() bool {
+		c := condition(e.policy("home", "kids").Status.Conditions, v1alpha1.ConditionDegraded)
+		return c != nil && c.Reason == v1alpha1.ReasonUnknownService && strings.Contains(c.Message, `service "nothing" (allowedServices)`)
+	})
+	pol = e.policy("home", "kids").DeepCopy()
+	pol.Spec.AllowedServices = nil
+	e.apply(pol)
+	mu.Lock()
+	cats["retro"] = true
+	mu.Unlock()
+	changed <- struct{}{}
+	e.eventually("resolved by the catalogue update", func() bool {
+		return cond(e.policy("home", "kids").Status.Conditions, v1alpha1.ConditionDegraded) == "False/AsExpected"
+	})
+}

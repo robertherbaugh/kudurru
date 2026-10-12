@@ -862,6 +862,16 @@ func (in *PolicySpec) DeepCopyInto(out *PolicySpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.BlockedCategories != nil {
+		in, out := &in.BlockedCategories, &out.BlockedCategories
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.AllowedServices != nil {
+		in, out := &in.AllowedServices, &out.AllowedServices
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.SafeSearch != nil {
 		in, out := &in.SafeSearch, &out.SafeSearch
 		*out = new(bool)

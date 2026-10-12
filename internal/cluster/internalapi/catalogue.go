@@ -20,8 +20,19 @@ import (
 // X-Kudurru-Source the URL it came from ("embedded" for the built-in one).
 const PathCatalogue = "/internal/catalogue"
 
-// maxCatalogueBytes caps a catalogue body (catalogue.MaxBytes).
-const maxCatalogueBytes = 4 << 20
+// PathCatalogueAdGuard is GET /internal/catalogue/adguard: the AdGuard
+// HostlistsRegistry services document the node imported
+// (blocking.catalogue.adguardServicesURL), byte for byte with the same
+// headers as PathCatalogue; 404 when it has none. Replicas pull the
+// leader's instead of downloading it themselves.
+const PathCatalogueAdGuard = "/internal/catalogue/adguard"
+
+// maxCatalogueBytes caps a catalogue body (catalogue.MaxBytes), and
+// maxImportBytes an AdGuard services body (catalogue.MaxAdGuardBytes).
+const (
+	maxCatalogueBytes = 4 << 20
+	maxImportBytes    = 16 << 20
+)
 
 // ErrCatalogueUnsupported is returned by Client.Catalogue when the peer has
 // no /internal/catalogue route (a 404 from an older node).
@@ -35,8 +46,20 @@ type CatalogueBody struct {
 }
 
 func (s *Server) handleCatalogue(w http.ResponseWriter, _ *http.Request) {
+	writeCatalogue(w, s.opts.Catalogue())
+}
+
+func (s *Server) handleCatalogueImport(w http.ResponseWriter, _ *http.Request) {
+	c, ok := s.opts.CatalogueImport()
+	if !ok {
+		http.NotFound(w, nil)
+		return
+	}
+	writeCatalogue(w, c)
+}
+
+func writeCatalogue(w http.ResponseWriter, c CatalogueBody) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(statusWriteTimeout))
-	c := s.opts.Catalogue()
 	sum := sha256.Sum256(c.Body)
 	digest := hex.EncodeToString(sum[:])
 	h := w.Header()
@@ -52,7 +75,17 @@ func (s *Server) handleCatalogue(w http.ResponseWriter, _ *http.Request) {
 // Catalogue fetches GET /internal/catalogue from addr (host:port) and
 // verifies the body against its digest header.
 func (c *Client) Catalogue(ctx context.Context, addr string) (CatalogueBody, error) {
-	resp, err := c.get(ctx, addr, PathCatalogue)
+	return c.catalogue(ctx, addr, PathCatalogue, maxCatalogueBytes)
+}
+
+// CatalogueImport fetches GET /internal/catalogue/adguard from addr; a
+// peer without one (or an older node) is ErrCatalogueUnsupported.
+func (c *Client) CatalogueImport(ctx context.Context, addr string) (CatalogueBody, error) {
+	return c.catalogue(ctx, addr, PathCatalogueAdGuard, maxImportBytes)
+}
+
+func (c *Client) catalogue(ctx context.Context, addr, path string, limit int) (CatalogueBody, error) {
+	resp, err := c.get(ctx, addr, path)
 	if errors.Is(err, ErrListNotFound) {
 		return CatalogueBody{}, ErrCatalogueUnsupported
 	}
@@ -60,11 +93,11 @@ func (c *Client) Catalogue(ctx context.Context, addr string) (CatalogueBody, err
 		return CatalogueBody{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCatalogueBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 	if err != nil {
 		return CatalogueBody{}, fmt.Errorf("internalapi: read catalogue from %s: %w", addr, err)
 	}
-	if len(body) > maxCatalogueBytes {
+	if len(body) > limit {
 		return CatalogueBody{}, ErrTooLarge
 	}
 	sum := sha256.Sum256(body)

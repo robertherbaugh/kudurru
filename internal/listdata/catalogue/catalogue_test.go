@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -179,7 +180,18 @@ func TestParseRejects(t *testing.T) {
 		edit func(map[string]any)
 		want string
 	}{
-		{"schema 2", func(d map[string]any) { d["schemaVersion"] = 2 }, "unsupported schemaVersion 2"},
+		{"schema 3", func(d map[string]any) { d["schemaVersion"] = 3 }, "unsupported schemaVersion 3"},
+		{"schema 0", func(d map[string]any) { d["schemaVersion"] = 0 }, "unsupported schemaVersion 0"},
+		{"unlisted category", func(d map[string]any) { svc(d)["category"] = "nowhere" }, "is not in categories"},
+		{"duplicate category", func(d map[string]any) {
+			c := d["categories"].([]any)
+			c[1].(map[string]any)["id"] = c[0].(map[string]any)["id"]
+		}, "duplicate id"},
+		{"category name", func(d map[string]any) { d["categories"].([]any)[0].(map[string]any)["name"] = "" }, "name is empty"},
+		{"category icon", func(d map[string]any) { d["categories"].([]any)[0].(map[string]any)["icon"] = "Gamepad 2" }, "icon"},
+		{"requires unknown", func(d map[string]any) { svc(d)["requires"] = []any{"no-such-service"} }, `requires "no-such-service" is not a service`},
+		{"related self", func(d map[string]any) { s := svc(d); s["related"] = []any{s["id"]} }, "related names the service itself"},
+		{"long note", func(d map[string]any) { svc(d)["note"] = strings.Repeat("x", 300) }, "note is longer"},
 		{"no schema", func(d map[string]any) { delete(d, "schemaVersion") }, "no schemaVersion"},
 		{"no version", func(d map[string]any) { d["version"] = "" }, "version is empty"},
 		{"bad id", func(d map[string]any) { svc(d)["id"] = "You Tube" }, "id must match"},
@@ -267,5 +279,86 @@ func TestHolder(t *testing.T) {
 	var nilHolder *Holder
 	if nilHolder.Current() != Embedded() {
 		t.Error("a nil holder serves the embedded catalogue")
+	}
+}
+
+// TestCategories: the embedded categories are sorted, every service is in
+// one, and CategoryServices lists a category's members.
+func TestCategories(t *testing.T) {
+	c := Embedded()
+	if len(c.Categories) < 10 {
+		t.Fatalf("%d categories", len(c.Categories))
+	}
+	for i := 1; i < len(c.Categories); i++ {
+		if a, b := c.Categories[i-1], c.Categories[i]; a.Order > b.Order || (a.Order == b.Order && a.ID >= b.ID) {
+			t.Errorf("categories out of order: %s (%d) before %s (%d)", a.ID, a.Order, b.ID, b.Order)
+		}
+	}
+	for _, k := range c.Categories {
+		if k.Name == "" || k.Description == "" || k.Icon == "" {
+			t.Errorf("category %s lacks a name, description or icon", k.ID)
+		}
+	}
+	total := 0
+	for _, k := range c.Categories {
+		ids, ok := c.CategoryServices(k.ID)
+		if !ok {
+			t.Errorf("CategoryServices(%s) unknown", k.ID)
+		}
+		total += len(ids)
+		for _, id := range ids {
+			if s, _ := c.Service(id); s.Category != k.ID {
+				t.Errorf("%s listed under %s", id, k.ID)
+			}
+		}
+	}
+	if total != len(c.Services) {
+		t.Errorf("categories hold %d services of %d", total, len(c.Services))
+	}
+	if _, ok := c.CategoryServices("no-such-category"); ok || c.HasCategory("no-such-category") || !c.HasCategory("ai") {
+		t.Error("HasCategory / CategoryServices of an unknown ID")
+	}
+	if k, ok := c.Category("ai"); !ok || k.Name != "AI" {
+		t.Errorf("ai = %+v", k)
+	}
+}
+
+// TestSchemaV1: a version 1 document (no categories, no hints) is still
+// read; its categories get the embedded names, unknown ones a made-up one.
+func TestSchemaV1(t *testing.T) {
+	v1 := `{"schemaVersion":1,"version":"2026.01.01","license":"Apache-2.0","services":[
+		{"id":"a","name":"A","category":"video","rules":["||a.example^"],"source":"test"},
+		{"id":"b","name":"B","category":"retro-games","rules":["||b.example^"],"source":"test","requires":["a"],"note":"ignored"}],
+		"safeSearch":[]}`
+	c, err := Parse([]byte(v1), "https://example/v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SchemaVersion != 1 || len(c.Categories) != 2 {
+		t.Fatalf("schema %d, categories %+v", c.SchemaVersion, c.Categories)
+	}
+	if k, _ := c.Category("video"); k.Name != "Video and streaming" || k.Icon == "" {
+		t.Errorf("video = %+v", k)
+	}
+	if k, _ := c.Category("retro-games"); k.Name != "Retro games" || k.Order <= 1000 {
+		t.Errorf("retro-games = %+v", k)
+	}
+	if b, _ := c.Service("b"); b.Requires != nil || b.Note != "" {
+		t.Errorf("version 1 hints kept: %+v", b)
+	}
+}
+
+// TestHints: requires and related name services of the document.
+func TestHints(t *testing.T) {
+	c := Embedded()
+	n := 0
+	for _, s := range c.Services {
+		n += len(s.Requires) + len(s.Related)
+	}
+	if n == 0 {
+		t.Error("no service carries a requires or related hint")
+	}
+	if f, _ := c.Service("fortnite"); !slices.Contains(f.Requires, "epicgames") {
+		t.Errorf("fortnite requires = %v", f.Requires)
 	}
 }

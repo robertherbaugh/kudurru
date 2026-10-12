@@ -30,9 +30,11 @@ PolicySpec binds client groups to lists and resolver behaviour.
 |---|---|---|
 | `spec.allowListRefs` | `[]string` |  |
 | `spec.allowOnly` | `boolean` | AllowOnly answers only names present in the allow lists. |
+| `spec.allowedServices` | `[]string` | AllowedServices are exceptions to blockedCategories: services of a blocked category this policy does not block. They do not cancel an ID listed in blockedServices, nor another policy's blocks; allow lists still win over every service.<br>Items: at most 256<br>List type: `set` |
 | `spec.blockListRefs` | `[]string` |  |
 | `spec.blockMode` | `string` | BlockResponse is how a blocked query is answered: nxdomain, zeroIP (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage (the addresses of the block page listener, blockPage.ipv4/ipv6, so browsers show why the name is blocked).<br>One of: `nxdomain`, `zeroIP`, `refused`, `customIP`, `blockPage` |
 | `spec.blockTTL` | `string` | Default: `10m` |
+| `spec.blockedCategories` | `[]string` | BlockedCategories names categories of the catalogue (GET /api/v1/catalogue/categories: ai, social, gaming, ...); every service in them is blocked as if listed in blockedServices, including services a later catalogue adds to the category. Unknown IDs are reported as Degraded{UnknownCategory}.<br>Items: at most 64<br>List type: `set` |
 | `spec.blockedServices` | `[]string` | BlockedServices names services of the blocked-services catalogue (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains this policy blocks like a block list; the query log names the service as the list, "service:&lt;id&gt;". IDs are checked against the catalogue in service, which can change at runtime, so an unknown ID is reported as Degraded{UnknownService} rather than refused.<br>Items: at most 256<br>List type: `set` |
 | `spec.clientGroupRefs` | `[]string` |  |
 | `spec.priority` | `integer` | Priority breaks ties when several policies match; highest wins. |

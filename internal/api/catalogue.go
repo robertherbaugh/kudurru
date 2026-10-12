@@ -14,10 +14,12 @@ import (
 
 // CatalogueSource is the blocked-services and safe-search catalogue in
 // service (catalogue.Holder); Status, when set, reports the runtime
-// refresh of blocking.catalogue.url.
+// refresh of blocking.catalogue.url and ImportStatus the opt-in AdGuard
+// import of blocking.catalogue.adguardServicesURL.
 type CatalogueSource struct {
-	Holder *catalogue.Holder
-	Status func() catalogue.Status
+	Holder       *catalogue.Holder
+	Status       func() catalogue.Status
+	ImportStatus func() catalogue.Status
 }
 
 // CatalogueInfo is GET /catalogue.
@@ -29,14 +31,49 @@ type CatalogueInfo struct {
 	// Origin is "embedded" or the URL the document was downloaded from.
 	Origin string `json:"origin" doc:"\"embedded\" (built into the binary) or the blocking.catalogue.url it was downloaded from."`
 	Digest string `json:"digest" doc:"SHA-256 of the catalogue document."`
-	// Services and SafeSearchEngines count the entries.
+	// Services, Categories and SafeSearchEngines count the entries in
+	// service (imported services included).
 	Services          int `json:"services"`
+	Categories        int `json:"categories"`
 	SafeSearchEngines int `json:"safeSearchEngines"`
 	// Refresh is the runtime refresh state; absent when
 	// blocking.catalogue.url is empty.
 	Refresh *CatalogueRefresh `json:"refresh,omitempty"`
+	// Sources are the active sources of services and their licences: the
+	// kudurru catalogue always, the AdGuard import when it is configured.
+	Sources []CatalogueSourceInfo `json:"sources" nullable:"false"`
 	Took
 }
+
+// CatalogueSourceInfo is one active source of services.
+type CatalogueSourceInfo struct {
+	ID      string `json:"id" enum:"kudurru,adguard" doc:"kudurru: the catalogue document (embedded or blocking.catalogue.url). adguard: the opt-in import of blocking.catalogue.adguardServicesURL."`
+	Name    string `json:"name"`
+	License string `json:"license" doc:"SPDX licence of the source's data (Apache-2.0 for kudurru, GPL-3.0 for AdGuard's)."`
+	// Origin is "embedded" or the URL the data came from; for an import
+	// that has not been downloaded yet, the configured URL.
+	Origin   string `json:"origin"`
+	Digest   string `json:"digest,omitempty" doc:"SHA-256 of the document in service; absent before the first successful download."`
+	Loaded   bool   `json:"loaded" doc:"A document of this source is in service."`
+	Services int    `json:"services" doc:"Services this source contributes to the catalogue in service."`
+	// Shadowed, Skipped and DroppedRules describe an import.
+	Shadowed     int               `json:"shadowed,omitempty" doc:"Imported services left out because the kudurru catalogue has the same ID (kudurru's entry wins)."`
+	Skipped      int               `json:"skipped,omitempty" doc:"Imported entries left out: an ID kudurru cannot use, a duplicate, no name, or no usable rule."`
+	DroppedRules int               `json:"droppedRules,omitempty" doc:"Imported rules left out because they are not plain block rules."`
+	Refresh      *CatalogueRefresh `json:"refresh,omitempty"`
+}
+
+// CatalogueCategory is one item of GET /catalogue/categories.
+type CatalogueCategory struct {
+	ID          string `json:"id" doc:"The ID Policy.spec.blockedCategories names."`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Icon        string `json:"icon,omitempty" doc:"A Lucide icon name (kebab-case)."`
+	Order       int    `json:"order" doc:"Sort order (ascending)."`
+	Services    int    `json:"services" doc:"Services in the category."`
+}
+
+type catalogueCategoriesOutput struct{ Body *List[CatalogueCategory] }
 
 // CatalogueRefresh is the state of the blocking.catalogue.url refresh.
 type CatalogueRefresh struct {
@@ -50,13 +87,20 @@ type CatalogueRefresh struct {
 type CatalogueService struct {
 	ID       string `json:"id" doc:"The ID Policy.spec.blockedServices names."`
 	Name     string `json:"name"`
-	Category string `json:"category" doc:"video, social, messaging, gaming, music, ai, dating, ..."`
+	Category string `json:"category" doc:"The category ID (GET /catalogue/categories): ai, social, video, ..."`
 	// List is the list name the query log records for its blocks.
 	List  string `json:"list" doc:"The list name the query log records for this service's blocks (service:<id>)."`
 	Rules int    `json:"rules" doc:"Number of rules (||domain^)."`
 	// Domains are the rules as list text, for the "what does this block" view.
 	Domains []string `json:"domains" nullable:"false" doc:"The service's rules as list text (||domain^)."`
-	Source  string   `json:"source" doc:"Where the entry comes from: a vendor documentation URL or \"first-party domains of the service\"."`
+	Source  string   `json:"source" doc:"Where the entry comes from: a vendor documentation URL or \"first-party domains of the service\"; adguard-hostlists-registry for imported services."`
+	// Origin and License say which source the entry is from.
+	Origin  string `json:"origin" enum:"kudurru,adguard" doc:"kudurru, or adguard for a service of the opt-in AdGuard import."`
+	License string `json:"license" doc:"SPDX licence of the entry (Apache-2.0, or GPL-3.0 for imported services)."`
+	// Requires, Related and Note are hints for the picker.
+	Requires []string `json:"requires,omitempty" doc:"Services this one also depends on: block them too to stop it (Fortnite requires epicgames)."`
+	Related  []string `json:"related,omitempty" doc:"Services of the same vendor or closely tied to it."`
+	Note     string   `json:"note,omitempty" doc:"A caveat about blocking the service."`
 	IconRef
 }
 
@@ -149,35 +193,35 @@ func (s *Server) registerCatalogue() {
 			c := s.catalogue()
 			info := &CatalogueInfo{
 				SchemaVersion: c.SchemaVersion, Version: c.Version, License: c.License, Homepage: c.Homepage,
-				Origin: c.Origin(), Digest: c.Digest(), Services: len(c.Services), SafeSearchEngines: len(c.SafeSearch),
+				Origin: c.Origin(), Digest: c.Digest(), Services: len(c.Services), Categories: len(c.Categories), SafeSearchEngines: len(c.SafeSearch),
 			}
 			if st := s.opts.Catalogue.Status; st != nil {
-				rs := st()
-				r := &CatalogueRefresh{URL: rs.URL, LastError: rs.LastError}
-				if !rs.LastAttempt.IsZero() {
-					r.LastAttempt = &rs.LastAttempt
-				}
-				if !rs.LastSuccess.IsZero() {
-					r.LastSuccess = &rs.LastSuccess
-				}
-				info.Refresh = r
+				info.Refresh = catalogueRefresh(st())
 			}
+			info.Sources = s.catalogueSources(c)
 			return &catalogueInfoOutput{Body: info}, nil
 		})
 	register(s, operation(http.MethodGet, "/catalogue/services", "listCatalogueServices", "Services Policy.spec.blockedServices can block", "catalogue"), p,
 		func(_ context.Context, in *catalogueServicesInput) (*catalogueServicesOutput, error) {
 			var items []CatalogueService
-			for _, svc := range s.catalogue().Services {
+			c := s.catalogue()
+			for _, svc := range c.Services {
 				if in.Category != "" && svc.Category != in.Category {
 					continue
 				}
-				items = append(items, CatalogueService{
-					ID: svc.ID, Name: svc.Name, Category: svc.Category, List: catalogue.ListName(svc.ID),
-					Rules: len(svc.Rules), Domains: append([]string{}, svc.Rules...), Source: svc.Source,
-					IconRef: iconRef(svc.IconSlug()),
-				})
+				items = append(items, catalogueService(&svc, c.License))
 			}
 			return &catalogueServicesOutput{Body: newList(items, "")}, nil
+		})
+	register(s, operation(http.MethodGet, "/catalogue/categories", "listCatalogueCategories", "Categories Policy.spec.blockedCategories can block", "catalogue"), p,
+		func(context.Context, *struct{}) (*catalogueCategoriesOutput, error) {
+			c := s.catalogue()
+			items := make([]CatalogueCategory, 0, len(c.Categories))
+			for _, k := range c.Categories {
+				ids, _ := c.CategoryServices(k.ID)
+				items = append(items, CatalogueCategory{ID: k.ID, Name: k.Name, Description: k.Description, Icon: k.Icon, Order: k.Order, Services: len(ids)})
+			}
+			return &catalogueCategoriesOutput{Body: newList(items, "")}, nil
 		})
 	register(s, operation(http.MethodGet, "/catalogue/safesearch", "listCatalogueSafeSearch", "Search engines Policy.spec.safeSearch rewrites", "catalogue"), p,
 		func(context.Context, *struct{}) (*catalogueSafeSearchOutput, error) {
@@ -228,6 +272,65 @@ func (s *Server) registerCatalogue() {
 		out.ContentLength, out.Body = strconv.Itoa(len(ic.SVG)), ic.SVG
 		return out, nil
 	})
+}
+
+// catalogueService is the API form of svc; license is the catalogue
+// document's licence.
+func catalogueService(svc *catalogue.Service, license string) CatalogueService {
+	out := CatalogueService{
+		ID: svc.ID, Name: svc.Name, Category: svc.Category, List: catalogue.ListName(svc.ID),
+		Rules: len(svc.Rules), Domains: append([]string{}, svc.Rules...), Source: svc.Source,
+		Origin: svc.Origin(), License: license, Requires: svc.Requires, Related: svc.Related, Note: svc.Note,
+		IconRef: iconRef(svc.IconSlug()),
+	}
+	if out.Origin == catalogue.OriginAdGuard {
+		out.License = catalogue.AdGuardLicense
+	}
+	return out
+}
+
+func catalogueRefresh(rs catalogue.Status) *CatalogueRefresh {
+	r := &CatalogueRefresh{URL: rs.URL, LastError: rs.LastError}
+	if !rs.LastAttempt.IsZero() {
+		r.LastAttempt = &rs.LastAttempt
+	}
+	if !rs.LastSuccess.IsZero() {
+		r.LastSuccess = &rs.LastSuccess
+	}
+	return r
+}
+
+// catalogueSources describes the sources of c's services.
+func (s *Server) catalogueSources(c *catalogue.Catalogue) []CatalogueSourceInfo {
+	imp, shadowed := c.Imported()
+	own := CatalogueSourceInfo{ID: catalogue.OriginKudurru, Name: "kudurru catalogue", License: c.License, Origin: c.Origin(), Digest: c.Digest(), Loaded: true}
+	if st := s.opts.Catalogue.Status; st != nil {
+		own.Refresh = catalogueRefresh(st())
+	}
+	out := []CatalogueSourceInfo{own}
+	if imp == nil && s.opts.Catalogue.ImportStatus == nil {
+		return countSources(c, out)
+	}
+	ag := CatalogueSourceInfo{ID: catalogue.OriginAdGuard, Name: "AdGuard HostlistsRegistry services (opt-in)", License: catalogue.AdGuardLicense, Shadowed: shadowed}
+	if st := s.opts.Catalogue.ImportStatus; st != nil {
+		rs := st()
+		ag.Origin, ag.Refresh = rs.URL, catalogueRefresh(rs)
+	}
+	if imp != nil {
+		ag.Origin, ag.Digest, ag.Loaded, ag.Skipped, ag.DroppedRules = imp.Origin(), imp.Digest(), true, imp.Skipped, imp.DroppedRules
+	}
+	return countSources(c, append(out, ag))
+}
+
+func countSources(c *catalogue.Catalogue, out []CatalogueSourceInfo) []CatalogueSourceInfo {
+	n := map[string]int{}
+	for i := range c.Services {
+		n[c.Services[i].Origin()]++
+	}
+	for i := range out {
+		out[i].Services = n[out[i].ID]
+	}
+	return out
 }
 
 // etagMatches implements the If-None-Match comparison (weak, RFC 9110

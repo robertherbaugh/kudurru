@@ -49,7 +49,8 @@ type Options struct {
 	ExceptionScope blocking.ExceptionScope
 	// Services tells a blockedServices ID the catalogue does not have
 	// (Diagnosis UnknownService) from one whose list is not compiled yet
-	// (NotLoaded); nil reports every uncompiled ID as unknown.
+	// (NotLoaded), and resolves blockedCategories to their services; nil
+	// reports every uncompiled ID and every category as unknown.
 	Services ServiceCatalogue
 }
 
@@ -57,6 +58,49 @@ type Options struct {
 // (catalogue.Holder).
 type ServiceCatalogue interface {
 	HasService(id string) bool
+	// CategoryServices returns the service IDs of a category and whether
+	// it exists.
+	CategoryServices(id string) ([]string, bool)
+}
+
+// EffectiveServices is the set of services a policy spec blocks:
+// blockedServices, then the services of blockedCategories (in catalogue
+// order) that allowedServices does not except, each once. unknown are
+// the categories cat does not have. cat may be nil (no category
+// resolves).
+func EffectiveServices(spec *v1alpha1.PolicySpec, cat ServiceCatalogue) (ids, unknown []string) {
+	seen := map[string]bool{}
+	for _, id := range spec.BlockedServices {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(spec.BlockedCategories) == 0 {
+		return ids, nil
+	}
+	except := map[string]bool{}
+	for _, id := range spec.AllowedServices {
+		except[id] = true
+	}
+	for _, c := range spec.BlockedCategories {
+		var members []string
+		ok := false
+		if cat != nil {
+			members, ok = cat.CategoryServices(c)
+		}
+		if !ok {
+			unknown = append(unknown, c)
+			continue
+		}
+		for _, id := range members {
+			if !seen[id] && !except[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids, unknown
 }
 
 // Input is the object set an Index is built from.
@@ -146,6 +190,9 @@ const (
 	// ReasonUnknownService: blockedServices names a service the catalogue
 	// does not have; the ID is skipped.
 	ReasonUnknownService = "UnknownService"
+	// ReasonUnknownCategory: blockedCategories names a category the
+	// catalogue does not have; the ID is skipped.
+	ReasonUnknownCategory = "UnknownCategory"
 )
 
 // Diagnosis is a configuration problem found while building the Index.
@@ -479,7 +526,11 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 				cp.block = append(cp.block, n)
 			}
 		}
-		for _, svc := range p.Spec.BlockedServices {
+		svcs, unknownCats := EffectiveServices(&p.Spec, b.opts.Services)
+		for _, c := range unknownCats {
+			b.diag("Policy", id, ReasonUnknownCategory, "blockedCategories %q: no such category in the catalogue (GET /api/v1/catalogue/categories)", c)
+		}
+		for _, svc := range svcs {
 			if n, ok := b.resolveService(lists, id, svc); ok {
 				cp.block = append(cp.block, n)
 			}

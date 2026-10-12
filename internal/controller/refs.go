@@ -94,9 +94,11 @@ func (c *Controller) reconcileClientGroup(ctx context.Context, key store.Key) (b
 // clientGroupRefs name ClientGroups, blockListRefs and allowListRefs name
 // BlockLists. A missing reference is Degraded{MissingReference} naming it;
 // the policy stays Ready because the remaining references still apply.
-// blockedServices IDs the catalogue does not know (Options.KnownService)
-// are Degraded{UnknownService}, unless a reference is also missing, in
-// which case the MissingReference message names them too.
+// blockedServices and allowedServices IDs the catalogue does not know
+// (Options.KnownService) are Degraded{UnknownService}, blockedCategories
+// IDs (Options.KnownCategory) Degraded{UnknownCategory} (UnknownService
+// when both occur), unless a reference is also missing, in which case the
+// MissingReference message names them too.
 func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, error) {
 	cur, ok := c.cache.get(key).(*v1alpha1.Policy)
 	if !ok || cur == nil {
@@ -117,10 +119,23 @@ func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, 
 	check(KindBlockList, "blockListRefs", cur.Spec.BlockListRefs)
 	check(KindBlockList, "allowListRefs", cur.Spec.AllowListRefs)
 	var unknown []string
+	unknownSvc := false
 	if known := c.opts.KnownService; known != nil {
-		for _, id := range cur.Spec.BlockedServices {
+		for _, f := range []struct {
+			field string
+			ids   []string
+		}{{"blockedServices", cur.Spec.BlockedServices}, {"allowedServices", cur.Spec.AllowedServices}} {
+			for _, id := range f.ids {
+				if !known(id) {
+					unknown, unknownSvc = append(unknown, fmt.Sprintf("service %q (%s)", id, f.field)), true
+				}
+			}
+		}
+	}
+	if known := c.opts.KnownCategory; known != nil {
+		for _, id := range cur.Spec.BlockedCategories {
 			if !known(id) {
-				unknown = append(unknown, fmt.Sprintf("service %q (blockedServices)", id))
+				unknown = append(unknown, fmt.Sprintf("category %q (blockedCategories)", id))
 			}
 		}
 	}
@@ -136,6 +151,9 @@ func (c *Controller) reconcilePolicy(ctx context.Context, key store.Key) (bool, 
 	case len(unknown) > 0:
 		v.ReadyMessage = fmt.Sprintf("%d references unresolved", len(unknown))
 		v.Degraded, v.DegradedRsn = true, v1alpha1.ReasonUnknownService
+		if !unknownSvc {
+			v.DegradedRsn = v1alpha1.ReasonUnknownCategory
+		}
 		v.DegradedMsg = "not in the blocked-services catalogue: " + joinLimited(unknown, 10)
 	}
 	if len(disabled) > 0 {

@@ -29,8 +29,13 @@ type PolicyState struct {
 	ManagedBy  string           `json:"managedBy,omitempty"`
 	Groups     []PolicyGroup    `json:"groups" nullable:"false"`
 	Lists      []PolicyList     `json:"lists" nullable:"false"`
-	Services   []PolicyService  `json:"services" nullable:"false"`
-	SafeSearch PolicySafeSearch `json:"safeSearch"`
+	Services   []PolicyService  `json:"services" nullable:"false" doc:"The spec.blockedServices entries."`
+	Categories []PolicyCategory `json:"categories" nullable:"false" doc:"The spec.blockedCategories entries."`
+	// AllowedServices are the spec.allowedServices exceptions.
+	AllowedServices []PolicyService `json:"allowedServices" nullable:"false" doc:"The spec.allowedServices entries: services of a blocked category this policy does not block."`
+	// EffectiveServices is what the policy blocks now.
+	EffectiveServices []PolicyEffectiveService `json:"effectiveServices" nullable:"false" doc:"Every service the policy blocks with the catalogue in service: blockedServices, then the services of blockedCategories minus allowedServices."`
+	SafeSearch        PolicySafeSearch         `json:"safeSearch"`
 	// UpstreamGroup is absent when the policy uses the default group.
 	UpstreamGroup *PolicyUpstreamGroup `json:"upstreamGroup,omitempty"`
 	BlockMode     string               `json:"blockMode" doc:"spec.blockMode, else blocking.defaultResponse; a BlockList's own response still overrides it for that list."`
@@ -77,6 +82,28 @@ type PolicyService struct {
 	Name  string `json:"name" doc:"The catalogue name; the ID when unknown."`
 	Known bool   `json:"known" doc:"The catalogue in service has the ID."`
 	Rules int    `json:"rules"`
+	IconRef
+}
+
+// PolicyCategory is one blockedCategories entry.
+type PolicyCategory struct {
+	ID       string `json:"id"`
+	Name     string `json:"name" doc:"The catalogue name; the ID when unknown."`
+	Known    bool   `json:"known" doc:"The catalogue in service has the category."`
+	Services int    `json:"services" doc:"Services in the category now."`
+	Allowed  int    `json:"allowed" doc:"Of those, the ones allowedServices excepts."`
+	Icon     string `json:"icon,omitempty" doc:"A Lucide icon name."`
+}
+
+// PolicyEffectiveService is one service the policy blocks.
+type PolicyEffectiveService struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Known    bool   `json:"known"`
+	Rules    int    `json:"rules"`
+	Category string `json:"category,omitempty"`
+	Via      string `json:"via" enum:"service,category" doc:"service: named in blockedServices; category: a service of a blocked category."`
+	Origin   string `json:"origin" enum:"kudurru,adguard"`
 	IconRef
 }
 
@@ -163,6 +190,7 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 		Policy: ns + "/" + p.Name, Enabled: !v1alpha1.IsDisabled(p), Priority: p.Spec.Priority,
 		ShadowedBy: policy.ShadowedBy(p, pols), ManagedBy: store.ManagedBy(p),
 		Groups: []PolicyGroup{}, Lists: []PolicyList{}, Services: []PolicyService{},
+		Categories: []PolicyCategory{}, AllowedServices: []PolicyService{}, EffectiveServices: []PolicyEffectiveService{},
 		BlockMode: string(p.Spec.BlockMode), Conditions: append([]metav1.Condition{}, p.Status.Conditions...),
 	}
 	out.Active = out.Enabled
@@ -214,14 +242,51 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 	}
 
 	cat := s.catalogue()
-	for _, id := range p.Spec.BlockedServices {
+	policyService := func(id string) PolicyService {
 		ps := PolicyService{ID: id, Name: id}
 		if svc, ok := cat.Service(id); ok {
 			ps.Name, ps.Known, ps.Rules, ps.IconRef = svc.Name, true, len(svc.Rules), iconRef(svc.IconSlug())
 		} else {
 			ps.IconRef = iconRef(catalogueIconFor(id))
 		}
-		out.Services = append(out.Services, ps)
+		return ps
+	}
+	for _, id := range p.Spec.BlockedServices {
+		out.Services = append(out.Services, policyService(id))
+	}
+	allowed := map[string]bool{}
+	for _, id := range p.Spec.AllowedServices {
+		allowed[id] = true
+		out.AllowedServices = append(out.AllowedServices, policyService(id))
+	}
+	for _, id := range p.Spec.BlockedCategories {
+		pc := PolicyCategory{ID: id, Name: id}
+		if k, ok := cat.Category(id); ok {
+			ids, _ := cat.CategoryServices(id)
+			pc.Name, pc.Known, pc.Services, pc.Icon = k.Name, true, len(ids), k.Icon
+			for _, sid := range ids {
+				if allowed[sid] {
+					pc.Allowed++
+				}
+			}
+		}
+		out.Categories = append(out.Categories, pc)
+	}
+	explicit := map[string]bool{}
+	for _, id := range p.Spec.BlockedServices {
+		explicit[id] = true
+	}
+	ids, _ := policy.EffectiveServices(&p.Spec, cat)
+	for _, id := range ids {
+		ps := policyService(id)
+		es := PolicyEffectiveService{ID: id, Name: ps.Name, Known: ps.Known, Rules: ps.Rules, Via: "category", Origin: catalogue.OriginKudurru, IconRef: ps.IconRef}
+		if explicit[id] {
+			es.Via = "service"
+		}
+		if svc, ok := cat.Service(id); ok {
+			es.Category, es.Origin = svc.Category, svc.Origin()
+		}
+		out.EffectiveServices = append(out.EffectiveServices, es)
 	}
 	out.SafeSearch = PolicySafeSearch{Enabled: p.Spec.SafeSearch != nil && *p.Spec.SafeSearch, Mode: catalogue.ModeStrict, Engines: []PolicySafeSearchEngine{}}
 	if p.Spec.SafeSearchMode == catalogue.ModeModerate {

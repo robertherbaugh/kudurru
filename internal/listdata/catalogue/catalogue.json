@@ -1,8 +1,115 @@
 {
-  "schemaVersion": 1,
-  "version": "2026.10.11",
+  "schemaVersion": 2,
+  "version": "2026.10.12",
   "license": "Apache-2.0",
   "homepage": "https://github.com/robertherbaugh/kudurru/tree/main/internal/listdata/catalogue",
+  "categories": [
+    {
+      "id": "ai",
+      "name": "AI",
+      "description": "Chatbots and assistants, and image, video, music and voice generators.",
+      "icon": "sparkles",
+      "order": 10
+    },
+    {
+      "id": "social",
+      "name": "Social media",
+      "description": "Social networks, short video and photo sharing.",
+      "icon": "users",
+      "order": 20
+    },
+    {
+      "id": "messaging",
+      "name": "Messaging",
+      "description": "Chat apps with voice and video calls.",
+      "icon": "message-circle",
+      "order": 30
+    },
+    {
+      "id": "video",
+      "name": "Video and streaming",
+      "description": "Streaming services, video sites and live streaming.",
+      "icon": "tv",
+      "order": 40
+    },
+    {
+      "id": "music",
+      "name": "Music and audio",
+      "description": "Music streaming and audio platforms.",
+      "icon": "music",
+      "order": 50
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming",
+      "description": "Game stores, console networks and online games.",
+      "icon": "gamepad-2",
+      "order": 60
+    },
+    {
+      "id": "shopping",
+      "name": "Shopping",
+      "description": "Online marketplaces and stores.",
+      "icon": "shopping-cart",
+      "order": 70
+    },
+    {
+      "id": "dating",
+      "name": "Dating",
+      "description": "Dating apps and sites.",
+      "icon": "heart",
+      "order": 80
+    },
+    {
+      "id": "gambling",
+      "name": "Gambling and betting",
+      "description": "Major betting, casino and poker brands; the Gambling content category covers the long tail.",
+      "icon": "dices",
+      "order": 90
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "description": "Major news publishers.",
+      "icon": "newspaper",
+      "order": 100
+    },
+    {
+      "id": "forums",
+      "name": "Forums and Q&A",
+      "description": "Discussion boards and question-and-answer sites.",
+      "icon": "messages-square",
+      "order": 110
+    },
+    {
+      "id": "productivity",
+      "name": "Productivity and cloud storage",
+      "description": "Cloud storage, file transfer, workplace chat and video meetings.",
+      "icon": "cloud",
+      "order": 120
+    },
+    {
+      "id": "vpn",
+      "name": "VPN and proxy",
+      "description": "VPN and anonymising proxy services: their websites, sign-up and app downloads.",
+      "icon": "shield",
+      "order": 130
+    },
+    {
+      "id": "crypto",
+      "name": "Cryptocurrency exchanges",
+      "description": "Crypto exchanges and trading apps.",
+      "icon": "bitcoin",
+      "order": 140
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Services without a matching category, such as imported ones.",
+      "icon": "shapes",
+      "order": 1000
+    }
+  ],
   "services": [
     {
       "id": "youtube",
@@ -372,7 +479,11 @@
         "||fortnite.com^",
         "||fortnite.net^"
       ],
-      "source": "first-party domains of the service; the game also signs in through Epic Games' services, so block epicgames as well to stop it"
+      "source": "first-party domains of the service",
+      "requires": [
+        "epicgames"
+      ],
+      "note": "The game signs in through Epic Games; block Epic Games as well to stop it."
     },
     {
       "id": "roblox",

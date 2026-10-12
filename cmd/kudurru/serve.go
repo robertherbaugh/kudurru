@@ -240,7 +240,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	// Blocked-services and safe-search catalogue (D60): embedded, replaced
-	// at runtime from blocking.catalogue.url.
+	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
+	// services import (blocking.catalogue.adguardServicesURL).
 	catalogues := catalogue.NewHolder(nil)
 	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace, Services: catalogues}, logger)); err != nil {
 		return err
@@ -319,7 +320,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
-			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues),
+			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues), CatalogueImport: catalogueImportBody(catalogues),
 			Status: func(ctx context.Context) internalapi.Status {
 				leader, _ := membership.Leader(ctx)
 				var ls []internalapi.ListStatus
@@ -360,7 +361,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	checker.Register("blocklists", listResolver.Ready)
-	catRefresher, err := catalogueRefresher(cfg, catalogues, membership, internalClient, logger)
+	catRefreshers, err := newCatalogueRefreshers(cfg, catalogues, membership, internalClient, logger)
 	if err != nil {
 		return err
 	}
@@ -596,7 +597,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: bootstrap.DefaultNamespace,
-		Catalogue:        catalogueAPI(catalogues, catRefresher),
+		Catalogue:        catalogueAPI(catalogues, catRefreshers),
 		BlockPage:        blockPage,
 		Unblock:          unblockBook,
 	})
@@ -613,7 +614,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogues.HasService, ServicesChanged: catalogues.Subscribe()})
+	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogues.HasService, KnownCategory: catalogues.HasCategory, ServicesChanged: catalogues.Subscribe()})
 	if err != nil {
 		return err
 	}
@@ -683,8 +684,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			return err
 		}
 	}
-	if catRefresher != nil {
-		if err := add("catalogue", false, catRefresher.Run); err != nil {
+	if r := catRefreshers.document; r != nil {
+		if err := add("catalogue", false, r.Run); err != nil {
+			return err
+		}
+	}
+	if r := catRefreshers.adguard; r != nil {
+		if err := add("catalogue-adguard", false, r.Run); err != nil {
 			return err
 		}
 	}

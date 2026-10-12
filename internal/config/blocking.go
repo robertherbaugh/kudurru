@@ -40,6 +40,10 @@ type Blocking struct {
 type BlockingCatalogue struct {
 	// URL of a catalogue document; empty serves the embedded catalogue.
 	URL string `koanf:"url" json:"url"`
+	// AdGuardServicesURL opts in to AdGuard's HostlistsRegistry services
+	// (GPL-3.0), downloaded by this instance and merged into the catalogue
+	// next to kudurru's own entries; empty (the default) is off.
+	AdGuardServicesURL string `koanf:"adguardServicesURL" json:"adguardServicesURL"`
 	// RefreshInterval between the leader's downloads.
 	RefreshInterval Duration `koanf:"refreshInterval" json:"refreshInterval"`
 }

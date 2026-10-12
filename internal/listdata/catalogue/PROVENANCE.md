@@ -6,10 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 |---|---|
 | File | `catalogue.json` (this directory), embedded into the kudurru binary by `internal/listdata/catalogue` (`go:embed`) |
 | Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
-| Schema version | 1 |
-| Catalogue version | `2026.10.11` |
-| SHA-256 | `a0812c026b7ee9ed0aa1ff26e08396665f468d68ea0f5fd4866ede29622e52cf` |
-| Size | 17,544 bytes, 32 services, 7 safe-search engines (31 entries name a logo, `icon`: see `icons/PROVENANCE.md`) |
+| Schema version | 2 |
+| Catalogue version | `2026.10.12` |
+| SHA-256 | `a92265ef6c6b7688bca6fe2c2fd2902b457e1799bbd57efc82f23d251c5de1c3` |
+| Size | 20,372 bytes, 15 categories, 32 services, 7 safe-search engines (25 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
 | Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |
@@ -28,42 +28,65 @@ domains, `https://www.google.com/supported_domains`, fetched on
 2026-10-11 (187 entries, SHA-256 `ba827017007f54b698de62a5e3bb290327c12ddc0f9c88503511725c0baf3c49`), as
 https://support.google.com/websearch/answer/186669 instructs ("www.google.com and any other Google country or region domains").
 
+## Categories
+
+kudurru-authored names, descriptions and sort order; the icons name
+[Lucide](https://lucide.dev) icons (ISC), which the dashboard bundles.
+
+| Kind | ID | Name | Order | Icon (Lucide) | Services |
+|---|---|---|---|---|---|
+| category | ai | AI | 10 | `sparkles` | 1 |
+| category | social | Social media | 20 | `users` | 12 |
+| category | messaging | Messaging | 30 | `message-circle` | 4 |
+| category | video | Video and streaming | 40 | `tv` | 7 |
+| category | music | Music and audio | 50 | `music` | 1 |
+| category | gaming | Gaming | 60 | `gamepad-2` | 6 |
+| category | shopping | Shopping | 70 | `shopping-cart` | 0 |
+| category | dating | Dating | 80 | `heart` | 1 |
+| category | gambling | Gambling and betting | 90 | `dices` | 0 |
+| category | news | News | 100 | `newspaper` | 0 |
+| category | forums | Forums and Q&A | 110 | `messages-square` | 0 |
+| category | productivity | Productivity and cloud storage | 120 | `cloud` | 0 |
+| category | vpn | VPN and proxy | 130 | `shield` | 0 |
+| category | crypto | Cryptocurrency exchanges | 140 | `bitcoin` | 0 |
+| category | other | Other | 1000 | `shapes` | 0 |
+
 ## Services
 
-| Kind | ID | Name | Rules | Source |
-|---|---|---|---|---|
-| service | 9gag | 9GAG | 2 | first-party domains of the service |
-| service | chatgpt | ChatGPT | 4 | first-party domains of the service |
-| service | discord | Discord | 5 | first-party domains of the service |
-| service | disneyplus | Disney+ | 5 | first-party domains of the service |
-| service | epicgames | Epic Games | 2 | first-party domains of the service |
-| service | facebook | Facebook | 8 | first-party domains of the service |
-| service | fortnite | Fortnite | 2 | first-party domains of the service; the game also signs in through Epic Games' services, so block epicgames as well to stop it |
-| service | hulu | Hulu | 3 | first-party domains of the service |
-| service | instagram | Instagram | 4 | first-party domains of the service |
-| service | linkedin | LinkedIn | 3 | first-party domains of the service |
-| service | minecraft | Minecraft | 4 | first-party domains of the service; Microsoft account and Xbox sign-in are shared with other Microsoft services and not included |
-| service | netflix | Netflix | 7 | first-party domains of the service |
-| service | pinterest | Pinterest | 8 | first-party domains of the service |
-| service | primevideo | Amazon Prime Video | 5 | first-party domains of the service |
-| service | reddit | Reddit | 4 | first-party domains of the service |
-| service | riotgames | Riot Games (League of Legends, Valorant) | 4 | first-party domains of the service |
-| service | roblox | Roblox | 4 | first-party domains of the service |
-| service | signal | Signal | 5 | first-party domains of the service |
-| service | snapchat | Snapchat | 6 | first-party domains of the service |
-| service | spotify | Spotify | 5 | first-party domains of the service |
-| service | steam | Steam | 8 | first-party domains of the service |
-| service | telegram | Telegram | 5 | first-party domains of the service |
-| service | threads | Threads | 2 | first-party domains of the service |
-| service | tiktok | TikTok | 10 | first-party domains of the service |
-| service | tinder | Tinder | 2 | first-party domains of the service |
-| service | tumblr | Tumblr | 2 | first-party domains of the service |
-| service | twitch | Twitch | 6 | first-party domains of the service |
-| service | twitter | X (Twitter) | 4 | first-party domains of the service |
-| service | vimeo | Vimeo | 2 | first-party domains of the service |
-| service | vk | VK | 5 | first-party domains of the service |
-| service | whatsapp | WhatsApp | 3 | first-party domains of the service |
-| service | youtube | YouTube | 10 | first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users |
+| Kind | ID | Name | Category | Rules | Source |
+|---|---|---|---|---|---|
+| service | 9gag | 9GAG | social | 2 | first-party domains of the service |
+| service | chatgpt | ChatGPT | ai | 4 | first-party domains of the service |
+| service | discord | Discord | messaging | 5 | first-party domains of the service |
+| service | disneyplus | Disney+ | video | 5 | first-party domains of the service |
+| service | epicgames | Epic Games | gaming | 2 | first-party domains of the service |
+| service | facebook | Facebook | social | 8 | first-party domains of the service |
+| service | fortnite | Fortnite | gaming | 2 | first-party domains of the service |
+| service | hulu | Hulu | video | 3 | first-party domains of the service |
+| service | instagram | Instagram | social | 4 | first-party domains of the service |
+| service | linkedin | LinkedIn | social | 3 | first-party domains of the service |
+| service | minecraft | Minecraft | gaming | 4 | first-party domains of the service; Microsoft account and Xbox sign-in are shared with other Microsoft services and not included |
+| service | netflix | Netflix | video | 7 | first-party domains of the service |
+| service | pinterest | Pinterest | social | 8 | first-party domains of the service |
+| service | primevideo | Amazon Prime Video | video | 5 | first-party domains of the service |
+| service | reddit | Reddit | social | 4 | first-party domains of the service |
+| service | riotgames | Riot Games (League of Legends, Valorant) | gaming | 4 | first-party domains of the service |
+| service | roblox | Roblox | gaming | 4 | first-party domains of the service |
+| service | signal | Signal | messaging | 5 | first-party domains of the service |
+| service | snapchat | Snapchat | social | 6 | first-party domains of the service |
+| service | spotify | Spotify | music | 5 | first-party domains of the service |
+| service | steam | Steam | gaming | 8 | first-party domains of the service |
+| service | telegram | Telegram | messaging | 5 | first-party domains of the service |
+| service | threads | Threads | social | 2 | first-party domains of the service |
+| service | tiktok | TikTok | social | 10 | first-party domains of the service |
+| service | tinder | Tinder | dating | 2 | first-party domains of the service |
+| service | tumblr | Tumblr | social | 2 | first-party domains of the service |
+| service | twitch | Twitch | video | 6 | first-party domains of the service |
+| service | twitter | X (Twitter) | social | 4 | first-party domains of the service |
+| service | vimeo | Vimeo | video | 2 | first-party domains of the service |
+| service | vk | VK | social | 5 | first-party domains of the service |
+| service | whatsapp | WhatsApp | messaging | 3 | first-party domains of the service |
+| service | youtube | YouTube | video | 10 | first-party domains of the service; YouTube host names from https://knowledge.workspace.google.com/admin/youtube/control-youtube-content-available-to-users |
 
 ## Safe search
 
