@@ -442,10 +442,12 @@ func (s *Service) Delete(ctx context.Context, a Action, ns string, t v1alpha1.En
 }
 
 // RemoveRule takes the entry whose rule is rule ("example.com",
-// "*.example.com", or a legacy "||example.com^") off the list ns/name;
-// the list is deleted and detached once it holds nothing else. It is how
-// an unblock approval releases its entry.
-func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string) error {
+// "*.example.com", or a legacy "||example.com^") off the list ns/name,
+// when its origin is origin ("" for any); the list is deleted and
+// detached once it holds nothing else. It is how an unblock approval
+// releases its entry (origin unblock), so an entry someone added by hand
+// with the same rule meanwhile stays.
+func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string, origin v1alpha1.EntryOrigin) error {
 	a, _, ok := ParseListName(name)
 	if !ok {
 		a = Allow
@@ -454,7 +456,7 @@ func (s *Service) RemoveRule(ctx context.Context, ns, name, rule string) error {
 	_, err := s.mutate(ctx, ns, name, a, false, func(entries []v1alpha1.ListEntry) ([]v1alpha1.ListEntry, bool) {
 		n := len(entries)
 		entries = slices.DeleteFunc(entries, func(x v1alpha1.ListEntry) bool {
-			return RuleKey(v1alpha1.EntryRule(typeOf(x), x.Value)) == key
+			return RuleKey(v1alpha1.EntryRule(typeOf(x), x.Value)) == key && (origin == "" || x.Origin == origin)
 		})
 		return entries, len(entries) != n
 	})

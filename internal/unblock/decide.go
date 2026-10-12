@@ -276,5 +276,5 @@ func (s *Service) release(ctx context.Context, r *v1alpha1.UnblockRequest, now t
 		return nil
 	}
 	ns, name, _ := strings.Cut(a.List, "/")
-	return s.lists.RemoveRule(ctx, ns, name, a.Entry)
+	return s.lists.RemoveRule(ctx, ns, name, a.Entry, v1alpha1.OriginUnblock)
 }

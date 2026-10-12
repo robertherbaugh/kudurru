@@ -414,7 +414,7 @@ func TestMigration(t *testing.T) {
 		t.Errorf("second Migrate = %d, %v", n, err)
 	}
 	// The approval releases its entry by the old spelling.
-	if err := f.svc.RemoveRule(ctx, "default", AllowList, "||b.example^"); err != nil {
+	if err := f.svc.RemoveRule(ctx, "default", AllowList, "||b.example^", ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := entries(f.list(AllowList)); slices.Contains(got, "wildcard:*.b.example") {

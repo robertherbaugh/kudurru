@@ -295,6 +295,32 @@ func TestApproveEveryoneAndExpiry(t *testing.T) {
 	}
 }
 
+// TestExpiryKeepsAManualEntry: an operator who replaces a time-limited
+// approval's entry with one of their own (same rule) keeps it when the
+// approval ends; only entries of origin unblock are released.
+func TestExpiryKeepsAManualEntry(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.submit("10.0.20.5", "games.example", "")
+	if _, err := f.svc.Approve(ctx, "default", r.Name, Decision{Scope: ScopeEveryone, Duration: time.Hour, Actor: "user:admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.lists.RemoveRule(ctx, "default", EveryoneList, "games.example", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.lists.Add(ctx, domainlist.AddRequest{Action: domainlist.Allow, Namespace: "default", Type: v1alpha1.EntryExact,
+		Values: []string{"games.example"}, Comment: "permanent, ticket 42", Origin: v1alpha1.OriginAPI, Actor: "user:operator"}); err != nil {
+		t.Fatal(err)
+	}
+	f.clk.Add(2 * time.Hour)
+	if res, err := f.svc.Sweep(ctx); err != nil || res.Ended != 1 {
+		t.Fatalf("sweep %+v %v", res, err)
+	}
+	if got := f.list(EveryoneList); !slices.Equal(got, []string{"games.example"}) {
+		t.Fatalf("ui-allow after the approval ended %v, want the manual entry", got)
+	}
+}
+
 func TestApproveKeepsExistingEntries(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
