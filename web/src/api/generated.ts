@@ -2488,6 +2488,8 @@ export interface components {
         };
         NodeInfo: {
             address?: string;
+            /** @description Error fetching this node's status; readiness is unknown. */
+            error?: string;
             leader: boolean;
             name: string;
             ready?: boolean;

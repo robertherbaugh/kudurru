@@ -40,6 +40,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/health"
@@ -178,6 +179,8 @@ type Options struct {
 	// Health is the node's readiness checker; Membership lists nodes.
 	Health     *health.Checker
 	Membership cluster.Membership
+	// InternalClient fetches peer status over the authenticated internal listener.
+	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional
 	// leader-side triggers.
 	Lists     ListStatusSource

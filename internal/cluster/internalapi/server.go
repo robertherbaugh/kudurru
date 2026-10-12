@@ -59,6 +59,10 @@ type Status struct {
 	Leader  string       `json:"leader"`
 	State   string       `json:"state"`
 	Lists   []ListStatus `json:"lists"`
+	// Ready is absent on older peers, whose readiness is unknown.
+	Ready    *bool    `json:"ready,omitempty"`
+	Unready  []string `json:"unready,omitempty"`
+	Snapshot string   `json:"snapshotAge,omitempty"`
 }
 
 // ListStatus reports the source digests one node has compiled for a list.

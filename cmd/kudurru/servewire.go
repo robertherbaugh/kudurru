@@ -68,10 +68,10 @@ func querylogPurger(w *sqlitelog.Writer) api.QuerylogPurger {
 // <pod>.<headless> through the node's resolver), falling back to byName.
 // headless is KUDURRU_HEADLESS_SERVICE, "<svc>.<ns>.svc.<domain>" or a bare
 // Service name; without it only byName is used.
-func leaderResolver(restCfg *rest.Config, headless, port string, byName cluster.ResolveFunc) (cluster.ResolveFunc, error) {
+func leaderResolver(restCfg *rest.Config, headless, port string, byName cluster.ResolveFunc) (cluster.ResolveFunc, cluster.MembershipSource, error) {
 	svc, tail, _ := strings.Cut(headless, ".")
 	if restCfg == nil || svc == "" {
-		return byName, nil
+		return byName, nil, nil
 	}
 	ns := kube.PodNamespace()
 	if n, _, ok := strings.Cut(tail, "."); ok && n != "" {
@@ -79,12 +79,12 @@ func leaderResolver(restCfg *rest.Config, headless, port string, byName cluster.
 	}
 	client, err := discoveryv1client.NewForConfig(restCfg)
 	if err != nil {
-		return nil, fmt.Errorf("endpointslice client: %w", err)
+		return nil, nil, fmt.Errorf("endpointslice client: %w", err)
 	}
 	p, err := strconv.Atoi(port)
 	if err != nil {
-		return nil, fmt.Errorf("listeners.internal.address port %q: %w", port, err)
+		return nil, nil, fmt.Errorf("listeners.internal.address port %q: %w", port, err)
 	}
 	src := &cluster.EndpointSliceSource{Client: client, Namespace: ns, Service: svc, InternalPort: p}
-	return cluster.EndpointSliceResolve(src, byName), nil
+	return cluster.EndpointSliceResolve(src, byName), src, nil
 }

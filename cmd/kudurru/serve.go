@@ -282,7 +282,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			}
 			return net.JoinHostPort(host, port), nil
 		}
-		resolve, err := leaderResolver(restCfg, headless, port, byName)
+		resolve, source, err := leaderResolver(restCfg, headless, port, byName)
 		if err != nil {
 			return err
 		}
@@ -290,6 +290,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			SelfName: cfg.Node.Name,
 			Elector:  st.Elector(cluster.ElectionController),
 			Resolve:  resolve,
+			Source:   source,
 			CacheTTL: 30 * time.Second,
 		}
 	}
@@ -327,7 +328,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				if listResolver != nil {
 					ls = listResolver.Lists()
 				}
-				return internalapi.Status{Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls}
+				ready, unready := checker.Ready()
+				return internalapi.Status{
+					Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls, Ready: &ready, Unready: unready,
+					Snapshot: zc.Snapshot().SnapshotAge(time.Now()),
+				}
 			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
 			Zones: func(context.Context) internalapi.ZoneList {
@@ -589,7 +594,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
-		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
+		InternalClient: internalClient,
+		Lists:          listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:    listRefresher(membership, fetcher),
 		ListBodies:   listBodies{cache: lists},
 		Purger:       querylogPurger(qlWriter),
