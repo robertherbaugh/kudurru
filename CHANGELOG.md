@@ -147,6 +147,32 @@ a real server instead of its mocks.
   loaded under the CSP) and the Astryx reset stylesheet is loaded, which
   evens out some spacing.
 
+### Security review (v0.1 round)
+
+[docs/m5/security-v0.1-round.md](docs/m5/security-v0.1-round.md) reviews the
+block page, unblock requests, allowlists, catalogue fetchers and the release
+pipeline.
+
+- Release pipeline: `publish` checks out `refs/tags/<tag>` without persisted
+  credentials, runs only from the release branches with a valid tag, builds
+  the supervisor images from the verified kudurru digest, and every
+  `cosign verify` pins `publish.yml@refs/heads/release(-candidate)`.
+- The guarded list client checks every request URL, redirects included, so a
+  redirect through an HTTP(S) proxy cannot reach cloud metadata; the
+  catalogue refreshers are covered too.
+- The AdGuard import keeps only single-site `||name^` rules and at most 1000
+  services.
+- Unblock requests: object names are keyed (a viewer could recover the
+  requester's address from an allow-list entry); a re-submission racing an
+  approval no longer makes a time-limited approval permanent; the end of an
+  approval leaves a manual entry with the same rule alone; the block page
+  matches the client's own pseudonym.
+- Allowlist and entries APIs: no partial delete when a copy is managed
+  elsewhere; linear source patches and list exceptions; at most 4
+  concurrent parses of cached list bodies per node.
+- The approve dialog and API say that an everyone approval is attached to
+  every policy kudurru may edit.
+
 ### DNS serving
 
 - One binary, `kudurru serve`, with a fixed stage pipeline: ingress,
