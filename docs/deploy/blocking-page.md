@@ -264,9 +264,11 @@ and `hide_domains`; the /24 or /48 network address under `anonymize_client`
 with `anonymize: prefix` (the Requests page says the client is anonymised, and
 devices of the same network share one request per name); nothing under
 `anonymize: pseudonym`, `hide_domains_clients` and `nothing` ("hidden"; every
-anonymous device shares one request per name). The client's groups and
-policies are recorded in every mode. The name, contact and reason are what the
-user chose to type.
+anonymous device shares one request per name). Devices that share a request
+see its state and the administrator's note on the block page, and a request
+from any of them replaces the name, contact and reason of the pending one:
+write notes accordingly. The client's groups and policies are recorded in
+every mode. The name, contact and reason are what the user chose to type.
 
 ### Limits
 
