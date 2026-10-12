@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"html"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -44,9 +45,15 @@ type Options struct {
 // Handler serves the dashboard: files of the bundle with long-lived caching
 // for the content-hashed assets/ directory, index.html (no-cache) for every
 // other path that is not a missing bundle file (missingFile) so client-side
-// routes survive a reload, gzip for compressible files when the client accepts it, and
-// strict security headers. Paths under api/ are never answered with the
+// routes survive a reload, compressed bodies when the client accepts them,
+// and strict security headers. Paths under api/ are never answered with the
 // SPA; mount the API before this handler.
+//
+// The build stores compressible files only as <name>.gz (and optionally
+// <name>.br; web/scripts/compress.ts), so the binary embeds the compressed
+// bytes. Such a file is served as is to clients that accept the encoding
+// and inflated once for those that do not; a file stored raw is gzipped on
+// the fly once.
 func Handler(o Options) http.Handler {
 	f := o.FS
 	if f == nil {
@@ -80,11 +87,19 @@ type handler struct {
 	files map[string]*file
 }
 
-// file is one response body, prepared once (the bundle is immutable).
+// file is one response body, prepared once (the bundle is immutable). raw
+// is nil for a file stored only precompressed until a client without gzip
+// asks for it. etag names the content; each encoding adds a suffix.
 type file struct {
 	ctype string
-	raw   []byte
 	etag  string
+	// stored: gz came from the bundle (<name>.gz), not from gzipped.
+	stored bool
+	br     []byte // precompressed brotli, optional
+
+	rawOnce sync.Once
+	raw     []byte
+	rawErr  error
 
 	gzOnce sync.Once
 	gz     []byte
@@ -110,8 +125,18 @@ func (h *handler) buildIndex(base string) *file {
 }
 
 func newFile(ctype string, b []byte) *file {
+	return &file{ctype: ctype, raw: b, etag: etagOf(b)}
+}
+
+// newPrecompressed is a file stored only as gzip (gz) and optionally brotli.
+// Both encode the same content, so the gzip bytes name it.
+func newPrecompressed(ctype string, gz, br []byte) *file {
+	return &file{ctype: ctype, gz: gz, stored: true, br: br, etag: etagOf(gz)}
+}
+
+func etagOf(b []byte) string {
 	sum := sha256.Sum256(b)
-	return &file{ctype: ctype, raw: b, etag: `"` + hex.EncodeToString(sum[:12]) + `"`}
+	return `"` + hex.EncodeToString(sum[:12]) + `"`
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +198,32 @@ func (h *handler) lookup(name string) *file {
 	if f, ok := h.files[name]; ok {
 		return f
 	}
+	raw := h.read(name)
+	gz, br := h.read(name+".gz"), h.read(name+".br")
+	var f *file
+	switch {
+	case raw != nil:
+		f = newFile(contentType(name, raw), raw)
+		f.gz, f.stored, f.br = gz, gz != nil, br
+	case gz != nil:
+		f = newPrecompressed(mime.TypeByExtension(path.Ext(name)), gz, br)
+		if f.ctype == "" {
+			b, err := f.identity()
+			if err != nil {
+				return nil
+			}
+			f.ctype = http.DetectContentType(b)
+		}
+	default:
+		return nil
+	}
+	h.files[name] = f
+	return f
+}
+
+// read returns the bundle file name, or nil when it is missing or a
+// directory.
+func (h *handler) read(name string) []byte {
 	st, err := fs.Stat(h.fs, name)
 	if err != nil || st.IsDir() {
 		return nil
@@ -181,34 +232,77 @@ func (h *handler) lookup(name string) *file {
 	if err != nil {
 		return nil
 	}
-	ctype := mime.TypeByExtension(path.Ext(name))
-	if ctype == "" {
-		ctype = http.DetectContentType(b)
+	return b
+}
+
+func contentType(name string, b []byte) string {
+	if ctype := mime.TypeByExtension(path.Ext(name)); ctype != "" {
+		return ctype
 	}
-	f := newFile(ctype, b)
-	h.files[name] = f
-	return f
+	return http.DetectContentType(b)
 }
 
 func (h *handler) serve(w http.ResponseWriter, r *http.Request, f *file, cache string) {
 	hdr := w.Header()
 	hdr.Set("Content-Type", f.ctype)
 	hdr.Set("Cache-Control", cache)
-	body, etag := f.raw, f.etag
-	if compressible(f.ctype) && len(f.raw) >= 1024 {
+	body, etag, enc := []byte(nil), f.etag, ""
+	if f.compressed() {
 		hdr.Add("Vary", "Accept-Encoding")
-		if acceptsGzip(r) {
-			body = f.gzipped()
-			etag = strings.TrimSuffix(f.etag, `"`) + `-gz"`
-			hdr.Set("Content-Encoding", "gzip")
+		switch {
+		case f.br != nil && accepts(r, "br"):
+			body, enc = f.br, "br"
+		case accepts(r, "gzip"):
+			body, enc = f.gzipped(), "gzip"
 		}
+	}
+	if enc == "" {
+		b, err := f.identity()
+		if err != nil {
+			http.Error(w, "corrupt bundle file", http.StatusInternalServerError)
+			return
+		}
+		body = b
+	} else {
+		etag = strings.TrimSuffix(f.etag, `"`) + "-" + map[string]string{"gzip": "gz", "br": "br"}[enc] + `"`
+		hdr.Set("Content-Encoding", enc)
 	}
 	hdr.Set("ETag", etag)
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
 }
 
+// compressed reports whether the file is sent compressed to clients that
+// accept it: it is stored precompressed, or it is compressible and at
+// least 1 KiB.
+func (f *file) compressed() bool {
+	if f.stored || f.br != nil {
+		return true
+	}
+	return compressible(f.ctype) && len(f.raw) >= 1024
+}
+
+// identity is the uncompressed body, inflated once from the gzip bytes of a
+// file stored only precompressed.
+func (f *file) identity() ([]byte, error) {
+	f.rawOnce.Do(func() {
+		if f.raw != nil {
+			return
+		}
+		zr, err := gzip.NewReader(bytes.NewReader(f.gz))
+		if err != nil {
+			f.rawErr = err
+			return
+		}
+		f.raw, f.rawErr = io.ReadAll(zr)
+	})
+	return f.raw, f.rawErr
+}
+
 func (f *file) gzipped() []byte {
 	f.gzOnce.Do(func() {
+		if f.stored {
+			return
+		}
 		var buf bytes.Buffer
 		zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 		_, _ = zw.Write(f.raw)
@@ -238,10 +332,12 @@ func compressible(ctype string) bool {
 	return false
 }
 
-func acceptsGzip(r *http.Request) bool {
+// accepts reports whether the request's Accept-Encoding lists coding
+// without q=0.
+func accepts(r *http.Request, coding string) bool {
 	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
 		enc, params, _ := strings.Cut(strings.TrimSpace(part), ";")
-		if !strings.EqualFold(strings.TrimSpace(enc), "gzip") {
+		if !strings.EqualFold(strings.TrimSpace(enc), coding) {
 			continue
 		}
 		return strings.ReplaceAll(strings.TrimSpace(params), " ", "") != "q=0"

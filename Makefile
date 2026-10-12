@@ -31,8 +31,10 @@ build:
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
 ## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
-## 60,362,000), 58,523,808 after the v0.1 UX round (linux/amd64, Go 1.27.2,
-## built dashboard). The project owner set the ceiling to 100,000,000 bytes
+## 60,362,000), 58,523,808 after the v0.1 UX round, 59,826,336 after the
+## catalogue round and 57,991,328 with the dashboard embedded precompressed
+## (web/scripts/compress.ts: 2.5 MiB of bundle as 0.75 MiB of gzip)
+## (linux/amd64, Go 1.27.2, built dashboard). The project owner set the ceiling to 100,000,000 bytes
 ## (D138); growth still needs a reason in the change that causes it, and
 ## cmd/kudurru TestNoTemplateExecution guards the one known 12 MB trap.
 SIZE_BUDGET ?= 100000000
