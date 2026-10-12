@@ -20,8 +20,8 @@ database for a minute reports `CentralUnreachable` on the Diagnosis page.
 
 ## Requirements
 
-- PostgreSQL 15 or newer (`UNIQUE NULLS NOT DISTINCT`). No extensions;
-  TimescaleDB is not needed.
+- PostgreSQL 16 or newer; 17 is the one to pick for a new database.
+  No extensions; TimescaleDB is not needed.
 - A database and a role that owns its schema: kudurru creates and migrates
   its tables at start, under an advisory lock, so replicas that start
   together migrate once.
@@ -47,7 +47,7 @@ KUDURRU_DATABASE__DSN_FILE=/run/secrets/kudurru-dsn kudurru serve
 
 `database.maxConns` (default 4) caps each node's connections.
 
-`kudurru doctor` checks that the database answers, runs PostgreSQL 15 or
+`kudurru doctor` checks that the database answers, runs PostgreSQL 16 or
 newer and has a schema the binary can use.
 
 ## Audit log

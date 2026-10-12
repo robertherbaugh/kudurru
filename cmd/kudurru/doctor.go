@@ -64,7 +64,7 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
   token      the CLI token is accepted (GET /auth/me)
   diagnoses  configuration diagnoses reported by the server (GET /info/messages)
   database   with database.dsn set: the central database answers, runs
-             PostgreSQL 15 or newer and has a schema this binary can use;
+             PostgreSQL 16 or newer and has a schema this binary can use;
              warns about sslmode=disable to another host
   vrrp       warns when ` + "`kudurru vip run --legacy`" + ` renders keepalived without
              auth_hmac (unauthenticated VRRP adverts); silent on nodes
@@ -374,7 +374,7 @@ func tryBind(proto, addr string) error {
 }
 
 // checkDatabase checks the central database (database.dsn, D158): reachable,
-// PostgreSQL 15 or newer, a schema this binary can use. It reads only;
+// PostgreSQL 16 or newer, a schema this binary can use. It reads only;
 // the server migrates.
 func checkDatabase(ctx context.Context, rep *doctorReport, cfg *config.Config) {
 	if !cfg.Database.Enabled() {
@@ -403,7 +403,7 @@ func checkDatabase(ctx context.Context, rep *doctorReport, cfg *config.Config) {
 		return
 	}
 	if num < central.MinServerVersion {
-		rep.fail("database", "PostgreSQL %d.%d is too old; kudurru needs 15 or newer", num/10000, num%10000)
+		rep.fail("database", "PostgreSQL %d.%d is too old; kudurru needs 16 or newer", num/10000, num%10000)
 		return
 	}
 	var schema, compat string

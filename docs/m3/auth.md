@@ -127,7 +127,8 @@ if p := cfg.Auth.AdminSocket.Path; p != "" {
 
 The API server needs these from the stack (the API agent owns the server):
 
-- **Middleware construction order** (§8.8): `Recover → RequestID → RealIP(trustedProxies) → SecurityHeaders (session.SecurityHeaders) → AccessLog → CrossOriginProtection(apiCOP) → RateLimit(auth routes) → ids.Middleware() → mux`. The same `apiCOP` instance goes to `stack.Options.CrossOrigin`.
+- **Middleware construction order** (§8.8): `Recover → RequestID → RealIP(trustedProxies) → SecurityHeaders → AccessLog → CrossOriginProtection → ids.Middleware() → mux`. The API and cookie authenticator enforce cross-origin protection. `api.Options.CSRF` is set to `auth.CSRF`; protected API routes also honor the cookie step's `auth.CSRFFailure` note and return 403 `csrf` with the header hint.
+- **Login throttling:** `kudurru serve` leaves the optional `api.Options.RateLimit` hook unset. The users store's per-client-address (5 failures → 5 min) and per-account (10 → 15 min) lockouts are the only login throttle, returning 429 with `Retry-After` before password verification. The global hashing semaphore bounds concurrent Argon2id work; there is no additional request-rate limiter.
 - **Routes:** `for _, rt := range ids.Routes() { mux.Handle(rt.Method+" /api/v1"+rt.Path, ids.Guard(rt)) }`, or `ids.Register(mux)`. Each `Route` carries `Access` (public / authenticated / permission) and `Resource`/`Verb` for the route-permission lint. A server with its own authorize wrapper can use the declaration instead of `Guard`.
 - **Its own routes:** `auth.Require(ids.Authorizer(), attrsFn, h)` or `auth.Authorize(ctx, ids.Authorizer(), attrs)`. These write the 401/403 contract bodies and store the decision.
 - **Audit:** `auth.PrincipalFrom(ctx).ID` becomes `sqlite.WithActor`; `auth.DecisionFrom(ctx).Path` is `binding|sar|local`.

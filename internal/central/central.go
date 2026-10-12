@@ -1,6 +1,6 @@
 // Package central is the optional cluster-wide database of runtime data:
 // audit events, query-log rows and statistics from every node in one
-// PostgreSQL (15 or newer) database, so every replica gives the same
+// PostgreSQL (16 or newer) database, so every replica gives the same
 // answer and the data outlives the nodes (docs/architecture.md §4.5,
 // §11.2, §11.4; D158).
 //
@@ -29,9 +29,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// MinServerVersion is the oldest PostgreSQL the schema supports (15:
-// UNIQUE NULLS NOT DISTINCT).
-const MinServerVersion = 150000
+// MinServerVersion is the oldest PostgreSQL kudurru supports (16; the
+// schema needs 15 for UNIQUE NULLS NOT DISTINCT).
+const MinServerVersion = 160000
 
 // Sentinel errors of Pool.
 var (
@@ -238,7 +238,7 @@ func (d *DB) connect(ctx context.Context) error {
 		return fmt.Errorf("server_version_num %q: %w", v, err)
 	}
 	if num < MinServerVersion {
-		return fmt.Errorf("PostgreSQL %d.%d is too old; kudurru needs 15 or newer", num/10000, num%10000)
+		return fmt.Errorf("PostgreSQL %d.%d is too old; kudurru needs 16 or newer", num/10000, num%10000)
 	}
 	res, err := Migrate(cctx, d.pool)
 	if err != nil {
