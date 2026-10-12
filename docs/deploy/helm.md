@@ -118,6 +118,7 @@ spec:
 ```sh
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru \
   --set database.existingSecret=kudurru-db-app \
+  --set database.clusterDNS=true \
   --set-json 'config.settings.database={"querylog":{"retention":{"raw":"168h"}}}'
 ```
 
@@ -127,8 +128,10 @@ be the cluster's own resolver. A cluster Service name such as the
 resolve from them ("hostname resolving error" in the logs). Put the
 Service's ClusterIP or an external name that the node resolves in the
 connection string (a Secret of your own with the key `uri`), or set
-`dnsPolicy: ClusterFirst` when kudurru is not what resolves the cluster's
-names.
+`database.clusterDNS=true`: the pods then use `dnsPolicy: ClusterFirst`, and
+the `kudurru-db-app` Secret works as it is. Do not set it when kudurru is
+what resolves the cluster's names (the pods would resolve through
+themselves). With `hostNetwork.enabled` cluster names already resolve.
 
 DNS never waits for the database. When it is unreachable, each replica
 keeps its data and sends it later, and the `KudurruCentralDatabaseDown`

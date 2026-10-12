@@ -340,12 +340,20 @@ database:
   # Secret in the release namespace whose key dsnKey holds the connection
   # string, mounted as KUDURRU_DATABASE__DSN_FILE. CloudNativePG's
   # <cluster>-app Secret has it under "uri", with a cluster Service name that
-  # the pods cannot resolve while dnsPolicy is Default (docs/deploy/helm.md).
+  # the pods cannot resolve while dnsPolicy is Default: see clusterDNS.
   # Empty: no database; the audit log is kept in AuditLog objects. Tune it
   # with config.settings.database (querylog.ship, querylog.facts,
   # querylog.retention.raw) and config.node.database.maxConns.
   existingSecret: ""
   dsnKey: uri
+  # -- Resolve the database host through the cluster DNS (dnsPolicy
+  # ClusterFirst for the kudurru pods), so the connection string can name an
+  # in-cluster Service such as CloudNativePG's <cluster>-rw. Needs
+  # existingSecret. Leave it false when kudurru is what resolves the
+  # cluster's names (the pods would resolve through themselves); then name
+  # the Service by its ClusterIP or use an external name. hostNetwork already
+  # resolves cluster names (ClusterFirstWithHostNet).
+  clusterDNS: false
 
 # -- kudurru.io objects seeded once. mode=kubernetes: post-install hook
 # resources (Helm creates them once and never owns them; kubectl and the UI

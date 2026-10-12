@@ -18,7 +18,8 @@
 #        of them and keeps it after that replica was replaced (#10);
 #      - no query goes unanswered during a rolling restart (preStop lameduck
 #        drain).
-#   2. Cluster with the central PostgreSQL database (docs/deploy/postgres.md)
+#   2. Cluster with the central PostgreSQL database (docs/deploy/postgres.md),
+#      reached by its Service name through database.clusterDNS
 #      - the query log and the audit log come from the database, with the
 #        rows of replicas that no longer exist;
 #      - with the database gone DNS keeps answering, the pods stay ready,
@@ -350,18 +351,17 @@ log "helm install kudurru-crds and kudurru ($REPLICAS replicas, vip.provider=met
 kubectl create namespace "$NS"
 helm install kudurru-crds "$ROOT/charts/kudurru-crds" --namespace "$NS" --wait
 if [ "$DATABASE" = 1 ]; then
-  # Started now, used in part 2. The pods run with dnsPolicy Default (the
-  # node's resolver, because kudurru can be the cluster's own resolver), so
-  # the connection string names the Service by its ClusterIP.
+  # Started now, used in part 2. The connection string names the Service
+  # like a CloudNativePG uri does (<service>.<namespace>), which the pods
+  # resolve only with database.clusterDNS (dnsPolicy ClusterFirst).
   kubectl -n "$NS" apply -f "$ROOT/hack/kind/postgres.yaml"
-  pg_ip=$(kubectl -n "$NS" get svc postgres -o jsonpath='{.spec.clusterIP}')
   kubectl -n "$NS" patch secret kudurru-db --type merge \
-    -p "{\"stringData\":{\"uri\":\"postgres://kudurru:kudurru@${pg_ip}:5432/kudurru?sslmode=disable\"}}"
+    -p "{\"stringData\":{\"uri\":\"postgres://kudurru:kudurru@postgres.${NS}:5432/kudurru?sslmode=disable\"}}"
 fi
 # install_kudurru <splitProtocols> [database secret]
 install_kudurru() {
   local db=()
-  if [ -n "${2:-}" ]; then db=(--set database.existingSecret="$2"); fi
+  if [ -n "${2:-}" ]; then db=(--set database.existingSecret="$2" --set database.clusterDNS=true); fi
   helm upgrade --install kudurru "$ROOT/charts/kudurru" --namespace "$NS" \
     --set image.repository="${IMAGE%:*}" --set image.tag="${IMAGE##*:}" --set image.pullPolicy=Never \
     --set replicaCount="$REPLICAS" --set auth.bootstrapToken.enabled=true \
@@ -446,6 +446,10 @@ fi
 log "central PostgreSQL database"
 kubectl -n "$NS" rollout status statefulset/postgres --timeout=300s
 install_kudurru false kudurru-db
+# The Service name resolves only through the cluster DNS.
+policy=$(kubectl -n "$NS" get pods -l "$SELECTOR" -o json | jq -r '[.items[].spec.dnsPolicy] | unique | join(",")')
+[ "$policy" = ClusterFirst ] || { echo "FAIL dnsPolicy $policy with database.clusterDNS, want ClusterFirst"; exit 1; }
+echo "ok dnsPolicy ClusterFirst with database.clusterDNS"
 on_every_pod 120 "no database message" no_central_message
 
 log "query log from the database, with the rows of replicas that no longer exist"

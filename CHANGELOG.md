@@ -39,6 +39,10 @@ D126 record what changed on the way.
   case. Found by the multi-node `kind` workflow, which now runs three
   replicas on a four-node cluster and checks the API, the query log, the
   audit log and the central database.
+- Chart: `database.clusterDNS` runs the pods with `dnsPolicy: ClusterFirst`
+  so the connection string can name an in-cluster Service, such as the `uri`
+  of a CloudNativePG `<cluster>-app` Secret. The default `dnsPolicy: Default`
+  cannot resolve cluster names.
 
 ### Dashboard and API fixes (v0.1 fix round)
 

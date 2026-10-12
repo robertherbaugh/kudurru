@@ -161,6 +161,16 @@ var chartCases = []chartCase{
 			t.Errorf("no KUDURRU_DATABASE__DSN_FILE with database.existingSecret")
 		}
 	}},
+	{name: "central-database-cluster-dns", values: "database: {existingSecret: pg-app, clusterDNS: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if got := dig(r.pod(t), "spec", "dnsPolicy"); got != "ClusterFirst" {
+			t.Errorf("dnsPolicy = %v, want ClusterFirst with database.clusterDNS", got)
+		}
+	}},
+	{name: "cluster-dns-without-database", values: "database: {clusterDNS: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if got := dig(r.pod(t), "spec", "dnsPolicy"); got != "Default" {
+			t.Errorf("dnsPolicy = %v, want Default: clusterDNS only applies with a database", got)
+		}
+	}},
 	{name: "vip-none", values: "vip: {provider: none}", wantKind: "Deployment"},
 	{name: "vip-kube-vip", values: "vip: {provider: kube-vip, address: 10.0.0.53}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		if v := dig(r.object(t, "Service", "kudurru-dns"), "metadata", "annotations", "kube-vip.io/loadbalancerIPs"); v != "10.0.0.53" {

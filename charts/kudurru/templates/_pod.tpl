@@ -40,6 +40,8 @@ spec:
   {{- if .Values.hostNetwork.enabled }}
   hostNetwork: true
   dnsPolicy: ClusterFirstWithHostNet
+  {{- else if and .Values.database.existingSecret .Values.database.clusterDNS }}
+  dnsPolicy: ClusterFirst
   {{- else }}
   dnsPolicy: {{ .Values.dnsPolicy }}
   {{- end }}
