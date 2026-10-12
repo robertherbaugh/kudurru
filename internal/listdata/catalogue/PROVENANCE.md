@@ -8,8 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 | Purpose | `Policy.spec.blockedServices` and `Policy.spec.safeSearch` (docs/architecture.md §7, D60) |
 | Schema version | 2 |
 | Catalogue version | `2026.10.12` |
-| SHA-256 | `b0c2dc8692e8e159d79a5e66287a2d8c63b6b9ef5ee31dc2cb92e5547087b851` |
-| Size | 72,177 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
+| SHA-256 | `110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f` |
+| Size | 73,250 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
 | Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |
@@ -80,14 +80,14 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | cnn | CNN | news | 3 | first-party domains of the service; host names from https://x.com/CNN and https://www.cnn.com/ |
 | service | coinbase | Coinbase | crypto | 1 | first-party domains of the service |
 | service | copilot | Microsoft Copilot | ai | 2 | first-party domains of the service; copilot.com (its canonical address) from https://copilot.microsoft.com/ |
-| service | crunchyroll | Crunchyroll | video | 3 | first-party domains of the service |
+| service | crunchyroll | Crunchyroll | video | 2 | first-party domains of the service |
 | service | cryptocom | Crypto.com | crypto | 1 | first-party domains of the service |
 | service | cyberghost | CyberGhost | vpn | 1 | first-party domains of the service |
 | service | dailymotion | Dailymotion | video | 3 | first-party domains of the service |
 | service | deepseek | DeepSeek | ai | 1 | first-party domains of the service; host names from https://api-docs.deepseek.com/ |
 | service | deezer | Deezer | music | 2 | first-party domains of the service |
 | service | discord | Discord | messaging | 11 | first-party domains of the service |
-| service | disneyplus | Disney+ | video | 5 | first-party domains of the service |
+| service | disneyplus | Disney+ | video | 5 | first-party domains of the service; bamgrid.com and disneystreaming.com from https://specs.disneystreaming.com/media-metadata-feed/spec.html, dssott.com from ESPN's own tag configuration https://dcf.espn.com/TWDC-DTCI/prod/Bootstrap.js |
 | service | draftkings | DraftKings | gambling | 1 | first-party domains of the service; licensed host names from https://igamingontario.ca/en/player/regulated-igaming-market |
 | service | dropbox | Dropbox | productivity | 9 | first-party domains of the service; verified and user-content domains from https://help.dropbox.com/security/official-domains |
 | service | ea | EA app | gaming | 1 | first-party domains of the service |
@@ -119,18 +119,18 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | kraken | Kraken | crypto | 2 | first-party domains of the service; host names from https://www.kraken.com/ |
 | service | kucoin | KuCoin | crypto | 9 | first-party domains of the service; official domains from https://www.kucoin.com/cert |
 | service | lemon8 | Lemon8 | social | 2 | first-party domains of the service |
-| service | line | LINE | messaging | 6 | first-party domains of the service |
+| service | line | LINE | messaging | 5 | first-party domains of the service; line-apps.com from https://github.com/line/line-openapi/blob/main/messaging-api.yml, line-scdn.net from https://developers.line.biz/en/docs/liff/developing-liff-apps/ |
 | service | linkedin | LinkedIn | social | 3 | first-party domains of the service |
 | service | mastodon | Mastodon (mastodon.social) | social | 3 | first-party domains of the service; host names from https://joinmastodon.org/about |
 | service | match | Match | dating | 1 | first-party domains of the service |
-| service | max | HBO Max | video | 6 | first-party domains of the service |
+| service | max | HBO Max | video | 3 | first-party domains of the service; HBO Max and the max.com rename from https://press.wbd.com/us/media-release/warner-bros-discovery-announces-max-become-hbo-max-summer |
 | service | mediafire | MediaFire | productivity | 1 | first-party domains of the service |
 | service | mega | MEGA | productivity | 3 | first-party domains of the service; official domains from https://help.mega.io/security/data-protection/official-domains |
 | service | metaai | Meta AI | ai | 1 | first-party domains of the service; host names from https://about.fb.com/news/2024/04/meta-ai-assistant-built-with-llama-3/ |
 | service | midjourney | Midjourney | ai | 1 | first-party domains of the service |
 | service | minecraft | Minecraft | gaming | 3 | first-party domains of the service; host names from https://edusupport.minecraft.net/hc/en-us/articles/360047118992 |
 | service | mistral | Mistral Vibe (Le Chat) | ai | 1 | first-party domains of the service |
-| service | netflix | Netflix | video | 7 | first-party domains of the service |
+| service | netflix | Netflix | video | 8 | Netflix's own list of the domains its apps use, https://openconnect.netflix.com/mobiledeliverydomains.txt; netflix.net from https://openconnect.zendesk.com/hc/en-us/articles/360000911251 |
 | service | nintendo | Nintendo Switch Online | gaming | 2 | first-party domains of the service; nintendo.net from https://www.nintendo.com/us/ and https://ec.nintendo.com/ |
 | service | nordvpn | NordVPN | vpn | 1 | first-party domains of the service |
 | service | notion | Notion | productivity | 5 | first-party domains of the service; Notion-owned domains from https://www.notion.com/help/allowlist-ip and https://www.notion.com/help/network-control |
@@ -166,7 +166,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | shein | SHEIN | shopping | 9 | first-party domains of the service; country sites (the page's alternate-language links) from https://www.shein.co.uk/ |
 | service | signal | Signal | messaging | 6 | first-party domains of the service |
 | service | slack | Slack | productivity | 7 | first-party domains of the service; host names from https://docs.slack.dev/faq and the other pages under Domain citations |
-| service | snapchat | Snapchat | social | 6 | first-party domains of the service |
+| service | snapchat | Snapchat | social | 5 | first-party domains of the service; host names from https://developers.snap.com/marketing-api/Ads-API/snap-pixel.md and https://developers.snap.com/snap-kit/login-kit/Tutorials/web.md |
 | service | soundcloud | SoundCloud | music | 3 | first-party domains of the service |
 | service | spotify | Spotify | music | 6 | first-party domains of the service |
 | service | stability | Stability AI | ai | 2 | first-party domains of the service; host names from https://stability.ai/news-updates/sharing-a-new-way-to-work-with-stable-audio |
@@ -176,7 +176,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | suno | Suno | ai | 2 | first-party domains of the service; host names from https://github.com/suno-ai/bark |
 | service | supercell | Supercell (Clash of Clans, Clash Royale, Brawl Stars) | gaming | 6 | first-party domains of the service |
 | service | surfshark | Surfshark | vpn | 1 | first-party domains of the service |
-| service | telegram | Telegram | messaging | 8 | first-party domains of the service |
+| service | telegram | Telegram | messaging | 7 | first-party domains of the service; link hosts from https://github.com/tdlib/td/blob/master/td/telegram/LinkManager.cpp (see PROVENANCE.md) |
 | service | temu | Temu | shopping | 3 | first-party domains of the service; host names from https://www.temu.com/ |
 | service | theguardian | The Guardian | news | 3 | first-party domains of the service; host names from https://open-platform.theguardian.com/documentation/search and https://www.theguardian.com/ |
 | service | threads | Threads | social | 2 | first-party domains of the service; host names from https://developers.facebook.com/documentation/threads/overview |
@@ -184,7 +184,7 @@ kudurru-authored names, descriptions and sort order; the icons name
 | service | tiktok | TikTok | social | 10 | first-party domains of the service |
 | service | tinder | Tinder | dating | 2 | first-party domains of the service; host names from https://hackerone.com/tinder/policy_scopes |
 | service | torproject | Tor Project | vpn | 1 | first-party domains of the service |
-| service | tubi | Tubi | video | 4 | first-party domains of the service |
+| service | tubi | Tubi | video | 5 | first-party domains of the service; tubi.com, tubi.tv and tubitv.com from https://tubitv.com/static/terms |
 | service | tumblr | Tumblr | social | 2 | first-party domains of the service |
 | service | tunnelbear | TunnelBear | vpn | 1 | first-party domains of the service |
 | service | twitch | Twitch | video | 6 | first-party domains of the service |
@@ -402,3 +402,26 @@ licence line or any entry's row is out of date, and `TestEmbedded`
 validates the document as the runtime refresher does. The separate
 public data repository (D60) publishes the same file; its format and
 URL contract are in docs/deploy/blocked-services.md.
+
+## Re-check of 2026-10-12 (messaging, social, video)
+
+Domains taken from DNS or redirects only were re-checked against first-party
+sources. Removed for lack of one, or as no longer used: `snapads.com`
+(Snapchat; no address, parked), `cdn-telegram.org` (Telegram; media moved to
+`telesco.pe`), `line-cdn.net` (LINE), `hbo.com` (HBO's brand and linear-TV
+site, not the streaming app), `hbogo.com` and `hbonow.com` (closed
+services), `vrv.co` (folded into Crunchyroll, redirect only). Added:
+`nflxsearch.net` (Netflix's own domain list) and `tubi.com` (Tubi's terms).
+Telegram's link hosts `t.me`, `telegram.me` and `telegram.dog` are named in
+TDLib (`td/telegram/LinkManager.cpp`), `telesco.pe` in
+https://telegram.org/blog/video-messages-and-telescope, `telegra.ph` in
+https://telegram.org/blog/telegraph and `tg.dev` in
+https://github.com/TelegramMessenger/telegram-login-ios. Snapchat's
+`sc-cdn.net` is named in www.snapchat.com's own response headers. Disney's
+`bamgrid.com` and `dssott.com` are shared with Hulu and ESPN, and HBO Max's
+`discomax.com` with discovery+; the entries' notes say so. Domains still
+listed without a first-party page carry their vendor's nameservers and
+redirects as evidence: `pin.it`, Pinterest's country domains,
+`odnoklassniki.ru`, `weibocdn.com`, `bereal.network`, `biliapi.net`,
+`biliapi.com`, `pscdn.co`, `p-cdn.us`, `tidalhifi.com`, `huluim.com`,
+`hulustream.com` and the Prime Video CDN domains.

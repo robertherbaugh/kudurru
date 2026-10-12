@@ -428,10 +428,9 @@
         "||snap.com^",
         "||sc-cdn.net^",
         "||sc-static.net^",
-        "||snapkit.com^",
-        "||snapads.com^"
+        "||snapkit.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; host names from https://developers.snap.com/marketing-api/Ads-API/snap-pixel.md and https://developers.snap.com/snap-kit/login-kit/Tutorials/web.md"
     },
     {
       "id": "twitter",
@@ -667,11 +666,10 @@
         "||t.me^",
         "||telegra.ph^",
         "||telesco.pe^",
-        "||cdn-telegram.org^",
         "||telegram.dog^",
         "||tg.dev^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; link hosts from https://github.com/tdlib/td/blob/master/td/telegram/LinkManager.cpp (see PROVENANCE.md)",
       "note": "Telegram apps can reach their servers by built-in IP addresses; this blocks the website, links, web app and media, not always the app itself."
     },
     {
@@ -725,11 +723,10 @@
         "||line.me^",
         "||line-apps.com^",
         "||line-scdn.net^",
-        "||line-cdn.net^",
         "||lin.ee^",
         "||line.naver.jp^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; line-apps.com from https://github.com/line/line-openapi/blob/main/messaging-api.yml, line-scdn.net from https://developers.line.biz/en/docs/liff/developing-liff-apps/",
       "note": "Sign-in with LINE on other websites (access.line.me) stops working too."
     },
     {
@@ -790,9 +787,10 @@
         "||nflximg.com^",
         "||nflximg.net^",
         "||nflxvideo.net^",
-        "||nflxso.net^"
+        "||nflxso.net^",
+        "||nflxsearch.net^"
       ],
-      "source": "first-party domains of the service"
+      "source": "Netflix's own list of the domains its apps use, https://openconnect.netflix.com/mobiledeliverydomains.txt; netflix.net from https://openconnect.zendesk.com/hc/en-us/articles/360000911251"
     },
     {
       "id": "primevideo",
@@ -820,10 +818,11 @@
         "||bamgrid.com^",
         "||dssott.com^"
       ],
-      "source": "first-party domains of the service",
+      "source": "first-party domains of the service; bamgrid.com and disneystreaming.com from https://specs.disneystreaming.com/media-metadata-feed/spec.html, dssott.com from ESPN's own tag configuration https://dcf.espn.com/TWDC-DTCI/prod/Bootstrap.js",
       "related": [
         "hulu"
-      ]
+      ],
+      "note": "bamgrid.com and dssott.com are Disney's shared streaming platform: blocking Disney+ also breaks Hulu's website and ESPN streaming."
     },
     {
       "id": "hulu",
@@ -858,13 +857,10 @@
       "rules": [
         "||max.com^",
         "||hbomax.com^",
-        "||hbo.com^",
-        "||discomax.com^",
-        "||hbogo.com^",
-        "||hbonow.com^"
+        "||discomax.com^"
       ],
-      "source": "first-party domains of the service",
-      "note": "Also blocks HBO's own website (hbo.com)."
+      "source": "first-party domains of the service; HBO Max and the max.com rename from https://press.wbd.com/us/media-release/warner-bros-discovery-announces-max-become-hbo-max-summer",
+      "note": "discomax.com is shared with discovery+, which stops working too. HBO's own website (hbo.com) stays reachable."
     },
     {
       "id": "paramountplus",
@@ -913,8 +909,7 @@
       "category": "video",
       "rules": [
         "||crunchyroll.com^",
-        "||crunchyroll.co^",
-        "||vrv.co^"
+        "||crunchyroll.co^"
       ],
       "source": "first-party domains of the service"
     },
@@ -972,9 +967,10 @@
         "||tubitv.com^",
         "||tubi.tv^",
         "||tubi.io^",
-        "||adrise.tv^"
+        "||adrise.tv^",
+        "||tubi.com^"
       ],
-      "source": "first-party domains of the service"
+      "source": "first-party domains of the service; tubi.com, tubi.tv and tubitv.com from https://tubitv.com/static/terms"
     },
     {
       "id": "bilibili",
