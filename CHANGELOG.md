@@ -351,6 +351,13 @@ pipeline.
   sentence and paragraph length, unapproved words, links and figure numbers;
   `web/scripts/guide-screenshots.mjs` takes the screenshots again. The docs
   site lists the guide under **Guide**.
+- The project website, kudurru.io, in [www/](www/README.md): one page with
+  the lineage, an interactive walk through the query pipeline, the v0.1
+  features with their measured numbers, the dashboard screenshots from the
+  guide, the deployment shapes and the roadmap, linking to docs.kudurru.io
+  and the repository. Bun and TypeScript, rendered at build time, no inline
+  script or style; `make www-check` tests it. Cloudflare Workers Builds
+  deploys it as static assets from the `release` branch.
 
 ### Known limitations
 

@@ -1,0 +1,44 @@
+# Checks the kudurru.io website (www/) on every change that can affect it:
+# typecheck, the tests (pages, links, CSP, _headers), the build and
+# `wrangler deploy --dry-run`. Cloudflare Workers Builds deploys the site
+# from GitHub itself; this workflow holds no Cloudflare credentials.
+# www/README.md, "Deploying".
+name: www
+on:
+  push:
+    branches: [main]
+    paths:
+      - www/**
+      - docs/brand/**
+      - docs/guide/images/**
+      - VERSION
+      - .github/workflows/www.yml
+  pull_request:
+    paths:
+      - www/**
+      - docs/brand/**
+      - docs/guide/images/**
+      - VERSION
+      - .github/workflows/www.yml
+permissions:
+  contents: read
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - name: Typecheck, test, build and check the Workers config
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: make www-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: www-site
+          path: www/dist
+          retention-days: 7

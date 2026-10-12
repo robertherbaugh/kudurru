@@ -417,3 +417,25 @@ hostnetwork-check: docker-hostnetwork
 
 clean:
 	rm -rf bin dist web/dist/assets
+
+## www-*: the kudurru.io website in www/ (Bun + TypeScript, served by
+## Cloudflare Workers static assets; www/README.md). The pages are rendered
+## at build time from www/src; the brand artwork and the dashboard
+## screenshots come from docs/brand and docs/guide/images. Cloudflare
+## Workers Builds deploys it from GitHub; nothing here deploys.
+##   www-check: typecheck, tests (pages, links, CSP, _headers), a build and
+##              `wrangler deploy --dry-run` (no Cloudflare account needed)
+##   www-dev:   rebuild on change and serve with `wrangler dev` on
+##              http://localhost:8787/
+.PHONY: www-install www-build www-check www-dev
+www-install:
+	cd www && $(BUN) install --frozen-lockfile
+
+www-build: www-install
+	cd www && $(BUN) run build
+
+www-check: www-install
+	cd www && $(BUN) run typecheck && $(BUN) test && $(BUN) run build && $(BUN) run check:deploy
+
+www-dev: www-install
+	cd www && $(BUN) run dev

@@ -99,6 +99,7 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 ## Documentation
 
+- [kudurru.io](https://kudurru.io): the project website ([source](www/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
 - [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
 - [Architecture](docs/architecture.md): the complete design, decision log and glossary.
 - [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
@@ -121,6 +122,7 @@ images/             dnsdist and keepalived supervisor images (GPL binaries, dige
 docs/               architecture, research, open questions
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
+www/                the kudurru.io website (Bun + TypeScript)
 ```
 
 ## License
