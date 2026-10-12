@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_ROWS, REPO_URL } from "../content.ts";
+import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_ROWS, LICENSE_TEXT_URL, REPO_URL } from "../content.ts";
 import { external } from "./layout.ts";
 
 // /license/: what is free, what a key unlocks, how to get and use one.
@@ -15,7 +15,7 @@ function requestForm(licenseApi: string): Html {
       <h2 id="lic-req-title">Request a key</h2>
       <fieldset class="licform-kind">
         <legend>What is it for?</legend>
-        <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Personal or non-commercial: a home, a homelab, study, a hobby, a charity or a school. Free.</span></label>
+        <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Personal or non-commercial: a home, a homelab, study, a hobby, a charity or a school. Free, up to ${LICENSE_FREE_NODES} nodes.</span></label>
         <label class="licform-choice"><input type="radio" name="kind" value="business"> <span>A business, or anything else. We reply by email.</span></label>
       </fieldset>
       <div class="licform-grid">
@@ -24,7 +24,7 @@ function requestForm(licenseApi: string): Html {
       </div>
       <div data-panel="personal">
         <label class="licform-field"><span>What do you run kudurru for?</span><textarea name="personal-use" rows="3" maxlength="1000" required></textarea></label>
-        <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I use the key for non-commercial purposes only. A personal key covers up to ${LICENSE_FREE_NODES} nodes.</span></label>
+        <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (<a href="${LICENSE_TEXT_URL}" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).</span></label>
       </div>
       <div data-panel="business" hidden>
         <div class="licform-grid">

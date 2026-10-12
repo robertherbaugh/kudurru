@@ -1698,6 +1698,10 @@ main,
   align-items: flex-start;
   cursor: pointer;
 }
+.licform-check a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .licform-choice input,
 .licform-check input {
   margin-top: 4px;

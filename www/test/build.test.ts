@@ -151,6 +151,12 @@ describe("the key request form", () => {
     expect(page).toMatch(/aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1"/);
   });
 
+  test("the checkbox is the certification, with a link to the license text", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (");
+    expect(page).toContain('<a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).');
+  });
+
   test("says where a business request goes", () => {
     const page = pages["license/index.html"]!;
     expect(page).toContain("opens an email to hello@kudurru.io with the subject Business License");

@@ -19,6 +19,8 @@ export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
 // visitor's mail program with every field filled in.
 export const BUSINESS_SUBJECT = "Business License";
 export const LICENSE_FREE_NODES = 3;
+// What a personal key is certified against: the license text itself.
+export const LICENSE_TEXT_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0";
 export const LICENSE_FREE_POLICIES = 2;
 
 export interface LicenseRow {

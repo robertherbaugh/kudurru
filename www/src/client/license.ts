@@ -46,7 +46,7 @@ export function validate(f: Fields): string[] {
   if (f.kind === "personal") {
     if (!use) out.push("Say what you run kudurru for.");
     else if (use.length > LIMITS.personalUse) out.push(`What you run it for is longer than ${LIMITS.personalUse} characters.`);
-    if (!f.noncommercial) out.push("Confirm that you use the key for non-commercial purposes only.");
+    if (!f.noncommercial) out.push("Agree and certify that the key is only for personal, non-commercial use.");
   } else {
     if (!f.company.trim()) out.push("Enter the name of your business or organization.");
     else if (f.company.trim().length > LIMITS.company) out.push(`The business name is longer than ${LIMITS.company} characters.`);
@@ -57,9 +57,10 @@ export function validate(f: Fields): string[] {
   return out;
 }
 
-/** The JSON a personal request sends to the license server (its contract: name, email, use, website). */
+/** The JSON a personal request sends to the license server (its contract: name, email, use, website, and the ticked certification). */
 export function personalPayload(f: Fields): Record<string, unknown> {
-  return { name: f.name.trim(), email: f.email.trim(), use: f.use.trim(), website: f.website };
+  // noncommercial is the certification the visitor ticked (the server may keep it).
+  return { name: f.name.trim(), email: f.email.trim(), use: f.use.trim(), noncommercial: f.noncommercial, website: f.website };
 }
 
 /** The URL of the server's form endpoint for a license server origin. */

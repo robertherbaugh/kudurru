@@ -33,7 +33,7 @@ describe("validate", () => {
       "Enter your name.",
       "Enter a valid email address.",
       "Say what you run kudurru for.",
-      "Confirm that you use the key for non-commercial purposes only.",
+      "Agree and certify that the key is only for personal, non-commercial use.",
     ]);
   });
 
@@ -60,9 +60,9 @@ describe("validate", () => {
 });
 
 describe("the personal request", () => {
-  test("sends exactly the server's fields", () => {
+  test("sends the server's fields and the ticked certification", () => {
     expect(personalPayload({ ...personal, name: "  Homelab Hank ", use: " DNS " })).toEqual({
-      name: "Homelab Hank", email: "hank@example.org", use: "DNS", website: "",
+      name: "Homelab Hank", email: "hank@example.org", use: "DNS", noncommercial: true, website: "",
     });
   });
 
@@ -83,7 +83,7 @@ describe("the personal request", () => {
     expect(sent?.init.method).toBe("POST");
     expect((sent?.init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
     expect(sent?.init.credentials).toBe("omit");
-    expect(JSON.parse(String(sent?.init.body))).toEqual({ name: "Homelab Hank", email: "hank@example.org", use: "DNS for my home network", website: "" });
+    expect(JSON.parse(String(sent?.init.body))).toEqual({ name: "Homelab Hank", email: "hank@example.org", use: "DNS for my home network", noncommercial: true, website: "" });
   });
 
   test("a 400 names the fields the server refused", async () => {
