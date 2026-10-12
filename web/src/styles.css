@@ -88,8 +88,12 @@ body {
  * OS. <picture> media queries only see the OS preference, and no Astryx
  * component swaps images by theme. The brand logo keeps the brand
  * minimums (logo 180 px wide, tagline logo 360 px) and the clear space
- * built into the artwork.
+ * built into the artwork. A service logo is an image in a fixed square
+ * (ServiceIcon sets the size inline; object-fit keeps the artwork's aspect
+ * ratio inside it). These display rules come first so the swap rules after
+ * them win.
  */
+.k-service-icon { display: block; flex: none; max-inline-size: none; border-radius: var(--radius-inner); object-fit: contain; }
 .k-logo { display: block; inline-size: 180px; block-size: 60px; margin-block: calc(-1 * var(--spacing-3)); }
 .k-logo-tagline { display: block; inline-size: 360px; max-inline-size: 100%; block-size: auto; aspect-ratio: 360 / 150; margin-inline: auto; }
 .k-logo-on-dark,
@@ -106,13 +110,11 @@ body {
 }
 
 /*
- * Service logos (ServiceIcon, ServiceGrid). A logo is an image in a fixed
- * square (ServiceIcon sets the size inline; object-fit keeps the artwork's
- * aspect ratio inside it). A monogram fills the same square on one of
+ * Service monograms (ServiceIcon, when a service has no logo or it fails
+ * to load): a monogram fills the logo's square on one of
  * eight theme hues (each a background and text token pair, toneOf()):
  * Avatar is round and neutral-only, Token and Badge are pills.
  */
-.k-service-icon { display: block; flex: none; max-inline-size: none; border-radius: var(--radius-inner); object-fit: contain; }
 .k-monogram {
   display: inline-grid;
   place-items: center;

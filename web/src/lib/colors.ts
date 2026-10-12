@@ -1,6 +1,6 @@
 // Charts read their colours from CSS (§10 principle 4): the --q-* tokens
 // every theme in src/themes declares (high contrast re-points them in
-// styles.css) colour the semantic query classes, so one palette serves
+// styles.css) colour the query statuses, so one palette serves
 // tables, badges and both chart libraries, in light, dark and high
 // contrast.
 
