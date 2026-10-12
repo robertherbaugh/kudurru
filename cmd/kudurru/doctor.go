@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 	"github.com/robertherbaugh/kudurru/internal/config"
-	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 

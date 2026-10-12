@@ -4,7 +4,9 @@ This image contains two separate programs:
 
 - **keepalived** 2.4.3, compiled unmodified from the upstream release tarball,
   licensed under the GNU General Public License v2.0 or later (see `COPYING`).
-- **kudurru**, Apache-2.0, acting as the supervisor (`kudurru vip run`).
+- **kudurru**, source-available (PolyForm Noncommercial 1.0.0 plus the `ee/`
+  terms; see LICENSING.md), acting as the supervisor (`kudurru vip run`). The
+  supervisor needs a license key (`KUDURRU_LICENSE_KEY`) that covers the edge.
 
 ## Written offer for source code
 

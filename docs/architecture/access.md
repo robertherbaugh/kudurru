@@ -10,6 +10,15 @@ Code: `internal/api` (routes, middleware, authorization),
 socket, Kubernetes tokens), `internal/rbac` (`permissions.yaml`, the
 engine, SubjectAccessReview), `internal/cluster/internalapi` (node-to-node).
 
+Two parts of this page need a license key (see [licensing](licensing.md)).
+OIDC sign-in lives in `ee/oidc`: without a key the providers stay configured
+but are switched off. Roles beyond the built-in administrator live in
+`ee/rbac`: without a key the authorization step (see "Authorization" below)
+ends after the built-in administrator, API token scopes and the peer-node
+grant, so role bindings and Kubernetes SubjectAccessReview grant nothing. The
+first-boot administrator, the bootstrap token and the admin socket keep full
+access.
+
 ## Principals
 
 | Kind | Comes from | Typical caller |

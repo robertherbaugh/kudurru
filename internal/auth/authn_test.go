@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	eerbac "github.com/robertherbaugh/kudurru/ee/rbac"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
 
@@ -268,11 +269,11 @@ func TestAuthorizeHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, err := rbac.NewBindingSource(perms, []rbac.Binding{{Role: "viewer", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Subjects: []rbac.Subject{{Kind: rbac.SubjectGroup, Name: "staff"}}}}, rbac.SourceOptions{})
+	src, err := eerbac.NewBindingSource(perms, []rbac.Binding{{Role: "viewer", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Subjects: []rbac.Subject{{Kind: rbac.SubjectGroup, Name: "staff"}}}}, eerbac.SourceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng, err := rbac.NewEngine(rbac.EngineOptions{Bindings: src})
+	eng, err := rbac.NewEngine(rbac.EngineOptions{Permissions: perms, Bindings: src})
 	if err != nil {
 		t.Fatal(err)
 	}

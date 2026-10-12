@@ -91,6 +91,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- include "kudurru.licenseEnv" . | nindent 12 }}
           ports:
             # Supervisor /healthz/*, /status, /metrics (kudurru_vip_*).
             - name: vip-health

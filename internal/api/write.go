@@ -241,6 +241,11 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
 		return writeResult{obj: existing, result: ResultUnchanged, key: key}, nil
 	}
+	if existing == nil && k.kind == "Policy" {
+		if err := s.checkPolicyLimit(ctx); err != nil {
+			return writeResult{}, err
+		}
+	}
 	opts := store.ApplyOptions{Manager: manager, Force: force}
 	if existing != nil {
 		// Optimistic concurrency between the read above and the write.

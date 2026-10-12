@@ -22,6 +22,9 @@ import (
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
@@ -39,9 +42,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/health"
-	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
@@ -74,7 +76,8 @@ import (
 )
 
 func newServeCmd(configPath *string) *cobra.Command {
-	return &cobra.Command{
+	var licenseKey string
+	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the DNS server",
 		Long: `Run the kudurru node: the store (sqlite or kube), first-boot bootstrap,
@@ -88,9 +91,11 @@ the ops and metrics listeners. The API and UI land in milestone M3.`,
 			}
 			ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return runServe(ctx, cfg)
+			return runServe(ctx, cfg, licenseKey)
 		},
 	}
+	cmd.Flags().StringVar(&licenseKey, "license-key", "", "license key (or KUDURRU_LICENSE_KEY, KUDURRU_LICENSE_KEY_FILE, <node.dataDir>/license.key); without one kudurru runs with the community license")
+	return cmd
 }
 
 // logLevel is the level of the serve logger; log.level reloads set it.
@@ -162,7 +167,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 	return st, db, restCfg, nil
 }
 
-func runServe(ctx context.Context, cfg *config.Config) error {
+func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
 	logger := newLoggerAt(cfg.Log, logLevel)
 	slog.SetDefault(logger)
 	// Settings hot reload (D25): every consumer of a cluster-scope key that
@@ -182,6 +187,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	build.WithLabelValues(info.Version, info.Commit, info.GoVersion).Set(1)
 	reg.MustRegister(build)
 	dnsMetrics := metrics.NewDNS(reg)
+
+	// License (docs/architecture/licensing.md): verified offline, reloaded
+	// from its sources every minute. It only ever narrows the management
+	// plane (node limit, ee/ features); DNS answering never depends on it.
+	lic, err := newLicenseManager()
+	if err != nil {
+		return err
+	}
+	licSources := license.DefaultSources(licenseKey, cfg.Node.DataDir, os.Getenv)
+	if err := lic.Load(licSources); err != nil {
+		logger.Warn("license key", "error", err)
+	}
+	reg.MustRegister(license.NewCollector(lic))
 
 	checker := health.New(map[string]any{"version": info.Version, "node": cfg.Node.Name})
 
@@ -469,7 +487,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, reg, logger)
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger)
 	if err != nil {
 		return err
 	}
@@ -567,6 +585,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
 	stackOpts.Kube = restCfg
+	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
+	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {
 		stackOpts.Namespace = kube.PodNamespace()
 	}
@@ -583,7 +603,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
 	recorders := audit.Multi{audit.Log{Logger: logger}}
 	if ss, ok := st.(*sqlite.Store); ok {
-		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
+		recorders = audit.Multi{
+			audit.Gated{Inner: auditstore.SQLite{Store: ss}, Allowed: func() bool { return lic.Allows(license.FeatureAudit) }},
+			audit.Log{Logger: logger},
+		}
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
@@ -594,8 +617,8 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
-		InternalClient: internalClient,
-		Lists:          listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
+		InternalClient: internalClient, License: lic,
+		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:    listRefresher(membership, fetcher),
 		ListBodies:   listBodies{cache: lists},
 		Purger:       querylogPurger(qlWriter),
@@ -615,6 +638,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	var edns *externaldns.Server
 	if cfg.ExternalDNS.Webhook.Enabled {
+		if err := lic.Require(license.FeatureIntegrations); err != nil {
+			// The webhook is an optional add-on: leave it off, keep serving.
+			logger.Warn("externalDNS.webhook.enabled is set but the webhook is not started", "error", err)
+		}
+	}
+	if cfg.ExternalDNS.Webhook.Enabled && lic.Allows(license.FeatureIntegrations) {
 		eo := externaldns.OptionsFrom(cfg.ExternalDNS.Webhook)
 		eo.Store, eo.Validator, eo.Cache, eo.Registerer, eo.Logger = st, v, zc, reg, logger
 		if edns, err = externaldns.New(eo); err != nil {
@@ -647,6 +676,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		leaderOnly bool
 		fn         func(context.Context) error
 	}{
+		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
 		{"settings", false, func(ctx context.Context) error {
 			return config.WatchSettings(ctx, reload, config.WatchOptions{Environ: os.Environ(), Logger: logger})

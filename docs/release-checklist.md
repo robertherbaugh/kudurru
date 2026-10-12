@@ -13,6 +13,21 @@ release; goreleaser, the images, the Helm charts and `kudurru version` use
 the version without the `v`. A release candidate publishes a GitHub
 pre-release and does not move the `latest` image tags (`prerelease: auto`).
 
+## Licensing gates (before anything is public)
+
+- [ ] A lawyer has reviewed `ee/LICENSE.md` and the contributor terms in
+      `CONTRIBUTING.md`; the "draft" notes in both files are removed.
+- [ ] The signing key in `internal/license/keys/` is the production key: its
+      private half is in Infisical (not on a laptop, not in the
+      repository), and a test key (`kudurru license verify`) issued with it
+      is accepted by the release binary. See
+      [docs/architecture/licensing.md](architecture/licensing.md#for-the-licensor).
+- [ ] The contact address in `LICENSING.md` is monitored, and a way to request
+      a free personal key exists.
+- [ ] No release candidate image, chart or release made before the licence
+      change is still published (the history keeps its Apache-2.0 commits; the
+      tags, releases and images must all carry the new licence).
+
 ## Release pipeline
 
 ```

@@ -323,6 +323,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: KUDURRU_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: license.key
+                  name: kudurru-license
+                  optional: true
           image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-rc.1
           imagePullPolicy: IfNotPresent
           livenessProbe:
@@ -459,6 +465,12 @@ spec:
               value: /etc/kudurru/secrets/encryption/key
             - name: KUDURRU_ADMIN_PASSWORD_FILE
               value: /etc/kudurru/secrets/admin/password
+            - name: KUDURRU_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: license.key
+                  name: kudurru-license
+                  optional: true
             - name: GOMEMLIMIT
               valueFrom:
                 resourceFieldRef:

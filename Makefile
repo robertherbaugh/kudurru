@@ -73,7 +73,7 @@ lint: vet
 	$(GOLANGCI_LINT) run ./...
 
 fmt:
-	gofmt -s -w ./cmd ./api ./internal ./web/*.go
+	gofmt -s -w ./cmd ./api ./internal ./ee ./web/*.go
 
 ## rbac-manifests: generate the chart's aggregated ClusterRoles
 ## (charts/kudurru/templates/rbac-aggregated.yaml) from
@@ -81,7 +81,7 @@ fmt:
 ## the committed file is stale. Run `make deploy-assets` afterwards so the
 ## kustomize bases rendered from the chart follow.
 rbac-manifests:
-	go run ./internal/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
+	go run ./ee/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;
@@ -152,7 +152,7 @@ $(DEX_BIN):
 ## OP). The race detector needs cgo, so this test run re-enables it; the
 ## binaries kudurru ships stay CGO_ENABLED=0.
 test-auth-e2e: $(DEX_BIN)
-	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
+	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./ee/oidc/
 
 ## e2e: end-to-end tests against a freshly built `kudurru serve`
 ## (docs/m5/e2e.md): two nodes on loopback sharing the encryption key,
@@ -355,7 +355,7 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 	$(DEPLOY_BIN)/kustomize build config/default > bin/release/install.yaml
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
-## (internal/edge/*/testdata) with the real programs inside the pinned images:
+## (ee/edge/*/testdata) with the real programs inside the pinned images:
 ## `dnsdist --check-config` in the upstream dnsdist image (digest from
 ## images/dnsdist/Dockerfile) and `keepalived -t` in the kudurru-keepalived
 ## image built from source. Needs Docker and network; CI runs it in the
@@ -371,13 +371,13 @@ edge-images: docker
 	docker build -t $(EDGE_SUPERVISOR_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
 
 edge-check: edge-images
-	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./internal/edge/...
+	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./ee/edge/...
 	rm -rf $(EDGE_CHECK_DIR) && mkdir -p $(EDGE_CHECK_DIR)/certs
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=edge-check \
 	  -keyout $(EDGE_CHECK_DIR)/certs/tls.key -out $(EDGE_CHECK_DIR)/certs/tls.crt 2>/dev/null
 	chmod 0644 $(EDGE_CHECK_DIR)/certs/tls.key
 	docker run --rm --entrypoint /bin/sh \
-	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  -v $(CURDIR)/ee/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; dnsdist --version | head -1; for d in /golden/*/; do \
 	    case $$d in *-ebpf/) continue;; esac; \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
@@ -387,11 +387,11 @@ edge-check: edge-images
 	# chart's capability set (charts/kudurru _pod.tpl, kudurru.edge.rootStart).
 	docker run --rm --user 0:953 --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
 	  --cap-add KILL --cap-add BPF --cap-add SYS_ADMIN --security-opt no-new-privileges --entrypoint /bin/sh \
-	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  -v $(CURDIR)/ee/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; for d in /golden/*-ebpf/; do \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
-	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/internal/edge/keepalived/testdata:/golden:ro \
+	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/ee/edge/keepalived/testdata:/golden:ro \
 	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; umask 077; \
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'

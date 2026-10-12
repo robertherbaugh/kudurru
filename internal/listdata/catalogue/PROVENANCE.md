@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 | Catalogue version | `2026.10.12` |
 | SHA-256 | `110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f` |
 | Size | 73,250 bytes, 15 categories, 150 services, 7 safe-search engines (74 services name a logo, `icon`: see `icons/PROVENANCE.md`) |
-| Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory, the repository's licence) |
+| Licence | Apache-2.0, Copyright 2026 Robert Herbaugh and the kudurru contributors (`LICENSE` in this directory). The rest of the repository is under the PolyForm Noncommercial License 1.0.0; this data stays Apache-2.0 on purpose (D157), so it can be published and reused on its own |
 | Author | kudurru; every entry written by hand for kudurru from the sources in the tables below |
 | Not used | AdGuard Home's blocked-services and safe-search tables (GPL-3.0) and any other copyleft source: they were neither copied nor consulted |
 

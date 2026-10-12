@@ -19,6 +19,12 @@ container.
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
+Licensing ([how it works](licensing.md)): more than one node, and the dnsdist
+and keepalived edge, need a license key; a free personal key covers 3 nodes.
+DNS answering never depends on a key. Every kudurru container (server,
+dnsdist supervisor, keepalived supervisor) gets it as `KUDURRU_LICENSE_KEY`,
+and the supervisors refuse to start without a key that covers the edge.
+
 ## One container, and one host with the edge
 
 ![Panel A: one kudurru container with :53 and :8080. Panel B: dnsdist and kudurru share a network namespace; dnsdist forwards with PROXYv2 to 127.0.0.1:5353](diagrams/deploy-docker.excalidraw.svg)

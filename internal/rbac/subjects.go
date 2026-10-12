@@ -28,8 +28,8 @@ func (g Grant) String() string {
 	return g.Role + "@" + string(g.Scope.Kind) + ":" + g.Scope.Name
 }
 
-// normalized returns g with an explicit cluster scope kind.
-func (g Grant) normalized() Grant {
+// Normalized returns g with the empty scope read as the cluster scope.
+func (g Grant) Normalized() Grant {
 	if g.Scope.Kind == "" || g.Scope.Kind == ScopeCluster {
 		g.Scope = Scope{Kind: ScopeCluster}
 	}
@@ -105,7 +105,7 @@ func GrantsFor(bindings []Binding, p Principal) []Grant {
 		if !SubjectsMatch(b.Subjects, p) {
 			continue
 		}
-		g := Grant{Role: b.Role, Scope: b.Scope}.normalized()
+		g := Grant{Role: b.Role, Scope: b.Scope}.Normalized()
 		if !slices.Contains(out, g) {
 			out = append(out, g)
 		}

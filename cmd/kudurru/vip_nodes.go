@@ -10,7 +10,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 )
 
 // nodesClient builds the Nodes client of `--peers-from nodes:<selector>`

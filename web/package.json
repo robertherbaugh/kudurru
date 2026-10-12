@@ -2,7 +2,7 @@
   "name": "@kudurru/web",
   "version": "0.0.0",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "description": "The kudurru dashboard SPA (docs/architecture.md §10, decision D69).",
   "scripts": {

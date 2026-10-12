@@ -47,6 +47,28 @@ password at the first login. Point `auth.bootstrapAdminSecret` and
 `auth.encryptionKeySecret` at your own Secrets (for example from
 external-secrets) to keep secret material out of Helm entirely.
 
+### License key
+
+kudurru is source-available (see [LICENSING.md](../../LICENSING.md)). Without a
+key one node runs with the community license: DNS, blocking, zones and the
+dashboard work, but OIDC sign-in, the dnsdist and keepalived edge and the
+integrations (the `ee/` features) are off, and a cluster of more than one
+node cannot change its configuration through the API. A free personal key
+(3 nodes, non-commercial) or a business key lifts that. Put the key in a Secret
+and name it, so the key stays out of values files:
+
+```sh
+kubectl -n kudurru-system create secret generic kudurru-license --from-file=license.key=./license.key
+helm upgrade kudurru ... --set license.existingSecret=kudurru-license
+```
+
+`license.key` takes the key as a string and creates the Secret for you. Every
+kudurru container (the server, the dnsdist supervisor and the keepalived
+supervisor) reads it as `KUDURRU_LICENSE_KEY`; the Secret is optional, so pods
+start without it. **With `edge.enabled` the supervisors refuse to start without
+a key that covers the `edge` feature.** `kudurru license status` and
+`GET /api/v1/license` show the state; the Secret is reread every minute.
+
 ## Shapes
 
 | Goal | Values |
@@ -229,7 +251,7 @@ the chart added beyond §5.2: `tls.secretName`, `edge.backendPort`,
 `edge.proxyProtocolFrom`, `edge.tlsSecretName`, `edge.existingSecret`,
 `edge.dnsdistVersion`, `vip.metallbPool`, `vip.keepalived.existingSecret`,
 `vip.keepalived.keepalivedVersion`, `auth.encryptionKeyPreviousSecret`,
-`auth.bootstrapToken`, `podMonitor`, `probes`, `lameduckSeconds`,
+`auth.bootstrapToken`, `license.key`, `license.existingSecret`, `license.secretKey`, `podMonitor`, `probes`, `lameduckSeconds`,
 `clusterDomain` (default `cluster.local`), `persistence.standalone.enabled`,
 `extraEnv`, `extraVolumes`, `extraVolumeMounts`, `blockPage`. `auth.oidc.providers` is
 a list of OpenID Providers rendered into the settings key

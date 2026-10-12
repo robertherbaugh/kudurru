@@ -2305,6 +2305,74 @@
         ],
         "type": "object"
       },
+      "LicenseInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "graceEndsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "licensee": {
+            "type": "string"
+          },
+          "nodes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nodesInUse": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "overLimit": {
+            "type": "boolean"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "policyLimit": {
+            "description": "How many Policy objects may exist; 0 means no limit.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "nodesInUse",
+          "overLimit",
+          "state",
+          "nodes",
+          "features",
+          "policyLimit",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListApplyResult": {
         "additionalProperties": false,
         "properties": {
@@ -6142,8 +6210,8 @@
   "info": {
     "description": "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
     "license": {
-      "name": "Apache-2.0",
-      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      "name": "PolyForm-Noncommercial-1.0.0",
+      "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
     },
     "title": "kudurru API",
     "version": "v1"
@@ -13939,6 +14007,92 @@
           }
         },
         "summary": "Diagnosis messages (objects, policies, lists, readiness)",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/license": {
+      "get": {
+        "operationId": "getLicense",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "License state, node limit and licensed features of this node",
         "tags": [
           "cluster"
         ],

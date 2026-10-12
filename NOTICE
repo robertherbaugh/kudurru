@@ -1,12 +1,17 @@
 kudurru
-Copyright 2026 Robert Herbaugh and the kudurru contributors
+Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this software except in compliance with the License. You may obtain a copy of
-the License at http://www.apache.org/licenses/LICENSE-2.0.
+kudurru is source-available under the PolyForm Noncommercial License 1.0.0
+(LICENSE, https://polyformproject.org/licenses/noncommercial/1.0.0). Personal,
+non-commercial use is free; use by a business needs a commercial agreement.
+See LICENSING.md. The code under ee/ also carries the additional terms in
+ee/LICENSE.md. The blocked-services catalogue under
+internal/listdata/catalogue is separately licensed under Apache-2.0 (its own
+LICENSE), so that it can be published and reused.
 
-This product will include software developed by third parties under permissive
-licences. Attributions are added to this file as the dependencies land:
+This product includes software developed by third parties under their own
+(permissive) licences, which are not changed by the licence above.
+Attributions are added to this file as the dependencies land:
 
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
   pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
@@ -60,7 +65,7 @@ licences. Attributions are added to this file as the dependencies land:
   transport for the DoQ and DoH3 listeners.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
-  internal/integration/externaldns re-implements the webhook server side
+  ee/integration/externaldns re-implements the webhook server side
   studied in provider/webhook/api/httpapi.go (v0.23.0): the four routes,
   the versioned media type checked byte for byte by the client, 204 on
   apply, 413 for oversized bodies, and the JSON forms of plan.Changes and

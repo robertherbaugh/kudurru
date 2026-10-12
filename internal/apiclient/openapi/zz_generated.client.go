@@ -2448,6 +2448,28 @@ type LatencySummary struct {
 	P99Ms float64 `json:"p99_ms"`
 }
 
+// LicenseInfo defines model for LicenseInfo.
+type LicenseInfo struct {
+	Error       *string    `json:"error,omitempty"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	Features    []string   `json:"features"`
+	GraceEndsAt *time.Time `json:"graceEndsAt,omitempty"`
+	Id          *string    `json:"id,omitempty"`
+	Licensee    *string    `json:"licensee,omitempty"`
+	Nodes       int64      `json:"nodes"`
+	NodesInUse  int64      `json:"nodesInUse"`
+	OverLimit   bool       `json:"overLimit"`
+	Plan        *string    `json:"plan,omitempty"`
+
+	// PolicyLimit How many Policy objects may exist; 0 means no limit.
+	PolicyLimit int64   `json:"policyLimit"`
+	Source      *string `json:"source,omitempty"`
+	State       string  `json:"state"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
 // ListApplyResult defines model for ListApplyResult.
 type ListApplyResult struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -5199,6 +5221,11 @@ type ClientInterface interface {
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLicense License state, node limit and licensed features of this node
+	//
+	// Corresponds with GET /license (the `GetLicense` operationId).
+	GetLicense(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetNodeConfig This node's host-local settings (redacted)
 	//
 	// Corresponds with GET /node/config (the `GetNodeConfig` operationId).
@@ -7036,6 +7063,21 @@ func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (
 // Corresponds with GET /info/messages (the `InfoMessages` operationId).
 func (c *Client) InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewInfoMessagesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetLicense License state, node limit and licensed features of this node
+//
+// Corresponds with GET /license (the `GetLicense` operationId).
+func (c *Client) GetLicense(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLicenseRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -11433,6 +11475,33 @@ func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetLicenseRequest constructs an http.Request for the GetLicense method
+func NewGetLicenseRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/license")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetNodeConfigRequest constructs an http.Request for the GetNodeConfig method
 func NewGetNodeConfigRequest(server string) (*http.Request, error) {
 	var err error
@@ -15354,6 +15423,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessagesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InfoMessagesResponse, error)
+
+	// GetLicenseWithResponse License state, node limit and licensed features of this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /license (the `GetLicense` operationId).
+	GetLicenseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLicenseResponse, error)
 
 	// GetNodeConfigWithResponse This node's host-local settings (redacted)
 	//
@@ -21824,6 +21900,89 @@ func (r InfoMessagesResponse) ContentType() string {
 	return ""
 }
 
+type GetLicenseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LicenseInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLicenseResponse) GetJSON200() *LicenseInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetLicenseResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetLicenseResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetLicenseResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetLicenseResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetLicenseResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetLicenseResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLicenseResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLicenseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLicenseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLicenseResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetNodeConfigResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -27673,6 +27832,19 @@ func (c *ClientWithResponses) InfoMessagesWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseInfoMessagesResponse(rsp)
+}
+
+// GetLicenseWithResponse License state, node limit and licensed features of this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /license (the `GetLicense` operationId).
+func (c *ClientWithResponses) GetLicenseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLicenseResponse, error) {
+	rsp, err := c.GetLicense(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLicenseResponse(rsp)
 }
 
 // GetNodeConfigWithResponse This node's host-local settings (redacted)
@@ -33650,6 +33822,74 @@ func ParseInfoMessagesResponse(rsp *http.Response) (*InfoMessagesResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ListDiagnosisMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLicenseResponse parses an HTTP response from a GetLicenseWithResponse call
+func ParseGetLicenseResponse(rsp *http.Response) (*GetLicenseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLicenseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LicenseInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"

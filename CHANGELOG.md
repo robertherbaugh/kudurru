@@ -7,6 +7,32 @@ All notable changes to kudurru are listed here. The format follows
 
 ## [0.1.0] - unreleased (release candidate 0.1.0-rc.1, not tagged yet)
 
+### Licence (before the first release)
+
+- kudurru is now **source-available** under the PolyForm Noncommercial License
+  1.0.0 instead of Apache-2.0. Personal use is free; a business needs an
+  agreement ([LICENSING.md](LICENSING.md), D155). Nothing had been published,
+  so every tag, release, image and chart carries the new licence; commits
+  before the change keep the old one in the history.
+- **License keys** (D156): a free personal key (3 nodes) or a business key
+  unlocks more than one node and the features that moved to [`ee/`](ee/):
+  OIDC sign-in, the dnsdist and keepalived edge, and the integrations. Keys are
+  verified offline; with no key kudurru runs one node, and DNS answering never
+  depends on a key. New: `kudurru license status|verify`, `--license-key`,
+  `KUDURRU_LICENSE_KEY(_FILE)`, `GET /api/v1/license`, `402 license_required`
+  for configuration writes over the node limit, `kudurru_license_*` metrics,
+  Helm `license.*` values and the Compose `KUDURRU_LICENSE_KEY` variable.
+- Also behind a key: roles beyond the one built-in administrator (role
+  bindings, scoped roles, Kubernetes RBAC), the audit trail (storage, API and
+  export; the audit log lines stay), statistics older than 24 hours (the
+  rollups are still collected), and unblock requests (the block page stays
+  free). Without a key at most 2 policies can be created through the API.
+- Code moved: `internal/edge` to `ee/edge`, `internal/auth/oidc` to
+  `ee/oidc`, `internal/integration` to `ee/integration`, the binding source,
+  SubjectAccessReview authorizer and ClusterRole generator to `ee/rbac`, and
+  the sqlite audit recorder to `ee/auditstore`.
+- Contributions need a DCO sign-off and a relicensing grant (CONTRIBUTING.md).
+
 The first release, "stone": a daily-driver DNS server that runs as one
 container or as a Kubernetes Deployment with CRDs. It covers milestones M1 to
 M5 of [docs/architecture.md §13.1](docs/architecture.md), with the gaps that

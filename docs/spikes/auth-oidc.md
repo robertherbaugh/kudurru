@@ -16,7 +16,7 @@
 | | `cookie.go` | Cookies are always HttpOnly and SameSite=Lax. `Secure` is auto/always/never; auto means TLS terminates here, or `X-Forwarded-Proto: https` arrived from a trusted proxy (opt-in). |
 | | `middleware.go` | `Authenticator.Middleware`, the cookie step of §8.8. It skips requests that carry `Authorization` (bearer requests are CSRF-exempt). It loads the session (seal, expiry, sessionsValidAfter) and clears bad cookies. On unsafe methods it enforces `http.CrossOriginProtection.Check` and the `X-Kudurru-CSRF` header (constant-time compare). It slides the idle timeout with a `Set-Cookie` and puts the session and principal in the request context. Also contains `SecurityHeaders`. |
 | | `handlers.go` | `GET /auth/me` returns principal, roles, structured bindings, a permission matrix per scope, CSRF token and times. `POST /auth/logout` clears the cookie and is CSRF-protected. |
-| `internal/auth/oidc` | `config.go` | `ProviderConfig`: id, issuer, clientID/secret, redirectURL, scopes, claimValidationRules, claimMappings and provisioning, with validation. https is required except for loopback hosts. `defaultRole` may never be `admin` and contradicts `mapped-only`. |
+| `ee/oidc` | `config.go` | `ProviderConfig`: id, issuer, clientID/secret, redirectURL, scopes, claimValidationRules, claimMappings and provisioning, with validation. https is required except for loopback hosts. `defaultRole` may never be `admin` and contradicts `mapped-only`. |
 | | `claims.go` | The claim pipeline: validation rules, then the username chain (configured claim → `preferred_username` → `upn` → `email` if `email_verified` → `sub`), then groups from the groups claim plus `roles` (string or array) with a prefix. Group overage sent as a distributed claim is refused. `azp` and multiple-audience checks also live here. |
 | | `identity.go` | `IdentityKey{provider, iss, sub}` written to `Principal.ID` as `oidc:<p>:<iss>:<sub>` (each part query-escaped). Email is never part of it. |
 | | `resolver.go` | The `RoleResolver` interface and `BindingResolver` over `[]rbac.Binding`. A test pins it to `rbac.BindingAuthorizer`'s subject matching. |
@@ -40,7 +40,7 @@ curl -fsSL -o bin/.dex-src/dex.tar.gz https://github.com/dexidp/dex/archive/refs
 echo "3c09c0f2be88719d5bc2a061d3df9310052c8220b651a3b72d774eecd9b50b65  bin/.dex-src/dex.tar.gz" | sha256sum -c -
 tar -xzf bin/.dex-src/dex.tar.gz -C bin/.dex-src --strip-components=1
 cd bin/.dex-src && CGO_ENABLED=0 go build -trimpath -ldflags '-X main.version=v2.46.0' -o ../dex-v2.46.0 ./cmd/dex
-CGO_ENABLED=1 KUDURRU_DEX_BIN=$PWD/bin/dex-v2.46.0 go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
+CGO_ENABLED=1 KUDURRU_DEX_BIN=$PWD/bin/dex-v2.46.0 go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./ee/oidc/
 ```
 
 - The cold build took **21.6 s** (`real 0m21.619s`, go1.27.2, including module downloads); a rebuild with a warm module cache takes 2.2 s. The binary is 57 MB, static, `CGO_ENABLED=0`, and `dex version` prints `Dex Version: v2.46.0`.

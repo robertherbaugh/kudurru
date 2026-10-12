@@ -26,6 +26,7 @@ disagree, these pages follow the code and say so.
 | [Configuration and the store](configuration-and-store.md) | the object model, the two store drivers, the write path, the snapshot, leader election and settings |
 | [Deployment shapes](deployment.md) | one container, Kubernetes, compose HA with dnsdist and keepalived, and what happens when something fails |
 | [Access: sign-in, tokens and RBAC](access.md) | principals, the authentication chain, OIDC sign-in, authorization, the node-to-node plane |
+| [Licensing and license keys](licensing.md) | how a key is verified offline, what each state changes, and the one promise: DNS never depends on a key |
 | [Observability](observability.md) | the query log pipeline, metrics, health probes and audit |
 
 ## Five ideas that explain most of the design

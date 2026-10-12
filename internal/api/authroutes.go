@@ -17,6 +17,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
 // Me is GET /auth/me.
@@ -268,6 +269,9 @@ func (s *Server) registerAudit() {
 }
 
 func (s *Server) auditReader() (audit.Reader, error) {
+	if err := s.requireFeature(license.FeatureAudit, "the audit trail"); err != nil {
+		return nil, err
+	}
 	if rd, ok := s.opts.Audit.(audit.Reader); ok {
 		return rd, nil
 	}

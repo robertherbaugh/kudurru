@@ -340,6 +340,19 @@ config:
 # (file-managed, re-applied on start).
 objects: []
 
+license:
+  # -- License key (docs/architecture/licensing.md, LICENSING.md). Empty runs
+  # the community license: one node and no ee/ features (OIDC, the dnsdist and
+  # keepalived edge, integrations); DNS answering never depends on a key. A
+  # free personal key covers 3 nodes. Prefer existingSecret.
+  key: ""
+  # -- Existing Secret that holds the key under secretKey; overrides key.
+  # Every kudurru container reads it as KUDURRU_LICENSE_KEY (optional: pods
+  # start when the Secret is missing).
+  existingSecret: ""
+  # -- Key inside the Secret.
+  secretKey: license.key
+
 auth:
   # -- Existing Secret (key "key": 32 random bytes, base64 or 64 hex digits)
   # mounted as KUDURRU_ENCRYPTION_KEY_FILE. Empty: generated once and kept
