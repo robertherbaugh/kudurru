@@ -2,11 +2,13 @@
 // embedded dashboard for every test, a stub upstream, a signed-in admin
 // session (storage state) and real DNS traffic over UDP so the stats,
 // query log and clients pages have data. The returned function is the
-// global teardown.
+// global teardown. A stub list publisher serves hosts lists for url
+// sources (KUDURRU_E2E_LISTS).
 import { request, type FullConfig } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { query, startUpstream, TYPE_AAAA, UPSTREAM_A } from './support/dns';
+import { startListServer } from './support/lists';
 import { ADMIN_USER, BLOCKLIST, locateBinary, sleep, startServer, WEB_DIR, ZONE } from './support/kudurru';
 
 export const STORAGE_STATE = path.join(WEB_DIR, 'e2e', '.auth', 'admin.json');
@@ -14,11 +16,14 @@ export const STORAGE_STATE = path.join(WEB_DIR, 'e2e', '.auth', 'admin.json');
 export default async function globalSetup(_config: FullConfig): Promise<() => Promise<void>> {
   const bin = locateBinary();
   const upstream = await startUpstream();
+  // The block-list publisher url sources fetch from (allowlist.spec.ts).
+  const lists = await startListServer();
   const adminPassword = `e2e-${Math.random().toString(36).slice(2)}-password`;
   const server = await startServer(bin, { upstream: upstream.address, adminPassword });
   const teardown = async () => {
     await server.stop();
     await upstream.close();
+    await lists.close();
   };
   try {
     // The tests must run against the real bundle, not the placeholder.
@@ -65,6 +70,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     process.env.KUDURRU_E2E_BLOCKPAGE = server.blockPage;
     process.env.KUDURRU_E2E_NODE = server.node;
     process.env.KUDURRU_E2E_UPSTREAM = upstream.address;
+    process.env.KUDURRU_E2E_LISTS = lists.url;
     process.env.KUDURRU_E2E_ADMIN_PASSWORD = adminPassword;
     process.env.KUDURRU_E2E_BIN_PATH = bin;
     console.log(`e2e: kudurru ${server.node} at ${server.url} (dns ${server.dns}, data ${server.dir})`);

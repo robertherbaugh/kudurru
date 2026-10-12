@@ -12,6 +12,8 @@ const NAV = [
   ['/history', 'Long-term'],
   ['/lists', 'Lists'],
   ['/domains', 'Domains'],
+  ['/allowlist', 'Allowlist'],
+  ['/denylist', 'Denylist'],
   ['/groups', 'Groups'],
   ['/clients', 'Clients'],
   ['/policies', 'Policies'],

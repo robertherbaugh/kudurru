@@ -174,8 +174,9 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
     },
     blockPage: { enabled: true, ipv4: '127.0.0.1' },
     upstreams: { groups: { default: { servers: [opts.upstream], strategy: 'parallel_best', timeout: '1s' } } },
-    // Ready only once every referenced block list is compiled.
-    blocking: { initStrategy: 'blocking' },
+    // Ready only once every referenced block list is compiled; url sources
+    // may name the loopback stub publisher (support/lists.ts).
+    blocking: { initStrategy: 'blocking', allowLocalListURLs: true },
     auth: { adminSocket: { path: path.join(dir, 'admin.sock') } },
     log: { level: 'info', format: 'text' },
   };
