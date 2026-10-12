@@ -159,14 +159,26 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
       golden keepalived files. It passed locally from a clean clone with no
       build cache at a57eb73. Make the `edge` workflow a required check on
       `main` once it is green there.
-- [ ] **kind** (spike f, `kind` workflow, `make kind-e2e`): kind cluster,
-      MetalLB L2, `helm install kudurru-crds` and `kudurru` with
-      `vip.provider=metallb` and `service.dns.splitProtocols` both ways;
-      `dig` an authoritative and a forwarded name through the LoadBalancer
-      over UDP and TCP; `kubectl get dnszones`; a rolling restart with no
-      unanswered query. Not yet run anywhere (the fix-round sandbox cannot
-      start kind); make it required after green runs. Still manual: the
-      edge Deployment with EndpointSlice membership.
+- [ ] **kind** (spike f, `kind` workflow, `make kind-e2e`): a kind cluster
+      of a control-plane node and three workers, MetalLB L2, `helm install
+      kudurru-crds` and `kudurru` with three replicas and
+      `vip.provider=metallb`. Without a database: the replicas on different
+      nodes; every replica's API lists all replicas and the objects made
+      through another; `service.dns.splitProtocols` both ways with `dig` of
+      an authoritative and a forwarded name through the LoadBalancer over
+      UDP and TCP; the query log of all nodes on every replica (#9); the
+      audit log on every replica, also after the replica that made the
+      change was replaced (#10); a rolling restart with no unanswered
+      query. With the PostgreSQL database (docs/deploy/postgres.md): the
+      query log and audit log read from it, including the rows of replicas
+      that no longer exist; the database stopped for over a minute (DNS and
+      readiness unaffected, changes still work, `CentralUnreachable`
+      reported) and started again with nothing recorded meanwhile missing.
+      Green on GitHub's runners since the v0.1 fix round for the single-node
+      DNS part; the multi-node and database parts are new. Make it a
+      required check once it has a record of green runs (it skips docs-only
+      changes the way `ci` does, so a required check is satisfied). Still
+      manual: the edge Deployment with EndpointSlice membership.
 
 On the owner's hardware:
 
