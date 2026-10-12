@@ -485,3 +485,37 @@ func TestReopenRebuildsPendingHours(t *testing.T) {
 		t.Errorf("summary changed across a restart:\n%+v\n%+v", sb.Queries, sa.Queries)
 	}
 }
+
+// TestFullPendingHourReadsFacts: a pending hour with more distinct domains
+// than maxHourDomains drops its in-memory domain counts, and the read API
+// takes that hour from the fact table with the same answers.
+func TestFullPendingHourReadsFacts(t *testing.T) {
+	ctx := context.Background()
+	q := TopQuery{Window: allTime}
+	w, _ := seeded(t)
+	want, err := w.Reader().TopDomains(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSum, _ := w.Reader().Summary(ctx, SummaryQuery{Window: allTime})
+
+	defer func(n int) { maxHourDomains = n }(maxHourDomains)
+	maxHourDomains = 2 // 11:00 has three domains, 12:00 two
+	w2, _ := seeded(t)
+	h11 := w2.acc.hours[time.Date(2026, 10, 11, 11, 0, 0, 0, time.UTC).Unix()]
+	h12 := w2.acc.hours[time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC).Unix()]
+	if h11 == nil || !h11.full || h11.domains != nil || h12 == nil || h12.full || len(h12.domains) != 2 {
+		t.Fatalf("pending hours: 11:00 %+v, 12:00 %+v", h11, h12)
+	}
+	got, err := w2.Reader().TopDomains(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(keys(want.Items), keys(got.Items)) {
+		t.Errorf("top domains with a full hour: %v, want %v", keys(got.Items), keys(want.Items))
+	}
+	gotSum, _ := w2.Reader().Summary(ctx, SummaryQuery{Window: allTime})
+	if gotSum.Queries != wantSum.Queries {
+		t.Errorf("summary with a full hour:\n%+v\nwant\n%+v", gotSum.Queries, wantSum.Queries)
+	}
+}

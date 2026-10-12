@@ -262,9 +262,25 @@ type keyedSource struct {
 	// pending contributions
 	minute func(m *minuteAcc, emit func(k, a, b int64))
 	hour   func(h *hourAcc, emit func(k, a, b int64))
+	// hourFull reports a pending hour whose contribution is not kept in
+	// memory (hourAcc.full); its segment is read from the fact table.
+	hourFull func(h *hourAcc) bool
 }
 
 type keyedRow struct{ bk, k, a, b int64 }
+
+// anyFull reports whether a pending hour in [from, until) is full for src.
+func anyFull(src keyedSource, hours map[int64]*hourAcc, from, until int64) bool {
+	if src.hourFull == nil {
+		return false
+	}
+	for h, acc := range hours {
+		if h >= from && h < until && src.hourFull(acc) {
+			return true
+		}
+	}
+	return false
+}
 
 // keyed aggregates a dimension over the window: one SQL statement over the
 // tier segments plus the pending accumulators (passed as JSON), grouped by
@@ -280,7 +296,7 @@ func (r *Reader) keyed(ctx context.Context, tx *sql.Tx, s *snapshot, src keyedSo
 	nowS := s.now.Unix()
 	for _, sg := range segs {
 		if sg.t.facts {
-			if src.hour != nil && s.hours != nil && sg.from >= s.hourDone && sg.from%3600 == 0 && sg.until >= nowS {
+			if src.hour != nil && s.hours != nil && sg.from >= s.hourDone && sg.from%3600 == 0 && sg.until >= nowS && !anyFull(src, s.hours, sg.from, sg.until) {
 				for h, acc := range s.hours {
 					if h >= sg.from && h < sg.until {
 						src.hour(acc, func(k, a, b int64) { pending.add(bucketOf(h, step), k, a, b) })
@@ -415,6 +431,7 @@ func (r *Reader) domainSource(s *snapshot) keyedSource {
 				emit(d, v[0], v[1])
 			}
 		},
+		hourFull: func(h *hourAcc) bool { return h.full },
 	}
 }
 

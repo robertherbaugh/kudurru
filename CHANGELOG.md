@@ -191,6 +191,11 @@ pipeline.
   into a node's cache by the background `lastLoginAt`/`lastUsedAt` update
   that read it just before the deletion, and stayed valid there until the
   next re-watch; a deletion now refuses older copies for a minute.
+- Query log: the in-memory domain counts of the current hour are capped
+  at 100,000 names; a flood of unique names (random subdomains over TCP,
+  which the rate limiter does not cover) grew them by every name, about
+  2 GB an hour at the query log's peak rate. A full hour is read from the
+  fact table instead.
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission

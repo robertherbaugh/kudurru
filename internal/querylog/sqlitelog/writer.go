@@ -384,7 +384,7 @@ func (w *Writer) seedHours(ctx context.Context) error {
 	}
 	for _, s := range []q{
 		{`SELECT (ts/3600000000)*3600, domain, count(*), sum(status BETWEEN 16 AND 23) FROM query WHERE ts >= ? GROUP BY 1, 2`,
-			func(h *hourAcc, k, a, b int64) { addPair(h.domains, k, a, b) }},
+			func(h *hourAcc, k, a, b int64) { h.addDomain(k, a, b) }},
 		{`SELECT (ts/3600000000)*3600, list, sum(status BETWEEN 16 AND 23), sum(status NOT BETWEEN 16 AND 23) FROM query WHERE ts >= ? AND list IS NOT NULL GROUP BY 1, 2`,
 			func(h *hourAcc, k, a, b int64) { addPair(h.lists, k, a, b) }},
 		{`SELECT (ts/3600000000)*3600, zone, count(*), 0 FROM query WHERE ts >= ? AND zone IS NOT NULL GROUP BY 1, 2`,
@@ -580,7 +580,7 @@ func (w *Writer) add(ctx context.Context, tx *sql.Tx, ins *sql.Stmt, ev *querylo
 	addPair(m.clients, clientID, 1, b)
 	if hour >= w.hourDone {
 		h := delta.hour(hour)
-		addPair(h.domains, domainID, 1, b)
+		h.addDomain(domainID, 1, b)
 		if listID != 0 {
 			addPair(h.lists, listID, b, 1-b)
 		}
