@@ -75,7 +75,9 @@ services:
       - --console=127.0.0.1:5199
       - --api-key-out=/run/kudurru/dnsdist-api.key
       - --proxy-protocol-secret-file=/run/secrets/proxy_secret
-    secrets: [proxy_secret]
+    environment:
+      KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    secrets: [proxy_secret, encryption_key]
     volumes:
       - ./certs:/certs:ro
       - kudurru-run:/run/kudurru

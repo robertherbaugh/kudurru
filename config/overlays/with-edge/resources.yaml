@@ -323,6 +323,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: KUDURRU_ENCRYPTION_KEY_FILE
+              value: /etc/kudurru/secrets/encryption/key
           image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0-rc.1
           imagePullPolicy: IfNotPresent
           livenessProbe:
@@ -372,6 +374,9 @@ spec:
               name: dnsdist-config
             - mountPath: /run/kudurru
               name: run
+            - mountPath: /etc/kudurru/secrets/encryption
+              name: encryption-key
+              readOnly: true
             - mountPath: /etc/kudurru/secrets/proxy
               name: proxy-protocol
               readOnly: true
@@ -403,6 +408,10 @@ spec:
           secret:
             defaultMode: 288
             secretName: kudurru-proxy-protocol
+        - name: encryption-key
+          secret:
+            defaultMode: 288
+            secretName: kudurru-encryption-key
 ---
 apiVersion: apps/v1
 kind: Deployment

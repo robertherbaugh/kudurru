@@ -373,6 +373,12 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
       valueFrom:
         fieldRef:
           fieldPath: metadata.name
+    - name: KUDURRU_ENCRYPTION_KEY_FILE
+      value: /etc/kudurru/secrets/encryption/key
+    {{- if $root.Values.auth.encryptionKeyPreviousSecret }}
+    - name: KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE
+      value: /etc/kudurru/secrets/encryption-previous/key
+    {{- end }}
   ports:
     - name: edge-dns-udp
       containerPort: 53
@@ -440,6 +446,14 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
       mountPath: /etc/dnsdist
     - name: run
       mountPath: /run/kudurru
+    - name: encryption-key
+      mountPath: /etc/kudurru/secrets/encryption
+      readOnly: true
+    {{- if $root.Values.auth.encryptionKeyPreviousSecret }}
+    - name: encryption-key-previous
+      mountPath: /etc/kudurru/secrets/encryption-previous
+      readOnly: true
+    {{- end }}
     {{- if not .sidecar }}
     - name: proxy-protocol
       mountPath: /etc/kudurru/secrets/proxy
