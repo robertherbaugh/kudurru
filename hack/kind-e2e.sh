@@ -110,7 +110,8 @@ wait_ready() {
 
 # api <pod> <METHOD> <path> [json]: one request to the API of a pod, through
 # kubectl port-forward (the pod, not the Service, so every replica is asked
-# for its own view). Prints the body; fails unless the status is 2xx.
+# for its own view). The listener serves a self-signed certificate (-k).
+# Prints the body; fails unless the status is 2xx.
 api() {
   local pod=$1 method=$2 path=$3 body=${4:-}
   local pf="$WORK/pf.$RANDOM" out="$WORK/body.$RANDOM" pid port="" code
@@ -127,9 +128,9 @@ api() {
     wait "$pid" 2>/dev/null || true
     return 1
   fi
-  local args=(-gsS -m 20 -o "$out" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $TOKEN")
+  local args=(-gskS -m 20 -o "$out" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $TOKEN")
   if [ -n "$body" ]; then args+=(-H 'Content-Type: application/json' --data "$body"); fi
-  code=$(curl "${args[@]}" "http://127.0.0.1:$port/api/v1$path") || code=000
+  code=$(curl "${args[@]}" "https://127.0.0.1:$port/api/v1$path") || code=000
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   cat "$out" 2>/dev/null || true
