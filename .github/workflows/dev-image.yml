@@ -21,7 +21,7 @@ jobs:
   # Same check as ci.yml's changes job: false only when every file the pull
   # request changes is under docs/.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
@@ -43,7 +43,7 @@ jobs:
   image:
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read

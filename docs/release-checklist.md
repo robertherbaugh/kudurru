@@ -149,7 +149,7 @@ Dry runs for v0.1.0-rc.1 (not tagged yet):
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
-Two former items here run on GitHub's ubuntu-latest runners now:
+Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
       fix round): `make edge-check` builds the kudurru image and both
@@ -220,9 +220,12 @@ On the owner's hardware:
       `ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k<version>` from
       `images/dnsdist` and `images/keepalived` with
       `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>` for
-      linux/amd64 and linux/arm64 and cosign-signs each digest (the program
-      versions come from the Dockerfile ARGs). Check both jobs succeeded;
-      the image READMEs carry the GPL notices and source offer.
+      linux/amd64 and linux/arm64, each natively on an x64 or arm64 runner
+      and pushed by digest; `supervisor-manifests` joins the two platforms
+      into the tagged index and cosign-signs its digest (the program
+      versions come from the Dockerfile ARGs). Check all four builds and
+      both manifest jobs succeeded; the image READMEs carry the GPL notices
+      and source offer.
 - [ ] The `hostnetwork-image` job (after `release`) builds and pushes
       `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork` (and
       `latest-hostnetwork` for a release) from `images/hostnetwork` with
