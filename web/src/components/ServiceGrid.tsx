@@ -99,7 +99,10 @@ const CATEGORY_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
 };
 
 export function CategoryIcon({ icon }: { icon?: string | undefined }) {
-  return <Icon icon={(icon && CATEGORY_ICONS[icon]) || Tag} size="sm" color="secondary" />;
+  // Own keys only: a catalogue may name any icon, and "constructor" would
+  // otherwise resolve to Object and break the grid.
+  const known = icon !== undefined && Object.hasOwn(CATEGORY_ICONS, icon) ? CATEGORY_ICONS[icon] : undefined;
+  return <Icon icon={known ?? Tag} size="sm" color="secondary" />;
 }
 
 const STATE_TEXT: Record<ServiceState, string> = {
