@@ -151,11 +151,11 @@ func TestBindingSourceSessionGrantsAndRevocation(t *testing.T) {
 	if d, _ := src.Authorize(ctx, sess, toggle); !d.Allowed {
 		t.Fatalf("session grant: %+v", d)
 	}
-	// A grant no binding provides is never honoured (forged or stale).
+	// A grant no binding provides is never honored (forged or stale).
 	forged := sess
 	forged.Grants = []rbac.Grant{{Role: "admin", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}}
 	if d, _ := src.Authorize(ctx, forged, rbac.Attributes{Resource: "settings", Verb: "write"}); d.Allowed {
-		t.Fatal("grant without a binding honoured")
+		t.Fatal("grant without a binding honored")
 	}
 	// Narrowing the binding revokes earlier sessions, even if another
 	// binding still provides the role.
@@ -165,14 +165,14 @@ func TestBindingSourceSessionGrantsAndRevocation(t *testing.T) {
 		"dns/other": {Role: "viewer", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Subjects: []rbac.Subject{{Kind: rbac.SubjectUser, Name: "dave"}}},
 	})
 	if d, _ := src.Authorize(ctx, sess, toggle); d.Allowed {
-		t.Fatal("revoked session grant still honoured")
+		t.Fatal("revoked session grant still honored")
 	}
 	mu.Lock()
 	if len(revoked) != 1 || revoked[0].Subject.Name != "corp:/ops" || revoked[0].Grant.Role != "operator" {
 		t.Fatalf("revocations %+v", revoked)
 	}
 	mu.Unlock()
-	// A login after the change resolves the grant again and is honoured.
+	// A login after the change resolves the grant again and is honored.
 	fresh := sess
 	fresh.GrantsIssuedAt = now.Add(time.Second)
 	if d, _ := src.Authorize(ctx, fresh, toggle); !d.Allowed {

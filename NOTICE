@@ -5,12 +5,12 @@ kudurru is source-available under the PolyForm Noncommercial License 1.0.0
 (LICENSE, https://polyformproject.org/licenses/noncommercial/1.0.0). Personal,
 non-commercial use is free; use by a business needs a commercial agreement.
 See LICENSING.md. The code under ee/ also carries the additional terms in
-ee/LICENSE.md. The blocked-services catalogue under
+ee/LICENSE.md. The blocked-services catalog under
 internal/listdata/catalogue is separately licensed under Apache-2.0 (its own
 LICENSE), so that it can be published and reused.
 
 This product includes software developed by third parties under their own
-(permissive) licences, which are not changed by the licence above.
+(permissive) licenses, which are not changed by the license above.
 Attributions are added to this file as the dependencies land:
 
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list

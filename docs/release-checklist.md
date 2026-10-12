@@ -24,9 +24,9 @@ pre-release and does not move the `latest` image tags (`prerelease: auto`).
       [docs/architecture/licensing.md](architecture/licensing.md#for-the-licensor).
 - [ ] The contact address in `LICENSING.md` is monitored, and a way to request
       a free personal key exists.
-- [ ] No release candidate image, chart or release made before the licence
+- [ ] No release candidate image, chart or release made before the license
       change is still published (the history keeps its Apache-2.0 commits; the
-      tags, releases and images must all carry the new licence).
+      tags, releases and images must all carry the new license).
 
 ## Release pipeline
 

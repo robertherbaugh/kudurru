@@ -7,12 +7,12 @@ All notable changes to kudurru are listed here. The format follows
 
 ## [0.1.0] - unreleased (release candidate 0.1.0-rc.1, not tagged yet)
 
-### Licence (before the first release)
+### License
 
-- kudurru is now **source-available** under the PolyForm Noncommercial License
+- kudurru is **source-available** under the PolyForm Noncommercial License
   1.0.0 instead of Apache-2.0. Personal use is free; a business needs an
   agreement ([LICENSING.md](LICENSING.md), D162). Nothing had been published,
-  so every tag, release, image and chart carries the new licence; commits
+  so every tag, release, image and chart carries the new license; commits
   before the change keep the old one in the history.
 - **License keys** (D163): a free personal key (3 nodes) or a business key
   unlocks more than one node and the features that moved to [`ee/`](ee/):

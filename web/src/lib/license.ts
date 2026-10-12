@@ -3,7 +3,7 @@
 // words it. docs/architecture/licensing.md.
 import type { LicenseInfo } from '../api/types';
 
-/** The edition's contact for free personal keys and commercial licences. */
+/** The edition's contact for free personal keys and commercial licenses. */
 export const LICENSE_CONTACT = 'hello@kudurru.io';
 
 /** The page that explains the license and how to get a key. */

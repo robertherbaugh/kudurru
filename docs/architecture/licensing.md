@@ -61,7 +61,7 @@ license server. The payload carries:
 | `features` | licensed features; empty means every feature this build knows |
 | `iat`, `nbf`, `exp` | issued, not before, expires (Unix seconds); `exp` is required |
 
-The signature does not make a key a licence: the licence is the agreement,
+The signature does not make a key a license: the license is the agreement,
 and a personal key does not widen the noncommercial terms.
 
 ## What each state changes
@@ -90,7 +90,7 @@ Two details matter for an operator:
   and `/queries/*`. Reads always work. If membership cannot be read, the
   gate lets the request through: an outage never blocks an operator. Changes
   made outside the API (file-managed objects, `kubectl`) are not gated; the
-  limit is a management-plane check, backed by the licence terms.
+  limit is a management-plane check, backed by the license terms.
 - **The audit trail keeps being written and shipped.** The sqlite driver
   records one hash-chained row per store mutation in `state.db` whatever the
   license says, the spool and the shipper of the cluster-wide audit log

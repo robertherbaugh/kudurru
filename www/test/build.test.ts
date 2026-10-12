@@ -167,7 +167,7 @@ describe("the key request form", () => {
     expect(headers).toContain("connect-src 'self' https://licenses.kudurru.io;");
   });
 
-  test("WWW_LICENSE_API is honoured and checked", async () => {
+  test("WWW_LICENSE_API is honored and checked", async () => {
     const dir = await mkdtemp(join(tmpdir(), "www-api-"));
     try {
       await build({ outDir: dir, version: "9.8.7", licenseApi: "https://licenses.example.org" });

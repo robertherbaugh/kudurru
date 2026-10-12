@@ -25,7 +25,7 @@ import (
 const Issuer = "kudurru"
 
 // Grace is how long an expired key keeps working, so a renewal that is a few
-// days late never changes the behaviour of a running node.
+// days late never changes the behavior of a running node.
 const Grace = 30 * 24 * time.Hour
 
 // CommunityNodes is the node limit without a key: one node.

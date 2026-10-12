@@ -10,7 +10,7 @@ agreement.
 | A charity, school or public research body | The same, under the noncommercial terms | A free personal key on request |
 | A business, or anyone using it for a commercial purpose | Evaluate it | A commercial agreement and a business key. Write to the contact below. |
 
-The licence is the [PolyForm Noncommercial License 1.0.0](LICENSE)
+The license is the [PolyForm Noncommercial License 1.0.0](LICENSE)
 ([SPDX](https://spdx.org/licenses/PolyForm-Noncommercial-1.0.0.html)). The text
 is also on [kudurru.io](https://kudurru.io/license/text/) and in the
 [docs](https://docs.kudurru.io/project/license/), all from the one `LICENSE` file. It
@@ -38,8 +38,8 @@ A **license key** unlocks what a single free node does not have:
 | Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | Yes |
 | Use by a business | No | No | Yes |
 
-A personal key is only for noncommercial use; the licence says so, and the key
-does not change it. A key is not a licence by itself: it records the licence
+A personal key is only for noncommercial use; the license says so, and the key
+does not change it. A key is not a license by itself: it records the license
 you were granted.
 
 Give kudurru the key in one of these ways, first match wins:
@@ -85,18 +85,18 @@ and `kudurru_license_node_limit` let you alert before a key runs out.
 
 Everything outside `ee/` is under the PolyForm Noncommercial License. The
 directory [`ee/`](ee/) holds the features that need a key; it is under the same
-licence plus the extra terms in [`ee/LICENSE.md`](ee/LICENSE.md). The
-blocked-services and safe-search catalogue in `internal/listdata/catalogue` is
+license plus the extra terms in [`ee/LICENSE.md`](ee/LICENSE.md). The
+blocked-services and safe-search catalog in `internal/listdata/catalogue` is
 data written for kudurru and is licensed under Apache-2.0, so it can be
-published and reused on its own. Third-party software keeps its own licences
+published and reused on its own. Third-party software keeps its own licenses
 ([NOTICE](NOTICE)).
 
 ## Contributing
 
 Contributions need the contributor agreement in [CONTRIBUTING.md](CONTRIBUTING.md)
-so that the project can keep offering commercial licences.
+so that the project can keep offering commercial licenses.
 
 ## Contact
 
-Commercial licences, free personal keys and licensing questions:
+Commercial licenses, free personal keys and licensing questions:
 hello@kudurru.io

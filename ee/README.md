@@ -19,7 +19,7 @@ table, the engine and the built-in administrator (`internal/rbac`), the audit
 event types and the log recorder (`internal/audit`), the rollups and the short
 windows of the statistics, and the block page.
 
-The licence is the [PolyForm Noncommercial License 1.0.0](../LICENSE) plus
+The license is the [PolyForm Noncommercial License 1.0.0](../LICENSE) plus
 the additional terms in [LICENSE.md](LICENSE.md). The code here is source-
 available and builds into the same binary as the rest; the key is checked at
 run time, never at build time. How keys work, and the promise that licensing

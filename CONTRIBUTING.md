@@ -4,7 +4,7 @@ Thank you for helping build kudurru. This file covers the rules that are easy to
 
 ## Licensing rule (read this first)
 
-kudurru is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), and the code under `ee/` needs a license key ([LICENSING.md](LICENSING.md)). Because the project is not open source and its owner also offers commercial licences, no GPL, EUPL or other copyleft code can ever be part of it. Several of the projects it learns from are **GPL or EUPL**: Gravity (GPL-3.0), Technitium (GPL-3.0), AdGuard Home and urlfilter (GPL-3.0), Pi-hole (EUPL-1.2), dnsdist and keepalived (GPL-2.0). Code, markup, and data from those projects must never be copied, translated, or "ported" into this repository. Reading their docs and describing their behaviour is fine; the research notes under `docs/research/` do exactly that. Reimplement from the specification or from a permissively licensed reference (blocky, dnsproxy, CoreDNS, external-dns; see [NOTICE](NOTICE)).
+kudurru is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), and the code under `ee/` needs a license key ([LICENSING.md](LICENSING.md)). Because the project is not open source and its owner also offers commercial licenses, no GPL, EUPL or other copyleft code can ever be part of it. Several of the projects it learns from are **GPL or EUPL**: Gravity (GPL-3.0), Technitium (GPL-3.0), AdGuard Home and urlfilter (GPL-3.0), Pi-hole (EUPL-1.2), dnsdist and keepalived (GPL-2.0). Code, markup, and data from those projects must never be copied, translated, or "ported" into this repository. Reading their docs and describing their behavior is fine; the research notes under `docs/research/` do exactly that. Reimplement from the specification or from a permissively licensed reference (blocky, dnsproxy, CoreDNS, external-dns; see [NOTICE](NOTICE)).
 
 dnsdist and keepalived are run as separate programs in their own images under `images/`. They are never linked, vendored, or patched.
 
@@ -12,7 +12,7 @@ CI runs `go-licenses` with a deny list for GPL and EUPL modules. Embedded data (
 
 ## Contributor agreement
 
-The owner offers kudurru under commercial licences as well as the noncommercial one, so every contribution has to be licensable on both terms. Every commit must carry a `Signed-off-by: Name <email>` line (`git commit -s`). By adding it you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) and you also grant Robert Herbaugh, the project owner, a perpetual, worldwide, non-exclusive, royalty-free, irrevocable licence to use, reproduce, modify, sublicense and distribute your contribution under any terms, including commercial and proprietary ones. You keep your copyright. Pull requests without the sign-off are not merged.
+The owner offers kudurru under commercial licenses as well as the noncommercial one, so every contribution has to be licensable on both terms. Every commit must carry a `Signed-off-by: Name <email>` line (`git commit -s`). By adding it you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) and you also grant Robert Herbaugh, the project owner, a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, modify, sublicense and distribute your contribution under any terms, including commercial and proprietary ones. You keep your copyright. Pull requests without the sign-off are not merged.
 
 > These terms are a draft that has not had legal review. Do not accept outside contributions before they have.
 
