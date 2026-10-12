@@ -212,6 +212,9 @@ pipeline.
   published; every image gets build provenance and the Dockerfile-built
   images an SBOM; a release refuses a candidate whose publish did not
   finish (`hack/candidate-published.sh`).
+- Zone import and export: an SOA RNAME with an escaped `\@` in a label was
+  split there as if it were an e-mail address, so a re-import changed it
+  (found by `FuzzImportBIND`).
 - Container images: a fresh Docker named volume at `/var/lib/kudurru`
   (`docker run -v kudurru-data:/var/lib/kudurru`, every compose file) came
   up root-owned and kudurru exited with `open state.db: permission

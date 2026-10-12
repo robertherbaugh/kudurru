@@ -586,7 +586,10 @@ func orDefault(v, d uint32) uint32 {
 // mailbox converts an SOA rname given as an e-mail address
 // (hostmaster@example.com) or as a domain name into SOA RNAME form.
 func mailbox(s string) (string, error) {
-	if local, domain, ok := cutLast(s, "@"); ok {
+	// An escaped \@ is part of a label (a presentation-form RNAME as an
+	// import stores it), not the e-mail separator.
+	if i := lastUnescaped(s, '@'); i >= 0 {
+		local, domain := s[:i], s[i+1:]
 		var esc []byte
 		for i := 0; i < len(local); i++ {
 			if local[i] == '.' {
@@ -599,13 +602,24 @@ func mailbox(s string) (string, error) {
 	return hostName(s)
 }
 
-func cutLast(s, sep string) (string, string, bool) {
-	for i := len(s) - len(sep); i >= 0; i-- {
-		if s[i:i+len(sep)] == sep {
-			return s[:i], s[i+len(sep):], true
+// lastUnescaped returns the index of the last c in s that is not part of a
+// presentation escape (\c, \DDD), or -1.
+func lastUnescaped(s string, c byte) int {
+	last := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			if i+3 < len(s) && isDigit(s[i+1]) && isDigit(s[i+2]) && isDigit(s[i+3]) {
+				i += 3
+			} else {
+				i++
+			}
+			continue
+		}
+		if s[i] == c {
+			last = i
 		}
 	}
-	return s, "", false
+	return last
 }
 
 // childName returns label.parent.

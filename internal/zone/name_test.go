@@ -197,3 +197,24 @@ func TestCanonicalName(t *testing.T) {
 		}
 	}
 }
+
+// TestMailbox: an e-mail rname is split at its last unescaped @; an escaped
+// \@ (a presentation-form RNAME as an import stores it) stays in its label
+// (FuzzImportBIND: "@ SOA 0 @@0 0" exported \@.0.example.com. and
+// re-imported as \..0.example.com.).
+func TestMailbox(t *testing.T) {
+	for in, want := range map[string]string{
+		"hostmaster@example.com":   `hostmaster.example.com.`,
+		"first.last@example.com":   `first\.last.example.com.`,
+		`hostmaster.example.com.`:  `hostmaster.example.com.`,
+		`\@.0.example.com.`:        `\@.0.example.com.`,
+		`a\@b@example.com`:         `a\@b.example.com.`,
+		`a\064b.example.com.`:      `a\064b.example.com.`,
+		`first\.last.example.com.`: `first\.last.example.com.`,
+	} {
+		got, err := mailbox(in)
+		if err != nil || got != want {
+			t.Errorf("mailbox(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+}
