@@ -16,6 +16,25 @@ type Database struct {
 	DSN string `koanf:"dsn" json:"dsn"`
 	// MaxConns caps the node's connections.
 	MaxConns int `koanf:"maxConns" json:"maxConns"`
+	// Querylog configures the query log in the database (D160).
+	Querylog DatabaseQuerylog `koanf:"querylog" json:"querylog"`
+}
+
+// DatabaseQuerylog configures how nodes copy their query log and
+// statistics into the central database.
+type DatabaseQuerylog struct {
+	// Ship copies them at all (with querylog.sink sqlite).
+	Ship bool `koanf:"ship" json:"ship"`
+	// Facts copies the individual queries; false copies only the
+	// statistics.
+	Facts bool `koanf:"facts" json:"facts"`
+	// Retention bounds the individual queries kept in the database.
+	Retention DatabaseQuerylogRetention `koanf:"retention" json:"retention"`
+}
+
+// DatabaseQuerylogRetention is database.querylog.retention.
+type DatabaseQuerylogRetention struct {
+	Raw Duration `koanf:"raw" json:"raw"`
 }
 
 // Enabled reports whether a central database is configured.

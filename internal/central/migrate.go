@@ -19,7 +19,7 @@ import (
 // SchemaVersion. Additive migrations keep CompatVersion; a migration
 // that older binaries cannot work with raises it to its own version.
 const (
-	SchemaVersion = 2
+	SchemaVersion = 3
 	CompatVersion = 1
 )
 

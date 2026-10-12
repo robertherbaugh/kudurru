@@ -64,6 +64,34 @@ While the database is away, the Audit tab answers that it is unavailable
 and the events wait on the nodes. The leader deletes events older than
 `audit.retention` (400 days) from the start of the chain.
 
+## Query log and statistics
+
+With a database, every node also sends its query log and statistics there
+(`database.querylog.ship`, D160). Each node keeps its own `querylog.db`
+and sends new queries every second and its statistics every 30 seconds.
+A node keeps the queries it has not sent yet, even past
+`querylog.retention.raw`, until it has sent them; only
+`querylog.retention.maxDBBytes` removes them earlier.
+
+| Setting | Default | |
+|---|---|---|
+| `database.querylog.ship` | on | send the query log and statistics |
+| `database.querylog.facts` | on | send each query; off sends only the statistics (charts, totals, top lists) |
+| `database.querylog.retention.raw` | 168h | keep queries in the database for 7 days; whole days are dropped |
+
+Sizing: a query takes about 250 to 300 bytes in the database with its
+indexes, so about 2.5 GB a day at 100 queries per second and 25 GB a day at
+1000. Statistics are small: per minute for 35 days, per hour for 400 days,
+per day forever, like on the nodes. At high rates set
+`database.querylog.facts: false` or a short `retention.raw`.
+
+The query table is partitioned by day; the leader creates the partitions a
+few days ahead and drops expired ones whole, so retention never deletes
+rows one by one.
+
+Statistics of a node that stops for good during an hour that it has not
+summarised yet lose that part hour; the individual queries are kept.
+
 ## Upgrades and mixed versions
 
 The database records `schema_version` and `compat_version` in

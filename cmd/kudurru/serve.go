@@ -35,6 +35,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
 	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/central/pgaudit"
+	"github.com/robertherbaugh/kudurru/internal/central/pgquerylog"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -675,6 +676,18 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if auditLogs != nil {
 		auditShipper = auditLogs.shipper
 	}
+	// The query log in the central database (D160): this node copies its
+	// querylog.db rows and rollups; the leader keeps the partitions.
+	var qlShipper *pgquerylog.Shipper
+	if centralDB != nil && cfg.Database.Querylog.Ship {
+		if qlWriter == nil {
+			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
+		} else {
+			qlShipper = &pgquerylog.Shipper{DB: centralDB, Local: qlWriter, Node: cfg.Node.Name, Version: info.Version,
+				Facts: cfg.Database.Querylog.Facts, Retention: cfg.Database.Querylog.Retention.Raw.Std(), Registerer: reg, Logger: logger}
+		}
+		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
+	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
@@ -858,6 +871,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	if auditShipper != nil {
 		if err := add("audit-ship", false, auditShipper.Run); err != nil {
+			return err
+		}
+	}
+	if qlShipper != nil {
+		if err := add("querylog-ship", false, qlShipper.Run); err != nil {
 			return err
 		}
 	}
