@@ -270,3 +270,51 @@ func TestSourcePatchIsLinear(t *testing.T) {
 		t.Fatalf("%d values took %v", n, d)
 	}
 }
+
+// blockingBodies serves a body whose reader blocks until release is
+// closed, and says on opened when a parse has started.
+type blockingBodies struct {
+	opened  chan struct{}
+	release chan struct{}
+}
+
+func (b blockingBodies) OpenSourceBody(string, v1alpha1.ListSource) (io.ReadCloser, SourceBody, error) {
+	b.opened <- struct{}{}
+	return io.NopCloser(&blockingReader{release: b.release, rest: strings.NewReader("0.0.0.0 ads.example\n")}), SourceBody{Digest: "d1"}, nil
+}
+
+type blockingReader struct {
+	release chan struct{}
+	rest    io.Reader
+}
+
+func (r *blockingReader) Read(p []byte) (int, error) {
+	<-r.release
+	return r.rest.Read(p)
+}
+
+// TestBodyScanLimit: parses of cached list bodies (every viewer may page
+// GET …/entries, each a full parse) are capped per node; a request over
+// the cap waits briefly, then gets 503 with Retry-After.
+func TestBodyScanLimit(t *testing.T) {
+	defer func(n int, w time.Duration) { maxBodyScans, bodyScanWait = n, w }(maxBodyScans, bodyScanWait)
+	maxBodyScans, bodyScanWait = 1, 50*time.Millisecond
+	bodies := blockingBodies{opened: make(chan struct{}, 4), release: make(chan struct{})}
+	h := newHarness(t, func(o *Options) { o.ListBodies = bodies })
+	h.seed(store.ManagerBootstrap, starterList(1))
+	path := "/api/v1/blocklists/default/starter/sources/feed/entries"
+	done := make(chan int)
+	go func() { done <- h.do(http.MethodGet, path, "viewer", nil).Code }()
+	<-bodies.opened // the first request holds the only slot
+	over := h.do(http.MethodGet, path, "viewer", nil)
+	if over.Code != http.StatusServiceUnavailable || over.Header().Get("Retry-After") == "" {
+		t.Fatalf("parse over the cap: %d (Retry-After %q)", over.Code, over.Header().Get("Retry-After"))
+	}
+	close(bodies.release)
+	if code := <-done; code != http.StatusOK {
+		t.Fatalf("first request: %d", code)
+	}
+	if code := h.do(http.MethodGet, path, "viewer", nil).Code; code != http.StatusOK {
+		t.Fatalf("after the slot was freed: %d", code)
+	}
+}

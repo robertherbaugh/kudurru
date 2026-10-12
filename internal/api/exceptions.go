@@ -143,7 +143,7 @@ func (s *Server) createExceptions(ctx context.Context, a domainlist.Action, in *
 			if len(src.Entries) > 0 || in.Source != "" && in.Source != name {
 				continue
 			}
-			rules, err := s.sourceRules(bl, i, want)
+			rules, err := s.sourceRules(ctx, bl, i, want)
 			if err != nil {
 				return nil, err
 			}
@@ -221,10 +221,14 @@ func exceptionKey(t v1alpha1.EntryType, v string) (string, error) {
 
 // sourceRules returns the rules of source idx of bl by pattern, for the
 // patterns in keys.
-func (s *Server) sourceRules(bl *v1alpha1.BlockList, idx int, keys map[string]bool) (map[string][]string, error) {
+func (s *Server) sourceRules(ctx context.Context, bl *v1alpha1.BlockList, idx int, keys map[string]bool) (map[string][]string, error) {
 	src := &bl.Spec.Sources[idx]
 	out := map[string][]string{}
+	n := 0
 	collect := func(r parser.Rule) error {
+		if n++; n%scanCheck == 0 && ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if keys[r.Pattern] {
 			if v := r.String(); !slices.Contains(out[r.Pattern], v) {
 				out[r.Pattern] = append(out[r.Pattern], v)
@@ -241,6 +245,11 @@ func (s *Server) sourceRules(bl *v1alpha1.BlockList, idx int, keys map[string]bo
 	if s.opts.ListBodies == nil {
 		return nil, errNoBody(name)
 	}
+	release, err := s.acquireBodyScan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	rc, _, err := s.opts.ListBodies.OpenSourceBody(bl.Namespace, *src)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -250,6 +259,9 @@ func (s *Server) sourceRules(bl *v1alpha1.BlockList, idx int, keys map[string]bo
 	}
 	defer func() { _ = rc.Close() }()
 	if _, err := parser.Parse(rc, opts, collect); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, errUnavailable("source %q: %v", name, err)
 	}
 	return out, nil
