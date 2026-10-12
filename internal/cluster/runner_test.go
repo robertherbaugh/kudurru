@@ -309,15 +309,23 @@ func TestAlwaysOnFailureIsFatal(t *testing.T) {
 		mustAdd(t, h.r, "controller", true, blocker(h.rec, "controller"))
 		mustAdd(t, h.r, "dns", false, func(context.Context) error { return errors.New("bind: address in use") })
 	})
-	send(t, h.e.grant, "grant")
+	// The dns runnable fails at once, so Run may shut down before the
+	// elector takes the grant: the grant is offered, not required.
+	var err error
 	select {
-	case err := <-h.done:
-		h.done <- err
-		if err == nil || !strings.Contains(err.Error(), "dns: bind") {
-			t.Fatalf("err = %v", err)
+	case h.e.grant <- struct{}{}:
+		select {
+		case err = <-h.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("Run did not return")
 		}
+	case err = <-h.done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not return")
+	}
+	h.done <- err
+	if err == nil || !strings.Contains(err.Error(), "dns: bind") {
+		t.Fatalf("err = %v", err)
 	}
 	if h.rec.count("controller:start") == 1 && h.rec.count("controller:stop") != 1 {
 		t.Fatal("leader group not stopped on fatal shutdown")
