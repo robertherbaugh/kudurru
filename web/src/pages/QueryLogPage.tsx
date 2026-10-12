@@ -101,18 +101,22 @@ export default function QueryLogPage() {
     setLiveRows((prev) => [...batch.slice().reverse(), ...prev].slice(0, LIVE_MAX));
     setFresh(new Set(batch.map(queryIdentity)));
   }, []);
-  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live, onRows, onScope: setTailScope });
+  // The central database's log (All nodes, D161) numbers rows its own way;
+  // the live tail streams the nodes' rows with the nodes' ids, so it is
+  // neither run nor merged into it.
+  const central = q.data?.pages[0]?.source === 'central';
+  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live && !central, onRows, onScope: setTailScope });
 
   const rows = useMemo(() => {
     const seen = new Set<string>();
     const out: QueryRow[] = [];
-    for (const r of [...liveRows, ...(q.data?.pages.flatMap((p) => p.queries) ?? [])]) {
+    for (const r of [...(central ? [] : liveRows), ...(q.data?.pages.flatMap((p) => p.queries) ?? [])]) {
       if (seen.has(queryIdentity(r))) continue;
       seen.add(queryIdentity(r));
       out.push(r);
     }
     return out;
-  }, [liveRows, q.data]);
+  }, [central, liveRows, q.data]);
 
   const first = q.data?.pages[0];
   const action = useMutation({
@@ -159,9 +163,19 @@ export default function QueryLogPage() {
             <ScopeNote scope={live ? tailScope ?? first : first} />
             <Switch
               label="Live tail"
-              description={tail === 'unsupported' ? 'This browser has no EventSource' : tail === 'retrying' ? 'Reconnecting…' : tail === 'live' ? 'Streaming new queries' : undefined}
-              value={live}
-              isDisabled={tail === 'unsupported'}
+              description={
+                central
+                  ? 'Choose a node to follow it live'
+                  : tail === 'unsupported'
+                    ? 'This browser has no EventSource'
+                    : tail === 'retrying'
+                      ? 'Reconnecting…'
+                      : tail === 'live'
+                        ? 'Streaming new queries'
+                        : undefined
+              }
+              value={live && !central}
+              isDisabled={tail === 'unsupported' || central}
               onChange={setLive}
             />
             <PurgeQueryLog

@@ -167,6 +167,16 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="querylog.exclude.clients"></a>`querylog.exclude.clients` | `string[]` | `[]` | cluster | **Clients never logged.** Clients whose queries are never logged, e.g. 192.168.1.20, 10.0.0.0/8 or a client name such as nas: IP addresses, CIDR prefixes or client names.<br>Environment: `KUDURRU_QUERYLOG__EXCLUDE__CLIENTS` |
 | <a id="querylog.exclude.sudn"></a>`querylog.exclude.sudn` | `bool` | `true` | cluster | **Skip special-use names.** Leave out names that never leave the local network, which keeps local discovery noise out of the log: localhost, .local, .home.arpa and private and link-local reverse zones (special-use names, RFC 6761).<br>Environment: `KUDURRU_QUERYLOG__EXCLUDE__SUDN` |
 
+## database
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="database.dsn"></a>`database.dsn` | `string` |  | node | **Database connection.** Optional PostgreSQL 15 or newer database that keeps the audit events, query log and statistics of every node in one place, so every node shows the same history and it outlives the nodes; empty (default) keeps them on each node. A connection string, e.g. postgres://kudurru@db.example:5432/kudurru?sslmode=verify-full; it may hold a password, so set it in the file or with KUDURRU\_DATABASE\_\_DSN\_FILE. DNS never depends on it: nodes keep their own copy and send it when the database is reachable. docs/deploy/postgres.md.<br>*host-only, restart, write-only*<br>Environment: `KUDURRU_DATABASE__DSN` |
+| <a id="database.maxConns"></a>`database.maxConns` | `int` | `4` | node | **Database connections per node.** Most connections each node opens to the central database, e.g. 4.<br>Allowed: range 1-32.<br>*host-only, restart*<br>Environment: `KUDURRU_DATABASE__MAXCONNS` |
+| <a id="database.querylog.ship"></a>`database.querylog.ship` | `bool` | `true` | cluster | **Send the query log to the database.** With database.dsn set, every node copies its query log and statistics into the central database, so the dashboard's All nodes view shows every node's queries and totals whichever node serves it. Each node keeps its own querylog.db too. Needs querylog.sink sqlite.<br>*restart*<br>Environment: `KUDURRU_DATABASE__QUERYLOG__SHIP` |
+| <a id="database.querylog.facts"></a>`database.querylog.facts` | `bool` | `true` | cluster | **Send individual queries.** Copy the individual queries, not only the statistics. At 1000 queries per second that is about 25 GB a day before retention; off keeps the cluster-wide charts, totals and top lists but the All nodes query log is empty.<br>*restart*<br>Environment: `KUDURRU_DATABASE__QUERYLOG__FACTS` |
+| <a id="database.querylog.retention.raw"></a>`database.querylog.retention.raw` | `duration` | `168h` | cluster | **Keep queries in the database for.** How long individual queries are kept in the central database, e.g. 168h (7 days); whole days are dropped. 0 keeps them. Statistics are kept like on the nodes: per minute 35 days, per hour 400 days, per day forever.<br>*restart*<br>Environment: `KUDURRU_DATABASE__QUERYLOG__RETENTION__RAW` |
+
 ## ratelimit
 
 | Key | Type | Default | Scope | Description |
@@ -216,6 +226,13 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="auth.kubernetes.mode"></a>`auth.kubernetes.mode` | `string` | `sar` | cluster | **Kubernetes authorization.** How Kubernetes service-account tokens are authorized: sar asks the apiserver with a SubjectAccessReview on kudurru.io resources. impersonate is planned for v0.2.<br>Allowed: one of sar.<br>*host-only, restart*<br>Environment: `KUDURRU_AUTH__KUBERNETES__MODE` |
 | <a id="auth.adminSocket.path"></a>`auth.adminSocket.path` | `string` | `/run/kudurru/kudurru.sock` | node | **Admin socket path.** Path of the local socket of the `kudurru admin` command (reset-password, create-token, list-users), e.g. /run/kudurru/kudurru.sock: the way back in when every admin password is lost. Only uid 0, the server's own user and auth.adminSocket.group may use it. Empty turns it off.<br>*host-only, restart*<br>Environment: `KUDURRU_AUTH__ADMINSOCKET__PATH` |
 | <a id="auth.adminSocket.group"></a>`auth.adminSocket.group` | `int` | `-1` | node | **Admin socket group (gid).** Group id (gid) whose members may also use the admin socket, e.g. 1000; -1 (default) allows only root and the server's own user.<br>Allowed: at least -1.<br>*host-only, restart*<br>Environment: `KUDURRU_AUTH__ADMINSOCKET__GROUP` |
+
+## audit
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="audit.store"></a>`audit.store` | `string` | `auto` | cluster | **Audit log store.** Where audit events are kept so every node can show them: auto (default) uses database when database.dsn is set, else auditlog with the kube store driver, else local; database keeps every node's events in the central database (one hash chain); auditlog keeps them in AuditLog objects in the release namespace, read by every replica and kept across restarts; local keeps them on each node (state.db with the sqlite driver, audit-spool.db with kube), so a replica shows only its own. Every event is also a "log":"audit" log line.<br>Allowed: one of auto \| database \| auditlog \| local.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__STORE` |
+| <a id="audit.retention"></a>`audit.retention` | `duration` | `9600h` | cluster | **Keep audit events for.** How long stored audit events are kept, e.g. 9600h (400 days); at least 24h. The log lines are kept by your log system, not by kudurru.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__RETENTION` |
 
 ## rbac
 

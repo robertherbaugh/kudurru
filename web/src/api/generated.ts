@@ -1870,6 +1870,7 @@ export interface components {
             partial: boolean;
             points: components["schemas"]["ClientPoint"][] | null;
             scope: string;
+            source?: string;
             /** Format: int64 */
             step: number;
             /**
@@ -2238,9 +2239,11 @@ export interface components {
             reason?: string;
             request: components["schemas"]["Request"];
             resource: components["schemas"]["Resource"];
+            resource_version?: string;
             result: string;
             /** Format: date-time */
             ts: string;
+            uid?: string;
         };
         Flags: {
             AD: boolean;
@@ -2757,6 +2760,8 @@ export interface components {
         };
         PurgeResult: {
             /** Format: int64 */
+            central_deleted?: number;
+            /** Format: int64 */
             deleted: number;
             node: string;
             /**
@@ -2774,11 +2779,13 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             queries: components["schemas"]["QueryRow"][] | null;
+            records_capped?: boolean;
             /** Format: int64 */
             records_filtered: number;
             /** Format: int64 */
             records_total: number;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -2842,6 +2849,7 @@ export interface components {
             /** Format: int64 */
             rows: number;
             scope: string;
+            source?: string;
             /** Format: int64 */
             subscribers: number;
             /**
@@ -2858,6 +2866,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3191,6 +3200,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3216,6 +3226,7 @@ export interface components {
                 [key: string]: number;
             };
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3265,6 +3276,7 @@ export interface components {
             partial: boolean;
             points: components["schemas"]["Point"][] | null;
             scope: string;
+            source?: string;
             /** Format: int64 */
             step: number;
             /**
@@ -3314,6 +3326,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3527,6 +3540,7 @@ export interface components {
             partial: boolean;
             scope: string;
             servers: components["schemas"]["UpstreamServer"][];
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -11696,7 +11710,10 @@ export interface operations {
     };
     queryAction: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database). */
+                scope?: "node" | "cluster" | "";
+            };
             header?: never;
             path: {
                 id: number;

@@ -334,6 +334,18 @@ config:
           strategy: parallel_best
           timeout: 2s
 
+database:
+  # -- Optional central PostgreSQL 15+ database for the audit log, query log
+  # and statistics of every replica (docs/deploy/postgres.md): an existing
+  # Secret in the release namespace whose key dsnKey holds the connection
+  # string, mounted as KUDURRU_DATABASE__DSN_FILE. CloudNativePG's
+  # <cluster>-app Secret has it under "uri". Empty: no database; the audit
+  # log is kept in AuditLog objects. Tune it with config.settings.database
+  # (querylog.ship, querylog.facts, querylog.retention.raw) and
+  # config.node.database.maxConns.
+  existingSecret: ""
+  dsnKey: uri
+
 # -- kudurru.io objects seeded once. mode=kubernetes: post-install hook
 # resources (Helm creates them once and never owns them; kubectl and the UI
 # do afterwards). mode=standalone: inline objects of the node file

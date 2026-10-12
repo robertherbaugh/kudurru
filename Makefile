@@ -18,7 +18,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest web-install web-build web-test web-lint web-dev web-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
@@ -66,6 +66,17 @@ test-short:
 envtest:
 	$(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(CURDIR)/bin -p path
 
+## test-postgres: the central-database tests (internal/central, D158)
+## against PostgreSQL in Docker; CI runs them in every test job.
+POSTGRES_IMAGE ?= postgres:17-alpine
+test-postgres:
+	docker rm -f kudurru-test-postgres >/dev/null 2>&1 || true
+	docker run -d --rm --name kudurru-test-postgres -e POSTGRES_PASSWORD=kudurru -p 55432:5432 $(POSTGRES_IMAGE) >/dev/null
+	until docker exec kudurru-test-postgres pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+	KUDURRU_TEST_POSTGRES_DSN='postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable' KUDURRU_REQUIRE_POSTGRES=1 \
+		go test -count=1 $$(go list ./... | grep -E '/internal/(central|audit|querylog)|/cmd/kudurru'); \
+		status=$$?; docker rm -f kudurru-test-postgres >/dev/null; exit $$status
+
 vet:
 	go vet ./...
 
@@ -105,14 +116,19 @@ tidy:
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
-	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/...
+	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths=./api/v1alpha1/... paths=./api/internalkinds/v1alpha1/... paths=./api/audit/v1alpha1/...
 
+## manifests: the kudurru.io CRDs into config/crd/bases (the store's kinds:
+## validator, CRD reference) and the audit.kudurru.io AuditLog CRD into
+## config/crd/audit (runtime data the store never serves, D157); both are
+## copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=config/crd/audit
 	mkdir -p charts/kudurru-crds/templates
 	@# The chart copies carry helm.sh/resource-policy: keep so that
 	@# `helm uninstall kudurru-crds` never deletes the CRDs and every object (§5.1).
-	for f in config/crd/bases/*.yaml; do \
+	for f in config/crd/bases/*.yaml config/crd/audit/*.yaml; do \
 		awk '{ print } /^    controller-gen.kubebuilder.io\/version:/ { print "    helm.sh/resource-policy: keep" }' $$f > charts/kudurru-crds/templates/$$(basename $$f); \
 	done
 	$(MAKE) --no-print-directory validator-crds

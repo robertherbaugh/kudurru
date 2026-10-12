@@ -39,6 +39,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -138,6 +139,11 @@ type UpstreamStatusFunc func() []upstream.ServerStatus
 // Status implements UpstreamStatus.
 func (f UpstreamStatusFunc) Status() []upstream.ServerStatus { return f() }
 
+// CentralState reports the central database's state (*central.DB).
+type CentralState interface {
+	State() central.State
+}
+
 // Options configures a Server. Only Store and Validator are required;
 // every other dependency switches its routes to 501/503 when absent, so
 // tests and partial wirings work.
@@ -158,6 +164,11 @@ type Options struct {
 	Querylog *sqlitelog.Reader
 	Tail     *querylog.Tail
 	Purger   QuerylogPurger
+	// CentralQuerylog answers scope=cluster from the central database
+	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
+	// this node's rows; nil without a central database.
+	CentralQuerylog *sqlitelog.Reader
+	CentralPurger   QuerylogPurger
 	// Upstreams and ResponseCache back upstream status and /cache/flush.
 	// Upstreams is an *upstream.Set, or UpstreamStatusFunc over the
 	// upstream stage when the set is swapped on settings reloads.
@@ -189,9 +200,15 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
-	// Audit records denied attempts and non-store mutations; a Reader
-	// implementation also backs GET /audit.
-	Audit audit.Recorder
+	// Central is the optional central database (internal/central); its
+	// state is reported by /info/messages. nil: none configured.
+	Central CentralState
+	// Audit records denied attempts and non-store mutations. AuditReader
+	// backs GET /audit and /audit/export; when nil, the reader behind
+	// Audit is used (audit.ReaderOf), and the routes answer 503 when no
+	// recorder stores events.
+	Audit       audit.Recorder
+	AuditReader audit.Reader
 	// Authenticate puts the principal in the request context or answers
 	// 401 for bad credentials (anonymous requests pass through and are
 	// refused by Authorize on non-public routes).

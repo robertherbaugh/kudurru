@@ -127,9 +127,10 @@ type PolicyUpstreamGroup struct {
 	Exists bool   `json:"exists" doc:"upstreams.groups has it; queries fall back to the default group otherwise."`
 }
 
-// PolicyStats24h is the policy's traffic on this node in the last 24
-// hours, from the query log rows it decided (rows since the query log
-// recorded the deciding policy; bounded by querylog.retention).
+// PolicyStats24h is the policy's traffic in the last 24 hours, from the
+// query log rows it decided (rows since the query log recorded the
+// deciding policy; bounded by the retention): every node's with a central
+// database, else this node's.
 type PolicyStats24h struct {
 	Queries        int64                    `json:"queries"`
 	Blocked        int64                    `json:"blocked"`
@@ -214,7 +215,7 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 	}
 
 	var seen map[string]int
-	r := s.opts.Querylog
+	r := s.clusterQuerylog()
 	if r != nil {
 		if seen, err = r.ClientsSeenByGroup(ctx, now.Add(-24*time.Hour)); err != nil {
 			s.log.Warn("policy state: clients by group", "err", err)

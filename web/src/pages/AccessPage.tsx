@@ -529,7 +529,7 @@ function Audit() {
     initialPageParam: '',
     getNextPageParam: (last) => last.continue || last.cursor_next || undefined,
   });
-  const events = useMemo<AuditRow[]>(() => (q.data?.pages.flatMap((p) => p.items) ?? []).map((a, i) => ({ ...a, rowKey: a.id !== undefined ? String(a.id) : `${a.ts}-${i}` })), [q.data]);
+  const events = useMemo<AuditRow[]>(() => (q.data?.pages.flatMap((p) => p.items) ?? []).map((a, i) => ({ ...a, rowKey: a.uid ?? (a.id !== undefined ? String(a.id) : `${a.ts}-${i}`) })), [q.data]);
   return (
     <Panel
       title="Audit log"

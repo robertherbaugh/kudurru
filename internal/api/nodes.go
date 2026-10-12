@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -277,10 +279,37 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})
 	}
+	if s.opts.Central != nil {
+		if m, ok := centralMessage(s.opts.Central.State(), s.opts.Now()); ok {
+			add(m)
+		}
+	}
 	if ok, unready := s.ready(); !ok {
 		for _, u := range unready {
 			add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: u})
 		}
 	}
 	return &messagesOutput{Body: newList(out, "")}, nil
+}
+
+// centralUnreachableAfter is how long the central database may be away
+// before /info/messages says so (a restart of the database is not news).
+const centralUnreachableAfter = time.Minute
+
+// centralMessage is the diagnosis of the central database: an error when a
+// newer kudurru migrated it past what this binary can use, a warning when
+// it has been unreachable for a minute. DNS never depends on it, so it is
+// never a readiness failure.
+func centralMessage(st central.State, now time.Time) (DiagnosisMessage, bool) {
+	switch {
+	case st.Incompatible:
+		return DiagnosisMessage{Severity: "error", Source: "central", Reason: "CentralIncompatible",
+			Message: fmt.Sprintf("the central database was migrated by a newer kudurru (schema %d, needs schema %d or newer); this node does not use it", st.SchemaVersion, st.CompatVersion),
+			Hint:    "upgrade this node; it keeps its audit events and query log locally until then"}, true
+	case !st.Ready && now.Sub(st.Since) >= centralUnreachableAfter:
+		return DiagnosisMessage{Severity: "warning", Source: "central", Reason: "CentralUnreachable",
+			Message: "the central database is unreachable: " + st.LastError,
+			Hint:    "this node keeps its audit events and query log locally and sends them when the database is back; cluster-wide views are out of date until then"}, true
+	}
+	return DiagnosisMessage{}, false
 }

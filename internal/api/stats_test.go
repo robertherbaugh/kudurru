@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -332,5 +334,67 @@ func TestQueryStreamLimit(t *testing.T) {
 			t.Fatalf("a closed stream did not free its slot: %d", code)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+type purgerFunc func(context.Context, time.Time) (int64, error)
+
+func (f purgerFunc) Purge(ctx context.Context, before time.Time) (int64, error) {
+	return f(ctx, before)
+}
+
+// TestCentralQuerylogRouting (D161): with a central database, scope=cluster
+// is answered from it without gathering the peers; scope=node stays on
+// this node; the purge covers both. A second node's reader stands in for
+// the central one.
+func TestCentralQuerylogRouting(t *testing.T) {
+	w, tail := querylogFixture(t)
+	other, _ := querylogFixture(t)
+	if err := other.Write([]*querylog.Event{qev(5, time.Now().Add(-time.Minute), "10.0.0.9", "extra.example.", pipeline.StatusForwarded, "")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(o *Options) {
+		o.Querylog, o.Tail, o.Purger = w.Reader(), tail, w
+		o.CentralQuerylog = other.Reader()
+		o.CentralPurger = purgerFunc(func(context.Context, time.Time) (int64, error) { return 7, nil })
+	})
+	var sum SummaryBody
+	h.do(http.MethodGet, "/api/v1/stats/summary?scope=cluster&window=1h", "viewer", nil).want(http.StatusOK).json(&sum)
+	if sum.Queries.Total != 5 {
+		t.Fatalf("cluster summary from the central reader: total %d", sum.Queries.Total)
+	}
+	h.do(http.MethodGet, "/api/v1/stats/summary?window=1h", "viewer", nil).want(http.StatusOK).json(&sum)
+	if sum.Queries.Total != 4 {
+		t.Fatalf("node summary: total %d", sum.Queries.Total)
+	}
+	var page QueriesBody
+	h.do(http.MethodGet, "/api/v1/queries?scope=cluster", "operator", nil).want(http.StatusOK).json(&page)
+	if len(page.Queries) != 5 {
+		t.Fatalf("cluster queries %d", len(page.Queries))
+	}
+	h.do(http.MethodGet, "/api/v1/queries?scope=cluster&node=node-b", "operator", nil).want(http.StatusBadRequest)
+	// A row of the central log is acted on by its central id.
+	h.do(http.MethodPost, "/api/v1/queries/5/actions?scope=cluster", "admin", map[string]any{"action": "deny"}).want(http.StatusOK)
+	h.do(http.MethodPost, "/api/v1/queries/5/actions", "admin", map[string]any{"action": "deny"}).want(http.StatusNotFound)
+	var res PurgeResult
+	h.do(http.MethodDelete, "/api/v1/querylog", "admin", nil).want(http.StatusOK).json(&res)
+	if res.Deleted != 4 || res.CentralDeleted == nil || *res.CentralDeleted != 7 {
+		t.Fatalf("purge %+v", res)
+	}
+}
+
+// TestCentralQuerylogUnavailable: a cluster read while the central
+// database is away is a 503, not a 500.
+func TestCentralQuerylogUnavailable(t *testing.T) {
+	w, _ := querylogFixture(t)
+	away := sqlitelog.NewCentralReader(func() (*sql.DB, error) { return nil, central.ErrUnavailable }, sqlitelog.CentralOptions{})
+	h := newHarness(t, func(o *Options) { o.Querylog, o.CentralQuerylog = w.Reader(), away })
+	for _, p := range []string{"/api/v1/queries?scope=cluster", "/api/v1/stats/summary?scope=cluster"} {
+		if r := h.do(http.MethodGet, p, "operator", nil).want(http.StatusServiceUnavailable); r.errKey() != KeyUnavailable {
+			t.Fatalf("%s: key %q", p, r.errKey())
+		}
 	}
 }

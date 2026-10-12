@@ -184,7 +184,7 @@ stateDiagram-v2
     Leader --> Follower: lease not renewed within 10 s
     state Leader {
         [*] --> running
-        running: controller, notifier, list fetcher,<br/>unblock janitor, allow/deny sync, audit prune
+        running: controller, notifier, list fetcher,<br/>unblock janitor, allow/deny sync, audit retention,<br/>central database janitor
         running --> running: a loop that fails restarts<br/>with backoff 1 s .. 30 s
     }
     Leader --> [*]: SIGTERM: lameduck, then release the lease
@@ -246,7 +246,7 @@ sequenceDiagram
 ## Not built yet
 
 The `follower` (v0.2) and `raft` (v1.0) drivers, the `cluster.role: static`
-read-only mode for compose twins, scatter-gather of health and stats
-across nodes (the node list is already gathered), and a
+read-only mode for compose twins, the health of other nodes (the node
+list, the stats and the query log are already gathered), and a
 `roles:` setting. See [the design record §4](../architecture.md#4-data-model-storage-replication-ha)
 for the plan.

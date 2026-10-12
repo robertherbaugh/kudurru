@@ -15,6 +15,25 @@ section lists. The milestone reports in [docs/m1](docs/m1/README.md),
 and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
 D126 record what changed on the way.
 
+### Multi-node data (after 0.1.0-rc.3)
+
+- Audit in mode=kubernetes ([#10](https://github.com/robertherbaugh/kudurru/issues/10)):
+  the Audit tab no longer fails with "events are not stored on this node".
+  Every replica records the kube driver's writes and its API actions in an
+  audit spool (`audit-spool.db`, D156) and ships them into immutable
+  `AuditLog` objects (`audit.kudurru.io`, new in the `kudurru-crds` chart,
+  D157), so every replica shows the same events and they survive pod
+  restarts. New hostOnly keys `audit.store` and `audit.retention`.
+- Optional central PostgreSQL database (`database.dsn`, D158,
+  [postgres.md](docs/deploy/postgres.md)) for the runtime data of every
+  node. With it, the audit log of every node, Docker and compose included,
+  is kept in one hash chain there (`audit.store: database`, D159); each
+  node keeps its own copy and sends it when the database is reachable.
+- With a central database every node also sends its query log and
+  statistics there (`database.querylog.*`, D160), and **All nodes** reads
+  them instead of asking every replica: every node's queries, charts and
+  top lists, including those of replicas that are down or gone (D161).
+
 ### Dashboard and API fixes (v0.1 fix round)
 
 Fixes made before the first tag, after the dashboard was first run against

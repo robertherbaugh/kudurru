@@ -69,6 +69,9 @@ func reasonWithContext(ev Event) string {
 // Read implements Reader. The table has no actor index, so an actor filter
 // pages through the table until the page is full.
 func (s SQLite) Read(ctx context.Context, q Query) ([]Event, error) {
+	if q.Cursor != "" {
+		return nil, ErrBadCursor
+	}
 	limit := clampLimit(q.Limit)
 	after, before := q.AfterID, q.BeforeID
 	out := []Event{}
