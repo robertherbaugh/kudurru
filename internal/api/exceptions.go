@@ -121,27 +121,46 @@ func (s *Server) createExceptions(ctx context.Context, a domainlist.Action, in *
 		return nil, domainError(err)
 	}
 	processed := ProcessedItems{Success: []ProcessedItem{}, Errors: []ProcessedItem{}}
-	type hit struct{ source, rule string }
-	var hits []hit
-	for _, v := range in.Values {
-		key, err := exceptionKey(t, v)
-		if err != nil {
-			processed.Errors = append(processed.Errors, ProcessedItem{Item: v, Error: err.Error()})
-			continue
+	keys := make([]string, len(in.Values))
+	keyErrs := make([]error, len(in.Values))
+	want := map[string]bool{}
+	for i, v := range in.Values {
+		if keys[i], keyErrs[i] = exceptionKey(t, v); keyErrs[i] == nil {
+			want[keys[i]] = true
 		}
-		found := 0
+	}
+	// One parse of each source finds the rules of every value: a parse per
+	// value re-read a cached body of tens of MiB up to 1000 times.
+	type sourceHits struct {
+		name  string
+		rules map[string][]string
+	}
+	var sources []sourceHits
+	if len(want) > 0 {
 		for i := range bl.Spec.Sources {
 			src := &bl.Spec.Sources[i]
 			name := blocking.SourceName(i, *src)
 			if len(src.Entries) > 0 || in.Source != "" && in.Source != name {
 				continue
 			}
-			rules, err := s.sourceRules(bl, i, key)
+			rules, err := s.sourceRules(bl, i, want)
 			if err != nil {
 				return nil, err
 			}
-			for _, r := range rules {
-				hits = append(hits, hit{name, r})
+			sources = append(sources, sourceHits{name, rules})
+		}
+	}
+	type hit struct{ source, rule string }
+	var hits []hit
+	for i, v := range in.Values {
+		if keyErrs[i] != nil {
+			processed.Errors = append(processed.Errors, ProcessedItem{Item: v, Error: keyErrs[i].Error()})
+			continue
+		}
+		found := 0
+		for _, sh := range sources {
+			for _, r := range sh.rules[keys[i]] {
+				hits = append(hits, hit{sh.name, r})
 				found++
 			}
 		}
@@ -200,14 +219,15 @@ func exceptionKey(t v1alpha1.EntryType, v string) (string, error) {
 	return k, nil
 }
 
-// sourceRules returns the rules of source idx of bl whose pattern is key.
-func (s *Server) sourceRules(bl *v1alpha1.BlockList, idx int, key string) ([]string, error) {
+// sourceRules returns the rules of source idx of bl by pattern, for the
+// patterns in keys.
+func (s *Server) sourceRules(bl *v1alpha1.BlockList, idx int, keys map[string]bool) (map[string][]string, error) {
 	src := &bl.Spec.Sources[idx]
-	var out []string
+	out := map[string][]string{}
 	collect := func(r parser.Rule) error {
-		if r.Pattern == key {
-			if v := r.String(); !slices.Contains(out, v) {
-				out = append(out, v)
+		if keys[r.Pattern] {
+			if v := r.String(); !slices.Contains(out[r.Pattern], v) {
+				out[r.Pattern] = append(out[r.Pattern], v)
 			}
 		}
 		return nil
