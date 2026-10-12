@@ -276,7 +276,7 @@ a real server instead of its mocks.
 ### Deployment and packaging
 
 - Helm charts `kudurru` and `kudurru-crds` (CRDs kept on uninstall),
-  validated over 34 value permutations with kubeconform; kustomize bases
+  validated over 42 value permutations with kubeconform; kustomize bases
   rendered from the chart; OIDC providers through `auth.oidc.providers`.
 - Compose profiles: single instance, single instance behind dnsdist, and a
   three-node HA set with dnsdist and keepalived.
@@ -296,14 +296,30 @@ a real server instead of its mocks.
   images now embed the built dashboard (goreleaser runs `make web-build`),
   and the `<major>.<minor>` image tag is gone.
 - Binary-size budget in CI (`make size`).
+- Host networking: `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork`
+  (and `latest-hostnetwork`) is the release binary with the file capability
+  `cap_net_bind_service=+ep`, built from the ko image by `publish.yml`; the
+  chart's `hostNetwork.enabled` runs it with `NET_BIND_SERVICE` added and
+  `allowPrivilegeEscalation: false`, so uid 65532 binds :53 without the host
+  sysctl (`make hostnetwork-check`).
+- The supervisor images copy the binary from `/ko-app/kudurru`, where ko
+  puts it (they copied a path only the local Dockerfile image had); the
+  Dockerfile now uses ko's layout.
+- Edge: `kudurru edge run --dnsdist-user`; with `edge.ebpf.enabled` and on
+  the host network (edge DaemonSet, keepalived, compose HA) the dnsdist
+  container starts as root with a minimal capability set and dnsdist
+  switches to uid 953 after binding and creating the BPF maps (eBPF could
+  not create its maps, and the host-network edge could not bind :53, as
+  uid 953). With `serviceMonitor` or `podMonitor` the chart scrapes the
+  supervisors (:8084, :8085) through a `<release>-edge` PodMonitor.
+- The dashboard is embedded precompressed (gzip, optional brotli): the
+  binary shrinks by 1.8 MB.
 
 ### Known limitations
 
 See [docs/followups.md](docs/followups.md) for the full list. Notably: no
 DNSSEC signing or validation (v1.0), no follower/raft replication (v0.2),
 cluster-scope stats are per node, the blocking toggle is per node (v0.2), the
-dnsdist console diff-apply is v0.2, the chart's `edge.ebpf.enabled` does not
-work in the non-root edge container and hostNetwork pods need the host's
-`net.ipv4.ip_unprivileged_port_start=0` (both v0.1.x), and the two-node VRRP
+dnsdist console diff-apply is v0.2, and the two-node VRRP
 behaviour still needs runs on real hardware
 ([docs/release-checklist.md](docs/release-checklist.md)).

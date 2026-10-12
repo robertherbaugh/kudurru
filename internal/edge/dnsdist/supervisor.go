@@ -47,6 +47,12 @@ type Config struct {
 	Binary string
 	// ChildEnv is appended to the child's environment (tests).
 	ChildEnv []string
+	// User, when set ("<uid>[:<gid>]", numbers or names), is passed to
+	// dnsdist as --uid/--gid. A supervisor started as root (eBPF, host
+	// networking without the unprivileged-port sysctl) lets dnsdist bind its
+	// sockets and create the eBPF maps as root; dnsdist then switches to
+	// this user and keeps only general.capabilities_to_retain.
+	User string
 	// APIKeyOut receives the per-start API key (mode 0640) for `kudurru
 	// health --vrrp` and the local kudurru's `/edge` page; empty skips it.
 	APIKeyOut string
@@ -121,6 +127,12 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.Binary == "" {
 		cfg.Binary = "dnsdist"
 	}
+	if cfg.User != "" {
+		u, g, _ := strings.Cut(cfg.User, ":")
+		if u == "" || strings.ContainsAny(cfg.User, " \t") || (strings.Contains(cfg.User, ":") && g == "") {
+			return nil, fmt.Errorf("dnsdist: user %q: want <uid>[:<gid>]", cfg.User)
+		}
+	}
 	if cfg.Debounce <= 0 {
 		cfg.Debounce = 5 * time.Second
 	}
@@ -181,7 +193,15 @@ func (s *Supervisor) MainPath() string {
 
 // Args returns the dnsdist command line of the child.
 func (s *Supervisor) Args() []string {
-	return []string{"--supervised", "--disable-syslog", "-C", s.MainPath()}
+	args := []string{"--supervised", "--disable-syslog"}
+	if s.cfg.User != "" {
+		u, g, ok := strings.Cut(s.cfg.User, ":")
+		args = append(args, "--uid", u)
+		if ok {
+			args = append(args, "--gid", g)
+		}
+	}
+	return append(args, "-C", s.MainPath())
 }
 
 // candidateName inserts ".candidate" before the extension:

@@ -81,7 +81,10 @@ var chartCases = []chartCase{
 		}
 	}},
 	{name: "edge-deployment", values: "edge: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
-		r.wantEdge(t, "Deployment")
+		d := r.wantEdge(t, "Deployment")
+		if slices.Contains(list(r.container(t, mapOf(dig(d, "spec", "template")), "dnsdist")["args"]), any("--dnsdist-user=953:953")) {
+			t.Errorf("the default edge runs as 953 from the start; no root start")
+		}
 		r.wantObject(t, "PodDisruptionBudget", "kudurru-edge")
 		r.wantObject(t, "Secret", "kudurru-proxy-protocol")
 		cfg := r.config(t)
@@ -104,7 +107,40 @@ var chartCases = []chartCase{
 		}
 	}},
 	{name: "edge-daemonset", values: "edge: {enabled: true, mode: daemonset}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
-		r.wantEdge(t, "DaemonSet")
+		ds := r.wantEdge(t, "DaemonSet")
+		// On the host network 953 cannot bind :53 (no sysctl): root start.
+		if c := r.container(t, mapOf(dig(ds, "spec", "template")), "dnsdist"); dig(c, "securityContext", "runAsUser") != 0 {
+			t.Errorf("the hostNetwork edge must start dnsdist as root and drop to 953")
+		}
+	}},
+	{name: "edge-ebpf", values: "edge: {enabled: true, dynblocks: {enabled: true}, ebpf: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		d := r.wantEdge(t, "Deployment")
+		pod := mapOf(dig(d, "spec", "template"))
+		c := r.container(t, pod, "dnsdist")
+		caps := list(dig(c, "securityContext", "capabilities", "add"))
+		if dig(c, "securityContext", "runAsUser") != 0 || !slices.Contains(caps, any("BPF")) || !slices.Contains(caps, any("SYS_ADMIN")) {
+			t.Errorf("eBPF: dnsdist starts as root with BPF and SYS_ADMIN, got %v", c["securityContext"])
+		}
+		if dig(pod, "spec", "securityContext", "runAsNonRoot") != false {
+			t.Errorf("eBPF: the edge pod cannot require runAsNonRoot")
+		}
+		if !slices.Contains(list(c["args"]), any("--ebpf")) {
+			t.Errorf("eBPF: args lack --ebpf")
+		}
+	}},
+	{name: "edge-ebpf-sidecar", values: "edge: {enabled: true, mode: sidecar, ebpf: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		pod := r.pod(t)
+		if dig(r.container(t, pod, "dnsdist"), "securityContext", "runAsUser") != 0 {
+			t.Errorf("eBPF sidecar: dnsdist starts as root")
+		}
+		if dig(r.container(t, pod, "kudurru"), "securityContext", "runAsUser") != 65532 {
+			t.Errorf("the kudurru container stays uid 65532 next to a root dnsdist")
+		}
+	}},
+	{name: "edge-sidecar-host-network", values: "edge: {enabled: true, mode: sidecar}\nhostNetwork: {enabled: true}", wantKind: "DaemonSet", check: func(t *testing.T, r *rendered) {
+		if dig(r.container(t, r.pod(t), "dnsdist"), "securityContext", "runAsUser") != 0 {
+			t.Errorf("a dnsdist sidecar on the host network starts as root")
+		}
 	}},
 	{name: "edge-deployment-standalone", values: "mode: standalone\nedge: {enabled: true}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
 		r.wantEdge(t, "Deployment")
@@ -164,6 +200,20 @@ var chartCases = []chartCase{
 		if dig(pod, "spec", "securityContext", "sysctls") != nil {
 			t.Errorf("hostNetwork pods cannot set namespaced sysctls")
 		}
+		// Without the sysctl, :53 needs the file capability of the
+		// -hostnetwork image, which needs NET_BIND_SERVICE in the bounding set.
+		c := r.container(t, pod, "kudurru")
+		if img := str(c["image"]); !strings.HasSuffix(img, "-hostnetwork") {
+			t.Errorf("hostNetwork pods need the -hostnetwork image, got %s", img)
+		}
+		if !slices.Contains(list(dig(c, "securityContext", "capabilities", "add")), any("NET_BIND_SERVICE")) {
+			t.Errorf("the -hostnetwork image needs NET_BIND_SERVICE added")
+		}
+	}},
+	{name: "host-network-plain-image", values: "hostNetwork: {enabled: true, imageTagSuffix: ''}\nimage: {tag: 9.9.9}", wantKind: "DaemonSet", check: func(t *testing.T, r *rendered) {
+		if img := str(r.container(t, r.pod(t), "kudurru")["image"]); img != "ghcr.io/robertherbaugh/kudurru:9.9.9" {
+			t.Errorf("imageTagSuffix '' keeps the plain tag, got %s", img)
+		}
 	}},
 	{name: "host-network-standalone", values: "mode: standalone\nhostNetwork: {enabled: true}", wantKind: "StatefulSet"},
 	{name: "persistence-querylog", values: "persistence: {querylog: {enabled: true, size: 20Gi}}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
@@ -194,6 +244,39 @@ var chartCases = []chartCase{
 		cm := r.object(t, "ConfigMap", "kudurru-dashboard")
 		if !strings.Contains(str(dig(cm, "data", "kudurru-overview.json")), `"uid": "kudurru-overview"`) {
 			t.Errorf("dashboard ConfigMap does not carry the dashboard JSON")
+		}
+	}},
+	{name: "monitoring-edge", values: "serviceMonitor: {enabled: true, labels: {release: prom}}\nedge: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// The supervisor's :8084 /metrics feeds the edge row and KudurruEdgeBackendDown.
+		pm := r.object(t, "PodMonitor", "kudurru-edge")
+		if dig(pm, "spec", "selector", "matchLabels", "app.kubernetes.io/component") != "edge" || dig(pm, "spec", "podMetricsEndpoints", 0, "port") != "edge-ready" {
+			t.Errorf("edge PodMonitor = %v", pm["spec"])
+		}
+		if dig(pm, "metadata", "labels", "release") != "prom" {
+			t.Errorf("the edge PodMonitor carries the monitor labels")
+		}
+		r.wantNoObject(t, "PodMonitor", "kudurru")
+	}},
+	{name: "monitoring-keepalived", values: "podMonitor: {enabled: true}\nedge: {enabled: true}\nvip: {provider: keepalived, address: 10.0.0.53/24, keepalived: {interface: eth0}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// `kudurru vip run` :8085 feeds the VIP row and KudurruVIPNoMaster.
+		pm := r.object(t, "PodMonitor", "kudurru-edge")
+		if dig(pm, "spec", "podMetricsEndpoints", 1, "port") != "vip-health" {
+			t.Errorf("keepalived: the edge PodMonitor must scrape vip-health, got %v", dig(pm, "spec", "podMetricsEndpoints"))
+		}
+	}},
+	{name: "monitoring-sidecar", values: "podMonitor: {enabled: true}\nedge: {enabled: true, mode: sidecar}\nnetworkPolicy: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		pm := r.object(t, "PodMonitor", "kudurru-edge")
+		if dig(pm, "spec", "selector", "matchLabels", "app.kubernetes.io/component") != "dns" {
+			t.Errorf("sidecar: the edge PodMonitor selects the kudurru pods, got %v", dig(pm, "spec", "selector"))
+		}
+		admitted := false
+		for _, rule := range list(dig(r.object(t, "NetworkPolicy", "kudurru"), "spec", "ingress")) {
+			for _, p := range list(mapOf(rule)["ports"]) {
+				admitted = admitted || mapOf(p)["port"] == 8084
+			}
+		}
+		if !admitted {
+			t.Errorf("sidecar: the NetworkPolicy must admit the supervisor's :8084 (probes, metrics)")
 		}
 	}},
 	{name: "network-policy", values: "networkPolicy: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
@@ -345,6 +428,7 @@ var failCases = []struct{ name, values, want string }{
 	{"metallb-without-address", "vip: {provider: metallb}", "vip.address"},
 	{"dot-without-tls", "service: {dot: {enabled: true}}", "tls.secretName"},
 	{"dot-edge-without-tls", "edge: {enabled: true}\nservice: {doh: {enabled: true}}", "edge.tlsSecretName"},
+	{"hostnetwork-without-net-bind-service", "hostNetwork: {enabled: true}\nsecurityContext: {capabilities: {drop: [ALL], add: []}}", "NET_BIND_SERVICE"},
 	{"hostnetwork-persistence", "hostNetwork: {enabled: true}\npersistence: {querylog: {enabled: true}}", "hostNetwork DaemonSet"},
 	{"ingress-without-host", "ingress: {enabled: true}", "ingress.host"},
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},

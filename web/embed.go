@@ -4,7 +4,9 @@
 // The bundle is built by Bun and Vite into web/dist (`make web-build`). A
 // placeholder web/dist/index.html is committed so that `go build ./...`
 // works on a checkout without Bun; release builds and CI build the real
-// bundle first. web/dist/assets is ignored by git.
+// bundle first. web/dist/assets is ignored by git. The build stores
+// compressible files as <name>.gz only (web/scripts/compress.ts), so the
+// binary embeds the compressed bytes; Handler serves them.
 //
 // Mounting (cmd/kudurru/serve.go): register the API routes first, then
 //

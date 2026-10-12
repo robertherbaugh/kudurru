@@ -1,6 +1,6 @@
 # Publishes a tagged release: goreleaser (archives, deb/rpm/apk, ko images,
-# the GitHub release), the Helm charts and the supervisor images, all
-# cosign-signed. Called by release-candidate.yml (v<VERSION>-rc.<N>, a GitHub
+# the GitHub release), the Helm charts, the -hostnetwork image and the
+# supervisor images, all cosign-signed. Called by release-candidate.yml (v<VERSION>-rc.<N>, a GitHub
 # pre-release, no `latest`) and release.yml (v<VERSION>, `latest`) after they
 # push the tag; workflow_dispatch re-publishes an existing tag by hand.
 # docs/release-checklist.md, "Release pipeline".
@@ -104,6 +104,63 @@ jobs:
             digest=$(echo "${out}" | awk '/^Digest:/ {print $2}')
             cosign sign --yes "ghcr.io/robertherbaugh/charts/${chart}@${digest}"
           done
+  hostnetwork-image:
+    # <version>-hostnetwork: the binary of the ko image the release job just
+    # pushed with the file capability cap_net_bind_service=+ep, which ko
+    # cannot set (images/hostnetwork/Dockerfile). The chart's
+    # hostNetwork.enabled runs it: the ip_unprivileged_port_start sysctl is
+    # not available on the host network. The final stage only copies files,
+    # so arm64 needs no QEMU.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write        # ghcr.io image
+      id-token: write        # cosign keyless signing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive the tags (<version>-hostnetwork, latest-hostnetwork for a release)
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          tags="ghcr.io/robertherbaugh/kudurru:${version}-hostnetwork"
+          case "${version}" in
+            *-*) ;;
+            *) tags="${tags},ghcr.io/robertherbaugh/kudurru:latest-hostnetwork" ;;
+          esac
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+      - name: Build and push ghcr.io/robertherbaugh/kudurru:${{ steps.tag.outputs.version }}-hostnetwork
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: images/hostnetwork
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:${{ steps.tag.outputs.version }}
+          tags: ${{ steps.tag.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ steps.tag.outputs.version }}-hostnetwork
+            org.opencontainers.image.title=kudurru
+            org.opencontainers.image.description=kudurru with cap_net_bind_service=+ep for host networking
+      - name: Sign the image by digest
+        run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru@${{ steps.build.outputs.digest }}"
   supervisor-images:
     # kudurru-dnsdist and kudurru-keepalived aggregate the GPL programs with
     # the kudurru supervisor binary from the ko image the release job just

@@ -52,11 +52,21 @@ services:
   dnsdist:
     image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
     network_mode: host                       # binds 0.0.0.0:53 so the VIP is served as soon as it appears
+    # On the host network uid 953 cannot bind :53 (the host's
+    # ip_unprivileged_port_start applies): the supervisor and dnsdist start
+    # as root with only these capabilities, dnsdist binds and switches to
+    # 953 (--dnsdist-user). Group 953 keeps the API key readable for the
+    # keepalived probe (keepalived_script).
+    user: "0:953"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, SETUID, SETGID, KILL]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
     command:
       - kudurru
       - edge
       - run
+      - --dnsdist-user=953:953
       - --backends=node-a=10.0.0.11:5353,node-b=10.0.0.12:5353,node-c=10.0.0.13:5353   # EVERY node lists ALL kudurru nodes, named by their KUDURRU_NODE__NAME
       - --pool-resolver=chashed
       - --pool-authoritative=leastOutstanding

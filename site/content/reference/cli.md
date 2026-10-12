@@ -494,6 +494,10 @@ Flags:
       --debounce duration                   delay before re-rendering after membership or
                                             certificate changes (default 5s)
       --dnsdist-bin string                  dnsdist executable (default "dnsdist")
+      --dnsdist-user string                 uid[:gid] dnsdist switches to after binding its
+                                            sockets and creating the eBPF maps (dnsdist
+                                            --uid/--gid), for a supervisor started as root;
+                                            dnsdist keeps only capabilities_to_retain
       --doh string                          enable the DoH frontend on host:port (the host
                                             must be a --listen address; the chart's form);
                                             with any of --dot/--doh/--doq/--doh3 the frontends

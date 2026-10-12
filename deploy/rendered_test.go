@@ -287,6 +287,28 @@ func (r *rendered) checkGeneric(t *testing.T) {
 					}
 				}
 			}
+		case "PodMonitor":
+			// Every endpoint names a port of a selected pod.
+			sel := mapOf(dig(d, "spec", "selector", "matchLabels"))
+			ports := map[string]bool{}
+			for _, p := range pods {
+				if !labelsMatch(sel, mapOf(dig(p, "metadata", "labels"))) {
+					continue
+				}
+				for _, c := range list(dig(p, "spec", "containers")) {
+					for _, cp := range list(mapOf(c)["ports"]) {
+						ports[str(mapOf(cp)["name"])] = true
+					}
+				}
+			}
+			if len(ports) == 0 {
+				t.Errorf("PodMonitor %v selects no pods", dig(d, "metadata", "name"))
+			}
+			for _, e := range list(dig(d, "spec", "podMetricsEndpoints")) {
+				if port := str(mapOf(e)["port"]); !ports[port] {
+					t.Errorf("PodMonitor %v scrapes port %s, which no selected pod declares", dig(d, "metadata", "name"), port)
+				}
+			}
 		case "ServiceMonitor":
 			want := mapOf(dig(d, "spec", "selector", "matchLabels"))
 			ok := false
@@ -364,7 +386,34 @@ func (r *rendered) checkWorkload(t *testing.T, w, pod map[string]any) {
 		if cname == "keepalived" {
 			continue // privileged by design (NET_ADMIN as root), documented
 		}
+		if sc := mapOf(cm["securityContext"]); cname == "dnsdist" && sc["runAsUser"] == 0 {
+			checkEdgeRootStart(t, name+"/"+cname, cm)
+			continue
+		}
 		checkRestricted(t, name+"/"+cname, podSC, mapOf(cm["securityContext"]), hostNet)
+	}
+}
+
+// checkEdgeRootStart asserts the root start of the dnsdist container (eBPF,
+// host network): every capability dropped except the ones dnsdist needs to
+// bind, create the eBPF maps and switch to 953, which it is told to do.
+func checkEdgeRootStart(t *testing.T, name string, c map[string]any) {
+	t.Helper()
+	sc := mapOf(c["securityContext"])
+	if sc["allowPrivilegeEscalation"] != false || sc["readOnlyRootFilesystem"] != true || sc["runAsGroup"] != 953 {
+		t.Errorf("%s: root start needs allowPrivilegeEscalation false, a read-only root and group 953: %v", name, sc)
+	}
+	if !slices.Contains(list(dig(sc, "capabilities", "drop")), any("ALL")) {
+		t.Errorf("%s: capabilities must drop ALL", name)
+	}
+	allowed := []any{"NET_BIND_SERVICE", "SETUID", "SETGID", "KILL", "BPF", "SYS_ADMIN"}
+	for _, c := range list(dig(sc, "capabilities", "add")) {
+		if !slices.Contains(allowed, c) {
+			t.Errorf("%s: capability %v added to the root dnsdist container", name, c)
+		}
+	}
+	if !slices.Contains(list(c["args"]), any("--dnsdist-user=953:953")) {
+		t.Errorf("%s: a root supervisor must start dnsdist with --dnsdist-user=953:953", name)
 	}
 }
 
