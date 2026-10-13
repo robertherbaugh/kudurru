@@ -7,7 +7,7 @@
   "description": "Runs the kudurru license portal (license-server/) on Cloudflare Containers: a Worker and a Durable Object in front of the portal's container.",
   "scripts": {
     "dev": "wrangler dev -c local/wrangler.jsonc",
-    "deploy": "wrangler deploy",
+    "deploy": "bun scripts/deploy.ts",
     "types": "wrangler types",
     "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p test",
     "test": "bun test",

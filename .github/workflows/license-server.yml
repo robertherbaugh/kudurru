@@ -13,6 +13,8 @@
 #   publish  license-server-v<version> tags only: linux/amd64 and
 #            linux/arm64 to ghcr.io/robertherbaugh/kudurru-license-server,
 #            tagged <version> and sha-<commit>, cosign-signed by digest
+#   deploy   main only, after the checks: build and push to Cloudflare,
+#            migrate Postgres, deploy the Worker with secrets, check /readyz
 # The changes job gates every job instead of a paths filter, so these
 # checks can be required: a skipped job satisfies a required status check
 # and a workflow that never runs does not (ci.yml). Changes to
@@ -25,6 +27,7 @@ on:
     branches: [main]
     tags: ["license-server-v*"]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -235,6 +238,39 @@ jobs:
             license-server/playwright-report/
             license-server/test-results/
           retention-days: 14
+  deploy:
+    needs: [check, image, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 30
+    environment: license-portal-production
+    # Serialize production releases, including retries and manual runs.
+    concurrency:
+      group: license-portal-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Install the deployment tools
+        working-directory: license-server/cloudflare
+        run: bun install --frozen-lockfile
+      - name: Build, push, migrate and deploy
+        working-directory: license-server/cloudflare
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_MIGRATE_URL: ${{ secrets.DATABASE_MIGRATE_URL }}
+          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+          LICENSE_SIGNING_KEY: ${{ secrets.LICENSE_SIGNING_KEY }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          WRANGLER_SEND_METRICS: "false"
+        run: bun run deploy
+
   publish:
     needs: [check, image, e2e]
     if: startsWith(github.ref, 'refs/tags/license-server-v')
