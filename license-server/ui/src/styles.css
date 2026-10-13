@@ -1,0 +1,67 @@
+/*
+ * The portal's own CSS: documented exceptions only, the generic parts of
+ * web/src/styles.css at dd3dcb0 (keep in step by hand). Left out: the
+ * query colours, stat tiles, charts, query-log rows, service icons,
+ * monograms and tiles, which only the dashboard has.
+ *
+ * Layout, spacing, type and colour come from Astryx components and their
+ * props (prebuilt CSS) and from the kudurru theme's tokens
+ * (ui/src/themes/kudurru). Each rule below covers something no component
+ * prop or token does, and says why. Values are tokens; px appear only as
+ * structural sizes (logo artwork).
+ */
+
+/*
+ * High contrast (Appearance, <html data-contrast="more">): borders in the
+ * text colour and secondary text as strong as primary. Astryx theme
+ * adaptations only follow the OS contrast preference (no runtime switch),
+ * so the setting re-points theme tokens here: on <html> and every Theme
+ * wrapper (both carry data-astryx-theme); these unlayered rules win over
+ * the theme layer.
+ */
+:root[data-contrast='more'],
+:root[data-contrast='more'] [data-astryx-theme] {
+  --color-border: currentColor;
+  --color-text-secondary: var(--color-text-primary);
+}
+
+/*
+ * The document behind the AppShell (overscroll, the sign-in screen, the
+ * page-load spinner): Astryx styles its components, not <html>/<body>.
+ */
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  font-family: var(--font-family-body, system-ui, sans-serif);
+  background-color: var(--color-background-surface, Canvas);
+  color: var(--color-text-primary, CanvasText);
+}
+
+/*
+ * Monospace inputs (TextField/TextAreaField `mono`: license keys, ids):
+ * TextInput and TextArea have no font prop.
+ */
+.k-mono input,
+.k-mono textarea { font-family: var(--font-family-code, ui-monospace, monospace); }
+
+/*
+ * Light and dark artwork (BrandLogo): the resolved scheme is <html
+ * data-theme> when the mode is set, else the OS. <picture> media queries
+ * only see the OS preference, and no Astryx component swaps images by
+ * theme. The brand logo keeps the brand minimums (logo 180 px wide,
+ * tagline logo 360 px) and the clear space built into the artwork. These
+ * display rules come first so the swap rules after them win.
+ */
+.k-logo { display: block; inline-size: 180px; block-size: 60px; margin-block: calc(-1 * var(--spacing-3)); }
+.k-logo-tagline { display: block; inline-size: 360px; max-inline-size: 100%; block-size: auto; aspect-ratio: 360 / 150; margin-inline: auto; }
+.k-logo-on-dark { display: none; }
+:root[data-theme='dark'] .k-logo-on-light { display: none; }
+:root[data-theme='dark'] .k-logo-on-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .k-logo-on-light { display: none; }
+  :root:not([data-theme='light']) .k-logo-on-dark { display: block; }
+}

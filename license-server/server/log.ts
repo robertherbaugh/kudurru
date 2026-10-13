@@ -37,7 +37,7 @@ export function isLogLevel(v: unknown): v is LogLevel {
 }
 
 /** Field names whose values are never written (compared lower-case, ignoring - and _). */
-const SECRET_NAMES = new Set(['cookie', 'setcookie', 'authorization', 'csrf', 'xkudurrucsrf', 'token', 'idtoken', 'accesstoken', 'refreshtoken', 'password', 'secret', 'clientsecret', 'seed', 'privatekey', 'signingkey', 'licensekey', 'codeverifier', 'smtpurl', 'databaseurl']);
+const SECRET_NAMES = new Set(['cookie', 'setcookie', 'authorization', 'csrf', 'xkudurrucsrf', 'token', 'idtoken', 'accesstoken', 'refreshtoken', 'password', 'secret', 'clientsecret', 'seed', 'privatekey', 'signingkey', 'licensekey', 'codeverifier', 'nonce', 'smtpurl', 'databaseurl']);
 
 /**
  * The shape of a compact JWS (a license key, an ID token): three base64url

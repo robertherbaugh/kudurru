@@ -6,15 +6,23 @@
 // reads it, the README documents it and the System page shows the
 // non-secret part.
 //
-// loadConfig parses and checks types and required values. The refusals that
-// need more context (an sslmode= in DATABASE_URL, DATABASE_TLS=disable only
-// when set explicitly, DEFAULT_ROLE=customer with admin group mappings but no
-// OIDC_ADMIN_CLAIM_RULES, the dev-only env signing key) are stream A's: see
-// the TODO in validateConfig.
+// loadConfig parses and checks types and required values; validateConfig
+// then refuses the settings the spec (§0.6, §2, §3) says the server must not
+// start with, each with one sentence naming the variable and the fix:
+// an sslmode= in a database URL (Bun's sslmode=require does not verify the
+// certificate), a non-Postgres database URL, LICENSE_SIGNING_KEY outside dev
+// mode, a signing key without its kid (or a kid without a key),
+// DEFAULT_ROLE=customer with admin group mappings but no
+// OIDC_ADMIN_CLAIM_RULES, an http OIDC issuer unless it is a loopback
+// literal and PUBLIC_URL is http too, a PUBLIC_URL that is more than an
+// origin, TRUSTED_PROXIES entries that are not CIDRs and
+// PUBLIC_FORM_ORIGINS entries that are not exact origins. No message ever
+// repeats a secret's value.
 
-import { readFileSync } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Role } from '../shared/permissions';
+import { parseCidr } from './http/ip';
 import { isLogLevel, type LogLevel } from './log';
 
 export type DatabaseTls = 'verify-full' | 'disable';
@@ -136,7 +144,7 @@ export const REPO_TRUSTED_KEYS_DIR = fileURLToPath(new URL('../../internal/licen
 
 /** Every variable of spec §3, with its default. */
 export const CONFIG_VARS = [
-  { name: 'PUBLIC_URL', default: null, required: true, description: 'External base URL, no trailing slash. Cookie Secure and __Host- follow its scheme' },
+  { name: 'PUBLIC_URL', default: null, required: true, description: 'External URL of the portal: the bare origin (scheme, host, port; no path). Cookie Secure, __Host- and HSTS follow its scheme' },
   { name: 'HOST', default: '0.0.0.0', description: 'Listen address' },
   { name: 'PORT', default: '8790', description: 'Listen port' },
   { name: 'LICENSE_SERVER_DEV', default: 'false', description: 'Dev mode: env-form signing key, test kids, dev banner in the UI' },
@@ -146,7 +154,7 @@ export const CONFIG_VARS = [
   { name: 'DATABASE_CA_FILE', default: null, description: "CA bundle for verify-full (else Bun's bundled roots)" },
   { name: 'DATABASE_POOL_MAX', default: '10', description: 'Connection pool size' },
   { name: 'MIGRATE_ON_START', default: 'true', description: 'Run pending migrations at startup' },
-  { name: 'OIDC_ISSUER', default: null, required: true, description: 'OIDC issuer URL' },
+  { name: 'OIDC_ISSUER', default: null, required: true, description: 'OIDC issuer URL, exactly as the IdP writes it; https (http only for a loopback issuer while PUBLIC_URL is http)' },
   { name: 'OIDC_CLIENT_ID', default: null, required: true, description: 'OIDC client id' },
   { name: 'OIDC_CLIENT_SECRET', default: null, file: true, required: true, secret: true, description: 'OIDC client secret' },
   { name: 'OIDC_SCOPES', default: 'openid profile email', description: 'Space-separated scopes; add groups for IdPs that support it' },
@@ -160,7 +168,7 @@ export const CONFIG_VARS = [
   { name: 'DEFAULT_ROLE', default: 'customer', description: 'customer or none: the role of a sign-in that maps to nothing' },
   { name: 'MEMBER_AUTO_LINK', default: 'false', description: 'Also link member rows by IdP-verified email at sign-in' },
   { name: 'LICENSE_SIGNING_KEY_FILE', default: null, description: 'File with the signing seed (licensegen format)' },
-  { name: 'LICENSE_SIGNING_KID', default: null, description: 'Key id of the signing key' },
+  { name: 'LICENSE_SIGNING_KID', default: null, description: 'Key id of the signing key (a plain file name: <kid>.pub in the trusted keys directory)' },
   // Not read from LICENSE_SIGNING_KEY_FILE: that is the file form above, the production one.
   { name: 'LICENSE_SIGNING_KEY', default: null, secret: true, description: 'The signing seed itself, dev mode only' },
   { name: 'LICENSE_TRUSTED_KEYS_DIR', default: REPO_TRUSTED_KEYS_DIR, description: 'Directory of <kid>.pub files kudurru releases embed (image: /app/trusted-keys)' },
@@ -255,9 +263,78 @@ function duration(name: string, s: string): number {
 function claimRules(s: string | null): ClaimRule[] {
   return commaList(s).map((pair) => {
     const i = pair.indexOf('=');
-    if (i <= 0) throw new ConfigError(`OIDC_ADMIN_CLAIM_RULES: ${JSON.stringify(pair)} is not claim=value`);
-    return { claim: pair.slice(0, i).trim(), value: pair.slice(i + 1).trim() };
+    const claim = i > 0 ? pair.slice(0, i).trim() : '';
+    const value = i > 0 ? pair.slice(i + 1).trim() : '';
+    if (claim === '' || value === '') throw new ConfigError(`OIDC_ADMIN_CLAIM_RULES: ${JSON.stringify(pair)} is not claim=value (both non-empty), e.g. hd=example.org`);
+    return { claim, value };
   });
+}
+
+/**
+ * PUBLIC_URL as the origin it must be: http or https, a host, no path
+ * (one trailing slash is fine), query, fragment or user info. The portal
+ * is served at the root: the redirect URI is PUBLIC_URL +
+ * /api/v1/auth/callback and the cookies are __Host- (Path=/).
+ */
+function parsePublicUrl(raw: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ConfigError(`PUBLIC_URL is not a URL: ${JSON.stringify(raw)}`);
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new ConfigError('PUBLIC_URL must start with https:// (or http:// for local development)');
+  if (url.username || url.password) throw new ConfigError('PUBLIC_URL must not contain a user name or password');
+  if (url.search || url.hash || raw.includes('?') || raw.includes('#')) throw new ConfigError('PUBLIC_URL must not have a query or fragment');
+  if (url.pathname !== '/') {
+    throw new ConfigError(`PUBLIC_URL must be the bare origin (scheme, host and port, e.g. https://licenses.kudurru.io), not ${JSON.stringify(raw)}: the portal is served at the root`);
+  }
+  return url;
+}
+
+/** PUBLIC_FORM_ORIGINS entries as exact origins ('https://kudurru.io'; host lower-cased, default port dropped). */
+function parseOrigins(raw: string): string[] {
+  const entries = commaList(raw);
+  if (entries.length === 0) throw new ConfigError('PUBLIC_FORM_ORIGINS is empty: list the origins of the kudurru.io form, or set it to - to turn the public routes off');
+  return entries.map((entry) => {
+    if (entry === '-') throw new ConfigError('PUBLIC_FORM_ORIGINS: - turns the public routes off and cannot be combined with origins');
+    let url: URL;
+    try {
+      url = new URL(entry);
+    } catch {
+      throw new ConfigError(`PUBLIC_FORM_ORIGINS: ${JSON.stringify(entry)} is not an origin such as https://kudurru.io`);
+    }
+    const bare = (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash && !/[?#*]/.test(entry);
+    if (!bare) throw new ConfigError(`PUBLIC_FORM_ORIGINS: ${JSON.stringify(entry)} is not an exact origin (scheme://host[:port], no path or wildcard)`);
+    return url.origin;
+  });
+}
+
+/** Whether a host name is a loopback literal: localhost, 127.0.0.0/8 or ::1 (no *.localhost, no DNS name). */
+export function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '[::1]' || h === '::1') return true;
+  const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  return m !== null && m.slice(1).every((x) => Number(x) <= 255);
+}
+
+/** The ID token algorithms the portal accepts (asymmetric only: never none or HS*). */
+export const ASYMMETRIC_ID_TOKEN_ALGS: readonly string[] = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512', 'EdDSA', 'Ed25519'];
+
+/** A kid names the <kid>.pub file in LICENSE_TRUSTED_KEYS_DIR: a plain file name, never a path. */
+const KID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/** Why a database URL is refused (message without the URL, which holds the password), or null. */
+function databaseUrlProblem(name: string, url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return `${name} is not a URL (postgres://user:password@host:5432/database)`;
+  }
+  if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') return `${name} must be a postgres:// URL`;
+  if (u.searchParams.has('sslmode')) return `${name} has an sslmode= parameter: remove it and set DATABASE_TLS instead (verify-full, the default, or disable); Bun's sslmode=require encrypts without verifying the certificate`;
+  return null;
 }
 
 /**
@@ -277,21 +354,15 @@ export function loadConfig(env: Env): Config {
   };
   const has = (name: ConfigVarName): boolean => (env[name] ?? '') !== '';
 
-  const publicUrl = need('PUBLIC_URL').replace(/\/+$/, '');
-  let parsed: URL;
-  try {
-    parsed = new URL(publicUrl);
-  } catch {
-    throw new ConfigError(`PUBLIC_URL is not a URL: ${JSON.stringify(publicUrl)}`);
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new ConfigError('PUBLIC_URL must be http or https');
+  const parsed = parsePublicUrl(need('PUBLIC_URL'));
+  const publicUrl = parsed.origin;
   const tls = need('DATABASE_TLS');
   if (tls !== 'verify-full' && tls !== 'disable') throw new ConfigError(`DATABASE_TLS must be verify-full or disable, got ${JSON.stringify(tls)}`);
   const defaultRole = need('DEFAULT_ROLE');
   if (defaultRole !== 'customer' && defaultRole !== 'none') throw new ConfigError(`DEFAULT_ROLE must be customer or none, got ${JSON.stringify(defaultRole)}`);
   const logLevel = need('LOG_LEVEL');
   if (!isLogLevel(logLevel)) throw new ConfigError(`LOG_LEVEL must be debug, info, warn or error, got ${JSON.stringify(logLevel)}`);
-  const origins = need('PUBLIC_FORM_ORIGINS');
+  const origins = need('PUBLIC_FORM_ORIGINS').trim();
 
   const config: Config = {
     publicUrl,
@@ -353,7 +424,7 @@ export function loadConfig(env: Env): Config {
     },
     publicForm: {
       enabled: origins !== '-',
-      origins: origins === '-' ? [] : commaList(origins).map((o) => o.replace(/\/+$/, '')),
+      origins: origins === '-' ? [] : parseOrigins(origins),
       limitPerIpPerHour: int('PUBLIC_LIMIT_PER_IP_PER_HOUR', need('PUBLIC_LIMIT_PER_IP_PER_HOUR'), 1, 1_000_000),
       limitPerEmailPerDay: int('PUBLIC_LIMIT_PER_EMAIL_PER_DAY', need('PUBLIC_LIMIT_PER_EMAIL_PER_DAY'), 1, 1_000_000),
     },
@@ -388,17 +459,90 @@ export function buildInfo(env: Env): Config['build'] {
   };
 }
 
-/** Cross-field checks that need no I/O. */
+/**
+ * The startup refusals of spec §0.6, §2 and §3 (loadConfig calls it).
+ * Throws a ConfigError naming the variable and the fix; never echoes a
+ * secret. The only I/O is checking that DATABASE_CA_FILE is readable.
+ */
 export function validateConfig(config: Config): void {
-  if (config.session.idleTimeoutMs <= 0 || config.session.lifetimeMs <= 0) throw new ConfigError('SESSION_IDLE_TIMEOUT and SESSION_LIFETIME must be positive');
+  // Sessions.
+  if (config.session.idleTimeoutMs < 60_000) throw new ConfigError('SESSION_IDLE_TIMEOUT must be at least 1m');
+  if (config.session.lifetimeMs <= 0) throw new ConfigError('SESSION_LIFETIME must be positive');
   if (config.session.idleTimeoutMs > config.session.lifetimeMs) throw new ConfigError('SESSION_IDLE_TIMEOUT must not be longer than SESSION_LIFETIME');
-  // TODO(stream A): the refusals of spec §2 and §3: an sslmode= query
-  // parameter in DATABASE_URL / DATABASE_MIGRATE_URL; DATABASE_TLS=disable
-  // only when tlsExplicit; LICENSE_SIGNING_KEY only in dev mode; a signing
-  // key without LICENSE_SIGNING_KID; DEFAULT_ROLE=customer plus admin group
-  // mappings without OIDC_ADMIN_CLAIM_RULES; an http OIDC issuer unless it is
-  // loopback and PUBLIC_URL is http; PUBLIC_FORM_ORIGINS entries that are not
-  // bare origins.
+
+  // Database.
+  for (const [name, url] of [['DATABASE_URL', config.database.url], ['DATABASE_MIGRATE_URL', config.database.migrateUrl]] as const) {
+    const problem = url === null ? null : databaseUrlProblem(name, url);
+    if (problem) throw new ConfigError(problem);
+  }
+  if (config.database.tls === 'disable' && !config.database.tlsExplicit) throw new ConfigError('DATABASE_TLS=disable must be set explicitly');
+  if (config.database.caFile !== null) {
+    if (config.database.tls === 'disable') throw new ConfigError('DATABASE_CA_FILE is set but DATABASE_TLS is disable: drop one');
+    try {
+      accessSync(config.database.caFile, constants.R_OK);
+    } catch {
+      throw new ConfigError(`DATABASE_CA_FILE: cannot read ${config.database.caFile}`);
+    }
+  }
+
+  // Sign-in.
+  let issuer: URL;
+  try {
+    issuer = new URL(config.oidc.issuer);
+  } catch {
+    throw new ConfigError(`OIDC_ISSUER is not a URL: ${JSON.stringify(config.oidc.issuer)}`);
+  }
+  if (issuer.search || issuer.hash || issuer.username || issuer.password) throw new ConfigError('OIDC_ISSUER must not have a query, fragment or user info');
+  if (issuer.protocol === 'http:') {
+    if (!isLoopbackHost(issuer.hostname)) throw new ConfigError('OIDC_ISSUER must be https (http is allowed only for localhost, 127.0.0.0/8 or ::1 during local development)');
+    if (config.secureCookies) throw new ConfigError('OIDC_ISSUER is http while PUBLIC_URL is https: use an https issuer');
+  } else if (issuer.protocol !== 'https:') {
+    throw new ConfigError('OIDC_ISSUER must be an https URL');
+  }
+  if (!config.oidc.scopes.includes('openid')) throw new ConfigError('OIDC_SCOPES must include openid');
+  if (config.oidc.idTokenAlg !== null && !ASYMMETRIC_ID_TOKEN_ALGS.includes(config.oidc.idTokenAlg)) {
+    throw new ConfigError(`OIDC_ID_TOKEN_ALG must be one of ${ASYMMETRIC_ID_TOKEN_ALGS.join(', ')} (none and HS* are refused)`);
+  }
+  const adminGroups = config.roles.groups.superadmin.length + config.roles.groups.license_admin.length;
+  if (config.roles.defaultRole === 'customer' && adminGroups > 0 && config.oidc.adminClaimRules.length === 0) {
+    throw new ConfigError(
+      'ROLE_SUPERADMIN_GROUPS or ROLE_LICENSE_ADMIN_GROUPS is set while DEFAULT_ROLE=customer lets anyone the IdP knows sign in: ' +
+        'set OIDC_ADMIN_CLAIM_RULES (e.g. hd=yourdomain.example or tid=<tenant id>) so only your own accounts can hold an admin group, ' +
+        'or set DEFAULT_ROLE=none, or grant admin roles in the portal instead',
+    );
+  }
+
+  // Signing (the key itself is checked by licensing/keyring.ts).
+  const s = config.signing;
+  if (s.keyEnv !== null && !config.devMode) {
+    throw new ConfigError('LICENSE_SIGNING_KEY (the key in an environment variable) is accepted only with LICENSE_SERVER_DEV=true: mount the key as a file and set LICENSE_SIGNING_KEY_FILE');
+  }
+  if (s.keyEnv !== null && s.keyFile !== null) throw new ConfigError('LICENSE_SIGNING_KEY and LICENSE_SIGNING_KEY_FILE are both set; set one');
+  if ((s.keyEnv !== null || s.keyFile !== null) && s.kid === null) throw new ConfigError('a signing key is configured without LICENSE_SIGNING_KID');
+  if (s.kid !== null && s.keyEnv === null && s.keyFile === null) throw new ConfigError('LICENSE_SIGNING_KID is set but no signing key is (set LICENSE_SIGNING_KEY_FILE)');
+  if (s.kid !== null && !KID.test(s.kid)) throw new ConfigError(`LICENSE_SIGNING_KID must be a plain file name such as kudurru-2026-1, got ${JSON.stringify(s.kid)}`);
+
+  // The network.
+  for (const entry of config.trustedProxies) {
+    try {
+      parseCidr(entry);
+    } catch {
+      throw new ConfigError(`TRUSTED_PROXIES: ${JSON.stringify(entry)} is not an IP address or CIDR (e.g. 10.0.0.0/8, fd00::/8)`);
+    }
+  }
+
+  // Mail.
+  if (config.mail.smtpUrl !== null) {
+    let smtp: URL | null;
+    try {
+      smtp = new URL(config.mail.smtpUrl);
+    } catch {
+      smtp = null;
+    }
+    if (!smtp || (smtp.protocol !== 'smtp:' && smtp.protocol !== 'smtps:') || !smtp.hostname) {
+      throw new ConfigError('SMTP_URL must be smtp://user:password@host:587 (STARTTLS) or smtps://user:password@host:465');
+    }
+  }
 }
 
 /** The configuration with every secret replaced, for logging the startup settings. */
