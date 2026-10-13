@@ -10,7 +10,7 @@ and, from a cron trigger, keeps the container warm and restarts it when a
 var or secret changed.
 
 No kudurru node ever contacts the portal. Keys are verified offline on each
-node (D156); the portal only issues and delivers them.
+node (D163); the portal only issues and delivers them.
 
 ```mermaid
 flowchart LR

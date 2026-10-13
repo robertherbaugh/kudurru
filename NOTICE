@@ -212,3 +212,8 @@ They are distributed unmodified as separate programs in their own container
 images under images/, each carrying the GPL licence text and a source offer.
 No code from GPL or EUPL projects (Gravity, Technitium, AdGuard Home,
 urlfilter, Pi-hole) is included in kudurru.
+
+The license portal (license-server/) is the licensor's service that issues
+license keys. It is not part of kudurru and is not shipped with it: its
+container image carries its own notice (license-server/NOTICE) and the
+license texts of what it bundles.

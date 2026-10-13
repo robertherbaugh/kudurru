@@ -32,6 +32,17 @@ All notable changes to kudurru are listed here. The format follows
   SubjectAccessReview authorizer and ClusterRole generator to `ee/rbac`, and
   the sqlite audit recorder to `ee/auditstore`.
 - Contributions need a DCO sign-off and a relicensing grant (CONTRIBUTING.md).
+- **License portal** (D165): [`license-server/`](license-server/README.md) is
+  the licensor's service that issues keys: license admins issue, renew,
+  change and withdraw licenses after an OIDC sign-in, customers download
+  their keys through invite links, and the kudurru.io form gets a free
+  personal key by mail after an email confirmation. Bun, TypeScript and
+  Postgres in one container with the dashboard's Astryx UI; roles
+  `customer`, `license_admin` and `superadmin`; keys byte-identical to
+  `hack/licensegen`'s. It is not part of kudurru and no node contacts it:
+  keys are still verified offline. Runs on Cloudflare Containers
+  (`license-server/cloudflare`); `make license-server-check` and
+  `make license-server-e2e` test it.
 
 The first release, "stone": a daily-driver DNS server that runs as one
 container or as a Kubernetes Deployment with CRDs. It covers milestones M1 to

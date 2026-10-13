@@ -10,7 +10,8 @@ the same with no key, an expired key or a forged one.
 Code: `internal/license` (verification, states, metrics), `ee/` (the licensed
 features), `cmd/kudurru/license.go` (the CLI and the supervisor gate),
 `internal/api/license.go` (the API and the node-limit gate),
-`hack/licensegen` (the licensor's signing tool; not in the binary).
+`license-server/` (the license portal that issues keys) and
+`hack/licensegen` (the licensor's signing tool); neither is in the binary.
 
 ## From a key to a decision
 
@@ -156,18 +157,31 @@ if that ever changes. Never build a release with the tag.
 
 ## For the licensor
 
+Keys are issued by the license portal, `license-server/` (D165): license
+admins issue, renew, change and withdraw licenses there after an OIDC
+sign-in, customers download their keys, and the kudurru.io form requests
+free personal keys. It signs with the same key and in the same format as
+`hack/licensegen`, and no node ever contacts it (D163). How it works:
+`license-server/docs/architecture.md`; how to run it:
+`license-server/README.md`.
+
+`hack/licensegen` stays the tool for signing keys and for checking one by
+hand:
+
 ```sh
 go run ./hack/licensegen keygen -kid kudurru-2027-1 -dir .   # once per signing key
 go run ./hack/licensegen sign -key kudurru-2027-1.key -kid kudurru-2027-1 \
     -licensee "Homelab Hank" -plan personal -nodes 3 -days 1095 > hank.key
 # without the private key touching disk: -key - reads it from stdin
 # (or set KUDURRU_LICENSE_SIGNING_KEY), e.g. piped from Infisical
-go run ./hack/licensegen inspect hank.key
+go run ./hack/licensegen inspect "$(cat hank.key)"            # inspect takes the key, not a file name
 ```
 
+A key signed by hand can be recorded in the portal with "Import key".
 Commit only `<kid>.pub`, into `internal/license/keys/`. The `.key` file is the
 private signing key and lives in Infisical. To rotate, add the new
-public key, ship a release, start signing with the new key, and remove the
+public key, ship a release, start signing with the new key (in the portal:
+`LICENSE_SIGNING_KID` and `LICENSE_SIGNING_TRUSTED_SINCE`), and remove the
 old public key only when no key signed with it is in the field. A leaked
 private key means shipping a release that drops its public key; keys it
 signed stop verifying with it.

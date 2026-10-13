@@ -65,6 +65,12 @@ catalogue fetchers, release pipeline) in
   encrypted (v0.2). Anyone holding it can act as any session or node.
 - The query log: client addresses and the names they resolve are personal
   data; `querylog.privacy` modes are applied at ingest and are irreversible.
+- The license signing key (licensor only): whoever holds it can forge
+  license keys that every release trusting its kid accepts, and keys cannot
+  be recalled. It lives in Infisical and, at run time, only in the memory of
+  the license portal (`license-server/`), never in its database or image.
+- The license portal's database: customers, contact addresses, issued keys,
+  non-commercial attestations and the audit trail of issuing.
 
 ### Trust boundaries
 
@@ -81,6 +87,7 @@ catalogue fetchers, release pipeline) in
 | Block page (`listeners.blockPage`, HTTP and HTTPS) | any device that reaches it, unauthenticated | a fixed template with every value escaped, no script or cookies, a CSP that loads nothing and forbids framing; never proxies or fetches; per-client rate limits. The unblock request form refuses cross-site posts, caps the body and fields, and is bounded per client, per node (30 writes a minute) and by `unblockRequests.maxPending`; the client is recorded as `querylog.privacy` allows, under an object name keyed by the encryption key |
 | external-dns webhook | external-dns | **unauthenticated by design** (the external-dns webhook contract has no authentication): it listens on `127.0.0.1:8888` by default; a wider listener must be restricted with a NetworkPolicy or firewall, and `externalDNS.webhook.zoneSelector` limits the zones it can write |
 | dnsdist and keepalived | the supervisors that render their configuration | separate programs in their own images (never linked); rendered values are validated to characters that need no quoting; the dnsdist console and webserver listen on loopback with per-start credentials |
+| License portal (`license-server/`, the licensor's service; kudurru nodes never contact it) | customers, license admins, the kudurru.io form (unauthenticated) | OIDC code flow with PKCE, verified ID tokens and server-side sessions; CSRF origin check and token; least-privilege roles and per-table database grants; the public form limited per network and per address, a honeypot and email confirmation, the key only by mail; issuing quotas; every change audited append-only; the signing key from a secret at run time (`license-server/README.md`, "Security notes") |
 
 ### Roles
 

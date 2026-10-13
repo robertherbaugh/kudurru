@@ -1,6 +1,6 @@
 # Checks the kudurru license portal (license-server/), the licensor's
 # service that issues license keys, and publishes its image. It is not part
-# of kudurru, is not released with it, and no node contacts it (D156);
+# of kudurru, is not released with it, and no node contacts it (D163);
 # license-server/README.md.
 #   check    typecheck, lint, the server tests against Postgres and the Go
 #            reference (REQUIRE_DB=1 and REQUIRE_GO=1 turn their skips into

@@ -500,7 +500,7 @@ www-dev: www-install
 ## license-server-*: the kudurru license portal in license-server/, the
 ## licensor's service that issues license keys (Bun, TypeScript, Postgres
 ## and an Astryx UI in one container; license-server/README.md). It is not
-## part of kudurru or its release and no node contacts it (D156); nothing
+## part of kudurru or its release and no node contacts it (D163); nothing
 ## here deploys. The image builds from the repository root, because it
 ## carries the trusted public keys of internal/license/keys.
 ##   license-server-check: typecheck, lint, the server and UI tests and the

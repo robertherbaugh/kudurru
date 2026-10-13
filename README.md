@@ -111,6 +111,7 @@ docs/               guide, deploy docs and the architecture tour (published); de
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)
+license-server/     the license portal that issues license keys (Bun + TypeScript + Postgres; not part of the binary)
 ```
 
 ## AI Assisted Development

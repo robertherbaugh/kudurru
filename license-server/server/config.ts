@@ -158,7 +158,7 @@ export const CONFIG_VARS = [
   { name: 'PUBLIC_URL', default: null, required: true, description: 'External URL of the portal: the bare origin (scheme, host, port; no path). Cookie Secure, __Host- and HSTS follow its scheme' },
   { name: 'HOST', default: '0.0.0.0', description: 'Listen address' },
   { name: 'PORT', default: '8790', description: 'Listen port' },
-  { name: 'LICENSE_SERVER_DEV', default: 'false', description: 'Dev mode: env-form signing key, test kids, dev banner in the UI' },
+  { name: 'LICENSE_SERVER_DEV', default: 'false', description: 'Dev mode: test signing keys allowed, a development banner in the UI' },
   { name: 'DATABASE_URL', default: null, file: true, required: true, secret: true, description: 'Postgres URL of the runtime role (DML)' },
   { name: 'DATABASE_MIGRATE_URL', default: null, file: true, secret: true, description: 'Postgres URL of the owner role for migrations' },
   { name: 'DATABASE_TLS', default: 'verify-full', description: 'verify-full or disable' },

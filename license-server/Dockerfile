@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # The kudurru license portal (license-server/): the licensor's service that
 # issues license keys after an OIDC sign-in. It is not part of kudurru and
-# is not released with it; no node ever contacts it (D156). Published as
+# is not released with it; no node ever contacts it (D163). Published as
 # ghcr.io/robertherbaugh/kudurru-license-server by
 # .github/workflows/license-server.yml on license-server-v* tags, for
 # linux/amd64 and linux/arm64. Build from the repository root, because the
