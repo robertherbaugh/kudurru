@@ -91,6 +91,10 @@ export function locateBinary(): string {
   return p;
 }
 
+// Ports this process has handed out: the OS may return a just-closed port
+// again, which would give two listeners of one node the same address.
+const handedOut = new Set<number>();
+
 /** A loopback port free for both TCP and UDP right now. */
 export async function freePort(): Promise<number> {
   for (let i = 0; i < 50; i++) {
@@ -107,7 +111,10 @@ export async function freePort(): Promise<number> {
       s.once('error', () => resolve(false));
       s.bind(port, '127.0.0.1', () => s.close(() => resolve(true)));
     });
-    if (port && udpFree) return port;
+    if (port && udpFree && !handedOut.has(port)) {
+      handedOut.add(port);
+      return port;
+    }
   }
   throw new Error('no loopback port free for tcp and udp');
 }
@@ -142,8 +149,22 @@ export interface Server {
   stop: () => Promise<void>;
 }
 
-/** Writes the configuration and starts `kudurru serve`; resolves once it is ready. */
+/**
+ * Writes the configuration and starts `kudurru serve`; resolves once it is ready.
+ * A port picked by freePort can be taken by another worker before the node binds
+ * it, so a start that dies on "address already in use" is retried with new ports.
+ */
 export async function startServer(bin: string, opts: ServerOptions): Promise<Server> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startServerOnce(bin, opts);
+    } catch (err) {
+      if (attempt >= 3 || !/address already in use/.test((err as Error).message)) throw err;
+    }
+  }
+}
+
+async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server> {
   const node = opts.node ?? 'e2e';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kudurru-e2e-${node}-`));
   const dataDir = path.join(dir, 'data');
@@ -230,7 +251,10 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
   const deadline = Date.now() + 60_000;
   let last: string;
   for (;;) {
-    if (exited !== null) throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
+    if (exited !== null) {
+      if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
+      throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
+    }
     try {
       const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(2000) });
       if (r.ok) break;

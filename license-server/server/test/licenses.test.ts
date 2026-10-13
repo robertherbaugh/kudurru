@@ -166,7 +166,7 @@ describeDb('issue', () => {
     expect(mail[0]!.attachments?.[0]).toMatchObject({ filename: 'license.key', content: res.body.currentKey.token + '\n', contentType: 'text/plain; charset=us-ascii' });
     expect(mail[0]!.text).toContain(res.body.currentKey.token);
     expect(mail[0]!.text).toContain('A license key does not give you a license.');
-    expect(mail[0]!.text).not.toContain('non-commercial use only, under');
+    expect(mail[0]!.text).not.toContain('community-development use only');
   });
 
   test('emailCustomer without a contact email is refused before anything is signed', async () => {

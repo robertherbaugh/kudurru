@@ -28,7 +28,7 @@ marked UNVERIFIED.
 | Size | ~15.2k LOC Go (excl. tests/generated), ~11.4k LOC TypeScript, 81 `_test.go` files | `wc -l` on clone |
 | Ports | 53 DNS, 67 DHCP, 69 TFTP, 8008 API/UI, 8009 metrics, 8010 debug/pprof, 2379/2380 etcd client/peer (client listen default is actually `2381` in code, see §14), 8100 internal blocklist server, `/var/run/gravity.sock` | code |
 
-**Licensing consequence for kudurru:** Gravity is GPL-3.0. kudurru (Apache-2.0) can borrow
+**Licensing consequence for kudurru:** Gravity is GPL-3.0. kudurru (Kudurru Community License; Apache-2.0 when this note was written) can borrow
 *designs, key layouts, API shapes and UX ideas* but must not copy code. Note Gravity's own
 dependencies: blocky (Apache-2.0), CoreDNS (Apache-2.0), miekg/dns (BSD), etcd (Apache-2.0),
 insomniacslk/dhcp (BSD-3), goja (MIT), swaggest/rest (MIT) — all usable by kudurru directly.

@@ -4,14 +4,14 @@ This image contains two separate programs:
 
 - **keepalived** 2.4.3, compiled unmodified from the upstream release tarball,
   licensed under the GNU General Public License v2.0 or later (see `COPYING`).
-- **kudurru**, source-available (PolyForm Noncommercial 1.0.0 plus the `ee/`
+- **kudurru**, source-available (Kudurru Community License plus the `ee/`
   terms; see LICENSING.md), acting as the supervisor (`kudurru vip run`). The
   supervisor needs a license key (`KUDURRU_LICENSE_KEY`) that covers the edge.
 
 The image label `org.opencontainers.image.licenses` says so as an SPDX
-expression, `PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later`: each program
+expression, `LicenseRef-Kudurru-Community AND GPL-2.0-or-later`: each program
 keeps its own license, and neither license applies to the other program. The
-terms of kudurru (the key, the noncommercial limit) do not restrict what you do
+terms of kudurru (the key, the community-use limits) do not restrict what you do
 with keepalived, which you can run without kudurru under the GPL. Alpine's
 packages (iproute2, tini, musl) keep their own licenses.
 

@@ -172,12 +172,12 @@ jobs:
           wait_for "the HEALTHCHECK to report healthy" healthy smoke-server
           # oven/bun's labels are all overridden.
           docker inspect -f '{{json .Config.Labels}}' "$IMAGE" | jq -e '
-            .["org.opencontainers.image.licenses"] == "PolyForm-Noncommercial-1.0.0" and
+            .["org.opencontainers.image.licenses"] == "LicenseRef-Kudurru-License-Server-Source-Viewing" and
             .["org.opencontainers.image.source"] == "https://github.com/robertherbaugh/kudurru" and
             .["org.opencontainers.image.title"] == "kudurru license portal"'
           # The notices travel with the image.
           docker run --rm --entrypoint bun "$IMAGE" -e '
-            for (const f of ["/app/NOTICE", "/app/third-party-licenses.txt", "/app/ui/index.html"]) require("node:fs").statSync(f);'
+            for (const f of ["/app/LICENSE.md", "/app/NOTICE", "/app/third-party-licenses.txt", "/app/ui/index.html"]) require("node:fs").statSync(f);'
           # Bun as PID 1 ignores SIGTERM unless the server handles it; a
           # clean stop exits 0 well inside the 10 s before SIGKILL.
           start=$(date +%s)

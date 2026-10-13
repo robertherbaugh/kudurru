@@ -1,5 +1,5 @@
 // License (/license): what this node runs with (GET /license) and what the
-// key unlocks. kudurru is source-available; personal use is free and a key
+// key unlocks. kudurru is source-available; eligible community use is free and a key
 // is only needed for more than one node and the licensed features. The page
 // is read-only: a key is put in place with the environment, a file or the
 // command line (docs/architecture/licensing.md), not typed into the browser.
@@ -59,7 +59,7 @@ export default function LicensePage() {
       <PageHeader
         title="License"
         meta={l ? <Badge variant={stateTone(l.state)} label={stateLabel(l.state)} /> : null}
-        description="kudurru is source-available: personal use is free and a business needs an agreement. A key unlocks more nodes, more policies and the features below. DNS answering never depends on a key."
+        description="kudurru is source-available: eligible personal and nonprofit use is free; business and government production requires an agreement. A key unlocks more nodes, more policies and the features below. DNS answering never depends on a key."
       />
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
@@ -130,9 +130,9 @@ export default function LicensePage() {
             <Text type="code">license.existingSecret</Text>.
           </Text>
           <Text as="p">
-            A free personal key covers up to 3 nodes for non-commercial use; write to <Link href={`mailto:${LICENSE_CONTACT}`}>{LICENSE_CONTACT}</Link> for one, or for a commercial agreement. What each license includes is on{' '}
+            A free personal/nonprofit key covers up to 3 nodes for eligible community use. Commercial features depend on the accepted agreement and Order Form. Write to <Link href={`mailto:${LICENSE_CONTACT}`}>{LICENSE_CONTACT}</Link> for a key or commercial agreement. What each key unlocks is on{' '}
             <Link href={LICENSE_PAGE_URL}>kudurru.io/license</Link>, the rules are in the <Link href={LICENSING_URL}>licensing docs</Link> and the license is the{' '}
-            <Link href={LICENSE_TEXT_URL}>PolyForm Noncommercial License 1.0.0</Link>.
+            <Link href={LICENSE_TEXT_URL}>Kudurru Community License</Link>.
           </Text>
         </VStack>
       </Panel>

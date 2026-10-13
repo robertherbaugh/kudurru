@@ -126,7 +126,7 @@ jobs:
           tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}
           labels: |
             org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=LicenseRef-Kudurru-Community
             org.opencontainers.image.title=kudurru-base
       - name: Build and push ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
         id: debugbase
@@ -142,7 +142,7 @@ jobs:
           tags: ghcr.io/robertherbaugh/kudurru-base:${{ steps.basetag.outputs.version }}-debug
           labels: |
             org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=LicenseRef-Kudurru-Community
             org.opencontainers.image.title=kudurru-base
       - name: Sign the base images by digest
         run: |
@@ -304,7 +304,7 @@ jobs:
           tags: ${{ steps.tag.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=LicenseRef-Kudurru-Community
             org.opencontainers.image.version=${{ steps.tag.outputs.version }}-hostnetwork
             org.opencontainers.image.title=kudurru
             org.opencontainers.image.description=kudurru with cap_net_bind_service=+ep for host networking

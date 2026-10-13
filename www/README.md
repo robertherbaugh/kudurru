@@ -1,5 +1,11 @@
 # kudurru.io
 
+Copyright 2026 Robert Herbaugh. The project-controlled source is available
+for inspection under the [Kudurru Website Source-Viewing License](LICENSE.md).
+Modification, redistribution and hosting require prior written authorization.
+A Kudurru community or commercial license does not grant those website rights.
+The build and deployment instructions below are for authorized maintainers.
+
 The project website: one page that shows what kudurru does and sends
 readers on to the documentation at [docs.kudurru.io](https://docs.kudurru.io)
 (the Hugo site in [`site/`](../site/README.md)) and to the repository. It is
@@ -23,7 +29,7 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 | `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
 | `src/styles/site.css` | The stylesheet. It imports `docs/brand/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
-| `build.ts` | Renders the pages, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
+| `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
 | `wrangler.jsonc` | The Cloudflare Workers configuration: static assets from `dist/`, the 404 page, the `kudurru.io` custom domain |
 | `test/` | `bun test`: escaping, `_headers`, and the built pages (no inline script or style, links, anchors, ARIA references, image attributes) |
 
@@ -95,7 +101,7 @@ Cloudflare dashboard:
    | Build command | `bun install --frozen-lockfile && bun run build` |
    | Deploy command | `bunx wrangler deploy` |
    | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
-   | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION` |
+   | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` |
    | Build variables | `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    The build reads `../VERSION`, `../docs/brand` and `../docs/guide/images`

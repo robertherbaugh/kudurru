@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE } from "../content.ts";
+import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE, docs } from "../content.ts";
 
 // The hashed files of one build, as URL paths.
 export interface Assets {
@@ -69,7 +69,7 @@ function footer(assets: Assets, version: string): Html {
     )}
   </div>
   <div class="wrap foot-legal">
-    <p>kudurru is source-available under the <a href="/license/text/">PolyForm Noncommercial License 1.0.0</a>: personal use is free, businesses need an agreement. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
+    <p>The kudurru core uses the <a href="/license/text/">Kudurru Community License</a> for eligible personal, nonprofit and community-development uses. Business and government production use needs an agreement. This marketing website is copyright 2026 Robert Herbaugh, with a separate ${external(docs("/project/website-license/"), "source-viewing license")}. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
   </div>
 </footer>`;

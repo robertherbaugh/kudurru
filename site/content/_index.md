@@ -25,10 +25,13 @@ embedded, and `make docker` builds the image ([Contributing](/project/contributi
 
 ## Source-available, free at home
 
-kudurru is source-available under the PolyForm Noncommercial License: personal
-use is free and a business needs an agreement. A license key (free for personal
-use, up to 3 nodes) unlocks more than one node, more than one policy and some
-features; DNS answering never depends on a key. See [Licensing](/project/licensing/).
+kudurru's core uses the Kudurru Community License for personal, homelab,
+qualifying nonprofit and isolated community-development uses. Business and
+government production use needs an accepted commercial agreement and Order
+Form. Other folders have their own notices. A license key (free for eligible
+community use, up to 3 nodes) unlocks more than one node, more than one
+policy and some features; DNS answering never depends on a key. See
+[Licensing](/project/licensing/).
 
 ## One object model, every shape
 

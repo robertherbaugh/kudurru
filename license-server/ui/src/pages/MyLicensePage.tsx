@@ -200,7 +200,7 @@ function RenewForm({ license: l, until, approval, onClose }: { license: MyLicens
       />
       <Text type="supporting" as="p">
         <Link href={NONCOMMERCIAL_LICENSE_URL} isExternalLink>
-          Read the PolyForm Noncommercial License 1.0.0
+          Read the Kudurru Community License
         </Link>
       </Text>
       {fe.summary ? <Banner status="error" title={approval ? 'The renewal was not requested' : 'The key was not renewed'} description={fe.summary} /> : null}

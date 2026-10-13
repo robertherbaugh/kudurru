@@ -410,7 +410,7 @@ func newHumaAPI(mux *http.ServeMux, prefix string) huma.API {
 	cfg.DocsPath = ""
 	cfg.Info.Description = "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
 		"lists are {items, continue, took_ms} with opaque keyset continue tokens."
-	cfg.Info.License = &huma.License{Name: "PolyForm-Noncommercial-1.0.0", URL: "https://polyformproject.org/licenses/noncommercial/1.0.0"}
+	cfg.Info.License = &huma.License{Name: "LicenseRef-Kudurru-Community", URL: "https://kudurru.io/license/text/"}
 	cfg.Servers = []*huma.Server{{URL: prefix + BasePath}}
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearer": {Type: "http", Scheme: "bearer", Description: "kdr_<id>_<secret> API token, OIDC ID token or Kubernetes ServiceAccount token"},

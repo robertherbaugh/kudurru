@@ -17,7 +17,7 @@ import { useNotify } from '../ui/components/Feedback';
 import { Panel } from '../ui/components/layout/Page';
 
 /** The non-commercial notice every personal key carries. */
-export const NONCOMMERCIAL_NOTICE = 'This is a free personal key: it may only be used for personal, non-commercial purposes under the PolyForm Noncommercial License 1.0.0.';
+export const NONCOMMERCIAL_NOTICE = 'This is a free personal key: it may only be used for eligible personal, qualifying nonprofit or community-development purposes under the Kudurru Community License.';
 
 export function KeyNotices({ plan }: { plan: Plan }) {
   return (

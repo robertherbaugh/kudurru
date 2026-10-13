@@ -368,7 +368,7 @@ export interface PersonalRequestBody {
   name: string;
   /** What kudurru runs for: 1-1000 UTF-16 code units, not blank. */
   use: string;
-  /** The certification (ATTESTATION_STATEMENT) was ticked: must be exactly true. */
+  /** The certification (ATTESTATION_STATEMENT) was ticked: must be exactly true. The field name predates the Community License; it is a wire-format contract, so it keeps its name. */
   noncommercial: true;
 }
 

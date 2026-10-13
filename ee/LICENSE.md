@@ -1,26 +1,16 @@
-# kudurru enterprise features: additional terms
+# Kudurru Enterprise Materials — License Notice
 
-This directory (`ee/`) holds the kudurru features that need a license key.
-Everything in it is licensed under the [PolyForm Noncommercial License
-1.0.0](../LICENSE), exactly like the rest of the repository, **plus** the
-additional terms below. If these terms conflict with the PolyForm terms, the
-stricter of the two applies.
+**October 12, 2026**
 
-1. **Key required.** You may use the features that the code in this directory
-   implements only with a valid kudurru license key issued by the licensor for
-   the number of nodes you run. Building the code, and running a binary that
-   contains it without using these features, does not need a key.
-   A free personal key is available for noncommercial use (see
-   [LICENSING.md](../LICENSING.md)).
-2. **No circumvention.** You may not remove, disable, bypass or tamper with
-   the license-key checks, the node limit or the feature gates, nor distribute
-   a copy or a modification that does, nor issue, share or forge keys.
-3. **Commercial use.** Use for a commercial purpose, by a business or by
-   anyone acting for one, needs a commercial agreement with the licensor in
-   addition to a business key, whether or not you run these features.
-4. **No warranty.** As in the PolyForm terms, the software comes as is.
+The files controlled by Kudurru's licensors within **`ee/`** are **source-available**, not OSI open-source, unless a file contains an explicit separate license notice.
 
-Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)
+- **Personal/homelab and qualifying nonprofit use:** governed by the repository's **Kudurru Community License**, including its eligibility, contribution, license-key, and node restrictions. Eligible users may use available enterprise features with a valid free entitlement as defined in that license.
+- **Development, testing, and contributions:** allowed only within the boundaries of the Kudurru Community License and applicable contributor policies, including any CLA required for upstream contributions.
+- **Business, government, MSP, and other commercial Production use:** requires a separately accepted **Kudurru Commercial Software License Agreement** and an applicable Order Form. Core commercial use does not automatically unlock `ee/`; the Order Form must authorize the Enterprise plan or named modules.
+- **Commercial source rights:** limited to uses, internal changes, copies, users, deployments, and term specified in the executed commercial agreement. Public redistribution of proprietary enterprise source is not permitted unless separately authorized.
 
-> These additional terms are a draft that has not had legal review. Do not
-> publish the repository before they have.
+A public source repository and possession of a key do not themselves grant commercial rights. Third-party components retain their own notices and licenses; this notice does not revoke rights granted for historical versions under other licenses.
+
+**Licensing inquiries:** hello@kudurru.io
+
+**Legal references:** [Community license](../LICENSE) and [Commercial Software License Agreement](../COMMERCIAL_LICENSE_AGREEMENT.md).

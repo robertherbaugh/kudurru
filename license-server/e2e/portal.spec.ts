@@ -240,7 +240,7 @@ test('the kudurru.io form: a cross-origin request, a confirmation link, an admin
   await approveFromMail(browser, request, '08-approve-form-request');
   const keyMail = await waitForKeyMail(request.email);
   expect(/^[\x20-\x7e]+\n$/.test(keyMail.key)).toBe(true);
-  expect(keyMail.text).toContain('non-commercial');
+  expect(keyMail.text).toContain('community-development use only');
   // No portal account yet: the key mail brings the invite link.
   expect(keyMail.text).toMatch(/\/invites\/[A-Za-z0-9_-]{43}/);
   const node = nodeStatus(keyMail.key.trim());

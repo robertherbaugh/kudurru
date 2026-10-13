@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED_NOTICE, LICENSE_ROWS, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, LICENSE_UPSTREAM_URL, REPO_URL, docs } from "../content.ts";
+import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED_NOTICE, LICENSE_ROWS, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, LICENSE_SOURCE_URL, REPO_URL, docs } from "../content.ts";
 import { external } from "./layout.ts";
 import type { Rendered } from "../markdown.ts";
 
@@ -20,8 +20,8 @@ function requestForm(licenseApi: string): Html {
       <div class="licform-box">
         <fieldset class="licform-kind">
           <legend>What is it for?</legend>
-          <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Personal or non-commercial: a home, a homelab, study, a hobby, a charity or a school. Free, up to ${LICENSE_FREE_NODES} nodes.</span></label>
-          <label class="licform-choice"><input type="radio" name="kind" value="business"> <span>A business, or anything else. We reply by email.</span></label>
+          <label class="licform-choice"><input type="radio" name="kind" value="personal" checked> <span>Eligible personal, homelab, nonprofit or community-development use under the Community License. Free, up to ${LICENSE_FREE_NODES} nodes.</span></label>
+          <label class="licform-choice"><input type="radio" name="kind" value="business"> <span>Business or government production, an MSP, or anything else. We reply by email.</span></label>
         </fieldset>
         <div class="licform-grid">
           <label class="licform-field"><span>Your name</span><input type="text" name="name" autocomplete="name" maxlength="200" required></label>
@@ -29,7 +29,7 @@ function requestForm(licenseApi: string): Html {
         </div>
         <div data-panel="personal">
           <label class="licform-field"><span>What do you run kudurru for?</span><textarea name="personal-use" rows="3" maxlength="1000" required></textarea></label>
-          <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (<a href="${LICENSE_TEXT_PATH}" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).</span></label>
+          <label class="licform-check"><input type="checkbox" name="noncommercial"> <span>I agree and certify this key will only be used for eligible personal, qualifying nonprofit or community-development use in accordance with the license (<a href="${LICENSE_TEXT_PATH}" target="_blank" rel="noopener">Kudurru Community License</a>).</span></label>
         </div>
         <div data-panel="business" hidden>
           <div class="licform-grid">
@@ -60,28 +60,30 @@ export function license(licenseApi: string): Html {
   <div class="wrap narrow">
     <p class="label">License</p>
     <h1 id="lic-title" class="page-title">Free at home. A key for more.</h1>
-    <p class="reg-lead">kudurru is source-available under the PolyForm Noncommercial License 1.0.0. Personal use is free: a homelab, a house, study, a hobby, a charity or a school. A business needs an agreement, including for the parts that need no key.</p>
+    <p class="reg-lead">The core DNS server and dashboard use the Kudurru Community License. Personal, household, homelab and qualifying nonprofit use is free under its terms. Isolated development and evaluation are permitted, including for businesses and governments. Business and government production use needs an accepted commercial agreement and Order Form, including for the parts that need no key.</p>
     <ul class="points">
       <li><strong>DNS never depends on a key.</strong> Queries are answered the same with a key, with none and with an expired one. A key only changes the number of nodes, the number of policies and the features listed below.</li>
       <li><strong>A node without a key is a supported way to run.</strong> One node, the default policy, the resolver, the blocking engine, zones, the block page and the dashboard.</li>
       <li><strong>Keys are checked on the node.</strong> A signature check, no license server, no phone home. An expired key keeps working for 30 days.</li>
+      <li><strong>A free key is for eligible community use only.</strong> It unlocks features; it does not grant business or government production rights or extend an expired agreement.</li>
     </ul>
   </div>
 </section>
 <section class="sec lic-sec" aria-labelledby="lic-table-title">
   <div class="wrap">
-    <h2 id="lic-table-title">What each license includes</h2>
+    <h2 id="lic-table-title">What each key unlocks</h2>
     <div class="shapes lic-table">
       <table>
-        <caption class="mono dim">The free personal key covers up to ${LICENSE_FREE_NODES} nodes for non-commercial use.</caption>
+        <caption class="mono dim">The free personal/nonprofit key covers up to ${LICENSE_FREE_NODES} nodes for eligible community use.</caption>
         <thead>
-          <tr><th scope="col">What</th><th scope="col">No key</th><th scope="col">Personal key (free)</th><th scope="col">Business key</th></tr>
+          <tr><th scope="col">What</th><th scope="col">No key</th><th scope="col">Personal/nonprofit key (free)</th><th scope="col">Business key</th></tr>
         </thead>
         <tbody>
           ${LICENSE_ROWS.map((r) => html`<tr><th scope="row">${r.what}</th><td>${r.community}</td><td>${r.personal}</td><td>${r.business}</td></tr>`)}
         </tbody>
       </table>
     </div>
+    <p class="fine">* If included in commercial license agreement.</p>
   </div>
 </section>
 <section class="sec lic-sec" aria-labelledby="lic-get-title">
@@ -91,14 +93,16 @@ export function license(licenseApi: string): Html {
       <h2 id="lic-get-title">Get a key</h2>
       <div class="lic-body">
         <p class="nojs-note">The form needs JavaScript. Without it, write to us:</p>
-        <p><strong>A free personal key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes and is for non-commercial use only.</p>
-        <p><strong>A business.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the company, the number of nodes and the features you need. A business key comes with a commercial agreement.</p>
+        <p><strong>A free personal/nonprofit key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes for eligible community use. Schools and research organizations must meet the Community License's nonprofit eligibility rules.</p>
+        <p><strong>A business, government or MSP.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the organization, the number of nodes and the features you need. The ${external(docs("/project/commercial-license/"), "commercial agreement")} requires an accepted Order Form. A Commercial Core purchase does not automatically include enterprise modules; those must be authorized by the Order Form.</p>
       </div>
     </div>
     <div class="lic-row">
       <h2 id="lic-read-title">Read the license</h2>
       <div class="lic-body">
-        <p>The license is the <a href="${LICENSE_TEXT_PATH}">PolyForm Noncommercial License 1.0.0</a>; the full text is on this site. The rules for people, what a key unlocks and what a missing key changes, are in the ${external(docs("/project/licensing/"), "licensing page of the docs")}, and the docs carry the ${external(docs("/project/license/"), "license text")} too. The source is in ${external(REPO_URL, "the repository")} (<code>LICENSE</code> and <code>LICENSING.md</code>).</p>
+        <p>The license is the <a href="${LICENSE_TEXT_PATH}">Kudurru Community License</a>; the full text is on this site. The rules for people, what a key unlocks and what a missing key changes, are in the ${external(docs("/project/licensing/"), "licensing page of the docs")}, and the docs carry the ${external(docs("/project/license/"), "license text")} too. The source is in ${external(REPO_URL, "the repository")} (<code>LICENSE</code> and <code>LICENSING.md</code>).</p>
+        <p>Community modifications and shared copies must retain notices, include the license and identify changes; distributed executables with changes must include access to the corresponding source. The folder notices govern ${external(docs("/project/enterprise-license/"), "enterprise materials")} and ${external(docs("/project/documentation-license/"), "documentation source")}. Anyone may read the published docs.</p>
+        <p>The ${external(docs("/project/website-license/"), "marketing website")} and ${external(docs("/project/license-server-license/"), "license server")} have separate source-viewing licenses, copyright Robert Herbaugh. Inspection is permitted; modification, redistribution and hosting require prior written authorization. Neither the Community License nor a commercial purchase grants those rights.</p>
       </div>
     </div>
   </div>
@@ -113,7 +117,7 @@ export function licenseText(r: Rendered): Html {
   <div class="wrap narrow">
     <p class="label">License</p>
     <h1 id="lic-text-title" class="page-title">${r.title}</h1>
-    <p class="reg-lead">This is the license of kudurru. It is the text of the ${external(LICENSE_UPSTREAM_URL, "PolyForm Noncommercial License 1.0.0")}, unchanged, and the same as the <code>LICENSE</code> file of the repository. <a href="${LICENSE_TEXT_FILE}">Download it as text</a>. What it means for you, and how to get a key, is on <a href="/license/">License and keys</a>.</p>
+    <p class="reg-lead">This is the license of kudurru. It is the text of the ${external(LICENSE_SOURCE_URL, "Kudurru Community License")}, unchanged, and the same as the <code>LICENSE</code> file of the repository. <a href="${LICENSE_TEXT_FILE}">Download it as text</a>. What it means for you, and how to get a key, is on <a href="/license/">License and keys</a>.</p>
     <div class="license-text">${r.body}</div>
     <p class="fine mono">${LICENSE_REQUIRED_NOTICE}</p>
   </div>

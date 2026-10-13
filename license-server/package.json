@@ -2,7 +2,7 @@
   "name": "@kudurru/license-server",
   "version": "0.0.0",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "description": "The licensor's service that issues kudurru license keys after an OIDC sign-in: Bun, TypeScript and Postgres in one container, with an Astryx UI.",
   "scripts": {

@@ -1,5 +1,5 @@
-// A small markdown renderer for exactly what the PolyForm license text uses
-// (headings, paragraphs, a block quote, bold, bold italic, code, links and
+// A small markdown renderer for the Community License text
+// (headings, paragraphs, lists, tables, a block quote, bold, bold italic, code, links and
 // autolinks), so kudurru.io shows the repository's LICENSE file as it is,
 // from one source, without a markdown dependency. Anything else in the input
 // is rendered as plain text, never as markup: the text is escaped first.
@@ -55,6 +55,17 @@ export function renderMarkdown(source: string, base: string): Rendered {
     } else if (text.startsWith(">")) {
       const quoted = text.split("\n").map((l) => l.replace(/^>\s?/, "")).join(" ");
       parts.push(`<blockquote><p>${inline(quoted, base)}</p></blockquote>`);
+    } else if (/^\|.+\|\n\|(?:\s*:?-+:?\s*\|)+\s*(?:\n|$)/.test(text)) {
+      const rows = text.split("\n").map((row) => row.trim().slice(1, -1).split("|").map((cell) => cell.trim()));
+      const head = rows[0]!.map((cell) => `<th scope="col">${inline(cell, base)}</th>`).join("");
+      const body = rows.slice(2).map((row) => `<tr>${row.map((cell) => `<td>${inline(cell, base)}</td>`).join("")}</tr>`).join("");
+      parts.push(`<div class="shapes lic-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+    } else if (/^(?:- |\d+\. )/.test(text)) {
+      const ordered = /^\d+\. /.test(text);
+      const marker = ordered ? /^\d+\. / : /^- /;
+      const items = text.split("\n").map((line) => `<li>${inline(line.replace(marker, ""), base)}</li>`).join("");
+      const tag = ordered ? "ol" : "ul";
+      parts.push(`<${tag}>${items}</${tag}>`);
     } else {
       parts.push(`<p>${inline(text.replace(/\n/g, " "), base)}</p>`);
     }

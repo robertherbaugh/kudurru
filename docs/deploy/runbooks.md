@@ -189,8 +189,8 @@ answering is not affected in any of these cases.
 
 1. `kudurru license status` on the node (or `GET /api/v1/license`) shows the
    state and, for an invalid key, the reason.
-2. An **expired** key works for 30 days after its date (state `grace`), then the
-   node runs with the free license: one node, one policy (the seeded default),
+2. An **expired** key works for 30 days after its date (state `grace`), then
+   the limits for running without a key apply: one node, one policy (the seeded default),
    no licensed feature. Alert on
    `kudurru_license_expires_timestamp_seconds - time()` before that.
 3. Put the renewed key where the node reads it (`KUDURRU_LICENSE_KEY`,

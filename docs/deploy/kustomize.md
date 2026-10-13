@@ -40,7 +40,7 @@ kubectl apply -k config/samples                        # optional examples
 ```
 
 The manifests read an optional Secret `kudurru-license` (key `license.key`) as
-`KUDURRU_LICENSE_KEY`; without it kudurru runs with the free license (one node,
+`KUDURRU_LICENSE_KEY`; without it kudurru runs with no key (one node,
 one policy, no edge). To use a key: `kubectl -n kudurru-system create secret
 generic kudurru-license --from-file=license.key=./license.key`. With the default two
 replicas and no key, changes through the API and the dashboard answer

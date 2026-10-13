@@ -53,7 +53,7 @@ function email(tag: string): string {
 }
 
 function attestation(addr: string): Attestation {
-  return { source: 'kudurru.io form', license: 'PolyForm-Noncommercial-1.0.0', statement: ATTESTATION_STATEMENT, at: new Date().toISOString(), ip: '192.0.2.1', userAgent: 'test', email: addr };
+  return { source: 'kudurru.io form', license: 'LicenseRef-Kudurru-Community', statement: ATTESTATION_STATEMENT, at: new Date().toISOString(), ip: '192.0.2.1', userAgent: 'test', email: addr };
 }
 
 interface RunOptions {
@@ -113,7 +113,7 @@ describeDb('requestPersonalKey', () => {
     expect(mail.to).toBe(addr);
     expect(mail.subject).toBe('Your kudurru license key');
     expect(mail.text).toContain(token);
-    expect(mail.text).toContain('non-commercial use only');
+    expect(mail.text).toContain('community-development use only');
     expect(mail.text).toContain(KEY_IS_NOT_A_LICENSE);
     expect(mail.text).toContain('KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key');
     expect(mail.text).toContain('restart');
@@ -494,7 +494,7 @@ describeDb('portal routes', () => {
     const request = (await t.db<{ id: string; name: string; use_description: string; source: string; requested_by: string; review_reason: string; attestation: Attestation }[]>`
       select * from license_requests where id = ${res.body.requestId!}`)[0]!;
     expect(request).toMatchObject({ name: 'Licensee Lou', use_description: `Renewal of ${id}`, source: 'portal', requested_by: user.id, review_reason: 'auto_approve_off' });
-    expect(request.attestation).toMatchObject({ source: 'portal', statement: ATTESTATION_STATEMENT, email: addr, license: 'PolyForm-Noncommercial-1.0.0' });
+    expect(request.attestation).toMatchObject({ source: 'portal', statement: ATTESTATION_STATEMENT, email: addr, license: 'LicenseRef-Kudurru-Community' });
     expect(await t.db`select 1 from license_keys where license_id = ${id}`).toHaveLength(1);
     expect(app.mailer.to(addr)[0]!.subject).toBe('Your renewal of a kudurru personal key is waiting for approval');
     const admin = app.mailer.to('admin@example.org')[0]!;

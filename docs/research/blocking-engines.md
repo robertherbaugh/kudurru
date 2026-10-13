@@ -27,11 +27,13 @@ Transitive libraries that matter for reuse (GitHub SPDX, verified via API 2026-1
 | github.com/0xERR0R/expiration-cache | **MPL-2.0** (file-level copyleft; fine as a dependency) | blocky |
 | github.com/ameshkov/dnsstamps | UNVERIFIED (not checked) | dnsproxy |
 
-### 1.1 License consequences for an Apache-2.0 kudurru
+### 1.1 License consequences for kudurru
+
+The core now uses the Kudurru Community License; it used Apache-2.0 when this note was written. The prohibition on copying GPL code still applies.
 
 - **blocky (Apache-2.0)**: code can be copied, adapted, vendored. Keep NOTICE/attribution.
 - **dnsproxy (Apache-2.0)**: can be imported as a Go module (`github.com/AdguardTeam/dnsproxy/upstream`, `/proxy`) or copied. golibs (Unlicense) and dnscrypt (Unlicense) impose nothing.
-- **urlfilter (GPL-3.0)** and **AdGuard Home (GPL-3.0)**: importing either into an Apache-2.0 binary makes the combined work GPL-3.0. **Do not import `github.com/AdguardTeam/urlfilter`.** Reading their code for ideas and re-implementing the adblock-DNS grammar from the public spec (the KB page) is fine; copying code is not. Note that AdGuard's own safe-search rule lists (`internal/filtering/safesearch/rules/*.txt`) and the generated blocked-services table (`servicelist.go`) live inside the GPL repo; treat them as GPL data too unless an upstream source with a different license is found (the blocked-services data originates from `AdguardTeam/HostlistsRegistry`, license UNVERIFIED).
+- **urlfilter (GPL-3.0)** and **AdGuard Home (GPL-3.0)**: importing either into Kudurru conflicts with its source-available licensing. **Do not import `github.com/AdguardTeam/urlfilter`.** Reading their code for ideas and re-implementing the adblock-DNS grammar from the public spec (the KB page) is fine; copying code is not. Note that AdGuard's own safe-search rule lists (`internal/filtering/safesearch/rules/*.txt`) and the generated blocked-services table (`servicelist.go`) live inside the GPL repo; treat them as GPL data too unless an upstream source with a different license is found (the blocked-services data originates from `AdguardTeam/HostlistsRegistry`, license UNVERIFIED).
 
 ---
 

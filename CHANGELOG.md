@@ -9,12 +9,16 @@ All notable changes to kudurru are listed here. The format follows
 
 ### License
 
-- kudurru is **source-available** under the PolyForm Noncommercial License
-  1.0.0 instead of Apache-2.0. Personal use is free; a business needs an
-  agreement ([LICENSING.md](LICENSING.md), D162). Nothing had been published,
-  so every tag, release, image and chart carries the new license; commits
-  before the change keep the old one in the history.
-- **License keys** (D163): a free personal key (3 nodes) or a business key
+- The core DNS server and dashboard use the **Kudurru Community License**:
+  personal, homelab, qualifying nonprofit and community-development uses are
+  permitted; business and government production requires an accepted
+  commercial agreement and Order Form. Enterprise materials and documentation
+  have folder-specific notices; `www/` and `license-server/` have separate
+  source-viewing licenses, copyright Robert Herbaugh. Historical Apache-2.0
+  and PolyForm grants and third-party licenses remain in effect
+  ([LICENSING.md](LICENSING.md)).
+- **License keys** (D163): a free personal/nonprofit key (3 nodes) or a
+  commercial key with the agreed node and feature entitlements
   unlocks more than one node, more than one policy and the features that
   moved to [`ee/`](ee/): OIDC sign-in, the dnsdist and keepalived edge, and
   the integrations. Keys are verified offline; with no key kudurru runs one

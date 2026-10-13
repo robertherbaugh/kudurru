@@ -1,7 +1,7 @@
 // The signed-in person's own licenses and requests (design spec §8 self.*):
 // thin handlers over services/licenses.ts (customer views, isolated in SQL
 // by membership), services/personal.ts (personal request and renewal: both
-// need an IdP-verified email and a fresh non-commercial certification, and
+// need an IdP-verified email and a fresh community-use certification, and
 // wait for an admin's approval unless PERSONAL_AUTO_APPROVE is on) and
 // services/members.ts (invites). The router has already authorized the
 // route; customer DTOs never carry internal fields.
@@ -79,11 +79,11 @@ export const meHandlers: PartialHandlerMap = {
     return json<ResponseOf<'myRequestCreate'>>(result);
   },
 
-  // Every renewal certifies non-commercial use again ({"noncommercial": true});
+  // Every renewal certifies eligible community use again ({"noncommercial": true});
   // the answer is the outcome: renewed (automatic approval) or pending_review.
   myLicenseRenew: async (ctx) => {
     const p = requirePrincipal(ctx);
-    if (!hasBody(ctx.req)) throw new HttpError(400, 'invalid', 'Certify again that you use kudurru only for non-commercial purposes: send {"noncommercial": true}.', { fields: ['noncommercial'] });
+    if (!hasBody(ctx.req)) throw new HttpError(400, 'invalid', 'Certify again that you use kudurru only for eligible community purposes: send {"noncommercial": true}.', { fields: ['noncommercial'] });
     await readJson(ctx, RenewShape);
     const email = verifiedEmail(p, 'send you the renewed key');
     const attestation = portalAttestation(ctx, email);

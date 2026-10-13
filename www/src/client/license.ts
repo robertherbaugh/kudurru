@@ -46,7 +46,7 @@ export function validate(f: Fields): string[] {
   if (f.kind === "personal") {
     if (!use) out.push("Say what you run kudurru for.");
     else if (use.length > LIMITS.personalUse) out.push(`What you run it for is longer than ${LIMITS.personalUse} characters.`);
-    if (!f.noncommercial) out.push("Agree and certify that the key is only for personal, non-commercial use.");
+    if (!f.noncommercial) out.push("Agree and certify that the key is only for eligible community use.");
   } else {
     if (!f.company.trim()) out.push("Enter the name of your business or organization.");
     else if (f.company.trim().length > LIMITS.company) out.push(`The business name is longer than ${LIMITS.company} characters.`);

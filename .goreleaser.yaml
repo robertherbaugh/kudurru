@@ -43,6 +43,7 @@ archives:
     files:
       - LICENSE
       - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - NOTICE
       - ee/LICENSE.md
       - README.md
@@ -104,7 +105,7 @@ kos:
       - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
     labels:
       org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
-      org.opencontainers.image.licenses: PolyForm-Noncommercial-1.0.0
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.title: kudurru
@@ -135,7 +136,7 @@ kos:
       - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
     labels:
       org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
-      org.opencontainers.image.licenses: PolyForm-Noncommercial-1.0.0
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
       org.opencontainers.image.version: "{{ .Version }}-debug"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
 
@@ -149,7 +150,7 @@ nfpms:
     homepage: https://github.com/robertherbaugh/kudurru
     maintainer: Robert Herbaugh <robertherbaugh@users.noreply.github.com>
     description: Kubernetes-native DNS server (authoritative, forwarding, blocking) that also runs standalone.
-    license: PolyForm-Noncommercial-1.0.0
+    license: LicenseRef-Kudurru-Community
     section: net
     priority: optional
     bindir: /usr/bin
@@ -177,6 +178,8 @@ nfpms:
         dst: /usr/share/doc/kudurru/LICENSE
       - src: LICENSING.md
         dst: /usr/share/doc/kudurru/LICENSING.md
+      - src: COMMERCIAL_LICENSE_AGREEMENT.md
+        dst: /usr/share/doc/kudurru/COMMERCIAL_LICENSE_AGREEMENT.md
       - src: NOTICE
         dst: /usr/share/doc/kudurru/NOTICE
       - src: ee/LICENSE.md

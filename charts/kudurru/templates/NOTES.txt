@@ -48,7 +48,7 @@ The CRDs come from the kudurru-crds chart; install it first if you have not:
    changes through the API and the dashboard answer 402 license_required until
    a key is in place. Changes with kubectl are not affected.
 {{- end }}
-   A free personal key covers up to 3 nodes for non-commercial use
+   A free personal key covers up to 3 nodes for eligible community use
    (https://kudurru.io/license). Put it in a Secret and set the value:
   kubectl -n {{ $ns }} create secret generic kudurru-license --from-file=license.key=./license.key
   helm upgrade {{ .Release.Name }} ... --set license.existingSecret=kudurru-license

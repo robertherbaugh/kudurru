@@ -148,7 +148,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
       {
         path: "/license/",
         title: "License and keys · kudurru",
-        description: "kudurru is source-available: free for personal use, a key for more nodes and features, an agreement for businesses.",
+        description: "Core software uses the Kudurru Community License. Eligible community use is free; business and government production needs an agreement. Other folders have separate licenses.",
         body: license(licenseApi),
         assets,
       },
@@ -162,8 +162,8 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     layout(
       {
         path: LICENSE_TEXT_PATH,
-        title: "PolyForm Noncommercial License 1.0.0 · kudurru",
-        description: "The license of kudurru: the PolyForm Noncommercial License 1.0.0, in full.",
+        title: "Kudurru Community License · kudurru",
+        description: "The license of kudurru: the Kudurru Community License, in full.",
         body: licenseText(renderMarkdown(licenseSource, LICENSE_TEXT_PATH)),
         assets,
       },

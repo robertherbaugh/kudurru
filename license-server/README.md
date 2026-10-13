@@ -1,5 +1,12 @@
 # kudurru license portal
 
+Copyright 2026 Robert Herbaugh. The project-controlled source is available
+for inspection under the [Kudurru License Server Source-Viewing License](LICENSE.md).
+Building, modifying, testing by execution, running or redistributing it
+requires prior written authorization. A Kudurru community or commercial
+license does not grant rights to operate this service. The development and
+deployment instructions below are for authorized maintainers.
+
 The licensor's service that issues kudurru license keys: the Ed25519
 signed tokens of `internal/license` (`docs/architecture/licensing.md`).
 People sign in with OpenID Connect. Customers see and download their keys
@@ -219,7 +226,7 @@ renewal yet gets that key again by mail (nothing is signed). By default
 the renewal of one in its last 30 days, in grace or expired, waits for a
 license admin: the page says "Your request is waiting for approval", and
 the key goes out by mail with an invite link to the portal once an admin
-approves it (below). The non-commercial
+approves it (below). The Community License eligibility
 certification is recorded with the request and then with the license.
 
 ## Approving personal keys
@@ -227,7 +234,7 @@ certification is recorded with the request and then with the license.
 With `PERSONAL_AUTO_APPROVE=false` (the default) nothing signs a personal
 key on its own. A new key or a renewal from the kudurru.io form, from the
 portal's "Request a free personal key", or from the portal's "Request
-renewal" on a personal license (with a fresh non-commercial certification;
+renewal" on a personal license (with a fresh community-use certification;
 the button reads "Renew" when approval is automatic) opens a request on
 the Requests page, and the requester gets a mail saying it waits for
 approval. A second request while one is open is the same request (and
@@ -346,7 +353,7 @@ limit counts per instance.
 ### Backups and upgrades
 
 Postgres holds who holds which license, the agreement references, the
-non-commercial attestations and the audit trail; keys keep working on the
+community-use attestations and the audit trail; keys keep working on the
 nodes without it, but the record does not. Take a nightly `pg_dump` (or
 the provider's point-in-time recovery) to storage off the host, and test a
 restore. The signing key is backed up separately (Infisical) and is never

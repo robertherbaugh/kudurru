@@ -114,7 +114,7 @@ test("fonts are separate hashed files, not data URLs", async () => {
 describe("the license page", () => {
   test("states the terms, the free limits and where to write", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toContain("PolyForm Noncommercial License 1.0.0");
+    expect(page).toContain("Kudurru Community License");
     expect(page).toContain("DNS never depends on a key");
     expect(page).toContain("mailto:hello@kudurru.io?subject=Free%20personal%20key");
     expect(page).toContain("mailto:hello@kudurru.io?subject=kudurru%20commercial%20license");
@@ -171,8 +171,8 @@ describe("the key request form", () => {
 
   test("the checkbox is the certification, with a link to the license text", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toContain("I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (");
-    expect(page).toContain('<a href="/license/text/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).');
+    expect(page).toContain("I agree and certify this key will only be used for eligible personal, qualifying nonprofit or community-development use in accordance with the license (");
+    expect(page).toContain('<a href="/license/text/" target="_blank" rel="noopener">Kudurru Community License</a>).');
   });
 
   test("says that a personal key is approved before it is mailed", () => {
@@ -207,21 +207,21 @@ describe("the license text", () => {
     const page = pages["license/text/index.html"]!;
     const source = await readFile(join(import.meta.dir, "../../LICENSE"), "utf8");
     expect(page).toContain("<h1");
-    expect(page).toContain("PolyForm Noncommercial License 1.0.0");
+    expect(page).toContain("Kudurru Community License");
     for (const heading of source.matchAll(/^## (.+)$/gm)) expect(page).toContain(`>${heading[1]}</h2>`);
     const ids = new Set(attrs(page, "id"));
     for (const ref of attrs(page, "href").filter((r) => r.startsWith("/license/text/#"))) expect(ids.has(ref.split("#")[1]!)).toBe(true);
-    expect(page).toContain("Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors");
+    expect(page).toContain("Required Notice: Copyright 2026 Robert Herbaugh");
   });
 
   test("is offered as a plain text download, byte for byte", async () => {
     const source = await readFile(join(import.meta.dir, "../../LICENSE"), "utf8");
-    expect(await readFile(join(out, "license/text/PolyForm-Noncommercial-1.0.0.txt"), "utf8")).toBe(source);
-    expect(pages["license/text/index.html"]).toContain('href="/license/text/PolyForm-Noncommercial-1.0.0.txt"');
+    expect(await readFile(join(out, "license/text/Kudurru-Community-License.txt"), "utf8")).toBe(source);
+    expect(pages["license/text/index.html"]).toContain('href="/license/text/Kudurru-Community-License.txt"');
   });
 
   test("is linked from the footer of every page, from the certification and from the license page, and listed in the sitemap", async () => {
-    for (const name of Object.keys(pages)) expect(pages[name]).toContain('<a href="/license/text/">PolyForm Noncommercial License 1.0.0</a>');
+    for (const name of Object.keys(pages)) expect(pages[name]).toContain('<a href="/license/text/">Kudurru Community License</a>');
     expect(pages["license/index.html"]).toContain("https://docs.kudurru.io/project/licensing/");
     expect(pages["license/index.html"]).toContain("https://docs.kudurru.io/project/license/");
     expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/text/");

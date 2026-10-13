@@ -125,7 +125,7 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
       />
       <Text type="supporting" as="p">
         <Link href={NONCOMMERCIAL_LICENSE_URL} isExternalLink>
-          Read the PolyForm Noncommercial License 1.0.0
+          Read the Kudurru Community License
         </Link>
       </Text>
       {fe.summary ? <Banner status="error" title="The request was not sent" description={fe.summary} /> : null}

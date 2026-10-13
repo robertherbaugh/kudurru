@@ -2,7 +2,7 @@
   "name": "@kudurru/license-portal-cloudflare",
   "version": "0.0.0",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "SEE LICENSE IN ../LICENSE.md",
   "type": "module",
   "description": "Runs the kudurru license portal (license-server/) on Cloudflare Containers: a Worker and a Durable Object in front of the portal's container.",
   "scripts": {

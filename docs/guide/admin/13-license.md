@@ -8,13 +8,22 @@ You need access to the host or the deployment files to put a key on a node.
 
 ## What the license says
 
-kudurru is source-available under the PolyForm Noncommercial License 1.0.0.
-Personal use is free. A homelab, a house, study, a hobby, a charity and a
-school all count as personal use. A business needs an agreement with the
-owner, also for the parts that need no key.
+The core DNS server and dashboard use the Kudurru Community License.
+Personal, household, homelab and qualifying nonprofit use is free under its
+terms. Businesses and governments may develop and evaluate it in isolated
+nonproduction environments; production DNS service needs an accepted
+commercial agreement and Order Form, including for no-key features.
+A school or research organization must meet the nonprofit eligibility rules.
 
-NOTE: A license key does not give you a license. The key records the
-license that you have. A free personal key is for non-commercial use only.
+The enterprise code and documentation have their own notices in
+[ee/LICENSE.md](../../../ee/LICENSE.md) and [site/LICENSE.md](../../../site/LICENSE.md).
+Anyone may read the docs. The website and license-server source have separate
+source-viewing licenses and are excluded from the community and commercial grants.
+
+NOTE: A key records an entitlement, not a license. Free personal/nonprofit
+keys are for eligible community use only. Commercial enterprise modules must
+be authorized in the Order Form. Technical grace periods do not extend an
+expired commercial agreement.
 
 ## What a key changes
 
@@ -22,19 +31,21 @@ DNS never depends on a key. A node answers queries in the same way with a
 key, with no key and with an expired key. A key changes the number of nodes,
 the number of policies and the features below.
 
-| | No key | Personal key (free) | Business key |
+| | No key | Personal/nonprofit key (free) | Business key |
 |---|---|---|---|
 | DNS, blocking, zones, the block page, the dashboard | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | Up to 3 | As agreed |
 | Policies | 1, the policy `default` | No limit | No limit |
-| Roles other than the built-in administrator | No | Yes | Yes |
-| Single sign-on | No | Yes | Yes |
-| The audit log and its export | No | Yes | Yes |
-| Statistics for more than 24 hours | No | Yes | Yes |
-| Access requests from the block page | No | Yes | Yes |
-| The dnsdist and keepalived edge | No | Yes | Yes |
-| Integrations, for example the external-dns webhook | No | Yes | Yes |
-| Use by a business | No | No | Yes |
+| Roles other than the built-in administrator | No | Yes | Yes* |
+| Single sign-on | No | Yes | Yes* |
+| The audit log and its export | No | Yes | Yes* |
+| Statistics for more than 24 hours | No | Yes | Yes* |
+| Access requests from the block page | No | Yes | Yes* |
+| The dnsdist and keepalived edge | No | Yes | Yes* |
+| Integrations, for example the external-dns webhook | No | Yes | Yes* |
+| Business or government production use | No | No | As granted by the agreement |
+
+\* If included in commercial license agreement.
 
 A node without a key has one administrator: the first-boot administrator.
 The bootstrap token and the admin socket also have full access. Role

@@ -1,7 +1,8 @@
 # Licensing and license keys
 
-kudurru is source-available under the PolyForm Noncommercial License 1.0.0.
-Personal use is free and a business needs an agreement ([LICENSING.md](../../LICENSING.md)
+kudurru is source-available under the Kudurru Community License.
+Eligible personal and nonprofit use is free; business and government
+production use needs an accepted commercial agreement and Order Form ([LICENSING.md](../../LICENSING.md)
 has the rules for people). This page shows how a **license key** reaches a
 node and what each state of the key changes. One promise holds in every
 state: **licensing never touches the DNS data path**. Queries are answered
@@ -57,13 +58,17 @@ license server. The payload carries:
 | `jti` | license id |
 | `iss` | always `kudurru` |
 | `sub` | licensee, a person or a company |
-| `plan` | `personal` (free, noncommercial), `business`, `enterprise` or `trial` |
+| `plan` | `personal` (free, eligible community use), `business`, `enterprise` or `trial` |
 | `nodes` | node limit |
 | `features` | licensed features; empty means every feature this build knows |
 | `iat`, `nbf`, `exp` | issued, not before, expires (Unix seconds); `exp` is required |
 
 The signature does not make a key a license: the license is the agreement,
-and a personal key does not widen the noncommercial terms.
+and a free personal/nonprofit key does not widen the community grant.
+Commercial Core rights and enterprise module entitlements are separate;
+enterprise features must be authorized in the Order Form. The website and
+license-server source have separate source-viewing licenses. Technical grace
+periods never extend the contractual subscription.
 
 ## What each state changes
 

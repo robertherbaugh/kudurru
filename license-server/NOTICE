@@ -1,11 +1,13 @@
 kudurru license portal (ghcr.io/robertherbaugh/kudurru-license-server)
-Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)
+Required Notice: Copyright 2026 Robert Herbaugh (https://kudurru.io)
 
 This file is the notice of the container image built from license-server/
 (license-server/Dockerfile), where it is /app/NOTICE. The license portal is
 the licensor's service that issues kudurru license keys; it is not part of
-kudurru and is not shipped with it. Its source is under the PolyForm
-Noncommercial License 1.0.0 (the repository's LICENSE).
+kudurru and is not shipped with it. Its project-controlled source is under
+the Kudurru License Server Source-Viewing License (license-server/LICENSE.md,
+included in the image as /app/LICENSE.md). Inspection is permitted; building,
+modifying, running or redistributing it requires prior written authorization.
 
 The image distributes third-party software under its own licenses, each
 unmodified and as a separate program or library:
