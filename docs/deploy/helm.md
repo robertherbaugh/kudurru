@@ -264,6 +264,36 @@ restart.
 Seed objects with `objects:` (post-install hook resources in
 mode=kubernetes: created once, then owned by kubectl and the UI).
 
+### Default object namespace and upgrades
+
+On a fresh `mode=kubernetes` install, the bootstrap creates `ClientGroup
+default`, `Policy default` and `BlockList starter` in the release namespace.
+The policy fallback, API writes without a namespace, dashboard allow/deny
+lists and block-page unblock requests use that namespace too. The root
+`DNSZone` is cluster-scoped. `mode=standalone` and Docker keep `default`.
+
+The CLI has its own namespace setting for commands that name resources:
+use `-n <release-namespace>` or set
+`--default-namespace <release-namespace>` when logging in. Namespace fields
+in dashboard object creation forms are explicit choices; set them to the
+release namespace.
+
+Earlier Kubernetes installs created these objects in `default`. At startup,
+if `Policy default` exists in `default` and no `Policy default` exists in the
+release namespace, kudurru keeps `default` for those defaults and logs a
+warning. It does not move, recreate or overwrite existing objects; operator
+edits and policy/list references stay intact. Identity Secrets, Leases and
+audit batches continue to use the release namespace.
+
+To move an existing install, copy the desired ClientGroups, BlockLists and
+Policies into the release namespace, preserving their names and references
+and including `Policy default`. Remove server-assigned metadata such as
+`uid`, `resourceVersion`, `creationTimestamp` and `managedFields` from the
+copies. Restart all replicas after the copies exist: a `Policy default` in
+the release namespace takes precedence. Verify blocking and API writes
+before removing the old resources. Default selection is made at startup,
+so keep both sets during the rollout.
+
 ## Monitoring
 
 | Value | Renders |

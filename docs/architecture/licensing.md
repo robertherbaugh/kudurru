@@ -86,8 +86,11 @@ Two details matter for an operator:
   limit refuses to create a second `Policy` through the API (`402`) and never
   touches an existing one. `checkPolicyLimit` counts every `Policy` in the
   store, so on a node without a key the bootstrap's `Policy default` fills the
-  limit, and without a key the only `Policy` the API creates is
-  `default/default`: deleting it lets it be made again, and nothing else.
+  limit, and without a key the only `Policy` the API creates is `default` in
+  the server's default namespace (`default` in Docker, the release namespace in
+  Kubernetes, where the bootstrap seeds its defaults since #40; `GET /license`
+  reports it as `defaultNamespace`): deleting it lets it be made again, and
+  nothing else.
   When the cluster has more nodes than the key allows (`Membership.Peers`,
   cached for 10 seconds), `POST`, `PUT`, `PATCH` and `DELETE` on `/api/v1`
   answer `402 license_required`, except sign-in (`/auth/*`), `/dns/query`,

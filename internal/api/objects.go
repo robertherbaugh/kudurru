@@ -610,9 +610,8 @@ func (s *Server) applyOne(ctx context.Context, doc map[string]any) ApplyResult {
 // batchDeleteInput is the body of POST /{kind}:batchDelete.
 type batchDeleteInput struct {
 	Body struct {
-		Names []string `json:"names" minItems:"1" maxItems:"1000"`
-		// Namespace of the objects (namespaced kinds; default "default").
-		Namespace string `json:"namespace,omitempty"`
+		Names     []string `json:"names" minItems:"1" maxItems:"1000"`
+		Namespace string   `json:"namespace,omitempty" doc:"Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes)."`
 	}
 }
 

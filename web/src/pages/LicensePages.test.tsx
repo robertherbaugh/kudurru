@@ -10,6 +10,7 @@ import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AccessPage from './AccessPage';
 import GroupDetailPage from './GroupDetailPage';
+import { useOnlyDefaultPolicy } from '../lib/usePolicyData';
 import LicensePage from './LicensePage';
 import LongTermPage from './LongTermPage';
 import PoliciesPage from './PoliciesPage';
@@ -167,6 +168,24 @@ describe('pages behind a key', () => {
     expect(name).toHaveValue('default');
     expect(name).toHaveAttribute('readonly');
     expect(within(dialog).getByText('Without a license key only the default policy can be created.')).toBeInTheDocument();
+  });
+
+  it('the one policy without a key lives in the server\'s default namespace: the release namespace in Kubernetes', async () => {
+    function Where() {
+      const only = useOnlyDefaultPolicy();
+      return <span data-testid="where">{only ? `${only.namespace}/default` : 'any'}</span>;
+    }
+    mockDB().license = { ...communityLicense(), defaultNamespace: 'dns' };
+    const first = renderWithApp(<Where />);
+    expect(await screen.findByText('dns/default')).toBeInTheDocument();
+    first.unmount();
+    mockDB().license = communityLicense();
+    const second = renderWithApp(<Where />);
+    expect(await screen.findByText('default/default')).toBeInTheDocument();
+    second.unmount();
+    mockDB().license = { ...mockDB().license, policyLimit: 0, defaultNamespace: 'dns' };
+    renderWithApp(<Where />);
+    expect(await screen.findByText('any')).toBeInTheDocument();
   });
 
   it('without a key a group page cannot start a policy, and a link to the wizard says why', async () => {

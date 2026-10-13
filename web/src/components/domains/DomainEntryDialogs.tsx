@@ -103,7 +103,7 @@ export interface AddEntryDialogProps {
   namespace?: string;
 }
 
-export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = 'deny', defaultType = 'exact', defaultValue = '', namespace = 'default' }: AddEntryDialogProps) {
+export function AddEntryDialog({ open, onClose, action: fixed, defaultAction = 'deny', defaultType = 'exact', defaultValue = '', namespace }: AddEntryDialogProps) {
   const api = useApi();
   const notify = useNotify();
   const invalidate = useInvalidateDomains();

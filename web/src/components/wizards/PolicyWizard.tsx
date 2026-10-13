@@ -57,10 +57,11 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
   const pols = usePolicies();
   // Reached through a link (?new=1) at the license's policy limit: say so before the steps.
   const limit = usePolicyLimit(pols.data?.items ?? NO_POLICIES);
-  // Without a valid license key the server creates only default/default
-  // (the seeded default policy, if it was deleted): the name is fixed.
+  // Without a valid license key the server creates only the default policy,
+  // in its default namespace (the seeded one, if it was deleted): the name and
+  // the namespace are fixed.
   const onlyDefault = useOnlyDefaultPolicy();
-  const namespace = onlyDefault ? DEFAULT_NAMESPACE : ns || sp.get('namespace') || DEFAULT_NAMESPACE;
+  const namespace = onlyDefault ? onlyDefault.namespace : ns || sp.get('namespace') || DEFAULT_NAMESPACE;
   const [nameInput, setName] = useState('');
   const name = onlyDefault ? 'default' : nameInput;
   const [comment, setComment] = useState('');
@@ -125,7 +126,7 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
               value={name}
               onChange={setName}
               isRequired
-              isReadOnly={onlyDefault}
+              isReadOnly={!!onlyDefault}
               mono
               help={onlyDefault ? 'Without a license key only the default policy can be created.' : 'Lower-case letters, digits and "-", e.g. kids-school-nights'}
               error={showErrors ? (nameError(name.trim()) ?? undefined) : undefined}

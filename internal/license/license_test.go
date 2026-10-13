@@ -138,16 +138,24 @@ func TestCommunityWithoutKey(t *testing.T) {
 		}
 		// And only the default policy can be created: never another name or
 		// namespace, even with none left.
-		if err := m.CheckPolicyCreate(CommunityPolicyNamespace, CommunityPolicyName, 0); err != nil {
+		if err := m.CheckPolicyCreate("default", "default", CommunityPolicyName, 0); err != nil {
 			t.Errorf("%s: creating the default with none left must be free: %v", name, err)
 		}
-		if err := m.CheckPolicyCreate(CommunityPolicyNamespace, CommunityPolicyName, 1); !errors.Is(err, ErrPolicyLimit) {
+		if err := m.CheckPolicyCreate("default", "default", CommunityPolicyName, 1); !errors.Is(err, ErrPolicyLimit) {
 			t.Errorf("%s: a second default = %v", name, err)
 		}
 		for _, other := range [][2]string{{"default", "kids"}, {"other", "default"}} {
-			if err := m.CheckPolicyCreate(other[0], other[1], 0); !errors.Is(err, ErrPolicyLimit) || !strings.Contains(err.Error(), "only the policy default/default") {
+			if err := m.CheckPolicyCreate("default", other[0], other[1], 0); !errors.Is(err, ErrPolicyLimit) || !strings.Contains(err.Error(), "only the policy default/default") {
 				t.Errorf("%s: CheckPolicyCreate(%s/%s, 0) = %v", name, other[0], other[1], err)
 			}
+		}
+		// In Kubernetes the seeded defaults live in the release namespace (#40):
+		// the default policy is "default" there, and no other namespace's.
+		if err := m.CheckPolicyCreate("dns", "dns", CommunityPolicyName, 0); err != nil {
+			t.Errorf("%s: the default policy of the release namespace must be free: %v", name, err)
+		}
+		if err := m.CheckPolicyCreate("dns", "default", CommunityPolicyName, 0); !errors.Is(err, ErrPolicyLimit) || !strings.Contains(err.Error(), "only the policy dns/default") {
+			t.Errorf("%s: default/default with the release namespace dns = %v", name, err)
 		}
 	}
 }

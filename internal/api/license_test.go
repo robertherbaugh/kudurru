@@ -346,3 +346,26 @@ func TestPolicyLimitHoldsUnderConcurrentCreates(t *testing.T) {
 		t.Errorf("%d policies exist, want none", n)
 	}
 }
+
+// In Kubernetes the seeded defaults live in the release namespace (#40), so
+// that is where the one policy without a key is: "default" in the server's
+// default namespace, and not "default/default".
+func TestPolicyLimitFollowsTheDefaultNamespace(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.DefaultNamespace = "dns" })
+	if res, err := bootstrap.Seed(context.Background(), h.st, bootstrap.Options{Namespace: "dns", Logger: slog.New(slog.DiscardHandler)}); err != nil || !res.FirstBoot {
+		t.Fatalf("seed: %+v, %v", res, err)
+	}
+	put := func(ns, name string) response {
+		return h.do(http.MethodPut, "/api/v1/objects/policies/"+ns+"/"+name, "admin", policyDoc(name))
+	}
+	r := put("dns", "kids")
+	r.want(http.StatusPaymentRequired)
+	if !strings.Contains(r.Body.String(), "only the policy dns/default can be created") {
+		t.Errorf("refusal names the wrong default: %s", r.Body.String())
+	}
+	put("dns", "default").want(http.StatusOK) // the seeded default stays editable
+	h.do(http.MethodDelete, "/api/v1/objects/policies/dns/default", "admin", nil).want(http.StatusNoContent)
+	put("default", "default").want(http.StatusPaymentRequired) // the old default namespace is not the default now
+	put("dns", "kids").want(http.StatusPaymentRequired)
+	put("dns", "default").want(http.StatusCreated) // the default can be made again, under its own name
+}

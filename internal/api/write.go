@@ -243,7 +243,8 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	}
 	if existing == nil && k.kind == "Policy" {
 		// A new Policy needs the license's room for it: without a valid key
-		// only default/default, and only while no Policy exists. The lock is
+		// only the default policy of the default namespace, and only while no
+		// Policy exists. The lock is
 		// held until the create is done: the check and the create are one step.
 		s.policyMu.Lock()
 		defer s.policyMu.Unlock()

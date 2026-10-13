@@ -1680,6 +1680,7 @@ export interface components {
         };
         BatchDeleteInputBody: {
             names: string[] | null;
+            /** @description Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         BindingScope: {
@@ -2186,6 +2187,7 @@ export interface components {
         DomainsRequest: {
             domains: string[] | null;
             list?: string;
+            /** @description Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         EdgeBackend: {
@@ -2339,6 +2341,8 @@ export interface components {
             p99_ms: number;
         };
         LicenseInfo: {
+            /** @description Namespace of the seeded defaults; without a key the only Policy that can be created is default in it. */
+            defaultNamespace: string;
             error?: string;
             /** Format: date-time */
             expiresAt?: string;
@@ -2840,6 +2844,7 @@ export interface components {
         QueryActionInputBody: {
             /** @enum {string} */
             action: "allow" | "deny";
+            /** @description Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         QueryClient: {
@@ -14094,7 +14099,7 @@ export interface operations {
             query?: {
                 /** @description DNSRecordSet to write; default api-<zone>. */
                 recordSet?: string;
-                /** @description Namespace of the record set; default "default". */
+                /** @description Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
                 namespace?: string;
             };
             header?: never;

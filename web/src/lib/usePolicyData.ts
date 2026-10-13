@@ -11,7 +11,7 @@ import { useLicense } from '../api/hooks';
 import type { BlockList, ClientGroup, Policy, PolicyState } from '../api/types';
 import { useCatalogueCategories, useCatalogueServices, useSafeSearchEngines } from '../components/ServiceGrid';
 import { policyLimitNotice } from './license';
-import { derivePolicyState, type DeriveContext } from './policies';
+import { DEFAULT_NAMESPACE, derivePolicyState, type DeriveContext } from './policies';
 import { useUpstreamGroups } from './upstreams';
 
 export function usePolicies() {
@@ -31,11 +31,14 @@ export function usePolicyLimit(policies: Policy[]): { title: string; description
 
 /**
  * Whether only the default policy can be created: without a valid license
- * key (policyLimit > 0) the server creates no Policy but default/default
+ * key (policyLimit > 0) the server creates no Policy but default in its default namespace
  * (internal/license CommunityPolicyName), so the wizard names it for the user.
  */
-export function useOnlyDefaultPolicy(): boolean {
-  return (useLicense().data?.policyLimit ?? 0) > 0;
+export function useOnlyDefaultPolicy(): { namespace: string } | null {
+  const l = useLicense().data;
+  // The default policy lives in the server's default namespace: "default" in
+  // Docker, the release namespace in Kubernetes (GET /license defaultNamespace).
+  return l && l.policyLimit > 0 ? { namespace: l.defaultNamespace || DEFAULT_NAMESPACE } : null;
 }
 
 export function useGroups() {

@@ -20,7 +20,7 @@ const KeyLicense = "license_required"
 type LicenseSource interface {
 	Status() license.Status
 	CheckNodes(n int) error
-	CheckPolicyCreate(namespace, name string, n int) error
+	CheckPolicyCreate(defaultNamespace, namespace, name string, n int) error
 }
 
 // LicenseInfo is GET /license: the effective license of this node and how
@@ -29,6 +29,10 @@ type LicenseInfo struct {
 	license.Status
 	// NodesInUse is how many nodes the cluster has now.
 	NodesInUse int `json:"nodesInUse"`
+	// DefaultNamespace is the namespace of the server's seeded defaults: the
+	// one Policy there may be without a key is "default" in it. It is
+	// "default" in Docker and the release namespace in Kubernetes.
+	DefaultNamespace string `json:"defaultNamespace" doc:"Namespace of the seeded defaults; without a key the only Policy that can be created is default in it."`
 	// OverLimit is true while the cluster is larger than the license
 	// allows; configuration writes through the API answer 402 meanwhile.
 	// DNS service is never affected.
@@ -51,7 +55,7 @@ func (s *Server) getLicense(ctx context.Context, _ *struct{}) (*licenseOutput, e
 		st = license.Unrestricted().Status()
 	}
 	n := s.nodeCount(ctx)
-	return &licenseOutput{Body: &LicenseInfo{Status: st, NodesInUse: n, OverLimit: n > st.Nodes}}, nil
+	return &licenseOutput{Body: &LicenseInfo{Status: st, NodesInUse: n, DefaultNamespace: s.opts.DefaultNamespace, OverLimit: n > st.Nodes}}, nil
 }
 
 // nodeCountTTL is how long the node count is reused by the license gate, and
@@ -156,7 +160,9 @@ func (s *Server) licenseMW(next http.Handler) http.Handler {
 
 // checkPolicyLimit refuses to create a Policy the license does not allow.
 // Without a valid key only the default policy exists: the API creates no
-// Policy but default/default (the one the bootstrap seeds), and that only
+// Policy but "default" in the server's default namespace (the one the bootstrap
+// seeds: default/default in Docker, <release namespace>/default in
+// Kubernetes), and that only
 // while no Policy exists, so deleting it lets it be made again and nothing
 // else. Every Policy in the store counts, whoever made it. Existing policies
 // are never touched: a lapsed key only stops new ones.
@@ -182,9 +188,9 @@ func (s *Server) checkPolicyLimit(ctx context.Context, namespace, name string) e
 			break
 		}
 	}
-	if err := s.opts.License.CheckPolicyCreate(namespace, name, n); err != nil {
+	if err := s.opts.License.CheckPolicyCreate(s.opts.DefaultNamespace, namespace, name, n); err != nil {
 		return newError(http.StatusPaymentRequired, KeyLicense, err.Error(),
-			"without a valid license key only the default policy (default/default) exists: change it instead, or add a license key (a free personal key lifts the limit; see https://kudurru.io/license); existing policies keep working")
+			"without a valid license key only the default policy ("+s.opts.DefaultNamespace+"/"+license.CommunityPolicyName+") exists: change it instead, or add a license key (a free personal key lifts the limit; see https://kudurru.io/license); existing policies keep working")
 	}
 	return nil
 }

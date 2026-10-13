@@ -246,16 +246,17 @@ func (m *Manager) CheckPolicies(n int) error {
 
 // CheckPolicyCreate returns an ErrPolicyLimit when the API may not create
 // the Policy namespace/name while n Policy objects exist. With a policy limit
-// (no valid key) only the default policy may be created, and only while
-// fewer than the limit exist; with a key anything goes.
-func (m *Manager) CheckPolicyCreate(namespace, name string, n int) error {
+// (no valid key) only the default policy (CommunityPolicyName in
+// defaultNamespace, the namespace of the server's seeded defaults) may be
+// created, and only while fewer than the limit exist; with a key anything goes.
+func (m *Manager) CheckPolicyCreate(defaultNamespace, namespace, name string, n int) error {
 	s := m.Status()
 	if s.PolicyLimit == 0 {
 		return nil
 	}
-	if namespace != CommunityPolicyNamespace || name != CommunityPolicyName {
+	if namespace != defaultNamespace || name != CommunityPolicyName {
 		return fmt.Errorf("%w: without a valid license key (state %s) only the policy %s/%s can be created",
-			ErrPolicyLimit, s.State, CommunityPolicyNamespace, CommunityPolicyName)
+			ErrPolicyLimit, s.State, defaultNamespace, CommunityPolicyName)
 	}
 	return m.CheckPolicies(n)
 }

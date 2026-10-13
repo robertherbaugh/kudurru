@@ -258,7 +258,9 @@ type Options struct {
 	// Version is the build information; NodeName is node.name.
 	Version  version.Info
 	NodeName string
-	// DefaultNamespace for namespaced objects without one ("default").
+	// DefaultNamespace for namespaced objects without one. The server supplies
+	// the release namespace in Kubernetes (or "default" for legacy installs).
+	// An empty option falls back to "default".
 	DefaultNamespace string
 	// Now is the clock (tests).
 	Now func() time.Time

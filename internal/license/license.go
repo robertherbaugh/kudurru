@@ -37,14 +37,13 @@ const CommunityNodes = 1
 // lifts the limit.
 const CommunityPolicies = 1
 
-// CommunityPolicyNamespace and CommunityPolicyName name the one Policy the
-// API creates without a key: the default policy the bootstrap seeds
-// (internal/bootstrap DefaultNamespace and DefaultPolicyName; a test there
-// keeps the names equal). Deleting it does not open the way to another.
-const (
-	CommunityPolicyNamespace = "default"
-	CommunityPolicyName      = "default"
-)
+// CommunityPolicyName is the name of the one Policy the API creates without a
+// key: the default policy the bootstrap seeds (internal/bootstrap
+// DefaultPolicyName; a test there keeps the names equal), in the server's
+// default namespace, which is "default" in Docker and the release namespace in
+// Kubernetes, so the namespace is passed to CheckPolicyCreate and not fixed
+// here. Deleting it does not open the way to another.
+const CommunityPolicyName = "default"
 
 // Plan is the kind of license a key grants.
 type Plan string

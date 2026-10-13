@@ -74,7 +74,7 @@ export const ALL_FEATURES = ['oidc', 'edge', 'integrations', 'rbac', 'audit', 'l
 
 /** A node without a key: one node, one policy (the seeded default), no licensed feature. */
 export function communityLicense(): LicenseInfo {
-  return { state: 'community', nodes: 1, nodesInUse: 1, overLimit: false, features: [], policyLimit: 1, took_ms: 0 };
+  return { state: 'community', nodes: 1, nodesInUse: 1, defaultNamespace: 'default', overLimit: false, features: [], policyLimit: 1, took_ms: 0 };
 }
 
 export const CLIENTS: { ip: string; name: string; group: string }[] = [
@@ -783,6 +783,7 @@ export function createDB(now = FIXED_NOW): MockDB {
       state: 'active',
       plan: 'personal',
       licensee: 'Homelab Hank',
+      defaultNamespace: 'default',
       id: 'lic_mock0000001',
       source: 'file /var/lib/kudurru/license.key',
       nodes: 3,

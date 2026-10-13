@@ -7,7 +7,7 @@ const NOW = Date.parse('2026-10-12T12:00:00Z');
 const day = (n: number) => new Date(NOW + n * 86_400_000).toISOString();
 
 function active(over: Partial<LicenseInfo> = {}): LicenseInfo {
-  return { state: 'active', plan: 'personal', nodes: 3, nodesInUse: 1, overLimit: false, features: ['rbac'], policyLimit: 0, expiresAt: day(400), graceEndsAt: day(430), took_ms: 0, ...over };
+  return { state: 'active', plan: 'personal', nodes: 3, nodesInUse: 1, defaultNamespace: 'default', overLimit: false, features: ['rbac'], policyLimit: 0, expiresAt: day(400), graceEndsAt: day(430), took_ms: 0, ...over };
 }
 
 describe('licenseNotice', () => {
