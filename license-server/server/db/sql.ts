@@ -51,17 +51,28 @@ export function connect(opts: ConnectOptions): Db {
   } catch {
     throw new Error('the database URL is not a URL');
   }
-  if (url.searchParams.has('sslmode')) {
-    throw new Error("the database URL has an sslmode= parameter: set DATABASE_TLS instead (Bun's sslmode=require does not verify the certificate)");
+  // sslmode=verify-full (what PlanetScale and others put in their URLs) and
+  // sslrootcert=system mean what DATABASE_TLS=verify-full does; they are
+  // taken out so Bun does not apply its own weaker reading. Anything else
+  // is refused (config.ts says the same at startup).
+  const sslmode = url.searchParams.get('sslmode');
+  if (sslmode !== null && sslmode !== 'verify-full') {
+    throw new Error(`the database URL has sslmode=${sslmode}: remove it or use verify-full (Bun's sslmode=require does not verify the certificate)`);
   }
+  if (sslmode === 'verify-full' && opts.tls === 'disable') throw new Error('the database URL asks for sslmode=verify-full but DATABASE_TLS is disable');
+  const rootcert = url.searchParams.get('sslrootcert');
+  if (rootcert !== null && rootcert !== 'system') throw new Error('the database URL has an sslrootcert= other than system: set DATABASE_CA_FILE instead');
+  url.searchParams.delete('sslmode');
+  url.searchParams.delete('sslrootcert');
+  const cleanUrl = url.toString();
   const common = {
     max: opts.max ?? 10,
     idleTimeout: opts.idleTimeout ?? 30,
     connectionTimeout: opts.connectionTimeout ?? 10,
   };
-  if (opts.tls === 'disable') return new SQL(opts.url, { ...common, tls: false });
+  if (opts.tls === 'disable') return new SQL(cleanUrl, { ...common, tls: false });
   const ca = opts.caFile ? readFileSync(opts.caFile, 'utf8') : undefined;
-  return new SQL(opts.url, {
+  return new SQL(cleanUrl, {
     ...common,
     tls: { rejectUnauthorized: true, serverName: url.hostname, ...(ca ? { ca } : {}) },
   });

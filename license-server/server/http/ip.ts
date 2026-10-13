@@ -1,4 +1,6 @@
-// Client addresses (design spec §3 TRUSTED_PROXIES, §6 rate limits). The
+// Client addresses (design spec §3 TRUSTED_PROXIES, §13 CLIENT_IP_HEADER,
+// §6 rate limits). With CLIENT_IP_HEADER the address is that header's,
+// set by the only proxy in front of the server (Cloudflare Containers). The
 // socket peer is the client unless it is a trusted proxy; then the client
 // is the rightmost X-Forwarded-For entry that is not itself a trusted
 // proxy (entries to its left are whatever the client chose to send, so
@@ -231,8 +233,20 @@ const UNTRUSTED_FORWARD_WARN_MS = 60_000;
  * gets one shared bucket rather than a client-chosen one. Every answer is
  * canonical (normalizeIp).
  */
-export function clientIpResolver(config: Pick<Config, 'trustedProxies'>, opts: ClientIpOptions = {}): (req: Request, peer: string | null) => string | null {
+export function clientIpResolver(config: Pick<Config, 'trustedProxies'> & Partial<Pick<Config, 'clientIpHeader'>>, opts: ClientIpOptions = {}): (req: Request, peer: string | null) => string | null {
   const trusted = parseTrustedProxies(config.trustedProxies);
+  const header = config.clientIpHeader ?? null;
+  if (header !== null) {
+    // CLIENT_IP_HEADER: the one proxy in front of the server (the Cloudflare
+    // Worker) sets it on every request, overwriting what a client sent.
+    // Without a valid address in it the peer stands, as without a proxy.
+    return (req, peer) => {
+      const ip = forwardedEntry(req.headers.get(header) ?? '');
+      if (ip) return formatIp(ip);
+      const peerIp = peer === null ? null : parseIp(peer);
+      return peerIp ? formatIp(peerIp) : peer;
+    };
+  }
   const now = opts.now ?? Date.now;
   let lastWarn = -Infinity;
   const isTrusted = (ip: IpAddress) => trusted.some((net) => cidrContains(net, ip));

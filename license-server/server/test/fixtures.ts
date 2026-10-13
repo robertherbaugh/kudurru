@@ -90,6 +90,7 @@ export function testConfig(overrides: ConfigOverrides = {}): Config {
     },
     session: { idleTimeoutMs: 30 * 60_000, lifetimeMs: 12 * 3_600_000 },
     trustedProxies: [],
+    clientIpHeader: null,
     mail: {
       smtpUrl: null,
       from: 'kudurru license portal <licenses@kudurru.io>',

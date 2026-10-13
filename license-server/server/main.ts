@@ -15,7 +15,7 @@
 // (≤ 20 s), stop the cleanup, close the pool and exit 0.
 
 import { GRANT_USAGE, grantSuperadmin, parseGrantArgs, UsageError, type GrantArgs } from './cli';
-import { ConfigError, loadConfig, redactedConfig, type Config } from './config';
+import { ConfigError, loadConfig, loadDatabaseConfig, redactedConfig, type Config, type DatabaseConfig } from './config';
 import { migrate, migrationStatus, UnknownMigrationError } from './db/migrate';
 import { connect, type Db } from './db/sql';
 import { createPipeline } from './http/pipeline';
@@ -43,11 +43,11 @@ function configOrExit(): Config {
   }
 }
 
-function dbFor(config: Config, url: string, max: number): Db {
+function dbFor(config: Pick<Config, 'database'>, url: string, max: number): Db {
   return connect({ url, max, tls: config.database.tls, caFile: config.database.caFile });
 }
 
-async function runMigrations(config: Config, log: Logger): Promise<void> {
+async function runMigrations(config: Pick<Config, 'database'>, log: Logger): Promise<void> {
   const db = dbFor(config, config.database.migrateUrl ?? config.database.url, 1);
   try {
     await migrate(db, { log });
@@ -120,7 +120,16 @@ async function serve(): Promise<void> {
 }
 
 async function migrateCommand(): Promise<void> {
-  const config = configOrExit();
+  // Only the database settings: migrations run as a one-off step (CI, a
+  // workstation, `docker run … migrate`) with the owner role, so the
+  // serving container needs neither the owner credentials nor DDL rights.
+  let config: DatabaseConfig;
+  try {
+    config = loadDatabaseConfig(process.env);
+  } catch (e) {
+    if (e instanceof ConfigError) fatal(null, e.message);
+    throw e;
+  }
   const log = jsonLogger({ level: config.logLevel });
   await runMigrations(config, log);
   process.exit(0);

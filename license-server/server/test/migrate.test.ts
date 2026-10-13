@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { migrate, migrationStatus, UnknownMigrationError } from '../db/migrate';
 import { connect, type Db } from '../db/sql';
 import { MIGRATIONS } from '../migrations';
+
+/** Every version this build knows. */
+const ALL = MIGRATIONS.map((m) => m.version);
 import { TEST_DATABASE_URL, databaseUrl, describeDb, hasDb, settle as run } from './db';
 
 // No database needed: the bundle must carry every .sql file, in order.
@@ -44,16 +47,16 @@ describeDb('migrations against Postgres', () => {
   });
 
   test('two instances starting together apply each migration once', async () => {
-    expect(await migrationStatus(db)).toEqual({ applied: [], pending: [1], unknown: [] });
+    expect(await migrationStatus(db)).toEqual({ applied: [], pending: ALL, unknown: [] });
     const [a, b] = await Promise.all([migrate(db), migrate(db)]);
-    expect([...a, ...b]).toEqual([1]);
-    expect(await migrationStatus(db)).toEqual({ applied: [1], pending: [], unknown: [] });
+    expect([...a, ...b].sort((x, y) => x - y)).toEqual(ALL);
+    expect(await migrationStatus(db)).toEqual({ applied: ALL, pending: [], unknown: [] });
   });
 
   test('a second run is a no-op', async () => {
     expect(await migrate(db)).toEqual([]);
-    const rows = await db<{ version: number; name: string }[]>`select version, name from schema_migrations`;
-    expect(rows).toEqual([{ version: 1, name: '0001_init' }]);
+    const rows = await db<{ version: number; name: string }[]>`select version, name from schema_migrations order by version`;
+    expect(rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
   });
 
   test('every table of spec §4 exists', async () => {
@@ -88,11 +91,12 @@ describeDb('migrations against Postgres', () => {
   });
 
   test('a failing migration rolls back its whole file', async () => {
-    const broken = [...MIGRATIONS, { version: 2, name: '0002_broken', sql: 'create table half_done (a int); select no_such_column from users;' }];
+    const next = MIGRATIONS.length + 1;
+    const broken = [...MIGRATIONS, { version: next, name: `${String(next).padStart(4, '0')}_broken`, sql: 'create table half_done (a int); select no_such_column from users;' }];
     await expect(migrate(db, { migrations: broken })).rejects.toMatchObject({ errno: '42703' });
     const tables = await db<{ n: string }[]>`select count(*) as n from information_schema.tables where table_name = 'half_done'`;
     expect(tables[0]!.n).toBe('0');
-    expect((await migrationStatus(db)).applied).toEqual([1]);
+    expect((await migrationStatus(db)).applied).toEqual(ALL);
   });
 
   test('audit_events refuses UPDATE, DELETE and TRUNCATE', async () => {

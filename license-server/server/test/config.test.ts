@@ -10,7 +10,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CONFIG_VARS, ConfigError, isLoopbackHost, loadConfig, parseDuration, redactedConfig, type Env } from '../config';
+import { CONFIG_VARS, ConfigError, isLoopbackHost, loadConfig, loadDatabaseConfig, parseDuration, redactedConfig, type Env } from '../config';
 
 const required = {
   PUBLIC_URL: 'https://licenses.example.org/',
@@ -119,14 +119,17 @@ describe('startup refusals', () => {
   };
   const accepts = (env: Env) => expect(() => loadConfig({ ...required, ...env })).not.toThrow();
 
-  test('database URLs: sslmode refused, postgres only, no password echoed', () => {
-    for (const mode of ['require', 'prefer', 'verify-full', 'disable']) {
+  test('database URLs: sslmode other than verify-full refused, postgres only, no password echoed', () => {
+    for (const mode of ['require', 'prefer', 'allow', 'verify-ca', 'disable']) {
       const msg = refusal({ DATABASE_URL: `postgres://app:hunter2@db/licenses?sslmode=${mode}` });
-      expect(msg).toContain('DATABASE_URL has an sslmode= parameter');
+      expect(msg).toContain(`DATABASE_URL has sslmode=${mode}`);
       expect(msg).toContain('DATABASE_TLS');
       expect(msg).not.toContain('hunter2');
     }
-    expect(refusal({ DATABASE_MIGRATE_URL: 'postgresql://owner:hunter2@db/licenses?sslmode=require' })).toContain('DATABASE_MIGRATE_URL has an sslmode= parameter');
+    expect(refusal({ DATABASE_MIGRATE_URL: 'postgresql://owner:hunter2@db/licenses?sslmode=require' })).toContain('DATABASE_MIGRATE_URL has sslmode=require');
+    // PlanetScale and others put these in their connection strings; they mean DATABASE_TLS=verify-full.
+    accepts({ DATABASE_URL: 'postgres://app:pw@db.example:5432/licenses?sslmode=verify-full&sslrootcert=system' });
+    expect(refusal({ DATABASE_URL: 'postgres://app:pw@db/licenses?sslmode=verify-full&sslrootcert=/etc/ca.pem' })).toContain('DATABASE_CA_FILE');
     expect(refusal({ DATABASE_URL: 'sqlite://./app.db' })).toBe('DATABASE_URL must be a postgres:// URL');
     expect(refusal({ DATABASE_URL: 'hunter2 is not a url' })).not.toContain('hunter2');
     accepts({ DATABASE_URL: 'postgresql://app:pw@db:5432/licenses?application_name=portal' });
@@ -143,12 +146,10 @@ describe('startup refusals', () => {
     expect(refusal({ DATABASE_CA_FILE: join(dir, 'ca.pem'), DATABASE_TLS: 'disable' })).toContain('drop one');
   });
 
-  test('the signing key: env form only in dev mode, key and kid together, kid a plain name', () => {
-    const msg = refusal({ LICENSE_SIGNING_KEY: 'c2VjcmV0LXNlZWQ=', LICENSE_SIGNING_KID: 'kudurru-2026-1' });
-    expect(msg).toContain('LICENSE_SIGNING_KEY');
-    expect(msg).toContain('LICENSE_SERVER_DEV=true');
-    expect(msg).not.toContain('c2VjcmV0LXNlZWQ=');
+  test('the signing key: file or env form (Cloudflare passes secrets as env vars), key and kid together, kid a plain name', () => {
+    accepts({ LICENSE_SIGNING_KEY: 'c2VjcmV0LXNlZWQ=', LICENSE_SIGNING_KID: 'kudurru-2026-1' });
     accepts({ LICENSE_SERVER_DEV: 'true', LICENSE_SIGNING_KEY: 'c2VjcmV0LXNlZWQ=', LICENSE_SIGNING_KID: 'e2e-test' });
+    expect(refusal({ LICENSE_SIGNING_KEY: 'c2VjcmV0LXNlZWQ=' })).not.toContain('c2VjcmV0LXNlZWQ=');
     expect(refusal({ LICENSE_SIGNING_KEY_FILE: '/run/secrets/signing.key' })).toBe('a signing key is configured without LICENSE_SIGNING_KID');
     expect(refusal({ LICENSE_SIGNING_KID: 'kudurru-2026-1' })).toContain('LICENSE_SIGNING_KID is set but no signing key is');
     expect(refusal({ LICENSE_SERVER_DEV: 'true', LICENSE_SIGNING_KEY: 'x', LICENSE_SIGNING_KEY_FILE: '/k', LICENSE_SIGNING_KID: 'k' })).toContain('both set');
@@ -256,5 +257,25 @@ describe('startup refusals', () => {
       SMTP_URL: 'smtp://localhost:1025',
       PUBLIC_FORM_ORIGINS: 'http://localhost:8792',
     });
+  });
+});
+
+describe('CLIENT_IP_HEADER and the migrate configuration', () => {
+  const base = { PUBLIC_URL: 'https://licenses.example', DATABASE_URL: 'postgres://app:pw@db/licenses', OIDC_ISSUER: 'https://idp.example', OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's' };
+
+  test('CLIENT_IP_HEADER: a header name, lower-cased; never a credential header', () => {
+    expect(loadConfig({ ...base, CLIENT_IP_HEADER: 'X-Client-IP' }).clientIpHeader).toBe('x-client-ip');
+    expect(loadConfig(base).clientIpHeader).toBeNull();
+    expect(() => loadConfig({ ...base, CLIENT_IP_HEADER: 'X Client' })).toThrow('CLIENT_IP_HEADER must be a header name');
+    expect(() => loadConfig({ ...base, CLIENT_IP_HEADER: 'Cookie' })).toThrow('CLIENT_IP_HEADER cannot be cookie');
+  });
+
+  test('loadDatabaseConfig needs only the database settings (DATABASE_MIGRATE_URL alone is enough)', () => {
+    const only = loadDatabaseConfig({ DATABASE_MIGRATE_URL: 'postgres://owner:pw@db/licenses?sslmode=verify-full', LOG_LEVEL: 'warn' });
+    expect(only.database.url).toBe('postgres://owner:pw@db/licenses?sslmode=verify-full');
+    expect(only.database.migrateUrl).toBe('postgres://owner:pw@db/licenses?sslmode=verify-full');
+    expect(only.logLevel).toBe('warn');
+    expect(() => loadDatabaseConfig({})).toThrow('DATABASE_URL is required');
+    expect(() => loadDatabaseConfig({ DATABASE_URL: 'postgres://a:b@db/x?sslmode=require' })).toThrow('sslmode=require');
   });
 });

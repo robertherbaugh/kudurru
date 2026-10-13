@@ -1,7 +1,8 @@
 // Loading the signing state at startup (design spec §0.6): the trusted
 // keyring from LICENSE_TRUSTED_KEYS_DIR (<kid>.pub files, the format kudurru
 // releases embed) and the one signer from LICENSE_SIGNING_KEY_FILE +
-// LICENSE_SIGNING_KID (the env form LICENSE_SIGNING_KEY only in dev mode).
+// LICENSE_SIGNING_KID, or LICENSE_SIGNING_KEY where the platform passes
+// secrets as environment variables only (Cloudflare Containers).
 //
 // Refusals (thrown as Error with one clear sentence; main.ts exits): an
 // empty or unreadable trusted dir, a bad .pub file, both key forms set, the
@@ -159,7 +160,6 @@ export async function loadSigning(config: Config, log: Logger): Promise<SigningS
   const dir = config.signing.trustedKeysDir;
 
   if (keyFile && keyEnv) throw new Error('LICENSE_SIGNING_KEY_FILE and LICENSE_SIGNING_KEY are both set; set only LICENSE_SIGNING_KEY_FILE');
-  if (keyEnv && !config.devMode) throw new Error('LICENSE_SIGNING_KEY is accepted only with LICENSE_SERVER_DEV=true; mount the key as a file and set LICENSE_SIGNING_KEY_FILE');
   if (!keyFile && !keyEnv) {
     if (kid) log.warn('LICENSE_SIGNING_KID is set but no signing key is configured', { kid });
     return signingUnavailable('no signing key is configured', keyring);

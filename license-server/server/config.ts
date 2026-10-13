@@ -9,15 +9,19 @@
 // loadConfig parses and checks types and required values; validateConfig
 // then refuses the settings the spec (§0.6, §2, §3) says the server must not
 // start with, each with one sentence naming the variable and the fix:
-// an sslmode= in a database URL (Bun's sslmode=require does not verify the
-// certificate), a non-Postgres database URL, LICENSE_SIGNING_KEY outside dev
-// mode, a signing key without its kid (or a kid without a key),
+// an sslmode= in a database URL other than verify-full (Bun's
+// sslmode=require does not verify the certificate), a non-Postgres database
+// URL, a signing key without its kid (or a kid without a key),
 // DEFAULT_ROLE=customer with admin group mappings but no
 // OIDC_ADMIN_CLAIM_RULES, an http OIDC issuer unless it is a loopback
 // literal and PUBLIC_URL is http too, a PUBLIC_URL that is more than an
-// origin, TRUSTED_PROXIES entries that are not CIDRs and
-// PUBLIC_FORM_ORIGINS entries that are not exact origins. No message ever
-// repeats a secret's value.
+// origin, TRUSTED_PROXIES entries that are not CIDRs, a CLIENT_IP_HEADER that
+// is not a header name and PUBLIC_FORM_ORIGINS entries that are not exact
+// origins. No message ever repeats a secret's value.
+//
+// The signing key: LICENSE_SIGNING_KEY_FILE where secrets are files (Docker,
+// Kubernetes); LICENSE_SIGNING_KEY where the platform hands secrets over as
+// environment variables only (Cloudflare Containers, spec §13).
 
 import { accessSync, constants, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -81,7 +85,7 @@ export interface Config {
   signing: {
     /** LICENSE_SIGNING_KEY_FILE: std base64 of the 32-byte seed (licensegen format). */
     keyFile: string | null;
-    /** LICENSE_SIGNING_KEY, dev mode only. Secret: never logged, never shown. */
+    /** LICENSE_SIGNING_KEY: the seed itself, for platforms that hand secrets over as environment variables only. Secret: never logged, never shown. */
     keyEnv: string | null;
     kid: string | null;
     /** Directory of <kid>.pub files, as the kudurru releases embed them. */
@@ -97,6 +101,13 @@ export interface Config {
   };
   /** TRUSTED_PROXIES as given (CIDRs); server/http/ip.ts parses them. */
   trustedProxies: string[];
+  /**
+   * CLIENT_IP_HEADER: a request header that holds the client address, set by
+   * the only proxy in front of the server (the Cloudflare Worker sets
+   * X-Client-IP from CF-Connecting-IP). Believed on every request, so only
+   * for a server no client can reach without that proxy. Lower-case.
+   */
+  clientIpHeader: string | null;
   mail: {
     /** SMTP_URL; null: mail is not configured. Secret. */
     smtpUrl: string | null;
@@ -170,13 +181,14 @@ export const CONFIG_VARS = [
   { name: 'LICENSE_SIGNING_KEY_FILE', default: null, description: 'File with the signing seed (licensegen format)' },
   { name: 'LICENSE_SIGNING_KID', default: null, description: 'Key id of the signing key (a plain file name: <kid>.pub in the trusted keys directory)' },
   // Not read from LICENSE_SIGNING_KEY_FILE: that is the file form above, the production one.
-  { name: 'LICENSE_SIGNING_KEY', default: null, secret: true, description: 'The signing seed itself, dev mode only' },
+  { name: 'LICENSE_SIGNING_KEY', default: null, secret: true, description: 'The signing seed itself, for platforms that pass secrets as environment variables only (Cloudflare Containers); elsewhere prefer LICENSE_SIGNING_KEY_FILE' },
   { name: 'LICENSE_TRUSTED_KEYS_DIR', default: REPO_TRUSTED_KEYS_DIR, description: 'Directory of <kid>.pub files kudurru releases embed (image: /app/trusted-keys)' },
   { name: 'LICENSE_SIGNING_TRUSTED_SINCE', default: null, description: 'First kudurru release that trusts the signing kid, e.g. v0.1.0' },
   { name: 'REQUIRE_SIGNING_KEY', default: 'false', description: 'Refuse to start without a usable signing key' },
   { name: 'SESSION_IDLE_TIMEOUT', default: '30m', description: 'Session idle timeout' },
   { name: 'SESSION_LIFETIME', default: '12h', description: 'Absolute session lifetime' },
   { name: 'TRUSTED_PROXIES', default: '', description: 'CIDRs whose X-Forwarded-For is believed (comma list)' },
+  { name: 'CLIENT_IP_HEADER', default: null, description: 'A header the only proxy in front of the server sets to the client address (X-Client-IP behind the Cloudflare Worker)' },
   { name: 'SMTP_URL', default: null, file: true, secret: true, description: 'smtp://user:pass@host:587 (STARTTLS) or smtps://…:465' },
   { name: 'MAIL_FROM', default: 'kudurru license portal <licenses@kudurru.io>', description: 'From header of every mail' },
   { name: 'MAIL_REPLY_TO', default: 'hello@kudurru.io', description: 'Reply-To header of every mail' },
@@ -333,8 +345,35 @@ function databaseUrlProblem(name: string, url: string): string | null {
     return `${name} is not a URL (postgres://user:password@host:5432/database)`;
   }
   if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') return `${name} must be a postgres:// URL`;
-  if (u.searchParams.has('sslmode')) return `${name} has an sslmode= parameter: remove it and set DATABASE_TLS instead (verify-full, the default, or disable); Bun's sslmode=require encrypts without verifying the certificate`;
+  const sslmode = u.searchParams.get('sslmode');
+  if (sslmode !== null && sslmode !== 'verify-full') {
+    return `${name} has sslmode=${sslmode}: remove it (DATABASE_TLS=verify-full, the default, verifies the certificate) or use sslmode=verify-full; Bun's sslmode=require encrypts without verifying the certificate`;
+  }
+  const rootcert = u.searchParams.get('sslrootcert');
+  if (rootcert !== null && rootcert !== 'system') return `${name} has sslrootcert=${rootcert}: set DATABASE_CA_FILE to a CA bundle instead (sslrootcert=system, the public roots, is the default)`;
   return null;
+}
+
+/** What `server.js migrate` needs: the database settings and the log level, nothing about sign-in or the public URL. */
+export type DatabaseConfig = Pick<Config, 'database' | 'logLevel'>;
+
+/**
+ * The database part of the configuration, for one-off migrations from CI
+ * or a workstation (spec §14): only DATABASE_* and LOG_LEVEL are read, so
+ * no sign-in settings or public URL are needed. DATABASE_MIGRATE_URL alone
+ * is enough (it is the URL migrations use).
+ */
+export function loadDatabaseConfig(env: Env): DatabaseConfig {
+  const kept: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(env)) if (k.startsWith('DATABASE_') || k === 'LOG_LEVEL') kept[k] = v;
+  const given = (name: string): boolean => (kept[name] ?? '') !== '' || (kept[`${name}_FILE`] ?? '') !== '';
+  if (!given('DATABASE_URL') && given('DATABASE_MIGRATE_URL')) {
+    kept.DATABASE_URL = kept.DATABASE_MIGRATE_URL;
+    kept.DATABASE_URL_FILE = kept.DATABASE_MIGRATE_URL_FILE;
+  }
+  // loadConfig requires these; migrations never use them.
+  const config = loadConfig({ ...kept, PUBLIC_URL: 'http://localhost', OIDC_ISSUER: 'http://localhost/unused', OIDC_CLIENT_ID: 'unused', OIDC_CLIENT_SECRET: 'unused' });
+  return { database: config.database, logLevel: config.logLevel };
 }
 
 /**
@@ -416,6 +455,7 @@ export function loadConfig(env: Env): Config {
       lifetimeMs: duration('SESSION_LIFETIME', need('SESSION_LIFETIME')),
     },
     trustedProxies: commaList(get('TRUSTED_PROXIES')),
+    clientIpHeader: get('CLIENT_IP_HEADER')?.toLowerCase() ?? null,
     mail: {
       smtpUrl: get('SMTP_URL'),
       from: need('MAIL_FROM'),
@@ -514,12 +554,9 @@ export function validateConfig(config: Config): void {
 
   // Signing (the key itself is checked by licensing/keyring.ts).
   const s = config.signing;
-  if (s.keyEnv !== null && !config.devMode) {
-    throw new ConfigError('LICENSE_SIGNING_KEY (the key in an environment variable) is accepted only with LICENSE_SERVER_DEV=true: mount the key as a file and set LICENSE_SIGNING_KEY_FILE');
-  }
   if (s.keyEnv !== null && s.keyFile !== null) throw new ConfigError('LICENSE_SIGNING_KEY and LICENSE_SIGNING_KEY_FILE are both set; set one');
   if ((s.keyEnv !== null || s.keyFile !== null) && s.kid === null) throw new ConfigError('a signing key is configured without LICENSE_SIGNING_KID');
-  if (s.kid !== null && s.keyEnv === null && s.keyFile === null) throw new ConfigError('LICENSE_SIGNING_KID is set but no signing key is (set LICENSE_SIGNING_KEY_FILE)');
+  if (s.kid !== null && s.keyEnv === null && s.keyFile === null) throw new ConfigError('LICENSE_SIGNING_KID is set but no signing key is (set LICENSE_SIGNING_KEY_FILE or LICENSE_SIGNING_KEY)');
   if (s.kid !== null && !KID.test(s.kid)) throw new ConfigError(`LICENSE_SIGNING_KID must be a plain file name such as kudurru-2026-1, got ${JSON.stringify(s.kid)}`);
 
   // The network.
@@ -529,6 +566,11 @@ export function validateConfig(config: Config): void {
     } catch {
       throw new ConfigError(`TRUSTED_PROXIES: ${JSON.stringify(entry)} is not an IP address or CIDR (e.g. 10.0.0.0/8, fd00::/8)`);
     }
+  }
+
+  if (config.clientIpHeader !== null) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(config.clientIpHeader)) throw new ConfigError(`CLIENT_IP_HEADER must be a header name such as X-Client-IP, got ${JSON.stringify(config.clientIpHeader)}`);
+    if (['cookie', 'authorization', 'host', 'origin', 'x-kudurru-csrf'].includes(config.clientIpHeader)) throw new ConfigError(`CLIENT_IP_HEADER cannot be ${config.clientIpHeader}`);
   }
 
   // Mail.

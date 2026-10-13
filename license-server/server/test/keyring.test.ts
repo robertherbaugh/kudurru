@@ -91,7 +91,7 @@ describe('loadSigning', () => {
   });
 
   const refusals: [string, () => Promise<ReturnType<typeof testConfig>>, string][] = [
-    ['the env form outside dev mode', () => Promise.resolve(signingConfig({ keyEnv: GOLDEN.seed, kid: GOLDEN.kid }, false)), 'only with LICENSE_SERVER_DEV=true'],
+    ['the env form with a test kid outside dev mode', () => Promise.resolve(signingConfig({ keyEnv: GOLDEN.seed, kid: GOLDEN.kid }, false)), 'is a test key'],
     ['both forms', () => Promise.resolve(signingConfig({ keyEnv: GOLDEN.seed, keyFile: keyFile(GOLDEN.seed), kid: GOLDEN.kid })), 'both set'],
     ['a key without a kid', () => Promise.resolve(signingConfig({ keyFile: keyFile(GOLDEN.seed) })), 'LICENSE_SIGNING_KID is required'],
     ['a kid that is not trusted', () => Promise.resolve(signingConfig({ keyFile: keyFile(GOLDEN.seed), kid: 'kudurru-2027-1' })), 'is not in LICENSE_TRUSTED_KEYS_DIR'],

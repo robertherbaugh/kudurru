@@ -5,6 +5,7 @@
 // 0002_<name>.sql and a line here.
 
 import init from './0001_init.sql' with { type: 'text' };
+import runtimeGrants from './0002_runtime_grants.sql' with { type: 'text' };
 
 export interface Migration {
   /** The number in the file name; schema_migrations.version. */
@@ -14,4 +15,7 @@ export interface Migration {
   sql: string;
 }
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: '0001_init', sql: init }];
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: '0001_init', sql: init },
+  { version: 2, name: '0002_runtime_grants', sql: runtimeGrants },
+];

@@ -112,3 +112,26 @@ describe('clientIp', () => {
     expect(() => clientIpResolver({ trustedProxies: ['10.0.0.0/8', 'proxy.internal'] })).toThrow(RangeError);
   });
 });
+
+describe('CLIENT_IP_HEADER (behind the Cloudflare Worker)', () => {
+  const withHeader = (value?: string, xff?: string) => {
+    const h = new Headers();
+    if (value !== undefined) h.set('X-Client-IP', value);
+    if (xff !== undefined) h.set('X-Forwarded-For', xff);
+    return new Request('http://localhost/', { headers: h });
+  };
+
+  test('the header names the client, canonicalised; X-Forwarded-For is ignored', () => {
+    const ip = clientIpResolver({ trustedProxies: [], clientIpHeader: 'x-client-ip' });
+    expect(ip(withHeader('198.51.100.7', '10.0.0.1'), '172.17.0.1')).toBe('198.51.100.7');
+    expect(ip(withHeader('2001:DB8:0:0::1'), '172.17.0.1')).toBe('2001:db8::1');
+    expect(ip(withHeader('::ffff:192.0.2.9'), '172.17.0.1')).toBe('192.0.2.9');
+  });
+
+  test('a missing or malformed header falls back to the peer', () => {
+    const ip = clientIpResolver({ trustedProxies: [], clientIpHeader: 'x-client-ip' });
+    expect(ip(withHeader(), '172.17.0.1')).toBe('172.17.0.1');
+    expect(ip(withHeader('not an address'), '172.17.0.1')).toBe('172.17.0.1');
+    expect(ip(withHeader('198.51.100.7, 10.0.0.1'), '172.17.0.1')).toBe('172.17.0.1');
+  });
+});
