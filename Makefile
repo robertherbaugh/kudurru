@@ -431,9 +431,12 @@ edge-check: edge-images
 	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_SUPERVISOR_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only"
 	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_KEEPALIVED_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later"
 
-## kind-e2e: kind + MetalLB + both charts, dig through the LoadBalancer over
-## UDP and TCP (split and mixed Services), rolling restart without unanswered
-## queries (hack/kind-e2e.sh; needs docker, kind, helm, kubectl, dig).
+## kind-e2e: three replicas on a four-node kind cluster with MetalLB and both
+## charts: dig through the LoadBalancer over UDP and TCP (split and mixed
+## Services), the API, query log and audit log of every replica, a rolling
+## restart without unanswered queries, then the same with a PostgreSQL
+## database that is stopped and started (hack/kind-e2e.sh; needs docker, kind,
+## helm, kubectl, jq, dig).
 kind-e2e:
 	hack/kind-e2e.sh
 

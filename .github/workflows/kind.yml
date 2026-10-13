@@ -1,45 +1,72 @@
-# kind + MetalLB + Helm smoke test (week-1 spike (f), docs/release-checklist.md
-# §3): hack/kind-e2e.sh builds the image, installs both charts with
-# vip.provider=metallb, digs through the LoadBalancer address over UDP and
-# TCP with service.dns.splitProtocols false and true, and counts unanswered
-# queries during a rolling restart. Not a required check until it has a
-# record of green runs; the sandbox that wrote it cannot run kind (no memory
-# cgroup controller), so the first run is on GitHub.
+# kind + MetalLB + Helm end-to-end test (hack/kind-e2e.sh, docs/m5/e2e.md):
+# the image built from the Dockerfile on a kind cluster of a control-plane
+# node and three workers, with both charts, three replicas and MetalLB.
+# Part 1 checks the cluster without a database: DNS over UDP and TCP through
+# the LoadBalancer, every replica's API (nodes, objects, the query log of
+# all nodes, the audit log across a replaced replica) and a rolling restart
+# under load. Part 2 does the same with the central PostgreSQL database
+# and stops the database for a while.
+#
+# Runs on every pull request and push to main that touches more than
+# docs/, site/ and www/, so it can be a required check: those changes skip
+# the job rather than the workflow, because a skipped job satisfies a
+# required status check and a workflow that never runs does not (the same
+# gate as ci.yml). The runner has to hold the four kind nodes, PostgreSQL
+# and three replicas: standard-2 has 8 GB.
 name: kind
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - charts/**
-      - hack/kind-e2e.sh
-      - Dockerfile
-      - .github/workflows/kind.yml
   push:
     branches: [main]
-    paths:
-      - charts/**
-      - hack/kind-e2e.sh
 permissions:
   contents: read
 jobs:
-  kind-metallb:
+  changes:
     runs-on: ubicloud-standard-2-ubuntu-2404
-    timeout-minutes: 30
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Run unless git can list the changes and every one is under
+          # docs/, site/ or www/ (a new branch, a manual run or an
+          # unreachable force-pushed base runs the test).
+          code=true
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www)/' <<<"$files"; then
+              code=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+  kind-metallb:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 45
     env:
       KIND_VERSION: v0.33.0
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.3.0
-      - name: Install kind and dig
+      - name: Install kind, dig and jq
         run: |
           curl -fsSLo kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
           curl -fsSLo kind.sha256 "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64.sha256sum"
           echo "$(cut -d' ' -f1 kind.sha256)  kind" | sha256sum -c -
           sudo install -m 0755 kind /usr/local/bin/kind
           rm kind kind.sha256
-          command -v dig || { sudo apt-get update && sudo apt-get install -y dnsutils; }
-          kind version; helm version --short; kubectl version --client
-      - name: kind + MetalLB + helm install + dig over UDP and TCP
+          for tool in dig jq; do
+            command -v "$tool" || { sudo apt-get update && sudo apt-get install -y dnsutils jq; break; }
+          done
+          kind version; helm version --short; kubectl version --client; jq --version
+      - name: kind + MetalLB + helm install, DNS, API and PostgreSQL checks
         run: hack/kind-e2e.sh

@@ -151,8 +151,20 @@ spec:
 ```sh
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru \
   --set database.existingSecret=kudurru-db-app \
+  --set database.clusterDNS=true \
   --set-json 'config.settings.database={"querylog":{"retention":{"raw":"168h"}}}'
 ```
+
+The pods use `dnsPolicy: Default`, the node's resolver, because kudurru can
+be the cluster's own resolver. A cluster Service name such as the
+`kudurru-db-rw.kudurru-system` of a CloudNativePG `uri` therefore does not
+resolve from them ("hostname resolving error" in the logs). Put the
+Service's ClusterIP or an external name that the node resolves in the
+connection string (a Secret of your own with the key `uri`), or set
+`database.clusterDNS=true`: the pods then use `dnsPolicy: ClusterFirst`, and
+the `kudurru-db-app` Secret works as it is. Do not set it when kudurru is
+what resolves the cluster's names (the pods would resolve through
+themselves). With `hostNetwork.enabled` cluster names already resolve.
 
 DNS never waits for the database. When it is unreachable, each replica
 keeps its data and sends it later, and the `KudurruCentralDatabaseDown`
