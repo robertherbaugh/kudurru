@@ -42,7 +42,7 @@ function requestForm(licenseApi: string): Html {
         <pre class="mono" id="lic-mail-text" data-mail-text></pre>
         <button class="more" type="button" data-copy="lic-mail-text"><span>Copy</span></button>
       </div>
-      <p class="fine">A personal request goes to our license server, which emails you a link to confirm your address and then your key. A business request is not sent anywhere: it opens an email to ${LICENSE_CONTACT} with the subject ${BUSINESS_SUBJECT} and your details filled in.</p>
+      <p class="fine">A personal request goes to our license server, which emails you a link to confirm your address. After you confirm, we review the request and email your key once it is approved. A business request is not sent anywhere: it opens an email to ${LICENSE_CONTACT} with the subject ${BUSINESS_SUBJECT} and your details filled in.</p>
     </form>`;
 }
 

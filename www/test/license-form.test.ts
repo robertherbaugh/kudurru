@@ -80,6 +80,9 @@ describe("the personal request", () => {
     const out = await sendPersonal("https://licenses.kudurru.io/api/v1/public/key-requests", personal, f);
     expect(out.ok).toBe(true);
     expect(out.message).toContain("Check your inbox");
+    // Personal keys are approved by an administrator: the text says so, and does not promise a key on confirmation.
+    expect(out.message).toContain("we review the request and email your key once it is approved");
+    expect(out.message).not.toContain("arrives by email after you confirm");
     expect(sent?.init.method).toBe("POST");
     expect((sent?.init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
     expect(sent?.init.credentials).toBe("omit");

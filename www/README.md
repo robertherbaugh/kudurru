@@ -46,8 +46,9 @@ comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 `/license/` has a form with two kinds of request. A **personal** request is
 sent from the visitor's browser to the license server
 (`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
-empty honeypot `website`; the server emails a confirmation link and then the
-key, and a `202` is the answer to any valid request). A **business or other**
+empty honeypot `website`; the server emails a confirmation link; after the
+visitor confirms, an administrator approves the request and the server emails
+the key; a `202` is the answer to any valid request). A **business or other**
 request is never sent to a server: the browser opens a mail to
 `hello@kudurru.io` with the subject `Business License` and the name, business,
 email, number of nodes and details in the body, and shows the same text to

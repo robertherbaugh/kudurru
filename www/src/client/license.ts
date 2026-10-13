@@ -110,7 +110,7 @@ export async function sendPersonal(endpoint: string, f: Fields, fetchImpl: typeo
     return { ok: false, fallback: true, message: "The license server could not be reached." };
   }
   if (res.status === 202) {
-    return { ok: true, message: "Check your inbox. We sent a link to confirm your address; your key arrives by email after you confirm. Look in your spam folder if nothing arrives in a few minutes." };
+    return { ok: true, message: "Check your inbox. We sent a link to confirm your address. After you confirm, we review the request and email your key once it is approved. Look in your spam folder if nothing arrives in a few minutes." };
   }
   if (res.status === 429) {
     const wait = Number(res.headers.get("Retry-After"));

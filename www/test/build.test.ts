@@ -157,6 +157,10 @@ describe("the key request form", () => {
     expect(page).toContain('<a href="/license/text/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).');
   });
 
+  test("says that a personal key is approved before it is mailed", () => {
+    expect(pages["license/index.html"]).toContain("After you confirm, we review the request and email your key once it is approved.");
+  });
+
   test("says where a business request goes", () => {
     const page = pages["license/index.html"]!;
     expect(page).toContain("opens an email to hello@kudurru.io with the subject Business License");
