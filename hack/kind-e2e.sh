@@ -308,7 +308,11 @@ rolling_restart_under_load() {
 # --- the cluster ---
 
 log "build $IMAGE"
-docker build -q -t "$IMAGE" --build-arg VERSION=kind-e2e --build-arg COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)" "$ROOT"
+# -tags licensetest: the cluster runs three replicas and writes through the API,
+# which needs a license key, and CI has no signing key. The image trusts the
+# throwaway key of internal/license/testdata (installed below); it is loaded into
+# kind and never pushed.
+docker build -q -t "$IMAGE" --build-arg VERSION=kind-e2e --build-arg COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)" --build-arg GOTAGS=licensetest "$ROOT"
 
 log "kind cluster $CLUSTER (control-plane and three workers)"
 kind create cluster --name "$CLUSTER" --config "$ROOT/hack/kind/cluster.yaml" --wait 180s
@@ -365,6 +369,7 @@ install_kudurru() {
   helm upgrade --install kudurru "$ROOT/charts/kudurru" --namespace "$NS" \
     --set image.repository="${IMAGE%:*}" --set image.tag="${IMAGE##*:}" --set image.pullPolicy=Never \
     --set replicaCount="$REPLICAS" --set auth.bootstrapToken.enabled=true \
+    --set-file license.key="$ROOT/internal/license/testdata/e2e-license.key" \
     --set vip.provider=metallb --set vip.address="$LB_IP" --set vip.metallbPool=kind \
     --set service.dns.splitProtocols="$1" "${db[@]}" \
     --wait --timeout 5m

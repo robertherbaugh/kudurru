@@ -68,5 +68,7 @@ jobs:
             command -v "$tool" || { sudo apt-get update && sudo apt-get install -y dnsutils jq; break; }
           done
           kind version; helm version --short; kubectl version --client; jq --version
+      # The script builds the image with -tags licensetest and installs the test
+      # license key, so the three replicas can write through the API.
       - name: kind + MetalLB + helm install, DNS, API and PostgreSQL checks
         run: hack/kind-e2e.sh
