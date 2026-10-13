@@ -5,7 +5,7 @@
 // remove their own superadmin grant or disable themselves, and the last
 // enabled superadmin cannot lose superadmin (granted or idp) through the
 // API. Role and disable changes end the user's sessions except the acting
-// one. Changes are serialised by an advisory lock so two superadmins cannot
+// one. Changes are serialized by an advisory lock so two superadmins cannot
 // demote each other at the same moment.
 
 import type { Items, UpdateUserBody, User, UserDetail } from '../../shared/api';

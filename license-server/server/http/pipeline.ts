@@ -1,7 +1,7 @@
 // The portal's request pipeline (server/http/types.ts Pipeline): the real
 // steps behind the router's pass-through defaults. main.ts passes
 // createPipeline(config, log) to startServer; tests pass it to
-// makeTestApp({ pipeline }) to run the production behaviour.
+// makeTestApp({ pipeline }) to run the production behavior.
 //
 //   clientIp   ip.ts         peer, or rightmost untrusted X-Forwarded-For hop
 //   headers    headers.ts    CSP & co. on every response, no-store on the API

@@ -57,7 +57,7 @@ import { requireSigner, type ServiceCtx } from './types';
 export interface PersonalRequest {
   /** The licensee printed on the key (claims.ts licensee rules). */
   name: string;
-  /** Normalised (trimmed, lower-case). */
+  /** Normalized (trimmed, lower-case). */
   email: string;
   use: string;
   attestation: Attestation;

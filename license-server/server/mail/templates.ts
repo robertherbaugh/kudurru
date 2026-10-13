@@ -5,7 +5,7 @@
 // and as a license.key attachment (ASCII, trailing newline, no BOM), the
 // install hints of catalog KEY_SOURCES with the restart note for the flag
 // and the environment variable, the non-commercial notice on personal keys,
-// KEY_IS_NOT_A_LICENCE and, for keys from the kudurru.io form, an invite
+// KEY_IS_NOT_A_LICENSE and, for keys from the kudurru.io form, an invite
 // link to the portal.
 
 import type { ReviewReason } from '../../shared/api';
@@ -14,7 +14,7 @@ import {
   CONFIRM_TTL_HOURS,
   featureLabel,
   INVITE_TTL_DAYS,
-  KEY_IS_NOT_A_LICENCE,
+  KEY_IS_NOT_A_LICENSE,
   KEY_SOURCES,
   NONCOMMERCIAL_LICENSE_URL,
   OFFLINE_NOTE,
@@ -150,7 +150,7 @@ export function keyMail(m: KeyMail): MailMessage {
       m.token,
       installHints(),
       l.plan === 'personal' && `This is a free personal key. It is for personal, non-commercial use only, under the PolyForm Noncommercial License 1.0.0 (${NONCOMMERCIAL_LICENSE_URL}).`,
-      KEY_IS_NOT_A_LICENCE,
+      KEY_IS_NOT_A_LICENSE,
       OFFLINE_NOTE,
       portal,
       signature(m.publicUrl),
@@ -268,7 +268,7 @@ export function memberInviteMail(m: MemberInviteMail): MailMessage {
         : `You have been given access to the kudurru licenses of ${m.customerName} in the ${PRODUCT_NAME}. Sign in to see the licenses and download their keys:`,
       m.url,
       m.expiresAt && `The link works until ${m.expiresAt.toISOString().slice(0, 16).replace('T', ' ')} (UTC). Anyone who signs in with it gets access, so do not forward it.`,
-      KEY_IS_NOT_A_LICENCE,
+      KEY_IS_NOT_A_LICENSE,
       signature(m.publicUrl),
     ),
   };

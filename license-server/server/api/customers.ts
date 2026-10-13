@@ -57,7 +57,7 @@ export async function customerDetail(db: Queryable, id: string, now: Date): Prom
   };
 }
 
-/** A member email from the path: normalised, or 404 when it cannot be an address. */
+/** A member email from the path: normalized, or 404 when it cannot be an address. */
 function memberEmail(raw: string): string {
   const email = normalizeEmail(raw);
   if (!isEmailSyntax(email)) notFound('There is no such member.');

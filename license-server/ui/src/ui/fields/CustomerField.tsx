@@ -28,7 +28,7 @@ export function customerChoice(c: Pick<Customer, 'id' | 'name' | 'kind' | 'conta
   return { id: c.id, name: c.name, kind: c.kind, contactEmail: c.contactEmail };
 }
 
-const KIND_LABEL: Record<CustomerKind, string> = { person: 'Person', organization: 'Organisation' };
+const KIND_LABEL: Record<CustomerKind, string> = { person: 'Person', organization: 'Organization' };
 
 export interface CustomerFieldProps {
   label?: string;

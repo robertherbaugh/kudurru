@@ -11,7 +11,7 @@ import { licenseDetail } from '../services/licenses';
 import { approveRequest, getRequest, listRequests, rejectRequest } from '../services/requests';
 import { actorFromCtx, inTransaction } from '../services/types';
 
-const STATUSES: readonly RequestStatus[] = ['open', 'approved', 'rejected', 'cancelled'];
+const STATUSES: readonly RequestStatus[] = ['open', 'approved', 'rejected', 'canceled'];
 
 const ApproveShape = v.object({
   customerId: v.optional(v.id('customer')),

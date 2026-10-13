@@ -1,7 +1,7 @@
 // The signed-in person's own licenses and requests (design spec §8 self.*):
 // thin handlers over services/licenses.ts (customer views, isolated in SQL
 // by membership), services/personal.ts (personal request and renewal) and
-// services/members.ts (invites). The router has already authorised the
+// services/members.ts (invites). The router has already authorized the
 // route; customer DTOs never carry internal fields.
 
 import type { Attestation, ResponseOf } from '../../shared/api';
@@ -16,7 +16,7 @@ import { renewMyLicense, requestPersonalKey } from '../services/personal';
 import { myRequests } from '../services/requests';
 import { actorFromCtx, inTransaction } from '../services/types';
 
-/** The signed-in principal of a route the router authorised (a programming error without one). */
+/** The signed-in principal of a route the router authorized (a programming error without one). */
 export function requirePrincipal(ctx: Pick<RequestContext, 'principal'>): Principal {
   if (!ctx.principal) throw new Error('the route has no principal: authorize must run first');
   return ctx.principal;

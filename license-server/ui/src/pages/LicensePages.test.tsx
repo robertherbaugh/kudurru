@@ -4,7 +4,7 @@
 // no key, only when it was withdrawn and how long installed keys keep
 // working.
 import { screen, within } from '@testing-library/react';
-import { KEY_IS_NOT_A_LICENCE } from '@shared/catalog';
+import { KEY_IS_NOT_A_LICENSE } from '@shared/catalog';
 import { NONCOMMERCIAL_NOTICE } from '../components/keys';
 import { renderApp } from '../test/render';
 import { adminMe, customerDetail, customerMe, licenseDetail, myLicenseDetail, myWithdrawnDetail, TOKEN, withdrawnLicenseDetail } from '../dev/fixtures';
@@ -17,7 +17,7 @@ describe('customer license page', () => {
     expect(within(panel).getByRole('link', { name: 'Download license.key' })).toHaveAttribute('href', '/api/v1/me/licenses/lic_example12/key');
     expect(within(panel).getByRole('button', { name: 'Copy key' })).toBeInTheDocument();
     expect(within(panel).getByTestId('noncommercial-notice')).toHaveTextContent(NONCOMMERCIAL_NOTICE);
-    expect(within(panel).getByTestId('key-not-licence')).toHaveTextContent(KEY_IS_NOT_A_LICENCE);
+    expect(within(panel).getByTestId('key-not-license')).toHaveTextContent(KEY_IS_NOT_A_LICENSE);
     const facts = screen.getByRole('region', { name: 'License' });
     expect(within(facts).getByText('lic_example12')).toBeInTheDocument();
     expect(within(facts).getByText('2027-10-12 (UTC)')).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe('customer license page', () => {
     expect(screen.queryByRole('link', { name: 'Download license.key' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Add the key to kudurru' })).not.toBeInTheDocument();
     // The notices stay with the facts even without a key.
-    expect(screen.getByTestId('key-not-licence')).toBeInTheDocument();
+    expect(screen.getByTestId('key-not-license')).toBeInTheDocument();
   });
 
   test('a personal key in its renew window offers Renew; a business key offers the mailto', async () => {
@@ -58,7 +58,7 @@ describe('admin license page', () => {
     const panel = await screen.findByTestId('key-panel');
     expect(within(panel).getByText(TOKEN)).toBeInTheDocument();
     expect(within(panel).getByRole('link', { name: 'Download license.key' })).toHaveAttribute('href', '/api/v1/licenses/lic_business01/keys/key_current/download');
-    expect(within(panel).getByTestId('key-not-licence')).toBeInTheDocument();
+    expect(within(panel).getByTestId('key-not-license')).toBeInTheDocument();
     expect(within(panel).queryByTestId('noncommercial-notice')).not.toBeInTheDocument();
     for (const action of ['Renew', 'Withdraw', 'Email key']) expect(screen.getByRole('button', { name: action })).toBeInTheDocument();
     const history = screen.getByRole('region', { name: 'Key history' });

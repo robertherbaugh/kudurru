@@ -1,7 +1,7 @@
 // Regression tests for the findings of the stream B review (customer
 // isolation, the address syntax, renewal and withdraw rules, the limits
 // under parallel requests, the confirmation mail): each test reproduces
-// the probe that found the problem and asserts the fixed behaviour.
+// the probe that found the problem and asserts the fixed behavior.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Attestation } from '../../shared/api';
 import { ATTESTATION_STATEMENT } from '../../shared/catalog';

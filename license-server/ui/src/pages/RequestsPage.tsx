@@ -30,7 +30,7 @@ import { useSearchParams } from '../ui/lib/router';
 type RequestRow = LicenseRequest & Record<string, unknown>;
 type BlockedRow = BlockedEmail & Record<string, unknown>;
 
-const STATUSES: RequestStatus[] = ['open', 'approved', 'rejected', 'cancelled'];
+const STATUSES: RequestStatus[] = ['open', 'approved', 'rejected', 'canceled'];
 
 export default function RequestsPage() {
   const can = useCan();

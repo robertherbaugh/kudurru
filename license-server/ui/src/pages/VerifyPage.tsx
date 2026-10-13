@@ -13,7 +13,7 @@ import { Link } from '@astryxdesign/core/Link';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useMutation } from '@tanstack/react-query';
-import { BUSINESS_CONTACT, CONFIRM_TTL_HOURS, KEY_IS_NOT_A_LICENCE, LICENSE_PAGE_URL, OFFLINE_NOTE } from '@shared/catalog';
+import { BUSINESS_CONTACT, CONFIRM_TTL_HOURS, KEY_IS_NOT_A_LICENSE, LICENSE_PAGE_URL, OFFLINE_NOTE } from '@shared/catalog';
 import { ApiError } from '../api/client';
 import { useApi } from '../api/context';
 import { outcomeWords, PRODUCT_NAME } from '../lib/words';
@@ -58,7 +58,7 @@ export default function VerifyPage() {
       <VStack gap={3}>
         <Banner status={confirm.data.outcome === 'pending_review' ? 'info' : 'success'} title={w.title} description={w.body} />
         <Text as="p" type="supporting">
-          {KEY_IS_NOT_A_LICENCE}
+          {KEY_IS_NOT_A_LICENSE}
         </Text>
       </VStack>
     );

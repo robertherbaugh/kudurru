@@ -1,7 +1,7 @@
 // How the portal words the wire's closed sets (shared/api.ts) that the
 // catalog does not already label: customer kinds, sources, key reasons,
 // request states and review reasons, audit actions and targets. Plans,
-// features, license states and roles are labelled in shared/catalog.ts and
+// features, license states and roles are labeled in shared/catalog.ts and
 // shared/permissions.ts; this file only adds what those leave out, so a
 // page never prints a raw enum value.
 import type { AuditAction, AuditTargetType, CustomerKind, KeyReason, LicenseSource, MemberStatus, PersonalOutcome, RequestSource, RequestStatus, ReviewReason } from '@shared/api';
@@ -13,11 +13,11 @@ export const PRODUCT_NAME = 'kudurru license portal';
 /** The dev-mode banner's words (spec §7). */
 export const DEV_BANNER = 'Development mode: keys are signed with a test key no kudurru release trusts';
 
-export const KIND_LABEL: Record<CustomerKind, string> = { person: 'Person', organization: 'Organisation' };
+export const KIND_LABEL: Record<CustomerKind, string> = { person: 'Person', organization: 'Organization' };
 
 /** The kinds as SelectField options, with what each means. */
 export const KIND_OPTIONS: { value: CustomerKind; label: string; help: string }[] = [
-  { value: 'organization', label: KIND_LABEL.organization, help: 'A company or another organisation; any number of people can be members.' },
+  { value: 'organization', label: KIND_LABEL.organization, help: 'A company or another organization; any number of people can be members.' },
   { value: 'person', label: KIND_LABEL.person, help: 'One person, the kind personal keys go to.' },
 ];
 
@@ -32,7 +32,7 @@ export const KEY_REASON_LABEL: Record<KeyReason, string> = { issue: 'Issued', re
 
 export const MEMBER_STATUS_LABEL: Record<MemberStatus, string> = { invited: 'Invited', linked: 'Linked' };
 
-export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { open: 'Open', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
+export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { open: 'Open', approved: 'Approved', rejected: 'Rejected', canceled: 'Canceled' };
 
 export const REQUEST_SOURCE_LABEL: Record<RequestSource, string> = { web: 'kudurru.io form', portal: 'Portal' };
 
@@ -94,7 +94,7 @@ export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'request.created',
   'request.approved',
   'request.rejected',
-  'request.cancelled',
+  'request.canceled',
   'public_request.received',
   'public_request.confirmed',
   'blocklist.added',

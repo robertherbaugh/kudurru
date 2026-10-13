@@ -26,7 +26,7 @@
 // /login?error=<LoginErrorKey> (loginErrors.ts).
 
 import * as oidc from 'openid-client';
-// Named: discovery() recognises it by identity in `execute` (it also allows http for the discovery request itself).
+// Named: discovery() recognizes it by identity in `execute` (it also allows http for the discovery request itself).
 import { allowInsecureRequests } from 'openid-client';
 import { ROUTES } from '../../shared/routes';
 import { ASYMMETRIC_ID_TOKEN_ALGS, isLoopbackHost, type Config } from '../config';

@@ -3,7 +3,7 @@
 // leave the portal. Only a same-origin absolute path survives; everything
 // else becomes "/": empty values, more than 2048 bytes, anything not
 // starting with "/", protocol-relative "//host" and the "/\host" form
-// browsers normalise to it, control characters (C0 and DEL), backslashes,
+// browsers normalize to it, control characters (C0 and DEL), backslashes,
 // lone surrogates, and what Go's url.Parse would reject or read as having
 // a scheme, host or user info (in a "/"-rooted value: an invalid %
 // escape in the path or fragment). It is applied at the start of the

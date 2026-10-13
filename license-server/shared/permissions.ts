@@ -1,6 +1,6 @@
 // Who may do what in the license portal (design spec §5): the three roles,
 // the permission vocabulary and the fixed role → permission table. The
-// server authorises every route by one permission from shared/routes.ts;
+// server authorizes every route by one permission from shared/routes.ts;
 // the UI shows navigation and actions by the same permissions (Me.permissions).
 // Roles are not hierarchical in storage, but superadmin holds everything
 // license_admin holds, and both hold everything customer holds.

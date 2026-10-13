@@ -148,7 +148,7 @@ export async function approveRequest(ctx: ServiceCtx, id: string, body: ApproveB
   let customer: CustomerRow;
   if (body.customerId) {
     customer = await lockCustomer(ctx, body.customerId);
-    if (customer.kind !== 'person') throw new HttpError(400, 'invalid', 'A personal key belongs to a person customer, never to an organisation.', { fields: ['customerId'] });
+    if (customer.kind !== 'person') throw new HttpError(400, 'invalid', 'A personal key belongs to a person customer, never to an organization.', { fields: ['customerId'] });
   } else {
     customer = (await lockPersonCustomer(ctx, req.requester_email)) ?? (await createCustomer(ctx, { name: req.name, kind: 'person', contactEmail: req.requester_email }));
   }

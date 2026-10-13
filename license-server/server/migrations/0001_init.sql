@@ -173,7 +173,7 @@ create table license_requests (
   use_description text not null,
   attestation jsonb not null check (jsonb_typeof(attestation) = 'object'),
   review_reason text null check (review_reason in ('auto_approve_off', 'daily_cap', 'withdrawn_history', 'blocked')),
-  status text not null default 'open' check (status in ('open', 'approved', 'rejected', 'cancelled')),
+  status text not null default 'open' check (status in ('open', 'approved', 'rejected', 'canceled')),
   decided_by text null references users (id) on delete set null,
   decided_by_label text not null default '',
   decided_at timestamptz null,

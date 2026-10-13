@@ -1,6 +1,6 @@
 // What every page that hands out a key shows (design spec §0.7, §7): the
 // key in a wrapped CodeBlock with Download license.key and Copy, the words
-// that a key is not a licence (plus the non-commercial notice on personal
+// that a key is not a license (plus the non-commercial notice on personal
 // keys), and the panel that says how a node picks a key up. The install
 // panel is written fresh: only the file sources are re-read, the flag and
 // the environment variable need a restart.
@@ -11,7 +11,7 @@ import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { Copy, Download } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { KEY_IS_NOT_A_LICENCE, KEY_SOURCES, NONCOMMERCIAL_LICENSE_URL, type Plan } from '@shared/catalog';
+import { KEY_IS_NOT_A_LICENSE, KEY_SOURCES, NONCOMMERCIAL_LICENSE_URL, type Plan } from '@shared/catalog';
 import { utcDay } from '../lib/dates';
 import { useNotify } from '../ui/components/Feedback';
 import { Panel } from '../ui/components/layout/Page';
@@ -27,8 +27,8 @@ export function KeyNotices({ plan }: { plan: Plan }) {
           {NONCOMMERCIAL_NOTICE} <Link href={NONCOMMERCIAL_LICENSE_URL} isExternalLink>Read the license</Link>
         </Text>
       ) : null}
-      <Text type="supporting" as="p" data-testid="key-not-licence">
-        {KEY_IS_NOT_A_LICENCE}
+      <Text type="supporting" as="p" data-testid="key-not-license">
+        {KEY_IS_NOT_A_LICENSE}
       </Text>
     </VStack>
   );

@@ -1,7 +1,7 @@
 // The Kudurru theme, the dashboard default (D131): Astryx Neutral with the
 // docs/brand palette. Paper and Ink surfaces, Stone dividers, the Clay
 // accent; Clay as text is a darker stop on light surfaces and a lighter one
-// on Ink so it keeps 4.5:1. Every colour is a stop of the palette generated
+// on Ink so it keeps 4.5:1. Every color is a stop of the palette generated
 // from the brand (tokens/kudurru.palette.ts, regenerate with
 // `bun run astryx -- theme palette generate src/themes/kudurru/palette.config.json
 // --out src/themes/kudurru/tokens/kudurru.palette.ts --overwrite`).
@@ -10,7 +10,7 @@
 // drawn over whatever background an element has, so text on a hovered row
 // or tile keeps its contrast (e2e/contrast.spec.ts).
 //
-// The query status colours (--q-*) are kudurru's own and separate from the
+// The query status colors (--q-*) are kudurru's own and separate from the
 // brand (docs/brand/README.md): light/dark pairs that keep 4.5:1 as text on
 // the cards, plus the stronger -strong variants the high-contrast setting
 // switches to (styles.css). The Neutral, Stone and Y2K themes in

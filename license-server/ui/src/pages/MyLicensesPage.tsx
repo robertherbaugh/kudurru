@@ -77,7 +77,7 @@ export default function MyLicensesPage() {
     ) : (
       <EmptyState
         title="No licenses yet"
-        description={`If your organisation already has a license, ask us (${BUSINESS_CONTACT}) to add ${me.user.email ?? 'your email address'} to it. For non-commercial use, request a free personal key.`}
+        description={`If your organization already has a license, ask us (${BUSINESS_CONTACT}) to add ${me.user.email ?? 'your email address'} to it. For non-commercial use, request a free personal key.`}
         icon={<KeyRound size={32} aria-hidden="true" />}
         actions={
           <>

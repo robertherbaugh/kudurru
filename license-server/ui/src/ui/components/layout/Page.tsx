@@ -23,7 +23,7 @@ export interface PageProps {
   'data-testid'?: string;
 }
 
-/** The frame of a routed page: centred column, one gap between its blocks. */
+/** The frame of a routed page: centered column, one gap between its blocks. */
 export function Page({ children, maxWidth = PAGE_MAX_WIDTH, ...rest }: PageProps) {
   return (
     <Center axis="horizontal">
@@ -84,7 +84,7 @@ export interface PanelProps {
   title?: ReactNode;
   /** Heading level for the document outline (default 2). */
   level?: 2 | 3 | 4;
-  /** The heading's id (default: generated); the panel is labelled by it. */
+  /** The heading's id (default: generated); the panel is labeled by it. */
   headingId?: string;
   /** Items after the heading on the same row (badges, notes, buttons). */
   actions?: ReactNode;
@@ -105,9 +105,9 @@ export interface PanelProps {
 export function Panel({ title, level = 2, headingId, actions, description, children, isRegion = true, padding, ...rest }: PanelProps) {
   const genId = useId();
   const id = headingId ?? genId;
-  const labelled = title !== undefined && !rest['aria-label'];
+  const labeled = title !== undefined && !rest['aria-label'];
   return (
-    <Card padding={padding} role={isRegion ? 'region' : undefined} aria-labelledby={isRegion && labelled ? id : undefined} {...rest}>
+    <Card padding={padding} role={isRegion ? 'region' : undefined} aria-labelledby={isRegion && labeled ? id : undefined} {...rest}>
       <VStack gap={2}>
         {title !== undefined || actions ? (
           <HStack gap={2} hAlign="between" vAlign="center" wrap="wrap">

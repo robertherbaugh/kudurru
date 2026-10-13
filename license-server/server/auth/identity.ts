@@ -89,7 +89,7 @@ export function cleanName(v: unknown): string {
 export interface Identity {
   issuer: string;
   subject: string;
-  /** Normalised (trimmed, lower case) and only when verified; null otherwise. */
+  /** Normalized (trimmed, lower case) and only when verified; null otherwise. */
   email: string | null;
   emailVerified: boolean;
   name: string;

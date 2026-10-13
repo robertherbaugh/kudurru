@@ -83,7 +83,7 @@ test('the review shows every claim with UTC dates, and signing posts them', asyn
   expect(within(wizard()).getByTestId('review-keeps-working')).toHaveTextContent('2028-11-10 (UTC)');
   expect(within(wizard()).getByText('Single sign-on')).toBeInTheDocument();
   expect(within(wizard()).getByText('Business')).toBeInTheDocument();
-  expect(within(wizard()).getByText(/Example GmbH \(new organisation\)/)).toBeInTheDocument();
+  expect(within(wizard()).getByText(/Example GmbH \(new organization\)/)).toBeInTheDocument();
   fireEvent.click(within(wizard()).getByRole('button', { name: 'Sign and issue' }));
   await waitFor(() => expect(api.callsTo('licenseIssue')).toHaveLength(1));
   const body = api.callsTo('licenseIssue')[0]?.body as IssueLicenseBody;

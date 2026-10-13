@@ -276,7 +276,7 @@ describeDb('withdraw', () => {
     expect(res.body.state).toBe('withdrawn');
     expect(res.body.withdrawn).toMatchObject({ reason: 'chargeback', customerMessage: 'Please contact us.', keepsWorkingUntil: graceEndsOn(inDays(200)), by: { id: adminId } });
     const req = (await t.db<{ status: string; decision_note: string }[]>`select status, decision_note from license_requests where id = 'req_wdopen00001'`)[0]!;
-    expect(req).toEqual({ status: 'cancelled', decision_note: 'license withdrawn' });
+    expect(req).toEqual({ status: 'canceled', decision_note: 'license withdrawn' });
     const blocked = await t.db<{ email: string }[]>`select email from blocked_emails where email like 'wd%@example.org' order by email`;
     expect(blocked.map((b) => b.email)).toEqual(['wd2@example.org', 'wd@example.org']);
 

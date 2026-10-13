@@ -75,7 +75,7 @@ export const POLICY: Readonly<Policy> = Object.freeze({
   inviteTtlDays: INVITE_TTL_DAYS,
 });
 
-/** The licence a personal key is certified for (the attestation's `license`, an SPDX id). */
+/** The license a personal key is certified for (the attestation's `license`, an SPDX id). */
 export const ATTESTATION_LICENSE = 'PolyForm-Noncommercial-1.0.0';
 
 /**
@@ -217,7 +217,7 @@ export function graceEnds(exp: Date | number): Date {
 }
 
 /** The words every page that hands out a key repeats (docs/guide/admin/13-license.md). */
-export const KEY_IS_NOT_A_LICENCE =
+export const KEY_IS_NOT_A_LICENSE =
   'A license key does not give you a license. The key records the license that you have. A free personal key is for non-commercial use only.';
 
 /** Keys are checked on the node; this service never sees a node. */

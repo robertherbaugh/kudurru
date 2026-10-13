@@ -8,7 +8,7 @@ import { useToast } from '@astryxdesign/core/Toast';
 import { useCallback, useMemo } from 'react';
 import { ApiError } from '../../api/client';
 
-/** A centred spinner for the whole viewport (session check, lazy pages). */
+/** A centered spinner for the whole viewport (session check, lazy pages). */
 export function FullPageSpinner({ label }: { label: string }) {
   return (
     <Center minHeight="100dvh" role="status" aria-live="polite">

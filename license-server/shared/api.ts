@@ -187,7 +187,7 @@ export type KeyReason = 'issue' | 'renew' | 'change' | 'import';
 /** invited: has an invite link and no user yet; linked: belongs to a signed-in user. */
 export type MemberStatus = 'invited' | 'linked';
 
-export type RequestStatus = 'open' | 'approved' | 'rejected' | 'cancelled';
+export type RequestStatus = 'open' | 'approved' | 'rejected' | 'canceled';
 
 /** Why a personal request waits for a person instead of getting a key at once. */
 export type ReviewReason = 'auto_approve_off' | 'daily_cap' | 'withdrawn_history' | 'blocked';
@@ -354,7 +354,7 @@ export interface MyRequest {
   use: string;
   createdAt: Instant;
   decidedAt: Instant | null;
-  /** The note sent with a rejection, or why it was cancelled. */
+  /** The note sent with a rejection, or why it was canceled. */
   decisionNote: string;
   /** The license it led to, if any. */
   licenseId: string | null;
@@ -800,7 +800,7 @@ export type AuditAction =
   | 'request.created'
   | 'request.approved'
   | 'request.rejected'
-  | 'request.cancelled'
+  | 'request.canceled'
   | 'public_request.received'
   | 'public_request.confirmed'
   | 'blocklist.added'

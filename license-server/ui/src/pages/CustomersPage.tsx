@@ -50,7 +50,7 @@ export default function CustomersPage() {
     <Page>
       <PageHeader
         title="Customers"
-        description="The people and organisations licenses are issued to. Their members see the licenses and keys in the portal."
+        description="The people and organizations licenses are issued to. Their members see the licenses and keys in the portal."
         actions={can('customers.write') ? <Button label="New customer" variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setCreating(true)} /> : null}
       />
       <Panel title="Customers">

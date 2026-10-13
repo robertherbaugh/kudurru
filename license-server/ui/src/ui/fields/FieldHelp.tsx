@@ -19,7 +19,7 @@ import { useId, useLayoutEffect, useRef, type ReactNode } from 'react';
 
 const ADDED = 'data-k-describedby';
 
-/** Which element a field describes: the labelled control, or the group (CheckboxList, RadioList). */
+/** Which element a field describes: the labeled control, or the group (CheckboxList, RadioList). */
 export type Described = 'control' | 'group';
 
 /** The control a field wrapper labels: the element its <label for> names, else the first group or input inside. */
@@ -100,7 +100,7 @@ export interface FieldShellProps extends HelpParts {
   /** Stretch to the column (default) or hug the control. */
   width?: string | number | undefined;
   'data-testid'?: string | undefined;
-  /** Describe the group instead of the labelled control. */
+  /** Describe the group instead of the labeled control. */
   describes?: Described;
 }
 

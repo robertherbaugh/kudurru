@@ -131,7 +131,7 @@ export function jsonLogger(opts: { level?: LogLevel; write?: (line: string) => v
       try {
         text = JSON.stringify(entry);
       } catch {
-        text = JSON.stringify({ ts: entry.ts, level: entry.level, msg: entry.msg, logError: 'fields not serialisable' });
+        text = JSON.stringify({ ts: entry.ts, level: entry.level, msg: entry.msg, logError: 'fields not serializable' });
       }
       write(text + '\n');
     },

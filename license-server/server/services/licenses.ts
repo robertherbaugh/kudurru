@@ -152,7 +152,7 @@ export async function lockForAction(ctx: Pick<ServiceCtx, 'tx'>, id: string, als
 export const PERSONAL_FLOW_LOCK = 7405;
 
 /**
- * Serialises the personal flow (services/personal.ts), request decisions
+ * Serializes the personal flow (services/personal.ts), request decisions
  * and withdrawals within the transaction: they touch requests, person
  * customers and their licenses in different orders.
  */
@@ -631,13 +631,13 @@ export async function withdrawLicense(ctx: ServiceCtx, id: string, body: Withdra
            withdraw_reason = ${body.reason}, withdraw_message = ${body.customerMessage ?? ''}, updated_at = ${ctx.now}
      where id = ${id}`;
   const emails = (await ctx.tx<{ email: string }[]>`select email from customer_members where customer_id = ${row.customer_id} order by email`).map((r) => r.email);
-  const cancelled = await ctx.tx<{ id: string; requester_email: string }[]>`
-    update license_requests set status = 'cancelled', decision_note = 'license withdrawn', decided_at = ${ctx.now},
+  const canceled = await ctx.tx<{ id: string; requester_email: string }[]>`
+    update license_requests set status = 'canceled', decision_note = 'license withdrawn', decided_at = ${ctx.now},
            decided_by = ${by.id}, decided_by_label = ${by.label}
      where status = 'open' and requester_email = any(${ctx.tx.array(emails, 'TEXT')})
      returning id, requester_email`;
-  for (const r of cancelled) {
-    await auditCtx(ctx, { action: 'request.cancelled', targetType: 'request', targetId: r.id, details: { email: r.requester_email, licenseId: id, note: 'license withdrawn' } });
+  for (const r of canceled) {
+    await auditCtx(ctx, { action: 'request.canceled', targetType: 'request', targetId: r.id, details: { email: r.requester_email, licenseId: id, note: 'license withdrawn' } });
   }
   const blocked = body.blockPersonal ? await blockEmails(ctx, emails, `license ${id} withdrawn`) : [];
   const keepsWorkingUntil = keepsWorkingUntilOf(await latestKeyExpiry(ctx.tx, id));
@@ -645,7 +645,7 @@ export async function withdrawLicense(ctx: ServiceCtx, id: string, body: Withdra
     action: 'license.withdrawn',
     targetType: 'license',
     targetId: id,
-    details: { reason: body.reason, customerMessage: body.customerMessage ?? '', blockPersonal: body.blockPersonal ?? false, blocked, cancelledRequests: cancelled.map((r) => r.id), keepsWorkingUntil },
+    details: { reason: body.reason, customerMessage: body.customerMessage ?? '', blockPersonal: body.blockPersonal ?? false, blocked, canceledRequests: canceled.map((r) => r.id), keepsWorkingUntil },
   });
 }
 

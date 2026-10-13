@@ -1,5 +1,5 @@
 // How the portal writes dates (design spec §0.9, §7): every key date is a
-// UTC calendar day labelled "(UTC)", so what the portal says matches what
+// UTC calendar day labeled "(UTC)", so what the portal says matches what
 // `kudurru license status` prints on a node, wherever the reader sits.
 // utcDay is the one helper every page uses for a day; utcDateTime is for
 // the moments of the audit trail and sign-ins. Nothing here reads the

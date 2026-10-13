@@ -39,7 +39,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
       output: {
-        // Stable, recognisable vendor chunks (long-lived cache across
+        // Stable, recognizable vendor chunks (long-lived cache across
         // releases); everything else splits by route.
         codeSplitting: {
           groups: [

@@ -13,7 +13,7 @@ import { redirect } from '../http/errors';
 /**
  * The fixed reasons of /login?error=<key> (the login page words them; no
  * cause ever reaches the browser):
- * - idp_error: the IdP answered with an error (the person cancelled, the IdP refused);
+ * - idp_error: the IdP answered with an error (the person canceled, the IdP refused);
  * - expired: the sign-in is unknown, used, expired or was started in another browser;
  * - failed: the code exchange or the ID token checks failed, or the server failed;
  * - idp_unavailable: the IdP cannot be reached;

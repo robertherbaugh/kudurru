@@ -134,7 +134,7 @@ test('the kudurru.io form: a cross-origin request, a confirmation link, the key 
     res.end('<!doctype html><title>kudurru.io</title><p>the license page</p>');
   });
   await new Promise<void>((done) => site.listen(Number(new URL(FORM_ORIGIN).port), '127.0.0.1', done));
-  test.info().attach('form origin', { body: FORM_ORIGIN });
+  await test.info().attach('form origin', { body: FORM_ORIGIN });
   try {
     await page.goto(`${FORM_ORIGIN}/license`);
   const portal = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:8791').origin;

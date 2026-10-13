@@ -8,7 +8,7 @@
 // and the portal routes (verified email required, renew own key).
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type { Attestation, PersonalOutcome } from '../../shared/api';
-import { ATTESTATION_STATEMENT, KEY_IS_NOT_A_LICENCE } from '../../shared/catalog';
+import { ATTESTATION_STATEMENT, KEY_IS_NOT_A_LICENSE } from '../../shared/catalog';
 import { addDays, expFor, expiresOnOf, todayUtc } from '../../shared/dates';
 import { meHandlers } from '../api/me';
 import type { Config } from '../config';
@@ -101,7 +101,7 @@ describeDb('requestPersonalKey', () => {
     expect(mail.subject).toBe('Your kudurru license key');
     expect(mail.text).toContain(token);
     expect(mail.text).toContain('non-commercial use only');
-    expect(mail.text).toContain(KEY_IS_NOT_A_LICENCE);
+    expect(mail.text).toContain(KEY_IS_NOT_A_LICENSE);
     expect(mail.text).toContain('KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key');
     expect(mail.text).toContain('restart');
     expect(mail.text).toMatch(/http:\/\/localhost:8790\/invites\/[A-Za-z0-9_-]{43}/);

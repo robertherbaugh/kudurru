@@ -37,7 +37,7 @@ function isLoginErrorKey(v: string): v is LoginErrorKey {
 function loginErrorWords(key: LoginErrorKey): { title: string; description: string } {
   switch (key) {
     case 'idp_error':
-      return { title: 'The identity provider did not sign you in', description: 'The sign-in was cancelled or refused there. Try again; if it keeps failing, ask the administrator of your identity provider.' };
+      return { title: 'The identity provider did not sign you in', description: 'The sign-in was canceled or refused there. Try again; if it keeps failing, ask the administrator of your identity provider.' };
     case 'expired':
       return {
         title: 'The sign-in took too long or was started in another browser',

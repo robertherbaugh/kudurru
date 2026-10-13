@@ -5,7 +5,7 @@
 // the other files revalidate (ETag, 304), client-side routes get
 // index.html, missing files and anything under /api/ do not, and only GET
 // and HEAD are answered. Raw request lines go over a socket so no client
-// normalises the path first.
+// normalizes the path first.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';

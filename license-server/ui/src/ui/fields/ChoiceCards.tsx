@@ -5,7 +5,7 @@
 // list wizard's well-known lists. One choice is an Astryx RadioList, several
 // (`multiple`) a CheckboxList, both with the sentence under each option's
 // label, an optional icon before it (radios) and content after it (a
-// licence badge), so arrows or Tab move between options and the choice is
+// license badge), so arrows or Tab move between options and the choice is
 // announced like any radio or checkbox group. Help sits under the options
 // (the dashboard rule, see FieldHelp) and describes the group. Options
 // carry data-choice for tests.
@@ -20,7 +20,7 @@ export interface Choice {
   description?: ReactNode;
   /** Shown before the label (a provider icon); one-choice cards only. */
   icon?: ReactNode;
-  /** Shown after the label (a licence or size badge). */
+  /** Shown after the label (a license or size badge). */
   endContent?: ReactNode;
   isDisabled?: boolean;
 }

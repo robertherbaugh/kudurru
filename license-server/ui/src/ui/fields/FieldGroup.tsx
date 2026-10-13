@@ -1,6 +1,6 @@
 // Copied from web/src/components/fields/FieldGroup.tsx at dd3dcb0; keep in step by hand.
 // Changes: none.
-// A labelled group of fields (what a <fieldset> with a <legend> was): a
+// A labeled group of fields (what a <fieldset> with a <legend> was): a
 // bordered box named by its label, the label on top (or only for screen
 // readers), the fields under it. Every control inside gets its own
 // isDisabled, so the group needs no native `disabled`.

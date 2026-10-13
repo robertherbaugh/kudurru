@@ -3,7 +3,7 @@
 // 1. Customer: by default the person customer the portal already has for
 //    the requester's email (LicenseRequest.personCustomer, which the server
 //    would use anyway), else a new person customer made from the request;
-//    or another existing person customer (never an organisation: approving
+//    or another existing person customer (never an organization: approving
 //    never adds the requester to one);
 // 2. Key: the licensee printed on the key and its expiry (UTC);
 // 3. Review: every claim in words, the use the requester described and
@@ -103,7 +103,7 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
               {
                 value: 'other',
                 label: known ? 'Another existing person customer' : 'Existing person customer',
-                description: 'For someone the portal already knows under another address. Organisations are not offered.',
+                description: 'For someone the portal already knows under another address. Organizations are not offered.',
               },
             ]}
             error={mode === 'default' ? fe.field('customerId') : undefined}

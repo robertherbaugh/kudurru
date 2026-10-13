@@ -172,7 +172,7 @@ export const CONFIG_VARS = [
   { name: 'OIDC_DISPLAY_NAME', default: 'Sign in', description: 'Sign-in button label' },
   { name: 'OIDC_GROUPS_CLAIM', default: 'groups', description: 'The only claim read for groups (string or array)' },
   { name: 'OIDC_ID_TOKEN_ALG', default: null, description: 'Pin the ID token alg' },
-  { name: 'OIDC_ADMIN_CLAIM_RULES', default: null, description: 'claim=value comma list; all must match before admin group mappings are honoured' },
+  { name: 'OIDC_ADMIN_CLAIM_RULES', default: null, description: 'claim=value comma list; all must match before admin group mappings are honored' },
   { name: 'ROLE_SUPERADMIN_GROUPS', default: '', description: 'IdP groups mapped to superadmin (comma list)' },
   { name: 'ROLE_LICENSE_ADMIN_GROUPS', default: '', description: 'IdP groups mapped to license_admin (comma list)' },
   { name: 'ROLE_CUSTOMER_GROUPS', default: '', description: 'IdP groups mapped to customer (comma list)' },

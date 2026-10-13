@@ -387,7 +387,7 @@ describeDb('sign-in', () => {
       await t.db`update users set granted_roles = '{superadmin}' where id = ${row.id}`;
       const ok = await signIn(a, nobody);
       expect(ok.headers.get('location')).toBe('/my/licenses');
-      // Without admin rules and DEFAULT_ROLE=none, admin groups are honoured.
+      // Without admin rules and DEFAULT_ROLE=none, admin groups are honored.
       const admin = person({ groups: ['license-admins'] });
       await signIn(a, admin);
       expect((await t.db<{ idp_roles: string[] }[]>`select idp_roles from users where subject = ${admin.sub}`)[0]!.idp_roles).toEqual(['license_admin']);

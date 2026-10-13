@@ -121,7 +121,7 @@ describe('CLIENT_IP_HEADER (behind the Cloudflare Worker)', () => {
     return new Request('http://localhost/', { headers: h });
   };
 
-  test('the header names the client, canonicalised; X-Forwarded-For is ignored', () => {
+  test('the header names the client, canonicalized; X-Forwarded-For is ignored', () => {
     const ip = clientIpResolver({ trustedProxies: [], clientIpHeader: 'x-client-ip' });
     expect(ip(withHeader('198.51.100.7', '10.0.0.1'), '172.17.0.1')).toBe('198.51.100.7');
     expect(ip(withHeader('2001:DB8:0:0::1'), '172.17.0.1')).toBe('2001:db8::1');

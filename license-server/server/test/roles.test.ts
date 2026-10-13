@@ -166,7 +166,7 @@ describeDb('as license_portal_app', () => {
     expect((await callJson(app, 'authMe', { as: su })).status).toBe(200);
     expect((await callJson(app, 'authLogout', { as: su })).status).toBe(204);
 
-    // Sign-in state and the cleanup job (a year on, so it deletes and anonymises).
+    // Sign-in state and the cleanup job (a year on, so it deletes and anonymizes).
     await appDb`insert into oidc_logins (state, binding_hash, nonce, code_verifier, next, created_at, expires_at)
                 values ('roles-state', ${Buffer.alloc(32)}, 'n', 'v', '/', now(), now() + interval '10 minutes')`;
     const swept = await cleanup(appDb, new Date(Date.now() + 400 * 86_400_000));
