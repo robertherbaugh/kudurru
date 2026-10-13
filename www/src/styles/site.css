@@ -1701,15 +1701,6 @@ html:not(.js) .licform + .lic-row {
   font-family: var(--mono);
   font-size: 0.875em;
 }
-.lic-code {
-  padding: 18px 20px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.75;
-  color: var(--paper);
-  background: var(--ink-2);
-  border: 1px solid var(--line-2);
-}
 .js .nojs-note {
   display: none;
 }

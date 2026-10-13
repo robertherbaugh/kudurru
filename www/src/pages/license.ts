@@ -3,7 +3,8 @@ import { BUSINESS_SUBJECT, LICENSE_CONTACT, LICENSE_FREE_NODES, LICENSE_REQUIRED
 import { external } from "./layout.ts";
 import type { Rendered } from "../markdown.ts";
 
-// /license/: what is free, what a key unlocks, how to get and use one.
+// /license/: what is free, what a key unlocks and how to get one. Using a
+// key on a node is in the docs (LICENSING.md, the admin guide).
 // The rules in full are LICENSING.md; this page is its short form.
 const REQUEST_PATH = "/api/v1/public/key-requests"; // the license server's public form endpoint
 
@@ -92,17 +93,6 @@ export function license(licenseApi: string): Html {
         <p class="nojs-note">The form needs JavaScript. Without it, write to us:</p>
         <p><strong>A free personal key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes and is for non-commercial use only.</p>
         <p><strong>A business.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the company, the number of nodes and the features you need. A business key comes with a commercial agreement.</p>
-      </div>
-    </div>
-    <div class="lic-row">
-      <h2 id="lic-use-title">Use a key</h2>
-      <div class="lic-body">
-        <p>Put the key where the node can read it. The first match wins, and a running node picks up a change within a minute, without a restart.</p>
-        <pre class="mono lic-code">kudurru serve --license-key &lt;key&gt;
-KUDURRU_LICENSE_KEY=&lt;key&gt;
-KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key
-&lt;node.dataDir&gt;/license.key</pre>
-        <p>In Helm, set <code>license.existingSecret</code> to a Secret with the key; in Compose, set <code>KUDURRU_LICENSE_KEY</code>. <code>kudurru license status</code> shows what a node runs with and the dashboard has a License page.</p>
       </div>
     </div>
     <div class="lic-row">
