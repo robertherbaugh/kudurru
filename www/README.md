@@ -1,7 +1,7 @@
 # kudurru.io
 
-Copyright 2026 Robert Herbaugh. The project-controlled source is available
-for inspection under the [Kudurru Website Source-Viewing License](LICENSE.md).
+Copyright 2026 kudurru project maintainers. The project-controlled source is
+available for inspection under the [Kudurru Website Source-Viewing License](LICENSE.md).
 Modification, redistribution and hosting require prior written authorization.
 A Kudurru community or commercial license does not grant those website rights.
 The build and deployment instructions below are for authorized maintainers.

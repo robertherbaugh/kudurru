@@ -10,9 +10,12 @@ agreement and Order Form, including for no-key features. See LICENSING.md.
 The ee/ and site/ directories have their own notices in ee/LICENSE.md and
 site/LICENSE.md. The www/ marketing website and license-server/ issuance
 service are excluded from the Community License and commercial grant;
-their project-controlled source is copyright 2026 Robert Herbaugh and has
-separate source-viewing licenses in those folders. The blocked-services
-catalog under internal/listdata/catalogue is separately Apache-2.0 licensed.
+they have separate source-viewing licenses in those folders. The website's
+project-controlled source is copyright 2026 kudurru project maintainers
+(the applicable copyright holders defined in www/LICENSE.md); the issuance
+service's project-controlled source is copyright 2026 Robert Herbaugh. The
+blocked-services catalog under internal/listdata/catalogue is separately
+Apache-2.0 licensed.
 Historical license grants and third-party licenses remain in effect.
 
 This product includes software developed by third parties under their own

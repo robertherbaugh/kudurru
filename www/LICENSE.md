@@ -2,9 +2,11 @@
 
 **Version 1.0 — October 12, 2026**
 
-Copyright © 2026 **Robert Herbaugh**. All rights reserved.
+Copyright © 2026 **kudurru project maintainers**. All rights reserved.
 
 ## 1. Covered material
+
+“kudurru project maintainers” collectively identifies the individuals and legal entities holding copyright in the Website Source. “Licensor” means each applicable copyright holder or their authorized representative, solely for material they own or are authorized to license. This collective attribution does not transfer ownership or give a maintainer authority over another holder's material. Requests for authorization are directed to **hello@kudurru.io** as specified in Section 5.
 
 This notice applies to the Licensor-controlled source code, templates, layouts, styling, graphics, images, content, copy, build configurations, and other material expressly placed under it within the repository's **`www/`** directory, which is used to operate the public Kudurru marketing website at **https://kudurru.io** (**Website Source**).
 
