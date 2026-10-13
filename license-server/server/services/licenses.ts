@@ -186,25 +186,40 @@ export interface SignedKey {
   expiresAt: Date;
 }
 
-/**
- * 429 issuing_quota when the acting admin signed ISSUE_MAX_PER_ACTOR_PER_DAY
- * keys (issue, renew, change) in the last 24 hours. Only user actors have a
- * quota (the personal flow has its own daily cap).
- */
-/** The advisory lock namespace of the issuing quota (pg_advisory_xact_lock(7408, hashtext(user id))). */
+/** The advisory lock namespace of the issuing quota (pg_advisory_xact_lock(7408, hashtext(user id or system label))). */
 const ISSUING_QUOTA_LOCK = 7408;
 
+/**
+ * 429 issuing_quota when the acting admin signed ISSUE_MAX_PER_ACTOR_PER_DAY
+ * keys (issue, renew, change) in the last 24 hours, approved personal
+ * requests included. User actors count by id; an approval link that names
+ * no single admin (system actor "approval link (<address>)", issuingQuota)
+ * counts by that label, so a shared approver mailbox has the same ceiling
+ * as one admin. Other actors have no quota: the automatic personal flow
+ * has its own daily cap, and the CLI is the operator.
+ */
 export async function checkIssuingQuota(ctx: ServiceCtx): Promise<void> {
-  if (ctx.actor.kind !== 'user') return;
-  // Held to the commit: one actor's parallel requests count each other's keys.
-  await ctx.tx`select pg_advisory_xact_lock(${ISSUING_QUOTA_LOCK}, hashtext(${ctx.actor.userId}))`;
+  const actor = ctx.actor;
+  if (actor.kind !== 'user' && !(actor.kind === 'system' && actor.issuingQuota)) return;
   const since = new Date(ctx.now.getTime() - DAY_SECONDS * 1000);
-  const rows = await ctx.tx<{ n: string }[]>`
-    select count(*) as n from license_keys
-     where issued_by = ${ctx.actor.userId} and issued_at > ${since} and reason in ('issue', 'renew', 'change')`;
+  // Held to the commit: one actor's parallel requests count each other's keys.
+  await ctx.tx`select pg_advisory_xact_lock(${ISSUING_QUOTA_LOCK}, hashtext(${actor.kind === 'user' ? actor.userId : actor.label}))`;
+  const rows =
+    actor.kind === 'user'
+      ? await ctx.tx<{ n: string }[]>`
+          select count(*) as n from license_keys
+           where issued_by = ${actor.userId} and issued_at > ${since} and reason in ('issue', 'renew', 'change')`
+      : await ctx.tx<{ n: string }[]>`
+          select count(*) as n from license_keys
+           where issued_by is null and issued_by_label = ${actor.label} and issued_at > ${since} and reason in ('issue', 'renew', 'change')`;
   const max = ctx.config.issuing.maxPerActorPerDay;
   if (toInt(rows[0]?.n) >= max) {
-    fail('issuing_quota', `You signed ${max} keys in the last 24 hours, the most one person may (ISSUE_MAX_PER_ACTOR_PER_DAY). Try again later or ask another admin.`);
+    fail(
+      'issuing_quota',
+      actor.kind === 'user'
+        ? `You signed ${max} keys in the last 24 hours, the most one person may (ISSUE_MAX_PER_ACTOR_PER_DAY). Try again later or ask another admin.`
+        : `The approval links sent to this address signed ${max} keys in the last 24 hours, the most one approver may (ISSUE_MAX_PER_ACTOR_PER_DAY). Try again later or decide the request in the portal.`,
+    );
   }
 }
 
@@ -264,7 +279,7 @@ export interface NewLicense {
   notes?: string;
   attestation: Attestation | null;
   source: LicenseSource;
-  /** Extra facts for the license.issued audit event (requestId, autoApproved). */
+  /** Extra facts for the license.issued audit event (requestId and via for an approved request, autoApproved for an automatic personal key). */
   auditDetails?: Record<string, string | number | boolean | null>;
 }
 
@@ -316,14 +331,23 @@ export async function renewLicenseRow(ctx: ServiceCtx, row: LicenseRow, expiresO
   return { row: rows[0]!, key };
 }
 
-/** The key mail for a license (spec §6 "Key mail"). */
-export function licenseKeyMail(ctx: Pick<ServiceCtx, 'config'>, row: LicenseRow, token: string, kind: KeyMailKind, to: string, inviteUrl: string | null = null): MailMessage {
+/** The key mail for a license (spec §6 "Key mail"); `approved`: it answers a request an admin approved. */
+export function licenseKeyMail(
+  ctx: Pick<ServiceCtx, 'config'>,
+  row: LicenseRow,
+  token: string,
+  kind: KeyMailKind,
+  to: string,
+  inviteUrl: string | null = null,
+  opts: { approved?: boolean } = {},
+): MailMessage {
   return keyMail({
     to,
     kind,
     license: { id: row.id, licensee: row.licensee, plan: row.plan, nodes: row.nodes, features: row.features, expiresOn: expiresOnOf(row.expires_at) },
     token,
     inviteUrl,
+    approved: opts.approved ?? false,
     publicUrl: ctx.config.publicUrl,
   });
 }
@@ -617,10 +641,12 @@ export async function changeLicense(ctx: ServiceCtx, id: string, body: ChangeBod
 
 /**
  * POST /licenses/:id/withdraw (final): records the end, hides the key from
- * customers, blocks renewal and automatic re-issue, cancels the open
- * personal requests of the customer's people and, with blockPersonal,
- * blocks their addresses. Keys already installed keep working until
- * keepsWorkingUntil (spec §0.8).
+ * customers, blocks renewal (the person's next requests wait for a signed-in
+ * admin, review reason withdrawn_history, without a one-click approve link),
+ * cancels the open personal requests of the customer's people (which makes
+ * their approval links useless) and, with blockPersonal, blocks their
+ * addresses. Keys already installed keep working until keepsWorkingUntil
+ * (spec §0.8).
  */
 export async function withdrawLicense(ctx: ServiceCtx, id: string, body: WithdrawBody): Promise<void> {
   await lockPersonalFlow(ctx);
@@ -733,10 +759,11 @@ export async function downloadLicenseKey(ctx: ServiceCtx, id: string, keyId: str
 interface MyLicenseRow extends LicenseRow {
   customer_name: string;
   latest_key_expires_at: Date | null;
-  /** A member address is blocked or the customer has a withdrawn license: renewal needs a person (personal.ts personalReviewReason). */
+  /** A member address is blocked or the customer has a withdrawn license: the person cannot renew it here (personal.ts personalReviewReason). */
   renewal_needs_review: boolean;
 }
 
+/** `renewal`: the person may renew it now (with approval required, the default, that asks an admin; personal.ts renewMyLicense). */
 function myLicenseDto(r: MyLicenseRow, now: Date): MyLicense {
   const renewal = r.status === 'active' && !r.renewal_needs_review ? personalRenewal(termsOf(r), unixSeconds(r.expires_at), now) : null;
   return {

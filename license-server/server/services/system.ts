@@ -1,8 +1,9 @@
 // The read-only System page and the catalog (design spec §7 /system, §8
 // GET /api/v1/system and GET /api/v1/catalog): what the portal runs with,
 // from the configuration and the signing state decided at startup, plus
-// how many keys each kid signed. No secrets: the signing seed, the client
-// secret, SMTP_URL and the database URLs never appear.
+// how many keys each kid signed and who approves personal keys. No
+// secrets: the signing seed, the client secret, SMTP_URL and the database
+// URLs never appear.
 
 import type { Catalog, SystemInfo } from '../../shared/api';
 import { FEATURES, PLANS, POLICY } from '../../shared/catalog';
@@ -11,6 +12,7 @@ import type { Config } from '../config';
 import { toInt, type Queryable } from '../db/sql';
 import { trustedKids, type SigningState } from '../licensing/types';
 import type { Mailer } from '../mail/types';
+import { approvalRecipients } from './approvals';
 
 /** The kid's .pub is in the trusted dir and matches the loaded key. */
 function signerTrusted(signing: SigningState): boolean {
@@ -19,7 +21,7 @@ function signerTrusted(signing: SigningState): boolean {
 }
 
 /** GET /api/v1/catalog. */
-export function catalog(signing: SigningState, mailer: Mailer, now: Date): Catalog {
+export function catalog(config: Pick<Config, 'personal'>, signing: SigningState, mailer: Mailer, now: Date): Catalog {
   const s = signing.signer;
   return {
     plans: [...PLANS],
@@ -33,13 +35,15 @@ export function catalog(signing: SigningState, mailer: Mailer, now: Date): Catal
     },
     mail: { configured: mailer.configured },
     today: todayUtc(now),
+    approvalRequired: !config.personal.autoApprove,
   };
 }
 
 /** GET /api/v1/system. */
-export async function systemInfo(q: Queryable, config: Config, signing: SigningState, mailer: Mailer): Promise<SystemInfo> {
+export async function systemInfo(q: Queryable, config: Config, signing: SigningState, mailer: Mailer, now: Date): Promise<SystemInfo> {
   const s = signing.signer;
   const counts = await q<{ kid: string; n: string }[]>`select kid, count(*) as n from license_keys group by kid order by kid`;
+  const approvers = await approvalRecipients(q, config, now);
   return {
     devMode: config.devMode,
     signing: {
@@ -69,7 +73,7 @@ export async function systemInfo(q: Queryable, config: Config, signing: SigningS
       memberAutoLink: config.roles.memberAutoLink,
     },
     sessions: { idleTimeoutSeconds: Math.round(config.session.idleTimeoutMs / 1000), lifetimeSeconds: Math.round(config.session.lifetimeMs / 1000) },
-    mail: { configured: mailer.configured, from: config.mail.from, replyTo: config.mail.replyTo, adminNotify: config.mail.adminNotify },
+    mail: { configured: mailer.configured, from: config.mail.from, replyTo: config.mail.replyTo, adminNotify: config.mail.adminNotify.length > 0 ? config.mail.adminNotify.join(', ') : null },
     publicForm: {
       enabled: config.publicForm.enabled,
       origins: [...config.publicForm.origins],
@@ -79,6 +83,7 @@ export async function systemInfo(q: Queryable, config: Config, signing: SigningS
       personalAutoApproveMaxPerDay: config.personal.autoApproveMaxPerDay,
     },
     issuing: { maxPerActorPerDay: config.issuing.maxPerActorPerDay },
+    approval: { required: !config.personal.autoApprove, recipients: approvers.recipients, fromAdmins: approvers.fromAdmins },
     policy: { ...POLICY },
     build: { version: config.build.version, commit: config.build.commit, builtAt: config.build.builtAt },
   };

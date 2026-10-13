@@ -2,7 +2,8 @@
 // www client is coded to) and its confirmation page.
 //
 // Submit: honeypot filled → 202 and nothing happens (a log line); no mail
-// or no signer → 503 unavailable; per IPv4 address or IPv6 /64 at most
+// or no signer → 503 unavailable (a request that cannot end in a key is not
+// taken, even though approval signs later); per IPv4 address or IPv6 /64 at most
 // PUBLIC_LIMIT_PER_IP_PER_HOUR rows in the last hour → 429 rate_limited with
 // Retry-After seconds; per email at most PUBLIC_LIMIT_PER_EMAIL_PER_DAY rows
 // in the last day → a silent 202 (a log line); otherwise a row with the
@@ -16,8 +17,9 @@
 // Verify: the token is consumed atomically (verified_at set where it was
 // null and the link has not expired; none → 400 invalid_token), the
 // personal flow runs with source web and the attestation given on the form,
-// and the outcome is recorded on the row. The key itself only ever goes by
-// mail.
+// and the outcome is recorded on the row: pending_review by default (the
+// approvers are mailed; personal.ts), issued, renewed or resent otherwise.
+// The key itself only ever goes by mail.
 
 import { isIP } from 'node:net';
 import type { Attestation, PersonalOutcome } from '../../shared/api';
@@ -123,7 +125,12 @@ export async function submitPublicRequest(deps: PublicRequestDeps, input: Public
   if (!created) return;
   const url = `${deps.config.publicUrl}/verify?token=${created.token}`;
   try {
-    await mailOrUnavailable(deps.mailer, confirmationMail({ to: input.email, url, publicUrl: deps.config.publicUrl }), deps.log, 'The confirmation link');
+    await mailOrUnavailable(
+      deps.mailer,
+      confirmationMail({ to: input.email, url, publicUrl: deps.config.publicUrl, approvalRequired: !deps.config.personal.autoApprove }),
+      deps.log,
+      'The confirmation link',
+    );
   } catch (e) {
     // Nothing was sent: the row goes (the append-only audit event stays; it
     // names neither the address nor the client).

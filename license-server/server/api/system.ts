@@ -9,5 +9,5 @@ import type { PartialHandlerMap } from '../http/types';
 import { systemInfo } from '../services/system';
 
 export const systemHandlers: PartialHandlerMap = {
-  system: async (ctx) => json<ResponseOf<'system'>>(await systemInfo(ctx.db, ctx.config, ctx.signing, ctx.mailer)),
+  system: async (ctx) => json<ResponseOf<'system'>>(await systemInfo(ctx.db, ctx.config, ctx.signing, ctx.mailer, ctx.now)),
 };

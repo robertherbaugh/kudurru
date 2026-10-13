@@ -2,7 +2,9 @@
 // sections its permissions allow, a page outside them says "Not
 // permitted", a signed-out visitor is sent to the sign-in page with the
 // way back (an invite link survives the round trip), and the dev banner
-// appears with a test signer.
+// appears with a test signer. The System page says who approves personal
+// keys and who is mailed about new requests, and warns when nobody is
+// (no address, or mail not configured).
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderApp } from '../test/render';
 import { adminMe, catalog, customerMe, openRequest, superMe, systemInfo } from '../dev/fixtures';
@@ -54,6 +56,39 @@ test('a page outside the roles says so and asks the API nothing for it', async (
 test('a superadmin reaches the System page', async () => {
   renderApp({ route: '/system', me: superMe, handlers: { system: () => systemInfo } });
   expect(await screen.findByRole('heading', { level: 1, name: 'System' })).toBeInTheDocument();
+  const approval = await screen.findByRole('region', { name: 'Approval' });
+  expect(within(approval).getByText('Approval required: a license admin approves each key and renewal')).toBeInTheDocument();
+  expect(within(approval).getByText('License admins and superadmins with a verified email')).toBeInTheDocument();
+  expect(within(approval).getByText('admin@example.org')).toBeInTheDocument();
+  expect(within(approval).getByText('superadmin@example.org')).toBeInTheDocument();
+  expect(within(approval).queryByText('Nobody is mailed about new requests')).not.toBeInTheDocument();
+});
+
+test('the System page warns when nobody is mailed about new requests, and names a configured list', async () => {
+  const first = renderApp({ route: '/system', me: superMe, handlers: { system: () => ({ ...systemInfo, approval: { required: true, recipients: [], fromAdmins: true } }) } });
+  expect(await screen.findByText('Nobody is mailed about new requests')).toBeInTheDocument();
+  first.unmount();
+  renderApp({
+    route: '/system',
+    me: superMe,
+    handlers: {
+      system: () => ({ ...systemInfo, publicForm: { ...systemInfo.publicForm, personalAutoApprove: true }, approval: { required: false, recipients: ['licenses@kudurru.io'], fromAdmins: false } }),
+    },
+  });
+  const approval = await screen.findByRole('region', { name: 'Approval' });
+  expect(within(approval).getByText('Automatic, up to 50 a day')).toBeInTheDocument();
+  expect(within(approval).getByText('licenses@kudurru.io')).toBeInTheDocument();
+  expect(within(approval).queryByText('License admins and superadmins with a verified email')).not.toBeInTheDocument();
+});
+
+test('the System page warns that nobody is mailed while mail is not configured', async () => {
+  renderApp({ route: '/system', me: superMe, handlers: { system: () => ({ ...systemInfo, mail: { ...systemInfo.mail, configured: false } }) } });
+  const approval = await screen.findByRole('region', { name: 'Approval' });
+  expect(within(approval).getByText('Nobody is mailed about new requests')).toBeInTheDocument();
+  expect(within(approval).getByText(/Mail is not configured \(SMTP_URL\), so no approval link goes out/)).toBeInTheDocument();
+  expect(within(approval).getByText('Would be mailed about new requests')).toBeInTheDocument();
+  expect(within(approval).queryByText('Mailed about new requests')).not.toBeInTheDocument();
+  expect(within(approval).getByText('admin@example.org')).toBeInTheDocument();
 });
 
 test('a signed-out visitor to an invite goes to the sign-in page with the way back', async () => {

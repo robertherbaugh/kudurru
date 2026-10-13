@@ -1,9 +1,11 @@
 // /verify?token= (anonymous, outside the session gate): the page the
 // confirmation mail of the kudurru.io form links to. It says what happens
 // next and confirms only on a click (mail scanners that open links must
-// not consume the token), then shows the outcome: a key was mailed, the
-// personal key was renewed or resent, or the request waits for review.
-// The key itself only ever goes by mail.
+// not consume the token), then shows the outcome: usually the request
+// waits for a license admin's approval and the key follows by mail once
+// it is approved; a current key that is not due for renewal is mailed
+// again; where approval is automatic (PERSONAL_AUTO_APPROVE), a key was
+// mailed or renewed. The key itself only ever goes by mail.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -29,7 +31,7 @@ export function verifyErrorWords(err: unknown): { title: string; description: st
       case 'invalid':
         return {
           title: 'This confirmation link no longer works',
-          description: `It was already used, or it is older than ${CONFIRM_TTL_HOURS} hours. If you already confirmed, check your mail for the key; otherwise request a key again.`,
+          description: `It was already used, or it is older than ${CONFIRM_TTL_HOURS} hours. If you already confirmed, your key arrives by email once it is approved; otherwise request a key again.`,
         };
       case 'rate_limited':
         return { title: 'Too many attempts', description: `Wait a little and try again${err.retryAfter ? ` in ${err.retryAfter} seconds` : ''}.` };
@@ -67,8 +69,8 @@ export default function VerifyPage() {
     body = (
       <VStack gap={3}>
         <Text as="p">
-          You asked for a free personal key for non-commercial use. Confirm the request and we mail the key to the address you gave. If you already hold a personal key, we
-          renew it when it is due or mail it again.
+          You asked for a free personal key for non-commercial use. Confirm the request, and the key arrives by email at the address you gave once it is approved. If you
+          already hold a personal key that is not due for renewal, we mail it again.
         </Text>
         {failed ? (
           <Banner
@@ -82,7 +84,7 @@ export default function VerifyPage() {
             }
           />
         ) : null}
-        <Button label="Confirm and send my key" variant="primary" width="100%" isLoading={confirm.isPending} isDisabled={confirm.error instanceof ApiError && (confirm.error.key === 'invalid_token' || confirm.error.key === 'invalid')} onClick={() => confirm.mutate()} />
+        <Button label="Confirm my request" variant="primary" width="100%" isLoading={confirm.isPending} isDisabled={confirm.error instanceof ApiError && (confirm.error.key === 'invalid_token' || confirm.error.key === 'invalid')} onClick={() => confirm.mutate()} />
       </VStack>
     );
   }

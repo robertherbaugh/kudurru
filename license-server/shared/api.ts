@@ -303,6 +303,8 @@ export interface Catalog {
   };
   /** Today as the server sees it (UTC); date presets count from it. */
   today: ExpiresOn;
+  /** A personal key waits for an admin's approval (PERSONAL_AUTO_APPROVE=false, the default); nothing is signed on its own. */
+  approvalRequired: boolean;
 }
 
 // --- the customer's own view (self.*) ---------------------------------------
@@ -686,6 +688,8 @@ export interface LicenseRequest {
   createdAt: Instant;
   /** The oldest person customer with a member row for the email, which approval would use (never an organization). */
   personCustomer: CustomerRef | null;
+  /** The person's active personal license that approving renews (instead of issuing a new one), or null (open requests only). */
+  renews: { licenseId: string; expiresOn: ExpiresOn } | null;
 }
 
 /** GET /api/v1/requests query. */
@@ -839,6 +843,55 @@ export type AuditPage = KeysetPage<AuditEvent>;
 
 // --- system ------------------------------------------------------------------
 
+/** POST /api/v1/me/licenses/:id/renew: a fresh non-commercial certification for every renewal. */
+export interface MyRenewBody {
+  noncommercial: true;
+}
+
+/** POST /api/v1/public/approvals/preview: the token of a one-click approval link (/approve?token=…). */
+export interface ApprovalTokenBody {
+  token: string;
+}
+
+/** What the approval page shows before an admin decides (also for a used or expired link, which can no longer decide). */
+export interface ApprovalPreview {
+  request: {
+    id: string;
+    name: string;
+    email: string;
+    use: string;
+    source: RequestSource;
+    createdAt: Instant;
+    reviewReason: ReviewReason | null;
+    attestation: { at: string | null; statement: string | null };
+  };
+  /** The active personal license approving renews, or null for a new key. */
+  renews: { licenseId: string; expiresOn: ExpiresOn } | null;
+  /** What approving signs. */
+  terms: { plan: 'personal'; nodes: number; features: null; expiresOn: ExpiresOn };
+  status: RequestStatus;
+  /** Who decided, when the request is no longer open. */
+  decidedBy: string | null;
+  /** The link can no longer decide: used, expired, or its address no longer approves. */
+  expired: boolean;
+  /** The address the link was mailed to. */
+  sentTo: string;
+}
+
+/** POST /api/v1/public/approvals/decide. A rejection needs a note (1-1000 characters), mailed to the requester. */
+export interface ApprovalDecideBody {
+  token: string;
+  decision: 'approve' | 'reject';
+  note?: string;
+}
+
+/** The decision; never the key (it goes to the requester by mail). */
+export interface ApprovalResult {
+  status: 'approved' | 'rejected';
+  licenseId?: string;
+  outcome?: 'issued' | 'renewed';
+}
+
 /** GET /api/v1/system: the read-only System page (no secrets). */
 export interface SystemInfo {
   devMode: boolean;
@@ -870,6 +923,7 @@ export interface SystemInfo {
     memberAutoLink: boolean;
   };
   sessions: { idleTimeoutSeconds: number; lifetimeSeconds: number };
+  /** adminNotify: ADMIN_NOTIFY_EMAIL, the list joined with ', ', or null. */
   mail: { configured: boolean; from: string; replyTo: string; adminNotify: string | null };
   publicForm: {
     enabled: boolean;
@@ -880,6 +934,14 @@ export interface SystemInfo {
     personalAutoApproveMaxPerDay: number;
   };
   issuing: { maxPerActorPerDay: number };
+  /** Who approves personal keys: required (the default) or automatic; the mail recipients of new requests. */
+  approval: {
+    required: boolean;
+    /** ADMIN_NOTIFY_EMAIL, or when unset the enabled license admins and superadmins with a verified email. */
+    recipients: string[];
+    /** True when ADMIN_NOTIFY_EMAIL is unset and the recipients are the admin users. */
+    fromAdmins: boolean;
+  };
   policy: Policy;
   build: { version: string; commit: string; builtAt: string | null };
 }
@@ -908,6 +970,8 @@ export type RouteTypes = {
   authCallback: Wire<Record<string, string>, None, never>;
   publicKeyRequest: Wire<None, PublicKeyRequestBody, PublicKeyRequestAccepted>;
   publicKeyRequestVerify: Wire<None, VerifyBody, VerifyResult>;
+  approvalPreview: Wire<None, ApprovalTokenBody, ApprovalPreview>;
+  approvalDecide: Wire<None, ApprovalDecideBody, ApprovalResult>;
   authMe: Wire<None, None, Me>;
   authLogout: Wire<None, None, void>;
   catalog: Wire<None, None, Catalog>;
@@ -916,7 +980,7 @@ export type RouteTypes = {
   myLicenseKey: Wire<None, None, string>;
   myRequests: Wire<None, None, Items<MyRequest>>;
   myRequestCreate: Wire<None, PersonalRequestBody, PersonalRequestResult>;
-  myLicenseRenew: Wire<None, None, MyLicenseDetail>;
+  myLicenseRenew: Wire<None, MyRenewBody, PersonalRequestResult>;
   myInvitePreview: Wire<None, RedeemInviteBody, InvitePreview>;
   myInviteRedeem: Wire<None, RedeemInviteBody, RedeemInviteResult>;
   customersList: Wire<CustomerListQuery, None, Page<Customer>>;

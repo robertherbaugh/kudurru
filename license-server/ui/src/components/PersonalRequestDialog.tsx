@@ -4,8 +4,10 @@
 // the kudurru.io form shows it) that must be ticked. The request needs an
 // email address the identity provider verified; without one the dialog
 // says so and points at the public form. The answer is shown in the same
-// dialog: a key was issued or renewed or mailed again, or the request
-// waits for review.
+// dialog: usually the request waits for a license admin's approval and
+// the key follows by mail; a current key that is not due is mailed again;
+// with automatic approval (Catalog.approvalRequired false) a key was
+// issued or renewed.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Link } from '@astryxdesign/core/Link';
@@ -16,7 +18,7 @@ import { ATTESTATION_STATEMENT, LICENSE_PAGE_URL, NONCOMMERCIAL_LICENSE_URL, PER
 import { ApiError } from '../api/client';
 import { useMe } from '../api/context';
 import { useFieldErrors } from '../api/fieldErrors';
-import { useRouteMutation } from '../api/hooks';
+import { useCatalog, useRouteMutation } from '../api/hooks';
 import { outcomeWords } from '../lib/words';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { CheckboxField, TextAreaField, TextField } from '../ui/fields/TextField';
@@ -48,6 +50,7 @@ export function PersonalRequestDialog({ isOpen, onClose }: { isOpen: boolean; on
 
 function PersonalRequestForm({ onClose }: { onClose: () => void }) {
   const me = useMe();
+  const catalog = useCatalog();
   const [name, setName] = useState(me.user.name);
   const [use, setUse] = useState('');
   const [certified, setCertified] = useState(false);
@@ -74,7 +77,8 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
       </>
     }>
       <Text as="p">
-        A free personal key covers up to {PERSONAL_MAX_NODES} nodes and every feature for {PERSONAL_TERM_DAYS} days, for non-commercial use: a home, a homelab, study, a charity or a school. We mail it to {me.user.email ?? 'your verified address'} and show it here.
+        A free personal key covers up to {PERSONAL_MAX_NODES} nodes and every feature for {PERSONAL_TERM_DAYS} days, for non-commercial use: a home, a homelab, study, a charity or a school.{' '}
+        {catalog.data?.approvalRequired === false ? 'We mail it' : 'A license admin approves each request; then we mail the key'} to {me.user.email ?? 'your verified address'} and show it here.
       </Text>
       {!verified || (m.error instanceof ApiError && m.error.key === 'email_unverified') ? (
         <Banner

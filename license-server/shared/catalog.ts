@@ -45,6 +45,8 @@ export const MAX_NODES = 100_000;
 export const CONFIRM_TTL_HOURS = 24;
 /** An invite link to a customer's licenses works this many days. */
 export const INVITE_TTL_DAYS = 14;
+/** A one-click approval link in an admin's mail works this many days (and once). */
+export const APPROVAL_LINK_TTL_DAYS = 7;
 
 /** Every policy constant in one object (GET /api/v1/catalog, the System page). */
 export interface Policy {
@@ -59,6 +61,7 @@ export interface Policy {
   expiryWarningDays: number;
   confirmTtlHours: number;
   inviteTtlDays: number;
+  approvalLinkTtlDays: number;
 }
 
 export const POLICY: Readonly<Policy> = Object.freeze({
@@ -73,6 +76,7 @@ export const POLICY: Readonly<Policy> = Object.freeze({
   expiryWarningDays: EXPIRY_WARNING_DAYS,
   confirmTtlHours: CONFIRM_TTL_HOURS,
   inviteTtlDays: INVITE_TTL_DAYS,
+  approvalLinkTtlDays: APPROVAL_LINK_TTL_DAYS,
 });
 
 /** The license a personal key is certified for (the attestation's `license`, an SPDX id). */

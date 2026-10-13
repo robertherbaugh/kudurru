@@ -1,8 +1,8 @@
 // The background cleanup (design spec §2 "Background"): expired sessions
 // and sign-ins in flight go, unconfirmed public form requests go 7 days
-// after their link expired (confirmed ones stay), IP addresses and user
-// agents older than 90 days are forgotten, a pass is skipped while one
-// runs, and stop() waits for it.
+// after their link expired (confirmed ones stay), approval links go 30 days
+// after they expired, IP addresses and user agents older than 90 days are
+// forgotten, a pass is skipped while one runs, and stop() waits for it.
 import { expect, test } from 'bun:test';
 import { createSession } from '../auth/sessions';
 import { newId } from '../db/ids';
@@ -36,9 +36,19 @@ describeDb('cleanup', () => {
     const recentUnverified = await publicRequest(new Date(now.getTime() - 2 * day), new Date(now.getTime() - day), null);
     const oldUnverified = await publicRequest(new Date(now.getTime() - 9 * day), new Date(now.getTime() - 8 * day), null);
     const oldVerified = await publicRequest(new Date(now.getTime() - 100 * day), new Date(now.getTime() - 99 * day), new Date(now.getTime() - 99.5 * day));
+    const requestId = newId('request');
+    await t.db`
+      insert into license_requests (id, source, requester_email, name, use_description, attestation, review_reason)
+      values (${requestId}, 'web', 'ana@example.org', 'Ana', 'home lab', ${{ source: 'kudurru.io form', at: now.toISOString() }}, 'auto_approve_off')`;
+    const link = (tag: string, expiredDaysAgo: number) => t.db`
+      insert into request_approval_links (token_hash, request_id, sent_to, created_at, expires_at)
+      values (${Buffer.from(tag)}, ${requestId}, 'admin@example.org', ${new Date(now.getTime() - (expiredDaysAgo + 7) * day)}, ${new Date(now.getTime() - expiredDaysAgo * day)})`;
+    await link('kept', 29);
+    await link('gone', 31);
 
     const r = await cleanup(t.db, now);
-    expect(r).toEqual({ sessions: 1, logins: 1, publicRequests: 1, anonymizedPublicRequests: 1, anonymizedSessions: 0 });
+    expect(r).toEqual({ sessions: 1, logins: 1, publicRequests: 1, approvalLinks: 1, anonymizedPublicRequests: 1, anonymizedSessions: 0 });
+    expect((await t.db<{ token_hash: Buffer }[]>`select token_hash from request_approval_links`).map((l) => l.token_hash.toString())).toEqual(['kept']);
 
     const sessions = await t.db<{ id_hash: Buffer }[]>`select id_hash from sessions where user_id = ${user.id}`;
     expect(sessions.map((s) => s.id_hash.toString('hex'))).toEqual([live.idHash.toString('hex')]);
@@ -52,7 +62,7 @@ describeDb('cleanup', () => {
     expect(pkr.find((p) => p.id === oldUnverified)).toBeUndefined();
 
     // Nothing left to do.
-    expect(await cleanup(t.db, now)).toEqual({ sessions: 0, logins: 0, publicRequests: 0, anonymizedPublicRequests: 0, anonymizedSessions: 0 });
+    expect(await cleanup(t.db, now)).toEqual({ sessions: 0, logins: 0, publicRequests: 0, approvalLinks: 0, anonymizedPublicRequests: 0, anonymizedSessions: 0 });
   });
 
   test('sessions older than 90 days lose ip and user agent', async () => {

@@ -1,10 +1,11 @@
-// Requests that wait for review (design spec §6 "Requests (admin)", §10):
-// the list (open first, with the person customer approval would use),
-// approve (person customer created or reused, never an organization; the
-// requester a member, linked from the portal or invited from the form; a
-// new key, or a renewal when the person meanwhile holds a personal key;
-// request closed with the resulting ids; key mailed), reject (note mailed)
-// and decisions on closed requests (409).
+// Requests that wait for an admin (design spec §6 "Requests (admin)",
+// §10): the list (open first, with the person customer approval would use
+// and the license it would renew), approve (person customer created or
+// reused, never an organization; the requester a member, linked from the
+// portal or invited from the form; a new key, or a renewal when the person
+// meanwhile holds a personal key; request closed with the resulting ids;
+// key mailed as approved), reject (note mailed) and decisions on closed
+// requests (409). The one-click link is in approvals.test.ts.
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type { Attestation } from '../../shared/api';
 import { addDays, todayUtc } from '../../shared/dates';
@@ -42,11 +43,11 @@ afterAll(async () => {
 let n = 0;
 const addr = (tag: string): string => `${tag}-${++n}-${process.pid}@requests.example`;
 
-/** A request that waits for review (automatic approval off), as the form or the portal makes it. */
+/** A request that waits for approval (the default), as the form or the portal makes it. */
 async function pending(email: string, opts: { source?: 'web' | 'portal'; requestedBy?: string; name?: string } = {}): Promise<string> {
   const attestation: Attestation = { source: opts.source === 'portal' ? 'portal' : 'kudurru.io form', at: new Date().toISOString(), email };
   const r = await inTransaction(
-    { db: t.db, config: testConfig({ personal: { autoApprove: false } }), log: silentLogger, signing, mailer: new MemoryMailer() },
+    { db: t.db, config: testConfig(), log: silentLogger, signing, mailer: new MemoryMailer() },
     publicActor(email, { ip: null, userAgent: null }),
     (s) => requestPersonalKey(s, { name: opts.name ?? 'Pending Person', email, use: 'homelab', attestation, source: opts.source ?? 'web', requestedBy: opts.requestedBy ?? null }),
   );
@@ -63,7 +64,7 @@ describeDb('requests', () => {
     const all = await callJson(app, 'requestsList', { as: admin });
     expect(all.status).toBe(200);
     const item = all.body.items.find((r) => r.id === id)!;
-    expect(item).toMatchObject({ status: 'open', reviewReason: 'auto_approve_off', requesterEmail: email, source: 'web', personCustomer: { id: person.id, kind: 'person' }, decidedBy: null });
+    expect(item).toMatchObject({ status: 'open', reviewReason: 'auto_approve_off', requesterEmail: email, source: 'web', personCustomer: { id: person.id, kind: 'person' }, decidedBy: null, renews: null });
     expect(all.body.items[0]!.status).toBe('open');
     const closed = await callJson(app, 'requestsList', { as: admin, query: { status: 'rejected' } });
     expect(closed.body.items.every((r) => r.status === 'rejected')).toBe(true);
@@ -81,6 +82,7 @@ describeDb('requests', () => {
     expect(res.body.license.keys[0]!.issuedBy.id).toBe(adminId);
     const mail = app.mailer.to(email)[0]!;
     expect(mail.subject).toBe('Your kudurru license key');
+    expect(mail.text).toContain('Your request for a free personal kudurru license key has been approved.');
     expect(mail.text).toContain('/invites/');
     const again = await callJson(app, 'requestApprove', { as: admin, params: { id }, body: {} });
     expect(again.status).toBe(409);
@@ -128,12 +130,17 @@ describeDb('requests', () => {
     const soon = addDays(todayUtc(), 20);
     await t.db`update licenses set expires_at = ${new Date(`${soon}T23:59:59Z`)} where id = ${issued.id}`;
     await t.db`update license_keys set expires_at = ${new Date(`${soon}T23:59:59Z`)} where license_id = ${issued.id}`;
+    // The list says what approving renews (open requests only).
+    const listed = (await callJson(app, 'requestsList', { as: admin })).body.items.find((r) => r.id === second)!;
+    expect(listed.renews).toEqual({ licenseId: issued.id, expiresOn: soon });
     const res = await callJson(app, 'requestApprove', { as: admin, params: { id: second }, body: {} });
     expect(res.status).toBe(200);
     expect(res.body.license.id).toBe(issued.id);
     expect(res.body.license.keys.map((k) => k.reason)).toEqual(['renew', 'issue']);
     expect(res.body.license.expiresOn).toBe(addDays(soon, 365));
     expect(app.mailer.to(email).at(-1)!.subject).toBe('Your renewed kudurru license key');
+    expect(app.mailer.to(email).at(-1)!.text).toContain('Your request to renew your kudurru license key has been approved.');
+    expect(res.body.request.renews).toBeNull();
   });
 
   test('reject: closed with the note, which is mailed; deciding again is 409', async () => {

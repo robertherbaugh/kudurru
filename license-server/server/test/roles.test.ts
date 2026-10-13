@@ -1,11 +1,13 @@
 // The least-privilege database roles (design spec §14; README "Database
-// roles"; deploy/postgres-roles.sql; migration 0002): a database owned by
-// license_portal_owner, migrated by it, and every route of the portal run
-// through the real handlers connected as license_portal_app, the only role
-// a production container holds. A grant the code needs and 0002 lacks
-// shows up here as a 500 with "permission denied" in the log; the second
-// test proves what the runtime role must never do. The commented grant
-// block of deploy/postgres-roles.sql must stay identical to 0002.
+// roles"; deploy/postgres-roles.sql; migrations 0002 and 0003): a database
+// owned by license_portal_owner, migrated by it, and every route of the
+// portal run through the real handlers connected as license_portal_app,
+// the only role a production container holds (automatic approval and the
+// default, approval required, with its one-click link). A grant the code
+// needs and the migrations lack shows up here as a 500 with "permission
+// denied" in the log; the second test proves what the runtime role must
+// never do. The commented grant block of deploy/postgres-roles.sql must
+// stay identical to the migrations' grants.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +19,7 @@ import { cleanup } from '../jobs';
 import { loadSigning } from '../licensing/keyring';
 import type { SigningState } from '../licensing/types';
 import { MemoryLogger, silentLogger } from '../log';
+import { MIGRATIONS } from '../migrations';
 import { callJson, makeTestApp, type TestApp } from './call';
 import { databaseUrl, describeDb, hasDb, settle, TEST_DATABASE_URL } from './db';
 import { createUser, GOLDEN_VECTORS, signInAs, testConfig } from './fixtures';
@@ -33,11 +36,12 @@ function grantLines(sql: string): string[] {
 }
 
 describe('the grants', () => {
-  test('deploy/postgres-roles.sql repeats migration 0002 grant for grant', () => {
-    const migration = readFileSync(join(import.meta.dir, '..', 'migrations', '0002_runtime_grants.sql'), 'utf8');
+  test('deploy/postgres-roles.sql repeats the grants of the migrations (0002, 0003), grant for grant', () => {
+    const migrations = MIGRATIONS.map((m) => m.sql).join('\n');
     const setup = readFileSync(join(import.meta.dir, '..', '..', 'deploy', 'postgres-roles.sql'), 'utf8');
-    expect(grantLines(migration).length).toBeGreaterThan(0);
-    expect(grantLines(setup)).toEqual(grantLines(migration));
+    expect(grantLines(migrations).length).toBeGreaterThan(0);
+    expect(grantLines(migrations)).toContain('grant select, insert, update, delete on request_approval_links to license_portal_app;');
+    expect(grantLines(setup)).toEqual(grantLines(migrations));
   });
 });
 
@@ -139,6 +143,21 @@ describeDb('as license_portal_app', () => {
     const token = /\/verify\?token=([A-Za-z0-9_-]{43})/.exec(app.mailer.to(formEmail)[0]!.text)![1]!;
     expect((await callJson(app, 'publicKeyRequestVerify', { body: { token } })).body.outcome).toBe('issued');
 
+    // Approval required (the default): the form, the approvers' link, its preview and decision.
+    const approving = makeTestApp({ handlers, db: appDb, signing, log, config: testConfig() });
+    try {
+      const waitEmail = `wait-${process.pid}@roles.example`;
+      expect((await callJson(approving, 'publicKeyRequest', { body: { name: 'Waiting Person', email: waitEmail, use: 'homelab', noncommercial: true, website: '' } })).status).toBe(202);
+      const confirm = /\/verify\?token=([A-Za-z0-9_-]{43})/.exec(approving.mailer.to(waitEmail)[0]!.text)![1]!;
+      expect((await callJson(approving, 'publicKeyRequestVerify', { body: { token: confirm } })).body.outcome).toBe('pending_review');
+      const link = /\/approve\?token=([A-Za-z0-9_-]{43})/.exec(approving.mailer.to('admin@example.org')[0]!.text)![1]!;
+      expect((await callJson(approving, 'approvalPreview', { body: { token: link } })).status).toBe(200);
+      expect((await callJson(approving, 'approvalDecide', { body: { token: link, decision: 'approve' } })).body.status).toBe('approved');
+      expect((await callJson(approving, 'catalog', { as: cu })).body.approvalRequired).toBe(true);
+    } finally {
+      await approving.close();
+    }
+
     // Withdraw with blocking, a request that waits for review, approve and reject, the block list.
     expect((await callJson(app, 'licenseWithdraw', { as, params: { id: mine }, body: { reason: 'test', blockPersonal: true } })).status).toBe(200);
     const pending = await callJson(app, 'myRequestCreate', { as: cu, body: { name: 'Roles Customer', use: 'homelab', noncommercial: true } });
@@ -171,6 +190,7 @@ describeDb('as license_portal_app', () => {
                 values ('roles-state', ${Buffer.alloc(32)}, 'n', 'v', '/', now(), now() + interval '10 minutes')`;
     const swept = await cleanup(appDb, new Date(Date.now() + 400 * 86_400_000));
     expect(swept.logins).toBeGreaterThanOrEqual(1);
+    expect(swept.approvalLinks).toBeGreaterThanOrEqual(1);
 
     expect(log.entries.filter((e) => JSON.stringify(e).includes('permission denied'))).toEqual([]);
   });

@@ -5,25 +5,29 @@
 //    would use anyway), else a new person customer made from the request;
 //    or another existing person customer (never an organization: approving
 //    never adds the requester to one);
-// 2. Key: the licensee printed on the key and its expiry (UTC);
+// 2. Key: the licensee printed on the key and its expiry (UTC). For a
+//    renewal (LicenseRequest.renews, with the default customer) only the
+//    expiry: the renewed key keeps its licensee, and the proposed expiry is
+//    one term after the later of today and the current expiry, so the
+//    server's "a renewal must expire later" rule holds;
 // 3. Review: every claim in words, the use the requester described and
 //    their certification, then "Approve and send key" (which checks the
 //    earlier steps again).
-// The server issues (or renews, if the person meanwhile holds a personal
-// license) and mails the key. A 400 that names fields takes the admin to
-// the step of the first one, with the message under the control.
+// The server issues (or renews, if the person holds a personal license)
+// and mails the key. A 400 that names fields takes the admin to the step
+// of the first one, with the message under the control.
 import { Banner } from '@astryxdesign/core/Banner';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useRef, useState } from 'react';
 import type { ApproveBody, LicenseRequest } from '@shared/api';
-import { ALL_FEATURES_LABEL, PERSONAL_MAX_NODES, planLabel } from '@shared/catalog';
-import { graceEndsOn, todayUtc } from '@shared/dates';
+import { ALL_FEATURES_LABEL, PERSONAL_MAX_NODES, PERSONAL_TERM_DAYS, planLabel } from '@shared/catalog';
+import { addDays, graceEndsOn, maxExpiresOn, todayUtc, type ExpiresOn } from '@shared/dates';
 import { firstField, useFieldErrors } from '../api/fieldErrors';
 import { useCatalog, useRouteMutation } from '../api/hooks';
 import { utcDateTime, utcDay } from '../lib/dates';
-import { defaultExpiry, termBounds, termPresets } from '../lib/terms';
+import { defaultExpiry, renewalBase, termBounds, termPresets } from '../lib/terms';
 import { nameError } from '../lib/validate';
 import { useNotify } from '../ui/components/Feedback';
 import { ReviewRow, Wizard, WizardDialog, type WizardStep } from '../ui/components/Wizard';
@@ -44,6 +48,22 @@ export function ApproveRequestWizardDialog({ request, isOpen, onClose }: { reque
 /** The body fields the steps' controls show, in step order. */
 const APPROVE_FIELDS = ['customerId', 'licensee', 'expiresOn'];
 
+type Renews = NonNullable<LicenseRequest['renews']>;
+
+/** The expiry bounds of the key approving signs: a renewal must also expire after the current key. */
+export function approvalBounds(today: ExpiresOn, renews: Renews | null): { min: ExpiresOn; max: ExpiresOn } {
+  const bounds = termBounds('personal', today);
+  return renews ? { ...bounds, min: maxExpiresOn(bounds.min, addDays(renews.expiresOn, 1)) } : bounds;
+}
+
+/** The proposed expiry: one term from today, or for a renewal one term after the later of today and the current expiry (within the bounds). */
+export function approvalDefaultExpiry(today: ExpiresOn, renews: Renews | null): ExpiresOn {
+  if (!renews) return defaultExpiry('personal', today);
+  const proposed = addDays(renewalBase(today, renews.expiresOn), PERSONAL_TERM_DAYS);
+  const { max } = termBounds('personal', today);
+  return proposed <= max ? proposed : max;
+}
+
 function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClose: () => void }) {
   const catalog = useCatalog();
   const notify = useNotify();
@@ -56,19 +76,22 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
   const [mode, setMode] = useState<'default' | 'other'>('default');
   const [customer, setCustomer] = useState<CustomerChoice | null>(null);
   const [licensee, setLicensee] = useState(r.name);
-  const [expiresOn, setExpiresOn] = useState(() => defaultExpiry('personal', today));
+  const [expiresOn, setExpiresOn] = useState(() => approvalDefaultExpiry(today, r.renews));
   const [showErrors, setShowErrors] = useState<Record<string, boolean>>({});
-  const bounds = termBounds('personal', today);
+  // What approving renews is known for the default customer only; another customer may hold another license (the server decides).
+  const renews = mode === 'default' ? r.renews : null;
+  const bounds = approvalBounds(today, renews);
 
   const customerError = (): string | null => (mode === 'other' && !customer ? 'Choose a person customer' : null);
-  const keyError = (): string | null => nameError(licensee, 'the licensee') ?? dateError(expiresOn, bounds);
+  const keyError = (): string | null => (renews ? null : nameError(licensee, 'the licensee')) ?? dateError(expiresOn, bounds);
   const customerId = mode === 'other' ? customer?.id : known?.id;
 
   const approve = async () => {
     if (customerError() ?? keyError()) return;
+    // A renewal keeps the license's licensee: the server ignores one sent with it.
     const body: ApproveBody = {
       ...(customerId ? { customerId } : {}),
-      licensee: licensee.trim(),
+      ...(renews ? {} : { licensee: licensee.trim() }),
       expiresOn,
     };
     try {
@@ -130,20 +153,26 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
     {
       id: 'key',
       label: 'Key',
-      description: `A personal key: ${PERSONAL_MAX_NODES} nodes, every feature.`,
+      description: renews ? `A renewal of ${renews.licenseId}: ${PERSONAL_MAX_NODES} nodes, every feature.` : `A personal key: ${PERSONAL_MAX_NODES} nodes, every feature.`,
       content: (
         <VStack gap={4}>
-          <TextField
-            label="Licensee"
-            value={licensee}
-            onChange={(v) => {
-              setLicensee(v);
-              fe.edited('licensee');
-            }}
-            isRequired
-            help="Printed on the key. The requester asked for the name below."
-            error={(showErrors.key ? nameError(licensee, 'the licensee') : null) ?? fe.field('licensee')}
-          />
+          {renews ? (
+            <Text as="p">
+              Approving renews {renews.licenseId}, whose current key expires {utcDay(renews.expiresOn)}. The renewed key keeps the license's licensee.
+            </Text>
+          ) : (
+            <TextField
+              label="Licensee"
+              value={licensee}
+              onChange={(v) => {
+                setLicensee(v);
+                fe.edited('licensee');
+              }}
+              isRequired
+              help="Printed on the key. The requester asked for the name below."
+              error={(showErrors.key ? nameError(licensee, 'the licensee') : null) ?? fe.field('licensee')}
+            />
+          )}
           <DateField
             label="Expires on (UTC)"
             value={expiresOn}
@@ -153,7 +182,7 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
             }}
             min={bounds.min}
             max={bounds.max}
-            presets={termPresets('personal', today, bounds.max)}
+            presets={termPresets('personal', renews ? renewalBase(today, renews.expiresOn) : today, bounds.max)}
             isRequired
             help={!dateError(expiresOn, bounds) ? `Keeps working on nodes until ${utcDay(graceEndsOn(expiresOn))}.` : undefined}
             error={(showErrors.key ? dateError(expiresOn, bounds) : null) ?? fe.field('expiresOn')}
@@ -176,9 +205,15 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
             <ReviewRow label="Customer" step="customer" what="customer">
               {mode === 'other' ? (customer?.name ?? '–') : known ? `${known.name} (the person customer of ${r.requesterEmail})` : `${r.name} (new person, member ${r.requesterEmail})`}
             </ReviewRow>
-            <ReviewRow label="Licensee" step="key" what="licensee">
-              {licensee.trim()}
-            </ReviewRow>
+            {renews ? (
+              <MetadataListItem label="Renews">
+                {renews.licenseId}, current key expires {utcDay(renews.expiresOn)}
+              </MetadataListItem>
+            ) : (
+              <ReviewRow label="Licensee" step="key" what="licensee">
+                {licensee.trim()}
+              </ReviewRow>
+            )}
             <MetadataListItem label="Plan">{planLabel('personal')}</MetadataListItem>
             <MetadataListItem label="Nodes">{PERSONAL_MAX_NODES}</MetadataListItem>
             <MetadataListItem label="Features">{ALL_FEATURES_LABEL}</MetadataListItem>
@@ -195,7 +230,9 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
               {utcDateTime(r.attestation.at)}: {r.attestation.statement ?? 'by an admin'}
             </MetadataListItem>
           </MetadataList>
-          <Text type="supporting">If the person meanwhile holds a personal license, the server renews that one instead.</Text>
+          <Text type="supporting">
+            {renews ? 'Approving signs the renewed key and mails it to the requester.' : 'If the person meanwhile holds a personal license, the server renews that one instead.'}
+          </Text>
         </VStack>
       ),
       // The Stepper allows changing an earlier step and coming back: check them again.

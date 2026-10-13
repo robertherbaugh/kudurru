@@ -14,7 +14,7 @@ import type { Permission } from './permissions';
 
 /**
  * Who may call a route:
- * - anonymous: anyone; no session is read (health, sign-in, the /verify page's POST);
+ * - anonymous: anyone; no session is read (health, sign-in, the /verify and /approve pages' POSTs);
  * - public: anyone, cross-origin from PUBLIC_FORM_ORIGINS; no cookies are read or set, CORS applies;
  * - session: any signed-in user (401 unauthenticated without one);
  * - a Permission: a signed-in user holding it (403 forbidden with hint {missing} otherwise).
@@ -83,6 +83,9 @@ export const ROUTES = {
     badBody: 'invalid',
   },
   publicKeyRequestVerify: { method: 'POST', path: '/api/v1/public/key-requests/verify', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
+  // The one-click approval link of an admin's mail (/approve?token=): no session, the token is the credential.
+  approvalPreview: { method: 'POST', path: '/api/v1/public/approvals/preview', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
+  approvalDecide: { method: 'POST', path: '/api/v1/public/approvals/decide', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
 
   // The session.
   authMe: { method: 'GET', path: '/api/v1/auth/me', access: 'session' },

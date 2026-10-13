@@ -87,6 +87,18 @@ export function useInvitePreview(token: string) {
   return useRouteQuery('myInvitePreview', { body: { token } }, { retry: false, staleTime: Infinity });
 }
 
+// --- the one-click approval link (anonymous) -----------------------------------
+
+/**
+ * POST /api/v1/public/approvals/preview: the request and the terms behind
+ * an approval link (changes nothing; deciding is a separate POST from the
+ * page). Asked once: a refetch on focus would only spend the per-address
+ * rate limit, and the page shows the decision it made itself.
+ */
+export function useApprovalPreview(token: string) {
+  return useRouteQuery('approvalPreview', { body: { token } }, { retry: false, staleTime: Infinity, refetchOnWindowFocus: false, enabled: token !== '' });
+}
+
 // --- licenses, customers, requests (admin) -------------------------------------
 
 export function useLicenses(query: LicenseListQuery, opts: QueryOpts<'licensesList'> = {}) {

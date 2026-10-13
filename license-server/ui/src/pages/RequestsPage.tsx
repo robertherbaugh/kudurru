@@ -1,8 +1,10 @@
-// /requests (requests.read): personal key requests that wait for a person
-// (open first, filtered by state), why each waits, and the decisions:
-// Approve (a wizard: customer, key, review) and Reject (a FormDialog whose
-// note is mailed to the requester). The Blocked emails tab lists the
-// addresses whose requests always wait; a superadmin removes them.
+// /requests (requests.read): personal key requests that wait for a license
+// admin (open first, filtered by state), why each waits, what approving
+// would renew, and the decisions: Approve (a wizard: customer, key,
+// review) and Reject (a FormDialog whose note is mailed to the requester).
+// The admin mail of each new request links here and, for an ordinary
+// request, to the one-click /approve page. The Blocked emails tab lists
+// the addresses whose requests always wait; a superadmin removes them.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -38,7 +40,10 @@ export default function RequestsPage() {
   const tab = sp.get('tab') === 'blocked' && can('blocklist.read') ? 'blocked' : 'requests';
   return (
     <Page>
-      <PageHeader title="Requests" description="Personal key requests that wait for a person: automatic approval was off or used up, the person had a license withdrawn or the address is blocked." />
+      <PageHeader
+        title="Requests"
+        description="Personal key requests that wait for a license admin to approve or reject them. Requests from a blocked address, or from a person who had a license withdrawn, always wait here."
+      />
       {can('blocklist.read') ? (
         <TabList value={tab} onChange={(v) => setParams({ tab: v === 'requests' ? null : v, status: null })} aria-label="Request sections">
           <Tab value="requests" label="Requests" />
@@ -74,7 +79,17 @@ function RequestList() {
         </VStack>
       ),
     },
-    { key: 'use', header: 'Use', width: proportional(3, { minWidth: 160 }) },
+    {
+      key: 'use',
+      header: 'Use',
+      width: proportional(3, { minWidth: 160 }),
+      renderCell: (r) => (
+        <VStack gap={0.5}>
+          <Text>{r.use}</Text>
+          {r.renews ? <RenewsLine renews={r.renews} /> : null}
+        </VStack>
+      ),
+    },
     { key: 'reviewReason', header: 'Why it waits', width: proportional(2, { minWidth: 140 }), renderCell: (r) => (r.reviewReason ? REVIEW_REASON_LABEL[r.reviewReason] : '–') },
     {
       key: 'status',
@@ -123,7 +138,7 @@ function RequestList() {
           idKey="id"
           density="compact"
           verticalAlign="top"
-          emptyState={<Text color="secondary">{status === 'open' ? 'Nothing waits for review.' : 'No requests.'}</Text>}
+          emptyState={<Text color="secondary">{status === 'open' ? 'Nothing waits for approval.' : 'No requests.'}</Text>}
         />
       ) : null}
       <ApproveRequestWizardDialog request={approving} isOpen={approving !== null} onClose={() => setApproving(null)} />
@@ -131,6 +146,15 @@ function RequestList() {
         {rejecting ? <RejectForm request={rejecting} onClose={() => setRejecting(null)} /> : null}
       </FormDialog>
     </Panel>
+  );
+}
+
+/** "Renews lic_… (expires D UTC)": approving renews this license instead of issuing a new one. */
+function RenewsLine({ renews }: { renews: NonNullable<LicenseRequest['renews']> }) {
+  return (
+    <Text type="supporting" data-testid="request-renews">
+      Renews <Link href={`/licenses/${encodeURIComponent(renews.licenseId)}`}>{renews.licenseId}</Link> (expires {renews.expiresOn} UTC)
+    </Text>
   );
 }
 
@@ -208,7 +232,7 @@ function BlockedList() {
     });
   }
   return (
-    <Panel title="Blocked emails" description="Personal key requests from these addresses always wait for review.">
+    <Panel title="Blocked emails" description="Personal key requests from these addresses always wait for a signed-in license admin: their mail has no one-click approval link.">
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isPending ? <Loading /> : null}
       {q.data ? <Table<BlockedRow> data={q.data.items as BlockedRow[]} columns={columns} idKey="email" density="compact" emptyState={<Text color="secondary">No address is blocked.</Text>} /> : null}

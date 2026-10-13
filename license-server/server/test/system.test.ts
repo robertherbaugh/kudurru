@@ -1,8 +1,10 @@
 // The System page and the catalog (design spec §7 /system, §8): what the
 // portal runs with, from the configuration and the signing state, keys
-// signed per kid, no secrets anywhere in the answer; the catalog's plans,
-// features, policy, signing and mail flags and today (UTC); both read
-// "unavailable" with the reason when no key is loaded.
+// signed per kid, who approves personal keys (ADMIN_NOTIFY_EMAIL, or the
+// enabled admins with a verified email), no secrets anywhere in the
+// answer; the catalog's plans, features, policy, signing and mail flags,
+// today (UTC) and whether approval is required; both read "unavailable"
+// with the reason when no key is loaded.
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { FEATURES, PLANS, POLICY } from '../../shared/catalog';
 import { addDays, todayUtc } from '../../shared/dates';
@@ -56,8 +58,9 @@ describeDb('system and catalog', () => {
       signIn: { issuer: config.oidc.issuer, clientId: 'license-portal', groupsClaim: 'groups', roleMappings: { superadmin: ['license-superadmins'], license_admin: ['license-admins'], customer: [] }, adminClaimRules: [{ claim: 'email_verified', value: 'true' }], defaultRole: 'customer', memberAutoLink: false },
       sessions: { idleTimeoutSeconds: 1800, lifetimeSeconds: 43200 },
       mail: { configured: true, from: config.mail.from, replyTo: 'hello@kudurru.io', adminNotify: 'admin@example.org' },
-      publicForm: { enabled: true, origins: ['https://kudurru.io'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3, personalAutoApprove: true, personalAutoApproveMaxPerDay: 50 },
+      publicForm: { enabled: true, origins: ['https://kudurru.io'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3, personalAutoApprove: false, personalAutoApproveMaxPerDay: 50 },
       issuing: { maxPerActorPerDay: 50 },
+      approval: { required: true, recipients: ['admin@example.org'], fromAdmins: false },
       policy: { ...POLICY },
       build: { version: '1.2.3', commit: 'abc123', builtAt: '2026-10-12T00:00:00Z' },
     });
@@ -75,7 +78,30 @@ describeDb('system and catalog', () => {
       signing: { available: true, kid: GOLDEN.kid, trustedSince: 'v0.1.0', testKey: true },
       mail: { configured: true },
       today: todayUtc(),
+      approvalRequired: true,
     });
+  });
+
+  test('approval: without ADMIN_NOTIFY_EMAIL the approvers are the enabled admins with a verified email; automatic approval says so', async () => {
+    await createUser(t.db, { roles: ['superadmin'], email: 'sys-super@example.org' });
+    await createUser(t.db, { roles: ['customer'], idpRoles: ['license_admin'], email: 'sys-idp-admin@example.org' });
+    await createUser(t.db, { roles: ['license_admin'], email: null });
+    await createUser(t.db, { roles: ['license_admin'], email: 'sys-disabled@example.org', disabled: true });
+    await createUser(t.db, { roles: ['customer'], email: 'sys-customer@example.org' });
+    const fallback = testConfig({ ...config, mail: { ...config.mail, adminNotify: [] }, personal: { autoApprove: true } });
+    const other = makeTestApp({ handlers, db: t.db, config: fallback, signing: await loadSigning(fallback, silentLogger) });
+    try {
+      const sys = await callJson(other, 'system', { as: admin });
+      expect(sys.body.mail.adminNotify).toBeNull();
+      expect(sys.body.approval.required).toBe(false);
+      expect(sys.body.approval.fromAdmins).toBe(true);
+      expect(sys.body.approval.recipients).toContain('sys-super@example.org');
+      expect(sys.body.approval.recipients).toContain('sys-idp-admin@example.org');
+      for (const no of ['sys-disabled@example.org', 'sys-customer@example.org']) expect(sys.body.approval.recipients).not.toContain(no);
+      expect((await callJson(other, 'catalog', { as: admin })).body.approvalRequired).toBe(false);
+    } finally {
+      await other.close();
+    }
   });
 
   test('without a signer and mail: unavailable with the reason', async () => {

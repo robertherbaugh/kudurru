@@ -5,8 +5,10 @@
 // Retry-After, the silent per-email limit, 503 without mail or a signer,
 // the confirmation mail sent before the 202 (a failed mail deletes the
 // row), the atomic token consume (double confirm, expired link), the
-// outcome recorded, and the key mail's license.key (ASCII, trailing
-// newline, no BOM). Also the SMTP mailer against a tiny fake SMTP server.
+// outcome recorded (pending_review by default: the approvers are mailed;
+// issued with automatic approval), and the key mail's license.key (ASCII,
+// trailing newline, no BOM). Also the SMTP mailer against a tiny fake SMTP
+// server.
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import type { Socket } from 'bun';
 import { publicHandlers } from '../api/public';
@@ -26,14 +28,19 @@ const handlers = mergeHandlers(publicHandlers);
 const t = fileDatabase();
 let signing: SigningState;
 let app: TestApp;
+/** PERSONAL_AUTO_APPROVE=true: a confirmation issues the key. */
+let auto: TestApp;
+const AUTO = testConfig({ personal: { autoApprove: true } });
 
 beforeAll(async () => {
   if (!hasDb) return;
   signing = await loadSigning(testConfig(), silentLogger);
   app = makeTestApp({ handlers, db: t.db, signing });
+  auto = makeTestApp({ handlers, db: t.db, signing, config: AUTO });
 });
 afterAll(async () => {
   await app?.close();
+  await auto?.close();
 });
 
 let n = 0;
@@ -68,6 +75,7 @@ describeDb('POST /api/v1/public/key-requests', () => {
     const mail = app.mailer.to(email);
     expect(mail).toHaveLength(1);
     expect(mail[0]!.subject).toContain('Confirm');
+    expect(mail[0]!.text).toContain('once an administrator approves it');
     const token = tokenFrom(mail[0]!.text);
     expect(stored[0]!.token_hash.equals(new Bun.CryptoHasher('sha256').update(token).digest())).toBe(true);
     expect(JSON.stringify(await t.db`select * from public_key_requests`)).not.toContain(token);
@@ -202,11 +210,27 @@ describeDb('POST /api/v1/public/key-requests/verify', () => {
     await t.db`delete from public_key_requests`;
   });
 
-  test('confirm: outcome issued, the key mailed (ASCII license.key, trailing newline, no BOM), the outcome recorded; never the key in the answer', async () => {
-    const email = addr('verify');
+  test('confirm with approval required (the default): pending_review recorded with its request; the approvers are mailed; no key yet', async () => {
+    const email = addr('waits');
     const token = await submit(email);
     app.mailer.clear();
-    const res = await call(app, 'publicKeyRequestVerify', { body: { token } });
+    const res = await callJson(app, 'publicKeyRequestVerify', { body: { token } });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ outcome: 'pending_review' });
+    const row = (await t.db<{ outcome: string; license_request_id: string | null; license_id: string | null }[]>`
+      select outcome, license_request_id, license_id from public_key_requests where email = ${email}`)[0]!;
+    expect(row).toMatchObject({ outcome: 'pending_review', license_id: null });
+    expect(row.license_request_id).not.toBeNull();
+    expect(app.mailer.to(email)[0]!.subject).toContain('waiting for approval');
+    expect(app.mailer.to('admin@example.org')[0]!.text).toMatch(/\/approve\?token=[A-Za-z0-9_-]{43}/);
+    expect(await t.db`select 1 from licenses l join customer_members m on m.customer_id = l.customer_id where m.email = ${email}`).toHaveLength(0);
+  });
+
+  test('automatic approval: outcome issued, the key mailed (ASCII license.key, trailing newline, no BOM), the outcome recorded; never the key in the answer', async () => {
+    const email = addr('verify');
+    const token = await submit(email);
+    auto.mailer.clear();
+    const res = await call(auto, 'publicKeyRequestVerify', { body: { token } });
     const text = await res.text();
     expect(res.status).toBe(200);
     expect(JSON.parse(text)).toEqual({ outcome: 'issued' });
@@ -214,7 +238,7 @@ describeDb('POST /api/v1/public/key-requests/verify', () => {
     const row = (await rows(email))[0]!;
     expect(row.verified_at).not.toBeNull();
     expect(row.outcome).toBe('issued');
-    const mail = app.mailer.to(email)[0]!;
+    const mail = auto.mailer.to(email)[0]!;
     const attachment = mail.attachments![0]!;
     const content = attachment.content as string;
     expect(content.charCodeAt(0)).not.toBe(0xfeff);
@@ -239,7 +263,7 @@ describeDb('POST /api/v1/public/key-requests/verify', () => {
   test('two confirms at once: exactly one runs the personal flow', async () => {
     const email = addr('race');
     const token = await submit(email);
-    const results = await Promise.all([0, 1, 2].map(() => call(app, 'publicKeyRequestVerify', { body: { token } })));
+    const results = await Promise.all([0, 1, 2].map(() => call(auto, 'publicKeyRequestVerify', { body: { token } })));
     expect(results.map((r) => r.status).sort()).toEqual([200, 400, 400]);
     expect(await t.db`select 1 from licenses l join customer_members m on m.customer_id = l.customer_id where m.email = ${email}`).toHaveLength(1);
   });
@@ -253,17 +277,17 @@ describeDb('POST /api/v1/public/key-requests/verify', () => {
     expect(res.error?.key).toBe('invalid_token');
   });
 
-  test('a confirm that cannot sign keeps the link usable (the consume rolls back)', async () => {
+  test('automatic approval: a confirm that cannot sign keeps the link usable (the consume rolls back)', async () => {
     const email = addr('later');
     const token = await submit(email);
-    const noKey = makeTestApp({ handlers, db: t.db, signing: signingUnavailable('no signing key is configured') });
+    const noKey = makeTestApp({ handlers, db: t.db, signing: signingUnavailable('no signing key is configured'), config: AUTO });
     try {
       expect((await call(noKey, 'publicKeyRequestVerify', { body: { token } })).status).toBe(503);
     } finally {
       await noKey.close();
     }
     expect((await rows(email))[0]!.verified_at).toBeNull();
-    expect((await callJson(app, 'publicKeyRequestVerify', { body: { token } })).body).toEqual({ outcome: 'issued' });
+    expect((await callJson(auto, 'publicKeyRequestVerify', { body: { token } })).body).toEqual({ outcome: 'issued' });
   });
 });
 

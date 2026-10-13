@@ -2,14 +2,17 @@
 // without secrets (GET /api/v1/system): the signing key (kid, loaded,
 // trusted, trusted since, the keys signed per kid), sign-in (issuer,
 // client, scopes, groups claim, role mappings, admin claim rules, default
-// role, member auto-link), mail, the public form, the policy constants and
-// the build. Operators change these by configuration and release.
+// role, member auto-link), mail, the public form, the approval of personal
+// keys (required or automatic, who is mailed about new requests), the
+// policy constants and the build. Operators change these by configuration
+// and release.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Grid } from '@astryxdesign/core/Grid';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
-import { HStack } from '@astryxdesign/core/Stack';
+import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
+import type { SystemInfo } from '@shared/api';
 import { ROLES, roleLabel } from '@shared/permissions';
 import { useSystem } from '../api/hooks';
 import { utcDateTime } from '../lib/dates';
@@ -86,7 +89,6 @@ export default function SystemPage() {
                 <MetadataListItem label="Configured">{yesNo(s.mail.configured)}</MetadataListItem>
                 <MetadataListItem label="From">{s.mail.from}</MetadataListItem>
                 <MetadataListItem label="Reply to">{s.mail.replyTo}</MetadataListItem>
-                <MetadataListItem label="Admin notifications">{s.mail.adminNotify ?? 'None'}</MetadataListItem>
               </MetadataList>
             </Panel>
             <Panel title="Public form">
@@ -95,15 +97,10 @@ export default function SystemPage() {
                 <MetadataListItem label="Origins">{list(s.publicForm.origins)}</MetadataListItem>
                 <MetadataListItem label="Per address and hour">{s.publicForm.limitPerIpPerHour}</MetadataListItem>
                 <MetadataListItem label="Per email and day">{s.publicForm.limitPerEmailPerDay}</MetadataListItem>
-                <MetadataListItem label="Automatic approval">
-                  <HStack gap={1} vAlign="center">
-                    {yesNo(s.publicForm.personalAutoApprove)}
-                    <Text type="supporting">up to {s.publicForm.personalAutoApproveMaxPerDay} a day</Text>
-                  </HStack>
-                </MetadataListItem>
                 <MetadataListItem label="Admin signatures">up to {s.issuing.maxPerActorPerDay} per admin a day</MetadataListItem>
               </MetadataList>
             </Panel>
+            <ApprovalPanel s={s} />
             <Panel title="Policy">
               <MetadataList>
                 <MetadataListItem label="Personal key">
@@ -117,6 +114,7 @@ export default function SystemPage() {
                 <MetadataListItem label="Expiry warning">{s.policy.expiryWarningDays} days</MetadataListItem>
                 <MetadataListItem label="Confirmation link">{s.policy.confirmTtlHours} hours</MetadataListItem>
                 <MetadataListItem label="Invite link">{s.policy.inviteTtlDays} days</MetadataListItem>
+                <MetadataListItem label="Approval link">{s.policy.approvalLinkTtlDays} days, once</MetadataListItem>
               </MetadataList>
             </Panel>
             <Panel title="Build">
@@ -132,5 +130,39 @@ export default function SystemPage() {
         </>
       ) : null}
     </Page>
+  );
+}
+
+/** Why nobody is mailed about a new request (mail off, or no address to mail), or null when someone is. */
+function nobodyMailed(s: SystemInfo): string | null {
+  if (!s.mail.configured) return 'Mail is not configured (SMTP_URL), so no approval link goes out: requests wait on the Requests page.';
+  if (s.approval.recipients.length === 0) return 'They wait on the Requests page without a mail. Set ADMIN_NOTIFY_EMAIL, or give a license admin a verified email address.';
+  return null;
+}
+
+/** Who approves personal keys, and who is mailed when a request opens. */
+function ApprovalPanel({ s }: { s: SystemInfo }) {
+  const a = s.approval;
+  const why = nobodyMailed(s);
+  return (
+    <Panel title="Approval" description="Personal key requests and renewals from the kudurru.io form and the portal.">
+      {why ? <Banner status="warning" title="Nobody is mailed about new requests" description={why} /> : null}
+      <MetadataList>
+        <MetadataListItem label="Personal keys">
+          {a.required ? 'Approval required: a license admin approves each key and renewal' : `Automatic, up to ${s.publicForm.personalAutoApproveMaxPerDay} a day`}
+        </MetadataListItem>
+        <MetadataListItem label={s.mail.configured ? 'Mailed about new requests' : 'Would be mailed about new requests'}>
+          <VStack gap={0.5}>
+            {a.fromAdmins ? <Text>License admins and superadmins with a verified email</Text> : null}
+            {a.recipients.map((r) => (
+              <Text key={r} type={a.fromAdmins ? 'supporting' : 'body'}>
+                {r}
+              </Text>
+            ))}
+            {!a.fromAdmins && a.recipients.length === 0 ? <Text>None</Text> : null}
+          </VStack>
+        </MetadataListItem>
+      </MetadataList>
+    </Panel>
   );
 }

@@ -4,27 +4,33 @@
 // personal key inside its renew window) or the business mailto, and the
 // people with access. A withdrawn license shows no key: only when it was
 // withdrawn, how long installed keys keep working and the licensor's
-// message.
+// message. Renewing a personal key needs the certification ticked again
+// (POST /api/v1/me/licenses/:id/renew with noncommercial: true); while
+// approval is required (Catalog.approvalRequired) it opens a request that
+// a license admin approves, and the new key arrives by email.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Grid } from '@astryxdesign/core/Grid';
+import { Link } from '@astryxdesign/core/Link';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
-import { HStack } from '@astryxdesign/core/Stack';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
-import type { MyLicenseDetail } from '@shared/api';
-import { planLabel } from '@shared/catalog';
-import { useApi, useCan } from '../api/context';
-import { useMyLicense, useRouteMutation } from '../api/hooks';
+import type { MyLicenseDetail, PersonalRequestResult } from '@shared/api';
+import { ATTESTATION_STATEMENT, GRACE_DAYS, LICENSE_PAGE_URL, NONCOMMERCIAL_LICENSE_URL, planLabel } from '@shared/catalog';
+import { ApiError } from '../api/client';
+import { useApi, useCan, useMe } from '../api/context';
+import { useFieldErrors } from '../api/fieldErrors';
+import { useCatalog, useMyLicense, useRouteMutation } from '../api/hooks';
 import { MemberStatusBadge, StateBadge } from '../components/badges';
 import { InstallPanel, KeyNotices, KeyPanel } from '../components/keys';
 import type { PageProps } from '../routes';
 import { utcDay } from '../lib/dates';
-import { businessMailto } from '../lib/words';
+import { businessMailto, outcomeWords } from '../lib/words';
 import { featuresInWords } from '../ui/fields/FeaturesField';
 import { ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
+import { CheckboxField } from '../ui/fields/TextField';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 import { formatExact } from '../ui/lib/format';
 
@@ -101,52 +107,113 @@ export default function MyLicensePage({ params }: PageProps) {
   );
 }
 
-/** Renew (a personal key in its window) or, for business keys, the mailto. */
+/** Renew (a personal key in its window; a request while approval is required) or, for business keys, the mailto. */
 function RenewOrAsk({ license: l }: { license: MyLicenseDetail }) {
   const can = useCan();
+  const catalog = useCatalog();
   const [open, setOpen] = useState(false);
   if (l.withdrawn) return null;
   if (l.plan !== 'personal') {
     return <Button label="Ask about a renewal or a change" variant="secondary" href={businessMailto(l.id)} />;
   }
   if (!l.renewal || !can('self.request')) return null;
+  // Approval is the default; only a catalog that says otherwise shows the immediate Renew.
+  const approval = catalog.data?.approvalRequired !== false;
   return (
     <>
-      <Button label="Renew" variant="primary" onClick={() => setOpen(true)} />
-      <FormDialog isOpen={open} onClose={() => setOpen(false)} title="Renew your personal key" width={480}>
-        <RenewForm license={l} until={l.renewal.expiresOn} onClose={() => setOpen(false)} />
+      <Button label={approval ? 'Request renewal' : 'Renew'} variant="primary" onClick={() => setOpen(true)} />
+      <FormDialog isOpen={open} onClose={() => setOpen(false)} title={approval ? 'Request a renewal of your personal key' : 'Renew your personal key'} width={560}>
+        <RenewForm license={l} until={l.renewal.expiresOn} approval={approval} onClose={() => setOpen(false)} />
       </FormDialog>
     </>
   );
 }
 
-function RenewForm({ license: l, until, onClose }: { license: MyLicenseDetail; until: string; onClose: () => void }) {
+/** The body field the certification checkbox shows (a 400 names it inline). */
+const RENEW_FIELDS = ['noncommercial'];
+
+function RenewForm({ license: l, until, approval, onClose }: { license: MyLicenseDetail; until: string; approval: boolean; onClose: () => void }) {
+  const me = useMe();
   const notify = useNotify();
   const m = useRouteMutation('myLicenseRenew');
+  const [certified, setCertified] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  const unverifiedAnswer = m.error instanceof ApiError && m.error.key === 'email_unverified';
+  const fe = useFieldErrors(unverifiedAnswer ? null : m.error, RENEW_FIELDS);
+  const verified = me.user.emailVerified && Boolean(me.user.email);
+  const certError = certified ? null : `Tick the certification to ${approval ? 'request a renewal' : 'renew your personal key'}`;
+  const action = approval ? 'Request renewal' : 'Renew';
+
+  if (m.data && m.data.outcome !== 'renewed') return <RenewOutcome result={m.data} email={me.user.email} onClose={onClose} />;
+
   return (
     <DialogForm
-      onSubmit={() =>
+      onSubmit={() => {
+        setShowErrors(true);
+        if (certError || !verified) return;
         m.mutate(
-          { params: { id: l.id } },
+          { params: { id: l.id }, body: { noncommercial: true } },
           {
             onSuccess: (d) => {
-              notify.success(`Renewed: the new key is valid through ${utcDay(d.expiresOn)}`);
+              if (d.outcome !== 'renewed') return;
+              notify.success(`Renewed: the new key is valid through ${utcDay(until)}`);
               onClose();
             },
           },
-        )
-      }
+        );
+      }}
+      noValidate
+      gap={3}
       footer={
-        <HStack gap={2}>
+        <>
           <Button label="Cancel" variant="ghost" onClick={onClose} />
-          <Button type="submit" label="Renew" variant="primary" isLoading={m.isPending} />
-        </HStack>
+          <Button type="submit" label={action} variant="primary" isLoading={m.isPending} isDisabled={!verified} tooltip={verified ? undefined : 'Needs a verified email address'} />
+        </>
       }
     >
       <Text as="p">
-        A new key is signed, valid through {utcDay(until)}. Install it on your nodes; the current key keeps working until it expires and for 30 days after.
+        {approval
+          ? `Once a license admin approves the renewal, the new key arrives by email at ${me.user.email ?? 'your verified address'} and shows here, valid through ${utcDay(until)}.`
+          : `A new key is signed, valid through ${utcDay(until)}, mailed to ${me.user.email ?? 'your verified address'} and shown here.`}{' '}
+        Install it on your nodes; the current key keeps working until it expires and for {GRACE_DAYS} days after.
       </Text>
-      {m.error ? <ErrorBanner error={m.error} title="The key was not renewed" /> : null}
+      {!verified || unverifiedAnswer ? (
+        <Banner
+          status="warning"
+          title="Your sign-in did not share a verified email address"
+          description="The portal mails keys only to an address your identity provider verified. Ask its administrator, or use the public form at kudurru.io/license."
+          endContent={
+            <Link href={LICENSE_PAGE_URL} isExternalLink>
+              Public form
+            </Link>
+          }
+        />
+      ) : null}
+      <CheckboxField
+        label={ATTESTATION_STATEMENT}
+        value={certified}
+        onChange={(v) => {
+          setCertified(v);
+          fe.edited('noncommercial');
+        }}
+        error={(showErrors ? certError : null) ?? fe.field('noncommercial')}
+      />
+      <Text type="supporting" as="p">
+        <Link href={NONCOMMERCIAL_LICENSE_URL} isExternalLink>
+          Read the PolyForm Noncommercial License 1.0.0
+        </Link>
+      </Text>
+      {fe.summary ? <Banner status="error" title={approval ? 'The renewal was not requested' : 'The key was not renewed'} description={fe.summary} /> : null}
+    </DialogForm>
+  );
+}
+
+/** What a renewal led to when no key was signed at once: usually a request waiting for approval. */
+function RenewOutcome({ result, email, onClose }: { result: PersonalRequestResult; email: string | null; onClose: () => void }) {
+  const w = outcomeWords(result.outcome, email, 'portal');
+  return (
+    <DialogForm footer={<Button label="Done" variant="primary" onClick={onClose} />}>
+      <Banner status={result.outcome === 'pending_review' ? 'info' : 'success'} title={w.title} description={w.body} />
     </DialogForm>
   );
 }

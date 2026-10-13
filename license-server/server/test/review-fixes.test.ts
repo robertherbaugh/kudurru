@@ -1,7 +1,9 @@
 // Regression tests for the findings of the stream B review (customer
 // isolation, the address syntax, renewal and withdraw rules, the limits
 // under parallel requests, the confirmation mail): each test reproduces
-// the probe that found the problem and asserts the fixed behavior.
+// the probe that found the problem and asserts the fixed behavior. They
+// run with automatic approval (PERSONAL_AUTO_APPROVE=true), where the
+// personal flow signs keys on its own.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Attestation } from '../../shared/api';
 import { ATTESTATION_STATEMENT } from '../../shared/catalog';
@@ -25,11 +27,12 @@ import { createUser, signInAs, testConfig } from './fixtures';
 const t = fileDatabase();
 let signing: SigningState;
 let app: TestApp;
+const AUTO = testConfig({ personal: { autoApprove: true } });
 
 beforeAll(async () => {
   if (!hasDb) return;
   signing = await loadSigning(testConfig(), silentLogger);
-  app = makeTestApp({ handlers: mergeHandlers(meHandlers, licenseHandlers, customerHandlers, publicHandlers), db: t.db, signing });
+  app = makeTestApp({ handlers: mergeHandlers(meHandlers, licenseHandlers, customerHandlers, publicHandlers), db: t.db, signing, config: AUTO });
 });
 afterAll(async () => {
   await app?.close();
@@ -46,7 +49,7 @@ function attestation(email: string): Attestation {
 async function webRequest(email: string, overrides: Partial<PersonalRequest> = {}) {
   const req: PersonalRequest = { name: 'Homelab Hank', email, use: 'my homelab', attestation: attestation(email), source: 'web', ...overrides };
   return inTransaction(
-    { db: t.db, config: testConfig(), log: new MemoryLogger(), signing, mailer: new MemoryMailer(), now: new Date() },
+    { db: t.db, config: AUTO, log: new MemoryLogger(), signing, mailer: new MemoryMailer(), now: new Date() },
     publicActor(email, { ip: '192.0.2.1', userAgent: 'test' }),
     (s) => requestPersonalKey(s, req),
   );
@@ -114,7 +117,7 @@ describeDb('review fixes', () => {
     expect((await callJson(app, 'myLicense', { as: session, params: { id } })).body.renewal).not.toBeNull();
     await t.db`insert into blocked_emails (email, reason, blocked_by_label) values (${email}, 'test', 'test')`;
     expect((await callJson(app, 'myLicense', { as: session, params: { id } })).body.renewal).toBeNull();
-    const res = await callJson(app, 'myLicenseRenew', { as: session, params: { id } });
+    const res = await callJson(app, 'myLicenseRenew', { as: session, params: { id }, body: { noncommercial: true } });
     expect(res.status).toBe(409);
     expect(res.error?.key).toBe('conflict');
   });

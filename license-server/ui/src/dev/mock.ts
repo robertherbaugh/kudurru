@@ -1,9 +1,12 @@
 // A fixture API for looking at the pages in `vite dev` without a server
 // (screenshots, layout work): `?mock` or `?mock=customer|admin|super|none`
 // (none: signed out) at any address replaces window.fetch with the
-// stand-in of ./api.ts answering from ./fixtures.ts. main.tsx loads this
-// module only when import.meta.env.DEV is true, so production builds do
-// not contain it.
+// stand-in of ./api.ts answering from ./fixtures.ts. Approval is required
+// (the default): requests and renewals answer pending_review, and
+// /approve?token=<anything> previews the open fixture request (the token
+// "used" shows a link that was already used). main.tsx loads this module
+// only when import.meta.env.DEV is true, so production builds do not
+// contain it.
 import type { CustomerDetail, LicenseDetail } from '@shared/api';
 import { apiError, createFetchMock, reply } from './api';
 import * as f from './fixtures';
@@ -29,10 +32,13 @@ export function startDevMock(): void {
     myLicenses: () => ({ items: [f.myLicense, { ...f.myLicense, id: 'lic_withdrawn', state: 'withdrawn' }] }),
     myLicense: ({ params }) => (params.id === 'lic_withdrawn' ? { ...f.myWithdrawnDetail, id: 'lic_withdrawn' } : { ...f.myLicenseDetail, renewal: { expiresOn: '2028-10-11' } }),
     myRequests: () => ({ items: [] }),
-    myRequestCreate: () => ({ outcome: 'issued', licenseId: f.myLicense.id }),
+    myRequestCreate: () => ({ outcome: 'pending_review', requestId: 'req_mine' }),
+    myLicenseRenew: () => ({ outcome: 'pending_review', requestId: 'req_renew' }),
     myInvitePreview: () => ({ customer: { id: customer.id, name: customer.name }, email: 'ada@example.org', expiresAt: '2026-10-26T09:00:00.000Z', expired: false }),
     myInviteRedeem: () => ({ customer: { id: customer.id, name: customer.name } }),
-    publicKeyRequestVerify: () => ({ outcome: 'issued' }),
+    publicKeyRequestVerify: () => ({ outcome: 'pending_review' }),
+    approvalPreview: ({ body }) => ((body as { token?: string }).token === 'used' ? { ...f.approvalPreview, expired: true } : f.approvalPreview),
+    approvalDecide: ({ body }) => ((body as { decision?: string }).decision === 'reject' ? { status: 'rejected' } : { status: 'approved', licenseId: 'lic_personal01', outcome: 'issued' }),
     licensesList: () => ({
       items: [
         f.licenseSummary,
@@ -55,7 +61,7 @@ export function startDevMock(): void {
     memberAdd: ({ body }) => ({ member: { ...customer.members[0], email: (body as { email: string }).email, status: 'invited', user: null }, inviteUrl: 'http://localhost:5174/invites/abcdefghijklmnop' }),
     memberInvite: () => ({ member: customer.members[0], inviteUrl: 'http://localhost:5174/invites/qrstuvwxyz' }),
     memberRemove: () => reply(204),
-    requestsList: () => ({ items: [f.openRequest] }),
+    requestsList: () => ({ items: [f.openRequest, f.renewalRequest] }),
     requestApprove: () => ({ request: { ...f.openRequest, status: 'approved' }, license: f.licenseDetail }),
     requestReject: () => ({ request: { ...f.openRequest, status: 'rejected' } }),
     blockedEmailsList: () => ({ items: [{ email: 'mallory@example.org', reason: 'License withdrawn', blockedBy: { id: 'usr_admin', label: 'Alan Admin' }, blockedAt: '2026-09-01T10:00:00.000Z' }] }),

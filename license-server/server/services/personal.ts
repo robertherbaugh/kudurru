@@ -1,32 +1,41 @@
 // The free personal key (design spec §6 "Personal keys"): one decision tree
 // for the kudurru.io form (source web, after the mailed confirmation) and
 // the portal (source portal, signed in with an IdP-verified email), and the
-// portal's own renewal. requestPersonalKey, in order:
+// portal's own renewal. By default (PERSONAL_AUTO_APPROVE=false) nothing is
+// signed here: every key, new or renewed, waits for an admin's approval
+// (requests.ts approveRequest, from the Requests page or the one-click link
+// of the approvers' mail, approvals.ts). requestPersonalKey, in order:
 //
 // 1. the email is blocked → an open request (review reason blocked);
 // 2. the person customer (the oldest customer of kind person with a member
 //    row for the email; never an organization) has a withdrawn license →
 //    an open request (withdrawn_history);
 // 3. the person customer holds an active personal license (the newest):
-//    within RENEW_WINDOW_DAYS of its expiry, in grace or expired → renewed
-//    to PERSONAL_TERM_DAYS after the later of today and the current expiry;
-//    otherwise the current key is mailed again (resent). A hand-signed
-//    import whose terms break the personal policy is never renewed on its
-//    own: it is sent again too (with a log line);
-// 4. PERSONAL_AUTO_APPROVE is off, or today's automatic keys reached
-//    PERSONAL_AUTO_APPROVE_MAX_PER_DAY → an open request (auto_approve_off,
-//    daily_cap), mails to the requester and to ADMIN_NOTIFY_EMAIL;
-// 5. otherwise the person customer is created when missing (member row for
-//    the email: linked to the requesting user from the portal, an invite
-//    link from the form) and a key is issued (personal, 3 nodes, every
-//    feature, today + PERSONAL_TERM_DAYS) and mailed.
+//    within RENEW_WINDOW_DAYS of its expiry, in grace or expired → an open
+//    request (auto_approve_off) whose approval renews it, or with automatic
+//    approval renewed at once to PERSONAL_TERM_DAYS after the later of
+//    today and the current expiry; otherwise the current key is mailed again
+//    (resent; nothing is signed, so it never waits). A hand-signed import
+//    whose terms break the personal policy is never renewed on its own: it
+//    is sent again too (with a log line);
+// 4. PERSONAL_AUTO_APPROVE is off (the default), or today's automatic keys
+//    reached PERSONAL_AUTO_APPROVE_MAX_PER_DAY → an open request
+//    (auto_approve_off, daily_cap);
+// 5. otherwise (automatic approval) the person customer is created when
+//    missing (member row for the email: linked to the requesting user from
+//    the portal, an invite link from the form) and a key is issued
+//    (personal, 3 nodes, every feature, today + PERSONAL_TERM_DAYS) and
+//    mailed.
 //
-// All of it runs in the caller's transaction under one advisory lock (so
-// two requests cannot create two person customers or pass the daily cap
-// together) with the customer and license rows locked; mail goes after the
-// commit (a failure is logged; the key stays in the portal and an admin can
-// email it again). At most one request per address is open: a second
-// request while one waits is the same request (pending_review).
+// An open request mails the requester ("waiting for approval") and every
+// approver (approvals.ts notifyApprovers: the details, and a one-click
+// approve link except for blocked and withdrawn_history). All of it runs in
+// the caller's transaction under one advisory lock (so two requests cannot
+// create two person customers or pass the daily cap together) with the
+// customer and license rows locked; mail goes after the commit (a failure
+// is logged; the key stays in the portal and an admin can email it again).
+// At most one request per address is open: a second request while one
+// waits is the same request (pending_review), and mails nobody.
 
 import type { Attestation, PersonalRequestResult, RequestSource, ReviewReason } from '../../shared/api';
 import { PERSONAL_MAX_NODES, RENEW_WINDOW_DAYS } from '../../shared/catalog';
@@ -35,7 +44,8 @@ import { newId } from '../db/ids';
 import { maybeOne, toInt } from '../db/sql';
 import { fail } from '../http/errors';
 import { assertPolicy, isRenewable, personalExpiresOn, personalRenewal, type KeyTerms } from '../licensing/claims';
-import { reviewNeededMail, reviewWaitingMail } from '../mail/templates';
+import { reviewWaitingMail } from '../mail/templates';
+import { notifyApprovers, renewalTarget } from './approvals';
 import { auditCtx } from './audit';
 import { isBlocked } from './blocklist';
 import { createCustomer, type CustomerRow } from './customers';
@@ -64,6 +74,8 @@ export interface PersonalRequest {
   source: RequestSource;
   /** The portal user who asked (source portal). */
   requestedBy?: string | null;
+  /** The license an approval would renew (step 3, the portal's Renew): the mails word the request as a renewal. */
+  renewalOf?: string;
 }
 
 /** The person customer of an address: the oldest customer of kind person with a member row for it (locked), or null. */
@@ -131,7 +143,7 @@ async function autoApprovedToday(ctx: ServiceCtx): Promise<number> {
   return toInt(rows[0]?.n);
 }
 
-/** Opens a request that waits for review (or finds the one already open for the address). */
+/** Opens a request that waits for an admin (or finds the one already open for the address) and mails the requester and the approvers. */
 async function openRequest(ctx: ServiceCtx, req: PersonalRequest, reason: ReviewReason): Promise<PersonalRequestResult> {
   const id = newId('request');
   const inserted = await ctx.tx<{ id: string }[]>`
@@ -145,17 +157,17 @@ async function openRequest(ctx: ServiceCtx, req: PersonalRequest, reason: Review
     ctx.log.info('personal request already waits for review', { requestId: open.id });
     return { outcome: 'pending_review', requestId: open.id };
   }
-  await auditCtx(ctx, { action: 'request.created', targetType: 'request', targetId: id, details: { email: req.email, source: req.source, reviewReason: reason } });
+  await auditCtx(ctx, {
+    action: 'request.created',
+    targetType: 'request',
+    targetId: id,
+    details: { email: req.email, source: req.source, reviewReason: reason, ...(req.renewalOf ? { renewalOf: req.renewalOf } : {}) },
+  });
   if (ctx.mailer.configured) {
-    const publicUrl = ctx.config.publicUrl;
-    const waiting = reviewWaitingMail({ to: req.email, name: req.name, publicUrl });
+    const waiting = reviewWaitingMail({ to: req.email, name: req.name, renewal: req.renewalOf !== undefined, approvalRequired: !ctx.config.personal.autoApprove, publicUrl: ctx.config.publicUrl });
     ctx.afterCommit(() => ctx.mailer.send(waiting));
-    const admin = ctx.config.mail.adminNotify;
-    if (admin) {
-      const notice = reviewNeededMail({ to: admin, request: { id, name: req.name, email: req.email, use: req.use, reason, source: req.source }, publicUrl });
-      ctx.afterCommit(() => ctx.mailer.send(notice));
-    }
   }
+  await notifyApprovers(ctx, { id, name: req.name, email: req.email, use: req.use, source: req.source, attestation: req.attestation, reason });
   return { outcome: 'pending_review', requestId: id };
 }
 
@@ -171,7 +183,8 @@ export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest):
 
   const linkUserId = req.source === 'portal' ? (req.requestedBy ?? null) : null;
 
-  // 3. An active personal license: renew it in the window, else send it again.
+  // 3. An active personal license: renew it in the window (after an
+  // admin's approval unless approval is automatic), else send it again.
   if (person) {
     const license = await lockNewestActivePersonal(ctx, person.id);
     if (license) {
@@ -180,6 +193,7 @@ export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest):
       if (renewal === null && isRenewable(exp, ctx.now)) {
         ctx.log.warn('personal renewal refused by the policy: the key is sent again', { licenseId: license.id });
       }
+      if (renewal !== null && !ctx.config.personal.autoApprove) return openRequest(ctx, { ...req, renewalOf: license.id }, 'auto_approve_off');
       if (renewal !== null) {
         requireSigner(ctx);
         const inviteUrl = await ensureMember(ctx, person.id, req.email, { linkUserId, invite: req.source === 'web' });
@@ -197,7 +211,7 @@ export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest):
     }
   }
 
-  // 4. Automatic approval off, or today's cap reached: a person decides.
+  // 4. Approval required (the default), or today's cap of automatic keys reached: an admin decides.
   if (!ctx.config.personal.autoApprove) return openRequest(ctx, req, 'auto_approve_off');
   if ((await autoApprovedToday(ctx)) >= ctx.config.personal.autoApproveMaxPerDay) return openRequest(ctx, req, 'daily_cap');
 
@@ -221,10 +235,16 @@ export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest):
 /**
  * POST /me/licenses/:id/renew: the person renews their own personal key
  * (member of its customer, personal plan, active, within the renew window,
- * in grace or expired), as step 3 does. 404 for a license they cannot see.
- * The key is mailed to `mailTo` when given.
+ * in grace or expired), with a fresh non-commercial certification, as step
+ * 3 does: with approval required (the default) it opens a request
+ * (auto_approve_off; name = the licensee, use "Renewal of <license id>")
+ * whose approval renews this license and mails the key to `req.email`;
+ * with automatic approval the key is renewed and mailed at once. 404 for a
+ * license they cannot see; 409 conflict when it cannot be renewed here
+ * (blocked address, withdrawn history, outside the window or the policy,
+ * or a license an approval would not renew).
  */
-export async function renewMyLicense(ctx: ServiceCtx, licenseId: string, userId: string, mailTo: string | null): Promise<void> {
+export async function renewMyLicense(ctx: ServiceCtx, licenseId: string, userId: string, req: Pick<PersonalRequest, 'email' | 'attestation'>): Promise<PersonalRequestResult> {
   const visible = maybeOne(
     await ctx.tx<{ id: string }[]>`
       select l.id from licenses l
@@ -239,7 +259,7 @@ export async function renewMyLicense(ctx: ServiceCtx, licenseId: string, userId:
   // The same review rules as a request (steps 1 and 2): a blocked address
   // or a withdrawn license in the history needs a person.
   const memberEmails = (await ctx.tx<{ email: string }[]>`select email from customer_members where customer_id = ${row.customer_id}`).map((m) => m.email);
-  if (await personalReviewReason(ctx, mailTo ? [...memberEmails, mailTo] : memberEmails, row.customer_id)) {
+  if (await personalReviewReason(ctx, [...memberEmails, req.email], row.customer_id)) {
     fail('conflict', 'This key cannot be renewed here. Write to us to renew it.');
   }
   const exp = Math.floor(row.expires_at.getTime() / 1000);
@@ -250,7 +270,14 @@ export async function renewMyLicense(ctx: ServiceCtx, licenseId: string, userId:
   }
   const renewal = personalRenewal(termsOf(row), exp, ctx.now);
   if (renewal === null) fail('conflict', 'This key does not match the rules of a free personal key, so it cannot be renewed here. Write to us to renew it.');
+  if (!ctx.config.personal.autoApprove) {
+    // An approval renews the newest active personal license of the
+    // address's person customer: ask only for a renewal it would carry out.
+    if ((await renewalTarget(ctx.tx, req.email))?.licenseId !== row.id) fail('conflict', 'This key cannot be renewed here. Write to us to renew it.');
+    return openRequest(ctx, { name: row.licensee, email: req.email, use: `Renewal of ${row.id}`, attestation: req.attestation, source: 'portal', requestedBy: userId, renewalOf: row.id }, 'auto_approve_off');
+  }
   requireSigner(ctx);
-  const renewed = await renewLicenseRow(ctx, row, renewal, { via: 'portal' });
-  if (mailTo) mailKeyAfterCommit(ctx, licenseKeyMail(ctx, renewed.row, renewed.key.token, 'renewed', mailTo));
+  const renewed = await renewLicenseRow(ctx, row, renewal, { via: 'portal', attestedAt: req.attestation.at });
+  mailKeyAfterCommit(ctx, licenseKeyMail(ctx, renewed.row, renewed.key.token, 'renewed', req.email));
+  return { outcome: 'renewed', licenseId: row.id };
 }

@@ -1,15 +1,17 @@
 // In-memory rate limits (design spec §6 "Sign-in", §9): the sign-in start
-// and the OIDC callback, per client address (IPv6 by /64), 20 a minute
-// each. A token bucket per (route, address block): it refills
-// continuously, so a burst of 20 is allowed and then one request every
-// three seconds. The public form's limits are in Postgres (services), not
-// here, because they must hold across restarts and instances.
+// and the OIDC callback, 20 a minute each, and the two routes of the
+// one-click approval link (preview and decide; anonymous, the token is the
+// credential), 30 a minute each, per client address (IPv6 by /64). A token
+// bucket per (route, address block): it refills continuously, so a burst of
+// 20 (30) is allowed and then one request every three (two) seconds. The
+// public form's limits are in Postgres (services), not here, because they
+// must hold across restarts and instances.
 //
-// Beyond the limit the answer carries Retry-After in whole seconds. Both
-// routes are browser page loads, and spec §6 wants every callback failure
-// to land on /login?error=, never on plain text: the callback, and the
-// start when it is a page load, answer 302 /login?error=rate_limited; a
-// fetch of the start gets 429 rate_limited (JSON).
+// Beyond the limit the answer carries Retry-After in whole seconds. The
+// sign-in routes are browser page loads, and spec §6 wants every callback
+// failure to land on /login?error=, never on plain text: the callback, and
+// the start when it is a page load, answer 302 /login?error=rate_limited; a
+// fetch of the start, and the approval routes, get 429 rate_limited (JSON).
 //
 // Memory is bounded: when MAX_BUCKETS are kept, buckets that have refilled
 // completely are dropped (a full bucket is the same as none) and then the
@@ -29,10 +31,12 @@ export interface RateLimit {
   windowMs: number;
 }
 
-/** The limits of spec §6: 20 per minute per address for the sign-in routes. */
+/** The limits per address: 20 per minute for the sign-in routes (spec §6), 30 for the approval link's. */
 export const DEFAULT_RATE_LIMITS: Partial<Record<RouteId, RateLimit>> = {
   authLogin: { max: 20, windowMs: 60_000 },
   authCallback: { max: 20, windowMs: 60_000 },
+  approvalPreview: { max: 30, windowMs: 60_000 },
+  approvalDecide: { max: 30, windowMs: 60_000 },
 };
 
 /** Buckets kept at most (about 100 bytes each). */
@@ -129,5 +133,8 @@ export function refusal(ctx: RequestContext, retryAfter: number): Response {
   const headers = { 'Retry-After': String(retryAfter) };
   if (ctx.route.id === 'authCallback') return loginErrorRedirect('rate_limited', '/', headers);
   if (ctx.route.id === 'authLogin' && isPageLoad(ctx.req)) return loginErrorRedirect('rate_limited', safeNext(ctx.query.get('next')), headers);
+  if (ctx.route.id === 'approvalPreview' || ctx.route.id === 'approvalDecide') {
+    throw new HttpError(429, 'rate_limited', 'Too many requests from your network. Wait a moment and try again.', { headers });
+  }
   throw new HttpError(429, 'rate_limited', 'Too many sign-in attempts from your network. Wait a moment and try again.', { headers });
 }

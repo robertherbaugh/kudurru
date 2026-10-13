@@ -35,12 +35,15 @@ All notable changes to kudurru are listed here. The format follows
 - **License portal** (D165): [`license-server/`](license-server/README.md) is
   the licensor's service that issues keys: license admins issue, renew,
   change and withdraw licenses after an OIDC sign-in, customers download
-  their keys through invite links, and the kudurru.io form gets a free
-  personal key by mail after an email confirmation. Bun, TypeScript and
-  Postgres in one container with the dashboard's Astryx UI; roles
-  `customer`, `license_admin` and `superadmin`; keys byte-identical to
-  `hack/licensegen`'s. It is not part of kudurru and no node contacts it:
-  keys are still verified offline. Runs on Cloudflare Containers
+  their keys through invite links, and the kudurru.io form (after an email
+  confirmation) and the portal ask for a free personal key. A personal key
+  is signed and mailed only after a license admin approves it: the admins
+  get a mail with the request's details and a one-click approve link
+  (`PERSONAL_AUTO_APPROVE=true` signs them at once instead). Bun,
+  TypeScript and Postgres in one container with the dashboard's Astryx UI;
+  roles `customer`, `license_admin` and `superadmin`; keys byte-identical
+  to `hack/licensegen`'s. It is not part of kudurru and no node contacts
+  it: keys are still verified offline. Runs on Cloudflare Containers
   (`license-server/cloudflare`); `make license-server-check` and
   `make license-server-e2e` test it.
 

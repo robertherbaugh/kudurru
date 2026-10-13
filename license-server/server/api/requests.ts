@@ -1,6 +1,7 @@
-// Personal key requests that wait for review (design spec §8 requests.*):
+// Personal key requests that wait for an admin (design spec §8 requests.*):
 // thin handlers over services/requests.ts. Approve answers the request and
-// the license it led to; reject answers the request.
+// the license it led to; reject answers the request. The one-click link of
+// the approvers' mail decides through api/approvals.ts instead.
 
 import type { RequestStatus, ResponseOf } from '../../shared/api';
 import { hasBody, q, readJson, v } from '../http/body';
@@ -27,7 +28,7 @@ export const requestHandlers: PartialHandlerMap = {
   requestApprove: async (ctx) => {
     const body = hasBody(ctx.req) ? await readJson(ctx, ApproveShape) : {};
     const result = await inTransaction(ctx, actorFromCtx(ctx), async (s) => {
-      const licenseId = await approveRequest(s, ctx.params.id, body);
+      const { licenseId } = await approveRequest(s, ctx.params.id, body);
       return { request: await getRequest(s.tx, ctx.params.id), license: await licenseDetail(s.tx, licenseId, s.now, s.signing) };
     });
     return json<ResponseOf<'requestApprove'>>(result);

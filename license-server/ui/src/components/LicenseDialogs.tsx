@@ -215,7 +215,7 @@ function WithdrawForm({ license: l, onClose }: { license: LicenseDetail; onClose
           setBlock(v);
           fe.edited('blockPersonal');
         }}
-        help="Their member email addresses go on the blocklist: personal key requests from them wait for review."
+        help="Their member email addresses go on the blocklist: personal key requests from them wait for a signed-in license admin, with no one-click approval link."
         error={fe.field('blockPersonal')}
       />
       {fe.summary ? <Banner status="error" title="The license was not withdrawn" description={fe.summary} /> : null}

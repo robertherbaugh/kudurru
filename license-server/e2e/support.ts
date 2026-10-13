@@ -1,5 +1,6 @@
 // Helpers of the end-to-end suite (playwright.config.ts): signing in
-// through Dex, reading mail from Mailpit, and asking the node's own code
+// through Dex, reading mail from Mailpit (confirmation links, the admins'
+// approval mails, key mails), and asking the node's own code
 // (server/test/golden/nodestatus.go, internal/license) what a kudurru node
 // would make of a key the portal issued. The compose stack of
 // license-server/compose.yaml (profile server or e2e) must be running.
@@ -40,25 +41,55 @@ interface MailSummary {
   ID: string;
   Subject: string;
   To: { Address: string }[];
+  /** How many attachments the message has. */
+  Attachments: number;
 }
 
-/** The newest mail to `to` whose subject matches, waiting up to 15 s. */
-export async function waitForMail(to: string, subject: RegExp): Promise<{ id: string; subject: string; text: string; attachments: { name: string; body: string }[] }> {
+/** A mail as the suite reads it: the plain text and every attachment's content. */
+export interface Mail {
+  id: string;
+  subject: string;
+  text: string;
+  attachments: { name: string; body: string }[];
+}
+
+/**
+ * The mails addressed to exactly `to`, newest first. Mailpit's `to:`
+ * search matches substrings (admin@ also finds superadmin@), so the list
+ * keeps only exact recipients.
+ */
+export async function listMail(to: string): Promise<MailSummary[]> {
+  const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+  const list = (await res.json()) as { messages: MailSummary[] };
+  const want = to.toLowerCase();
+  return list.messages.filter((m) => m.To.some((r) => r.Address.toLowerCase() === want));
+}
+
+async function readMail(id: string, subject: string): Promise<Mail> {
+  const msg = (await (await fetch(`${MAILPIT}/api/v1/message/${id}`)).json()) as { Text: string; Attachments: { PartID: string; FileName: string }[] };
+  const attachments = await Promise.all(
+    msg.Attachments.map(async (a) => ({ name: a.FileName, body: await (await fetch(`${MAILPIT}/api/v1/message/${id}/part/${a.PartID}`)).text() })),
+  );
+  return { id, subject, text: msg.Text, attachments };
+}
+
+/** The newest mail to `to` whose subject matches (and, with `withAttachment`, that has one), waiting up to 15 s. */
+export async function waitForMail(to: string, subject: RegExp, opts: { withAttachment?: boolean } = {}): Promise<Mail> {
   const until = Date.now() + 15_000;
   for (;;) {
-    const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
-    const list = (await res.json()) as { messages: MailSummary[] };
-    const hit = list.messages.find((m) => subject.test(m.Subject));
-    if (hit) {
-      const msg = (await (await fetch(`${MAILPIT}/api/v1/message/${hit.ID}`)).json()) as { Text: string; Attachments: { PartID: string; FileName: string }[] };
-      const attachments = await Promise.all(
-        msg.Attachments.map(async (a) => ({ name: a.FileName, body: await (await fetch(`${MAILPIT}/api/v1/message/${hit.ID}/part/${a.PartID}`)).text() })),
-      );
-      return { id: hit.ID, subject: hit.Subject, text: msg.Text, attachments };
-    }
-    if (Date.now() > until) throw new Error(`no mail to ${to} matching ${subject}`);
+    const hit = (await listMail(to)).find((m) => subject.test(m.Subject) && (!opts.withAttachment || m.Attachments > 0));
+    if (hit) return readMail(hit.ID, hit.Subject);
+    if (Date.now() > until) throw new Error(`no mail to ${to} matching ${subject}${opts.withAttachment ? ' with an attachment' : ''}`);
     await new Promise((r) => setTimeout(r, 300));
   }
+}
+
+/** The newest key mail to `to`: the one mail kind that carries license.key (the waiting and approval mails do not). */
+export async function waitForKeyMail(to: string): Promise<Mail & { key: string }> {
+  const mail = await waitForMail(to, /license key/i, { withAttachment: true });
+  const key = mail.attachments.find((a) => a.name === 'license.key');
+  if (!key) throw new Error(`the mail "${mail.subject}" to ${to} has no license.key`);
+  return { ...mail, key: key.body };
 }
 
 /** Removes every mail from Mailpit. */

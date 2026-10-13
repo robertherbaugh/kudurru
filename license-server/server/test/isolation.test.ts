@@ -62,7 +62,8 @@ describeDb('customer isolation', () => {
 
   test('foreign ids in paths answer 404: detail, key download, renew', async () => {
     for (const [route, method] of [['myLicense', 'GET'], ['myLicenseKey', 'GET'], ['myLicenseRenew', 'POST']] as const) {
-      const res = await call(app, route, { as: alice, params: { id: licB }, method });
+      // The renewal's body is valid (a fresh certification), so only the id decides.
+      const res = await call(app, route, { as: alice, params: { id: licB }, method, ...(method === 'POST' ? { body: { noncommercial: true } } : {}) });
       expect(res.status).toBe(404);
     }
     expect((await call(app, 'myLicense', { as: alice, params: { id: 'lic_doesnotexist' } })).status).toBe(404);

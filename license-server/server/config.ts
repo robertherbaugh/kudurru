@@ -16,8 +16,9 @@
 // OIDC_ADMIN_CLAIM_RULES, an http OIDC issuer unless it is a loopback
 // literal and PUBLIC_URL is http too, a PUBLIC_URL that is more than an
 // origin, TRUSTED_PROXIES entries that are not CIDRs, a CLIENT_IP_HEADER that
-// is not a header name and PUBLIC_FORM_ORIGINS entries that are not exact
-// origins. No message ever repeats a secret's value.
+// is not a header name, PUBLIC_FORM_ORIGINS entries that are not exact
+// origins and ADMIN_NOTIFY_EMAIL entries that are not plain addresses. No
+// message ever repeats a secret's value.
 //
 // The signing key: LICENSE_SIGNING_KEY_FILE where secrets are files (Docker,
 // Kubernetes); LICENSE_SIGNING_KEY where the platform hands secrets over as
@@ -26,6 +27,7 @@
 import { accessSync, constants, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Role } from '../shared/permissions';
+import { isEmailSyntax, normalizeEmail } from './http/body';
 import { parseCidr } from './http/ip';
 import { isLogLevel, type LogLevel } from './log';
 
@@ -113,7 +115,12 @@ export interface Config {
     smtpUrl: string | null;
     from: string;
     replyTo: string;
-    adminNotify: string | null;
+    /**
+     * ADMIN_NOTIFY_EMAIL: who gets the approval mail of each request that
+     * waits (normalized plain addresses, no duplicates). Empty: the enabled
+     * license admins and superadmins with a verified email (services/approvals.ts).
+     */
+    adminNotify: string[];
   };
   publicForm: {
     /** False when PUBLIC_FORM_ORIGINS is "-": the public routes answer 404. */
@@ -124,7 +131,9 @@ export interface Config {
     limitPerEmailPerDay: number;
   };
   personal: {
+    /** PERSONAL_AUTO_APPROVE: true signs personal keys without an admin's approval (default false: every personal key waits for one). */
     autoApprove: boolean;
+    /** With autoApprove: beyond this many automatic personal keys a day, requests wait for an admin. */
     autoApproveMaxPerDay: number;
   };
   issuing: {
@@ -192,12 +201,12 @@ export const CONFIG_VARS = [
   { name: 'SMTP_URL', default: null, file: true, secret: true, description: 'smtp://user:pass@host:587 (STARTTLS) or smtps://…:465' },
   { name: 'MAIL_FROM', default: 'kudurru license portal <licenses@kudurru.io>', description: 'From header of every mail' },
   { name: 'MAIL_REPLY_TO', default: 'hello@kudurru.io', description: 'Reply-To header of every mail' },
-  { name: 'ADMIN_NOTIFY_EMAIL', default: null, description: 'Gets a mail for each request that waits for review' },
+  { name: 'ADMIN_NOTIFY_EMAIL', default: null, description: 'Who gets the approval mail of each personal key request, with its one-click link (comma list). Unset: every enabled license admin and superadmin with a verified email' },
   { name: 'PUBLIC_FORM_ORIGINS', default: 'https://kudurru.io', description: 'Exact origins of the public form (comma list); - disables the public routes' },
   { name: 'PUBLIC_LIMIT_PER_IP_PER_HOUR', default: '5', description: 'Public form requests per IPv4 address or IPv6 /64 per hour' },
   { name: 'PUBLIC_LIMIT_PER_EMAIL_PER_DAY', default: '3', description: 'Public form requests per email per day (silent 202 beyond)' },
-  { name: 'PERSONAL_AUTO_APPROVE', default: 'true', description: 'A confirmed personal request gets a key without review' },
-  { name: 'PERSONAL_AUTO_APPROVE_MAX_PER_DAY', default: '50', description: 'Beyond this many automatic personal keys a day, requests wait for review' },
+  { name: 'PERSONAL_AUTO_APPROVE', default: 'false', description: "true signs personal keys and renewals without an admin's approval" },
+  { name: 'PERSONAL_AUTO_APPROVE_MAX_PER_DAY', default: '50', description: 'With automatic approval: beyond this many automatic personal keys a day, requests wait for approval' },
   { name: 'ISSUE_MAX_PER_ACTOR_PER_DAY', default: '50', description: 'Admin signatures per actor per 24 h (429 issuing_quota)' },
   { name: 'LOG_LEVEL', default: 'info', description: 'debug, info, warn or error' },
 ] as const satisfies readonly ConfigVar[];
@@ -460,7 +469,7 @@ export function loadConfig(env: Env): Config {
       smtpUrl: get('SMTP_URL'),
       from: need('MAIL_FROM'),
       replyTo: need('MAIL_REPLY_TO'),
-      adminNotify: get('ADMIN_NOTIFY_EMAIL'),
+      adminNotify: [...new Set(commaList(get('ADMIN_NOTIFY_EMAIL')).map(normalizeEmail))],
     },
     publicForm: {
       enabled: origins !== '-',
@@ -583,6 +592,11 @@ export function validateConfig(config: Config): void {
     }
     if (!smtp || (smtp.protocol !== 'smtp:' && smtp.protocol !== 'smtps:') || !smtp.hostname) {
       throw new ConfigError('SMTP_URL must be smtp://user:password@host:587 (STARTTLS) or smtps://user:password@host:465');
+    }
+  }
+  for (const address of config.mail.adminNotify) {
+    if (!isEmailSyntax(address)) {
+      throw new ConfigError(`ADMIN_NOTIFY_EMAIL: ${JSON.stringify(address)} is not a plain email address such as licenses@example.org (separate several with commas)`);
     }
   }
 }

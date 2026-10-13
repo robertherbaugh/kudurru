@@ -8,7 +8,7 @@
 //   cors       cors.ts       PUBLIC_FORM_ORIGINS on the public form route
 //   session    sessions.ts   the session cookie (router default)
 //   csrf       csrf.ts       Sec-Fetch-Site/Origin plus X-Kudurru-CSRF
-//   rateLimit  ratelimit.ts  sign-in start and callback, 20/min per address
+//   rateLimit  ratelimit.ts  sign-in start and callback 20/min, approval link 30/min, per address
 
 import type { RouteId } from '../../shared/routes';
 import { resolveSession, sessionCookieName } from '../auth/sessions';

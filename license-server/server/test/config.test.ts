@@ -5,7 +5,8 @@
 // non-Postgres URLs, the env signing key outside dev mode, key and kid
 // together, admin groups without claim rules under DEFAULT_ROLE=customer,
 // http issuers, PUBLIC_URL beyond an origin, TRUSTED_PROXIES CIDRs,
-// PUBLIC_FORM_ORIGINS exact origins), none of which echoes a secret.
+// PUBLIC_FORM_ORIGINS exact origins, ADMIN_NOTIFY_EMAIL plain addresses),
+// none of which echoes a secret. Personal keys wait for approval by default.
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,9 +32,9 @@ describe('loadConfig', () => {
     expect(c.oidc).toMatchObject({ issuer: 'https://idp.example.org/', scopes: ['openid', 'profile', 'email'], displayName: 'Sign in', groupsClaim: 'groups', adminClaimRules: [] });
     expect(c.roles).toEqual({ groups: { superadmin: [], license_admin: [], customer: [] }, defaultRole: 'customer', memberAutoLink: false });
     expect(c.session).toEqual({ idleTimeoutMs: 30 * 60_000, lifetimeMs: 12 * 3_600_000 });
-    expect(c.mail).toEqual({ smtpUrl: null, from: 'kudurru license portal <licenses@kudurru.io>', replyTo: 'hello@kudurru.io', adminNotify: null });
+    expect(c.mail).toEqual({ smtpUrl: null, from: 'kudurru license portal <licenses@kudurru.io>', replyTo: 'hello@kudurru.io', adminNotify: [] });
     expect(c.publicForm).toEqual({ enabled: true, origins: ['https://kudurru.io'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3 });
-    expect(c.personal).toEqual({ autoApprove: true, autoApproveMaxPerDay: 50 });
+    expect(c.personal).toEqual({ autoApprove: false, autoApproveMaxPerDay: 50 });
     expect(c.issuing).toEqual({ maxPerActorPerDay: 50 });
     expect(c.signing).toMatchObject({ keyFile: null, keyEnv: null, kid: null, required: false });
     expect(c.signing.trustedKeysDir.endsWith(join('internal', 'license', 'keys'))).toBe(true);
@@ -238,6 +239,15 @@ describe('startup refusals', () => {
       expect(msg).toContain('SMTP_URL must be');
       expect(msg).not.toContain('hunter2');
     }
+  });
+
+  test('ADMIN_NOTIFY_EMAIL: a comma list of plain addresses, normalized and deduplicated', () => {
+    expect(loadConfig({ ...required, ADMIN_NOTIFY_EMAIL: ' Licenses@Example.org , ops@example.org,licenses@example.org,' }).mail.adminNotify).toEqual(['licenses@example.org', 'ops@example.org']);
+    expect(loadConfig({ ...required, ADMIN_NOTIFY_EMAIL: 'admin@example.org' }).mail.adminNotify).toEqual(['admin@example.org']);
+    for (const bad of ['admin@example.org; ops@example.org', 'Admin <admin@example.org>', 'admin', 'a@b@example.org']) {
+      expect(refusal({ ADMIN_NOTIFY_EMAIL: bad })).toContain('ADMIN_NOTIFY_EMAIL:');
+    }
+    expect(loadConfig({ ...required, PERSONAL_AUTO_APPROVE: 'true' }).personal.autoApprove).toBe(true);
   });
 
   test('the dev and compose settings load', () => {

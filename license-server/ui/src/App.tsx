@@ -1,9 +1,9 @@
 // The application root, after web/src/App.tsx: the providers (query cache,
 // API client, router, appearance, Astryx links and layers for toasts) and
-// the session gate. Anonymous pages (/login, /verify) render without asking
-// for a session at all; every other page needs one, and a visitor without
-// it goes to /login?next=<the page>, so an invite link survives the
-// sign-in round trip.
+// the session gate. Anonymous pages (/login, /verify, /approve) render
+// without asking for a session at all; every other page needs one, and a
+// visitor without it goes to /login?next=<the page>, so an invite link
+// survives the sign-in round trip.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';

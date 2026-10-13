@@ -2,12 +2,17 @@
 // admin's (/licenses/:id). Both show the current key in the key panel with
 // the download link, the notices and UTC dates; a withdrawn license shows
 // no key, only when it was withdrawn and how long installed keys keep
-// working.
-import { screen, within } from '@testing-library/react';
-import { KEY_IS_NOT_A_LICENSE } from '@shared/catalog';
+// working. A personal key in its renew window offers "Request renewal"
+// (approval required, the default) or "Renew" (automatic approval), both
+// behind the certification ticked again.
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { ATTESTATION_STATEMENT, KEY_IS_NOT_A_LICENSE } from '@shared/catalog';
+import { apiError } from '../dev/api';
 import { NONCOMMERCIAL_NOTICE } from '../components/keys';
 import { renderApp } from '../test/render';
-import { adminMe, customerDetail, customerMe, licenseDetail, myLicenseDetail, myWithdrawnDetail, TOKEN, withdrawnLicenseDetail } from '../dev/fixtures';
+import { adminMe, catalog, customerDetail, customerMe, licenseDetail, me, myLicenseDetail, myWithdrawnDetail, TOKEN, withdrawnLicenseDetail } from '../dev/fixtures';
+
+const inWindow = { ...myLicenseDetail, renewal: { expiresOn: '2028-10-11' } };
 
 describe('customer license page', () => {
   test('shows the key, the download, the notices and the facts in UTC', async () => {
@@ -39,14 +44,80 @@ describe('customer license page', () => {
     expect(screen.getByTestId('key-not-license')).toBeInTheDocument();
   });
 
-  test('a personal key in its renew window offers Renew; a business key offers the mailto', async () => {
-    const first = renderApp({ route: '/my/licenses/lic_example12', me: customerMe, handlers: { myLicense: () => ({ ...myLicenseDetail, renewal: { expiresOn: '2028-10-11' } }) } });
-    expect(await screen.findByRole('button', { name: 'Renew' })).toBeInTheDocument();
+  test('a personal key in its renew window offers Request renewal (Renew with automatic approval); a business key offers the mailto', async () => {
+    const first = renderApp({ route: '/my/licenses/lic_example12', me: customerMe, handlers: { myLicense: () => inWindow } });
+    expect(await screen.findByRole('button', { name: 'Request renewal' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument();
     first.unmount();
+    const second = renderApp({ route: '/my/licenses/lic_example12', me: customerMe, catalog: catalog({ approvalRequired: false }), handlers: { myLicense: () => inWindow } });
+    expect(await screen.findByRole('button', { name: 'Renew' })).toBeInTheDocument();
+    second.unmount();
     renderApp({ route: '/my/licenses/lic_example12', me: customerMe, handlers: { myLicense: () => ({ ...myLicenseDetail, plan: 'business', nodes: 10 }) } });
     const ask = await screen.findByRole('link', { name: 'Ask about a renewal or a change' });
     expect(ask).toHaveAttribute('href', 'mailto:hello@kudurru.io?subject=kudurru%20commercial%20license%20lic_example12');
-    expect(screen.queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Renew|renewal/ })).not.toBeInTheDocument();
+  });
+
+  test('a renewal needs the certification again, then waits for approval', async () => {
+    const { api } = renderApp({
+      route: '/my/licenses/lic_example12',
+      me: customerMe,
+      handlers: { myLicense: () => inWindow, myLicenseRenew: () => ({ outcome: 'pending_review', requestId: 'req_renew' }) },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Request renewal' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Request a renewal of your personal key' });
+    expect(within(dialog).getByText(/Once a license admin approves the renewal, the new key arrives by email at ada@example.org/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Request renewal' }));
+    expect((await within(dialog).findAllByText('Tick the certification to request a renewal')).length).toBeGreaterThan(0);
+    expect(api.callsTo('myLicenseRenew')).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: ATTESTATION_STATEMENT }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Request renewal' }));
+    await waitFor(() => expect(api.callsTo('myLicenseRenew')).toHaveLength(1));
+    expect(api.callsTo('myLicenseRenew')[0]?.path).toBe('/api/v1/me/licenses/lic_example12/renew');
+    expect(api.callsTo('myLicenseRenew')[0]?.body).toEqual({ noncommercial: true });
+    expect(await within(dialog).findByText('Your request is waiting for approval')).toBeInTheDocument();
+    expect(within(dialog).getByText('Your key arrives by email once it is approved.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Request a renewal of your personal key' })).not.toBeInTheDocument());
+  });
+
+  test('with automatic approval Renew signs at once and closes with a toast', async () => {
+    const { api } = renderApp({
+      route: '/my/licenses/lic_example12',
+      me: customerMe,
+      catalog: catalog({ approvalRequired: false }),
+      handlers: { myLicense: () => inWindow, myLicenseRenew: () => ({ outcome: 'renewed', licenseId: 'lic_example12' }) },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Renew' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Renew your personal key' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: ATTESTATION_STATEMENT }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Renew' }));
+    await waitFor(() => expect(api.callsTo('myLicenseRenew')).toHaveLength(1));
+    expect(api.callsTo('myLicenseRenew')[0]?.body).toEqual({ noncommercial: true });
+    expect(await screen.findByText('Renewed: the new key is valid through 2028-10-11 (UTC)')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Renew your personal key' })).not.toBeInTheDocument());
+  });
+
+  test('a renewal without a verified email is not offered to submit, and a refused certification shows under the box', async () => {
+    const first = renderApp({ route: '/my/licenses/lic_example12', me: me(['customer'], { email: null, emailVerified: false }), handlers: { myLicense: () => inWindow } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Request renewal' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Request a renewal of your personal key' });
+    expect(within(dialog).getByText('Your sign-in did not share a verified email address')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Request renewal' })).toHaveAttribute('aria-disabled', 'true');
+    expect(first.api.callsTo('myLicenseRenew')).toHaveLength(0);
+    first.unmount();
+
+    renderApp({
+      route: '/my/licenses/lic_example12',
+      me: customerMe,
+      handlers: { myLicense: () => inWindow, myLicenseRenew: () => apiError(400, 'invalid', 'Tick the certification: noncommercial must be true.', { fields: ['noncommercial'] }) },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Request renewal' }));
+    dialog = await screen.findByRole('dialog', { name: 'Request a renewal of your personal key' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: ATTESTATION_STATEMENT }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Request renewal' }));
+    expect((await within(dialog).findAllByText('Tick the certification: noncommercial must be true.')).length).toBeGreaterThan(0);
   });
 });
 

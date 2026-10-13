@@ -5,6 +5,7 @@
 
 import { mergeHandlers } from '../http/router';
 import type { PartialHandlerMap } from '../http/types';
+import { approvalHandlers } from './approvals';
 import { auditHandlers } from './audit';
 import { authHandlers } from './auth';
 import { blocklistHandlers } from './blocklist';
@@ -18,7 +19,7 @@ import { requestHandlers } from './requests';
 import { systemHandlers } from './system';
 import { userHandlers } from './users';
 
-/** The licensing domain (catalog, me*, customers*, members*, licenses*, requests*, blocked emails, the public form) and the admin pages (users*, audit, system). */
+/** The licensing domain (catalog, me*, customers*, members*, licenses*, requests*, blocked emails, the public form, the approval link) and the admin pages (users*, audit, system). */
 export const domainHandlers: PartialHandlerMap = mergeHandlers(
   catalogHandlers,
   meHandlers,
@@ -30,6 +31,7 @@ export const domainHandlers: PartialHandlerMap = mergeHandlers(
   auditHandlers,
   systemHandlers,
   publicHandlers,
+  approvalHandlers,
 );
 
 /** All handlers; a route handled in two maps throws at import. */

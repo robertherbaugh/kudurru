@@ -2,9 +2,10 @@
 // it, and its navigation entry. Pages are separate chunks (React.lazy), so
 // the sign-in and confirmation pages load without the back office. Access
 // mirrors the API routes each page calls (shared/routes.ts): 'anonymous'
-// pages render outside the session gate (/login, /verify), 'session'
-// pages need a sign-in (/invites/:token), and a Permission is checked
-// against Me.permissions inside the shell.
+// pages render outside the session gate (/login, /verify, /approve: the
+// token in their link is the credential), 'session' pages need a sign-in
+// (/invites/:token), and a Permission is checked against Me.permissions
+// inside the shell.
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { Building2, Inbox, KeyRound, ScrollText, Server, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@shared/permissions';
@@ -34,6 +35,7 @@ export interface RouteDef {
 
 const Login = lazy(() => import('./pages/LoginPage'));
 const Verify = lazy(() => import('./pages/VerifyPage'));
+const Approve = lazy(() => import('./pages/ApprovePage'));
 const Invite = lazy(() => import('./pages/InvitePage'));
 const Home = lazy(() => import('./pages/HomePage'));
 const MyLicenses = lazy(() => import('./pages/MyLicensesPage'));
@@ -51,6 +53,7 @@ const System = lazy(() => import('./pages/SystemPage'));
 export const ROUTES: RouteDef[] = [
   { path: '/login', navKey: 'login', label: 'Sign in', access: 'anonymous', page: Login },
   { path: '/verify', navKey: 'verify', label: 'Confirm your key request', access: 'anonymous', page: Verify },
+  { path: '/approve', navKey: 'approve', label: 'Approve a key request', access: 'anonymous', page: Approve },
   { path: '/invites/:token', navKey: 'invite', label: 'Invite', access: 'session', page: Invite },
   { path: '/', navKey: 'home', label: 'Home', access: 'session', page: Home },
   { path: '/my/licenses', navKey: 'my', label: 'My licenses', access: 'self.read', page: MyLicenses, section: 'Licenses', icon: KeyRound },

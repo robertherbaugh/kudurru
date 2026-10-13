@@ -72,8 +72,9 @@ OIDC client at your identity provider.
      ghcr.io/robertherbaugh/kudurru-license-server:<version> migrate
    ```
 
-   Migration 0002 grants `license_portal_app` exactly what the server's SQL
-   uses (`license-server/README.md`, "Database roles").
+   The migrations grant `license_portal_app` exactly what the server's SQL
+   uses (0002, and 0003 for the approval links; `license-server/README.md`,
+   "Database roles").
 
 3. **Mail.** In the dashboard, onboard `kudurru.io` under Email Service,
    Email Sending. Create an account-owned API token with the **Email Sending:
@@ -91,8 +92,26 @@ OIDC client at your identity provider.
 5. **Vars.** Edit `wrangler.jsonc`: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, the
    role mappings and `OIDC_ADMIN_CLAIM_RULES` if you map admin groups,
    `LICENSE_SIGNING_TRUSTED_SINCE` (the first kudurru release that embeds
-   the signing kid), and uncomment the `routes` entry for
-   `licenses.kudurru.io`.
+   the signing kid) and `ADMIN_NOTIFY_EMAIL` (below). Uncomment the
+   `routes` entry for `licenses.kudurru.io`.
+
+   `ADMIN_NOTIFY_EMAIL` decides who is mailed each request for a free
+   personal key, with its one-click approve link; any signed-in license
+   admin can also decide it on the Requests page. By default
+   (`PERSONAL_AUTO_APPROVE=false`) no personal key is signed until a
+   license admin approves it, and each request mails every address in this
+   comma list the details and the link (`license-server/README.md`,
+   "Approving personal keys"). The value in `wrangler.jsonc` is a
+   placeholder: replace it before the first deploy, or remove it. Whoever
+   reads one of these mailboxes can approve, so list only mailboxes that
+   license admins alone read. When an address is also one license admin's
+   verified sign-in email, the audit trail names that admin as the
+   approver and the approval counts against their
+   `ISSUE_MAX_PER_ACTOR_PER_DAY`. Any other address is recorded as
+   `approval link (<address>)` and its approvals count against no quota.
+   Remove the var to mail every enabled license admin and superadmin with
+   a verified email instead. The System page shows the recipients under
+   "Approval".
 
 6. **Secrets.** Each once (the deploy fails while a required one is missing):
 

@@ -5,7 +5,8 @@
 // content type, bad JSON and oversize bodies: the route's badBody), 429
 // rate_limited with Retry-After, and 503 unavailable without mail or a
 // signer. Unknown fields are ignored; there is no nodes field. POST
-// …/verify consumes the mailed token and answers the outcome, never the key.
+// …/verify consumes the mailed token and answers the outcome, never the key
+// (pending_review by default: an admin approves before a key is signed).
 
 import type { ResponseOf } from '../../shared/api';
 import { readJson, v, validate, type Infer } from '../http/body';

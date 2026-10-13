@@ -1,9 +1,9 @@
-// The migration runner and the schema of 0001_init.sql (design spec §2,
-// §4): migrations apply cleanly and only once (also when two instances
-// start together), a database migrated by a newer release is refused, a
-// broken migration leaves nothing behind, the static list matches the
-// directory, audit_events is append-only, and the constraints the
-// invariants rest on hold.
+// The migration runner and the schema of 0001_init.sql and later (design
+// spec §2, §4): migrations apply cleanly and only once (also when two
+// instances start together), a database migrated by a newer release is
+// refused, a broken migration leaves nothing behind, the static list
+// matches the directory, audit_events is append-only, and the constraints
+// the invariants rest on hold (approval links included).
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,6 +71,7 @@ describeDb('migrations against Postgres', () => {
       'licenses',
       'oidc_logins',
       'public_key_requests',
+      'request_approval_links',
       'schema_migrations',
       'sessions',
       'users',
@@ -130,6 +131,13 @@ describeDb('migrations against Postgres', () => {
          values (${id}, 'web', 'p@example.org', 'P', 'homelab', ${{ source: 'kudurru.io form' }}, 'daily_cap')`;
     await request('req_one');
     await expect(run(request('req_two'))).rejects.toMatchObject({ errno: '23505', constraint: 'license_requests_open_email_uq' });
+    // An approval link is stored with its address lower-cased and goes with its request.
+    const link = (to: string) =>
+      db`insert into request_approval_links (token_hash, request_id, sent_to, expires_at) values (${Buffer.from(to)}, 'req_one', ${to}, now() + interval '7 days')`;
+    await expect(run(link('Admin@Example.org'))).rejects.toMatchObject({ errno: '23514' });
+    await link('admin@example.org');
+    await db`delete from license_requests where id = 'req_one'`;
+    expect(await db`select 1 from request_approval_links`).toHaveLength(0);
     // Roles are the three known ones.
     await expect(run(db`insert into users (id, issuer, subject, granted_roles) values ('usr_r', 'i', 's', ${db.array(['root'], 'TEXT')})`)).rejects.toMatchObject({ errno: '23514' });
   });

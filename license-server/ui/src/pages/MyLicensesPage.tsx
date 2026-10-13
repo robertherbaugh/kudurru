@@ -1,8 +1,9 @@
 // /my/licenses (self.read): the licenses of every customer the signed-in
-// person belongs to, their own personal key requests that wait for review,
-// and the ways in when there is nothing yet: a waiting request, asking the
-// licensor to add their address to an existing license, a free personal
-// key (FormDialog) or a business enquiry by mail.
+// person belongs to, their own personal key requests that wait for a
+// license admin's approval, and the ways in when there is nothing yet: a
+// waiting request, asking the licensor to add their address to an
+// existing license, a free personal key (FormDialog) or a business
+// enquiry by mail.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
@@ -50,7 +51,7 @@ const requestColumns: TableColumn<RequestRow>[] = [
   { key: 'createdAt', header: 'Requested (UTC)', width: pixel(170), renderCell: (r) => utcDay(r.createdAt) },
   { key: 'name', header: 'Name on the key', width: proportional(1, { minWidth: 160 }) },
   { key: 'use', header: 'Use', width: proportional(2, { minWidth: 200 }) },
-  { key: 'status', header: 'State', width: pixel(160), renderCell: () => <Badge variant="warning" label="Waiting for review" /> },
+  { key: 'status', header: 'State', width: pixel(160), renderCell: () => <Badge variant="warning" label="Waiting for approval" /> },
 ];
 
 export default function MyLicensesPage() {
@@ -70,8 +71,8 @@ export default function MyLicensesPage() {
   if (licenses.data && items.length === 0) {
     empty = open.length ? (
       <EmptyState
-        title="Your request waits for review"
-        description="A person looks at your request for a free personal key and mails you the decision. Your key appears here once it is issued."
+        title="Your request is waiting for approval"
+        description="A license admin looks at your request for a free personal key. Your key arrives by email once it is approved, and appears here."
         icon={<KeyRound size={32} aria-hidden="true" />}
       />
     ) : (
@@ -105,7 +106,7 @@ export default function MyLicensesPage() {
         </Panel>
       ) : null}
       {open.length ? (
-        <Panel title="Requests waiting for review">
+        <Panel title="Requests waiting for approval">
           <Table<RequestRow> data={open as RequestRow[]} columns={requestColumns} idKey="id" density="compact" verticalAlign="top" />
         </Panel>
       ) : null}

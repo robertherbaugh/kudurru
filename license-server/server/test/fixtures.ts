@@ -44,8 +44,9 @@ export type ConfigOverrides = { [K in keyof Config]?: Config[K] extends readonly
 /**
  * A complete Config for tests: http://localhost (plain kls_session cookies),
  * dev mode with the golden key as LICENSE_SIGNING_KEY, no SMTP, no admin
- * group mappings, the spec's defaults elsewhere. Nested sections are merged
- * one level deep: testConfig({ personal: { autoApprove: false } }).
+ * group mappings, admin@example.org as ADMIN_NOTIFY_EMAIL, the spec's
+ * defaults elsewhere (personal keys wait for approval). Nested sections are
+ * merged one level deep: testConfig({ personal: { autoApprove: true } }).
  */
 export function testConfig(overrides: ConfigOverrides = {}): Config {
   const base: Config = {
@@ -95,10 +96,10 @@ export function testConfig(overrides: ConfigOverrides = {}): Config {
       smtpUrl: null,
       from: 'kudurru license portal <licenses@kudurru.io>',
       replyTo: 'hello@kudurru.io',
-      adminNotify: 'admin@example.org',
+      adminNotify: ['admin@example.org'],
     },
     publicForm: { enabled: true, origins: ['https://kudurru.io'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3 },
-    personal: { autoApprove: true, autoApproveMaxPerDay: 50 },
+    personal: { autoApprove: false, autoApproveMaxPerDay: 50 },
     issuing: { maxPerActorPerDay: 50 },
     build: { version: 'test', commit: 'test', builtAt: null },
   };

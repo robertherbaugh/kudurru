@@ -34,8 +34,10 @@ export type Actor =
     }
   | {
       kind: 'system';
-      /** "cli", "system", "scheduler". */
+      /** "cli", "system", "scheduler", "approval link (<address>)". */
       label: string;
+      /** The keys it signs count against ISSUE_MAX_PER_ACTOR_PER_DAY by label (an approval link that names no single admin; licenses.ts checkIssuingQuota). */
+      issuingQuota?: boolean;
     };
 
 /**

@@ -58,12 +58,20 @@
     // CF-Connecting-IP, after deleting any copy the client sent. Safe
     // because the container has no way in except through this Worker.
     "CLIENT_IP_HEADER": "X-Client-IP",
-    "MAIL_FROM": "kudurru license portal <licenses@kudurru.io>"
+    "MAIL_FROM": "kudurru license portal <licenses@kudurru.io>",
+    // Who is mailed each request for a free personal key (README.md,
+    // "One-time setup", step 5). By default no personal key is signed until
+    // a license admin approves it, and every request mails each address of
+    // this comma list the details and a one-click approve link. Whoever
+    // reads the mailbox can approve, so name only mailboxes that license
+    // admins alone read. A placeholder, like OIDC_ISSUER: replace it before
+    // the first deploy, or remove it to mail every enabled license admin
+    // and superadmin with a verified email.
+    "ADMIN_NOTIFY_EMAIL": "approvers@example.org"
     // Often set as well (see the server README for the full list):
     // "OIDC_SCOPES": "openid profile email groups",
     // "ROLE_SUPERADMIN_GROUPS": "license-superadmins",
     // "OIDC_ADMIN_CLAIM_RULES": "hd=kudurru.io",
-    // "ADMIN_NOTIFY_EMAIL": "licenses@kudurru.io",
     // "LICENSE_SIGNING_TRUSTED_SINCE": "v0.1.0"
   },
 

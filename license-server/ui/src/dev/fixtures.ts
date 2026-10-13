@@ -1,10 +1,13 @@
 // Typed wire fixtures for the dev mock (./mock.ts) and the UI tests: one
-// person per role, the catalog on a fixed day (2026-10-12, UTC), licenses
-// in each shape the pages render (personal and business, current and
-// withdrawn), a customer, requests, users, audit events and the System
-// page. Every object is typed by shared/api.ts, so a wire change breaks
-// the fixtures at compile time rather than the pages at run time.
+// person per role, the catalog on a fixed day (2026-10-12, UTC; approval
+// required, the default), licenses in each shape the pages render
+// (personal and business, current and withdrawn), a customer, requests
+// (a new key and a renewal), the preview of a one-click approval link,
+// users, audit events and the System page. Every object is typed by
+// shared/api.ts, so a wire change breaks the fixtures at compile time
+// rather than the pages at run time.
 import type {
+  ApprovalPreview,
   AuditEvent,
   Catalog,
   CustomerDetail,
@@ -17,7 +20,7 @@ import type {
   SystemInfo,
   UserDetail,
 } from '@shared/api';
-import { FEATURES, PLANS, POLICY } from '@shared/catalog';
+import { ATTESTATION_STATEMENT, FEATURES, PLANS, POLICY } from '@shared/catalog';
 import { permissionsFor, type Role } from '@shared/permissions';
 
 /** The day the fixtures live on (UTC). */
@@ -49,6 +52,7 @@ export function catalog(over: Partial<Catalog> = {}): Catalog {
     signing: { available: true, kid: 'kudurru-2026-1', trustedSince: 'v0.1.0', testKey: false },
     mail: { configured: true },
     today: TODAY,
+    approvalRequired: true,
     ...over,
   };
 }
@@ -148,7 +152,7 @@ export const openRequest: LicenseRequest = {
   name: 'Grace Hopper',
   use: 'DNS for my homelab',
   attestation: { source: 'kudurru.io form', at: '2026-10-11T12:00:00.000Z', statement: 'I agree', license: 'PolyForm-Noncommercial-1.0.0', email: 'grace@example.org' },
-  reviewReason: 'daily_cap',
+  reviewReason: 'auto_approve_off',
   status: 'open',
   decidedBy: null,
   decidedAt: null,
@@ -157,6 +161,42 @@ export const openRequest: LicenseRequest = {
   resultingKeyId: null,
   createdAt: '2026-10-11T12:00:00.000Z',
   personCustomer: null,
+  renews: null,
+};
+
+/** A portal renewal waiting for approval: approving renews lic_example12 (expires 2026-10-30, inside the renew window). */
+export const renewalRequest: LicenseRequest = {
+  ...openRequest,
+  id: 'req_renew',
+  source: 'portal',
+  requestedBy: { id: 'usr_ada', name: 'Ada Lovelace', email: 'ada@example.org' },
+  requesterEmail: 'ada@example.org',
+  name: 'Ada Lovelace',
+  use: 'Renewal of lic_example12',
+  attestation: { source: 'portal', at: '2026-10-12T08:00:00.000Z', statement: 'I agree', license: 'PolyForm-Noncommercial-1.0.0', email: 'ada@example.org' },
+  createdAt: '2026-10-12T08:00:00.000Z',
+  personCustomer: { id: 'cus_ada', name: 'Ada Lovelace', kind: 'person' },
+  renews: { licenseId: 'lic_example12', expiresOn: '2026-10-30' },
+};
+
+/** What /approve?token= shows for openRequest before anyone decided. */
+export const approvalPreview: ApprovalPreview = {
+  request: {
+    id: openRequest.id,
+    name: openRequest.name,
+    email: openRequest.requesterEmail,
+    use: openRequest.use,
+    source: openRequest.source,
+    createdAt: openRequest.createdAt,
+    reviewReason: 'auto_approve_off',
+    attestation: { at: '2026-10-11T12:00:00.000Z', statement: ATTESTATION_STATEMENT },
+  },
+  renews: null,
+  terms: { plan: 'personal', nodes: 3, features: null, expiresOn: '2027-10-12' },
+  status: 'open',
+  decidedBy: null,
+  expired: false,
+  sentTo: 'admin@example.org',
 };
 
 export const userDetail: UserDetail = {
@@ -199,8 +239,9 @@ export const systemInfo: SystemInfo = {
   },
   sessions: { idleTimeoutSeconds: 1800, lifetimeSeconds: 43200 },
   mail: { configured: true, from: 'kudurru license portal <licenses@kudurru.io>', replyTo: 'hello@kudurru.io', adminNotify: null },
-  publicForm: { enabled: true, origins: ['http://localhost:8792'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3, personalAutoApprove: true, personalAutoApproveMaxPerDay: 50 },
+  publicForm: { enabled: true, origins: ['http://localhost:8792'], limitPerIpPerHour: 5, limitPerEmailPerDay: 3, personalAutoApprove: false, personalAutoApproveMaxPerDay: 50 },
   issuing: { maxPerActorPerDay: 50 },
+  approval: { required: true, recipients: ['admin@example.org', 'superadmin@example.org'], fromAdmins: true },
   policy: { ...POLICY },
   build: { version: 'dev', commit: 'dev', builtAt: null },
 };
