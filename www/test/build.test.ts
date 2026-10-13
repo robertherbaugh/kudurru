@@ -124,6 +124,23 @@ describe("the license page", () => {
     expect(page.match(/<tr><th scope="row">/g)?.length).toBe(11);
   });
 
+  test("without a key a node has one policy, the default one", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("One node, the default policy,");
+    expect(page).toContain('<tr><th scope="row">Policies</th><td>1, the default policy</td><td>Unlimited</td><td>Unlimited</td></tr>');
+    expect(page).not.toContain("two policies");
+    expect(pages["index.html"]).toContain("each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)");
+  });
+
+  test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
+    expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
+    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
+    for (const id of ["lic-req-title", "lic-get-title", "lic-use-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
+    expect(page).toContain('<div class="licform-box">');
+  });
+
   test("is linked from the footer of every page and listed in the sitemap", async () => {
     for (const name of Object.keys(pages)) expect(pages[name]).toContain('href="/license/"');
     expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/");

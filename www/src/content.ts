@@ -25,7 +25,9 @@ export const LICENSE_TEXT_PATH = "/license/text/";
 export const LICENSE_TEXT_FILE = "/license/text/PolyForm-Noncommercial-1.0.0.txt";
 export const LICENSE_UPSTREAM_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0";
 export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)";
-export const LICENSE_FREE_POLICIES = 2;
+// Without a key one Policy can exist: the Policy "default" that the bootstrap
+// seeds (internal/license CommunityPolicies). A key lifts the limit.
+export const LICENSE_FREE_POLICIES = 1;
 
 export interface LicenseRow {
   what: string;
@@ -37,7 +39,7 @@ export interface LicenseRow {
 export const LICENSE_ROWS: LicenseRow[] = [
   { what: "DNS answering, blocking, zones, the block page, the dashboard, short-term statistics", community: "Yes", personal: "Yes", business: "Yes" },
   { what: "Nodes in one cluster", community: "1", personal: `Up to ${LICENSE_FREE_NODES}`, business: "As agreed" },
-  { what: "Policies", community: String(LICENSE_FREE_POLICIES), personal: "Unlimited", business: "Unlimited" },
+  { what: "Policies", community: `${LICENSE_FREE_POLICIES}, the default policy`, personal: "Unlimited", business: "Unlimited" },
   { what: "Roles beyond the built-in administrator, zone-scoped roles, Kubernetes RBAC", community: "No", personal: "Yes", business: "Yes" },
   { what: "OIDC single sign-on", community: "No", personal: "Yes", business: "Yes" },
   { what: "The audit trail and its export", community: "No", personal: "Yes", business: "Yes" },
@@ -395,7 +397,7 @@ export const REGISTERS: Register[] = [
     title: "Lists, groups, schedules. No allocations.",
     lead: "A clean-room parser compiles hosts, domain, adblock and regex lists into one matcher chain. Allow wins, @@ exceptions apply, and answers are checked through their CNAME chain.",
     points: [
-      "Client groups by IP, CIDR or DoT/DoH client ID, each with merged policies and weekday schedules",
+      "Client groups by IP, CIDR or DoT/DoH client ID, each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)",
       "150 blocked services in 14 categories, and safe search for the search engines and video sites that document it",
       "A block page that says which list blocked a site, with a request-access form that reaches an admin",
       "Answers with zeroIP, NXDOMAIN, a custom IP or REFUSED, tagged with EDE 15 or 17",
