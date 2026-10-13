@@ -144,7 +144,16 @@ async function grantSuperadminCommand(argv: readonly string[]): Promise<void> {
     console.error(`grant-superadmin: ${e.message}\n${GRANT_USAGE}`);
     process.exit(2);
   }
-  const config = configOrExit();
+  // Only the database settings, like migrate: it runs as a one-off from a
+  // workstation or `docker run` (on Cloudflare there is no shell to exec
+  // into), with the runtime role's DATABASE_URL.
+  let config: DatabaseConfig;
+  try {
+    config = loadDatabaseConfig(process.env);
+  } catch (e) {
+    if (e instanceof ConfigError) fatal(null, e.message);
+    throw e;
+  }
   const log = jsonLogger({ level: config.logLevel });
   const db = dbFor(config, config.database.url, 1);
   let code: number;

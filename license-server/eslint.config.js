@@ -21,6 +21,8 @@ export default tseslint.config(
       'ui/src/themes/*/*.doc.mjs',
       'playwright-report/**',
       'test-results/**',
+      // A package of its own (the Cloudflare Worker), with its own types and checks.
+      'cloudflare/**',
     ],
   },
   js.configs.recommended,

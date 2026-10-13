@@ -104,6 +104,11 @@ jobs:
         run: |
           set -o pipefail
           go run ./license-server/server/test/golden/gen.go | diff -u license-server/server/test/golden/golden.json -
+      # The Cloudflare Containers deployment (license-server/cloudflare):
+      # Worker types, its tests and a wrangler dry run (no Docker, no login).
+      - name: Cloudflare deployment check
+        working-directory: license-server/cloudflare
+        run: bun install --frozen-lockfile && bun run check
   image:
     needs: changes
     if: needs.changes.outputs.run == 'true'

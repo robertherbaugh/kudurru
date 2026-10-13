@@ -1,0 +1,11 @@
+# Secrets for `bun run dev` (local/wrangler.jsonc). Copy to local/.dev.vars
+# (gitignored) and fill in. Production secrets are set with
+# `bunx wrangler secret put <NAME>` instead (../wrangler.jsonc lists them).
+# The container runs in Docker: 127.0.0.1 is the container itself, so name
+# a database the container can reach (on Linux, the Docker bridge address
+# of the host, with Postgres listening there).
+DATABASE_URL=postgres://postgres@172.17.0.1:5432/kudurru_license
+OIDC_CLIENT_SECRET=dev-only-client-secret
+# Optional. Signing stays unavailable here: the image trusts only the
+# release keys in /app/trusted-keys, not the dev key.
+# SMTP_URL=smtp://172.17.0.1:1025
