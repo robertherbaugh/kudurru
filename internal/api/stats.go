@@ -170,9 +170,8 @@ type queryActionInput struct {
 	ID    uint64 `path:"id"`
 	Scope string `query:"scope" enum:"node,cluster," doc:"cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database)."`
 	Body  struct {
-		Action string `json:"action" enum:"allow,deny"`
-		// Namespace of the UI list (default "default").
-		Namespace string `json:"namespace,omitempty"`
+		Action    string `json:"action" enum:"allow,deny"`
+		Namespace string `json:"namespace,omitempty" doc:"Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes)."`
 	}
 }
 

@@ -344,6 +344,7 @@
             "type": "array"
           },
           "namespace": {
+            "description": "Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -1809,6 +1810,7 @@
             "type": "string"
           },
           "namespace": {
+            "description": "Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -3658,6 +3660,7 @@
             "type": "string"
           },
           "namespace": {
+            "description": "Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -20391,12 +20394,12 @@
             }
           },
           {
-            "description": "Namespace of the record set; default \"default\".",
+            "description": "Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "explode": false,
             "in": "query",
             "name": "namespace",
             "schema": {
-              "description": "Namespace of the record set; default \"default\".",
+              "description": "Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
               "type": "string"
             }
           }

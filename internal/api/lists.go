@@ -70,9 +70,8 @@ type searchOutput struct {
 
 // DomainsRequest is the body of POST /domains/{action}/{kind}.
 type DomainsRequest struct {
-	Domains []string `json:"domains" minItems:"1" maxItems:"1000"`
-	// Namespace of the list (default "default").
-	Namespace string `json:"namespace,omitempty"`
+	Domains   []string `json:"domains" minItems:"1" maxItems:"1000"`
+	Namespace string   `json:"namespace,omitempty" doc:"Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes)."`
 	// List overrides the list name (default ui-allow / ui-deny).
 	List string `json:"list,omitempty"`
 }

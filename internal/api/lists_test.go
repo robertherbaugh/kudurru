@@ -126,8 +126,11 @@ func TestReleaseNamespaceDefaults(t *testing.T) {
 	for _, action := range []string{"allow", "deny"} {
 		h.do(http.MethodPost, "/api/v1/domains/"+action+"/exact", "operator",
 			map[string]any{"domains": []string{action + ".example"}}).want(http.StatusOK)
-		h.do(http.MethodPost, "/api/v1/"+action+"list", "operator",
-			map[string]any{"values": []string{action + ".dashboard.example"}, "type": "exact"}).want(http.StatusOK)
+		// The kind namespace probe retries these writes after transient failures.
+		for range 2 {
+			h.do(http.MethodPost, "/api/v1/"+action+"list", "operator",
+				map[string]any{"values": []string{action + ".dashboard.example"}, "type": "exact"}).want(http.StatusOK)
+		}
 	}
 	var pol v1alpha1.Policy
 	if err := h.st.Get(ctx, store.Key{Kind: "Policy", Namespace: "dns", Name: "default"}, &pol); err != nil {
@@ -140,6 +143,9 @@ func TestReleaseNamespaceDefaults(t *testing.T) {
 		var bl v1alpha1.BlockList
 		if err := h.st.Get(ctx, store.Key{Kind: "BlockList", Namespace: "dns", Name: name}, &bl); err != nil {
 			t.Fatal(err)
+		}
+		if len(bl.Spec.Sources) != 1 || len(bl.Spec.Sources[0].Entries) != 2 {
+			t.Fatalf("repeated writes must not duplicate entries in %s: %+v", name, bl.Spec.Sources)
 		}
 	}
 }
