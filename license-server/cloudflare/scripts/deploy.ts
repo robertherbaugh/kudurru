@@ -5,16 +5,19 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseConfigFileTextToJson } from 'typescript';
+import { SERVER_ENV } from '../src/env';
 
 const project = resolve(import.meta.dir, '..');
 const root = resolve(project, '../..');
 const wrangler = resolve(project, 'node_modules/wrangler/bin/wrangler.js');
 const runtimeSecrets = ['DATABASE_URL', 'OIDC_CLIENT_SECRET', 'LICENSE_SIGNING_KEY', 'SMTP_URL'] as const;
+const requiredVariables = ['PUBLIC_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'LICENSE_SIGNING_KID'] as const;
+export const runtimeVariables = SERVER_ENV.filter((name) => ![...runtimeSecrets, 'DATABASE_MIGRATE_URL'].some((secret) => secret === name));
 
 type Environment = Readonly<Record<string, string | undefined>>;
 interface WorkerConfig {
   main: string;
-  vars: Record<string, string> & { PUBLIC_URL: string };
+  vars?: Record<string, string>;
   routes?: { pattern: string; custom_domain?: boolean }[];
   containers: { class_name: string; image: string }[];
   [name: string]: unknown;
@@ -32,21 +35,40 @@ export function prepareDeployment(template: WorkerConfig, env: Environment, comm
   if (!/^[a-f0-9]{32}$/.test(cloudflare.CLOUDFLARE_ACCOUNT_ID)) throw new Error('CLOUDFLARE_ACCOUNT_ID must be a 32-character hex account ID');
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('The deployment requires a full Git commit SHA');
   if (!/^[a-zA-Z0-9_.-]+$/.test(attempt)) throw new Error('Invalid deployment attempt');
-  if (!template.routes?.some((route) => route.custom_domain && `https://${route.pattern}` === template.vars.PUBLIC_URL)) {
+  let variables: Record<string, string>;
+  try {
+    const parsed: unknown = JSON.parse(env.LICENSE_PORTAL_VARIABLES ?? '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || Object.values(parsed).some((value) => typeof value !== 'string')) throw new Error();
+    variables = parsed as Record<string, string>;
+  } catch {
+    throw new Error('LICENSE_PORTAL_VARIABLES must be a JSON object of string values');
+  }
+  const vars: Record<string, string> = {};
+  for (const name of runtimeVariables) {
+    const value = (env[name] ?? variables[name])?.trim();
+    if (value) vars[name] = value;
+  }
+  for (const name of requiredVariables) {
+    if (!vars[name]) throw new Error(`${name} is required`);
+  }
+  // CI migrates before deployment; the serving role may not own the schema.
+  vars.MIGRATE_ON_START ??= 'false';
+  if (vars.MIGRATE_ON_START !== 'false') throw new Error('MIGRATE_ON_START must be false; deployment runs migrations separately');
+  if (!template.routes?.some((route) => route.custom_domain && `https://${route.pattern}` === vars.PUBLIC_URL)) {
     throw new Error('Enable a custom domain route matching PUBLIC_URL in wrangler.jsonc');
   }
-  if (Object.values(template.vars).some((value) => value.includes('example.org'))) {
-    throw new Error('Replace the example.org placeholders in wrangler.jsonc before deploying');
+  if (Object.values(vars).some((value) => value.includes('example.org'))) {
+    throw new Error('Replace the example.org placeholders in deployment variables before deploying');
   }
-  if (runtimeSecrets.some((name) => name in template.vars) || 'DATABASE_MIGRATE_URL' in template.vars) {
+  if (runtimeSecrets.some((name) => name in (template.vars ?? {})) || 'DATABASE_MIGRATE_URL' in (template.vars ?? {})) {
     throw new Error('Store credentials as secrets, not vars in wrangler.jsonc');
   }
 
   const image = `kudurru-license-server:sha-${commit}-${attempt}`;
-  const config: WorkerConfig = {
+  const config: WorkerConfig & { vars: Record<string, string> & { PUBLIC_URL: string } } = {
     ...template,
     main: resolve(project, template.main),
-    vars: { ...template.vars, MIGRATE_ON_START: 'false' },
+    vars: vars as Record<string, string> & { PUBLIC_URL: string },
     containers: template.containers.map((container) => ({
       ...container,
       image: `registry.cloudflare.com/${cloudflare.CLOUDFLARE_ACCOUNT_ID}/${image}`,
@@ -60,7 +82,7 @@ export function prepareDeployment(template: WorkerConfig, env: Environment, comm
 /** Tooling inherits host/Docker settings, but no portal or deployment credentials. */
 function commandEnv(env: Environment): Record<string, string | undefined> {
   const clean = { ...env };
-  for (const name of [...runtimeSecrets, 'DATABASE_MIGRATE_URL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+  for (const name of [...runtimeSecrets, 'DATABASE_MIGRATE_URL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'LICENSE_PORTAL_VARIABLES']) {
     delete clean[name];
   }
   return clean;

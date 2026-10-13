@@ -33,12 +33,16 @@ const STARTED_ENV_KEY = 'started-env-sha256';
 /** How long a start may take: getting an instance, then the server listening (after its migrations). */
 const START_TIMEOUTS = { instanceGetTimeoutMS: 15_000, portReadyTimeoutMS: 45_000 };
 
-function settings(env: Env): Settings {
+// Public settings are injected by deployment, so Wrangler cannot infer
+// them from the committed infrastructure-only config.
+type PortalEnv = Env & { PUBLIC_URL: string };
+
+function settings(env: PortalEnv): Settings {
   const formOrigins = (env as unknown as Record<string, unknown>).PUBLIC_FORM_ORIGINS;
   return { publicUrl: env.PUBLIC_URL, formOrigins: typeof formOrigins === 'string' ? formOrigins : undefined };
 }
 
-export class LicensePortal extends Container<Env> {
+export class LicensePortal extends Container<PortalEnv> {
   override defaultPort = PORT;
   /**
    * Idle time before the container gets SIGTERM. The cron trigger in
@@ -146,4 +150,4 @@ export default {
       log('error', 'the scheduled check failed', { error: describe(err) });
     }
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<PortalEnv>;
