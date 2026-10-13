@@ -5,5 +5,5 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": [".", "../src/env.ts", "../src/http.ts", "../src/log.ts"]
+  "include": [".", "../scripts", "../src/env.ts", "../src/http.ts", "../src/log.ts"]
 }

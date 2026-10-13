@@ -2,19 +2,20 @@
 // directory). The Worker (src/index.ts) hands every request to one Durable
 // Object, LicensePortal, which runs the portal's image as its container.
 //
-// Secrets: set each once with `bunx wrangler secret put <NAME>`. A deploy
-// fails while one listed in secrets.required below is missing.
-//   DATABASE_URL          postgres://license_portal_app:<password>@<host>:5432/<db>, the runtime
+// Secrets: GitHub environment license-portal-production (README.md).
+// `bun run deploy` supplies them with `wrangler deploy --secrets-file`.
+// Only their names belong in this file; never put credentials in vars.
+//   DATABASE_URL          your existing cloud database URL, or the optional runtime
 //                         role (license-server/deploy/postgres-roles.sql). The direct endpoint
-//                         (PlanetScale: port 5432), not a transaction pooler (README.md, "Postgres");
+//                         (PlanetScale: port 5432), not a transaction pooler (README.md, "One-time setup");
 //                         ?sslmode=verify-full may stay in the URL
 //   OIDC_CLIENT_SECRET    the IdP's client secret for OIDC_CLIENT_ID
 //   LICENSE_SIGNING_KEY   the signing seed, licensegen format (std base64 of the 32-byte seed)
 //   SMTP_URL              smtps://api_token:<API token>@smtp.mx.cloudflare.net:465 (Cloudflare
 //                         Email Service) or any provider's smtps:// or smtp:// URL
-// Migrations run as a separate step with the owner role, from CI or a
-// workstation, before a release reaches the container (README.md,
-// "Releasing"), so the container never holds the owner's credentials:
+// The deploy script migrates automatically using DATABASE_MIGRATE_URL
+// when supplied, otherwise DATABASE_URL (the simple single-role setup).
+// With separate roles, only CI holds the owner's credentials:
 // MIGRATE_ON_START is false below and DATABASE_MIGRATE_URL is not set here.
 // A changed var or secret reaches the running container at the next cron
 // tick (within 5 minutes): the Durable Object restarts it (README.md,
@@ -32,7 +33,7 @@
   "workers_dev": false,
   "preview_urls": false,
   // Going live: uncomment the route. The kudurru.io zone must be in the
-  // same Cloudflare account; the next `bun run deploy` creates the DNS
+  // same Cloudflare account; the next successful deploy creates the DNS
   // record and the certificate for licenses.kudurru.io. Until then the
   // Worker has no URL at all. Turn on "Always Use HTTPS" for the zone (the
   // Worker also redirects http to https).
@@ -85,8 +86,9 @@
   "containers": [
     {
       "class_name": "LicensePortal",
-      // A pre-built image in your account's Cloudflare registry, pushed
-      // with `bunx wrangler containers push` (README.md, "Releasing"). Not
+      // Placeholder for offline checks. `bun run deploy` builds, pushes and
+      // replaces this in a temporary config using the account ID, commit
+      // and deployment attempt. Never edit it for individual releases. Not
       // ../Dockerfile: wrangler pipes the Dockerfile to `docker build -f -`,
       // so BuildKit never reads license-server/Dockerfile.dockerignore (the
       // allowlist), and the repository's .dockerignore excludes

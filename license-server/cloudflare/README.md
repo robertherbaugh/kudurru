@@ -9,6 +9,21 @@ answers a 503 in the server's error shape when the container cannot answer,
 and, from a cron trigger, keeps the container warm and restarts it when a
 var or secret changed.
 
+Once enabled, deployment is automatic: after the license portal checks
+pass, a change on `main` builds the image, pushes it to Cloudflare, applies
+pending Postgres migrations and deploys the Worker with its secrets. Set
+up the account, public configuration and GitHub environment once, then set
+repository variable `LICENSE_PORTAL_DEPLOY=true`. Until then, the deploy
+job is skipped. Subsequent releases need no local Docker commands, manual
+migrations or image-tag edits.
+
+**No secret values belong in the repository.** `wrangler.jsonc` contains
+public settings and secret **names**. Database passwords, the OIDC secret,
+the mail token and the private signing seed belong in GitHub environment
+secrets, which the deployment uploads to Cloudflare. Public signing keys
+(`internal/license/keys/*.pub`) are safe to commit and must ship with the
+image; the corresponding private `.key` stays in your secret manager.
+
 No kudurru node ever contacts the portal. Keys are verified offline on each
 node (D163); the portal only issues and delivers them.
 
@@ -25,12 +40,14 @@ flowchart LR
 
 | Path | What it is |
 |---|---|
-| `wrangler.jsonc` | The Worker, the container (image, instance type, rollout), the Durable Object, vars, the cron trigger and the list of required secrets |
+| `wrangler.jsonc` | The Worker, container settings, Durable Object, public vars, cron trigger and required secret names; the image reference is a placeholder for offline checks |
+| `scripts/deploy.ts` | Builds and pushes the image, migrates, generates a temporary image reference and deploys with runtime secrets |
+| `../../.github/workflows/license-server.yml` | Checks pull requests and deploys changes on `main`; version tags also publish the signed GHCR image |
 | `src/index.ts` | The Worker and the `LicensePortal` Durable Object (a `@cloudflare/containers` `Container`) |
 | `src/env.ts` | Which vars and secrets reach the container's environment (checked against the server's `CONFIG_VARS`) |
 | `src/http.ts` | The request the container gets, and the Worker's own 503 |
 | `local/` | `bun run dev`: the same Worker against a locally built image |
-| `test/` | `bun test`: the env list and the request handling |
+| `test/` | `bun test`: environment forwarding, request handling and deployment secret/configuration checks |
 
 ## What it costs
 
@@ -43,138 +60,207 @@ month on Workers Paid. PlanetScale is billed through Cloudflare.
 
 ## One-time setup
 
-You need: the Cloudflare account that holds the `kudurru.io` zone, Docker,
-Bun, the signing key from Infisical, a PlanetScale Postgres database and an
-OIDC client at your identity provider.
+You need the Cloudflare account that holds `kudurru.io` on Workers Paid,
+a cloud Postgres database, the signing seed from Infisical and an OIDC
+client. GitHub Actions supplies Docker and Bun; you do not need them on
+your machine to deploy.
 
-1. **Database roles.** Connect to PlanetScale as its default `postgres`
-   role on the **direct** port 5432 and create the two roles of the
-   least-privilege setup (`license_portal_owner` owns the schema and only
-   migrates; `license_portal_app` is all the container holds):
+1. **Database.** Use your existing cloud database connection, including its
+   current/bootstrap password, as the GitHub secret `DATABASE_URL`. That
+   role must be able to create and alter the portal's schema. You do not
+   need to create separate roles or run migrations yourself.
 
-   ```sh
-   psql "postgres://postgres:<password>@<host>:5432/<database>?sslmode=verify-full" \
-     -v db=<database> -v owner_password='<long random>' -v app_password='<other long random>' \
-     -f license-server/deploy/postgres-roles.sql
-   ```
+   For PlanetScale, use the **direct** port 5432, not PgBouncer on 6432:
+   transaction pooling breaks the migration lock and Bun's prepared
+   statements. Keep `?sslmode=verify-full` in the URL; weaker TLS modes are
+   refused. The database must accept connections from both the CI runner
+   and Cloudflare Containers.
 
-   Use port 5432, not PlanetScale's PgBouncer on 6432: its transaction
-   pooling breaks the migration lock and Bun's prepared statements, and the
-   portal needs at most 10 connections. `?sslmode=verify-full` may stay in
-   the URLs; anything weaker is refused.
+2. **Mail.** In the dashboard, onboard `kudurru.io` under Email Service,
+   Email Sending. Create an account-owned API token with **Email Sending:
+   Edit** permission. Put
+   `smtps://api_token:<token>@smtp.mx.cloudflare.net:465` in the GitHub
+   secret `SMTP_URL`. `MAIL_FROM` in `wrangler.jsonc` must use an address
+   on the onboarded domain. Another SMTP provider works too.
 
-2. **Migrate** as the owner, from your machine or CI. It needs only the
-   database settings:
+3. **Identity provider.** Register a confidential client with redirect URI
+   `https://licenses.kudurru.io/api/v1/auth/callback`. Customers and staff
+   sign in at the same issuer, so it must let customers register (or be
+   invited) and verify email addresses itself (`license-server/README.md`,
+   "Who signs in"). Put its client secret in `OIDC_CLIENT_SECRET`.
 
-   ```sh
-   docker run --rm \
-     -e DATABASE_MIGRATE_URL='postgres://license_portal_owner:<password>@<host>:5432/<database>?sslmode=verify-full' \
-     ghcr.io/robertherbaugh/kudurru-license-server:<version> migrate
-   ```
-
-   The migrations grant `license_portal_app` exactly what the server's SQL
-   uses (0002, and 0003 for the approval links; `license-server/README.md`,
-   "Database roles").
-
-3. **Mail.** In the dashboard, onboard `kudurru.io` under Email Service,
-   Email Sending. Create an account-owned API token with the **Email Sending:
-   Edit** permission. The SMTP URL is
-   `smtps://api_token:<token>@smtp.mx.cloudflare.net:465` (implicit TLS on
-   465 is the only port Cloudflare accepts). `MAIL_FROM` in `wrangler.jsonc`
-   must be an address on the onboarded domain.
-
-4. **Identity provider.** Register a confidential client with the redirect
-   URI `https://licenses.kudurru.io/api/v1/auth/callback`. Customers and
-   staff sign in at the same issuer, so it must let customers register (or
-   be invited) and must verify email addresses itself
-   (`license-server/README.md`, "Who signs in").
-
-5. **Vars.** Edit `wrangler.jsonc`: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, the
-   role mappings and `OIDC_ADMIN_CLAIM_RULES` if you map admin groups,
+4. **Public configuration.** Edit and commit `wrangler.jsonc`:
+   `OIDC_ISSUER`, `OIDC_CLIENT_ID`, any role mappings,
    `LICENSE_SIGNING_TRUSTED_SINCE` (the first kudurru release that embeds
    the signing kid) and `ADMIN_NOTIFY_EMAIL` (below). Uncomment the
-   `routes` entry for `licenses.kudurru.io`.
+   `routes` entry for `licenses.kudurru.io`. Leave the placeholder `image`
+   alone: the deploy script fills it in without modifying the tracked file.
+   The script refuses to deploy while the route is disabled or an
+   `example.org` placeholder remains.
 
-   `ADMIN_NOTIFY_EMAIL` decides who is mailed each request for a free
-   personal key, with its one-click approve link; any signed-in license
-   admin can also decide it on the Requests page. By default
-   (`PERSONAL_AUTO_APPROVE=false`) no personal key is signed until a
-   license admin approves it, and each request mails every address in this
-   comma list the details and the link (`license-server/README.md`,
-   "Approving personal keys"). The value in `wrangler.jsonc` is a
-   placeholder: replace it before the first deploy, or remove it. Whoever
-   reads one of these mailboxes can approve, so list only mailboxes that
-   license admins alone read. When an address is also one license admin's
-   verified sign-in email, the audit trail names that admin as the
-   approver and the approval counts against their
-   `ISSUE_MAX_PER_ACTOR_PER_DAY`. Any other address is recorded as
-   `approval link (<address>)` and its approvals count against no quota.
-   Remove the var to mail every enabled license admin and superadmin with
-   a verified email instead. The System page shows the recipients under
-   "Approval".
+   `ADMIN_NOTIFY_EMAIL` decides who receives each personal-key request
+   and its one-click approval link. Replace its placeholder with a comma
+   list of mailboxes only license admins read, or remove the var to mail
+   every enabled license admin and superadmin with a verified email. Any
+   signed-in license admin can also decide requests on the Requests page.
+   `PERSONAL_AUTO_APPROVE=false` remains the default. See
+   `license-server/README.md`, "Approving personal keys", for attribution
+   and quotas when approving by mail.
 
-6. **Secrets.** Each once (the deploy fails while a required one is missing):
+5. **GitHub environment.** In the repository's Settings → Environments,
+   create `license-portal-production`. Allow deployments from `main`.
+   Leave required reviewers unset for automatic deployment; add a reviewer
+   only if you want an approval gate.
 
-   ```sh
-   cd license-server/cloudflare && bun install --frozen-lockfile
-   bunx wrangler secret put DATABASE_URL          # postgres://license_portal_app:…@<host>:5432/<db>?sslmode=verify-full
-   bunx wrangler secret put OIDC_CLIENT_SECRET
-   bunx wrangler secret put LICENSE_SIGNING_KEY   # the licensegen seed, e.g. from Infisical LICENSE_SIGNING_KEY
-   bunx wrangler secret put SMTP_URL              # smtps://api_token:<token>@smtp.mx.cloudflare.net:465
-   ```
+   Add this **environment variable**:
 
-   Cloudflare passes secrets to a container only as environment variables,
-   which is why the server accepts `LICENSE_SIGNING_KEY` (elsewhere prefer
-   `LICENSE_SIGNING_KEY_FILE`). The container has no SSH and the image no
-   shell.
+   | Name | Value |
+   |---|---|
+   | `CLOUDFLARE_ACCOUNT_ID` | The account ID from the Cloudflare dashboard (not a zone ID) |
 
-7. **Image and deploy.** See "Releasing" below for the first release.
+   Add these **environment secrets**, never to `wrangler.jsonc`:
 
-8. **The first superadmin.** Sign in to the portal once, then grant
-   yourself the role from your machine (database settings only; the
-   runtime role is enough):
+   | Name | Value |
+   |---|---|
+   | `CLOUDFLARE_API_TOKEN` | A Cloudflare deployment token for this account and zone, allowed to deploy Workers and Containers, push to the managed container registry, and manage the Worker's custom domain |
+   | `DATABASE_URL` | Your direct cloud Postgres URL, including the existing password and `?sslmode=verify-full` |
+   | `OIDC_CLIENT_SECRET` | The identity provider's client secret |
+   | `LICENSE_SIGNING_KEY` | The real licensegen seed from Infisical: standard base64 of 32 bytes, matching `LICENSE_SIGNING_KID` and its committed `.pub` |
+   | `SMTP_URL` | The SMTP URL from step 2, including its token/password |
 
-   ```sh
-   docker run --rm \
-     -e DATABASE_URL='postgres://license_portal_app:<password>@<host>:5432/<database>?sslmode=verify-full' \
-     ghcr.io/robertherbaugh/kudurru-license-server:<version> grant-superadmin --email you@kudurru.io
-   ```
+   For the deployment token, start with Cloudflare's **Edit Cloudflare
+   Workers** API token template and add **Account → Containers → Edit**
+   for this account. Keep the Workers and zone permissions needed to
+   deploy the custom domain, scoped to `kudurru.io`. The SMTP token is
+   separate and needs only Email Sending permission. See
+   [Cloudflare's token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/).
 
-   It also recovers access when the last superadmin is gone.
+   If you already configured the Worker with `wrangler secret put`, copy
+   those same values into the GitHub environment: CI is now their source.
+   The deployment token is used only by CI; it never reaches the portal.
+   Cloudflare receives runtime secrets through Wrangler's `--secrets-file`
+   in the same Worker deployment, including the very first deployment.
+   The temporary file has mode `0600`, lives under gitignored `.wrangler/`
+   and is deleted even if a deployment command fails. Secrets never enter
+   Docker build arguments or the image.
+
+6. **Enable and deploy.** After the environment and public configuration
+   are ready, add **repository variable** `LICENSE_PORTAL_DEPLOY` with the
+   value `true` under Settings → Secrets and variables → Actions → Variables.
+   It must be a repository variable, since the job's condition is evaluated
+   before environment variables are available. The workflow can safely land
+   before setup: the deploy job is skipped while this variable is absent or
+   has any other value.
+
+   Merge the public configuration to `main`, or run **Actions →
+   license-server → Run workflow** on `main` after configuring the variable.
+   The existing checks must pass first. The first deploy creates the custom
+   domain's DNS record and certificate; remove any conflicting DNS record
+   beforehand. Check `https://licenses.kudurru.io`.
+
+7. **The first superadmin.** Prefer mapping your identity provider's admin
+   group with `ROLE_SUPERADMIN_GROUPS`; members get the role when they sign
+   in, with no database command. If your provider has no group mapping,
+   sign in once and use the existing one-time `grant-superadmin` command
+   from `license-server/README.md`. It is also the recovery path when the
+   last superadmin is gone. The portal uses OIDC sign-in, not a separate
+   bootstrap login password.
+
+### Optional: separate database roles
+
+When you want narrower runtime permissions, create `license_portal_owner`
+and `license_portal_app` with `license-server/deploy/postgres-roles.sql`,
+following `license-server/README.md`, "Database roles". On an already
+migrated database, transfer ownership of the portal's schema objects to
+`license_portal_owner` and apply the grants shown in the SQL file (past
+migrations are not rerun). Set the owner's connection as GitHub secret
+`DATABASE_MIGRATE_URL`, and change `DATABASE_URL` to the app connection.
+The deployment uses the optional owner URL only for migrations; it never
+uploads it to Cloudflare or passes it into the serving container.
+
+Until then, omitting `DATABASE_MIGRATE_URL` uses `DATABASE_URL` for both
+migrations and serving. The existing/bootstrap database password works;
+using it means the serving container also has that role's schema privileges.
 
 ## Releasing
 
-Wrangler builds images by piping a Dockerfile to `docker build -f -`, which
-cannot build `license-server/Dockerfile` (BuildKit then ignores its
-allowlist, `Dockerfile.dockerignore`, and reads the repository's
-`.dockerignore`, which excludes `license-server/`). So the image is built as
-usual and pushed to your account's registry:
+A change affecting the license portal on `main` runs the existing checks.
+With repository variable `LICENSE_PORTAL_DEPLOY=true`, the `deploy` job in
+`.github/workflows/license-server.yml` first checks that the run's commit is
+still the current tip of `main`, using the GitHub API and the job's read-only
+GitHub token (including for a private repository). A stale queued run or
+retry fails before any build, migration or deployment; run the workflow for
+the latest commit instead. Then it:
+
+1. Build `license-server/Dockerfile` for `linux/amd64`, the architecture
+   Cloudflare runs, with the commit and build metadata.
+2. Push the image to the account's managed Cloudflare registry, with a
+   unique commit/run/attempt tag. A retry also gets a new tag so a deploy
+   starts a rollout.
+3. Run the **new image's** `migrate` command against the cloud database,
+   using `DATABASE_MIGRATE_URL` when supplied, otherwise `DATABASE_URL`.
+   The migration runner locks the database and applies only pending
+   migrations. A failure stops the release before the Worker is deployed.
+4. Generate a temporary Wrangler config with that image reference and
+   deploy the Worker, container and runtime secrets together.
+5. Retry `/readyz` while provisioning completes, checking the database,
+   schema and signing key. This checks readiness at the public route;
+   it does not prove every instance has completed its rollout.
+
+Production deployments are serialized and never canceled midway by a
+newer run. Pull requests and non-`main` manual runs have no production
+deployment. `license-server-v<version>` tags still publish and sign the
+multi-architecture GHCR image; they do not cause a second Cloudflare deploy.
+
+Pasted secrets have surrounding whitespace removed before use. Build and
+Git commands receive no portal or Cloudflare credentials; Wrangler receives
+only Cloudflare deployment credentials plus its temporary runtime secrets
+file. The migration command receives only its database credential.
+
+The image is built explicitly because Wrangler pipes Dockerfiles to
+`docker build -f -`, bypassing `license-server/Dockerfile.dockerignore`.
+That allowlist keeps secrets out of the build context; the root
+`.dockerignore` excludes `license-server/`. CI handles this detail, so
+there are no manual image pushes or edits to `wrangler.jsonc` per release.
+
+Cloudflare still needs the Worker and Durable Object to route requests to
+one container; Postgres remains your managed cloud database. Migrations
+are the portal's schema updates, separate from Cloudflare's Durable Object
+storage configuration. The docs site uses Cloudflare Workers Builds to
+deploy from GitHub, while its GitHub Actions workflow only checks it.
+[Workers Builds also supports Containers](https://developers.cloudflare.com/containers/guides/deploy/#deploy-with-workers-builds);
+this workflow keeps the existing checks, Docker allowlist and database
+migration step in one release pipeline.
+
+The rollout replaces the one instance in one step. The server drains for
+up to 20 seconds on SIGTERM; requests during replacement may receive the
+Worker's 503 with `Retry-After`. Migrations must stay compatible with the
+previous release while it drains. The server refuses to start against a
+schema newer than it knows, so fix forward rather than rolling back across
+a migration. If the image upload succeeds but migration or deployment
+fails, the pushed image remains in the registry and CI reports failure;
+rerun the workflow after fixing the cause.
+
+For a local release, install the pinned Bun version and Docker, export the
+same variables/secrets into your shell, then run:
 
 ```sh
-# 1. Migrate first (step 2 above): migrations stay compatible with the previous release.
-# 2. Build for linux/amd64 (Cloudflare runs nothing else) and push.
-docker build --platform linux/amd64 -f license-server/Dockerfile \
-  --build-arg VERSION=<version> --build-arg COMMIT=$(git rev-parse --short HEAD) \
-  -t kudurru-license-server:<version> .
-cd license-server/cloudflare && bunx wrangler containers push kudurru-license-server:<version>
-# 3. Put the printed registry.cloudflare.com/<account>/kudurru-license-server:<version>
-#    into "image" in wrangler.jsonc, then deploy.
+cd license-server/cloudflare
+bun install --frozen-lockfile
 bun run deploy
 ```
 
-Use a new tag for every release: a deploy with an unchanged image starts no
-rollout. The rollout replaces the one instance in one step; the server
-drains for up to 20 seconds on SIGTERM and requests in that window get the
-Worker's 503 with `Retry-After`. The server refuses to start against a
-schema newer than it knows, so fix forward rather than rolling back across a
-migration.
-
 ## Changing configuration
 
-A running process keeps the environment it started with. After `wrangler
-secret put` or a change to `vars` (and `bun run deploy`), the next cron tick
-(within 5 minutes) notices the changed environment and restarts the
-container.
+Commit changes to public `vars` in `wrangler.jsonc`; the normal `main`
+workflow deploys them. Change a secret in the GitHub environment, then run
+**Actions → license-server → Run workflow** on `main`. Changing a GitHub
+secret alone does not trigger a workflow.
+
+A running process keeps its startup environment. After the Worker deploys,
+the next cron tick (within 5 minutes) notices changed vars or secrets and
+restarts the container. Direct dashboard or `wrangler secret put` changes
+are replaced by the values from GitHub on the next CI deployment.
 
 ## Logs and checks
 

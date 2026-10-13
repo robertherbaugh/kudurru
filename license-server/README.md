@@ -169,8 +169,16 @@ user, or rewrite the audit trail (triggers also refuse UPDATE, DELETE and
 TRUNCATE on `audit_events` for every role). `server/test/roles.test.ts`
 runs every route as this role and proves what it cannot do.
 
-Production runs with `MIGRATE_ON_START=false` and migrates as a separate
-step before a release:
+The simpler single-role setup uses the cloud database's existing credentials
+as `DATABASE_URL`; the role must be allowed to create and alter the portal's
+schema. No role-creation SQL is needed. The two-role setup above limits the
+serving container's database permissions and can be adopted later.
+
+On Cloudflare, GitHub Actions runs migrations automatically before deploying
+([cloudflare/README.md](cloudflare/README.md)): `DATABASE_MIGRATE_URL` is
+optional and falls back to `DATABASE_URL`. Production runs with
+`MIGRATE_ON_START=false`. For a deployment elsewhere, run the same migration
+command as a separate release step:
 
 ```sh
 docker run --rm -e DATABASE_MIGRATE_URL='postgres://license_portal_owner:…@<host>:5432/<db>' \
