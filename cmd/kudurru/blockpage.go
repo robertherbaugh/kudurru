@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -61,7 +62,7 @@ const (
 // it has none, from the client's current policy. ql is the query log's
 // collector (nil when it is off); it names the client's pseudonym.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	ql *querylog.Async, book *unblock.Service, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	ql *querylog.Async, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
 		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
@@ -76,6 +77,7 @@ func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.I
 	}
 	if book != nil {
 		o.Requests = book
+		o.RequestsAllowed = func() bool { return lic.Allows(license.FeatureRequests) }
 	}
 	if cfg.BlockPage.Enabled {
 		l := cfg.Listeners.BlockPage

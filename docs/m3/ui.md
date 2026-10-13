@@ -56,6 +56,7 @@ Pages (all in the side navigation, each a lazily loaded chunk; `src/routes.tsx`)
 | Nodes | version, roles, ready, q/s, leader, VIP master, snapshot age, store driver, per-node health checks on demand, cluster mode/leader/read-only, edge backends and VIP owners |
 | Tools | built-in dig (`POST /dns/query`, answer/authority/additional, list/rule/upstream/zone/CNAME chain/EDE), cache flush (one name or all), object import through `POST /apply` with per-document results, backup/export links (objects as JSON, zones as BIND, audit), doctor report assembled from version, nodes, health, query-log status and diagnosis |
 | Diagnosis | `/info/messages` sorted by severity with links to the object; badge in the top bar and the navigation |
+| License | `GET /license`: the state (no key, active, grace, expired, invalid), plan, licensee, id, source and expiry; nodes in use against the limit and the policy limit; every licensed feature (`lib/license.ts` FEATURES, in step with internal/license Features) as included or "needs a key"; how to put a key on a node (flag, environment, file, data directory; no key is typed into the browser), the contact and the links to kudurru.io/license and LICENSING.md. A banner above every page (`LicenseBanner`) appears only for an invalid or expired key, one in its grace period, one expiring within 30 days (information, dismissable) and a cluster over its node limit; a node without a key is not nagged |
 | Access & audit | the principal, roles and permission matrix; own API tokens (secret shown once, revoke); read-only IAM (users, service accounts, role bindings, identity providers); audit log with filters and export |
 
 Cross-cutting:
@@ -107,6 +108,32 @@ series, 500 query rows, 2 nodes, diagnosis messages, audit entries, the real
 settings schema. The permission matrix follows permissions.yaml (admin = all
 verbs, viewer = the viewer role plus querylog.read). `bun run dev:mock`
 serves them in the browser; `?mockUser=admin` skips the form.
+
+## Licensed features
+
+Seven features need a license key (docs/architecture/licensing.md). The
+dashboard asks `GET /license` once (`useLicense`, `useFeature(key)` in
+`api/hooks.ts`) and **never requests what the node would refuse**: a locked
+page shows `FeatureLocked` (an `EmptyState` that says what needs a key and
+links to /license) instead of its content, and the queries behind it are not
+sent, so the server answers no 402 and the browser logs no failed request
+(the Playwright suite fails on console errors). The Long-term page (`longterm`),
+the Requests pages and the unblock lookups of the query log and the sidebar
+badge (`requests`) and the Audit tab (`audit`) work this way; the Identity tab
+shows a warning on role bindings (`rbac`) and identity providers (`oidc`)
+that are configured but switched off; Policies and a group's page disable
+"New policy" at the node's `policyLimit` (1 without a valid key, which the
+seeded `default` fills) and say why (`usePolicyLimit`), and the policy wizard
+opened by a link shows the same notice. While the license loads, or when it
+cannot be read (no `settings.read`), a feature counts as on and the server
+decides. The mock API (`mocks/`) serves a personal key with every feature;
+a test switches it with `mockDB().license = communityLicense()`.
+
+The Playwright suite runs its node with a signed test key that only a binary
+built with `-tags licensetest` trusts (`make web-e2e`;
+`internal/license/testkey.go`, `testdata/e2e-license.key`), and `license.spec.ts`
+starts a second node without a key to check the locked pages, the policy
+limit (the seeded `default` is that node's only policy) and the 402.
 
 ## Pages, wizards and dialogs
 
@@ -193,8 +220,9 @@ building blocks.
   "Reset to default" (`null` in the merge patch). A 400 names the failing
   parts of a value inline (`error.fields`). Keys without metadata (servers
   before C1) fall back to a control from the bare type.
-- **Read-only objects** (managedBy file, bootstrap or Kubernetes) show the
-  same page with the controls disabled and the reason (`readOnlyReason`).
+- **Read-only objects** (managedBy file, Kubernetes, an integration or
+  system; the bootstrap's defaults stay editable) show the same page with the
+  controls disabled and the reason (`readOnlyReason`).
 
 ## Wiring for serve (integrator)
 

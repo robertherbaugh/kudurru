@@ -1,0 +1,83 @@
+# Dex (Apache-2.0, an unmodified program in its own container) as the OIDC
+# provider of the license portal in development and in the e2e suite
+# (compose.yaml; spec §12). Static password users, memory storage: every
+# restart forgets sessions, nothing persists. Never use this file, its
+# client secret or its users anywhere else.
+#
+# The issuer is http://localhost:5556/dex for the browser, a server run on
+# the host (bun run dev) and the containerised server alike: Dex publishes
+# 127.0.0.1:5556 and the license-server service shares Dex's network
+# namespace (network_mode: service:dex), so localhost:5556 is Dex for all
+# three. The server allows an http issuer only on localhost or a loopback
+# address, like ee/oidc.
+#
+# The same shape as dexConfig() in ee/oidc/dex_test.go (Dex v2.46.0).
+issuer: http://localhost:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+logger:
+  level: info
+  format: text
+oauth2:
+  skipApprovalScreen: true
+  responseTypes: [code]
+  # The portal always sends an S256 code challenge; Dex refuses a code
+  # flow without one, as a production IdP should.
+  pkce:
+    enforce: true
+    codeChallengeMethodsSupported: [S256]
+staticClients:
+  - id: license-portal
+    name: kudurru license portal (dev)
+    # A fixed throwaway value: scripts/dev-keygen.ts writes the same string
+    # to dev/secrets/oidc_client_secret, which the server reads through
+    # OIDC_CLIENT_SECRET_FILE. A random one would buy nothing, because the
+    # users' password below is public too.
+    secret: dev-only-license-portal-client-secret
+    redirectURIs:
+      # Vite dev server (bun run dev; PUBLIC_URL=http://localhost:5174,
+      # /api proxied to the Bun server on 8790).
+      - http://localhost:5174/api/v1/auth/callback
+      # The containerised server (compose profile server or e2e;
+      # PUBLIC_URL=http://localhost:8791).
+      - http://localhost:8791/api/v1/auth/callback
+enablePasswordDB: true
+# Password of every user: "correct horse battery staple" (bcrypt, cost 10,
+# Dex's minimum). Sign in with the email address. Groups map to roles
+# through ROLE_SUPERADMIN_GROUPS and ROLE_LICENSE_ADMIN_GROUPS in
+# compose.yaml; customer@ and other@ get the default role, customer.
+staticPasswords:
+  - email: superadmin@example.org
+    hash: "$2b$10$oJM2SiBN4vLgzCNfW1bNIe8n.xLM6D9V8HcXqu4kE5fvrchTT5tVm"
+    username: superadmin
+    preferredUsername: superadmin
+    name: Sam Superadmin
+    userID: 4c1e7d2a-0000-4000-8000-000000000001
+    emailVerified: true
+    groups: [license-superadmins]
+  - email: admin@example.org
+    hash: "$2b$10$0OJCl1ZSdfUa1J7r9HiQFuXLTEwu1Ivz2bU59/W9kgUVxK.A2dxS2"
+    username: admin
+    preferredUsername: admin
+    name: Alex Admin
+    userID: 4c1e7d2a-0000-4000-8000-000000000002
+    emailVerified: true
+    groups: [license-admins]
+  - email: customer@example.org
+    hash: "$2b$10$kjJ5bUSx9ey0OHumqzIOau5falOlLMkrrLQ7iD3lMNQaw9FPszXgi"
+    username: customer
+    preferredUsername: customer
+    name: Chris Customer
+    userID: 4c1e7d2a-0000-4000-8000-000000000003
+    emailVerified: true
+    groups: []
+  - email: other@example.org
+    hash: "$2b$10$ueMRUxV4aTg5QRa5MNMyZeHeizuhnnLU.zLPFmBftV.gZD/JIUOKG"
+    username: other
+    preferredUsername: other
+    name: Olive Other
+    userID: 4c1e7d2a-0000-4000-8000-000000000004
+    emailVerified: true
+    groups: []

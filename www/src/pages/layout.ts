@@ -43,7 +43,7 @@ function header(assets: Assets, home: boolean): Html {
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">${icon.menu}<span>Menu</span></button>
     <nav id="site-nav" class="nav" aria-label="Primary">
       <ul class="nav-anchors">
-        ${NAV.map((l) => html`<li><a href="${prefix}${l.href}">${l.label}</a></li>`)}
+        ${NAV.map((l) => html`<li><a href="${l.href.startsWith("/") ? l.href : prefix + l.href}">${l.label}</a></li>`)}
       </ul>
       <ul class="nav-out">
         <li>${external(DOCS_URL, html`Docs ${icon.out}`)}</li>
@@ -69,7 +69,7 @@ function footer(assets: Assets, version: string): Html {
     )}
   </div>
   <div class="wrap foot-legal">
-    <p>kudurru is licensed under Apache-2.0. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
+    <p>kudurru is source-available under the <a href="/license/text/">PolyForm Noncommercial License 1.0.0</a>: personal use is free, businesses need an agreement. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
   </div>
 </footer>`;

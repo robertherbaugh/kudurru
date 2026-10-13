@@ -8,10 +8,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
-import { headersFile } from "./src/headers.ts";
+import { DEFAULT_LICENSE_API, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
+import { headersFile, rulesFor } from "./src/headers.ts";
 import { layout, type Assets } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
+import { license, licenseText } from "./src/pages/license.ts";
+import { renderMarkdown } from "./src/markdown.ts";
 
 const ROOT = import.meta.dir;
 const REPO = resolve(ROOT, "..");
@@ -40,6 +42,9 @@ const FONT_LICENSES = [
 export interface BuildOptions {
   outDir: string;
   version: string;
+  // The license server the "Request a key" form posts to; default
+  // WWW_LICENSE_API, else DEFAULT_LICENSE_API.
+  licenseApi?: string;
 }
 
 async function readVersion(): Promise<string> {
@@ -59,7 +64,8 @@ async function put(path: string, data: string | Uint8Array): Promise<void> {
   await writeFile(path, data);
 }
 
-export async function build({ outDir, version }: BuildOptions): Promise<void> {
+export async function build({ outDir, version, licenseApi = process.env.WWW_LICENSE_API?.trim() || DEFAULT_LICENSE_API }: BuildOptions): Promise<void> {
+  new URL(licenseApi); // fail the build on a malformed URL, not the visitor's browser
   await rm(outDir, { recursive: true, force: true });
   await mkdir(join(outDir, "assets"), { recursive: true });
 
@@ -137,6 +143,35 @@ export async function build({ outDir, version }: BuildOptions): Promise<void> {
     layout({ path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false }, version),
   );
   await put(
+    join(outDir, "license/index.html"),
+    layout(
+      {
+        path: "/license/",
+        title: "License and keys · kudurru",
+        description: "kudurru is source-available: free for personal use, a key for more nodes and features, an agreement for businesses.",
+        body: license(licenseApi),
+        assets,
+      },
+      version,
+    ),
+  );
+  // The license text: one source, the repository's LICENSE.
+  const licenseSource = await readFile(join(REPO, "LICENSE"), "utf8");
+  await put(
+    join(outDir, "license/text/index.html"),
+    layout(
+      {
+        path: LICENSE_TEXT_PATH,
+        title: "PolyForm Noncommercial License 1.0.0 · kudurru",
+        description: "The license of kudurru: the PolyForm Noncommercial License 1.0.0, in full.",
+        body: licenseText(renderMarkdown(licenseSource, LICENSE_TEXT_PATH)),
+        assets,
+      },
+      version,
+    ),
+  );
+  await put(join(outDir, LICENSE_TEXT_FILE), licenseSource);
+  await put(
     join(outDir, "licenses/index.html"),
     layout(
       {
@@ -153,12 +188,12 @@ export async function build({ outDir, version }: BuildOptions): Promise<void> {
     await put(join(outDir, font.file), await readFile(join(ROOT, "node_modules", font.pkg, "LICENSE")));
   }
 
-  await put(join(outDir, "_headers"), headersFile());
+  await put(join(outDir, "_headers"), headersFile(rulesFor(licenseApi)));
   await put(join(outDir, "robots.txt"), `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      ["/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

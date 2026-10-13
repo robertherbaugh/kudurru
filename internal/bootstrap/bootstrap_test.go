@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -121,6 +122,15 @@ func TestSeedResolvedNamespace(t *testing.T) {
 	}
 	if !res.FirstBoot || !reflect.DeepEqual(res.Created, want) {
 		t.Fatalf("seeds = %+v, want %v", res, want)
+	}
+}
+
+// The one Policy the API creates without a license key (internal/license
+// CommunityPolicyName, in the server's default namespace) is the one Seed
+// creates.
+func TestDefaultPolicyIsTheCommunityPolicy(t *testing.T) {
+	if DefaultPolicyName != license.CommunityPolicyName {
+		t.Errorf("bootstrap seeds the policy %q but internal/license allows %q without a key", DefaultPolicyName, license.CommunityPolicyName)
 	}
 }
 

@@ -101,6 +101,10 @@ type Options struct {
 	Membership func(client netip.Addr, now time.Time) (groups, policies []string)
 	// Requests stores unblock requests; nil hides the form.
 	Requests RequestBook
+	// RequestsAllowed reports whether the request workflow is licensed
+	// (license.FeatureRequests); false hides the form and refuses the post
+	// while the block page itself keeps working. nil allows it.
+	RequestsAllowed func() bool
 	// Settings are the initial page settings (Reconfigure replaces them).
 	Settings Settings
 	// Registerer receives the metrics; nil leaves them unregistered.

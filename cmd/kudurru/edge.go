@@ -23,12 +23,13 @@ import (
 	discoveryv1client "k8s.io/client-go/kubernetes/typed/discovery/v1"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	"github.com/robertherbaugh/kudurru/ee/edge"
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
-	"github.com/robertherbaugh/kudurru/internal/edge"
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
 // edgeFlags are the `kudurru edge render|run` flags (docs/architecture.md
@@ -345,6 +346,9 @@ func signalContext(parent context.Context, forward func(os.Signal)) (context.Con
 func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 	logger, err := supervisorLogger(f.logLevel, f.logFormat)
 	if err != nil {
+		return err
+	}
+	if err := requireFeature(logger, license.FeatureEdge); err != nil {
 		return err
 	}
 	o, err := f.options()

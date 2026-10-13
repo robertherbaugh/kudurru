@@ -16,8 +16,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/spf13/cobra"
 
+	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 	"github.com/robertherbaugh/kudurru/internal/config"
-	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
 // vipFlags are the `kudurru vip render|run` flags (§3.6, §6.5).
@@ -198,6 +199,9 @@ func newVIPCmd() *cobra.Command {
 func runVIP(c *cobra.Command, f *vipFlags) error {
 	logger, err := supervisorLogger(f.logLevel, f.logFormat)
 	if err != nil {
+		return err
+	}
+	if err := requireFeature(logger, license.FeatureEdge); err != nil {
 		return err
 	}
 	np, initialPeers, err := f.nodePeers(c, true)

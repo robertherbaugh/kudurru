@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.env
+# Written by scripts/dev-keygen.ts for compose.yaml and the dev server
+# (dev/README.md): a development signing key and its public key, and the
+# Dex client secret.
+/dev/secrets/
+/dev/trusted-keys/

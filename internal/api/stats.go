@@ -16,7 +16,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/robertherbaugh/kudurru/ee/longterm"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -269,6 +271,11 @@ func (s *Server) window(in WindowParams) (sqlitelog.Window, error) {
 	}
 	if !w.From.Before(w.Until) {
 		return w, errInvalid("from: must be before to")
+	}
+	if longterm.Needed(w.From, now) {
+		if err := s.requireFeature(license.FeatureLongTerm, "statistics older than 24 hours (long-term views)"); err != nil {
+			return w, err
+		}
 	}
 	return w, nil
 }

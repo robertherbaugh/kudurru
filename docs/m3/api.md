@@ -199,7 +199,7 @@ because the CLI agent's hand-written transport already occupies
 `internal/apiclient` with a `Client` type; both coexist until the CLI
 switches (follow-up). `TestGeneratedClient` drives the server through it.
 
-### `internal/integration/externaldns` (new)
+### `ee/integration/externaldns` (new)
 
 `externaldns.New(Options{Store, Validator, Cache, Namespace, ZoneSelector,
 Address, Registerer, Logger})` is an `http.Handler` with `Run(ctx)`/`Serve`:
@@ -258,7 +258,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	authn "github.com/robertherbaugh/kudurru/internal/auth"
-	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
+	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/web"
 )
 
@@ -354,7 +354,7 @@ Notes:
 | OpenAPI document | 64 paths, 84 operations, 87 schemas; 349 KB (3.1), 349 KB (3.0) |
 | Generated client | 26,001 lines (`zz_generated.client.go`) |
 | Binary size, `api.New` and `externaldns.New` referenced from cmd/kudurru (stripped, CGO_ENABLED=0) | 47,816,864 → 47,947,936 bytes (+131 KB); the integrator's `make size` is authoritative |
-| Code | ~9,900 lines in internal/api, internal/integration/externaldns, internal/audit (tests included) |
+| Code | ~9,900 lines in internal/api, ee/integration/externaldns, internal/audit (tests included) |
 
 ## Surprises
 

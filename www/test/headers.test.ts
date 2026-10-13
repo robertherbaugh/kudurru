@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { CSP, RULES, headersFile } from "../src/headers.ts";
+import { DEFAULT_LICENSE_API } from "../src/content.ts";
+import { CSP, RULES, csp, headersFile, rulesFor } from "../src/headers.ts";
 
 // Cloudflare's limits: 100 rules, 2,000 characters per line.
 // https://developers.cloudflare.com/workers/static-assets/headers/
@@ -26,7 +27,17 @@ test("no header is set by two rules (Cloudflare would join them with a comma)", 
   expect(new Set(names).size).toBe(names.length);
 });
 
-test("the CSP allows no inline code and no third parties", () => {
+test("the CSP allows no inline code, and one third party: the license server of the key form", () => {
   expect(CSP).not.toContain("unsafe");
-  expect(CSP).not.toMatch(/https?:/);
+  expect(CSP.match(/https?:\/\/[^\s;]+/g)).toEqual([DEFAULT_LICENSE_API]);
+  expect(CSP).toContain(`connect-src 'self' ${DEFAULT_LICENSE_API}`);
+  // Only connect-src names it: no script, frame or form may go there.
+  for (const d of CSP.split("; ")) if (!d.startsWith("connect-src")) expect(d).not.toContain("http");
+  expect(CSP).toContain("form-action 'none'");
+});
+
+test("the license server origin follows the build setting, and only its origin", () => {
+  expect(csp("https://licenses.example.org/some/path?x=1")).toContain("connect-src 'self' https://licenses.example.org;");
+  expect(headersFile(rulesFor("https://licenses.example.org"))).toContain("connect-src 'self' https://licenses.example.org;");
+  expect(() => csp("not a url")).toThrow();
 });

@@ -1,0 +1,45 @@
+# Build context of license-server/Dockerfile (built from the repository
+# root). BuildKit uses this file instead of the root .dockerignore for that
+# build. It is an allowlist: everything is excluded, then only the sources
+# the build needs come back, so dev secrets (dev/secrets/), .env files,
+# test output, .context/ (which holds a real private key) and node_modules
+# never enter the context or a build layer.
+*
+
+# The package and its sources.
+!license-server/package.json
+!license-server/bun.lock
+!license-server/bunfig.toml
+!license-server/tsconfig*.json
+!license-server/vite.config.ts
+!license-server/eslint.config.js
+!license-server/shared/
+!license-server/server/
+!license-server/ui/
+!license-server/scripts/
+!license-server/NOTICE
+
+# The public keys kudurru releases trust (the image's default keyring).
+!internal/license/keys/*.pub
+
+# Re-excluded inside the allowed directories: the server tests and golden
+# vectors, the UI tests and their stubs (not part of the build), any
+# private key, certificate store, secrets directory or .env file (Vite
+# would read a ui/.env* file into the build), installed dependencies, test
+# coverage and build output (the build installs and builds afresh), and
+# the developer's compose state.
+license-server/server/test/
+license-server/ui/src/test/
+**/*.test.ts
+**/*.test.tsx
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/secrets
+**/.env
+**/.env.*
+**/node_modules
+**/coverage
+license-server/dist
+license-server/dev/

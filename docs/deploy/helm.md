@@ -29,6 +29,13 @@ Standard (uid 65532, read-only root, all capabilities dropped except
 `NET_BIND_SERVICE`, `net.ipv4.ip_unprivileged_port_start=0` so the
 non-root process binds :53).
 
+**Two replicas need a license key.** Without one kudurru runs as one node, so
+a default install (two replicas) is over the node limit: DNS answers as usual,
+but changes through the API and the dashboard answer `402 license_required`
+until you add a key (a free personal key covers 3 nodes) or set
+`replicaCount=1`. Changes with `kubectl` are not affected. See
+[License key](#license-key).
+
 ### First login
 
 The chart generates three Secrets once and keeps them on uninstall
@@ -46,6 +53,29 @@ The admin Secret is read only while no user exists; the UI asks for a new
 password at the first login. Point `auth.bootstrapAdminSecret` and
 `auth.encryptionKeySecret` at your own Secrets (for example from
 external-secrets) to keep secret material out of Helm entirely.
+
+### License key
+
+kudurru is source-available (see [LICENSING.md](../../LICENSING.md)). Without a
+key one node runs with the community license: DNS, blocking, zones and the
+dashboard work, but OIDC sign-in, the dnsdist and keepalived edge and the
+integrations (the `ee/` features) are off, and a cluster of more than one
+node cannot change its configuration through the API. Without a key the API
+allows one policy, the seeded default. A free personal key (3 nodes,
+non-commercial) or a business key lifts these limits. Put the key in a Secret
+and name it, so the key stays out of values files:
+
+```sh
+kubectl -n kudurru-system create secret generic kudurru-license --from-file=license.key=./license.key
+helm upgrade kudurru ... --set license.existingSecret=kudurru-license
+```
+
+`license.key` takes the key as a string and creates the Secret for you. Every
+kudurru container (the server, the dnsdist supervisor and the keepalived
+supervisor) reads it as `KUDURRU_LICENSE_KEY`; the Secret is optional, so pods
+start without it. **With `edge.enabled` the supervisors refuse a first start without
+a key that covers the `edge` feature.** `kudurru license status` and
+`GET /api/v1/license` show the state; the Secret is reread every minute.
 
 ## Shapes
 
@@ -81,6 +111,10 @@ DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
 
 ### Audit log
+
+Events are always recorded and shipped; reading them (the Audit tab,
+`GET /api/v1/audit`, `kudurru audit`) needs a license key that includes the
+audit trail, and answers `402 license_required` without one.
 
 In mode=kubernetes every replica records the changes it makes in its own
 audit spool (`audit-spool.db`) and copies them into `AuditLog` objects
@@ -157,6 +191,10 @@ outside the Baseline level; label the namespace
 or set `net.ipv4.ip_unprivileged_port_start=53` on the hosts.
 
 ### Edge (dnsdist)
+
+The dnsdist and keepalived supervisors need a license key that includes the
+edge; without one a first start is refused, and an expired key never stops a
+restart (see [License key](#license-key)).
 
 With `edge.enabled` the dns Service selects the edge pods; kudurru listens
 on `edge.backendPort` (5353) and accepts PROXYv2 only from
@@ -316,7 +354,7 @@ the chart added beyond §5.2: `tls.secretName`, `edge.backendPort`,
 `edge.proxyProtocolFrom`, `edge.tlsSecretName`, `edge.existingSecret`,
 `edge.dnsdistVersion`, `vip.metallbPool`, `vip.keepalived.existingSecret`,
 `vip.keepalived.keepalivedVersion`, `auth.encryptionKeyPreviousSecret`,
-`auth.bootstrapToken`, `podMonitor`, `probes`, `lameduckSeconds`,
+`auth.bootstrapToken`, `license.key`, `license.existingSecret`, `license.secretKey`, `podMonitor`, `probes`, `lameduckSeconds`,
 `clusterDomain` (default `cluster.local`), `persistence.standalone.enabled`,
 `extraEnv`, `extraVolumes`, `extraVolumeMounts`, `blockPage`. `auth.oidc.providers` is
 a list of OpenID Providers rendered into the settings key

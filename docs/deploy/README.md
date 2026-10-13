@@ -74,6 +74,7 @@ from the config file:
 | `KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE` | The previous key during a rotation ([runbooks.md](runbooks.md#rotating-the-encryption-key)). |
 | `KUDURRU_ADMIN_PASSWORD_FILE` | Password of the first-start `admin` user; read only while no user exists. |
 | `KUDURRU_BOOTSTRAP_TOKEN_FILE` | Optional `kdr_<id>_<secret>` token created at first start for automation. |
+| `KUDURRU_LICENSE_KEY_FILE` | Optional file with the license key (`KUDURRU_LICENSE_KEY` holds the key itself). Without a key kudurru runs one node and no `ee/` features; DNS is never affected. [LICENSING.md](../../LICENSING.md), [how it works](../architecture/licensing.md). Helm: `license.existingSecret` or `license.key`. |
 
 Every settings key can also be set as `KUDURRU_<SECTION>__<KEY>` (for example
 `KUDURRU_LOG__LEVEL=debug`) or `KUDURRU_<SECTION>__<KEY>_FILE`; list and map

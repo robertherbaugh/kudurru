@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/audit/audittest"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -20,6 +21,6 @@ func TestConformanceSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = st.Close() })
-		return audit.SQLite{Store: st}
+		return auditstore.SQLite{Store: st}
 	})
 }

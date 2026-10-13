@@ -1,0 +1,5 @@
+// Solution file for editors and ESLint's project service: every source file belongs to exactly one of the referenced projects. `bun run typecheck` checks each project with tsc -p.
+{
+  "files": [],
+  "references": [{ "path": "./tsconfig.server.json" }, { "path": "./ui/tsconfig.json" }, { "path": "./tsconfig.tools.json" }]
+}

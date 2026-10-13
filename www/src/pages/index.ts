@@ -56,7 +56,7 @@ function hero(version: string): Html {
   return html`<section class="hero" aria-labelledby="hero-title">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow mono"><span>Kubernetes-native DNS</span><span>Apache-2.0</span><span>v${version} “stone”</span></p>
+      <p class="eyebrow mono"><span>Kubernetes-native DNS</span><span>PolyForm Noncommercial</span><span>v${version} “stone”</span></p>
       <h1 id="hero-title">${TAGLINE.slice(0, -1)}<span class="stop">.</span></h1>
       <p class="lead">kudurru is a DNS server for the networks you run: authoritative zones, a resolver over every encrypted transport, blocking with client groups, and a dashboard that shows why each answer was given. One Go binary, as a single container or as a Kubernetes Deployment with CRDs.</p>
       <div class="actions">
@@ -343,7 +343,7 @@ export function licenses(names: { name: string; file: string }[]): Html {
     <h1 id="lic-title" class="page-title">Font licenses</h1>
     <p>This site uses Inter and JetBrains Mono, self-hosted. Both are licensed under the SIL Open Font License 1.1.</p>
     <ul class="points">${names.map((n) => html`<li><a href="${n.file}">${n.name}</a></li>`)}</ul>
-    <p>The site itself is part of kudurru and licensed under Apache-2.0. ${external(REPO_URL, "Source")}.</p>
+    <p>The site itself is part of kudurru and licensed under the PolyForm Noncommercial License 1.0.0. ${external(REPO_URL, "Source")}.</p>
   </div>
 </section>`;
 }

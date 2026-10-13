@@ -6,6 +6,9 @@ description: A virtual IP held by keepalived, dnsdist on every host, real client
 weight: 30
 ---
 
+The dnsdist and keepalived supervisors need a license key that includes the
+edge; a free personal key covers it ([Licensing](/project/licensing/)).
+
 kudurru keeps the GPL programs it relies on at arm's length: dnsdist (load
 balancing, packet cache, encrypted transports) and keepalived (VRRP) run as
 separate programs in their own images, each with a kudurru supervisor as

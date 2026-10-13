@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
@@ -96,7 +97,7 @@ func TestAuditWithSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	rec := audit.Multi{audit.SQLite{Store: st}, audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	rec := audit.Multi{auditstore.SQLite{Store: st}, audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 	h := newHarness(t, func(o *Options) { o.Store = st; o.Audit = rec })
 	// A store write: audited by the driver with the API principal as actor.
 	h.do(http.MethodPut, "/api/v1/objects/dnszones/example", "admin", zoneDoc("example", "example.com.")).want(http.StatusCreated)

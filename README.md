@@ -7,7 +7,7 @@
 
 > Babylonian boundary stones that recorded land grants and who held which territory. That’s a DNS zone: a record of authority over a defined space. The original kudurru stone was kept in a temple, and the landholder got a clay copy to prove ownership. That’s an authoritative primary with distributed secondaries, which is how DNS zone transfers work. Pronunciation is koo-DOO-roo. As a CLI it’s seven letters (kudurru).
 
-**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. It takes the best idea from each of the servers we admire and puts them in one Apache-2.0 Go binary:
+**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. It takes the best idea from each of the servers we admire and puts them in one source-available Go binary:
 
 | We took | From | What it means in kudurru |
 |---|---|---|
@@ -66,7 +66,7 @@ Kubernetes:
 
 ```sh
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2 --set license.existingSecret=kudurru-license   # two replicas need a license key (free for personal use); see LICENSING.md
 kubectl apply -f config/samples/   # DNSZone, DNSRecordSet, BlockList, ClientGroup, Policy
 kubectl get zones
 ```
@@ -111,6 +111,7 @@ docs/               guide, deploy docs and the architecture tour (published); de
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)
+license-server/     the license portal that issues license keys (Bun + TypeScript + Postgres; not part of the binary)
 ```
 
 ## AI Assisted Development
@@ -139,4 +140,4 @@ kudurru was built with substantial help from AI coding assistants: **Claude** (A
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). dnsdist and keepalived are GPL-2.0 and are distributed only as separate, unmodified programs in their own images.
+kudurru is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal, non-commercial use is free; use by a business needs a commercial agreement. A free personal key unlocks up to 3 nodes, more than one policy and the features under [`ee/`](ee/) (OIDC single sign-on, the dnsdist and keepalived edge, integrations); DNS answering itself never depends on a key. The license text is [LICENSE](LICENSE), also at [kudurru.io/license/text](https://kudurru.io/license/text/) and in the [docs](https://docs.kudurru.io/project/license/). See [LICENSING.md](LICENSING.md) ([docs](https://docs.kudurru.io/project/licensing/)) for what you may do, how keys work and who to ask, [kudurru.io/license](https://kudurru.io/license) to request a key, and [NOTICE](NOTICE) for third-party notices. dnsdist and keepalived are GPL-2.0 and are distributed only as separate, unmodified programs in their own images.

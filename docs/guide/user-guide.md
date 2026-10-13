@@ -24,6 +24,9 @@ Figure 1 shows an example.
 
 *Figure 1. The block page.*
 
+NOTE: The form **Request access** needs a license key on the server. If the
+page has no form, ask the administrator.
+
 The page shows this information:
 
 | Item | Meaning |
@@ -140,7 +143,7 @@ The navigation list at the left of the page has all the pages. Your role
 decides which pages work for you. A viewer can read these pages:
 
 - **Dashboard**: the number of queries, the blocked queries and the charts
-- **Long-term**: the same statistics for 7 days to 1 year
+- **Long-term**: the same statistics for 7 days to 1 year (this page needs a license key; ask the administrator)
 - **Lists**, **Domains**, **Allowlist** and **Denylist**: what kudurru blocks and allows
 - **Groups**, **Clients** and **Policies**: who gets which rules
 - **Zones**, **Upstreams** and **Settings**: how the network is set up

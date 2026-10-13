@@ -2,7 +2,13 @@
 
 These were the decisions the architecture left to the project owner. Answers are recorded as decisions in [architecture.md §16](architecture.md#16-decision-log). Numbers match §15 of the architecture. New questions go in a fresh open table above the Decided table.
 
-**All 21 questions were answered by the project owner on 2026-10-10 and 2026-10-11.** The Decided table below is the record; the architecture decision log holds the rationale.
+**The first 21 questions were answered by the project owner on 2026-10-10 and 2026-10-11.** The Decided table below is the record; the architecture decision log holds the rationale.
+
+## Open
+
+| # | Question | Raised | Context |
+|---|---|---|---|
+| 22 | **License portal go-live.** (a) The production OIDC issuer: customers and staff sign in at the same one, so it must allow customer sign-up (or invites) and verify email addresses. (b) A standby signing key: commit `internal/license/keys/kudurru-2026-2.pub` before v0.1.0, its seed unused in Infisical, so the first rotation (even after a leak) needs no node upgrade. (c) Whether the issue wizard offers the Enterprise and Trial plans to admins (they are behind "More plans"; the public copy names only personal and business keys). | 2026-10-12 | D165, `license-server/README.md` |
 
 ## Decided
 

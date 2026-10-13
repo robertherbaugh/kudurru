@@ -16,7 +16,7 @@ const pages: Record<string, string> = {};
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
   await build({ outDir: out, version: "9.8.7" });
-  for (const name of ["index.html", "404.html", "licenses/index.html"]) {
+  for (const name of ["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"]) {
     pages[name] = await readFile(join(out, name), "utf8");
   }
 });
@@ -25,7 +25,7 @@ afterAll(() => rm(out, { recursive: true, force: true }));
 
 const attrs = (page: string, attr: string) => [...page.matchAll(new RegExp(`\\s${attr}="([^"]*)"`, "g"))].map((m) => m[1]!);
 
-describe.each(["index.html", "404.html", "licenses/index.html"])("%s", (name) => {
+describe.each(["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"])("%s", (name) => {
   test("no inline scripts, styles or event handlers", () => {
     const page = pages[name]!;
     for (const tag of page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -109,4 +109,136 @@ test("fonts are separate hashed files, not data URLs", async () => {
   const fonts = [...text.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)].map((m) => m[1]!);
   expect(fonts.length).toBe(3);
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
+});
+
+describe("the license page", () => {
+  test("states the terms, the free limits and where to write", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("PolyForm Noncommercial License 1.0.0");
+    expect(page).toContain("DNS never depends on a key");
+    expect(page).toContain("mailto:hello@kudurru.io?subject=Free%20personal%20key");
+    expect(page).toContain("mailto:hello@kudurru.io?subject=kudurru%20commercial%20license");
+    expect(page).not.toContain("Apache-2.0");
+    // One row per row of the table in content.ts, each with its three cells.
+    expect(page.match(/<tr><th scope="row">/g)?.length).toBe(11);
+  });
+
+  test("without a key a node has one policy, the default one", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("One node, the default policy,");
+    expect(page).toContain('<tr><th scope="row">Policies</th><td>1, the default policy</td><td>Unlimited</td><td>Unlimited</td></tr>');
+    expect(page).not.toContain("two policies");
+    expect(pages["index.html"]).toContain("each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)");
+  });
+
+  test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
+    expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
+    expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
+    for (const id of ["lic-req-title", "lic-get-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
+    // Using a key on a node is the docs' job, not this page's.
+    expect(page).not.toContain("lic-use-title");
+    expect(page).toContain('<div class="licform-box">');
+  });
+
+  test("is linked from the footer of every page and listed in the sitemap", async () => {
+    for (const name of Object.keys(pages)) expect(pages[name]).toContain('href="/license/"');
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/");
+  });
+});
+
+describe("the key request form", () => {
+  test("is on the license page only, posts to the license server's public endpoint, and is hidden without script", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("data-license-form");
+    expect(page).toContain('data-endpoint="https://licenses.kudurru.io/api/v1/public/key-requests"');
+    expect(page).not.toMatch(/<form[^>]*\saction=/); // the CSP has form-action 'none'; submission is script-driven
+    expect(pages["index.html"]).not.toContain("data-license-form");
+  });
+
+  test("has the fields the personal and the business request need", () => {
+    const page = pages["license/index.html"]!;
+    for (const name of ["kind", "name", "email", "personal-use", "noncommercial", "company", "business-nodes", "business-use", "website"]) {
+      expect(page).toContain(`name="${name}"`);
+    }
+    // The server's limits are on the inputs too.
+    expect(page).toMatch(/name="personal-use"[^>]*maxlength="1000"/);
+    expect(page).toMatch(/name="name"[^>]*maxlength="200"/);
+    // The honeypot is out of the accessibility tree and the tab order.
+    expect(page).toMatch(/aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1"/);
+  });
+
+  test("the checkbox is the certification, with a link to the license text", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (");
+    expect(page).toContain('<a href="/license/text/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>).');
+  });
+
+  test("says that a personal key is approved before it is mailed", () => {
+    expect(pages["license/index.html"]).toContain("After you confirm, we review the request and email your key once it is approved.");
+  });
+
+  test("says where a business request goes", () => {
+    const page = pages["license/index.html"]!;
+    expect(page).toContain("opens an email to hello@kudurru.io with the subject Business License");
+  });
+
+  test("the headers file lets only the form's origin through connect-src", async () => {
+    const headers = await readFile(join(out, "_headers"), "utf8");
+    expect(headers).toContain("connect-src 'self' https://licenses.kudurru.io;");
+  });
+
+  test("WWW_LICENSE_API is honored and checked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "www-api-"));
+    try {
+      await build({ outDir: dir, version: "9.8.7", licenseApi: "https://licenses.example.org" });
+      expect(await readFile(join(dir, "license/index.html"), "utf8")).toContain('data-endpoint="https://licenses.example.org/api/v1/public/key-requests"');
+      expect(await readFile(join(dir, "_headers"), "utf8")).toContain("connect-src 'self' https://licenses.example.org;");
+      await expect(build({ outDir: dir, version: "9.8.7", licenseApi: "not a url" })).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the license text", () => {
+  test("is the repository's LICENSE, rendered, with working anchors", async () => {
+    const page = pages["license/text/index.html"]!;
+    const source = await readFile(join(import.meta.dir, "../../LICENSE"), "utf8");
+    expect(page).toContain("<h1");
+    expect(page).toContain("PolyForm Noncommercial License 1.0.0");
+    for (const heading of source.matchAll(/^## (.+)$/gm)) expect(page).toContain(`>${heading[1]}</h2>`);
+    const ids = new Set(attrs(page, "id"));
+    for (const ref of attrs(page, "href").filter((r) => r.startsWith("/license/text/#"))) expect(ids.has(ref.split("#")[1]!)).toBe(true);
+    expect(page).toContain("Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors");
+  });
+
+  test("is offered as a plain text download, byte for byte", async () => {
+    const source = await readFile(join(import.meta.dir, "../../LICENSE"), "utf8");
+    expect(await readFile(join(out, "license/text/PolyForm-Noncommercial-1.0.0.txt"), "utf8")).toBe(source);
+    expect(pages["license/text/index.html"]).toContain('href="/license/text/PolyForm-Noncommercial-1.0.0.txt"');
+  });
+
+  test("is linked from the footer of every page, from the certification and from the license page, and listed in the sitemap", async () => {
+    for (const name of Object.keys(pages)) expect(pages[name]).toContain('<a href="/license/text/">PolyForm Noncommercial License 1.0.0</a>');
+    expect(pages["license/index.html"]).toContain("https://docs.kudurru.io/project/licensing/");
+    expect(pages["license/index.html"]).toContain("https://docs.kudurru.io/project/license/");
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("https://kudurru.io/license/text/");
+  });
+});
+
+describe("the navigation", () => {
+  test("links the license page from every page, and never builds a path with two slashes", () => {
+    for (const name of Object.keys(pages)) {
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages[name]!)?.[1] ?? "";
+      expect(nav).toContain('href="/license/">License</a>');
+      expect(nav).not.toContain('href="//');
+    }
+    // The anchors still lead to the home page sections from the other pages.
+    const nav404 = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages["404.html"]!)?.[1] ?? "";
+    expect(nav404).toContain('href="/#pipeline"');
+    const navHome = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(pages["index.html"]!)?.[1] ?? "";
+    expect(navHome).toContain('href="#pipeline"');
+  });
 });

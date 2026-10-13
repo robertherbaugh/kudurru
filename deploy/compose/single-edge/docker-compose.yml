@@ -13,6 +13,7 @@ services:
     image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
     restart: unless-stopped
     environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     secrets: [encryption_key]
     command:
@@ -52,6 +53,7 @@ services:
     restart: unless-stopped
     network_mode: "service:dnsdist"
     environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
       # Cluster settings edited in the UI or with `kudurru settings set` are

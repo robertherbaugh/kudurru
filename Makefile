@@ -32,7 +32,7 @@ build:
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
 ## of M1, 53,862,560 at the end of M4, 54,874,272 for v0.1.0-rc.1 (budget
 ## 60,362,000), 58,523,808 after the v0.1 UX round, 59,826,336 after the
-## catalogue round and 57,991,328 with the dashboard embedded precompressed
+## catalog round and 57,991,328 with the dashboard embedded precompressed
 ## (web/scripts/compress.ts: 2.5 MiB of bundle as 0.75 MiB of gzip)
 ## (linux/amd64, Go 1.27.2, built dashboard). The project owner set the ceiling to 100,000,000 bytes
 ## (D138); growth still needs a reason in the change that causes it, and
@@ -84,7 +84,7 @@ lint: vet
 	$(GOLANGCI_LINT) run ./...
 
 fmt:
-	gofmt -s -w ./cmd ./api ./internal ./web/*.go
+	gofmt -s -w ./cmd ./api ./internal ./ee ./web/*.go
 
 ## rbac-manifests: generate the chart's aggregated ClusterRoles
 ## (charts/kudurru/templates/rbac-aggregated.yaml) from
@@ -92,7 +92,7 @@ fmt:
 ## the committed file is stale. Run `make deploy-assets` afterwards so the
 ## kustomize bases rendered from the chart follow.
 rbac-manifests:
-	go run ./internal/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
+	go run ./ee/rbac/rbacgen -out charts/kudurru/templates/rbac-aggregated.yaml
 
 ## openapi: write api/openapi.json (OpenAPI 3.1, what /api/v1/openapi.json
 ## serves) and api/openapi-3.0.json from the huma route registry;
@@ -168,7 +168,7 @@ $(DEX_BIN):
 ## OP). The race detector needs cgo, so this test run re-enables it; the
 ## binaries kudurru ships stay CGO_ENABLED=0.
 test-auth-e2e: $(DEX_BIN)
-	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./internal/auth/oidc/
+	CGO_ENABLED=1 KUDURRU_DEX_BIN=$(abspath $(DEX_BIN)) go test -race -count=1 -v -run 'TestDexEndToEnd|TestMockOPEndToEnd' ./ee/oidc/
 
 ## e2e: end-to-end tests against a freshly built `kudurru serve`
 ## (docs/m5/e2e.md): two nodes on loopback sharing the encryption key,
@@ -253,13 +253,16 @@ web-dev: web-install
 	cd web && $(BUN) run dev:mock
 
 ## web-e2e: the Playwright suite (web/e2e) against a real `kudurru serve`
-## with the embedded dashboard: builds the bundle and the binary, starts
+## with the embedded dashboard: builds the bundle and the binary (with
+## -tags licensetest, so the suite's node can run with a test license key),
+## starts
 ## the server on free loopback ports with its own data directory, sends
 ## DNS traffic and drives every page in Chrome. Locally it uses
 ## /usr/bin/google-chrome (KUDURRU_E2E_CHROME names another; without one,
 ## run `cd web && bunx playwright install chromium` once); CI uses
 ## Playwright's chromium. The HTML report lands in web/playwright-report.
-web-e2e: web-build build
+web-e2e: web-build
+	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags=licensetest"
 	cd web && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 
 ## Docs site (site/, Hugo; site/README.md). The Hugo extended release
@@ -375,7 +378,7 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 	$(DEPLOY_BIN)/kustomize build config/default > bin/release/install.yaml
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
-## (internal/edge/*/testdata) with the real programs inside the pinned images:
+## (ee/edge/*/testdata) with the real programs inside the pinned images:
 ## `dnsdist --check-config` in the upstream dnsdist image (digest from
 ## images/dnsdist/Dockerfile) and `keepalived -t` in the kudurru-keepalived
 ## image built from source. Needs Docker and network; CI runs it in the
@@ -383,21 +386,26 @@ release-manifests: $(DEPLOY_BIN)/kustomize
 EDGE_DNSDIST_IMAGE    ?= powerdns/dnsdist-21:2.1.2@sha256:efabf173811e27438bebee5f1f40e047f263ea39093a8f7d6097df494cf1ed67
 EDGE_KEEPALIVED_IMAGE ?= kudurru-keepalived:edge-check
 EDGE_SUPERVISOR_IMAGE ?= kudurru-dnsdist:edge-check
-EDGE_KUDURRU_IMAGE    ?= ghcr.io/robertherbaugh/kudurru:$(VERSION)
+EDGE_KUDURRU_IMAGE    ?= kudurru:edge-check
 EDGE_CHECK_DIR        ?= bin/edge-check
 
-edge-images: docker
+# The supervisors refuse to start without a license key that covers the edge,
+# so the kudurru image of the check is built with -tags licensetest (it trusts
+# the throwaway key of internal/license/testdata, which hack/edge-root-check.sh
+# hands to the supervisor). It is never pushed.
+edge-images:
+	docker build -t $(EDGE_KUDURRU_IMAGE) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) --build-arg GOTAGS=licensetest .
 	docker build -t $(EDGE_KEEPALIVED_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/keepalived
 	docker build -t $(EDGE_SUPERVISOR_IMAGE) --build-arg KUDURRU_IMAGE=$(EDGE_KUDURRU_IMAGE) images/dnsdist
 
 edge-check: edge-images
-	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./internal/edge/...
+	CGO_ENABLED=1 go test -count=1 -run 'Golden' ./ee/edge/...
 	rm -rf $(EDGE_CHECK_DIR) && mkdir -p $(EDGE_CHECK_DIR)/certs
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=edge-check \
 	  -keyout $(EDGE_CHECK_DIR)/certs/tls.key -out $(EDGE_CHECK_DIR)/certs/tls.crt 2>/dev/null
 	chmod 0644 $(EDGE_CHECK_DIR)/certs/tls.key
 	docker run --rm --entrypoint /bin/sh \
-	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  -v $(CURDIR)/ee/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; dnsdist --version | head -1; for d in /golden/*/; do \
 	    case $$d in *-ebpf/) continue;; esac; \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
@@ -407,11 +415,11 @@ edge-check: edge-images
 	# chart's capability set (charts/kudurru _pod.tpl, kudurru.edge.rootStart).
 	docker run --rm --user 0:953 --cap-drop ALL --cap-add NET_BIND_SERVICE --cap-add SETUID --cap-add SETGID \
 	  --cap-add KILL --cap-add BPF --cap-add SYS_ADMIN --security-opt no-new-privileges --entrypoint /bin/sh \
-	  -v $(CURDIR)/internal/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
+	  -v $(CURDIR)/ee/edge/dnsdist/testdata:/golden:ro -v $(CURDIR)/$(EDGE_CHECK_DIR)/certs:/certs:ro \
 	  $(EDGE_DNSDIST_IMAGE) -c 'set -e; for d in /golden/*-ebpf/; do \
 	    echo "== $$d (yaml)"; dnsdist --check-config -C $$d/dnsdist.yml; \
 	    echo "== $$d (lua)"; dnsdist --check-config -C $$d/dnsdist.conf; done'
-	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/internal/edge/keepalived/testdata:/golden:ro \
+	docker run --rm --entrypoint /bin/sh -v $(CURDIR)/ee/edge/keepalived/testdata:/golden:ro \
 	  $(EDGE_KEEPALIVED_IMAGE) -c 'set -e; keepalived --version 2>&1 | head -1; mkdir -p /run/secrets; umask 077; \
 	    for v in 53 54; do printf %s 0123456789abcdef0123456789abcdef > /run/secrets/vrrp_hmac_$$v; done; \
 	    for f in /golden/*.conf; do echo "== $$f"; keepalived -t -f $$f; done'
@@ -419,6 +427,9 @@ edge-check: edge-images
 	# without the sysctl, switches to 953 keeping CAP_SYS_ADMIN, and stops.
 	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
 	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
+	# The supervisor images name both licenses (GPL program + kudurru).
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_SUPERVISOR_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only"
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_KEEPALIVED_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later"
 
 ## kind-e2e: three replicas on a four-node kind cluster with MetalLB and both
 ## charts: dig through the LoadBalancer over UDP and TCP (split and mixed
@@ -485,3 +496,65 @@ www-check: www-install
 
 www-dev: www-install
 	cd www && $(BUN) run dev
+
+## license-server-*: the kudurru license portal in license-server/, the
+## licensor's service that issues license keys (Bun, TypeScript, Postgres
+## and an Astryx UI in one container; license-server/README.md). It is not
+## part of kudurru or its release and no node contacts it (D163); nothing
+## here deploys. The image builds from the repository root, because it
+## carries the trusted public keys of internal/license/keys.
+##   license-server-check: typecheck, lint, the server and UI tests and the
+##                         build. The database tests need TEST_DATABASE_URL,
+##                         for example the compose Postgres:
+##                         postgres://postgres:postgres@127.0.0.1:55432/postgres
+##                         (license-server-dev starts it); without it they
+##                         skip, and REQUIRE_DB=1 (CI) makes that a failure
+##   license-server-keys:  the development signing key and the Dex client
+##                         secret in license-server/dev/secrets (gitignored),
+##                         once; an existing key is kept (dev/README.md)
+##   license-server-dev:   Postgres, Dex and Mailpit in compose, the Bun
+##                         server on :8790 and Vite on http://localhost:5174/
+##                         (settings: license-server/dev/server.env)
+##   license-server-image: ghcr.io/robertherbaugh/kudurru-license-server:dev
+##   license-server-up:    that image with Postgres, Dex and Mailpit on
+##                         http://localhost:8791/ (dev users: dev/README.md);
+##                         license-server-down stops it and keeps the database
+##                         volume (add -v to the compose command to drop it)
+##   license-server-e2e:   the Playwright suite (license-server/e2e) against a
+##                         fresh compose stack, removed afterwards with its
+##                         volumes; the logs are printed when it fails
+## The image is built with `docker build`, not `compose --build`, so the
+## stack runs exactly what license-server-image produces (and compose's
+## build, which needs buildx 0.17 or later, is not involved).
+LICENSE_SERVER_COMPOSE := docker compose -f license-server/compose.yaml
+# The tag license-server/compose.yaml runs; change both together.
+LICENSE_SERVER_IMAGE   := ghcr.io/robertherbaugh/kudurru-license-server:dev
+.PHONY: license-server-install license-server-check license-server-keys license-server-dev license-server-image license-server-up license-server-down license-server-e2e
+license-server-install:
+	cd license-server && $(BUN) install --frozen-lockfile
+
+license-server-check: license-server-install
+	cd license-server && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run test && $(BUN) run build
+
+license-server-keys:
+	@[ -f license-server/dev/secrets/signing.key ] || (cd license-server && $(BUN) scripts/dev-keygen.ts)
+
+license-server-dev: license-server-install license-server-keys
+	$(LICENSE_SERVER_COMPOSE) up -d --wait postgres dex mailpit
+	cd license-server && $(BUN) --env-file=dev/server.env run dev
+
+license-server-image:
+	docker build -f license-server/Dockerfile --build-arg COMMIT=$(COMMIT) --build-arg BUILT_AT=$(DATE) -t $(LICENSE_SERVER_IMAGE) .
+
+license-server-up: license-server-image license-server-keys
+	$(LICENSE_SERVER_COMPOSE) --profile server up -d --wait
+
+license-server-down:
+	$(LICENSE_SERVER_COMPOSE) --profile server --profile e2e down
+
+license-server-e2e: license-server-install license-server-image license-server-keys
+	status=0; \
+	$(LICENSE_SERVER_COMPOSE) --profile e2e up -d --wait && (cd license-server && $(BUN) run e2e) || status=$$?; \
+	[ $$status -eq 0 ] || $(LICENSE_SERVER_COMPOSE) --profile e2e logs --no-color --tail 300; \
+	$(LICENSE_SERVER_COMPOSE) --profile e2e down -v; \
+	exit $$status

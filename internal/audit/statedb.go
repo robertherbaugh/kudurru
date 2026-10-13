@@ -43,7 +43,7 @@ func (s *StateSource) ReadAfter(ctx context.Context, after int64, n int) ([]Even
 	}
 	out := make([]Event, 0, len(rows))
 	for _, r := range rows {
-		ev := fromEntry(r)
+		ev := FromEntry(r)
 		ev.Node = s.node
 		out = append(out, ev)
 	}

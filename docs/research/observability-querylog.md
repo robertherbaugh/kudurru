@@ -517,7 +517,7 @@ kudurru design:
 
 ## 7. What kudurru should avoid
 
-1. **Copying code or schema text from FTL (EUPL), AdGuard Home (GPL-3) or Technitium (GPL-3)** — kudurru is Apache-2.0; re-derive designs (this report describes behaviour, not code).
+1. **Copying code or schema text from FTL (EUPL), AdGuard Home (GPL-3) or Technitium (GPL-3)** — kudurru is source-available (PolyForm Noncommercial; Apache-2.0 when this note was written); re-derive designs (this report describes behavior, not code).
 2. **Indexing every column** (FTL memdb, Technitium's 13 indexes incl. an 8-column composite): write amplification and disk growth with little query benefit; use 3–4 indexes plus rollups and a partial index for blocked rows.
 3. **Full-table scans for long-term dashboards** (FTL `database_*` endpoints) and **OFFSET pagination** (Technitium `LIMIT/OFFSET` after `COUNT(*)`); use rollups and keyset cursors.
 4. **Text-only query logs** (AdGuard NDJSON with binary-searched timestamps, blocky CSV) as the primary store — no indexes, no aggregation, 50 000-line scan limits, interval-based not size-based rotation.

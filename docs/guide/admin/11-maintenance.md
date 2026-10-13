@@ -98,6 +98,10 @@ the objects as JSON files and for each zone as a BIND file. Use the command
 
 The command shows the result for each object.
 
+NOTE: Without a license key, kudurru restores no policy other than the
+policy `default`. The other policies get the error `license_required`. Put
+the key on the node before you restore (Chapter 13).
+
 CAUTION: If the encryption key is not the same, kudurru cannot read the
 stored secrets.
 

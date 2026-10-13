@@ -26,12 +26,12 @@ privilege is in the description.
 | S1 | Medium | **SSRF through block list URLs.** BlockList sources were fetched with `http.DefaultTransport`. An operator (any `blocklists.write` holder, not an admin) could point a source at `http://127.0.0.1:8083/` (dnsdist's webserver), the kubelet, a sidecar or `http://169.254.169.254/` (cloud metadata). The leader fetched it and stored the body. Status fields, rule counts and `GET /blocklists/_search` then act as an oracle for the response. | `internal/listfetcher`: `TestFetchRefusesLocalAddresses` covers literal loopback, `localhost`, `[::1]`, IPv4-mapped loopback, `0.0.0.0`, `169.254.169.254` and `fd00:ec2::254`; before the fix the local httptest server was reached. `TestGuardedDialerChecksResolvedAddress` covers names that resolve to loopback, the DNS-rebinding and redirect case. | aa02a40 |
 | S2 | Medium | **A re-created local account inherits the old account's credentials.** Local principals are keyed by name (`local:<name>`), and LoadPrincipal re-read the live account by name. After a user was deleted, its personal API tokens (no expiry by default) and sessions (up to 12 h) came back to life when an account with the same name was created later. They then acted with the new account's rights. With `kudurru admin reset-password --create` the new account is a **builtin admin**, so an ex-user's old token became an admin token. | `internal/auth/stack`: `TestRecreatedUserDoesNotInheritCredentials`, on both store drivers. Before the fix the old token answered 200 with Decision.Path `local` (builtin admin). The same held for kudurru service accounts: `internal/auth/tokens` `TestRecreatedServiceAccountDoesNotInheritTokens` (the old token came back with `BuiltinAdmin: true`). | f780092, 2e7e8ad, 46975d9 |
 | S3 | Medium | **Login lockouts counted the reverse proxy, not the client.** `serve.go` built the identity stack without `ClientIP`, so `POST /auth/login` used `RemoteAddr`. Behind `listeners.api.trustedProxies` (ingress, Traefik) every login came from the proxy address. Five failed logins by anyone locked **every** user out for 5 minutes, repeatably (availability). The per-client limit was also meaningless there. | `cmd/kudurru`: `TestLoginLockoutCountsClientsBehindTrustedProxy` wires the stack and the API server the way `serve` does. Before the fix the second client behind the same proxy got 429. | 2c17bc3 |
-| S4 | Medium | **The unauthenticated external-dns webhook listened on all interfaces by default.** `externalDNS.webhook.listen` defaulted to `:8888`. Enabling the webhook (`externalDNS.webhook.enabled: true`) therefore exposed record writes in every primary zone, without authentication, to anyone who could reach the node (a LAN host in the Docker shape). The help text said to keep it on loopback, but the default did not. | `internal/config` `TestAPIDefaults` and `internal/integration/externaldns` `TestOptionsFrom` now pin the loopback default (before: `:8888`). | 3fd49cf |
+| S4 | Medium | **The unauthenticated external-dns webhook listened on all interfaces by default.** `externalDNS.webhook.listen` defaulted to `:8888`. Enabling the webhook (`externalDNS.webhook.enabled: true`) therefore exposed record writes in every primary zone, without authentication, to anyone who could reach the node (a LAN host in the Docker shape). The help text said to keep it on loopback, but the default did not. | `internal/config` `TestAPIDefaults` and `ee/integration/externaldns` `TestOptionsFrom` now pin the loopback default (before: `:8888`). | 3fd49cf |
 | S5 | Low | **The built-in dig forged query-log rows.** `POST /api/v1/dns/query` needs only `stats.read` (every viewer) and runs a query as **any client address the caller names**. The log stage recorded it as that client's traffic: query log rows, top clients and per-client statistics. Under `anonymize_client` even the `api-dig` client name was dropped, so the rows could not be told from real ones. | `internal/stages/log` `TestObserverSkipsSyntheticRequests`; `internal/api` `TestDNSQueryIsSynthetic`. | 9c6ff88 |
 | S6 | Low | **`hide_domains` kept the matched zone.** The `hide_domains`, `hide_domains_clients` and `nothing` modes replaced the query name, CNAME and rule but kept `Event.Zone`. The zone apex (for example `payroll.corp.example`) was stored in `dict_zone` and as the `zone:<apex>` upstream, a domain the mode promises never to keep. | `internal/querylog` `TestHideDomainsHidesZone`. | 9d8a467 |
 | S7 | Low | **Unbounded live-tail streams.** `GET /queries/stream` accepted any number of concurrent streams, and each wrote with no deadline (`SetWriteDeadline(time.Time{})`). A `querylog.read` holder could open thousands of streams, or streams that never read, and pin goroutines, subscriber buffers and connections. | `internal/api` `TestQueryStreamLimit`: the stream over the cap got 200 before the fix. | 4f1c402 |
 | S8 | Low | **Anonymous login bodies were buffered up to 32 MiB.** The forwarded auth routes inherited the 32 MiB object cap. huma read the whole body of an anonymous `POST /auth/login` into memory before the auth handler (64 KiB cap) refused it, so concurrent anonymous requests could push the node towards OOM. Authenticated routes are not affected: huma's authorize middleware answers 401 before reading any body (probed with a counting reader). | `internal/api` `TestForwardedAuthBodyCap`: the 1 MiB body reached the auth handler before the fix. | df0a127 |
-| S9 | Low | **Unrestricted strings in the dnsdist configuration.** Backend and bind hosts were checked with `net.SplitHostPort` only. Certificate, key and DoH paths were not checked at all. A newline in a backend address ended the `-- backend <name> (<address>)` comment of `dnsdist.lua` and the rest ran as Lua. The `luaString` comment claimed that Validate restricts every rendered string, which was not true for these fields. The inputs come from `kudurru edge run` flags and EndpointSlices (the apiserver validates EndpointSlice IPs), so exploiting it needs control over the supervisor's arguments. | `internal/edge` `TestValidateRefusesUnsafeRenderedStrings` (newline, quote and space in hosts; newline and quote in paths; DoH paths). | 7bf1534 |
+| S9 | Low | **Unrestricted strings in the dnsdist configuration.** Backend and bind hosts were checked with `net.SplitHostPort` only. Certificate, key and DoH paths were not checked at all. A newline in a backend address ended the `-- backend <name> (<address>)` comment of `dnsdist.lua` and the rest ran as Lua. The `luaString` comment claimed that Validate restricts every rendered string, which was not true for these fields. The inputs come from `kudurru edge run` flags and EndpointSlices (the apiserver validates EndpointSlice IPs), so exploiting it needs control over the supervisor's arguments. | `ee/edge` `TestValidateRefusesUnsafeRenderedStrings` (newline, quote and space in hosts; newline and quote in paths; DoH paths). | 7bf1534 |
 | S10 | Low (hardening) | **IPv6 login lockouts per /128.** The per-IP limiter keyed IPv6 clients by full address. One host owns a /64 and could rotate addresses to get 5 guesses per address; the per-user limit (10 per 15 min) still applied. | `internal/auth/users` `TestIPv6LockoutCoversThePrefix`. | 2c17bc3 |
 | S11 | Info (hardening) | **Zone import cleanup ignored zoneRef.** A re-import deleted every api-managed record set in the namespace that carried the `kudurru.io/import=<zone>` label, whatever zone it belonged to. Exploiting it needs a writer of the other zone to set the label, so it is not a privilege crossing on its own, but the cleanup now also requires `zoneRef` to match. | `internal/api` `TestZoneImportKeepsOtherZones`. | 47d440f |
 
@@ -133,7 +133,7 @@ by trying it. None reproduced.
 - A correct password does not reset the IP counter. Usernames are
   sanitized in logs.
 
-**OIDC (`internal/auth/oidc`)**
+**OIDC (`ee/oidc`)**
 - Authorization code with PKCE S256. state and nonce are 256-bit random
   values compared in constant time. The pre-auth cookie is sealed,
   single-use (cleared first), bound to the IdP id and expires after 10
@@ -238,7 +238,7 @@ by trying it. None reproduced.
     restores the configured burst.
 
 **Edge renderers**
-- keepalived (`internal/edge/keepalived`): every rendered token is
+- keepalived (`ee/edge/keepalived`): every rendered token is
   `safeToken` or `safePath`, peers and the unicast source are parsed IP
   addresses, the probe command elements are checked, and HMAC keys are
   `file:` references.
@@ -356,10 +356,10 @@ For the integrator to record in §16 and §6.2:
 |---|---|
 | `cmd/kudurru/serve.go` | `identityOptions` and `apiClientIP` (S3); `AllowLocalAddresses` from `blocking.allowLocalListURLs` (S1) |
 | `internal/config/schema.go`, `internal/config/blocking.go` | new key `blocking.allowLocalListURLs` (S1); `externalDNS.webhook.listen` default `127.0.0.1:8888` (S4) |
-| `internal/config/api_test.go`, `internal/integration/externaldns/externaldns_test.go` | the pinned webhook default follows S4 (the assertion is unchanged in strength) |
+| `internal/config/api_test.go`, `ee/integration/externaldns/externaldns_test.go` | the pinned webhook default follows S4 (the assertion is unchanged in strength) |
 | `internal/auth/auth.go` | `Principal.CredentialIssuedAt` (S2) |
 | `internal/pipeline/pipeline.go`, `internal/stages/log/log.go` | `Client.Synthetic` and its skip in the log stage (S5) |
-| `internal/edge/topology.go` | stricter `Validate` (S9) |
+| `ee/edge/topology.go` | stricter `Validate` (S9) |
 | `internal/store/kube/snapshot.go` | `restoreOrder`: API tokens are restored after their owners (S2) |
 | `internal/listfetcher/*_test.go` | fixtures that fetch from httptest on 127.0.0.1 set `AllowLocalAddresses: true` |
 
@@ -381,6 +381,6 @@ At 46975d9:
   schema changed.
 
 One pre-existing problem: `TestSupervisorPeersFile`
-(internal/edge/keepalived) passes with `-race` but times out without it.
+(ee/edge/keepalived) passes with `-race` but times out without it.
 It also fails with the package and its dependencies unchanged from
 347f4c7, and is recorded in docs/followups.md.

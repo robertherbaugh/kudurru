@@ -249,6 +249,32 @@ func ReaderOf(r Recorder) (Reader, bool) {
 	return rd, ok
 }
 
+// Gated records to Inner only while Allowed reports true, and reads from it
+// only then too. The persisted audit trail is a licensed feature
+// (license.FeatureAudit); the log lines of the Log recorder are not, so a
+// node without the license still writes every event to its log.
+type Gated struct {
+	Inner   Recorder
+	Allowed func() bool
+}
+
+// Record implements Recorder.
+func (g Gated) Record(ctx context.Context, ev Event) error {
+	if g.Allowed != nil && !g.Allowed() {
+		return nil
+	}
+	return g.Inner.Record(ctx, ev)
+}
+
+// Read implements Reader.
+func (g Gated) Read(ctx context.Context, q Query) ([]Event, error) {
+	rd, ok := g.Inner.(Reader)
+	if !ok || (g.Allowed != nil && !g.Allowed()) {
+		return nil, ErrNotStored
+	}
+	return rd.Read(ctx, q)
+}
+
 // Log writes every event as one JSON log line with "log":"audit" (§11.4:
 // the durable path in Kubernetes is the log pipeline).
 type Log struct {
@@ -312,7 +338,7 @@ func (m *Memory) Read(_ context.Context, q Query) ([]Event, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	limit := clampLimit(q.Limit)
+	limit := ClampLimit(q.Limit)
 	out := []Event{}
 	for i := range m.events {
 		ev := m.events[i]
@@ -355,7 +381,8 @@ func (q Query) match(ev Event) bool {
 	return true
 }
 
-func clampLimit(n int) int {
+// ClampLimit applies the default and the maximum page size of a Query.
+func ClampLimit(n int) int {
 	switch {
 	case n <= 0:
 		return 100

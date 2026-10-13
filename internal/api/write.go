@@ -241,6 +241,17 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
 		return writeResult{obj: existing, result: ResultUnchanged, key: key}, nil
 	}
+	if existing == nil && k.kind == "Policy" {
+		// A new Policy needs the license's room for it: without a valid key
+		// only the default policy of the default namespace, and only while no
+		// Policy exists. The lock is
+		// held until the create is done: the check and the create are one step.
+		s.policyMu.Lock()
+		defer s.policyMu.Unlock()
+		if err := s.checkPolicyLimit(ctx, u.GetNamespace(), u.GetName()); err != nil {
+			return writeResult{}, err
+		}
+	}
 	opts := store.ApplyOptions{Manager: manager, Force: force}
 	if existing != nil {
 		// Optimistic concurrency between the read above and the write.

@@ -7,6 +7,11 @@ group.
 **Before you start:** You have the role Operator or Admin. At least one
 block list exists (Chapter 4).
 
+NOTE: Without a license key, a node has one policy: the policy `default`.
+Different rules for different groups need more policies, and more policies
+need a key. A personal key is free for personal use. See
+[Chapter 13](13-license.md#what-a-key-changes).
+
 ## How the parts work together
 
 - A **client** is a device. kudurru knows a client by the address that it
@@ -117,7 +122,7 @@ Figure 5 shows the page of a group.
 
 - Click **Edit** in **Members** to change the matchers.
 - Click **New policy** in **Policies that apply** to make a policy for this
-  group.
+  group. Without a license key, this button is not available.
 - Click **Disable** to stop the group. The clients then fall into other
   groups.
 - Click **Delete** to remove the group.
@@ -127,6 +132,10 @@ the check box of the client, click **Add to group** and select the group.
 On the page of a client, use **Add to group** in the section **Groups**.
 
 ## Create a policy
+
+NOTE: Without a license key, you cannot make a policy in addition to the
+policy `default`. Change the policy `default` instead (see
+[Check a policy](#check-a-policy)), or put a key on the node (Chapter 13).
 
 1. Open **Filtering** > **Policies**.
 2. Click **New policy**. A wizard opens with six steps.

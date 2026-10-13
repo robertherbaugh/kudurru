@@ -171,6 +171,21 @@ Deployment
 {{- default (printf "%s-bootstrap-token" (include "kudurru.fullname" .)) .Values.auth.bootstrapToken.existingSecret -}}
 {{- end -}}
 
+{{- define "kudurru.licenseSecret" -}}
+{{- default (printf "%s-license" (include "kudurru.fullname" .)) .Values.license.existingSecret -}}
+{{- end -}}
+
+{{/* The license key env of every kudurru container (serve, edge, keepalived).
+     optional: pods start without the Secret and run with the community license. */}}
+{{- define "kudurru.licenseEnv" -}}
+- name: KUDURRU_LICENSE_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "kudurru.licenseSecret" . }}
+      key: {{ .Values.license.secretKey }}
+      optional: true
+{{- end -}}
+
 {{- define "kudurru.proxySecret" -}}
 {{- default (printf "%s-proxy-protocol" (include "kudurru.fullname" .)) .Values.edge.existingSecret -}}
 {{- end -}}

@@ -918,6 +918,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** License state, node limit and licensed features of this node */
+        get: operations["getLicense"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/node/config": {
         parameters: {
             query?: never;
@@ -1663,6 +1680,7 @@ export interface components {
         };
         BatchDeleteInputBody: {
             names: string[] | null;
+            /** @description Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         BindingScope: {
@@ -2169,6 +2187,7 @@ export interface components {
         DomainsRequest: {
             domains: string[] | null;
             list?: string;
+            /** @description Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         EdgeBackend: {
@@ -2320,6 +2339,36 @@ export interface components {
             p95_ms: number;
             /** Format: double */
             p99_ms: number;
+        };
+        LicenseInfo: {
+            /** @description Namespace of the seeded defaults; without a key the only Policy that can be created is default in it. */
+            defaultNamespace: string;
+            error?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            features: string[];
+            /** Format: date-time */
+            graceEndsAt?: string;
+            id?: string;
+            licensee?: string;
+            /** Format: int64 */
+            nodes: number;
+            /** Format: int64 */
+            nodesInUse: number;
+            overLimit: boolean;
+            plan?: string;
+            /**
+             * Format: int64
+             * @description How many Policy objects may exist; 0 means no limit.
+             */
+            policyLimit: number;
+            source?: string;
+            state: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         ListApplyResult: {
             /** @description Opaque keyset token for the next page; empty on the last page. */
@@ -2795,6 +2844,7 @@ export interface components {
         QueryActionInputBody: {
             /** @enum {string} */
             action: "allow" | "deny";
+            /** @description Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         QueryClient: {
@@ -9531,6 +9581,80 @@ export interface operations {
             };
         };
     };
+    getLicense: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getNodeConfig: {
         parameters: {
             query?: never;
@@ -13975,7 +14099,7 @@ export interface operations {
             query?: {
                 /** @description DNSRecordSet to write; default api-<zone>. */
                 recordSet?: string;
-                /** @description Namespace of the record set; default "default". */
+                /** @description Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
                 namespace?: string;
             };
             header?: never;

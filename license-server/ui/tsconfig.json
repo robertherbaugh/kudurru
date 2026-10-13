@@ -1,0 +1,11 @@
+// The UI (Vite, React, Astryx) and the shared wire types it imports: DOM, Vite client types, vitest globals and jest-dom matchers. No Bun or Node types.
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "paths": { "@shared/*": ["../shared/*"] }
+  },
+  "include": ["src", "../shared"]
+}

@@ -19,7 +19,7 @@ import (
 
 // EnvPrefix is the prefix of every kudurru environment variable. Variables
 // with "__" map onto settings keys (KUDURRU_NODE__NAME → node.name); the
-// rest (KUDURRU_ADMIN_PASSWORD_FILE, KUDURRU_CONFIG) are reserved.
+// rest (KUDURRU_ADMIN_PASSWORD_FILE, KUDURRU_CONFIG, KUDURRU_LICENSE_KEY) are reserved.
 const EnvPrefix = "KUDURRU_"
 
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host

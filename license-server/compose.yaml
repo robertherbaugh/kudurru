@@ -1,0 +1,182 @@
+# The kudurru license portal for development and the e2e suite (spec §12):
+# Postgres, Dex (OIDC sign-in), Mailpit (catches every mail) and, with a
+# profile, the server's image built from this checkout. It is not a
+# production deployment (README.md, "Deploying"), and it lives here rather
+# than under deploy/compose/, whose contents ship to kudurru users.
+#
+# Before the first start (from license-server/):
+#   bun scripts/dev-keygen.ts
+# writes dev/secrets/signing.key (a test signing key, kid dev-1, that no
+# kudurru release trusts), dev/trusted-keys/dev-1.pub and
+# dev/secrets/oidc_client_secret (the client secret dev/dex.yaml expects).
+# All three are gitignored; dev/README.md.
+#
+#   docker compose up -d postgres dex mailpit      # for a server on the host (make license-server-dev)
+#   docker compose --profile server up -d --build  # the server in a container too
+#   docker compose run --rm license-server grant-superadmin --email superadmin@example.org
+#   docker compose --profile server down -v        # stop and forget the database
+# make license-server-up builds the image with `docker build` and starts the
+# same stack; compose's own --build needs buildx 0.17 or later.
+#
+# Ports, all on 127.0.0.1 only:
+#   8791   the containerised server, PUBLIC_URL http://localhost:8791
+#          (published by the dex service, whose network namespace it shares)
+#   5556   Dex, issuer http://localhost:5556/dex; users and password in dev/dex.yaml
+#   8025   Mailpit UI and API (http://localhost:8025/api/v1/messages)
+#   1025   Mailpit SMTP for a server on the host (SMTP_URL=smtp://localhost:1025)
+#   55432  Postgres, user and password postgres
+#          (TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres)
+# A server on the host listens on 8790 and Vite on 5174
+# (PUBLIC_URL=http://localhost:5174); no repository tool uses these ports.
+#
+# The images are pinned by multi-arch index digest; Postgres has the same
+# digest as the service in .github/workflows/license-server.yml.
+name: kudurru-license-portal
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: license_portal
+      TZ: UTC
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "license_portal"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.46.0@sha256:933fcd3f523338c847b88ef84a7145fb2fcb7b9917f08418612afeaaa2001777
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./dev/dex.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "127.0.0.1:5556:5556"
+      # The license-server service runs in this service's network namespace
+      # (network_mode: service:dex), so its port is published here. That is
+      # what makes localhost:5556 Dex inside the server too: one issuer URL
+      # for the browser and the server. A Docker network alias such as
+      # dex.localhost does not work, because Bun's fetch sends every
+      # *.localhost name to loopback.
+      - "127.0.0.1:8791:8790"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5556/dex/.well-known/openid-configuration"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The image's own health check (/mailpit readyz) applies.
+  mailpit:
+    image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+  # Bind-mounted files keep their host owner and mode (compose ignores uid
+  # and mode for file secrets), so uid 65532 in the server could not read
+  # the 0600 files dev-keygen writes. This one-shot container copies them
+  # into a volume owned by 65532, and runs again on every `up`, so a new
+  # key reaches the server.
+  dev-secrets:
+    image: oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598
+    profiles: [server, e2e]
+    network_mode: none
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - install -o 65532 -g 65532 -m 0400 /run/secrets/oidc_client_secret /run/secrets/signing.key /secrets/
+    secrets:
+      - oidc_client_secret
+      - source: signing_key
+        target: signing.key
+    volumes:
+      - license-server-secrets:/secrets
+
+  license-server:
+    profiles: [server, e2e]
+    # The tag `make license-server-image` builds (LICENSE_SERVER_IMAGE in
+    # the Makefile); compose uses it when present and builds it otherwise.
+    image: ghcr.io/robertherbaugh/kudurru-license-server:dev
+    build:
+      context: ..
+      dockerfile: license-server/Dockerfile
+    restart: unless-stopped
+    network_mode: service:dex
+    depends_on:
+      dev-secrets:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      dex:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    environment:
+      PUBLIC_URL: http://localhost:8791
+      # Dev mode: test kids are allowed and the UI shows a development
+      # banner. Never set it in production.
+      LICENSE_SERVER_DEV: "true"
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/license_portal
+      DATABASE_TLS: disable
+      OIDC_ISSUER: http://localhost:5556/dex
+      OIDC_CLIENT_ID: license-portal
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      OIDC_SCOPES: openid profile email groups
+      OIDC_DISPLAY_NAME: Sign in with Dex (development)
+      ROLE_SUPERADMIN_GROUPS: license-superadmins
+      ROLE_LICENSE_ADMIN_GROUPS: license-admins
+      # Dev only: every Dex user here is a static, verified one, so this rule
+      # admits them all. In production the rule must pin something outsiders
+      # cannot choose, such as the tenant or the email domain (README.md,
+      # "Who signs in"), because group names alone can be forged on IdPs
+      # that admit the public.
+      OIDC_ADMIN_CLAIM_RULES: email_verified=true
+      LICENSE_SIGNING_KEY_FILE: /run/secrets/signing.key
+      LICENSE_SIGNING_KID: dev-1
+      # Only the dev key: the image's own keyring (kudurru releases' keys)
+      # is replaced, so nothing signed here can pass for a real key.
+      LICENSE_TRUSTED_KEYS_DIR: /app/dev-trusted-keys
+      # A missing or mismatched dev key fails the start instead of leaving a
+      # healthy server that cannot issue.
+      REQUIRE_SIGNING_KEY: "true"
+      SMTP_URL: smtp://mailpit:1025
+      ADMIN_NOTIFY_EMAIL: admin@example.org
+      # The static build of the kudurru.io request form the e2e suite serves.
+      PUBLIC_FORM_ORIGINS: http://localhost:8792
+      TZ: UTC
+    volumes:
+      - license-server-secrets:/run/secrets:ro
+      - ./dev/trusted-keys:/app/dev-trusted-keys:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "bun", "/app/healthcheck.js"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+
+volumes:
+  postgres-data: {}
+  license-server-secrets: {}
+
+secrets:
+  oidc_client_secret:
+    file: ./dev/secrets/oidc_client_secret
+  signing_key:
+    file: ./dev/secrets/signing.key

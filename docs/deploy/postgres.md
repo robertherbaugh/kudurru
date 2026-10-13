@@ -52,6 +52,10 @@ newer and has a schema the binary can use.
 
 ## Audit log
 
+Reading the audit log (the Audit tab, `GET /api/v1/audit`, `kudurru audit`)
+needs a license key that includes the audit trail. Recording and shipping the
+events do not, so a key that arrives later shows the whole history.
+
 With a database, `audit.store: auto` keeps the audit log there
 (`audit.store: database`, D159). Each node still records every event in
 its own store first (`state.db` with the sqlite driver, `audit-spool.db` in

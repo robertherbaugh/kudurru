@@ -176,3 +176,32 @@ the app: upgrade it (`helm upgrade kudurru-crds …`) and restart the
 kudurru pods. The events recorded meanwhile are in each pod's
 `audit-spool.db` and are shipped after the restart, unless the pod was
 replaced (its emptyDir is gone); the `"log":"audit"` lines keep them all.
+
+## License key expired or invalid
+
+Symptoms: a banner on every dashboard page (**The license key has expired**,
+**The license key is invalid**), `kudurru_license_info{state="grace"}`,
+`"expired"` or `"invalid"`, a licensed feature that answers
+`402 license_required`, the dnsdist or keepalived container that stops at the
+start with "needs a kudurru license key" (a first start only) or the warning
+"the license key expired ... keeps running because it was licensed". DNS
+answering is not affected in any of these cases.
+
+1. `kudurru license status` on the node (or `GET /api/v1/license`) shows the
+   state and, for an invalid key, the reason.
+2. An **expired** key works for 30 days after its date (state `grace`), then the
+   node runs with the free license: one node, one policy (the seeded default),
+   no licensed feature. Alert on
+   `kudurru_license_expires_timestamp_seconds - time()` before that.
+3. Put the renewed key where the node reads it (`KUDURRU_LICENSE_KEY`,
+   `KUDURRU_LICENSE_KEY_FILE`, `<node.dataDir>/license.key`, the Helm Secret
+   `license.existingSecret`). A running node reads it within a minute; no
+   restart. A supervisor (`kudurru edge run`, `kudurru vip run`) sits in the data
+   path, so an expired key never stops it, not even at a restart: it starts with
+   the warning above until you renew. It refuses only a start with no key at all.
+4. An **invalid** key is one that cannot be verified (a typo, a cut line, a
+   key from another build). `kudurru license verify <key>` says why. Request a
+   new one ([kudurru.io/license](https://kudurru.io/license)).
+5. A cluster over its node limit (`overLimit` in `GET /api/v1/license`) refuses
+   configuration changes through the API with `402`; remove nodes or add a key
+   with a higher limit.

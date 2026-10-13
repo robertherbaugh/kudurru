@@ -1,0 +1,328 @@
+# Checks the kudurru license portal (license-server/), the licensor's
+# service that issues license keys, and publishes its image. It is not part
+# of kudurru, is not released with it, and no node contacts it (D163);
+# license-server/README.md.
+#   check    typecheck, lint, the server tests against Postgres and the Go
+#            reference (REQUIRE_DB=1 and REQUIRE_GO=1 turn their skips into
+#            failures), the UI tests, the build, and golden.json regenerated
+#            from internal/license.Sign
+#   image    the image builds, runs as uid 65532 against Postgres, answers
+#            /readyz, reports healthy and stops cleanly on SIGTERM
+#   e2e      the Playwright suite against the compose stack (Postgres, Dex,
+#            Mailpit and the image)
+#   publish  license-server-v<version> tags only: linux/amd64 and
+#            linux/arm64 to ghcr.io/robertherbaugh/kudurru-license-server,
+#            tagged <version> and sha-<commit>, cosign-signed by digest
+# The changes job gates every job instead of a paths filter, so these
+# checks can be required: a skipped job satisfies a required status check
+# and a workflow that never runs does not (ci.yml). Changes to
+# internal/license (the claims, Features(), the trusted keys) and
+# hack/licensegen run it too, because the golden vectors, the trusted
+# keyring and shared/catalog.ts follow them.
+name: license-server
+on:
+  push:
+    branches: [main]
+    tags: ["license-server-v*"]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: license-server-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Run everything unless git can list the changes and none of them
+          # can affect the license portal (a tag, a new branch or an
+          # unreachable force-pushed base runs everything).
+          run=true
+          if [[ "$GITHUB_REF" != refs/tags/* && -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -Eq '^(license-server/|internal/license/|hack/licensegen/|\.github/workflows/license-server\.yml$)' <<<"$files"; then
+              run=false
+            fi
+          fi
+          echo "run=$run" | tee -a "$GITHUB_OUTPUT"
+  check:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 20
+    # The same Postgres as license-server/compose.yaml (digest included).
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      # bun run starts node-shebang tools (vitest, eslint, the Astryx CLI)
+      # with the runner's Node; vitest 5, jsdom 30 and the Astryx CLI need
+      # Node 22 or later. The same pin as ci.yml's web jobs.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # The Go reference: the node oracle the tests run (go run) and the
+      # golden.json regeneration below.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Typecheck, lint, test and build
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          REQUIRE_DB: "1"
+          REQUIRE_GO: "1"
+        run: make license-server-check
+      # The TypeScript signer is tested against golden.json; this proves the
+      # file is still what internal/license.Sign produces, so a change on
+      # the Go side cannot leave the vectors stale.
+      - name: golden.json matches internal/license.Sign
+        run: |
+          set -o pipefail
+          go run ./license-server/server/test/golden/gen.go | diff -u license-server/server/test/golden/golden.json -
+      # The Cloudflare Containers deployment (license-server/cloudflare):
+      # Worker types, its tests and a wrangler dry run (no Docker, no login).
+      - name: Cloudflare deployment check
+        working-directory: license-server/cloudflare
+        run: bun install --frozen-lockfile && bun run check
+  image:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Only for scripts/dev-keygen.ts: the smoke run signs with a
+      # throwaway development key, as compose does.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Build the image (linux/amd64)
+        run: make license-server-image
+      - name: Run it against Postgres
+        env:
+          IMAGE: ghcr.io/robertherbaugh/kudurru-license-server:dev
+          POSTGRES_IMAGE: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        run: |
+          # wait_for <what> <command...>: retry for up to 60 s.
+          wait_for() {
+            local what=$1; shift
+            for _ in $(seq 1 60); do "$@" && return 0; sleep 1; done
+            echo "::error::timed out waiting for ${what}"; return 1
+          }
+          healthy() { [ "$(docker inspect -f '{{.State.Health.Status}}' "$1")" = healthy ]; }
+          bun license-server/scripts/dev-keygen.ts --out "$RUNNER_TEMP/dev"
+          # The container runs as 65532 and the files belong to the runner
+          # user: make the throwaway key readable on this ephemeral VM.
+          chmod 0755 "$RUNNER_TEMP/dev/secrets" && chmod 0644 "$RUNNER_TEMP/dev/secrets/"*
+          docker network create license-server-smoke
+          docker run -d --name smoke-postgres --network license-server-smoke --tmpfs /var/lib/postgresql/data \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=license_portal \
+            --health-cmd "pg_isready -U postgres" --health-interval 2s "$POSTGRES_IMAGE"
+          wait_for "Postgres" healthy smoke-postgres
+          # The container settings of compose.yaml: read-only root, no
+          # capabilities, no privilege escalation.
+          docker run -d --name smoke-server --network license-server-smoke -p 127.0.0.1:8790:8790 \
+            --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true --ulimit core=0 \
+            -e PUBLIC_URL=http://localhost:8790 -e LICENSE_SERVER_DEV=true \
+            -e DATABASE_URL=postgres://postgres:postgres@smoke-postgres:5432/license_portal -e DATABASE_TLS=disable \
+            -e OIDC_ISSUER=http://localhost:5556/dex -e OIDC_CLIENT_ID=license-portal \
+            -e OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_client_secret \
+            -e LICENSE_SIGNING_KEY_FILE=/run/secrets/signing.key -e LICENSE_SIGNING_KID=dev-1 \
+            -e LICENSE_TRUSTED_KEYS_DIR=/app/dev-trusted-keys -e REQUIRE_SIGNING_KEY=true \
+            -v "$RUNNER_TEMP/dev/secrets:/run/secrets:ro" -v "$RUNNER_TEMP/dev/trusted-keys:/app/dev-trusted-keys:ro" \
+            "$IMAGE"
+          wait_for "/readyz 200" curl -fs -o "$RUNNER_TEMP/readyz.json" http://127.0.0.1:8790/readyz
+          cat "$RUNNER_TEMP/readyz.json"; echo
+          jq -e '.signing == "ready"' "$RUNNER_TEMP/readyz.json"
+          user=$(docker inspect -f '{{.Config.User}}' smoke-server)
+          [ "$user" = 65532:65532 ] || { echo "::error::image user is '${user}', want 65532:65532"; exit 1; }
+          # The process itself, not only the image config, runs as 65532.
+          docker top smoke-server -o pid,uid,args | uniq
+          [ "$(docker top smoke-server -o pid,uid | awk 'NR > 1 && $2 != 65532' | wc -l)" = 0 ] || { echo "::error::a process runs as another uid"; exit 1; }
+          wait_for "the HEALTHCHECK to report healthy" healthy smoke-server
+          # oven/bun's labels are all overridden.
+          docker inspect -f '{{json .Config.Labels}}' "$IMAGE" | jq -e '
+            .["org.opencontainers.image.licenses"] == "PolyForm-Noncommercial-1.0.0" and
+            .["org.opencontainers.image.source"] == "https://github.com/robertherbaugh/kudurru" and
+            .["org.opencontainers.image.title"] == "kudurru license portal"'
+          # The notices travel with the image.
+          docker run --rm --entrypoint bun "$IMAGE" -e '
+            for (const f of ["/app/NOTICE", "/app/third-party-licenses.txt", "/app/ui/index.html"]) require("node:fs").statSync(f);'
+          # Bun as PID 1 ignores SIGTERM unless the server handles it; a
+          # clean stop exits 0 well inside the 10 s before SIGKILL.
+          start=$(date +%s)
+          docker stop -t 10 smoke-server
+          code=$(docker inspect -f '{{.State.ExitCode}}' smoke-server)
+          echo "stopped in $(( $(date +%s) - start )) s with exit code ${code}"
+          [ "$code" = 0 ] || { echo "::error::SIGTERM ended the server with exit code ${code}, want 0"; exit 1; }
+      - name: Server logs
+        if: always()
+        run: docker logs smoke-server || true
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      # Playwright runs on Node, as in ci.yml's web-e2e job.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # The suite checks issued keys with the Go node oracle (go run).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install (frozen lockfile)
+        run: make license-server-install
+      # Keyed on bun.lock, which pins the Playwright version.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('license-server/bun.lock') }}
+      - name: Install Playwright chromium
+        working-directory: license-server
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = true ]; then
+            bunx playwright install-deps chromium
+          else
+            bunx playwright install --with-deps chromium
+          fi
+      - name: Build the image, start the stack, run the suite
+        env:
+          # A missing go fails the run instead of skipping the node checks.
+          REQUIRE_GO: "1"
+        run: make license-server-e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: license-server-playwright-report
+          path: |
+            license-server/playwright-report/
+            license-server/test-results/
+          retention-days: 14
+  publish:
+    needs: [check, image, e2e]
+    if: startsWith(github.ref, 'refs/tags/license-server-v')
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write        # ghcr.io image
+      id-token: write        # cosign keyless signing
+    steps:
+      - name: Check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! [[ "${TAG}" =~ ^license-server-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::tag ${TAG} is not license-server-v<MAJOR.MINOR.PATCH>[-<pre-release>]"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Only reviewed code is published: the tagged commit must be on main
+      # (fetch-depth 0 fetched every branch).
+      - name: Check the commit is on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main || { echo "::error::${GITHUB_REF_NAME} is not on main"; exit 1; }
+      - name: Version and image tags
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          {
+            echo "version=${TAG#license-server-v}"
+            echo "short=$(git rev-parse --short=12 HEAD)"
+            echo "created=$(git log -1 --format=%cI)"
+          } >> "$GITHUB_OUTPUT"
+      # The build stage runs on the build platform and the runtime stage
+      # only copies files, so arm64 needs no QEMU. The OCI labels come from
+      # the Dockerfile's LABEL lines, fed by these build args, so a local
+      # build carries the same ones.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ghcr.io/robertherbaugh/kudurru-license-server:${{ steps.meta.outputs.version }}
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: license-server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          sbom: true
+          tags: |
+            ghcr.io/robertherbaugh/kudurru-license-server:${{ steps.meta.outputs.version }}
+            ghcr.io/robertherbaugh/kudurru-license-server:sha-${{ steps.meta.outputs.short }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILT_AT=${{ steps.meta.outputs.created }}
+          cache-from: type=gha,scope=license-server
+          cache-to: type=gha,scope=license-server,mode=max
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.5
+      - name: Sign the image by digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/robertherbaugh/kudurru-license-server@${DIGEST}"
+      # The identity a deployment checks before it runs a new digest.
+      - name: Verify the signature
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign verify "ghcr.io/robertherbaugh/kudurru-license-server@${DIGEST}" \
+            --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/license-server\.yml@refs/tags/license-server-v' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+      - name: Summary
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### License portal image"
+            echo
+            echo "\`ghcr.io/robertherbaugh/kudurru-license-server:${VERSION}\` (\`${DIGEST}\`), signed with cosign keyless"
+            echo "(identity: this workflow at ${GITHUB_REF})."
+          } >> "$GITHUB_STEP_SUMMARY"

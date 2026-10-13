@@ -23,6 +23,13 @@ the v0.1.0 release publishes (`ghcr.io/robertherbaugh/kudurru:0.1.0`,
 from source: `make web-build build` writes `bin/kudurru` with the dashboard
 embedded, and `make docker` builds the image ([Contributing](/project/contributing/)).
 
+## Source-available, free at home
+
+kudurru is source-available under the PolyForm Noncommercial License: personal
+use is free and a business needs an agreement. A license key (free for personal
+use, up to 3 nodes) unlocks more than one node, more than one policy and some
+features; DNS answering never depends on a key. See [Licensing](/project/licensing/).
+
 ## One object model, every shape
 
 The same five kinds describe a home network in one container and a

@@ -101,6 +101,8 @@ cascade:
   - {weight: 1, target: {path: /project/changelog}}
   - {weight: 2, target: {path: /project/security}}
   - {weight: 3, target: {path: /project/contributing}}
+  - {weight: 4, target: {path: /project/licensing}}
+  - {weight: 5, target: {path: /project/license}}
 
 module:
   mounts:
@@ -140,6 +142,10 @@ module:
     - {source: ../CHANGELOG.md, target: content/project/changelog.md}
     - {source: ../SECURITY.md, target: content/project/security.md}
     - {source: ../CONTRIBUTING.md, target: content/project/contributing.md}
+    # The license: the rules for people (LICENSING.md) and the PolyForm
+    # Noncommercial License 1.0.0 text (LICENSE), each from its one source.
+    - {source: ../LICENSING.md, target: content/project/licensing.md}
+    - {source: ../LICENSE, target: content/project/license.md}
 
     # Brand (docs/brand): palette and the artwork the templates use.
     - {source: ../docs/brand/tokens.css, target: assets/css/tokens.css}

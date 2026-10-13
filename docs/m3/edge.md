@@ -10,10 +10,10 @@ There is no dnsdist or keepalived binary on this machine and no Docker. The rend
 
 | Package | Files | What |
 |---|---|---|
-| `internal/edge` | `topology.go`, `options.go`, `child.go` | `Topology` (binds, pools, backends, health check, console, webserver, rules, DynBlocks, PROXYv2 secret, eBPF), `Build(Options, []Backend, Credentials)`, `Validate`, `BackendID` = uuid5(fixed namespace, node name), per-start `NewCredentials`, `FindTLS`, `ValidSecret`, plus the process helpers both supervisors share: `Child` (start, signal, stop with SIGTERM→SIGKILL), `Check` (validator run), `WriteFileAtomic`, `SwapFile` (previous file kept as `.prev`) |
-| `internal/edge/dnsdist` | `render.go`, `render_yaml.go`, `render_lua.go`, `api_client.go`, `supervisor.go` | YAML renderer (`dnsdist.yml` plus a functions-only `dnsdist.lua` sibling holding the 2.1 validation functions), Lua renderer (`dnsdist.conf`, the D17 fallback), API client (`GET /api/v1/servers/localhost`, `DELETE /api/v1/cache`), supervisor |
-| `internal/edge/keepalived` | `render.go`, `supervisor.go`, `fifo.go`, `trackfile.go` | `keepalived.conf` renderer, supervisor, FIFO line parser + `Consumer` (state file), track-file weights |
-| `internal/edge/vip` | `keepalived.go`, `service.go` (`provider.go` existed) | `Keepalived` provider; `ServiceProvider` stub for kube-vip/metallb; `WithReason`/`ReasonLameduck` enforcing D51; `AuditVIPChanged`, `EventMasterChanged` names |
+| `ee/edge` | `topology.go`, `options.go`, `child.go` | `Topology` (binds, pools, backends, health check, console, webserver, rules, DynBlocks, PROXYv2 secret, eBPF), `Build(Options, []Backend, Credentials)`, `Validate`, `BackendID` = uuid5(fixed namespace, node name), per-start `NewCredentials`, `FindTLS`, `ValidSecret`, plus the process helpers both supervisors share: `Child` (start, signal, stop with SIGTERM→SIGKILL), `Check` (validator run), `WriteFileAtomic`, `SwapFile` (previous file kept as `.prev`) |
+| `ee/edge/dnsdist` | `render.go`, `render_yaml.go`, `render_lua.go`, `api_client.go`, `supervisor.go` | YAML renderer (`dnsdist.yml` plus a functions-only `dnsdist.lua` sibling holding the 2.1 validation functions), Lua renderer (`dnsdist.conf`, the D17 fallback), API client (`GET /api/v1/servers/localhost`, `DELETE /api/v1/cache`), supervisor |
+| `ee/edge/keepalived` | `render.go`, `supervisor.go`, `fifo.go`, `trackfile.go` | `keepalived.conf` renderer, supervisor, FIFO line parser + `Consumer` (state file), track-file weights |
+| `ee/edge/vip` | `keepalived.go`, `service.go` (`provider.go` existed) | `Keepalived` provider; `ServiceProvider` stub for kube-vip/metallb; `WithReason`/`ReasonLameduck` enforcing D51; `AuditVIPChanged`, `EventMasterChanged` names |
 | `internal/cluster` | `source.go` (new), `internalapi/zones.go` (new) | `MembershipSource` with `StaticSource` and `EndpointSliceSource` (discovery.k8s.io/v1 via the typed client only), `ParseStaticEndpoints`, `ParseSourceSpec`, `FilterServing`; `internalapi.Client.Zones` + `PathZones` (client side of `/internal/zones`) |
 | `internal/health` | `vrrp.go` (new) | `VRRPProbe`: TXT `health.kudurru.internal.` over UDP and TCP to the VIP while it is local (loopback otherwise), plus `>= RequireBackends` up in the dnsdist API, bounded by 900 ms |
 | `cmd/kudurru` | `edge.go`, `vip.go`, `health_vrrp.go` (new), one line in `main.go` | the commands; `installVRRPHealth(cmd)` hook for the health command |
@@ -22,7 +22,7 @@ All are additive. No existing test was changed. The shared-package diffs are new
 
 ### dnsdist: the rendered configuration
 
-The golden files are in `internal/edge/dnsdist/testdata/<case>/{dnsdist.yml,dnsdist.lua,dnsdist.conf}`. There are six cases: `single-loopback` (compose `edge` profile), `static-3` (ha-static), `endpointslice` (built through the real `EndpointSliceSource` against a fake clientset; a not-ready pod is filtered out), `tls` (every protocol on two listen addresses), `authoritative-cache`, and `dynblocks-ebpf`. Every rendered file contains:
+The golden files are in `ee/edge/dnsdist/testdata/<case>/{dnsdist.yml,dnsdist.lua,dnsdist.conf}`. There are six cases: `single-loopback` (compose `edge` profile), `static-3` (ha-static), `endpointslice` (built through the real `EndpointSliceSource` against a fake clientset; a not-ready pod is filtered out), `tls` (every protocol on two listen addresses), `authoritative-cache`, and `dynblocks-ebpf`. Every rendered file contains:
 
 - **Pools.** `resolver` (chashed, packet cache 200k entries) and `authoritative` (leastOutstanding, uncached; `--authoritative-cache` adds a 20k-entry cache with `max_ttl` 30 s). `load_balancing_policies.servfail_on_no_server: true`.
 - **Backends.** `id` = uuid5(node name), so the chashed ring is stable. `use_proxy_protocol: true`, weight 100, 2 sockets, and both pools. Health checks: mode auto, qname `health.kudurru.internal.`, TXT, interval 1, timeout 1000 ms, max_failures 2, rise 2, must_resolve. Named backends also get `validation_function: kudurru_validate_<id>`, defined in the sibling `dnsdist.lua`. It parses the answer with `newDNSPacketOverlay` and requires the first TXT string to be `<node>` or to start with `<node> `. Anonymous static backends (`--backends 10.0.0.11:5353`) have no node name to check and rely on must_resolve.
@@ -59,7 +59,7 @@ dnsdist --supervised --disable-syslog -C /etc/dnsdist/dnsdist.yml
 
 ### keepalived: the rendered configuration
 
-Golden files are in `internal/edge/keepalived/testdata/`: `two-vips-node-a.conf` and `two-vips-node-c.conf` (reversed priorities 200/180 and 180/200), `legacy.conf` and `preempt-delay.conf`. Each rendered file has:
+Golden files are in `ee/edge/keepalived/testdata/`: `two-vips-node-a.conf` and `two-vips-node-c.conf` (reversed priorities 200/180 and 180/200), `legacy.conf` and `preempt-delay.conf`. Each rendered file has:
 
 - `global_defs`: `router_id`, `enable_script_security`, `script_user keepalived_script`, `vrrp_version 3`, `vrrp_garp_master_refresh 30`, `vrrp_notify_fifo /run/kudurru/vrrp.fifo`, `vrrp_notify_fifo_script "/usr/local/bin/kudurru vip fifo --node <node>"` (keepalived appends the FIFO path).
 - One `vrrp_script chk_<vip>` per VIP, with interval 1, timeout 1, fall 3, rise 2, weight 0 (FAULT on failure) and `user keepalived_script`. One `track_file tf_<vip>` per VIP: `file "/run/kudurru/weight-<vip>"`, `weight -1`, `init_file 0`.
@@ -128,7 +128,7 @@ Optional integrator wiring, all behind configuration that does not exist yet (`e
   - It runs `dnsdist --check-config -C <case>/dnsdist.yml` and `-C <case>/dnsdist.conf` for every golden case inside the pinned upstream image, with the testdata mounted read-only at `/golden` and the certificate at `/certs`. The `dynblocks-ebpf` case runs as root with `--cap-add SYS_ADMIN`, because `--check-config` creates the BPF maps.
   - It runs `keepalived -t -f <golden>.conf` for every keepalived golden inside the built image, after writing 32-byte HMAC keys (mode 0600) to `/run/secrets/vrrp_hmac_53` and `_54`.
   - Finally it runs `kudurru version` from the built dnsdist image.
-- `.github/workflows/edge.yml` runs it on a Ubicloud `standard-4` runner (Ubuntu 24.04) for PRs touching `internal/edge`, the two command files, `images/` or the Dockerfile, and on demand. Since the v0.1 fix round it is a real gate (no `continue-on-error`).
+- `.github/workflows/edge.yml` runs it on a Ubicloud `standard-4` runner (Ubuntu 24.04) for PRs touching `ee/edge`, the two command files, `images/` or the Dockerfile, and on demand. Since the v0.1 fix round it is a real gate (no `continue-on-error`).
 - The Lua validation helper (`newDNSPacketOverlay`, `getRecordsCountInSection`) only runs when a health check fires. That is covered by hardware spike (b), not by `--check-config`.
 
 First real run (v0.1 fix round, Docker 25 in the sandbox): all 12 dnsdist files and all 4 keepalived files pass. It found three problems, all fixed:

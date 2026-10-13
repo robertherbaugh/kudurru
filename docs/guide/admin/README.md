@@ -20,6 +20,7 @@ command line, the guide shows the command.
 | [10. Command line](10-command-line.md) | The `kudurru` command |
 | [11. Maintenance](11-maintenance.md) | Back up, restore, upgrade and recover |
 | [12. Troubleshooting](12-troubleshooting.md) | Problems and their solutions |
+| [13. License and keys](13-license.md) | What the license says, what a key unlocks and how to put a key on a node |
 
 ## Which chapter do I need?
 
@@ -37,3 +38,4 @@ command line, the guide shows the command.
 | Give a colleague access | [Chapter 9](09-people-and-tokens.md) |
 | Recover a lost admin password | [Chapter 11](11-maintenance.md#recover-a-lost-admin-password) |
 | Back up kudurru | [Chapter 11](11-maintenance.md#back-up) |
+| Put a license key on a node | [Chapter 13](13-license.md#put-a-key-on-a-node) |

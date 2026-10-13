@@ -13,6 +13,10 @@ FROM --platform=$BUILDPLATFORM golang:1.27 AS build
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
+# Build tags. Only `make edge-check` sets one (licensetest: trust the throwaway
+# key of internal/license/testdata so the supervisors can start); never publish
+# an image built with a tag.
+ARG GOTAGS=
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -20,7 +24,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w \
+    go build -trimpath -tags "$GOTAGS" -ldflags "-s -w \
       -X github.com/robertherbaugh/kudurru/internal/version.Version=$VERSION \
       -X github.com/robertherbaugh/kudurru/internal/version.Commit=$COMMIT \
       -X github.com/robertherbaugh/kudurru/internal/version.Date=$DATE" \

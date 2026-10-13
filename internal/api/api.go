@@ -206,9 +206,14 @@ type Options struct {
 	// Audit records denied attempts and non-store mutations. AuditReader
 	// backs GET /audit and /audit/export; when nil, the reader behind
 	// Audit is used (audit.ReaderOf), and the routes answer 503 when no
-	// recorder stores events.
+	// recorder stores events. Reading the audit trail is a licensed
+	// feature (license.FeatureAudit), answered 402 without it.
 	Audit       audit.Recorder
 	AuditReader audit.Reader
+	// License is the node's license (*license.Manager). It backs GET
+	// /license and the 402 for configuration writes while the cluster is
+	// larger than the license allows; nil turns both gates off.
+	License LicenseSource
 	// Authenticate puts the principal in the request context or answers
 	// 401 for bad credentials (anonymous requests pass through and are
 	// refused by Authorize on non-public routes).
@@ -290,6 +295,10 @@ type Server struct {
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once
 	unblockFallback *unblock.Service
+	// nodes caches the cluster size for the license gate.
+	nodes nodeCounter
+	// policyMu serializes the policy limit check with the create it guards.
+	policyMu sync.Mutex
 	// domainSvc is the Allowlist and Denylist over the store.
 	domainOnce sync.Once
 	domainSvc  *domainlist.Service
@@ -371,6 +380,7 @@ func New(opts Options) (*Server, error) {
 		onPrefix(BasePath+"/auth/login", opts.RateLimit),
 		onPrefix(BasePath+"/", opts.Authenticate),
 		s.actorMW,
+		s.licenseMW,
 	)
 	h := chain(inner,
 		recoverMW(s.log),
@@ -400,7 +410,7 @@ func newHumaAPI(mux *http.ServeMux, prefix string) huma.API {
 	cfg.DocsPath = ""
 	cfg.Info.Description = "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
 		"lists are {items, continue, took_ms} with opaque keyset continue tokens."
-	cfg.Info.License = &huma.License{Name: "Apache-2.0", URL: "https://www.apache.org/licenses/LICENSE-2.0"}
+	cfg.Info.License = &huma.License{Name: "PolyForm-Noncommercial-1.0.0", URL: "https://polyformproject.org/licenses/noncommercial/1.0.0"}
 	cfg.Servers = []*huma.Server{{URL: prefix + BasePath}}
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearer": {Type: "http", Scheme: "bearer", Description: "kdr_<id>_<secret> API token, OIDC ID token or Kubernetes ServiceAccount token"},

@@ -18,6 +18,7 @@ services:
       # - "443:8493"          # optional HTTPS: browsers always warn
       # - "127.0.0.1:9153:9153"  # Prometheus metrics
     environment:
+      KUDURRU_LICENSE_KEY: ${KUDURRU_LICENSE_KEY:-}   # optional: free personal key or business key (LICENSING.md)
       KUDURRU_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
       KUDURRU_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
       # Cluster settings edited in the UI or with `kudurru settings set` are

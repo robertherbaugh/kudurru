@@ -150,3 +150,16 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | A missing AuditLog CRD is a log line and a runbook entry; also report it on the Diagnosis page and in `kudurru doctor` (object count against the 50 000 recommendation) | D157 | v0.2 |
 | Grafana panels for `kudurru_central_up`, `kudurru_central_ship_lag_seconds` and `kudurru_audit_spool_dropped_total` (the alerts ship) | D158 | v0.2 |
 | `GET /audit/verify` and `kudurru audit verify` for `pgaudit.Verify` and `auditlog.Verify` (the functions and their tests exist) | D157, D159 | v0.2 |
+
+## License portal (license-server/)
+
+| Item | Source | Target |
+|---|---|---|
+| Step-up re-authentication (a sign-in within minutes, `max_age`) for granting roles and other superadmin actions | design critique, security | after go-live |
+| Signing-key lifecycle in the portal: several keys, "trusted since" from release tags, a compromised flag and bulk re-issue under a new kid | design critique, completeness | when a second kid exists |
+| A signer outside the portal's process (Vault transit or a separate container) behind the `Signer` interface | design critique, security | when the portal grows beyond one operator |
+| Expiry reminders by mail (45, 30 and 7 days) and mail to the requester when a request is decided in bulk | product research | after go-live |
+| RP-initiated logout, several identity providers, a metrics endpoint, audit export | design spec | later |
+| Dashboard `LicensePage` dates in UTC, and the "no restart" wording in LicensePage, www, licensing.md and helm.md: the flag and `KUDURRU_LICENSE_KEY` are read once at startup | design critique, product | next licensing round |
+| `license.Manager` logs "license key replaced" when a key with the same jti but other claims or expiry arrives (today it logs only state, id or source changes) | design critique, compatibility | next licensing round |
+

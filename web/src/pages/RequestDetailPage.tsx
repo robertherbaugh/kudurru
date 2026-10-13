@@ -18,9 +18,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
 import type { ScopeParams } from '../api/endpoints';
-import { useDeleteUnblock } from '../api/hooks';
+import { useDeleteUnblock, useFeature } from '../api/hooks';
 import type { QueryFilter, UnblockAllow, UnblockDecision, UnblockRequest } from '../api/types';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { FeatureLocked } from '../components/FeatureLocked';
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { QueryLogTable } from '../components/QueryLogTable';
@@ -38,6 +39,20 @@ const BACK = { href: '/requests', label: 'Requests' };
 const muted = (text: string) => <Text type="inherit" color="secondary">{text}</Text>;
 
 export default function RequestDetailPage({ params }: PageProps) {
+  const f = useFeature('requests');
+  if (!f.ready) return <Loading />;
+  if (!f.allowed) {
+    return (
+      <Page>
+        <PageHeader title="Request" back={BACK} />
+        <FeatureLocked feature="requests" what="Unblock requests" />
+      </Page>
+    );
+  }
+  return <RequestDetailView params={params} />;
+}
+
+function RequestDetailView({ params }: PageProps) {
   const ns = params.ns ?? 'default';
   const name = params.name ?? '';
   const api = useApi();

@@ -78,6 +78,7 @@ spec:
         {{- end }}
         - name: KUDURRU_ADMIN_PASSWORD_FILE
           value: /etc/kudurru/secrets/admin/password
+        {{- include "kudurru.licenseEnv" . | nindent 8 }}
         {{- if .Values.auth.bootstrapToken.enabled }}
         - name: KUDURRU_BOOTSTRAP_TOKEN_FILE
           value: /etc/kudurru/secrets/bootstrap-token/token
@@ -393,6 +394,7 @@ edge Deployment/DaemonSet and, with sidecar=true, inside the kudurru pod.
       valueFrom:
         fieldRef:
           fieldPath: metadata.name
+    {{- include "kudurru.licenseEnv" .root | nindent 4 }}
     - name: KUDURRU_ENCRYPTION_KEY_FILE
       value: /etc/kudurru/secrets/encryption/key
     {{- if $root.Values.auth.encryptionKeyPreviousSecret }}

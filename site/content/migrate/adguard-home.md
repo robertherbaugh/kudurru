@@ -24,7 +24,7 @@ hand.
 | DNS allowlists | `BlockList` objects with `mode: allow`, referenced from a Policy's `allowListRefs` | Allow wins across every list that applies |
 | Custom filtering rules | an inline source (`inline:` lines) with `format: adblock`, or `kudurru lists allow` / `deny` for single domains | See the rule support below |
 | Persistent clients (IP, CIDR, ClientID) | entries of a [`ClientGroup`](/reference/crds/clientgroup/): `ip`, `cidr`, `clientID`, `hostname`, `nameGlob` | MAC entries are accepted but match only once the v0.2 client inventory supplies addresses |
-| Per-client settings (filters, upstreams) | a [`Policy`](/reference/crds/policy/) for that group: `blockListRefs`, `allowListRefs`, `upstreamGroup`, `blockMode`, `queryLog` | The highest `priority` wins per setting when several policies match |
+| Per-client settings (filters, upstreams) | a [`Policy`](/reference/crds/policy/) for that group: `blockListRefs`, `allowListRefs`, `upstreamGroup`, `blockMode`, `queryLog` | The highest `priority` wins per setting when several policies match. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
 | Client tags | none | Use client groups |
 | Schedules (pause per client) | `Policy.spec.schedule`: weekdays, start and end time, time zone | The policy applies only inside its window |
 | Upstream DNS servers | [`upstreams.groups`](/reference/configuration/#upstreams.groups) | Named groups; a Policy or a forward zone picks one |
@@ -40,7 +40,7 @@ hand.
 | DNS rewrites | records in a primary [`DNSZone`](/reference/crds/dnszone/) of your own (`kudurru records add`) | Per-policy answer rewrites (`Policy.spec.rewrites`) are planned for v0.2 |
 | Blocked services, safe search | the kudurru-owned catalogue of decision D60 | Not every build has it yet: check your version's changelog. Without it, list a service's domains in a BlockList |
 | Parental control, safe browsing web services | none | Use blocklists |
-| Query log and statistics | the dashboard; [`querylog.privacy`](/reference/configuration/#querylog.privacy) and `querylog.retention.*` | Per node, with rollups for long-term views |
+| Query log and statistics | the dashboard; [`querylog.privacy`](/reference/configuration/#querylog.privacy) and `querylog.retention.*` | Per node, with rollups for long-term views (reading them needs a [license key](/project/licensing/)) |
 | Encryption settings (DoT, DoH, DoQ) | `listeners.dot`, `doh`, `doq`, `doh3` with a certificate, or dnsdist in front | See [encrypted transports](/deploy/docker/#encrypted-transports) |
 | DHCP server | none | Keep DHCP on your router or a DHCP server |
 | DNSSEC | not yet | Validation is planned for v0.2 |
@@ -60,6 +60,11 @@ A list's `status.invalid` and the dashboard show how many rules were
 skipped, so a browser-oriented list is safe to load.
 
 ## An AdGuard Home setup as kudurru objects
+
+The `living-room-tv` Policy needs a [license key](/project/licensing/):
+without one, kudurru keeps `Policy/default` as the only policy and refuses
+`living-room-tv` with `license_required`. A free personal key covers a home
+network.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1

@@ -42,14 +42,14 @@ var (
 var metricNameRE = regexp.MustCompile(`"(kudurru_[a-z0-9_]*[a-z0-9])"`)
 
 // codeMetrics returns every kudurru_* metric name that appears as a string
-// literal in the non-test Go sources under internal/ and cmd/: the names the
+// literal in the non-test Go sources under internal/, ee/ and cmd/: the names the
 // binary registers with prometheus.New*Opts{Name: ...} or NewDesc.
 func codeMetrics(t testing.TB) map[string]bool {
 	t.Helper()
 	root := repoRoot(t)
 	metricsOnce.Do(func() {
 		metricsSet = map[string]bool{}
-		for _, dir := range []string{"internal", "cmd"} {
+		for _, dir := range []string{"internal", "ee", "cmd"} {
 			err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return err

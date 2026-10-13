@@ -164,6 +164,11 @@ invalid, error, cross_origin).
 
 ## Unblock requests
 
+The block page is free. The request form, and the **Requests** page that
+answers it, need a license key that includes requests: without one the page
+has no form, a post to it is refused and the API answers `402 license_required`
+([LICENSING.md](../../LICENSING.md)).
+
 The page offers a **Request access** form under the explanation, so a user can
 ask for the name instead of finding the administrator, and administrators get
 one place, the dashboard's **Requests** page, to fix what blocks people.

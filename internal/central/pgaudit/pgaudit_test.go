@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/audit/audittest"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
@@ -218,7 +219,7 @@ func TestStateSource(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	ctx := context.Background()
-	rec := audit.SQLite{Store: st}
+	rec := auditstore.SQLite{Store: st}
 	for i := range 3 {
 		if err := rec.Record(ctx, event(i, "")); err != nil {
 			t.Fatal(err)

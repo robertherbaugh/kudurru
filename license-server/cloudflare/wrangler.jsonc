@@ -1,0 +1,127 @@
+// The kudurru license portal on Cloudflare Containers (README.md in this
+// directory). The Worker (src/index.ts) hands every request to one Durable
+// Object, LicensePortal, which runs the portal's image as its container.
+//
+// Secrets: set each once with `bunx wrangler secret put <NAME>`. A deploy
+// fails while one listed in secrets.required below is missing.
+//   DATABASE_URL          postgres://license_portal_app:<password>@<host>:5432/<db>, the runtime
+//                         role (license-server/deploy/postgres-roles.sql). The direct endpoint
+//                         (PlanetScale: port 5432), not a transaction pooler (README.md, "Postgres");
+//                         ?sslmode=verify-full may stay in the URL
+//   OIDC_CLIENT_SECRET    the IdP's client secret for OIDC_CLIENT_ID
+//   LICENSE_SIGNING_KEY   the signing seed, licensegen format (std base64 of the 32-byte seed)
+//   SMTP_URL              smtps://api_token:<API token>@smtp.mx.cloudflare.net:465 (Cloudflare
+//                         Email Service) or any provider's smtps:// or smtp:// URL
+// Migrations run as a separate step with the owner role, from CI or a
+// workstation, before a release reaches the container (README.md,
+// "Releasing"), so the container never holds the owner's credentials:
+// MIGRATE_ON_START is false below and DATABASE_MIGRATE_URL is not set here.
+// A changed var or secret reaches the running container at the next cron
+// tick (within 5 minutes): the Durable Object restarts it (README.md,
+// "Changing configuration").
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kudurru-license-portal",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  // Worker, Durable Object and container logs in the dashboard (7 days).
+  "observability": { "enabled": true },
+
+  // The only way in is PUBLIC_URL: no *.workers.dev or preview URL, whose
+  // origin would fail the server's CSRF check and the OIDC redirect URI.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Going live: uncomment the route. The kudurru.io zone must be in the
+  // same Cloudflare account; the next `bun run deploy` creates the DNS
+  // record and the certificate for licenses.kudurru.io. Until then the
+  // Worker has no URL at all. Turn on "Always Use HTTPS" for the zone (the
+  // Worker also redirects http to https).
+  // "routes": [{ "pattern": "licenses.kudurru.io", "custom_domain": true }],
+
+  "secrets": {
+    "required": ["DATABASE_URL", "OIDC_CLIENT_SECRET", "LICENSE_SIGNING_KEY", "SMTP_URL"]
+  },
+
+  // The server's non-secret settings (license-server/README.md,
+  // "Configuration"). Every server variable set here or as a secret is
+  // passed to the container (src/env.ts); unset ones keep the server's
+  // defaults. Replace the placeholders before the first deploy.
+  "vars": {
+    "PUBLIC_URL": "https://licenses.kudurru.io",
+    "OIDC_ISSUER": "https://idp.example.org",
+    "OIDC_CLIENT_ID": "kudurru-license-portal",
+    "LICENSE_SIGNING_KID": "kudurru-2026-1",
+    "DATABASE_TLS": "verify-full",
+    "MIGRATE_ON_START": "false",
+    "PUBLIC_FORM_ORIGINS": "https://kudurru.io",
+    // The client address: the Worker writes X-Client-IP from
+    // CF-Connecting-IP, after deleting any copy the client sent. Safe
+    // because the container has no way in except through this Worker.
+    "CLIENT_IP_HEADER": "X-Client-IP",
+    "MAIL_FROM": "kudurru license portal <licenses@kudurru.io>",
+    // Who is mailed each request for a free personal key (README.md,
+    // "One-time setup", step 5). By default no personal key is signed until
+    // a license admin approves it, and every request mails each address of
+    // this comma list the details and a one-click approve link. Whoever
+    // reads the mailbox can approve, so name only mailboxes that license
+    // admins alone read. A placeholder, like OIDC_ISSUER: replace it before
+    // the first deploy, or remove it to mail every enabled license admin
+    // and superadmin with a verified email.
+    "ADMIN_NOTIFY_EMAIL": "approvers@example.org"
+    // Often set as well (see the server README for the full list):
+    // "OIDC_SCOPES": "openid profile email groups",
+    // "ROLE_SUPERADMIN_GROUPS": "license-superadmins",
+    // "OIDC_ADMIN_CLAIM_RULES": "hd=kudurru.io",
+    // "LICENSE_SIGNING_TRUSTED_SINCE": "v0.1.0"
+  },
+
+  // Every 5 minutes the Worker asks the container's /readyz: it keeps the
+  // container running (sleepAfter is 15 minutes, src/index.ts), so nobody
+  // waits for a cold start and the server's 10-minute cleanup keeps its
+  // schedule, and it applies changed vars and secrets. Remove the line to
+  // let the portal sleep when idle (README.md, "Costs").
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  "containers": [
+    {
+      "class_name": "LicensePortal",
+      // A pre-built image in your account's Cloudflare registry, pushed
+      // with `bunx wrangler containers push` (README.md, "Releasing"). Not
+      // ../Dockerfile: wrangler pipes the Dockerfile to `docker build -f -`,
+      // so BuildKit never reads license-server/Dockerfile.dockerignore (the
+      // allowlist), and the repository's .dockerignore excludes
+      // license-server/ entirely. Use a new tag for every release; a deploy
+      // with an unchanged image starts no rollout.
+      "image": "registry.cloudflare.com/<ACCOUNT_ID>/kudurru-license-server:0.1.0",
+      // 1/4 vCPU, 1 GiB memory, 4 GB disk. lite (1/16 vCPU, 256 MiB) makes
+      // every start (bundle load, migrations, TLS to Postgres) and every
+      // TLS handshake to the IdP and SMTP slow, and leaves little room
+      // for Bun's heap; always on, basic costs about 5 USD a month more.
+      "instance_type": "basic",
+      // One Durable Object name, so one container serves. The second slot
+      // is headroom in case a rollout or host move starts the replacement
+      // before the old instance has released its slot.
+      "max_instances": 2,
+      // Replace the instance in one step. The server drains for up to 20
+      // seconds on SIGTERM; requests in that window get the Worker's 503
+      // with Retry-After.
+      "rollout_step_percentage": 100,
+      "rollout_active_grace_period": 0,
+      // Start the container near Postgres: every request makes several
+      // queries. Regions: ENAM, WNAM, EEUR, WEUR, APAC, SAM, ME, OC, AFR.
+      // "constraints": { "regions": ["WEUR"] },
+      // No SSH: the container's environment holds the signing key. The
+      // image is distroless, so there would be no shell anyway.
+      "ssh": { "enabled": false }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "PORTAL", "class_name": "LicensePortal" }]
+  },
+  // The current declarative form (not the legacy "migrations" array; the
+  // two cannot be combined, and a Worker deployed with exports cannot go
+  // back).
+  "exports": {
+    "LicensePortal": { "type": "durable-object", "storage": "sqlite" }
+  }
+}

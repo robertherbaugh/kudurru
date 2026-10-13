@@ -3,6 +3,9 @@
 This chapter shows how to turn on the block page, and how to answer the
 users who ask for a blocked name.
 
+NOTE: The block page is free. The form that lets a user ask for a name, and
+the page **Requests**, need a license key. See [Chapter 13](13-license.md).
+
 **Before you start:**
 
 - You have the role Admin to set up the block page. You have the role

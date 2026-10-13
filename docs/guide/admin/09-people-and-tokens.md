@@ -21,6 +21,11 @@ by default.
 
 ## Roles
 
+NOTE: Roles other than the built-in administrator need a license key.
+Without a key, only the first-boot administrator has access, and role
+bindings give none. The audit log and single sign-on also need a key. See
+[Chapter 13](13-license.md).
+
 | Role | Purpose | Can do |
 |---|---|---|
 | Viewer | Look at the setup and the statistics | Read zones, records, lists, policies, groups, clients, settings and statistics |
@@ -193,6 +198,9 @@ If you cannot sign in, you can make a token on the host. See
 [Recover a lost admin password](11-maintenance.md#recover-a-lost-admin-password).
 
 ## Read the audit log
+
+NOTE: The audit log needs a license key. Without a key, the page asks for one.
+See [Chapter 13](13-license.md).
 
 kudurru writes an entry to the audit log for each change that comes
 through the API. The role Auditor or Admin can read it.
