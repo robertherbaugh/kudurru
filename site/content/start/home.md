@@ -69,7 +69,10 @@ pause that ends by itself.
 
 A `ClientGroup` names devices by address, CIDR, hostname pattern or DoT/DoH
 client ID; a `Policy` gives a group its lists, a schedule, a block response
-and its own upstreams. Devices in no group get `Policy/default`.
+and its own upstreams. Devices in no group get `Policy/default`. A policy
+other than `Policy/default` needs a [license key](/project/licensing/):
+without one, kudurru creates the group below but refuses the policy with
+`license_required`. A free personal key covers a home network.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1

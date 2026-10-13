@@ -2,6 +2,7 @@
 // license banner says. The server (internal/license) decides; this file only
 // words it. docs/architecture/licensing.md.
 import type { LicenseInfo } from '../api/types';
+import { formatExact } from './format';
 
 /** The edition's contact for free personal keys and commercial licenses. */
 export const LICENSE_CONTACT = 'hello@kudurru.io';
@@ -153,6 +154,35 @@ export function licenseNotice(l: LicenseInfo | undefined, now = Date.now()): Lic
     default:
       return null;
   }
+}
+
+/**
+ * The license's policy limit on the License page. `policyLimit` is 0 for no
+ * limit and 1 without a key (internal/license CommunityPolicies): the seeded
+ * Policy "default" fills it.
+ */
+export function policyLimitLabel(limit: number): string {
+  if (limit === 0) return 'no limit';
+  return limit === 1 ? '1 (the default policy)' : `up to ${formatExact(limit)}`;
+}
+
+/**
+ * What Policies says once no policy can be added: the license allows `limit`
+ * and `names` exist. The server counts every policy, so without a key a node
+ * normally keeps only the seeded "default"; one made by a file, or a key that
+ * lapsed, can leave more than the limit, and those keep working.
+ */
+export function policyLimitNotice(limit: number, names: string[]): { title: string; description: string } {
+  const keep = 'Existing policies keep working and stay editable. A license key lifts the limit.';
+  if (names.length > limit) {
+    const free = limit === 1 ? 'one policy' : `${formatExact(limit)} policies`;
+    return { title: 'Without a valid license key no new policy can be created', description: `The free limit is ${free}. ${keep}` };
+  }
+  if (limit === 1) {
+    const title = names[0] === 'default' ? 'Without a valid license key only the default policy is available' : 'Without a valid license key only one policy is available';
+    return { title, description: keep };
+  }
+  return { title: `Without a valid license key at most ${formatExact(limit)} policies are available`, description: keep };
 }
 
 /** A sentence for a feature that needs a key; `what` names the thing. */

@@ -26,7 +26,7 @@ the number of policies and the features below.
 |---|---|---|---|
 | DNS, blocking, zones, the block page, the dashboard | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | Up to 3 | As agreed |
-| Policies | 2 | No limit | No limit |
+| Policies | 1, the policy `default` | No limit | No limit |
 | Roles other than the built-in administrator | No | Yes | Yes |
 | Single sign-on | No | Yes | Yes |
 | The audit log and its export | No | Yes | Yes |
@@ -39,6 +39,13 @@ the number of policies and the features below.
 A node without a key has one administrator: the first-boot administrator.
 The bootstrap token and the admin socket also have full access. Role
 bindings stay in the configuration, but they give no access.
+
+A node without a key also has one policy: the policy `default` that kudurru
+makes at the first start. Change that policy to change the rules for your
+clients. kudurru does not make a second policy through the dashboard or the
+API without a key. If you delete the policy `default`, you can make it again
+with the same name. To make other policies, you must have a key. Policies
+that exist stay and keep working.
 
 ## Read the state of a node
 

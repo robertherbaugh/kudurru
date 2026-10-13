@@ -25,7 +25,7 @@ flowchart LR
     V --> S{"state"}
     S -->|"valid, in term"| A["active"]
     S -->|"expired < 30 days ago"| G["grace<br/>(works, warns)"]
-    S -->|"no key / expired / invalid"| C["community<br/>1 node, no ee/ features"]
+    S -->|"no key / expired / invalid"| C["community<br/>1 node, 1 policy,<br/>no ee/ features"]
     A --> D["Status: nodes, features"]
     G --> D
     C --> D
@@ -71,7 +71,7 @@ and a personal key does not widen the noncommercial terms.
 |---|---|---|
 | DNS, blocking, zones, the block page, the dashboard, short-term statistics, local users, API tokens | unchanged | unchanged |
 | Nodes | 1 | `nodes` of the key |
-| Policies | 2 (existing ones are never removed) | unlimited |
+| Policies | 1, the seeded `Policy default` (existing ones are never removed) | unlimited |
 | Roles beyond the built-in administrator (`ee/rbac`) | none: the engine allows the built-in administrator and peer nodes only; bindings stay configured and grant nothing, `GET /info/messages` says why | role bindings, scoped roles, Kubernetes RBAC |
 | OIDC sign-in and bearer ID tokens (`ee/oidc`) | off; the providers stay configured, `GET /info/messages` says why | on |
 | Audit trail (`ee/auditstore`) | the log lines are written; nothing is stored through the recorder, `GET /audit` answers 402 | stored, readable, exportable |
@@ -83,12 +83,15 @@ and a personal key does not widen the noncommercial terms.
 Two details matter for an operator:
 
 - **The node and policy limits narrow only configuration writes.** The policy
-  limit refuses to create a third `Policy` through the API (`402`) and never
-  touches an existing one. When the cluster has
-  more nodes than the key allows (`Membership.Peers`, cached for 10 seconds),
-  `POST`, `PUT`, `PATCH` and `DELETE` on `/api/v1` answer `402 license_required`,
-  except sign-in (`/auth/*`), `/dns/query`, `/dns/blocking`, `/cache/flush`
-  and `/queries/*`. Reads always work. If membership cannot be read, the
+  limit refuses to create a second `Policy` through the API (`402`) and never
+  touches an existing one. `checkPolicyLimit` counts every `Policy` in the
+  store, so on a node without a key the bootstrap's `Policy default` fills the
+  limit, and without a key the only `Policy` the API creates is
+  `default/default`: deleting it lets it be made again, and nothing else.
+  When the cluster has more nodes than the key allows (`Membership.Peers`,
+  cached for 10 seconds), `POST`, `PUT`, `PATCH` and `DELETE` on `/api/v1`
+  answer `402 license_required`, except sign-in (`/auth/*`), `/dns/query`,
+  `/dns/blocking`, `/cache/flush` and `/queries/*`. Reads always work. If membership cannot be read, the
   gate lets the request through: an outage never blocks an operator. Changes
   made outside the API (file-managed objects, `kubectl`) are not gated; the
   limit is a management-plane check, backed by the license terms.
@@ -113,8 +116,9 @@ Two details matter for an operator:
 - **The policy limit is best effort.** `writeObject` serializes the check with
   the create, so two concurrent creates through one API cannot both pass, but
   policies made by `kubectl` or GitOps (kube driver), object files, the
-  bootstrap or another replica's API at the same moment are not counted. It
-  guards the management plane and nothing else.
+  bootstrap or another replica's API at the same moment are not stopped (they
+  are counted once they exist). It guards the management plane and nothing
+  else.
 
 ## Operating it
 

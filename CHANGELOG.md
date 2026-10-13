@@ -15,10 +15,11 @@ All notable changes to kudurru are listed here. The format follows
   so every tag, release, image and chart carries the new license; commits
   before the change keep the old one in the history.
 - **License keys** (D163): a free personal key (3 nodes) or a business key
-  unlocks more than one node and the features that moved to [`ee/`](ee/):
-  OIDC sign-in, the dnsdist and keepalived edge, and the integrations. Keys are
-  verified offline; with no key kudurru runs one node, and DNS answering never
-  depends on a key. New: `kudurru license status|verify`, `--license-key`,
+  unlocks more than one node, more than one policy and the features that
+  moved to [`ee/`](ee/): OIDC sign-in, the dnsdist and keepalived edge, and
+  the integrations. Keys are verified offline; with no key kudurru runs one
+  node, and DNS answering never depends on a key. New:
+  `kudurru license status|verify`, `--license-key`,
   `KUDURRU_LICENSE_KEY(_FILE)`, `GET /api/v1/license`, `402 license_required`
   for configuration writes over the node limit, `kudurru_license_*` metrics,
   Helm `license.*` values and the Compose `KUDURRU_LICENSE_KEY` variable.
@@ -26,7 +27,10 @@ All notable changes to kudurru are listed here. The format follows
   bindings, scoped roles, Kubernetes RBAC), the audit trail (storage, API and
   export; the audit log lines stay), statistics older than 24 hours (the
   rollups are still collected), and unblock requests (the block page stays
-  free). Without a key at most 2 policies can be created through the API.
+  free). Without a key a node has one policy, the seeded default: the API
+  creates no policy but `default` (`402 license_required`), so a deleted
+  default can be made again under its name and nothing else; policies that
+  exist are never removed.
 - Code moved: `internal/edge` to `ee/edge`, `internal/auth/oidc` to
   `ee/oidc`, `internal/integration` to `ee/integration`, the binding source,
   SubjectAccessReview authorizer and ClusterRole generator to `ee/rbac`, and

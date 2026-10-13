@@ -39,10 +39,10 @@ The CRDs come from the kudurru-crds chart; install it first if you have not:
 {{- if and (not .Values.license.key) (not .Values.license.existingSecret) }}
 
 5. License. No license key is configured, so kudurru runs with the free
-   license: one node, two policies, and none of the licensed features (roles
-   beyond the built-in administrator, OIDC, the audit trail, long-term
-   statistics, unblock requests, the dnsdist and keepalived edge,
-   integrations). DNS answering is not affected.
+   license: one node, one policy (the seeded default) and none of the
+   licensed features (roles beyond the built-in administrator, OIDC, the
+   audit trail, long-term statistics, unblock requests, the dnsdist and
+   keepalived edge, integrations). DNS answering is not affected.
 {{- if gt (int .Values.replicaCount) 1 }}
    replicaCount is {{ .Values.replicaCount }}, which is over the limit of one node:
    changes through the API and the dashboard answer 402 license_required until

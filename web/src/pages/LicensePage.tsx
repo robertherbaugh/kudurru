@@ -15,7 +15,7 @@ import { useLicense } from '../api/hooks';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatExact } from '../lib/format';
-import { FEATURES, LICENSE_CONTACT, LICENSE_PAGE_URL, LICENSE_TEXT_URL, LICENSING_URL, planLabel, stateLabel, stateTone, type FeatureInfo } from '../lib/license';
+import { FEATURES, LICENSE_CONTACT, LICENSE_PAGE_URL, LICENSE_TEXT_URL, LICENSING_URL, planLabel, policyLimitLabel, stateLabel, stateTone, type FeatureInfo } from '../lib/license';
 
 type Row = FeatureInfo & { included: boolean } & Record<string, unknown>;
 
@@ -59,7 +59,7 @@ export default function LicensePage() {
       <PageHeader
         title="License"
         meta={l ? <Badge variant={stateTone(l.state)} label={stateLabel(l.state)} /> : null}
-        description="kudurru is source-available: personal use is free and a business needs an agreement. A key unlocks more nodes and the features below. DNS answering never depends on a key."
+        description="kudurru is source-available: personal use is free and a business needs an agreement. A key unlocks more nodes, more policies and the features below. DNS answering never depends on a key."
       />
       {q.error ? <ErrorBanner error={q.error} /> : null}
       {q.isLoading ? <Loading /> : null}
@@ -96,7 +96,7 @@ export default function LicensePage() {
                     {l.overLimit ? ' (over the limit: configuration changes are refused)' : ''}
                   </Text>
                 </MetadataListItem>
-                <MetadataListItem label="Policies">{l.policyLimit === 0 ? 'no limit' : `up to ${formatExact(l.policyLimit)}`}</MetadataListItem>
+                <MetadataListItem label="Policies">{policyLimitLabel(l.policyLimit)}</MetadataListItem>
               </MetadataList>
               <Text type="supporting" as="p">
                 Limits only narrow configuration changes. Queries are answered the same with any key, with none, and with an expired one.

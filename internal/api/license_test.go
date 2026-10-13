@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -171,26 +173,48 @@ func TestLicensedFeaturesAnswer402(t *testing.T) {
 	}
 }
 
+// seedDefaults writes the first-boot objects, Policy "default" among them, the
+// way a node's first start does: straight to the store, past the API's gate.
+func seedDefaults(t *testing.T, st store.Store) {
+	t.Helper()
+	res, err := bootstrap.Seed(context.Background(), st, bootstrap.Options{Logger: slog.New(slog.DiscardHandler)})
+	if err != nil || !res.FirstBoot {
+		t.Fatalf("seed: %+v, %v", res, err)
+	}
+}
+
+func createPolicy(h *harness, name string) response {
+	return h.do(http.MethodPut, "/api/v1/objects/policies/default/"+name, "admin", policyDoc(name))
+}
+
+// Without a key the seeded Policy "default" is the one policy there may be:
+// the API refuses every other create, and the default stays editable.
 func TestPolicyLimit(t *testing.T) {
-	create := func(h *harness, name string) response {
-		return h.do(http.MethodPut, "/api/v1/objects/policies/default/"+name, "admin", policyDoc(name))
-	}
 	h := newHarness(t, func(o *Options) { o.License = licenseManager(t, 0) })
-	create(h, "one").want(http.StatusCreated)
-	create(h, "two").want(http.StatusCreated)
-	r := create(h, "three")
+	seedDefaults(t, h.st)
+	r := createPolicy(h, "kids")
 	r.want(http.StatusPaymentRequired)
-	if r.errKey() != KeyLicense || !strings.Contains(r.Body.String(), "allows 2") {
-		t.Errorf("limit refusal: %s", r.Body.String())
+	if body := r.Body.String(); r.errKey() != KeyLicense || !strings.Contains(body, "only the policy default/default can be created") || !strings.Contains(body, "only the default policy") {
+		t.Errorf("refusal of another policy: %s", body)
 	}
-	// Existing policies stay editable and deletable; deleting frees a slot.
-	create(h, "two").want(http.StatusOK)
-	h.do(http.MethodDelete, "/api/v1/objects/policies/default/one", "admin", nil).want(http.StatusNoContent)
-	create(h, "three").want(http.StatusCreated)
-	// A key lifts the limit.
+	// The default is not a create: it stays editable.
+	createPolicy(h, "default").want(http.StatusOK)
+	// Without a key only the default policy can be created, never another
+	// name: with the default deleted, "kids" is still refused, the default
+	// can be made again, and then nothing else.
+	h.do(http.MethodDelete, "/api/v1/objects/policies/default/default", "admin", nil).want(http.StatusNoContent)
+	createPolicy(h, "kids").want(http.StatusPaymentRequired)
+	createPolicy(h, "default").want(http.StatusCreated)
+	createPolicy(h, "guests").want(http.StatusPaymentRequired)
+	// The name alone is not enough: default in another namespace is refused.
+	other := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "Policy",
+		"metadata": map[string]any{"name": "default", "namespace": "other"}, "spec": map[string]any{"clientGroupRefs": []any{"default"}}}
+	h.do(http.MethodPut, "/api/v1/objects/policies/other/default", "admin", other).want(http.StatusPaymentRequired)
+	// A key lifts the limit, whatever the names.
 	k := newHarness(t, func(o *Options) { o.License = licenseManager(t, 3) })
-	for _, n := range []string{"a", "b", "c", "d"} {
-		create(k, n).want(http.StatusCreated)
+	seedDefaults(t, k.st)
+	for _, n := range []string{"a", "b", "c"} {
+		createPolicy(k, n).want(http.StatusCreated)
 	}
 }
 
@@ -271,35 +295,54 @@ func (s slowList) List(ctx context.Context, kind store.Kind, opts store.ListOpti
 	return l, err
 }
 
-// Two creates that race at the limit cannot both pass: the check and the
-// create are one step.
+// Creates that race at the limit cannot both pass: the check and the create
+// are one step. With the seeded default in place every racer is refused;
+// with it deleted exactly one wins the free slot.
 func TestPolicyLimitHoldsUnderConcurrentCreates(t *testing.T) {
 	h := newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.Store = slowList{o.Store} })
-	h.do(http.MethodPut, "/api/v1/objects/policies/default/first", "admin", policyDoc("first")).want(http.StatusCreated)
+	seedDefaults(t, h.st)
 
-	var created, refused atomic.Int32
-	var wg sync.WaitGroup
-	for i := range 12 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			name := fmt.Sprintf("racer-%d", i)
-			switch r := h.do(http.MethodPut, "/api/v1/objects/policies/default/"+name, "admin", policyDoc(name)); r.Code {
-			case http.StatusCreated:
-				created.Add(1)
-			case http.StatusPaymentRequired:
-				refused.Add(1)
-			default:
-				t.Errorf("PUT %s: %d %s", name, r.Code, r.Body.String())
-			}
-		}()
+	race := func(round string) (created, refused int32) {
+		var c, r atomic.Int32
+		var wg sync.WaitGroup
+		for i := range 12 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				switch resp := createPolicy(h, fmt.Sprintf("%s-%d", round, i)); resp.Code {
+				case http.StatusCreated:
+					c.Add(1)
+				case http.StatusPaymentRequired:
+					r.Add(1)
+				default:
+					t.Errorf("PUT %s-%d: %d %s", round, i, resp.Code, resp.Body.String())
+				}
+			}()
+		}
+		wg.Wait()
+		return c.Load(), r.Load()
 	}
-	wg.Wait()
-	if created.Load() != 1 || refused.Load() != 11 {
-		t.Errorf("12 racing creates at 1 of 2: %d created, %d refused; want 1 and 11", created.Load(), refused.Load())
+	policies := func() []any {
+		list := h.do(http.MethodGet, "/api/v1/objects/policies", "admin", nil).want(http.StatusOK).m()
+		items, _ := list["items"].([]any)
+		return items
 	}
-	list := h.do(http.MethodGet, "/api/v1/objects/policies", "admin", nil).want(http.StatusOK).m()
-	if items, _ := list["items"].([]any); len(items) != 2 {
-		t.Errorf("%d policies exist, want exactly the limit of 2", len(items))
+
+	if c, r := race("seeded"); c != 0 || r != 12 {
+		t.Errorf("12 racing creates beside the seeded default: %d created, %d refused; want 0 and 12", c, r)
+	}
+	if n := len(policies()); n != 1 {
+		t.Errorf("%d policies exist, want only the seeded default", n)
+	}
+
+	// With the default deleted only the default may be created again, so
+	// racers with other names are all refused: the name rule, not the race,
+	// keeps the store at one policy.
+	h.do(http.MethodDelete, "/api/v1/objects/policies/default/default", "admin", nil).want(http.StatusNoContent)
+	if c, r := race("racer"); c != 0 || r != 12 {
+		t.Errorf("12 racing creates of other names with no policy: %d created, %d refused; want 0 and 12", c, r)
+	}
+	if n := len(policies()); n != 0 {
+		t.Errorf("%d policies exist, want none", n)
 	}
 }

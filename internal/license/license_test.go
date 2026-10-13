@@ -117,7 +117,7 @@ func TestCommunityWithoutKey(t *testing.T) {
 	f := newFixture(t)
 	for name, m := range map[string]*Manager{"manager": f.manager(t, t0), "nil": nil, "zero": {}} {
 		s := m.Status()
-		if s.State != StateCommunity || s.Nodes != CommunityNodes || len(s.Features) != 0 {
+		if s.State != StateCommunity || s.Nodes != CommunityNodes || len(s.Features) != 0 || s.PolicyLimit != 1 {
 			t.Errorf("%s: status = %+v", name, s)
 		}
 		if err := m.Require(FeatureOIDC); !errors.Is(err, ErrFeature) {
@@ -129,6 +129,26 @@ func TestCommunityWithoutKey(t *testing.T) {
 		if err := m.CheckNodes(2); !errors.Is(err, ErrNodeLimit) {
 			t.Errorf("%s: CheckNodes(2) = %v", name, err)
 		}
+		// One policy, the seeded default: none can be added beside it.
+		if err := m.CheckPolicies(0); err != nil {
+			t.Errorf("%s: the first policy must be free: %v", name, err)
+		}
+		if err := m.CheckPolicies(1); !errors.Is(err, ErrPolicyLimit) || !strings.Contains(err.Error(), "1 policy exists") {
+			t.Errorf("%s: CheckPolicies(1) = %v", name, err)
+		}
+		// And only the default policy can be created: never another name or
+		// namespace, even with none left.
+		if err := m.CheckPolicyCreate(CommunityPolicyNamespace, CommunityPolicyName, 0); err != nil {
+			t.Errorf("%s: creating the default with none left must be free: %v", name, err)
+		}
+		if err := m.CheckPolicyCreate(CommunityPolicyNamespace, CommunityPolicyName, 1); !errors.Is(err, ErrPolicyLimit) {
+			t.Errorf("%s: a second default = %v", name, err)
+		}
+		for _, other := range [][2]string{{"default", "kids"}, {"other", "default"}} {
+			if err := m.CheckPolicyCreate(other[0], other[1], 0); !errors.Is(err, ErrPolicyLimit) || !strings.Contains(err.Error(), "only the policy default/default") {
+				t.Errorf("%s: CheckPolicyCreate(%s/%s, 0) = %v", name, other[0], other[1], err)
+			}
+		}
 	}
 }
 
@@ -137,17 +157,18 @@ func TestLifecycle(t *testing.T) {
 	key := f.key(t, nil)
 	exp := time.Unix(Claims{ExpiresAt: t0.Add(365 * 24 * time.Hour).Unix()}.ExpiresAt, 0)
 	steps := []struct {
-		name  string
-		now   time.Time
-		state State
-		nodes int
-		feat  bool
+		name     string
+		now      time.Time
+		state    State
+		nodes    int
+		feat     bool
+		policies int
 	}{
-		{"active", t0, StateActive, 3, true},
-		{"last second", exp.Add(-time.Second), StateActive, 3, true},
-		{"just expired: grace", exp, StateGrace, 3, true},
-		{"end of grace", exp.Add(Grace - time.Second), StateGrace, 3, true},
-		{"after grace", exp.Add(Grace), StateExpired, 1, false},
+		{"active", t0, StateActive, 3, true, 0},
+		{"last second", exp.Add(-time.Second), StateActive, 3, true, 0},
+		{"just expired: grace", exp, StateGrace, 3, true, 0},
+		{"end of grace", exp.Add(Grace - time.Second), StateGrace, 3, true, 0},
+		{"after grace", exp.Add(Grace), StateExpired, 1, false, 1},
 	}
 	for _, st := range steps {
 		m := f.manager(t, st.now)
@@ -155,8 +176,8 @@ func TestLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := m.Status()
-		if s.State != st.state || s.Nodes != st.nodes || m.Allows(FeatureEdge) != st.feat {
-			t.Errorf("%s: state=%s nodes=%d edge=%v", st.name, s.State, s.Nodes, m.Allows(FeatureEdge))
+		if s.State != st.state || s.Nodes != st.nodes || m.Allows(FeatureEdge) != st.feat || s.PolicyLimit != st.policies {
+			t.Errorf("%s: state=%s nodes=%d edge=%v policyLimit=%d", st.name, s.State, s.Nodes, m.Allows(FeatureEdge), s.PolicyLimit)
 		}
 	}
 }
@@ -207,7 +228,7 @@ func TestNotYetValid(t *testing.T) {
 	if err := m.Set(f.key(t, func(c *Claims) { c.NotBefore = t0.Add(time.Hour).Unix() }), "test"); err != nil {
 		t.Fatal(err)
 	}
-	if s := m.Status(); s.State != StateInvalid || s.Nodes != 1 || !strings.Contains(s.Error, "not valid before") {
+	if s := m.Status(); s.State != StateInvalid || s.Nodes != 1 || s.PolicyLimit != 1 || !strings.Contains(s.Error, "not valid before") {
 		t.Errorf("status = %+v", s)
 	}
 }

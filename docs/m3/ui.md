@@ -121,8 +121,10 @@ sent, so the server answers no 402 and the browser logs no failed request
 the Requests pages and the unblock lookups of the query log and the sidebar
 badge (`requests`) and the Audit tab (`audit`) work this way; the Identity tab
 shows a warning on role bindings (`rbac`) and identity providers (`oidc`)
-that are configured but switched off; Policies disables "New policy" and
-says so at the node's `policyLimit`. While the license loads, or when it
+that are configured but switched off; Policies and a group's page disable
+"New policy" at the node's `policyLimit` (1 without a valid key, which the
+seeded `default` fills) and say why (`usePolicyLimit`), and the policy wizard
+opened by a link shows the same notice. While the license loads, or when it
 cannot be read (no `settings.read`), a feature counts as on and the server
 decides. The mock API (`mocks/`) serves a personal key with every feature;
 a test switches it with `mockDB().license = communityLicense()`.
@@ -130,7 +132,8 @@ a test switches it with `mockDB().license = communityLicense()`.
 The Playwright suite runs its node with a signed test key that only a binary
 built with `-tags licensetest` trusts (`make web-e2e`;
 `internal/license/testkey.go`, `testdata/e2e-license.key`), and `license.spec.ts`
-starts a second node without a key to check the locked pages and the 402.
+starts a second node without a key to check the locked pages, the policy
+limit (the seeded `default` is that node's only policy) and the 402.
 
 ## Pages, wizards and dialogs
 
@@ -217,8 +220,9 @@ building blocks.
   "Reset to default" (`null` in the merge patch). A 400 names the failing
   parts of a value inline (`error.fields`). Keys without metadata (servers
   before C1) fall back to a control from the bare type.
-- **Read-only objects** (managedBy file, bootstrap or Kubernetes) show the
-  same page with the controls disabled and the reason (`readOnlyReason`).
+- **Read-only objects** (managedBy file, Kubernetes, an integration or
+  system; the bootstrap's defaults stay editable) show the same page with the
+  controls disabled and the reason (`readOnlyReason`).
 
 ## Wiring for serve (integrator)
 

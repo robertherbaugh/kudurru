@@ -94,8 +94,10 @@ describe.skipIf(!GO)('Go node oracle', () => {
         expect(r.licensee).toBe(c.terms.licensee);
         expect(r.plan).toBe(c.terms.plan);
         if (r.state === 'expired') {
+          // The free limits: one node, one policy (the seeded default), no feature.
           expect(r.nodes).toBe(1);
           expect(r.features).toEqual([]);
+          expect(r.policyLimit).toBe(1);
         } else {
           expect(r.nodes).toBe(c.terms.nodes);
           expect([...r.features].sort()).toEqual([...c.features].sort());

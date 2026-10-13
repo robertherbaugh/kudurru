@@ -60,8 +60,9 @@ kudurru is source-available (see [LICENSING.md](../../LICENSING.md)). Without a
 key one node runs with the community license: DNS, blocking, zones and the
 dashboard work, but OIDC sign-in, the dnsdist and keepalived edge and the
 integrations (the `ee/` features) are off, and a cluster of more than one
-node cannot change its configuration through the API. A free personal key
-(3 nodes, non-commercial) or a business key lifts that. Put the key in a Secret
+node cannot change its configuration through the API. Without a key the API
+allows one policy, the seeded default. A free personal key (3 nodes,
+non-commercial) or a business key lifts these limits. Put the key in a Secret
 and name it, so the key stays out of values files:
 
 ```sh

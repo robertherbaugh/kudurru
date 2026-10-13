@@ -692,9 +692,9 @@ Flags:
 
 ## kudurru license
 
-kudurru is source-available under the PolyForm Noncommercial License 1.0.0 (LICENSE). Running it for personal, non-commercial use is free; use by a business needs an agreement. A license key unlocks more than one node and the features under ee/ (OIDC single sign-on, the dnsdist and keepalived edge, the integrations). A free personal key covers 3 nodes. See https://kudurru.io/license.
+kudurru is source-available under the PolyForm Noncommercial License 1.0.0 (LICENSE). Running it for personal, non-commercial use is free; use by a business needs an agreement. A license key unlocks more than one node, more than one policy and the features under ee/ (OIDC single sign-on, the dnsdist and keepalived edge, the integrations). A free personal key covers 3 nodes. See https://kudurru.io/license.
 
-The key is read from --license-key, KUDURRU\_LICENSE\_KEY, the file KUDURRU\_LICENSE\_KEY\_FILE names, or &lt;node.dataDir&gt;/license.key, in that order. Licensing never affects DNS answering: without a key the node serves DNS as usual and only the node limit and the licensed features apply.
+The key is read from --license-key, KUDURRU\_LICENSE\_KEY, the file KUDURRU\_LICENSE\_KEY\_FILE names, or &lt;node.dataDir&gt;/license.key, in that order. Licensing never affects DNS answering: without a key the node serves DNS as usual and only the node limit, the policy limit and the licensed features apply.
 
 ### kudurru license status
 

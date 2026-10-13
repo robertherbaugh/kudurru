@@ -20,7 +20,7 @@ const KeyLicense = "license_required"
 type LicenseSource interface {
 	Status() license.Status
 	CheckNodes(n int) error
-	CheckPolicies(n int) error
+	CheckPolicyCreate(namespace, name string, n int) error
 }
 
 // LicenseInfo is GET /license: the effective license of this node and how
@@ -154,17 +154,20 @@ func (s *Server) licenseMW(next http.Handler) http.Handler {
 	})
 }
 
-// checkPolicyLimit refuses to create a Policy beyond the license's limit
-// (two without a key). Existing policies are never touched: a lapsed key
-// only stops new ones.
+// checkPolicyLimit refuses to create a Policy the license does not allow.
+// Without a valid key only the default policy exists: the API creates no
+// Policy but default/default (the one the bootstrap seeds), and that only
+// while no Policy exists, so deleting it lets it be made again and nothing
+// else. Every Policy in the store counts, whoever made it. Existing policies
+// are never touched: a lapsed key only stops new ones.
 //
 // The limit is best effort, by design: it guards the management plane (the
 // API of this process; writeObject serializes the check with the create so two
 // concurrent creates cannot both pass) and never the data path. Policies made
-// another way are not counted against it: through kubectl or GitOps in the
-// kube driver, in object files, by the bootstrap, or through another replica's
-// API at the same moment. LICENSING.md says so.
-func (s *Server) checkPolicyLimit(ctx context.Context) error {
+// another way are not stopped by it (they count once they exist): through
+// kubectl or GitOps in the kube driver, in object files, by the bootstrap, or
+// through another replica's API at the same moment. LICENSING.md says so.
+func (s *Server) checkPolicyLimit(ctx context.Context, namespace, name string) error {
 	if s.opts.License == nil || s.opts.License.Status().PolicyLimit == 0 {
 		return nil
 	}
@@ -179,9 +182,9 @@ func (s *Server) checkPolicyLimit(ctx context.Context) error {
 			break
 		}
 	}
-	if err := s.opts.License.CheckPolicies(n); err != nil {
+	if err := s.opts.License.CheckPolicyCreate(namespace, name, n); err != nil {
 		return newError(http.StatusPaymentRequired, KeyLicense, err.Error(),
-			"delete a policy, or add a license key (a free personal key lifts the limit; see https://kudurru.io/license); existing policies keep working")
+			"without a valid license key only the default policy (default/default) exists: change it instead, or add a license key (a free personal key lifts the limit; see https://kudurru.io/license); existing policies keep working")
 	}
 	return nil
 }

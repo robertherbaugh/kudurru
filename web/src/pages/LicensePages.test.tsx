@@ -9,6 +9,7 @@ import { mockDB } from '../mocks/handlers';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AccessPage from './AccessPage';
+import GroupDetailPage from './GroupDetailPage';
 import LicensePage from './LicensePage';
 import LongTermPage from './LongTermPage';
 import PoliciesPage from './PoliciesPage';
@@ -45,7 +46,7 @@ describe('LicensePage', () => {
     expect(await screen.findByText('No key', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByTestId('license-nodes')).toHaveTextContent('2 of 1');
     expect(screen.getByTestId('license-nodes')).toHaveTextContent('over the limit');
-    expect(screen.getByText('up to 2')).toBeInTheDocument();
+    expect(screen.getByText('1 (the default policy)')).toBeInTheDocument();
     for (const f of ['rbac', 'oidc', 'audit', 'longterm', 'requests', 'edge', 'integrations']) {
       expect(screen.getByTestId(`feature-${f}`)).toHaveTextContent('Needs a key');
     }
@@ -134,12 +135,49 @@ describe('pages behind a key', () => {
     expect(await screen.findByTestId('oidc-locked')).toHaveTextContent('Single sign-on needs a license key');
   });
 
-  it('Policies stops at the free limit: the notice, and "New policy" disabled', async () => {
+  it('Policies without a key keeps the default policy only: the notice, and "New policy" disabled', async () => {
     mockDB().license = communityLicense();
-    expect(mockDB().policies.length).toBeGreaterThanOrEqual(2);
+    mockDB().policies = mockDB().policies.filter((p) => p.metadata.name === 'default');
     renderWithApp(<PoliciesPage />, { route: '/policies' });
-    expect(await screen.findByTestId('policy-limit')).toHaveTextContent('The free limit of 2 policies is reached');
+    const notice = await screen.findByTestId('policy-limit');
+    expect(notice).toHaveTextContent('Without a valid license key only the default policy is available');
+    expect(notice).toHaveTextContent('Existing policies keep working and stay editable');
     expect(screen.getByRole('button', { name: 'New policy' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('Policies without a key and more policies than the limit: they stay, none can be added', async () => {
+    mockDB().license = communityLicense();
+    expect(mockDB().policies.length).toBeGreaterThan(1);
+    renderWithApp(<PoliciesPage />, { route: '/policies' });
+    const notice = await screen.findByTestId('policy-limit');
+    expect(notice).toHaveTextContent('Without a valid license key no new policy can be created');
+    expect(notice).toHaveTextContent('The free limit is one policy.');
+    expect(screen.getByRole('button', { name: 'New policy' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('without a key and no policy left, only the default policy can be created: the wizard fixes its name', async () => {
+    mockDB().license = communityLicense();
+    mockDB().policies = [];
+    renderWithApp(<PoliciesPage />, { route: '/policies' });
+    const button = await screen.findByRole('button', { name: 'New policy' });
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(button);
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    const name = await within(dialog).findByRole('textbox', { name: /^Name/ });
+    expect(name).toHaveValue('default');
+    expect(name).toHaveAttribute('readonly');
+    expect(within(dialog).getByText('Without a license key only the default policy can be created.')).toBeInTheDocument();
+  });
+
+  it('without a key a group page cannot start a policy, and a link to the wizard says why', async () => {
+    mockDB().license = communityLicense();
+    mockDB().policies = mockDB().policies.filter((p) => p.metadata.name === 'default');
+    const group = renderWithApp(<GroupDetailPage params={{ ns: 'default', name: 'kids' }} />, { route: '/groups/default/kids' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New policy' })).toHaveAttribute('aria-disabled', 'true'));
+    group.unmount();
+    renderWithApp(<PoliciesPage />, { route: '/policies?new=1' });
+    const dialog = await screen.findByRole('dialog', { name: 'New policy' });
+    expect(await within(dialog).findByTestId('policy-limit-wizard')).toHaveTextContent('Without a valid license key only the default policy is available');
   });
 
   it('Policies has no limit with a key', async () => {

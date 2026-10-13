@@ -109,7 +109,8 @@ Use these tools in this order:
 | A setting does not take effect. | The setting needs a restart. | Look for the label `restart`. Restart the node. |
 | A setting cannot be changed in the dashboard. | The setting is `host only`, or an environment variable sets it. | Change it in `kudurru.yaml` or in the environment of the host. |
 | A page says that a feature needs a license key. | The node has no key, or the key does not include the feature. | Open **License**. Put a key on the node (Chapter 13). |
-| A change gives the error `license_required`. | The cluster has more nodes than the key allows, or you made a third policy without a key. | Open **License**. Remove nodes or policies, or put a key on the node (Chapter 13). DNS is not affected. |
+| A change gives the error `license_required`. | The cluster has more nodes than the key allows, or you made a second policy without a key. | Open **License**. Remove nodes, or put a key on the node (Chapter 13). Without a key, change the policy `default` and do not make a new policy. DNS is not affected. |
+| The button **New policy** is not available. | The node has no key. Without a key, a node has one policy: the policy `default`. | Change the policy `default`, or put a key on the node (Chapter 13). |
 | The dnsdist or the keepalived container does not start for the first time. The log says that the edge needs a license key. | The container has no key that includes the edge. | Set `KUDURRU_LICENSE_KEY` in the container (Chapter 13). |
 | A statistics page says that the result is partial. | A node did not answer. | Open **Nodes** and find the node. Check its health. |
 | The node shows **readiness unknown**. | The node is not reachable from the node that you use. | Check the network between the nodes (port 8082). |

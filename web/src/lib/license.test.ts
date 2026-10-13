@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LicenseInfo } from '../api/types';
 import { communityLicense } from '../mocks/fixtures';
-import { daysUntil, FEATURES, featureLabel, licenseNotice, planLabel, stateLabel, stateTone } from './license';
+import { daysUntil, FEATURES, featureLabel, licenseNotice, planLabel, policyLimitLabel, policyLimitNotice, stateLabel, stateTone } from './license';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
 const day = (n: number) => new Date(NOW + n * 86_400_000).toISOString();
@@ -64,6 +64,21 @@ describe('license wording', () => {
     expect(stateTone('active')).toBe('success');
     expect(stateTone('community')).toBe('neutral');
     expect(stateTone('invalid')).toBe('error');
+  });
+
+  it('words the policy limit in the singular without a key', () => {
+    expect(communityLicense().policyLimit).toBe(1);
+    expect(policyLimitLabel(0)).toBe('no limit');
+    expect(policyLimitLabel(1)).toBe('1 (the default policy)');
+    expect(policyLimitLabel(5)).toBe('up to 5');
+    expect(policyLimitNotice(1, ['default']).title).toBe('Without a valid license key only the default policy is available');
+    expect(policyLimitNotice(1, ['kids']).title).toBe('Without a valid license key only one policy is available');
+    const over = policyLimitNotice(1, ['default', 'kids', 'guests']);
+    expect(over.title).toBe('Without a valid license key no new policy can be created');
+    expect(over.description).toContain('The free limit is one policy.');
+    expect(policyLimitNotice(3, ['a', 'b', 'c', 'd']).description).toContain('The free limit is 3 policies.');
+    expect(policyLimitNotice(3, ['a', 'b', 'c']).title).toBe('Without a valid license key at most 3 policies are available');
+    for (const n of [policyLimitNotice(1, ['default']), over]) expect(`${n.title} ${n.description}`).not.toMatch(/\b1 policies\b/);
   });
 
   it('counts whole days', () => {

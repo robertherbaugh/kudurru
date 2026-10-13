@@ -2,10 +2,11 @@
 // builds) the binary, writes a node configuration with free loopback
 // ports under a temporary directory (sqlite store, own data directory,
 // admin socket, encryption key and admin password files, objects.d with a
-// primary zone, a block list and a policy), starts the process, waits for
-// GET /healthz/ready on the ops listener and stops it again (the server
-// log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps the temporary
-// directory). The Go side of the same idea is internal/testutil/kudurrutest.
+// primary zone, a block list and, on a node with a key, a policy), starts
+// the process, waits for GET /healthz/ready on the ops listener and stops
+// it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
+// the temporary directory). The Go side of the same idea is
+// internal/testutil/kudurrutest.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -53,7 +54,10 @@ spec:
   sources:
     - inline: ["||${BLOCKLIST.blocked}^", "${BLOCKLIST.alsoBlocked}"]
       format: adblock
----
+`;
+
+/** The policy of the run, beside the seeded default (not on a node without a key). */
+const POLICY = `---
 apiVersion: kudurru.io/v1alpha1
 kind: Policy
 metadata: { name: e2e-blocking, namespace: default }
@@ -115,7 +119,11 @@ export interface ServerOptions {
   adminPassword?: string;
   /** Node name. */
   node?: string;
-  /** Run without a license key (the community license). */
+  /**
+   * Run without a license key (the community license). The node starts like
+   * a fresh install: the seeded default is its only policy, so it is at the
+   * free limit of one policy.
+   */
   community?: boolean;
 }
 
@@ -142,7 +150,7 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
   const objectsDir = path.join(dir, 'objects.d');
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o750 });
   fs.mkdirSync(objectsDir, { recursive: true });
-  fs.writeFileSync(path.join(objectsDir, 'e2e.yaml'), OBJECTS);
+  fs.writeFileSync(path.join(objectsDir, 'e2e.yaml'), opts.community ? OBJECTS : OBJECTS + POLICY);
 
   const keyFile = path.join(dir, 'encryption.key');
   fs.writeFileSync(keyFile, randomBytes(32).toString('base64'), { mode: 0o600 });

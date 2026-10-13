@@ -72,9 +72,9 @@ export interface MockDB {
 /** Every licensed feature (internal/license Features). */
 export const ALL_FEATURES = ['oidc', 'edge', 'integrations', 'rbac', 'audit', 'longterm', 'requests'];
 
-/** A node without a key: one node, two policies, no licensed feature. */
+/** A node without a key: one node, one policy (the seeded default), no licensed feature. */
 export function communityLicense(): LicenseInfo {
-  return { state: 'community', nodes: 1, nodesInUse: 1, overLimit: false, features: [], policyLimit: 2, took_ms: 0 };
+  return { state: 'community', nodes: 1, nodesInUse: 1, overLimit: false, features: [], policyLimit: 1, took_ms: 0 };
 }
 
 export const CLIENTS: { ip: string; name: string; group: string }[] = [

@@ -26,7 +26,7 @@ import { COMMENT } from '../../lib/managedBy';
 import { nameError } from '../../lib/objectSchemas';
 import { blockResponseLabel, DEFAULT_NAMESPACE, scheduleSummary } from '../../lib/policies';
 import { useNavigate, useSearchParams } from '../../lib/router';
-import { usePolicies } from '../../lib/usePolicyData';
+import { useOnlyDefaultPolicy, usePolicies, usePolicyLimit } from '../../lib/usePolicyData';
 
 export interface PolicyWizardProps {
   /** Closes the dialog without asking (after the policy was created). */
@@ -36,6 +36,8 @@ export interface PolicyWizardProps {
   /** Client groups to start with (bare names in the namespace). */
   groups?: string[];
 }
+
+const NO_POLICIES: Policy[] = [];
 
 export function PolicyWizardDialog({ isOpen, ...props }: PolicyWizardProps & { isOpen: boolean }) {
   return (
@@ -53,8 +55,14 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
   const pols = usePolicies();
-  const namespace = ns || sp.get('namespace') || DEFAULT_NAMESPACE;
-  const [name, setName] = useState('');
+  // Reached through a link (?new=1) at the license's policy limit: say so before the steps.
+  const limit = usePolicyLimit(pols.data?.items ?? NO_POLICIES);
+  // Without a valid license key the server creates only default/default
+  // (the seeded default policy, if it was deleted): the name is fixed.
+  const onlyDefault = useOnlyDefaultPolicy();
+  const namespace = onlyDefault ? DEFAULT_NAMESPACE : ns || sp.get('namespace') || DEFAULT_NAMESPACE;
+  const [nameInput, setName] = useState('');
+  const name = onlyDefault ? 'default' : nameInput;
   const [comment, setComment] = useState('');
   const [initial] = useState<PolicySpec>(() => ({ clientGroupRefs: groups ?? [], blockListRefs: [], allowListRefs: [], blockedServices: [], blockedCategories: [], allowedServices: [], priority: 100 }));
   const [spec, setSpec] = useState<PolicySpec>(initial);
@@ -117,8 +125,9 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
               value={name}
               onChange={setName}
               isRequired
+              isReadOnly={onlyDefault}
               mono
-              help='Lower-case letters, digits and "-", e.g. kids-school-nights'
+              help={onlyDefault ? 'Without a license key only the default policy can be created.' : 'Lower-case letters, digits and "-", e.g. kids-school-nights'}
               error={showErrors ? (nameError(name.trim()) ?? undefined) : undefined}
             />
             <TextField label="Comment" value={comment} onChange={setComment} isOptional />
@@ -164,8 +173,14 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
       finishLabel="Create policy"
       onFinish={create}
       isFinishing={busy}
-      isDirty={name !== '' || comment !== '' || spec !== initial}
-      notice={!can('policies', 'write') && !pols.isLoading ? <Banner status="warning" title="Read-only" description="Creating policies needs policies.write." /> : null}
+      isDirty={nameInput !== '' || comment !== '' || spec !== initial}
+      notice={
+        !can('policies', 'write') && !pols.isLoading ? (
+          <Banner status="warning" title="Read-only" description="Creating policies needs policies.write." />
+        ) : limit ? (
+          <Banner data-testid="policy-limit-wizard" status="info" title={limit.title} description={limit.description} />
+        ) : null
+      }
       error={error ? <Banner status="error" title="The server rejected the policy" description={error} /> : null}
     />
   );

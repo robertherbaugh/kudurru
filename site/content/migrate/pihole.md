@@ -20,7 +20,7 @@ The mapping below is the whole job for most installations.
 
 | Pi-hole | kudurru | Notes |
 |---|---|---|
-| Group | a [`ClientGroup`](/reference/crds/clientgroup/) (who) plus a [`Policy`](/reference/crds/policy/) (what applies to them) | The Policy names the group in `clientGroupRefs` and the lists in `blockListRefs` and `allowListRefs` |
+| Group | a [`ClientGroup`](/reference/crds/clientgroup/) (who) plus a [`Policy`](/reference/crds/policy/) (what applies to them) | The Policy names the group in `clientGroupRefs` and the lists in `blockListRefs` and `allowListRefs`. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
 | Default group | `ClientGroup/default` and `Policy/default` | Created at the first start; they apply to clients in no other group |
 | Client (IP, subnet, hostname) | an entry of `ClientGroup.spec.clients`: `ip`, `cidr`, `hostname`, `nameGlob` or `clientID` (DoT/DoH client ID) | MAC entries are accepted but match only once the v0.2 client inventory supplies addresses |
 | List (adlist, allow list) | a [`BlockList`](/reference/crds/blocklist/) with `mode: block` or `mode: allow` and `url` sources | `format: auto` recognises hosts, domains and adblock lists |
@@ -47,7 +47,10 @@ The mapping below is the whole job for most installations.
 ## A Pi-hole setup as kudurru objects
 
 A household with the default group, a "Kids" group on its own VLAN, one
-extra list and a local name:
+extra list and a local name. The `kids` Policy needs a
+[license key](/project/licensing/): without one, kudurru keeps
+`Policy/default` as the only policy and refuses `kids` with
+`license_required`. A free personal key covers a home network.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1

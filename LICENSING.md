@@ -28,7 +28,7 @@ A **license key** unlocks what a single free node does not have:
 |---|---|---|---|
 | DNS answering, blocking, zones, the block page, the dashboard, short-term statistics, API tokens, the built-in administrator | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | up to 3 | as agreed |
-| Policies | 2 | unlimited | unlimited |
+| Policies | 1 (the seeded default) | unlimited | unlimited |
 | Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes |
 | OIDC single sign-on (`ee/oidc`) | No | Yes | Yes |
 | The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | Yes |
@@ -62,20 +62,24 @@ server.
 
 Only the management plane changes:
 
-- **No key, or an invalid key**: one node, two policies, and no licensed
-  features. Role bindings grant nothing (the first-boot administrator, the
-  bootstrap token and the admin socket still have full access), OIDC sign-in is
-  switched off, the audit trail, long-term statistics and unblock requests
-  answer `402 license_required`, the external-dns webhook is not started, and
-  the dnsdist and keepalived supervisors refuse a first start that has no key
-  (see below). DNS, blocking, zones, the block page and the dashboard are
-  unchanged.
-- **A third policy** cannot be created through the API while the limit is two;
-  existing policies keep working, and a key lifts the limit. This limit is
-  best effort: it guards the API, not the data path, so policies made another
-  way (`kubectl` or GitOps in Kubernetes, object files, another replica at the
-  same moment) are not counted against it, and the terms of the license apply
-  either way.
+- **No key, or an invalid key**: one node, one policy (the seeded default)
+  and no licensed features. Role bindings grant nothing (the first-boot
+  administrator, the bootstrap token and the admin socket still have full
+  access), OIDC sign-in is switched off, the audit trail, long-term statistics
+  and unblock requests answer `402 license_required`, the external-dns webhook
+  is not started, and the dnsdist and keepalived supervisors refuse a first
+  start that has no key (see below). DNS, blocking, zones, the block page and
+  the dashboard are unchanged.
+- **A second policy** cannot be created through the API while the limit is
+  one. A new node starts with the policy `default`, so without a key that is
+  the policy you have: edit it to change what clients get. The API counts every
+  policy, whoever made it, and without a key it creates no policy but
+  `default`: if the default is deleted, it can be created again under that
+  name, and any other policy needs a key. Existing policies keep working and
+  stay editable, and a key lifts the limit. This limit is best effort: it guards the API, not the data path, so
+  policies made another way (`kubectl` or GitOps in Kubernetes, object files,
+  another replica at the same moment) are not stopped by it, and the terms of
+  the license apply either way.
 - **More nodes than the key allows**: configuration writes through the API
   answer `402 license_required` until the cluster is back under the limit.
   Reads, sign-in, pausing blocking and flushing the cache still work.

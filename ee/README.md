@@ -11,8 +11,9 @@
 
 Two more features have no code of their own to move, so they have no
 directory here: `requests` (the unblock request workflow; `internal/blockpage`
-and `internal/api/unblock.go` check it) and the two-policy limit (checked in
-`internal/api/write.go`). Both live in `internal/license` as rules.
+and `internal/api/unblock.go` check it) and the policy limit, one policy (the
+seeded default) without a key (checked in `internal/api/write.go`). Both live
+in `internal/license` as rules.
 
 What stays outside `ee/` is what a node runs without a key: the permissions
 table, the engine and the built-in administrator (`internal/rbac`), the audit

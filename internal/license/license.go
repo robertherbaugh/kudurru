@@ -31,9 +31,20 @@ const Grace = 30 * 24 * time.Hour
 // CommunityNodes is the node limit without a key: one node.
 const CommunityNodes = 1
 
-// CommunityPolicies is how many Policy objects can exist without a key; a
-// key lifts the limit.
-const CommunityPolicies = 2
+// CommunityPolicies is how many Policy objects can exist without a key: one,
+// the Policy "default" the bootstrap seeds (internal/bootstrap). The API
+// creates no other Policy, ever, without a key (CommunityPolicyName); a key
+// lifts the limit.
+const CommunityPolicies = 1
+
+// CommunityPolicyNamespace and CommunityPolicyName name the one Policy the
+// API creates without a key: the default policy the bootstrap seeds
+// (internal/bootstrap DefaultNamespace and DefaultPolicyName; a test there
+// keeps the names equal). Deleting it does not open the way to another.
+const (
+	CommunityPolicyNamespace = "default"
+	CommunityPolicyName      = "default"
+)
 
 // Plan is the kind of license a key grants.
 type Plan string

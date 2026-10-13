@@ -223,7 +223,7 @@ Open **System** > **License**. The page shows the license of the node:
 
 - the state of the key, the plan and the date that the key ends;
 - the number of nodes in use and the limit of nodes;
-- the limit of policies;
+- the limit of policies (without a key, one policy: the policy `default`);
 - each feature, with the text **Included** or **Needs a key**.
 
 The page is read-only. You put a key on a node with the command line or the

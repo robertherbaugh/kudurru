@@ -97,7 +97,8 @@ messages (**Diagnosis**) or of open requests (**Requests**).
 
 The page **License** shows the license of the node. Some pages need a
 license key: **Long-term**, **Requests** and the audit log. A page that
-needs a key says so. See [Chapter 13](13-license.md).
+needs a key says so. More than one node and more than one policy also need
+a key. See [Chapter 13](13-license.md).
 
 ### The top bar
 

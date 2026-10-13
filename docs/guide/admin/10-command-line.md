@@ -160,6 +160,10 @@ The dashboard then shows the objects with the owner **API**. The folder
 NOTE: `kudurru apply` refuses an object that a file or Kubernetes owns. The
 error says `managed_by` and names the owner.
 
+NOTE: Without a license key, a node has one policy: the policy `default`.
+kudurru then makes the group `kids` but refuses the policy `kids` with the
+error `license_required`. See [Chapter 13](13-license.md#what-a-key-changes).
+
 ## Back up and restore objects
 
 | Task | Command |

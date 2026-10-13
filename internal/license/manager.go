@@ -17,7 +17,7 @@ import (
 type State string
 
 // The states. Community, expired and invalid all mean the free limits:
-// one node and no licensed features.
+// one node, one policy and no licensed features.
 const (
 	// StateCommunity is no key at all.
 	StateCommunity State = "community"
@@ -237,7 +237,27 @@ func (m *Manager) CheckPolicies(n int) error {
 	if s.PolicyLimit == 0 || n < s.PolicyLimit {
 		return nil
 	}
-	return fmt.Errorf("%w: %d policies exist and the license (state %s) allows %d", ErrPolicyLimit, n, s.State, s.PolicyLimit)
+	exist := fmt.Sprintf("%d policies exist", n)
+	if n == 1 {
+		exist = "1 policy exists"
+	}
+	return fmt.Errorf("%w: %s and the license (state %s) allows %d", ErrPolicyLimit, exist, s.State, s.PolicyLimit)
+}
+
+// CheckPolicyCreate returns an ErrPolicyLimit when the API may not create
+// the Policy namespace/name while n Policy objects exist. With a policy limit
+// (no valid key) only the default policy may be created, and only while
+// fewer than the limit exist; with a key anything goes.
+func (m *Manager) CheckPolicyCreate(namespace, name string, n int) error {
+	s := m.Status()
+	if s.PolicyLimit == 0 {
+		return nil
+	}
+	if namespace != CommunityPolicyNamespace || name != CommunityPolicyName {
+		return fmt.Errorf("%w: without a valid license key (state %s) only the policy %s/%s can be created",
+			ErrPolicyLimit, s.State, CommunityPolicyNamespace, CommunityPolicyName)
+	}
+	return m.CheckPolicies(n)
 }
 
 // Unrestricted returns a Manager that allows every feature and any number

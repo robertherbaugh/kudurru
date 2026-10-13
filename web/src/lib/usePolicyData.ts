@@ -7,14 +7,35 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { ApiError } from '../api/client';
 import { qk, useApi } from '../api/context';
+import { useLicense } from '../api/hooks';
 import type { BlockList, ClientGroup, Policy, PolicyState } from '../api/types';
 import { useCatalogueCategories, useCatalogueServices, useSafeSearchEngines } from '../components/ServiceGrid';
+import { policyLimitNotice } from './license';
 import { derivePolicyState, type DeriveContext } from './policies';
 import { useUpstreamGroups } from './upstreams';
 
 export function usePolicies() {
   const api = useApi();
   return useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
+}
+
+/**
+ * Why no policy can be created now, or null: the license's policy limit (one
+ * without a key, the seeded default) is reached. The server counts every
+ * policy and answers 402; "New policy" is disabled before that.
+ */
+export function usePolicyLimit(policies: Policy[]): { title: string; description: string } | null {
+  const limit = useLicense().data?.policyLimit ?? 0;
+  return useMemo(() => (limit > 0 && policies.length >= limit ? policyLimitNotice(limit, policies.map((p) => p.metadata.name)) : null), [limit, policies]);
+}
+
+/**
+ * Whether only the default policy can be created: without a valid license
+ * key (policyLimit > 0) the server creates no Policy but default/default
+ * (internal/license CommunityPolicyName), so the wizard names it for the user.
+ */
+export function useOnlyDefaultPolicy(): boolean {
+  return (useLicense().data?.policyLimit ?? 0) > 0;
 }
 
 export function useGroups() {
