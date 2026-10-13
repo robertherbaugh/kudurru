@@ -36,14 +36,16 @@ the number of policies and the features below.
 | DNS, blocking, zones, the block page, the dashboard | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | Up to 3 | As agreed |
 | Policies | 1, the policy `default` | No limit | No limit |
-| Roles other than the built-in administrator | No | Yes | If included in the Order Form |
-| Single sign-on | No | Yes | If included in the Order Form |
-| The audit log and its export | No | Yes | If included in the Order Form |
-| Statistics for more than 24 hours | No | Yes | If included in the Order Form |
-| Access requests from the block page | No | Yes | If included in the Order Form |
-| The dnsdist and keepalived edge | No | Yes | If included in the Order Form |
-| Integrations, for example the external-dns webhook | No | Yes | If included in the Order Form |
+| Roles other than the built-in administrator | No | Yes | Yes* |
+| Single sign-on | No | Yes | Yes* |
+| The audit log and its export | No | Yes | Yes* |
+| Statistics for more than 24 hours | No | Yes | Yes* |
+| Access requests from the block page | No | Yes | Yes* |
+| The dnsdist and keepalived edge | No | Yes | Yes* |
+| Integrations, for example the external-dns webhook | No | Yes | Yes* |
 | Business or government production use | No | No | As granted by the agreement |
+
+\* If included in commercial license agreement.
 
 A node without a key has one administrator: the first-boot administrator.
 The bootstrap token and the admin socket also have full access. Role

@@ -74,7 +74,7 @@ export function license(licenseApi: string): Html {
     <h2 id="lic-table-title">What each key unlocks</h2>
     <div class="shapes lic-table">
       <table>
-        <caption class="mono dim">The free personal/nonprofit key covers up to ${LICENSE_FREE_NODES} nodes for eligible community use. Commercial features depend on the Order Form.</caption>
+        <caption class="mono dim">The free personal/nonprofit key covers up to ${LICENSE_FREE_NODES} nodes for eligible community use.</caption>
         <thead>
           <tr><th scope="col">What</th><th scope="col">No key</th><th scope="col">Personal/nonprofit key (free)</th><th scope="col">Business key</th></tr>
         </thead>
@@ -83,6 +83,7 @@ export function license(licenseApi: string): Html {
         </tbody>
       </table>
     </div>
+    <p class="fine">* If included in commercial license agreement.</p>
   </div>
 </section>
 <section class="sec lic-sec" aria-labelledby="lic-get-title">

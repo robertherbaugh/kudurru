@@ -36,14 +36,16 @@ A **license key** unlocks what a single free node does not have:
 | DNS answering, blocking, zones, the block page, the dashboard, short-term statistics, API tokens, the built-in administrator | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | up to 3 | as agreed |
 | Policies | 1 (the seeded default) | unlimited | unlimited |
-| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | If included in the Order Form |
-| OIDC single sign-on (`ee/oidc`) | No | Yes | If included in the Order Form |
-| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | If included in the Order Form |
-| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | If included in the Order Form |
-| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | If included in the Order Form |
-| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | If included in the Order Form |
-| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | If included in the Order Form |
+| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes* |
+| OIDC single sign-on (`ee/oidc`) | No | Yes | Yes* |
+| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | Yes* |
+| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | Yes* |
+| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | Yes* |
+| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | Yes* |
+| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | Yes* |
 | Business or government production use | No | No | Only as granted by the agreement |
+
+\* If included in commercial license agreement.
 
 Free personal/nonprofit keys are only for eligible community use. A key
 records an entitlement; it does not replace the license or agreement. A
