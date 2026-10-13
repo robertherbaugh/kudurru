@@ -118,7 +118,6 @@ describe("the license page", () => {
     expect(page).toContain("DNS never depends on a key");
     expect(page).toContain("mailto:hello@kudurru.io?subject=Free%20personal%20key");
     expect(page).toContain("mailto:hello@kudurru.io?subject=kudurru%20commercial%20license");
-    expect(page).toContain("kudurru license status");
     expect(page).not.toContain("Apache-2.0");
     // One row per row of the table in content.ts, each with its three cells.
     expect(page.match(/<tr><th scope="row">/g)?.length).toBe(11);
@@ -137,7 +136,9 @@ describe("the license page", () => {
     expect(page).toMatch(/<section class="sec" aria-labelledby="lic-title">\s*<div class="wrap narrow">/);
     expect(page.match(/class="wrap narrow"/g)?.length).toBe(1);
     expect(page).toMatch(/<section class="sec lic-sec" aria-labelledby="lic-get-title">\s*<div class="wrap">\s*<form class="licform lic-row"/);
-    for (const id of ["lic-req-title", "lic-get-title", "lic-use-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
+    for (const id of ["lic-req-title", "lic-get-title", "lic-read-title"]) expect(page).toContain(`<h2 id="${id}">`);
+    // Using a key on a node is the docs' job, not this page's.
+    expect(page).not.toContain("lic-use-title");
     expect(page).toContain('<div class="licform-box">');
   });
 
