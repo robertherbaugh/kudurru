@@ -7,9 +7,11 @@
 // Retry-After seconds; per email at most PUBLIC_LIMIT_PER_EMAIL_PER_DAY rows
 // in the last day → a silent 202 (a log line); otherwise a row with the
 // SHA-256 of a 32-byte token (24 hours) and the confirmation link mailed
-// before the 202. The mail goes out inside the transaction: when it fails
-// the row is rolled back (deleted) and the answer is 503. The audit event of
-// an unconfirmed submission names neither the address nor the client.
+// before the 202. The row is committed first (so parallel submissions count
+// it) and the mail goes out after the commit, holding no connection or lock
+// while the SMTP server answers; when it fails the row is deleted and the
+// answer is 503. The audit event of an unconfirmed submission names neither
+// the address nor the client.
 //
 // Verify: the token is consumed atomically (verified_at set where it was
 // null and the link has not expired; none → 400 invalid_token), the
@@ -31,6 +33,8 @@ import { inTransaction, publicActor, type Actor, type ServiceDeps } from './type
 
 /** The advisory lock namespace of the per-network limit (pg_advisory_xact_lock(7406, hashtext(network))). */
 const PUBLIC_LIMIT_LOCK = 7406;
+/** The advisory lock namespace of the per-email limit (pg_advisory_xact_lock(7409, hashtext(email))). */
+const PUBLIC_EMAIL_LOCK = 7409;
 
 /** A validated submission of the form. */
 export interface PublicSubmission {
@@ -78,7 +82,7 @@ export async function submitPublicRequest(deps: PublicRequestDeps, input: Public
   }
   if (!deps.mailer.configured || !deps.signing.signer) fail('unavailable', UNAVAILABLE);
 
-  await inTransaction(deps, publicActor(input.email, { ip, userAgent: deps.userAgent }), async (ctx) => {
+  const created = await inTransaction(deps, publicActor(input.email, { ip, userAgent: deps.userAgent }), async (ctx): Promise<{ id: string; token: string } | null> => {
     if (ip) {
       // One network at a time, so parallel submissions cannot pass the limit together.
       const net = await ctx.tx<{ net: string }[]>`select network(set_masklen(${ip}::inet, case when family(${ip}::inet) = 6 then 64 else 32 end))::text as net`;
@@ -96,11 +100,14 @@ export async function submitPublicRequest(deps: PublicRequestDeps, input: Public
         throw new HttpError(429, 'rate_limited', 'Too many requests from your network. Try again later.', { headers: { 'Retry-After': String(retryAfter) } });
       }
     }
+    // One address at a time too: submissions from several networks for the
+    // same address cannot pass its limit together.
+    await ctx.tx`select pg_advisory_xact_lock(${PUBLIC_EMAIL_LOCK}, hashtext(${input.email}))`;
     const dayAgo = new Date(ctx.now.getTime() - 86_400_000);
     const perEmail = await ctx.tx<{ n: string }[]>`select count(*) as n from public_key_requests where email = ${input.email} and created_at > ${dayAgo}`;
     if (toInt(perEmail[0]?.n) >= ctx.config.publicForm.limitPerEmailPerDay) {
       ctx.log.warn('public.email_limited', { emailDomain: domainOf(input.email) });
-      return;
+      return null;
     }
     const id = newId('publicRequest');
     const token = newSecret();
@@ -111,9 +118,18 @@ export async function submitPublicRequest(deps: PublicRequestDeps, input: Public
     // The address is not confirmed yet: the append-only log does not keep
     // it (or the client address); the row has both until the cleanup job.
     await audit(ctx.tx, { actor: PUBLIC_FORM_ACTOR, action: 'public_request.received', targetType: 'public_request', targetId: id, ip: null, userAgent: null, requestId: ctx.requestId ?? null });
-    const url = `${ctx.config.publicUrl}/verify?token=${token}`;
-    await mailOrUnavailable(ctx.mailer, confirmationMail({ to: input.email, name: input.name, url, publicUrl: ctx.config.publicUrl }), ctx.log, 'The confirmation link');
+    return { id, token };
   });
+  if (!created) return;
+  const url = `${deps.config.publicUrl}/verify?token=${created.token}`;
+  try {
+    await mailOrUnavailable(deps.mailer, confirmationMail({ to: input.email, url, publicUrl: deps.config.publicUrl }), deps.log, 'The confirmation link');
+  } catch (e) {
+    // Nothing was sent: the row goes (the append-only audit event stays; it
+    // names neither the address nor the client).
+    await deps.db`delete from public_key_requests where id = ${created.id} and verified_at is null`;
+    throw e;
+  }
 }
 
 interface PublicRow {

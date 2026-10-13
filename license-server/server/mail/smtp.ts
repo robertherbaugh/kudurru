@@ -14,6 +14,7 @@
 
 import { createTransport } from 'nodemailer';
 import type { Config } from '../config';
+import { isEmailSyntax } from '../http/body';
 import { HttpError } from '../http/errors';
 import type { Logger } from '../log';
 import { unconfiguredMailer, type MailMessage, type Mailer } from './types';
@@ -106,9 +107,16 @@ export function smtpMailer(config: Config, log: Logger): Mailer {
   return {
     configured: true,
     async send(msg: MailMessage): Promise<void> {
+      // The recipient goes to nodemailer as one address object, never a
+      // string it would re-parse into other recipients, and only when it
+      // is the single address the portal validated and stored.
+      if (!isEmailSyntax(msg.to)) {
+        mailLog.error('mail refused: the recipient is not a single plain address', { toDomain: domainOf(msg.to), subject: msg.subject });
+        throw new MailDeliveryError('the recipient is not a single plain address');
+      }
       try {
         await transport.sendMail({
-          to: msg.to,
+          to: { name: '', address: msg.to },
           subject: msg.subject,
           text: msg.text,
           ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),

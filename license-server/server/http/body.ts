@@ -100,13 +100,24 @@ export function hasLoneSurrogate(s: string): boolean {
 export function isEmailSyntax(s: string): boolean {
   if (s.length === 0 || s.length > 254) return false;
   if (hasControlChars(s) || hasLoneSurrogate(s)) return false;
-  for (let i = 0; i < s.length; i++) if (isGoSpace(s.charCodeAt(i)) || s.charCodeAt(i) === 0xfeff) return false;
   const at = s.indexOf('@');
   if (at <= 0 || at !== s.lastIndexOf('@')) return false;
+  const local = s.slice(0, at);
   const domain = s.slice(at + 1);
-  if (!domain.includes('.')) return false;
-  return domain.split('.').every((label) => label.length > 0);
+  // One deliverable address and nothing else: a dot-atom local part and
+  // hostname labels. Mail libraries re-parse recipient strings, so
+  // "bad@x.com,z" or "a<bad@x.com>" would reach bad@x.com while the block
+  // list, limits and member rows compare the stored string.
+  if (local.length > 64 || !LOCAL_PART.test(local)) return false;
+  const labels = domain.split('.');
+  if (labels.length < 2 || !labels.every((l) => l.length <= 63 && DOMAIN_LABEL.test(l))) return false;
+  return /\p{L}/u.test(labels[labels.length - 1]!);
 }
+
+/** Dot-atom (RFC 5322 atext, plus letters and digits beyond ASCII): no quotes, commas, angle brackets, spaces or parentheses. */
+const LOCAL_PART = /^[\p{L}\p{N}!#$%&'*+/=?^_`{|}~-]+(?:\.[\p{L}\p{N}!#$%&'*+/=?^_`{|}~-]+)*$/u;
+/** A hostname label: letters and digits (any script), hyphens inside. */
+const DOMAIN_LABEL = /^[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?$/u;
 
 /** The stored form of an email: Go-trimmed and lower-cased. */
 export function normalizeEmail(s: string): string {

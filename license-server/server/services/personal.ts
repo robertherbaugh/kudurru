@@ -84,6 +84,33 @@ async function hasWithdrawnLicense(ctx: Pick<ServiceCtx, 'tx'>, customerId: stri
   return rows.length > 0;
 }
 
+/**
+ * Whether the address has a withdrawn personal license outside any member
+ * row: as the contact address of a person customer or the address on a
+ * license's attestation. Removing a member after a withdraw must not
+ * reopen automatic issue (spec §0.8).
+ */
+async function hasWithdrawnByEmail(ctx: Pick<ServiceCtx, 'tx'>, email: string): Promise<boolean> {
+  const rows = await ctx.tx<{ one: number }[]>`
+    select 1 as one from licenses l join customers c on c.id = l.customer_id
+     where l.status = 'withdrawn' and (c.kind = 'person' or l.plan = 'personal')
+       and (c.contact_email = ${email} or l.attestation->>'email' = ${email})
+     limit 1`;
+  return rows.length > 0;
+}
+
+/**
+ * Steps 1 and 2 of the decision tree, shared with the portal renewal: why a
+ * personal key for these addresses (and this person customer) needs a
+ * person, or null.
+ */
+export async function personalReviewReason(ctx: Pick<ServiceCtx, 'tx'>, emails: readonly string[], customerId: string | null): Promise<ReviewReason | null> {
+  for (const email of emails) if (await isBlocked(ctx.tx, email)) return 'blocked';
+  if (customerId && (await hasWithdrawnLicense(ctx, customerId))) return 'withdrawn_history';
+  for (const email of emails) if (await hasWithdrawnByEmail(ctx, email)) return 'withdrawn_history';
+  return null;
+}
+
 /** The customer's newest active personal license, locked, or null. */
 export async function lockNewestActivePersonal(ctx: Pick<ServiceCtx, 'tx'>, customerId: string): Promise<LicenseRow | null> {
   const row = maybeOne(
@@ -136,12 +163,11 @@ async function openRequest(ctx: ServiceCtx, req: PersonalRequest, reason: Review
 export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest): Promise<PersonalRequestResult> {
   await lockPersonalFlow(ctx);
 
-  // 1. Blocked addresses always wait for a person.
-  if (await isBlocked(ctx.tx, req.email)) return openRequest(ctx, req, 'blocked');
-
-  // 2. A withdrawn license in the person's history: a person decides.
+  // 1. Blocked addresses always wait for a person. 2. So does a withdrawn
+  // license in the person's history.
   const person = await lockPersonCustomer(ctx, req.email);
-  if (person && (await hasWithdrawnLicense(ctx, person.id))) return openRequest(ctx, req, 'withdrawn_history');
+  const review = await personalReviewReason(ctx, [req.email], person?.id ?? null);
+  if (review) return openRequest(ctx, req, review);
 
   const linkUserId = req.source === 'portal' ? (req.requestedBy ?? null) : null;
 
@@ -163,7 +189,9 @@ export async function requestPersonalKey(ctx: ServiceCtx, req: PersonalRequest):
       }
       const inviteUrl = await ensureMember(ctx, person.id, req.email, { linkUserId, invite: req.source === 'web' });
       const key = await currentKey(ctx.tx, license.id);
-      await auditCtx(ctx, { action: 'license.key_emailed', targetType: 'license', targetId: license.id, details: { to: req.email, keyId: key.id, via: req.source } });
+      if (ctx.mailer.configured) {
+        await auditCtx(ctx, { action: 'license.key_emailed', targetType: 'license', targetId: license.id, details: { to: req.email, keyId: key.id, via: req.source } });
+      }
       mailKeyAfterCommit(ctx, licenseKeyMail(ctx, license, key.token, 'resent', req.email, inviteUrl));
       return { outcome: 'resent', licenseId: license.id };
     }
@@ -208,6 +236,12 @@ export async function renewMyLicense(ctx: ServiceCtx, licenseId: string, userId:
   const row = await lockLicense(ctx, licenseId);
   if (row.status === 'withdrawn') fail('license_withdrawn', 'This license is withdrawn and cannot be renewed.');
   if (row.plan !== 'personal') fail('conflict', 'Only free personal keys are renewed here. For a business license, write to us.');
+  // The same review rules as a request (steps 1 and 2): a blocked address
+  // or a withdrawn license in the history needs a person.
+  const memberEmails = (await ctx.tx<{ email: string }[]>`select email from customer_members where customer_id = ${row.customer_id}`).map((m) => m.email);
+  if (await personalReviewReason(ctx, mailTo ? [...memberEmails, mailTo] : memberEmails, row.customer_id)) {
+    fail('conflict', 'This key cannot be renewed here. Write to us to renew it.');
+  }
   const exp = Math.floor(row.expires_at.getTime() / 1000);
   if (!isRenewable(exp, ctx.now)) {
     // The first whole UTC day inside the window (it opens at exp - window).

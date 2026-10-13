@@ -59,7 +59,7 @@ export function bannerError(err: unknown, handled: readonly string[]): string | 
   }
   if (err instanceof ApiError) return err.describe();
   if (err instanceof Error) return err.message;
-  return String(err);
+  return typeof err === 'string' ? err : 'Something went wrong.';
 }
 
 /** The first of `order` (body fields in the order the form asks for them) that a 400 names. */

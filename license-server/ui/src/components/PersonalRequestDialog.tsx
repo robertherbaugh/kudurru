@@ -15,9 +15,9 @@ import type { PersonalRequestResult } from '@shared/api';
 import { ATTESTATION_STATEMENT, LICENSE_PAGE_URL, NONCOMMERCIAL_LICENSE_URL, PERSONAL_MAX_NODES, PERSONAL_TERM_DAYS } from '@shared/catalog';
 import { ApiError } from '../api/client';
 import { useMe } from '../api/context';
+import { useFieldErrors } from '../api/fieldErrors';
 import { useRouteMutation } from '../api/hooks';
 import { outcomeWords } from '../lib/words';
-import { errorText } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { CheckboxField, TextAreaField, TextField } from '../ui/fields/TextField';
 
@@ -35,6 +35,9 @@ export function personalRequestProblems(name: string, use: string, certified: bo
   return e;
 }
 
+/** The body fields the controls show (a 400 names them inline). */
+const PERSONAL_FIELDS = ['name', 'use', 'noncommercial'];
+
 export function PersonalRequestDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   return (
     <FormDialog isOpen={isOpen} onClose={onClose} title="Request a free personal key" width={560}>
@@ -50,6 +53,8 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
   const [certified, setCertified] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const m = useRouteMutation('myRequestCreate');
+  const serverError = m.error instanceof ApiError && m.error.key === 'email_unverified' ? null : m.error;
+  const fe = useFieldErrors(serverError, PERSONAL_FIELDS);
   const verified = me.user.emailVerified && Boolean(me.user.email);
 
   const submit = () => {
@@ -61,7 +66,6 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
 
   if (m.data) return <Outcome result={m.data} email={me.user.email} onClose={onClose} />;
 
-  const serverError = m.error instanceof ApiError && m.error.key === 'email_unverified' ? null : m.error;
   return (
     <DialogBody onSubmit={submit} footer={
       <>
@@ -84,15 +88,43 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
           }
         />
       ) : null}
-      <TextField label="Name on the key" value={name} onChange={setName} isRequired help="Printed on the key as the licensee: your name, or your charity's or school's." error={errors.name} />
-      <TextAreaField label="What do you run kudurru for?" value={use} onChange={setUse} isRequired help="A sentence is enough, for example: DNS for my home network." error={errors.use} />
-      <CheckboxField label={ATTESTATION_STATEMENT} value={certified} onChange={setCertified} error={errors.certified} />
+      <TextField
+        label="Name on the key"
+        value={name}
+        onChange={(v) => {
+          setName(v);
+          fe.edited('name');
+        }}
+        isRequired
+        help="Printed on the key as the licensee: your name, or your charity's or school's."
+        error={errors.name ?? fe.field('name')}
+      />
+      <TextAreaField
+        label="What do you run kudurru for?"
+        value={use}
+        onChange={(v) => {
+          setUse(v);
+          fe.edited('use');
+        }}
+        isRequired
+        help="A sentence is enough, for example: DNS for my home network."
+        error={errors.use ?? fe.field('use')}
+      />
+      <CheckboxField
+        label={ATTESTATION_STATEMENT}
+        value={certified}
+        onChange={(v) => {
+          setCertified(v);
+          fe.edited('noncommercial');
+        }}
+        error={errors.certified ?? fe.field('noncommercial')}
+      />
       <Text type="supporting" as="p">
         <Link href={NONCOMMERCIAL_LICENSE_URL} isExternalLink>
           Read the PolyForm Noncommercial License 1.0.0
         </Link>
       </Text>
-      {serverError ? <Banner status="error" title="The request was not sent" description={errorText(serverError)} /> : null}
+      {fe.summary ? <Banner status="error" title="The request was not sent" description={fe.summary} /> : null}
     </DialogBody>
   );
 }

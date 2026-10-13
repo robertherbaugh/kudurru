@@ -13,11 +13,12 @@ import { useState } from 'react';
 import type { Customer, CustomerKind } from '@shared/api';
 import { DEFAULT_PAGE_LIMIT } from '@shared/api';
 import { useCan } from '../api/context';
+import { useFieldErrors } from '../api/fieldErrors';
 import { useCustomers, useRouteMutation } from '../api/hooks';
 import { utcDay } from '../lib/dates';
 import { emailError, nameError } from '../lib/validate';
 import { KIND_LABEL, KIND_OPTIONS } from '../lib/words';
-import { errorText, ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
+import { ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 import { SelectField } from '../ui/fields/SelectField';
@@ -72,6 +73,9 @@ export default function CustomersPage() {
   );
 }
 
+/** The body fields the controls show (a 400 names them inline). */
+const CUSTOMER_FIELDS = ['name', 'kind', 'contactEmail', 'notes'];
+
 function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const notify = useNotify();
   const navigate = useNavigate();
@@ -83,6 +87,7 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
   const [showErrors, setShowErrors] = useState(false);
   const nameErr = nameError(name, 'the customer name');
   const emailErr = emailError(email, { optional: true });
+  const fe = useFieldErrors(m.error, CUSTOMER_FIELDS);
 
   const submit = () => {
     setShowErrors(true);
@@ -111,11 +116,50 @@ function NewCustomerForm({ onClose }: { onClose: () => void }) {
         </>
       }
     >
-      <TextField label="Name" value={name} onChange={setName} isRequired error={showErrors ? (nameErr ?? undefined) : undefined} />
-      <SelectField label="Kind" value={kind} options={KIND_OPTIONS} onChange={(v) => setKind(v as CustomerKind)} />
-      <TextField label="Contact email" type="email" value={email} onChange={setEmail} isOptional help="Where keys are mailed when you choose to." error={showErrors ? (emailErr ?? undefined) : undefined} />
-      <TextAreaField label="Notes" value={notes} onChange={setNotes} isOptional help="Internal; customers never see them." />
-      {m.error ? <Banner status="error" title="The customer was not created" description={errorText(m.error)} /> : null}
+      <TextField
+        label="Name"
+        value={name}
+        onChange={(v) => {
+          setName(v);
+          fe.edited('name');
+        }}
+        isRequired
+        error={(showErrors ? nameErr : null) ?? fe.field('name')}
+      />
+      <SelectField
+        label="Kind"
+        value={kind}
+        options={KIND_OPTIONS}
+        onChange={(v) => {
+          setKind(v as CustomerKind);
+          fe.edited('kind');
+        }}
+        error={fe.field('kind')}
+      />
+      <TextField
+        label="Contact email"
+        type="email"
+        value={email}
+        onChange={(v) => {
+          setEmail(v);
+          fe.edited('contactEmail');
+        }}
+        isOptional
+        help="Where keys are mailed when you choose to."
+        error={(showErrors ? emailErr : null) ?? fe.field('contactEmail')}
+      />
+      <TextAreaField
+        label="Notes"
+        value={notes}
+        onChange={(v) => {
+          setNotes(v);
+          fe.edited('notes');
+        }}
+        isOptional
+        help="Internal; customers never see them."
+        error={fe.field('notes')}
+      />
+      {fe.summary ? <Banner status="error" title="The customer was not created" description={fe.summary} /> : null}
     </DialogForm>
   );
 }

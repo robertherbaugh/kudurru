@@ -48,7 +48,7 @@ import type { MailMessage } from '../mail/types';
 import { auditCtx } from './audit';
 import { blockEmails } from './blocklist';
 import { actorRef, containsPattern, createCustomer, customerRef, lockCustomer, type CustomerRow, type Fragment } from './customers';
-import { actorColumns, requireSigner, type ServiceCtx } from './types';
+import { actorColumns, inTransaction, requireSigner, type Actor, type ServiceCtx, type ServiceDeps } from './types';
 
 // --- rows -----------------------------------------------------------------------
 
@@ -191,8 +191,13 @@ export interface SignedKey {
  * keys (issue, renew, change) in the last 24 hours. Only user actors have a
  * quota (the personal flow has its own daily cap).
  */
+/** The advisory lock namespace of the issuing quota (pg_advisory_xact_lock(7408, hashtext(user id))). */
+const ISSUING_QUOTA_LOCK = 7408;
+
 export async function checkIssuingQuota(ctx: ServiceCtx): Promise<void> {
   if (ctx.actor.kind !== 'user') return;
+  // Held to the commit: one actor's parallel requests count each other's keys.
+  await ctx.tx`select pg_advisory_xact_lock(${ISSUING_QUOTA_LOCK}, hashtext(${ctx.actor.userId}))`;
   const since = new Date(ctx.now.getTime() - DAY_SECONDS * 1000);
   const rows = await ctx.tx<{ n: string }[]>`
     select count(*) as n from license_keys
@@ -690,18 +695,25 @@ export async function importLicense(ctx: ServiceCtx, body: ImportBody): Promise<
   return c.jti;
 }
 
-/** POST /licenses/:id/email: mails the current key now (503 unavailable when the mail cannot go out). */
-export async function emailLicenseKey(ctx: ServiceCtx, id: string, to: string | undefined): Promise<EmailKeyResult> {
-  const { row, customer } = await lockForAction(ctx, id);
-  const target = to ?? customer.contact_email;
-  if (!target) throw new HttpError(400, 'invalid', 'The customer has no contact email: give an address.', { fields: ['to'] });
-  if (!ctx.mailer.configured) fail('unavailable', 'Mail is not configured on this portal.');
-  const key = await currentKey(ctx.tx, id);
-  await auditCtx(ctx, { action: 'license.key_emailed', targetType: 'license', targetId: id, details: { to: target, keyId: key.id } });
-  // Sent before the commit: the answer says whether it went out, and a
-  // failure rolls the audit event back.
-  await mailOrUnavailable(ctx.mailer, licenseKeyMail(ctx, row, key.token, 'resent', target), ctx.log, 'The key');
-  return { sentTo: target };
+/**
+ * POST /licenses/:id/email: mails the current key now (503 unavailable when
+ * the mail cannot go out). Three steps so no connection or row lock is held
+ * while the SMTP server answers: read the key (a short transaction that
+ * also refuses withdrawn licenses), send, then audit license.key_emailed
+ * only once the mail went out.
+ */
+export async function emailLicenseKey(deps: ServiceDeps, actor: Actor, id: string, to: string | undefined): Promise<EmailKeyResult> {
+  const plan = await inTransaction(deps, actor, async (ctx) => {
+    const { row, customer } = await lockForAction(ctx, id);
+    const target = to ?? customer.contact_email;
+    if (!target) throw new HttpError(400, 'invalid', 'The customer has no contact email: give an address.', { fields: ['to'] });
+    if (!ctx.mailer.configured) fail('unavailable', 'Mail is not configured on this portal.');
+    const key = await currentKey(ctx.tx, id);
+    return { target, keyId: key.id, message: licenseKeyMail(ctx, row, key.token, 'resent', target) };
+  });
+  await mailOrUnavailable(deps.mailer, plan.message, deps.log, 'The key');
+  await inTransaction(deps, actor, (ctx) => auditCtx(ctx, { action: 'license.key_emailed', targetType: 'license', targetId: id, details: { to: plan.target, keyId: plan.keyId } }));
+  return { sentTo: plan.target };
 }
 
 /** GET /licenses/:id/keys/:keyId/download: any key of the license (audited license.key_downloaded). */
@@ -721,10 +733,12 @@ export async function downloadLicenseKey(ctx: ServiceCtx, id: string, keyId: str
 interface MyLicenseRow extends LicenseRow {
   customer_name: string;
   latest_key_expires_at: Date | null;
+  /** A member address is blocked or the customer has a withdrawn license: renewal needs a person (personal.ts personalReviewReason). */
+  renewal_needs_review: boolean;
 }
 
 function myLicenseDto(r: MyLicenseRow, now: Date): MyLicense {
-  const renewal = r.status === 'active' ? personalRenewal(termsOf(r), unixSeconds(r.expires_at), now) : null;
+  const renewal = r.status === 'active' && !r.renewal_needs_review ? personalRenewal(termsOf(r), unixSeconds(r.expires_at), now) : null;
   return {
     id: r.id,
     customer: { id: r.customer_id, name: r.customer_name },
@@ -742,7 +756,9 @@ function myLicenseDto(r: MyLicenseRow, now: Date): MyLicense {
 function selectMyLicenses(q: Queryable, userId: string, extra: Fragment): Promise<MyLicenseRow[]> {
   return q<MyLicenseRow[]>`
     select l.*, c.name as customer_name,
-           (select max(k.expires_at) from license_keys k where k.license_id = l.id) as latest_key_expires_at
+           (select max(k.expires_at) from license_keys k where k.license_id = l.id) as latest_key_expires_at,
+           (exists (select 1 from licenses w where w.customer_id = l.customer_id and w.status = 'withdrawn')
+            or exists (select 1 from customer_members bm join blocked_emails b on b.email = bm.email where bm.customer_id = l.customer_id)) as renewal_needs_review
       from licenses l join customers c on c.id = l.customer_id
      where exists (select 1 from customer_members m where m.customer_id = l.customer_id and m.user_id = ${userId})
        ${extra}

@@ -53,7 +53,6 @@ export function licenseKeyAttachment(token: string): MailAttachment {
 
 export interface ConfirmationMail {
   to: string;
-  name: string;
   /** ${PUBLIC_URL}/verify?token=<token> */
   url: string;
   publicUrl: string;
@@ -65,7 +64,9 @@ export function confirmationMail(m: ConfirmationMail): MailMessage {
     to: m.to,
     subject: 'Confirm your request for a free kudurru personal key',
     text: paragraphs(
-      `Hello ${m.name},`,
+      // A fixed greeting: the name comes from an anonymous, unconfirmed
+      // form and is only used once the address is confirmed (the key mail).
+      'Hello,',
       'Someone, hopefully you, asked on kudurru.io for a free personal kudurru license key for this address. Confirm the request and the key is sent to this address:',
       m.url,
       `The link works for ${CONFIRM_TTL_HOURS} hours and only once. If you did not ask for a key, ignore this message: nothing happens without the confirmation.`,

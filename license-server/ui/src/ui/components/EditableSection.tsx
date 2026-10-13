@@ -1,5 +1,6 @@
 // Copied from web/src/components/EditableSection.tsx at dd3dcb0; keep in step by hand.
-// Changes: none (copied for the inline-edit sections of the detail pages).
+// Changes: an optional describeError, so a page can word a refused save
+// without the server's field paths (api/fieldErrors bannerError).
 // One section of an object page (docs/m3/ui.md "Pages, wizards and
 // dialogs"): a Panel (a region named by its heading) with the current
 // value, and an Edit button that swaps in typed controls with their own
@@ -29,9 +30,11 @@ export interface EditableSectionProps<T> {
   /** Extra header actions (links). */
   actions?: ReactNode;
   testId?: string;
+  /** The banner text for a failed onSave (default errorText); return null when the controls already show it all. */
+  describeError?: (err: unknown) => string | null;
 }
 
-export function EditableSection<T>({ title, description, value, view, edit, validate, onSave, readOnlyReason, actions, testId }: EditableSectionProps<T>) {
+export function EditableSection<T>({ title, description, value, view, edit, validate, onSave, readOnlyReason, actions, testId, describeError }: EditableSectionProps<T>) {
   const [draft, setDraft] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -57,7 +60,7 @@ export function EditableSection<T>({ title, description, value, view, edit, vali
       await onSave(draft);
       cancel();
     } catch (err) {
-      setError(errorText(err));
+      setError(describeError ? describeError(err) : errorText(err));
     } finally {
       setSaving(false);
     }

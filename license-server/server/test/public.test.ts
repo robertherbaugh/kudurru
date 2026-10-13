@@ -178,7 +178,7 @@ describeDb('POST /api/v1/public/key-requests', () => {
     }
   });
 
-  test('a confirmation mail that fails: 503 and the row is deleted', async () => {
+  test('a confirmation mail that fails: 503 and the row is deleted (the audit event, which names neither address nor client, stays)', async () => {
     const email = addr('fail');
     const received = async (): Promise<number> => (await t.db<{ one: number }[]>`select 1 as one from audit_events where action = 'public_request.received'`).length;
     const before = await received();
@@ -187,7 +187,7 @@ describeDb('POST /api/v1/public/key-requests', () => {
     expect(res.status).toBe(503);
     expect(res.error?.key).toBe('unavailable');
     expect(await rows(email)).toHaveLength(0);
-    expect(await received()).toBe(before);
+    expect(await received()).toBe(before + 1);
   });
 });
 

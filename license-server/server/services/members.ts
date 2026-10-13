@@ -208,12 +208,17 @@ export async function redeemInvite(ctx: ServiceCtx, token: unknown, userId: stri
 
 /**
  * For the personal flow: makes sure `email` is a member of the customer.
- * Links the row to `linkUserId` (a portal request with that IdP-verified
- * email) when it is not linked; otherwise, with `invite`, gives an unlinked
- * row a fresh invite link for the key mail. Returns that link, or null.
+ * A portal request (`linkUserId`, that user's IdP-verified email) links the
+ * row only when this call created it, or under MEMBER_AUTO_LINK when the
+ * user is the sole enabled holder of the address: an existing unlinked row
+ * may belong to someone else, and an IdP's email_verified alone never
+ * grants access to it (spec §6 "Members and invites"). Otherwise, and with
+ * `invite`, an unlinked row gets a fresh invite link for the key mail,
+ * which goes to the address itself. Returns that link, or null.
  */
 export async function ensureMember(ctx: ServiceCtx, customerId: string, email: string, opts: { linkUserId?: string | null; invite: boolean }): Promise<string | null> {
   let row = await lockMember(ctx, customerId, email);
+  let created = false;
   if (!row) {
     const by = actorColumns(ctx.actor);
     await ctx.tx`
@@ -221,13 +226,18 @@ export async function ensureMember(ctx: ServiceCtx, customerId: string, email: s
       values (${customerId}, ${email}, ${ctx.now}, ${by.label})`;
     await auditCtx(ctx, { action: 'member.added', targetType: 'customer', targetId: customerId, details: { email } });
     row = (await lockMember(ctx, customerId, email))!;
+    created = true;
   }
   if (row.user_id) return null;
   if (opts.linkUserId && !(await isLinkedTo(ctx.tx, customerId, opts.linkUserId))) {
-    await linkRow(ctx, customerId, email, opts.linkUserId, 'request');
+    const mayLink = created || (ctx.config.roles.memberAutoLink && (await autoLinkUser(ctx.tx, email)) === opts.linkUserId);
+    if (mayLink) {
+      await linkRow(ctx, customerId, email, opts.linkUserId, created ? 'request' : 'auto');
+      return null;
+    }
+  } else if (!opts.invite) {
     return null;
   }
-  if (!opts.invite) return null;
   const invite = await newInvite(ctx, customerId, email);
   return inviteUrl(ctx.config.publicUrl, invite.token);
 }

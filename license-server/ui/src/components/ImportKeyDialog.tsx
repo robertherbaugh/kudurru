@@ -6,8 +6,9 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { useState } from 'react';
+import { useFieldErrors } from '../api/fieldErrors';
 import { useRouteMutation } from '../api/hooks';
-import { errorText, useNotify } from '../ui/components/Feedback';
+import { useNotify } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { CustomerField, type CustomerChoice } from '../ui/fields/CustomerField';
 import { TextAreaField } from '../ui/fields/TextField';
@@ -21,6 +22,9 @@ export function ImportKeyDialog({ isOpen, onClose }: { isOpen: boolean; onClose:
   );
 }
 
+/** The body fields the controls show (a 400 names them inline). */
+const IMPORT_FIELDS = ['token', 'customerId'];
+
 function ImportForm({ onClose }: { onClose: () => void }) {
   const notify = useNotify();
   const navigate = useNavigate();
@@ -28,6 +32,7 @@ function ImportForm({ onClose }: { onClose: () => void }) {
   const [token, setToken] = useState('');
   const [customer, setCustomer] = useState<CustomerChoice | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const fe = useFieldErrors(m.error, IMPORT_FIELDS);
   const tokenError = token.trim() ? null : 'Paste the key';
   const customerError = customer ? null : 'Choose the customer the license belongs to';
 
@@ -62,13 +67,24 @@ function ImportForm({ onClose }: { onClose: () => void }) {
         label="Key"
         mono
         value={token}
-        onChange={setToken}
+        onChange={(v) => {
+          setToken(v);
+          fe.edited('token');
+        }}
         isRequired
         help="The whole key, as licensegen printed it; line breaks are ignored as on the nodes."
-        error={showErrors ? (tokenError ?? undefined) : undefined}
+        error={(showErrors ? tokenError : null) ?? fe.field('token')}
       />
-      <CustomerField value={customer} onChange={setCustomer} isRequired error={showErrors ? (customerError ?? undefined) : undefined} />
-      {m.error ? <Banner status="error" title="The key was not imported" description={errorText(m.error)} /> : null}
+      <CustomerField
+        value={customer}
+        onChange={(c) => {
+          setCustomer(c);
+          fe.edited('customerId');
+        }}
+        isRequired
+        error={(showErrors ? customerError : null) ?? fe.field('customerId')}
+      />
+      {fe.summary ? <Banner status="error" title="The key was not imported" description={fe.summary} /> : null}
     </DialogForm>
   );
 }

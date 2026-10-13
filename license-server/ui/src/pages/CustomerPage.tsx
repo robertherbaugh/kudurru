@@ -19,6 +19,7 @@ import { useState } from 'react';
 import type { CustomerDetail, CustomerKind, LicenseRequest, Member, MemberInviteResult } from '@shared/api';
 import { INVITE_TTL_DAYS } from '@shared/catalog';
 import { useCan } from '../api/context';
+import { bannerError, useFieldErrors } from '../api/fieldErrors';
 import { useCatalog, useCustomer, useRouteMutation } from '../api/hooks';
 import { RecentAudit } from '../components/AuditTable';
 import { MemberStatusBadge, RequestStatusBadge } from '../components/badges';
@@ -56,11 +57,15 @@ const requestColumns: TableColumn<RequestRow>[] = [
   { key: 'link', header: '', width: pixel(110), renderCell: (r) => (r.status === 'open' ? <Link href="/requests">Decide</Link> : null) },
 ];
 
+
+/** The body fields of the customer controls (a 400 names them inline). */
+const CUSTOMER_FIELDS = ['name', 'kind', 'contactEmail', 'notes'];
 export default function CustomerPage({ params }: PageProps) {
   const id = params.id ?? '';
   const can = useCan();
   const q = useCustomer(id);
   const update = useRouteMutation('customerUpdate');
+  const details = useFieldErrors(update.error, CUSTOMER_FIELDS);
   const [issuing, setIssuing] = useState(false);
   const c = q.data;
   return (
@@ -92,19 +97,65 @@ export default function CustomerPage({ params }: PageProps) {
             }
             edit={(d, set, showErrors) => (
               <VStack gap={3}>
-                <TextField label="Name" value={d.name} onChange={(v) => set({ ...d, name: v })} isRequired error={showErrors ? (nameError(d.name, 'the customer name') ?? undefined) : undefined} />
-                <SelectField label="Kind" value={d.kind} options={KIND_OPTIONS} onChange={(v) => set({ ...d, kind: v as CustomerKind })} />
-                <TextField label="Contact email" type="email" value={d.contactEmail} onChange={(v) => set({ ...d, contactEmail: v })} isOptional error={showErrors ? (emailError(d.contactEmail, { optional: true }) ?? undefined) : undefined} />
-                <TextAreaField label="Notes" value={d.notes} onChange={(v) => set({ ...d, notes: v })} isOptional help="Internal; customers never see them." />
+                <TextField
+                  label="Name"
+                  value={d.name}
+                  onChange={(v) => {
+                    set({ ...d, name: v });
+                    details.edited('name');
+                  }}
+                  isRequired
+                  error={(showErrors ? nameError(d.name, 'the customer name') : null) ?? details.field('name')}
+                />
+                <SelectField
+                  label="Kind"
+                  value={d.kind}
+                  options={KIND_OPTIONS}
+                  onChange={(v) => {
+                    set({ ...d, kind: v as CustomerKind });
+                    details.edited('kind');
+                  }}
+                  error={details.field('kind')}
+                />
+                <TextField
+                  label="Contact email"
+                  type="email"
+                  value={d.contactEmail}
+                  onChange={(v) => {
+                    set({ ...d, contactEmail: v });
+                    details.edited('contactEmail');
+                  }}
+                  isOptional
+                  error={(showErrors ? emailError(d.contactEmail, { optional: true }) : null) ?? details.field('contactEmail')}
+                />
+                <TextAreaField
+                  label="Notes"
+                  value={d.notes}
+                  onChange={(v) => {
+                    set({ ...d, notes: v });
+                    details.edited('notes');
+                  }}
+                  isOptional
+                  help="Internal; customers never see them."
+                  error={details.field('notes')}
+                />
               </VStack>
             )}
             validate={(d) => nameError(d.name, 'the customer name') ?? emailError(d.contactEmail, { optional: true })}
+            describeError={(err) => bannerError(err, CUSTOMER_FIELDS) ?? 'The portal did not accept the marked values.'}
             onSave={async (d) => {
               await update.mutateAsync({ params: { id: c.id }, body: { name: d.name.trim(), kind: d.kind, contactEmail: d.contactEmail.trim() || null, notes: d.notes.trim() } });
             }}
           />
           <Members customer={c} />
-          <Panel title="Licenses">
+          <Panel
+            title="Licenses"
+            actions={
+              c.licenses.length ? (
+                <Link href={`/licenses?customerId=${encodeURIComponent(c.id)}&customerName=${encodeURIComponent(c.name)}`}>Filter all licenses by this customer</Link>
+              ) : null
+            }
+          >
             <Table<LicenseRow> data={c.licenses as LicenseRow[]} columns={licenseCols} idKey="id" density="compact" emptyState={<Text color="secondary">No licenses yet.</Text>} />
           </Panel>
           {c.requests.length ? (
@@ -237,6 +288,7 @@ function AddMemberForm({ customerId, onClose }: { customerId: string; onClose: (
   const [email, setEmail] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   const err = emailError(email);
+  const fe = useFieldErrors(m.error, ['email']);
   if (m.data) {
     return (
       <DialogForm footer={<Button label="Done" variant="primary" onClick={onClose} />}>
@@ -259,8 +311,19 @@ function AddMemberForm({ customerId, onClose }: { customerId: string; onClose: (
         </>
       }
     >
-      <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired help="The person gets an invite link; whoever signs in with it sees this customer's licenses." error={showErrors ? (err ?? undefined) : undefined} />
-      {m.error ? <Banner status="error" title="The member was not added" description={errorText(m.error)} /> : null}
+      <TextField
+        label="Email"
+        type="email"
+        value={email}
+        onChange={(v) => {
+          setEmail(v);
+          fe.edited('email');
+        }}
+        isRequired
+        help="The person gets an invite link; whoever signs in with it sees this customer's licenses."
+        error={(showErrors ? err : null) ?? fe.field('email')}
+      />
+      {fe.summary ? <Banner status="error" title="The member was not added" description={fe.summary} /> : null}
     </DialogForm>
   );
 }

@@ -41,6 +41,9 @@ export default function LicensesPage() {
   const plan = (sp.get('plan') ?? '') as Plan | '';
   const expiring = sp.get('expiring') ?? '';
   const customerId = sp.get('customerId') ?? '';
+  // The name travels with the id (the customer page links here) so the
+  // filter reads well even before the list answers or when it is empty.
+  const customerName = sp.get('customerName') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const query: LicenseListQuery = {
     ...(q.trim() ? { q: q.trim() } : {}),
@@ -86,7 +89,10 @@ export default function LicensesPage() {
         </HStack>
         {customerId ? (
           <HStack gap={2} vAlign="center">
-            <Token label={`Customer ${items[0]?.customer.id === customerId ? items[0].customer.name : customerId}`} onRemove={() => setParams({ customerId: null, page: null })} />
+            <Token
+              label={`Customer ${items[0]?.customer.id === customerId ? items[0].customer.name : customerName || customerId}`}
+              onRemove={() => setParams({ customerId: null, customerName: null, page: null })}
+            />
           </HStack>
         ) : null}
         {list.error ? <ErrorBanner error={list.error} /> : null}

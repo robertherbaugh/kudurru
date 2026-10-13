@@ -147,7 +147,7 @@ export const licenseHandlers: PartialHandlerMap = {
 
   licenseEmail: async (ctx) => {
     const body = hasBody(ctx.req) ? await readJson(ctx, EmailShape) : {};
-    const result = await inTransaction(ctx, actorFromCtx(ctx), (s) => emailLicenseKey(s, ctx.params.id, body.to));
+    const result = await emailLicenseKey(ctx, actorFromCtx(ctx), ctx.params.id, body.to);
     return json<ResponseOf<'licenseEmail'>>(result);
   },
 };

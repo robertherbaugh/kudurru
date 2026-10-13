@@ -14,12 +14,13 @@ import { Text } from '@astryxdesign/core/Text';
 import { useState } from 'react';
 import type { BlockedEmail, LicenseRequest, RequestStatus } from '@shared/api';
 import { useCan } from '../api/context';
+import { useFieldErrors } from '../api/fieldErrors';
 import { useBlockedEmails, useRequests, useRouteMutation } from '../api/hooks';
 import { ApproveRequestWizardDialog } from '../components/ApproveRequestWizard';
 import { RequestStatusBadge } from '../components/badges';
 import { utcDay } from '../lib/dates';
 import { REQUEST_SOURCE_LABEL, REQUEST_STATUS_LABEL, REVIEW_REASON_LABEL } from '../lib/words';
-import { errorText, ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
+import { ErrorBanner, Loading, useNotify } from '../ui/components/Feedback';
 import { DialogForm, FormDialog } from '../ui/components/FormDialog';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 import { SelectField } from '../ui/fields/SelectField';
@@ -139,6 +140,7 @@ function RejectForm({ request: r, onClose }: { request: LicenseRequest; onClose:
   const [note, setNote] = useState('');
   const [showErrors, setShowErrors] = useState(false);
   const err = note.trim() ? (note.length > 1000 ? 'At most 1000 characters' : null) : 'Write a note for the requester';
+  const fe = useFieldErrors(m.error, ['note']);
   return (
     <DialogForm
       onSubmit={() => {
@@ -164,8 +166,18 @@ function RejectForm({ request: r, onClose }: { request: LicenseRequest; onClose:
       }
     >
       <Text as="p">They asked for: {r.use}</Text>
-      <TextAreaField label="Note to the requester" value={note} onChange={setNote} isRequired help={`Mailed to ${r.requesterEmail}. Say why, and what they can do instead.`} error={showErrors ? (err ?? undefined) : undefined} />
-      {m.error ? <Banner status="error" title="The request was not rejected" description={errorText(m.error)} /> : null}
+      <TextAreaField
+        label="Note to the requester"
+        value={note}
+        onChange={(v) => {
+          setNote(v);
+          fe.edited('note');
+        }}
+        isRequired
+        help={`Mailed to ${r.requesterEmail}. Say why, and what they can do instead.`}
+        error={(showErrors ? err : null) ?? fe.field('note')}
+      />
+      {fe.summary ? <Banner status="error" title="The request was not rejected" description={fe.summary} /> : null}
     </DialogForm>
   );
 }
