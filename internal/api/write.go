@@ -242,6 +242,9 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 		return writeResult{obj: existing, result: ResultUnchanged, key: key}, nil
 	}
 	if existing == nil && k.kind == "Policy" {
+		// Held until the create is done: the check and the create are one step.
+		s.policyMu.Lock()
+		defer s.policyMu.Unlock()
 		if err := s.checkPolicyLimit(ctx); err != nil {
 			return writeResult{}, err
 		}

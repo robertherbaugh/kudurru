@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"log/slog"
@@ -25,7 +26,9 @@ func trustTestKey(t *testing.T) func(c license.Claims) string {
 	}
 	t.Cleanup(func() { newLicenseManager = old })
 	return func(c license.Claims) string {
-		c.IssuedAt, c.ExpiresAt = time.Now().Add(-time.Hour).Unix(), time.Now().Add(24*time.Hour).Unix()
+		if c.ExpiresAt == 0 {
+			c.IssuedAt, c.ExpiresAt = time.Now().Add(-time.Hour).Unix(), time.Now().Add(24*time.Hour).Unix()
+		}
 		c.ID, c.Licensee = "lic_t", "Homelab Hank"
 		k, err := license.Sign(priv, "t", c)
 		if err != nil {
@@ -68,21 +71,47 @@ func TestLicenseStatusAndVerify(t *testing.T) {
 	}
 }
 
+// The supervisors sit in the data path: a lapse must never become an outage.
+// Only a start with no key that ever covered the edge is refused.
 func TestRequireFeatureGatesTheSupervisors(t *testing.T) {
 	sign := trustTestKey(t)
-	logger := slog.New(slog.DiscardHandler)
 	t.Setenv(license.EnvKeyFile, "")
-
-	t.Setenv(license.EnvKey, "")
-	if err := requireFeature(logger, license.FeatureEdge); err == nil || !strings.Contains(err.Error(), "needs a kudurru license key") {
-		t.Errorf("no key: err = %v", err)
+	day := 24 * time.Hour
+	expired := func(ago time.Duration, features ...license.Feature) string {
+		return sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: features,
+			IssuedAt: time.Now().Add(-ago - 365*day).Unix(), ExpiresAt: time.Now().Add(-ago).Unix()})
 	}
-	t.Setenv(license.EnvKey, sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: []license.Feature{license.FeatureOIDC}}))
-	if err := requireFeature(logger, license.FeatureEdge); err == nil {
-		t.Error("a key without the edge feature started the edge")
-	}
-	t.Setenv(license.EnvKey, sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3}))
-	if err := requireFeature(logger, license.FeatureEdge); err != nil {
-		t.Errorf("an all-features key was refused: %v", err)
+	for _, tc := range []struct {
+		name    string
+		key     string
+		wantErr string // a substring; "" means the supervisor starts
+		warn    string // a substring of the warning; "" means none
+	}{
+		{"no key", "", "needs a kudurru license key", ""},
+		{"a key that cannot be verified", "not-a-key", "needs a kudurru license key", ""},
+		{"a key without the edge", sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: []license.Feature{license.FeatureOIDC}}), "needs a kudurru license key", ""},
+		{"a valid key", sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3}), "", ""},
+		{"a key in its grace period", expired(10 * day), "", "keeps working until"},
+		{"a key that expired past the grace period", expired(60 * day), "", "keeps running because it was licensed"},
+		{"an expired key that covered the edge by name", expired(60*day, license.FeatureEdge), "", "keeps running because it was licensed"},
+		{"an expired key that never covered the edge", expired(60*day, license.FeatureOIDC), "needs a kudurru license key", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(license.EnvKey, tc.key)
+			var logs bytes.Buffer
+			err := requireFeature(slog.New(slog.NewTextHandler(&logs, nil)), license.FeatureEdge)
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatalf("the supervisor was refused: %v", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+			}
+			if tc.warn == "" && strings.Contains(logs.String(), "level=WARN msg=\"the license key") {
+				t.Errorf("unexpected license warning: %s", logs.String())
+			}
+			if tc.warn != "" && !strings.Contains(logs.String(), tc.warn) {
+				t.Errorf("log lacks %q: %s", tc.warn, logs.String())
+			}
+		})
 	}
 }

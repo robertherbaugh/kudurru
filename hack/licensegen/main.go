@@ -92,7 +92,8 @@ func sign(args []string) error {
 	licensee := fs.String("licensee", "", "who the license is for")
 	plan := fs.String("plan", "personal", "personal, business, enterprise or trial")
 	nodes := fs.Int("nodes", 3, "node limit")
-	features := fs.String("features", "", "comma-separated features (oidc,edge,integrations); empty grants all")
+	features := fs.String("features", "", "comma-separated features ("+featureNames()+"); empty grants all")
+	allowUnknown := fs.Bool("allow-unknown-features", false, "issue feature names this build does not know (for a key that a newer kudurru reads); a typo is otherwise an error")
 	days := fs.Int("days", 365, "term in days")
 	id := fs.String("id", "", "license id (default: random)")
 	if err := fs.Parse(args); err != nil {
@@ -132,17 +133,54 @@ func sign(args []string) error {
 		ID: *id, Licensee: *licensee, Plan: license.Plan(*plan), Nodes: *nodes,
 		IssuedAt: now.Unix(), ExpiresAt: now.AddDate(0, 0, *days).Unix(),
 	}
-	for _, f := range strings.Split(*features, ",") {
-		if f = strings.TrimSpace(f); f != "" {
-			c.Features = append(c.Features, license.Feature(f))
-		}
+	feats, err := parseFeatures(*features, *allowUnknown)
+	if err != nil {
+		return err
 	}
+	c.Features = feats
 	key, err := license.Sign(ed25519.NewKeyFromSeed(seed), *kid, c)
 	if err != nil {
 		return err
 	}
 	fmt.Println(key)
 	return nil
+}
+
+// featureNames lists the features this build knows, for the help text and errors.
+func featureNames() string {
+	names := make([]string, 0, len(license.Features()))
+	for _, f := range license.Features() {
+		names = append(names, string(f))
+	}
+	return strings.Join(names, ",")
+}
+
+// parseFeatures turns "oidc,rbac" into features. An unknown name is an error:
+// Claims.Allows ignores names it does not know (a newer licensor may issue
+// them), so a typo such as "rback" would silently issue a key without the
+// feature and the licensee would find out in production.
+func parseFeatures(list string, allowUnknown bool) ([]license.Feature, error) {
+	var out []license.Feature
+	seen := map[license.Feature]bool{}
+	known := map[license.Feature]bool{}
+	for _, f := range license.Features() {
+		known[f] = true
+	}
+	for _, name := range strings.Split(list, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		f := license.Feature(name)
+		if !known[f] && !allowUnknown {
+			return nil, fmt.Errorf("unknown feature %q (this build knows: %s; -allow-unknown-features issues it anyway)", name, featureNames())
+		}
+		if !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	return out, nil
 }
 
 func inspect(args []string) error {

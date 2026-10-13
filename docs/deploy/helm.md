@@ -72,7 +72,7 @@ helm upgrade kudurru ... --set license.existingSecret=kudurru-license
 `license.key` takes the key as a string and creates the Secret for you. Every
 kudurru container (the server, the dnsdist supervisor and the keepalived
 supervisor) reads it as `KUDURRU_LICENSE_KEY`; the Secret is optional, so pods
-start without it. **With `edge.enabled` the supervisors refuse to start without
+start without it. **With `edge.enabled` the supervisors refuse a first start without
 a key that covers the `edge` feature.** `kudurru license status` and
 `GET /api/v1/license` show the state; the Secret is reread every minute.
 
@@ -180,7 +180,8 @@ or set `net.ipv4.ip_unprivileged_port_start=53` on the hosts.
 ### Edge (dnsdist)
 
 The dnsdist and keepalived supervisors need a license key that includes the
-edge; without one they stop at the start (see [License key](#license-key)).
+edge; without one a first start is refused, and an expired key never stops a
+restart (see [License key](#license-key)).
 
 With `edge.enabled` the dns Service selects the edge pods; kudurru listens
 on `edge.backendPort` (5353) and accepts PROXYv2 only from

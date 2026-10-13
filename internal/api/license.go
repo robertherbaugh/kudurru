@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -52,18 +54,26 @@ func (s *Server) getLicense(ctx context.Context, _ *struct{}) (*licenseOutput, e
 	return &licenseOutput{Body: &LicenseInfo{Status: st, NodesInUse: n, OverLimit: n > st.Nodes}}, nil
 }
 
-// nodeCountTTL is how long the node count is reused by the license gate.
-const nodeCountTTL = 10 * time.Second
+// nodeCountTTL is how long the node count is reused by the license gate, and
+// nodeFailTTL how long a failed lookup is remembered (the gate fails open
+// meanwhile, without asking membership again).
+const (
+	nodeCountTTL = 10 * time.Second
+	nodeFailTTL  = 5 * time.Second
+	// nodeLookupTimeout bounds the one shared membership lookup.
+	nodeLookupTimeout = 3 * time.Second
+)
 
 type nodeCounter struct {
-	mu   sync.Mutex
-	at   time.Time
-	n    int
-	have bool
+	mu     sync.Mutex
+	at     time.Time
+	n      int
+	have   bool
+	failed bool
+	// group collapses concurrent lookups into one membership call.
+	group singleflight.Group
 }
 
-// nodeCount returns the number of cluster nodes, 0 when membership fails
-// (the gate fails open: a membership outage never blocks an operator).
 // requireFeature answers 402 license_required when f is not licensed. A
 // server without Options.License does not gate.
 func (s *Server) requireFeature(f license.Feature, what string) error {
@@ -74,19 +84,41 @@ func (s *Server) requireFeature(f license.Feature, what string) error {
 		"add a license key (a free personal key covers 3 nodes; see https://kudurru.io/license); DNS keeps working meanwhile")
 }
 
+// nodeCount returns the number of cluster nodes, 0 when membership fails
+// (the gate fails open: a membership outage never blocks an operator). The
+// answer is cached, a failure for a few seconds, and concurrent callers share
+// one membership call that no caller's cancellation can cut short, so a slow
+// or dead membership source costs each write nothing beyond that one call. The
+// lock is never held across the call.
 func (s *Server) nodeCount(ctx context.Context) int {
 	c := &s.nodes
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.have && s.opts.Now().Sub(c.at) < nodeCountTTL {
-		return c.n
+	ttl := nodeCountTTL
+	if c.failed {
+		ttl = nodeFailTTL
 	}
-	peers, err := s.opts.Membership.Peers(ctx)
-	if err != nil {
-		return 0
+	if c.have && s.opts.Now().Sub(c.at) < ttl {
+		n := c.n
+		c.mu.Unlock()
+		return n
 	}
-	c.n, c.at, c.have = len(peers), s.opts.Now(), true
-	return c.n
+	c.mu.Unlock()
+
+	v, _, _ := c.group.Do("peers", func() (any, error) {
+		lookup, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeLookupTimeout)
+		defer cancel()
+		peers, err := s.opts.Membership.Peers(lookup)
+		n := len(peers)
+		if err != nil {
+			n = 0
+		}
+		c.mu.Lock()
+		c.n, c.at, c.have, c.failed = n, s.opts.Now(), true, err != nil
+		c.mu.Unlock()
+		return n, nil
+	})
+	n, _ := v.(int)
+	return n
 }
 
 // licenseExempt are the write routes that stay open when the cluster is
@@ -125,6 +157,13 @@ func (s *Server) licenseMW(next http.Handler) http.Handler {
 // checkPolicyLimit refuses to create a Policy beyond the license's limit
 // (two without a key). Existing policies are never touched: a lapsed key
 // only stops new ones.
+//
+// The limit is best effort, by design: it guards the management plane (the
+// API of this process; writeObject serializes the check with the create so two
+// concurrent creates cannot both pass) and never the data path. Policies made
+// another way are not counted against it: through kubectl or GitOps in the
+// kube driver, in object files, by the bootstrap, or through another replica's
+// API at the same moment. LICENSING.md says so.
 func (s *Server) checkPolicyLimit(ctx context.Context) error {
 	if s.opts.License == nil || s.opts.License.Status().PolicyLimit == 0 {
 		return nil

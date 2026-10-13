@@ -161,6 +161,46 @@ func TestLifecycle(t *testing.T) {
 	}
 }
 
+func TestRequireStart(t *testing.T) {
+	f := newFixture(t)
+	exp := time.Unix(t0.Add(365*24*time.Hour).Unix(), 0)
+	for _, tc := range []struct {
+		name    string
+		now     time.Time
+		mutate  func(*Claims)
+		wantErr bool
+		warn    string
+	}{
+		{"active", t0, nil, false, ""},
+		{"grace", exp.Add(24 * time.Hour), nil, false, "keeps working until"},
+		{"expired past grace, all features", exp.Add(Grace + 24*time.Hour), nil, false, "keeps running because it was licensed"},
+		{"expired past grace, named feature", exp.Add(Grace + 24*time.Hour), func(c *Claims) { c.Features = []Feature{FeatureEdge} }, false, "keeps running because it was licensed"},
+		{"expired past grace, other feature", exp.Add(Grace + 24*time.Hour), func(c *Claims) { c.Features = []Feature{FeatureOIDC} }, true, ""},
+		{"active, other feature", t0, func(c *Claims) { c.Features = []Feature{FeatureOIDC} }, true, ""},
+	} {
+		m := f.manager(t, tc.now)
+		if err := m.Set(f.key(t, tc.mutate), "test"); err != nil {
+			t.Fatal(err)
+		}
+		warn, err := m.RequireStart(FeatureEdge)
+		if (err != nil) != tc.wantErr || (tc.warn == "") != (warn == "") || !strings.Contains(warn, tc.warn) {
+			t.Errorf("%s: warning %q, err %v", tc.name, warn, err)
+		}
+	}
+	// No key, a bad key and a nil manager: a first start with nothing to lose.
+	var nilManager *Manager
+	for name, m := range map[string]*Manager{"none": f.manager(t, t0), "nil": nilManager} {
+		if _, err := m.RequireStart(FeatureEdge); !errors.Is(err, ErrFeature) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	bad := f.manager(t, t0)
+	_ = bad.Set("typo", "test")
+	if _, err := bad.RequireStart(FeatureEdge); !errors.Is(err, ErrFeature) {
+		t.Errorf("a bad key started the supervisor: %v", err)
+	}
+}
+
 func TestNotYetValid(t *testing.T) {
 	f := newFixture(t)
 	m := f.manager(t, t0)

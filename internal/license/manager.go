@@ -181,6 +181,38 @@ func (m *Manager) Require(f Feature) error {
 		ErrFeature, f, s.State)
 }
 
+// RequireStart is the check of a process that must not stop answering for want
+// of a key: the dnsdist and keepalived supervisors, which sit in the data path.
+// It returns nil when f is licensed; nil with a warning when the key is in its
+// grace period or has expired but covered f (the deployment was licensed, so a
+// restart after a lapse must never become an outage: the lapse is a billing
+// matter, not a reason to stop answering); and an error only when there is no
+// verifiable key that ever covered f, which is a first start that has nothing
+// to lose. The warning says what to do.
+func (m *Manager) RequireStart(f Feature) (warning string, err error) {
+	s := m.Status()
+	switch {
+	case s.Allows(f) && s.State == StateGrace:
+		return fmt.Sprintf("the license key expired on %s; it keeps working until %s", s.ExpiresAt.Format(time.DateOnly), s.GraceEndsAt.Format(time.DateOnly)), nil
+	case s.Allows(f):
+		return "", nil
+	case s.State == StateExpired && m.covered(f):
+		return fmt.Sprintf("the license key expired on %s, more than %d days ago; %s keeps running because it was licensed. Renew the key",
+			s.ExpiresAt.Format(time.DateOnly), int(Grace/(24*time.Hour)), f), nil
+	}
+	return "", m.Require(f)
+}
+
+// covered reports whether the key (expired or not) grants f.
+func (m *Manager) covered(f Feature) bool {
+	if m == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.claims != nil && m.claims.Allows(f)
+}
+
 // ErrNodeLimit is wrapped by CheckNodes when the cluster is larger than the
 // license allows.
 var ErrNodeLimit = errors.New("node limit exceeded")

@@ -23,7 +23,8 @@ Licensing ([how it works](licensing.md)): more than one node, and the dnsdist
 and keepalived edge, need a license key; a free personal key covers 3 nodes.
 DNS answering never depends on a key. Every kudurru container (server,
 dnsdist supervisor, keepalived supervisor) gets it as `KUDURRU_LICENSE_KEY`,
-and the supervisors refuse to start without a key that covers the edge.
+and the supervisors refuse a first start without a key that covers the edge
+(an expired key never stops a restart).
 
 ## One container, and one host with the edge
 

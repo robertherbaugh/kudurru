@@ -29,7 +29,8 @@ The `kudurru-dnsdist` and `kudurru-keepalived` images (supervisors
 
 The dnsdist and keepalived containers need a license key that includes the
 edge: set `KUDURRU_LICENSE_KEY` in the environment of every host (the compose
-files pass it to all three containers). Without a key they stop at the start.
+files pass it to all three containers). Without a key a first start is refused;
+an expired key never stops a restart.
 A free personal key covers up to 3 nodes for non-commercial use
 ([LICENSING.md](../../LICENSING.md)).
 

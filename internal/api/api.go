@@ -295,6 +295,8 @@ type Server struct {
 	unblockFallback *unblock.Service
 	// nodes caches the cluster size for the license gate.
 	nodes nodeCounter
+	// policyMu serializes the policy limit check with the create it guards.
+	policyMu sync.Mutex
 	// domainSvc is the Allowlist and Denylist over the store.
 	domainOnce sync.Once
 	domainSvc  *domainlist.Service

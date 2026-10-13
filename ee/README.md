@@ -6,7 +6,7 @@
 | [`rbac/`](rbac/) | `rbac`: role bindings, scoped roles, Kubernetes SubjectAccessReview delegation, the ClusterRole generator | `internal/rbac.Engine` (`EngineOptions.Licensed`) and `internal/auth/stack`, re-checked on every request |
 | [`auditstore/`](auditstore/) | `audit`: the persisted audit trail | `audit.Gated` in `cmd/kudurru/serve.go` and `internal/api` (`/audit`) |
 | [`longterm/`](longterm/) | `longterm`: statistics windows older than 24 hours | `internal/api` (`window()`), on every request |
-| [`edge/`](edge/) | `edge`: the dnsdist and keepalived supervisors, the VIP providers | `kudurru edge run` and `kudurru vip run` (`cmd/kudurru/license.go`), once at start |
+| [`edge/`](edge/) | `edge`: the dnsdist and keepalived supervisors, the VIP providers | `kudurru edge run` and `kudurru vip run` (`cmd/kudurru/license.go`, `Manager.RequireStart`), once at start; refuses only a start with no key that ever covered the edge |
 | [`integration/`](integration/) | `integrations`: the integration framework and the external-dns webhook | `cmd/kudurru/serve.go`, at start |
 
 Two more features have no code of their own to move, so they have no

@@ -67,16 +67,27 @@ Only the management plane changes:
   bootstrap token and the admin socket still have full access), OIDC sign-in is
   switched off, the audit trail, long-term statistics and unblock requests
   answer `402 license_required`, the external-dns webhook is not started, and
-  the dnsdist and keepalived supervisors refuse to start. DNS, blocking,
-  zones, the block page and the dashboard are unchanged.
-- **A fourth policy** cannot be created through the API while the limit is two;
-  existing policies keep working, and a key lifts the limit.
+  the dnsdist and keepalived supervisors refuse a first start that has no key
+  (see below). DNS, blocking, zones, the block page and the dashboard are
+  unchanged.
+- **A third policy** cannot be created through the API while the limit is two;
+  existing policies keep working, and a key lifts the limit. This limit is
+  best effort: it guards the API, not the data path, so policies made another
+  way (`kubectl` or GitOps in Kubernetes, object files, another replica at the
+  same moment) are not counted against it, and the terms of the license apply
+  either way.
 - **More nodes than the key allows**: configuration writes through the API
   answer `402 license_required` until the cluster is back under the limit.
   Reads, sign-in, pausing blocking and flushing the cache still work.
 - **An expired key** keeps working for a 30-day grace period and logs a warning.
-  After that the node runs as if it had no key. A running edge supervisor is
-  never stopped by an expiry; it checks the key when it starts.
+  After that the node runs as if it had no key.
+- **The dnsdist and keepalived supervisors** sit in the DNS data path, so a
+  lapse never stops them. They refuse only a start that has no key at all (or
+  one that cannot be verified, or one that never included the edge): nothing
+  was running, so nothing is lost. A key in its grace period, and a key that
+  has expired since, still start them, with a warning in the log. They check the
+  key once, at the start, and a running supervisor is never stopped by an
+  expiry. Renew the key; the warning is the reminder.
 
 The metrics `kudurru_license_info`, `kudurru_license_expires_timestamp_seconds`
 and `kudurru_license_node_limit` let you alert before a key runs out.

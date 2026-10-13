@@ -77,8 +77,11 @@ To put a key on a node:
 
 The node reads the key again each minute. You do not restart it. In Helm,
 set the value `license.existingSecret`. In Compose, set the variable
-`KUDURRU_LICENSE_KEY`. The dnsdist and keepalived programs get the key in
-the same way, and they do not start without a key that covers the edge.
+`KUDURRU_LICENSE_KEY`.
+
+The dnsdist and keepalived containers get the key in the same way. They do not
+start for the first time without a key that covers the edge. After that, an
+expired key never stops them.
 
 To check a key without a running node, use the command line:
 

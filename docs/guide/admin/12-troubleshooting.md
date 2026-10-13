@@ -110,7 +110,7 @@ Use these tools in this order:
 | A setting cannot be changed in the dashboard. | The setting is `host only`, or an environment variable sets it. | Change it in `kudurru.yaml` or in the environment of the host. |
 | A page says that a feature needs a license key. | The node has no key, or the key does not include the feature. | Open **License**. Put a key on the node (Chapter 13). |
 | A change gives the error `license_required`. | The cluster has more nodes than the key allows, or you made a third policy without a key. | Open **License**. Remove nodes or policies, or put a key on the node (Chapter 13). DNS is not affected. |
-| The dnsdist or the keepalived container stops at the start. The log says that the edge needs a license key. | The container has no key that includes the edge. | Set `KUDURRU_LICENSE_KEY` in the container (Chapter 13). |
+| The dnsdist or the keepalived container does not start for the first time. The log says that the edge needs a license key. | The container has no key that includes the edge. | Set `KUDURRU_LICENSE_KEY` in the container (Chapter 13). |
 | A statistics page says that the result is partial. | A node did not answer. | Open **Nodes** and find the node. Check its health. |
 | The node shows **readiness unknown**. | The node is not reachable from the node that you use. | Check the network between the nodes (port 8082). |
 | A node starts with an error about the data. | A newer version wrote the data. | Use the newer version. You cannot go back to an older one. |

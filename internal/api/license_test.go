@@ -5,13 +5,17 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/license"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 func licenseManager(t *testing.T, nodes int) *license.Manager {
@@ -187,5 +191,115 @@ func TestPolicyLimit(t *testing.T) {
 	k := newHarness(t, func(o *Options) { o.License = licenseManager(t, 3) })
 	for _, n := range []string{"a", "b", "c", "d"} {
 		create(k, n).want(http.StatusCreated)
+	}
+}
+
+// countingMembership counts Peers calls, answers slowly, and can fail.
+type countingMembership struct {
+	calls atomic.Int32
+	delay time.Duration
+	err   error
+	peers []cluster.Peer
+}
+
+func (m *countingMembership) Leader(context.Context) (cluster.Peer, error) {
+	return cluster.Peer{}, cluster.ErrNoLeader
+}
+
+func (m *countingMembership) Peers(context.Context) ([]cluster.Peer, error) {
+	m.calls.Add(1)
+	time.Sleep(m.delay)
+	return m.peers, m.err
+}
+
+// Concurrent writes share one membership call instead of queueing behind one
+// each, and a failed lookup is remembered, so a dead membership source costs
+// the writes behind it nothing.
+func TestNodeCountSharesTheLookupAndCachesFailure(t *testing.T) {
+	m := &countingMembership{delay: 150 * time.Millisecond, peers: peers(2).peers}
+	h := newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.Membership = m })
+
+	var wg sync.WaitGroup
+	start := time.Now()
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if n := h.srv.nodeCount(context.Background()); n != 2 {
+				t.Errorf("nodeCount = %d, want 2", n)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := m.calls.Load(); got != 1 {
+		t.Errorf("20 concurrent lookups made %d membership calls, want 1", got)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("20 concurrent lookups took %v: they queued", d)
+	}
+
+	// A failure is cached: the gate fails open without asking again.
+	f := &countingMembership{delay: 50 * time.Millisecond, err: errors.New("membership down")}
+	h = newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.Membership = f })
+	for range 5 {
+		if n := h.srv.nodeCount(context.Background()); n != 0 {
+			t.Fatalf("nodeCount on a failing membership = %d, want 0 (fail open)", n)
+		}
+	}
+	if got := f.calls.Load(); got != 1 {
+		t.Errorf("5 lookups against a dead membership made %d calls, want 1", got)
+	}
+
+	// The lookup does not depend on the first caller: a canceled context
+	// there does not fail the callers that share its call.
+	m2 := &countingMembership{delay: 100 * time.Millisecond, peers: peers(3).peers}
+	h = newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.Membership = m2 })
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
+	if n := h.srv.nodeCount(ctx); n != 3 {
+		t.Errorf("nodeCount with a canceled caller = %d, want 3", n)
+	}
+}
+
+// slowList returns the policy count late, so that a count taken while another
+// create is under way is stale by the time it is used.
+type slowList struct{ store.Store }
+
+func (s slowList) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	l, err := s.Store.List(ctx, kind, opts)
+	time.Sleep(20 * time.Millisecond)
+	return l, err
+}
+
+// Two creates that race at the limit cannot both pass: the check and the
+// create are one step.
+func TestPolicyLimitHoldsUnderConcurrentCreates(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.License = licenseManager(t, 0); o.Store = slowList{o.Store} })
+	h.do(http.MethodPut, "/api/v1/objects/policies/default/first", "admin", policyDoc("first")).want(http.StatusCreated)
+
+	var created, refused atomic.Int32
+	var wg sync.WaitGroup
+	for i := range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			name := fmt.Sprintf("racer-%d", i)
+			switch r := h.do(http.MethodPut, "/api/v1/objects/policies/default/"+name, "admin", policyDoc(name)); r.Code {
+			case http.StatusCreated:
+				created.Add(1)
+			case http.StatusPaymentRequired:
+				refused.Add(1)
+			default:
+				t.Errorf("PUT %s: %d %s", name, r.Code, r.Body.String())
+			}
+		}()
+	}
+	wg.Wait()
+	if created.Load() != 1 || refused.Load() != 11 {
+		t.Errorf("12 racing creates at 1 of 2: %d created, %d refused; want 1 and 11", created.Load(), refused.Load())
+	}
+	list := h.do(http.MethodGet, "/api/v1/objects/policies", "admin", nil).want(http.StatusOK).m()
+	if items, _ := list["items"].([]any); len(items) != 2 {
+		t.Errorf("%d policies exist, want exactly the limit of 2", len(items))
 	}
 }

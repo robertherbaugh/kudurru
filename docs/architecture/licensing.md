@@ -76,7 +76,7 @@ and a personal key does not widen the noncommercial terms.
 | Audit trail (`ee/auditstore`) | the log lines are written; nothing is stored through the recorder, `GET /audit` answers 402 | stored, readable, exportable |
 | Statistics older than 24 hours (`ee/longterm`) | `402 license_required`; rollups are still collected | readable |
 | Unblock requests | the block page has no form and refuses the post; `/unblockrequests` answers 402 | on |
-| `kudurru edge run` and `kudurru vip run` (`ee/edge`) | refuse to start | start |
+| `kudurru edge run` and `kudurru vip run` (`ee/edge`) | refuse a first start with no key; a key that has expired since (past the grace period) still starts them, with a warning | start |
 | external-dns webhook (`ee/integration`) | not started, a warning is logged | started |
 
 Two details matter for an operator:
@@ -99,10 +99,21 @@ Two details matter for an operator:
   extra rows (denials, runtime actions) and reading the trail back at the API
   (`GET /audit`, the export, the dashboard page), whichever store answers. A key
   that arrives later shows the history that was kept meanwhile.
-- **The supervisors check once, at start.** They are separate processes (the
-  `kudurru-dnsdist` and `kudurru-keepalived` images), often PID 1 of a
-  container. A key that expires later never stops a running one, and the
-  30-day grace period covers a restart in between.
+- **The supervisors check once, at start, and never turn a lapse into an
+  outage.** They are separate processes (the `kudurru-dnsdist` and
+  `kudurru-keepalived` images), often PID 1 of a container, and dnsdist is in
+  the data path. A key that expires later never stops a running one. At a
+  start, `license.Manager.RequireStart` refuses only a deployment with no
+  verifiable key that ever covered the edge (a first start has nothing to
+  lose); a key in its grace period, and a key that has expired since, start
+  with a loud warning, because a restart or a rollout after a lapse must never
+  become a crash loop. The promise that licensing never touches DNS is about
+  exactly this: a node that answers keeps answering.
+- **The policy limit is best effort.** `writeObject` serializes the check with
+  the create, so two concurrent creates through one API cannot both pass, but
+  policies made by `kubectl` or GitOps (kube driver), object files, the
+  bootstrap or another replica's API at the same moment are not counted. It
+  guards the management plane and nothing else.
 
 ## Operating it
 
@@ -114,8 +125,8 @@ Two details matter for an operator:
 | Alert before expiry | `kudurru_license_expires_timestamp_seconds - time()` |
 
 The edge supervisors read the key from their own environment, so Helm and
-Compose pass `KUDURRU_LICENSE_KEY` to every kudurru container. Without it an
-edge deployment does not start.
+Compose pass `KUDURRU_LICENSE_KEY` to every kudurru container. Without it a
+first start of an edge deployment is refused; a lapsed key never stops a restart.
 
 ## The dashboard
 

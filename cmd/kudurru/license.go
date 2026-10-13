@@ -24,9 +24,12 @@ const supervisorDataDir = "/var/lib/kudurru"
 var newLicenseManager = func() (*license.Manager, error) { return license.New(license.Options{}) }
 
 // requireFeature is the license gate of the supervisors under ee/edge
-// (`kudurru edge run`, `kudurru vip run`). It checks once at start: a
-// running supervisor is never stopped when the key later expires, and an
-// expired key keeps working through its grace period (license.Grace).
+// (`kudurru edge run`, `kudurru vip run`). Those processes sit in the data
+// path, so the gate must never turn a license lapse into a DNS outage: it
+// refuses only a start with no verifiable key that ever covered the edge. A
+// valid key, a key in its grace period and a key that has expired since
+// (license.Manager.RequireStart) all start, the last two with a warning. It
+// checks once, at start: a running supervisor is never stopped by an expiry.
 func requireFeature(logger *slog.Logger, f license.Feature) error {
 	m, err := newLicenseManager()
 	if err != nil {
@@ -35,11 +38,12 @@ func requireFeature(logger *slog.Logger, f license.Feature) error {
 	if err := m.Load(license.DefaultSources("", supervisorDataDir, os.Getenv)); err != nil {
 		logger.Warn("license key", "error", err)
 	}
-	if err := m.Require(f); err != nil {
+	warning, err := m.RequireStart(f)
+	if err != nil {
 		return fmt.Errorf("%w (set KUDURRU_LICENSE_KEY or KUDURRU_LICENSE_KEY_FILE)", err)
 	}
-	if s := m.Status(); s.State == license.StateGrace {
-		logger.Warn("license key expired; it keeps working until the end of the grace period", "graceEnds", s.GraceEndsAt.Format(time.DateOnly))
+	if warning != "" {
+		logger.Warn(warning)
 	}
 	return nil
 }
