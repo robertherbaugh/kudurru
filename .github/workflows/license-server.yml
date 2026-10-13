@@ -240,7 +240,7 @@ jobs:
           retention-days: 14
   deploy:
     needs: [check, image, e2e]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.LICENSE_PORTAL_DEPLOY == 'true'
     runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 30
     environment: license-portal-production
@@ -258,6 +258,15 @@ jobs:
       - name: Install the deployment tools
         working-directory: license-server/cloudflare
         run: bun install --frozen-lockfile
+      - name: Refuse a stale commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [ "$latest" != "$GITHUB_SHA" ]; then
+            echo "::error::main has moved past ${GITHUB_SHA}; run the workflow for the latest commit"
+            exit 1
+          fi
       - name: Build, push, migrate and deploy
         working-directory: license-server/cloudflare
         env:

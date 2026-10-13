@@ -25,7 +25,11 @@ export function prepareDeployment(template: WorkerConfig, env: Environment, comm
   for (const name of ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', ...runtimeSecrets]) {
     if (!env[name]?.trim()) throw new Error(`${name} is required`);
   }
-  if (!/^[a-f0-9]{32}$/.test(env.CLOUDFLARE_ACCOUNT_ID!)) throw new Error('CLOUDFLARE_ACCOUNT_ID must be a 32-character hex account ID');
+  const cloudflare = {
+    CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID!.trim(),
+    CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN!.trim(),
+  };
+  if (!/^[a-f0-9]{32}$/.test(cloudflare.CLOUDFLARE_ACCOUNT_ID)) throw new Error('CLOUDFLARE_ACCOUNT_ID must be a 32-character hex account ID');
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('The deployment requires a full Git commit SHA');
   if (!/^[a-zA-Z0-9_.-]+$/.test(attempt)) throw new Error('Invalid deployment attempt');
   if (!template.routes?.some((route) => route.custom_domain && `https://${route.pattern}` === template.vars.PUBLIC_URL)) {
@@ -45,35 +49,68 @@ export function prepareDeployment(template: WorkerConfig, env: Environment, comm
     vars: { ...template.vars, MIGRATE_ON_START: 'false' },
     containers: template.containers.map((container) => ({
       ...container,
-      image: `registry.cloudflare.com/${env.CLOUDFLARE_ACCOUNT_ID}/${image}`,
+      image: `registry.cloudflare.com/${cloudflare.CLOUDFLARE_ACCOUNT_ID}/${image}`,
     })),
   };
-  const secrets = Object.fromEntries(runtimeSecrets.map((name) => [name, env[name]!]));
-  const migrationUrl = env.DATABASE_MIGRATE_URL?.trim() ? env.DATABASE_MIGRATE_URL : env.DATABASE_URL!;
-  return { config, secrets, migrationUrl, image };
+  const secrets = Object.fromEntries(runtimeSecrets.map((name) => [name, env[name]!.trim()]));
+  const migrationUrl = env.DATABASE_MIGRATE_URL?.trim() || secrets.DATABASE_URL!;
+  return { config, secrets, cloudflare, migrationUrl, image };
 }
 
-function run(args: string[], cwd: string, env: Environment = process.env): void {
+/** Tooling inherits host/Docker settings, but no portal or deployment credentials. */
+function commandEnv(env: Environment): Record<string, string | undefined> {
+  const clean = { ...env };
+  for (const name of [...runtimeSecrets, 'DATABASE_MIGRATE_URL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+    delete clean[name];
+  }
+  return clean;
+}
+
+function run(args: string[], cwd: string, env: Environment): void {
   const result = spawnSync(args[0]!, args.slice(1), { cwd, env, stdio: 'inherit' });
   if (result.error || result.status !== 0) throw new Error(`${args[0]} ${args[1] ?? ''} failed`);
 }
 
-function git(...args: string[]): string {
-  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+function git(args: string[], env: Environment): string {
+  const result = spawnSync('git', args, { cwd: root, env, encoding: 'utf8' });
   if (result.status !== 0) throw new Error('Could not read deployment metadata from Git');
   return result.stdout.trim();
 }
 
-async function deploy(): Promise<void> {
+function readTemplate(): WorkerConfig {
   const parsed = parseConfigFileTextToJson('wrangler.jsonc', readFileSync(resolve(project, 'wrangler.jsonc'), 'utf8'));
   if (parsed.error) throw new Error('Could not parse wrangler.jsonc');
-  const commit = git('rev-parse', 'HEAD');
-  const attempt = process.env.GITHUB_RUN_ID
-    ? `${process.env.GITHUB_RUN_ID}.${process.env.GITHUB_RUN_ATTEMPT ?? '1'}`
+  return parsed.config as WorkerConfig;
+}
+
+interface DeployOptions {
+  env?: Environment;
+  run?: typeof run;
+  git?: (...args: string[]) => string;
+  fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  sleep?: (ms: number) => Promise<unknown>;
+  template?: WorkerConfig;
+  stateDir?: string;
+  log?: (message: string) => void;
+}
+
+/** Run a release; injected tools let tests exercise failures without production access. */
+export async function deploy(options: DeployOptions = {}): Promise<void> {
+  const env = options.env ?? process.env;
+  const baseEnv = commandEnv(env);
+  const execute = options.run ?? run;
+  const metadata = options.git ?? ((...args: string[]) => git(args, baseEnv));
+  const request = options.fetch ?? globalThis.fetch;
+  const sleep = options.sleep ?? Bun.sleep;
+  const log = options.log ?? console.info;
+  const commit = metadata('rev-parse', 'HEAD');
+  const attempt = env.GITHUB_RUN_ID
+    ? `${env.GITHUB_RUN_ID}.${env.GITHUB_RUN_ATTEMPT ?? '1'}`
     : String(Date.now());
-  const { config, secrets, migrationUrl, image } = prepareDeployment(parsed.config as WorkerConfig, process.env, commit, attempt);
-  const created = git('log', '-1', '--format=%cI');
-  const state = resolve(project, '.wrangler');
+  const { config, secrets, cloudflare, migrationUrl, image } = prepareDeployment(options.template ?? readTemplate(), env, commit, attempt);
+  const wranglerEnv = { ...baseEnv, ...cloudflare };
+  const created = metadata('log', '-1', '--format=%cI');
+  const state = options.stateDir ?? resolve(project, '.wrangler');
   mkdirSync(state, { recursive: true });
   const temp = mkdtempSync(resolve(state, 'deploy-'));
   const configFile = resolve(temp, 'wrangler.json');
@@ -81,32 +118,32 @@ async function deploy(): Promise<void> {
   try {
     writeFileSync(configFile, JSON.stringify(config));
     writeFileSync(secretsFile, JSON.stringify(secrets), { mode: 0o600 });
-    console.info('Building the license portal image');
-    run(['docker', 'build', '--platform', 'linux/amd64', '-f', 'license-server/Dockerfile',
+    log('Building the license portal image');
+    execute(['docker', 'build', '--platform', 'linux/amd64', '-f', 'license-server/Dockerfile',
       '--build-arg', `VERSION=sha-${commit.slice(0, 12)}`, '--build-arg', `COMMIT=${commit}`,
-      '--build-arg', `BUILT_AT=${created}`, '-t', image, '.'], root);
-    console.info('Pushing the image to Cloudflare');
-    run(['node', wrangler, 'containers', 'push', image], project);
-    console.info('Applying pending database migrations');
-    run(['docker', 'run', '--rm', '-e', 'DATABASE_MIGRATE_URL', '-e', 'DATABASE_TLS=verify-full', image, 'migrate'], root,
-      { ...process.env, DATABASE_MIGRATE_URL: migrationUrl });
-    console.info('Deploying the Worker and container with runtime secrets');
-    run(['node', wrangler, 'deploy', '--config', configFile, '--secrets-file', secretsFile], project);
+      '--build-arg', `BUILT_AT=${created}`, '-t', image, '.'], root, baseEnv);
+    log('Pushing the image to Cloudflare');
+    execute(['node', wrangler, 'containers', 'push', image], project, wranglerEnv);
+    log('Applying pending database migrations');
+    execute(['docker', 'run', '--rm', '-e', 'DATABASE_MIGRATE_URL', '-e', 'DATABASE_TLS=verify-full', image, 'migrate'], root,
+      { ...baseEnv, DATABASE_MIGRATE_URL: migrationUrl });
+    log('Deploying the Worker and container with runtime secrets');
+    execute(['node', wrangler, 'deploy', '--config', configFile, '--secrets-file', secretsFile], project, wranglerEnv);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
 
   // Provisioning and the container rollout continue after Wrangler exits.
   // Check the database, schema and signer through the public Worker route.
-  console.info('Waiting for the portal database, schema and signing key to be ready');
+  log('Waiting for the portal database, schema and signing key to be ready');
   const readyUrl = new URL('/readyz', config.vars.PUBLIC_URL).href;
   for (let i = 0; i < 72; i++) {
     try {
-      const response = await fetch(readyUrl, { signal: AbortSignal.timeout(10_000) });
+      const response = await request(readyUrl, { signal: AbortSignal.timeout(10_000) });
       if (response.ok) {
         const status = await response.json() as { ok?: boolean; db?: string; migrations?: string; signing?: string };
         if (status.ok && status.db === 'ok' && status.migrations === 'ok' && status.signing === 'ready') {
-          console.info(`Portal ready: ${config.vars.PUBLIC_URL}`);
+          log(`Portal ready: ${config.vars.PUBLIC_URL}`);
           return;
         }
       } else {
@@ -115,7 +152,7 @@ async function deploy(): Promise<void> {
     } catch {
       // A new custom domain or container may not answer during provisioning.
     }
-    await Bun.sleep(10_000);
+    await sleep(10_000);
   }
   throw new Error('The portal did not become ready; check Cloudflare logs. No automatic database rollback was attempted.');
 }

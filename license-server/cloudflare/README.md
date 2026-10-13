@@ -9,11 +9,13 @@ answers a 503 in the server's error shape when the container cannot answer,
 and, from a cron trigger, keeps the container warm and restarts it when a
 var or secret changed.
 
-Deployment is automatic: after the license portal checks pass, a change on
-`main` builds the image, pushes it to Cloudflare, applies pending Postgres
-migrations and deploys the Worker with its secrets. Set up the account,
-non-secret configuration and GitHub environment once; subsequent releases
-need no local Docker commands, manual migrations or image-tag edits.
+Once enabled, deployment is automatic: after the license portal checks
+pass, a change on `main` builds the image, pushes it to Cloudflare, applies
+pending Postgres migrations and deploys the Worker with its secrets. Set
+up the account, public configuration and GitHub environment once, then set
+repository variable `LICENSE_PORTAL_DEPLOY=true`. Until then, the deploy
+job is skipped. Subsequent releases need no local Docker commands, manual
+migrations or image-tag edits.
 
 **No secret values belong in the repository.** `wrangler.jsonc` contains
 public settings and secret **names**. Database passwords, the OIDC secret,
@@ -142,11 +144,19 @@ your machine to deploy.
    and is deleted even if a deployment command fails. Secrets never enter
    Docker build arguments or the image.
 
-6. **Deploy.** Merge the configuration and workflow to `main`, or run
-   **Actions → license-server → Run workflow** on `main` after configuring
-   the environment. The existing checks must pass first. The first deploy
-   creates the custom domain's DNS record and certificate; remove any
-   conflicting DNS record beforehand. Check `https://licenses.kudurru.io`.
+6. **Enable and deploy.** After the environment and public configuration
+   are ready, add **repository variable** `LICENSE_PORTAL_DEPLOY` with the
+   value `true` under Settings → Secrets and variables → Actions → Variables.
+   It must be a repository variable, since the job's condition is evaluated
+   before environment variables are available. The workflow can safely land
+   before setup: the deploy job is skipped while this variable is absent or
+   has any other value.
+
+   Merge the public configuration to `main`, or run **Actions →
+   license-server → Run workflow** on `main` after configuring the variable.
+   The existing checks must pass first. The first deploy creates the custom
+   domain's DNS record and certificate; remove any conflicting DNS record
+   beforehand. Check `https://licenses.kudurru.io`.
 
 7. **The first superadmin.** Prefer mapping your identity provider's admin
    group with `ROLE_SUPERADMIN_GROUPS`; members get the role when they sign
@@ -174,8 +184,13 @@ using it means the serving container also has that role's schema privileges.
 
 ## Releasing
 
-A change affecting the license portal on `main` runs the existing checks
-and then the `deploy` job in `.github/workflows/license-server.yml`:
+A change affecting the license portal on `main` runs the existing checks.
+With repository variable `LICENSE_PORTAL_DEPLOY=true`, the `deploy` job in
+`.github/workflows/license-server.yml` first checks that the run's commit is
+still the current tip of `main`, using the GitHub API and the job's read-only
+GitHub token (including for a private repository). A stale queued run or
+retry fails before any build, migration or deployment; run the workflow for
+the latest commit instead. Then it:
 
 1. Build `license-server/Dockerfile` for `linux/amd64`, the architecture
    Cloudflare runs, with the commit and build metadata.
@@ -196,6 +211,11 @@ Production deployments are serialized and never canceled midway by a
 newer run. Pull requests and non-`main` manual runs have no production
 deployment. `license-server-v<version>` tags still publish and sign the
 multi-architecture GHCR image; they do not cause a second Cloudflare deploy.
+
+Pasted secrets have surrounding whitespace removed before use. Build and
+Git commands receive no portal or Cloudflare credentials; Wrangler receives
+only Cloudflare deployment credentials plus its temporary runtime secrets
+file. The migration command receives only its database credential.
 
 The image is built explicitly because Wrangler pipes Dockerfiles to
 `docker build -f -`, bypassing `license-server/Dockerfile.dockerignore`.
