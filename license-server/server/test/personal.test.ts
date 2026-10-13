@@ -113,7 +113,7 @@ describeDb('requestPersonalKey', () => {
     expect(mail.to).toBe(addr);
     expect(mail.subject).toBe('Your kudurru license key');
     expect(mail.text).toContain(token);
-    expect(mail.text).toContain('non-commercial use only');
+    expect(mail.text).toContain('community-development use only');
     expect(mail.text).toContain(KEY_IS_NOT_A_LICENSE);
     expect(mail.text).toContain('KUDURRU_LICENSE_KEY_FILE=/run/secrets/license_key');
     expect(mail.text).toContain('restart');

@@ -58,7 +58,7 @@ license server. The payload carries:
 | `jti` | license id |
 | `iss` | always `kudurru` |
 | `sub` | licensee, a person or a company |
-| `plan` | `personal` (free, noncommercial), `business`, `enterprise` or `trial` |
+| `plan` | `personal` (free, eligible community use), `business`, `enterprise` or `trial` |
 | `nodes` | node limit |
 | `features` | licensed features; empty means every feature this build knows |
 | `iat`, `nbf`, `exp` | issued, not before, expires (Unix seconds); `exp` is required |
