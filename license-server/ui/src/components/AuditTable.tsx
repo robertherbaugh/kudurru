@@ -25,10 +25,15 @@ function valueText(v: JsonValue): string {
   return JSON.stringify(v);
 }
 
+/** One value, clipped: long unbroken tokens (an IdP subject, a hash) would otherwise widen the column past the panel. */
+function clip(text: string, max = 40): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 /** The details of an event on one line: "key: value · key: value", clipped. */
 export function detailsSummary(details: AuditEvent['details'], max = 160): string {
   const s = Object.entries(details)
-    .map(([k, v]) => `${k}: ${valueText(v)}`)
+    .map(([k, v]) => `${k}: ${clip(valueText(v))}`)
     .join(' · ');
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }

@@ -51,7 +51,7 @@ export default function SystemPage() {
                 <MetadataListItem label="Loaded">{yesNo(s.signing.available)}</MetadataListItem>
                 <MetadataListItem label="Trusted by kudurru">{yesNo(s.signing.trusted)}</MetadataListItem>
                 <MetadataListItem label="Trusted since">{s.signing.trustedSince ? `kudurru ${s.signing.trustedSince}` : 'Not recorded'}</MetadataListItem>
-                <MetadataListItem label="Test key">{yesNo(s.signing.testKey)}</MetadataListItem>
+                <MetadataListItem label="Test key">{s.signing.testKey ? <Badge variant="warning" label="Yes: no release trusts it" /> : yesNo(false)}</MetadataListItem>
                 <MetadataListItem label="Trusted kids">{list(s.signing.trustedKids)}</MetadataListItem>
                 <MetadataListItem label="Keys signed">
                   {s.signing.keysByKid.length ? s.signing.keysByKid.map((k) => `${k.kid}: ${formatExact(k.count)}`).join(', ') : 'None yet'}
