@@ -343,7 +343,7 @@ export function licenses(names: { name: string; file: string }[]): Html {
     <h1 id="lic-title" class="page-title">Font licenses</h1>
     <p>This site uses Inter and JetBrains Mono, self-hosted. Both are licensed under the SIL Open Font License 1.1.</p>
     <ul class="points">${names.map((n) => html`<li><a href="${n.file}">${n.name}</a></li>`)}</ul>
-    <p>Copyright 2026 Robert Herbaugh. This marketing website has a separate ${external(`${REPO_URL}/blob/main/www/LICENSE.md`, "source-viewing license")}: inspection is permitted; modification, redistribution and hosting require prior written authorization. The fonts retain their own licenses.</p>
+    <p>Copyright 2026 kudurru project maintainers. This marketing website has a separate ${external(`${REPO_URL}/blob/main/www/LICENSE.md`, "source-viewing license")}: inspection is permitted; modification, redistribution and hosting require prior written authorization. The fonts retain their own licenses.</p>
   </div>
 </section>`;
 }

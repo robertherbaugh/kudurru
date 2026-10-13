@@ -14,9 +14,14 @@ All notable changes to kudurru are listed here. The format follows
   permitted; business and government production requires an accepted
   commercial agreement and Order Form. Enterprise materials and documentation
   have folder-specific notices; `www/` and `license-server/` have separate
-  source-viewing licenses, copyright Robert Herbaugh. Historical Apache-2.0
-  and PolyForm grants and third-party licenses remain in effect
+  source-viewing licenses: the website is copyright kudurru project
+  maintainers and the license server is copyright Robert Herbaugh. Historical
+  Apache-2.0 and PolyForm grants and third-party licenses remain in effect
   ([LICENSING.md](LICENSING.md)).
+- The marketing website's copyright notices credit **kudurru project
+  maintainers**, defined in `www/LICENSE.md` as the applicable copyright
+  holders. Website license and repository summaries use the same attribution;
+  this collective credit does not transfer ownership.
 - **License keys** (D163): a free personal/nonprofit key (3 nodes) or a
   commercial key with the agreed node and feature entitlements
   unlocks more than one node, more than one policy and the features that

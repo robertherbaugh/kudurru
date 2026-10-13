@@ -69,7 +69,7 @@ function footer(assets: Assets, version: string): Html {
     )}
   </div>
   <div class="wrap foot-legal">
-    <p>The kudurru core uses the <a href="/license/text/">Kudurru Community License</a> for eligible personal, nonprofit and community-development uses. Business and government production use needs an agreement. This marketing website is copyright 2026 Robert Herbaugh, with a separate ${external(docs("/project/website-license/"), "source-viewing license")}. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
+    <p>The kudurru core uses the <a href="/license/text/">Kudurru Community License</a> for eligible personal, nonprofit and community-development uses. Business and government production use needs an agreement. This marketing website is copyright 2026 kudurru project maintainers, with a separate ${external(docs("/project/website-license/"), "source-viewing license")}. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
   </div>
 </footer>`;

@@ -102,7 +102,7 @@ export function license(licenseApi: string): Html {
       <div class="lic-body">
         <p>The license is the <a href="${LICENSE_TEXT_PATH}">Kudurru Community License</a>; the full text is on this site. The rules for people, what a key unlocks and what a missing key changes, are in the ${external(docs("/project/licensing/"), "licensing page of the docs")}, and the docs carry the ${external(docs("/project/license/"), "license text")} too. The source is in ${external(REPO_URL, "the repository")} (<code>LICENSE</code> and <code>LICENSING.md</code>).</p>
         <p>Community modifications and shared copies must retain notices, include the license and identify changes; distributed executables with changes must include access to the corresponding source. The folder notices govern ${external(docs("/project/enterprise-license/"), "enterprise materials")} and ${external(docs("/project/documentation-license/"), "documentation source")}. Anyone may read the published docs.</p>
-        <p>The ${external(docs("/project/website-license/"), "marketing website")} and ${external(docs("/project/license-server-license/"), "license server")} have separate source-viewing licenses, copyright Robert Herbaugh. Inspection is permitted; modification, redistribution and hosting require prior written authorization. Neither the Community License nor a commercial purchase grants those rights.</p>
+        <p>The ${external(docs("/project/website-license/"), "marketing website")} is copyright kudurru project maintainers, as defined in its source-viewing license. The ${external(docs("/project/license-server-license/"), "license server")} is copyright Robert Herbaugh and has its own source-viewing license. Inspection is permitted; modification, redistribution and hosting require prior written authorization from the applicable copyright holder or authorized representative; direct requests to <a href="mailto:${LICENSE_CONTACT}">${LICENSE_CONTACT}</a>. Neither the Community License nor a commercial purchase grants those rights.</p>
       </div>
     </div>
   </div>
@@ -117,9 +117,9 @@ export function licenseText(r: Rendered): Html {
   <div class="wrap narrow">
     <p class="label">License</p>
     <h1 id="lic-text-title" class="page-title">${r.title}</h1>
-    <p class="reg-lead">This is the license of kudurru. It is the text of the ${external(LICENSE_SOURCE_URL, "Kudurru Community License")}, unchanged, and the same as the <code>LICENSE</code> file of the repository. <a href="${LICENSE_TEXT_FILE}">Download it as text</a>. What it means for you, and how to get a key, is on <a href="/license/">License and keys</a>.</p>
+    <p class="reg-lead">This is the license of the kudurru core DNS server and dashboard. It is the text of the ${external(LICENSE_SOURCE_URL, "Kudurru Community License")}, unchanged, and the same as the <code>LICENSE</code> file of the repository. <a href="${LICENSE_TEXT_FILE}">Download it as text</a>. What it means for you, and how to get a key, is on <a href="/license/">License and keys</a>.</p>
     <div class="license-text">${r.body}</div>
-    <p class="fine mono">${LICENSE_REQUIRED_NOTICE}</p>
+    <p class="fine mono">Core software notice: ${LICENSE_REQUIRED_NOTICE}</p>
   </div>
 </section>`;
 }
