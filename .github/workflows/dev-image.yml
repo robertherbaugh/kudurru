@@ -92,7 +92,7 @@ jobs:
             DATE=${{ steps.meta.outputs.date }}
           labels: |
             org.opencontainers.image.source=https://github.com/robertherbaugh/kudurru
-            org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
+            org.opencontainers.image.licenses=LicenseRef-Kudurru-Community
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
             org.opencontainers.image.title=kudurru

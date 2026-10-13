@@ -1,5 +1,11 @@
 # The kudurru docs site
 
+Anyone may read and link to the published documentation without a purchase
+or login. The source and build system have a [separate license notice](LICENSE.md):
+community previews and contributions follow the root community terms, and
+commercial internal mirrors require an accepted agreement and Order Form.
+The marketing website in `www/` has separate source-viewing terms.
+
 A [Hugo](https://gohugo.io) site that publishes the markdown under `docs/`
 and a few root files without moving or rewriting them, plus pages of its
 own: the landing page, one page per role, migration guides and the
@@ -29,7 +35,7 @@ not require Bun.
 | Reference | `site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
 | Reference → API explorer | `api/openapi.json`, rendered by the Scalar bundle in `internal/api/scalar` |
 | Architecture | `docs/architecture` (its `README.md` is the section page); the hand-drawn diagrams are served from `docs/architecture/diagrams`, and the Mermaid blocks are drawn in the browser by the bundle in `site/vendor/mermaid`, loaded only on pages that have one |
-| Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
+| Project | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` and the folder-specific license notices |
 
 The rest of `docs/` is for contributors and stays in the repository: the
 design record and decision log

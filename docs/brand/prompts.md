@@ -20,7 +20,7 @@ Suggested source filename: `sources/boundary-stone-mark.png`.
 
 ```text
 Use case: logo-brand
-Asset type: standalone logo mark for an open-source DNS server; square PNG master
+Asset type: standalone logo mark for a source-available DNS server; square PNG master
 Primary request: Create an original minimal logo symbol for kudurru, a Kubernetes-native DNS server named after Babylonian boundary stones that recorded authority over territory.
 Scene/backdrop: Genuinely transparent background with an alpha channel.
 Subject: One compact upright boundary-stone silhouette with subtly angled shoulders and a flat base. A broad angular lowercase-k-inspired cutout sits inside the stone. The k is negative space, not a separate letter placed over the symbol. Keep the silhouette and cutout bold, balanced, and recognizable at small sizes.
@@ -61,7 +61,7 @@ Required image input: the approved horizontal lockup from prompt 2. Prefer compo
 ```text
 Use case: logo-brand
 Asset type: minimal GitHub repository social preview; landscape raster image
-Primary request: Create a restrained social preview for the open-source project kudurru using the supplied approved logo lockup.
+Primary request: Create a restrained social preview for the source-available project kudurru using the supplied approved logo lockup.
 Input images: Image 1 is the approved kudurru horizontal lockup. Preserve its symbol geometry, exact seven-letter wordmark, letterforms, spacing, and proportions. Recolor its foreground only.
 Scene/backdrop: Completely flat solid Ink #182522 background.
 Subject: The approved horizontal logo lockup in Paper #F7F3EA, with the descriptor "Kubernetes-native DNS" beneath it in a clean sans serif. The identity is a Babylonian boundary stone interpreted as a modern infrastructure symbol.
@@ -81,7 +81,7 @@ Suggested source filename: `sources/zone-seal-exploration.png`.
 ```text
 Use case: logo-brand
 Asset type: alternative standalone logo mark for kudurru; square PNG
-Primary request: Create an original minimal symbol for kudurru, an open-source DNS server whose name refers to Babylonian boundary stones and authority over a defined zone.
+Primary request: Create an original minimal symbol for kudurru, a source-available DNS server whose name refers to Babylonian boundary stones and authority over a defined zone.
 Scene/backdrop: Genuinely transparent background with an alpha channel.
 Subject: A compact abstract zone seal. Two bold opposing bracket-like forms define a bounded space, with one short broad horizontal stroke inside representing a record. Unify the shapes into one balanced emblem with strong negative space and a memorable silhouette.
 Style/medium: Flat geometric graphic design rendered as a raster image. Precise, calm, and contemporary. One solid foreground color. No historical ornament.

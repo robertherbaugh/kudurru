@@ -2,7 +2,7 @@
   "name": "@kudurru/www",
   "version": "0.0.0",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "description": "The kudurru.io website: a static site built with Bun and served by Cloudflare Workers static assets.",
   "scripts": {

@@ -52,6 +52,7 @@ COPY --from=build /src/license-server/dist/server.js /src/license-server/dist/he
 COPY --from=build /src/license-server/dist/ui/ /out/ui/
 COPY --from=build /src/internal/license/keys/ /out/trusted-keys/
 COPY --from=build /src/license-server/NOTICE /out/NOTICE
+COPY --from=build /src/license-server/LICENSE.md /out/LICENSE.md
 RUN set -eu; \
     test -f /out/ui/index.html || { echo "dist/ui/index.html is missing" >&2; exit 1; }; \
     test -f /out/ui/third-party-licenses.txt || { echo "dist/ui/third-party-licenses.txt is missing: the image must carry the notices of its dependencies" >&2; exit 1; }; \
@@ -85,7 +86,7 @@ LABEL org.opencontainers.image.title="kudurru license portal" \
       org.opencontainers.image.source="https://github.com/robertherbaugh/kudurru" \
       org.opencontainers.image.url="https://github.com/robertherbaugh/kudurru/tree/main/license-server" \
       org.opencontainers.image.vendor="kudurru" \
-      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0" \
+      org.opencontainers.image.licenses="LicenseRef-Kudurru-License-Server-Source-Viewing" \
       org.opencontainers.image.version=$VERSION \
       org.opencontainers.image.revision=$COMMIT \
       org.opencontainers.image.created=$BUILT_AT

@@ -15,8 +15,6 @@ pre-release and does not move the `latest` image tags (`prerelease: auto`).
 
 ## Licensing gates (before anything is public)
 
-- [ ] A lawyer has reviewed `ee/LICENSE.md` and the contributor terms in
-      `CONTRIBUTING.md`; the "draft" notes in both files are removed.
 - [ ] The signing key in `internal/license/keys/` is the production key: its
       private half is in Infisical (not on a laptop, not in the
       repository), and a test key (`kudurru license verify`) issued with it

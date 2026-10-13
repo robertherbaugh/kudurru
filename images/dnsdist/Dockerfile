@@ -46,11 +46,11 @@ RUN mkdir -p /etc/dnsdist /run/kudurru /certs \
  && chown -R 953:953 /etc/dnsdist && chmod 0775 /etc/dnsdist \
  && chmod 1777 /run/kudurru
 # The licenses of the programs this image ships: the kudurru supervisor
-# (PolyForm Noncommercial 1.0.0, plus the ee/ terms) and dnsdist (GPL-2.0-only,
+# (Kudurru Community License, plus the ee/ terms) and dnsdist (GPL-2.0-only,
 # unmodified upstream). Two separate programs, not one combined work
 # (README.md). The base image carries other packages under their own licenses
 # (/usr/share/doc/*/copyright). `make edge-check` asserts this label.
-LABEL org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only"
+LABEL org.opencontainers.image.licenses="LicenseRef-Kudurru-Community AND GPL-2.0-only"
 USER 953
 VOLUME ["/run/kudurru"]
 EXPOSE 53/udp 53/tcp 853/tcp 853/udp 443/tcp 443/udp 8084/tcp

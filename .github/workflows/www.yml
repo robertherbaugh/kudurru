@@ -12,6 +12,9 @@ on:
       - docs/brand/**
       - docs/guide/images/**
       - VERSION
+      - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - .github/workflows/www.yml
   pull_request:
     paths:
@@ -19,6 +22,9 @@ on:
       - docs/brand/**
       - docs/guide/images/**
       - VERSION
+      - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - .github/workflows/www.yml
 permissions:
   contents: read

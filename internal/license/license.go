@@ -48,8 +48,8 @@ const CommunityPolicyName = "default"
 // Plan is the kind of license a key grants.
 type Plan string
 
-// The plans. Personal is the free key for non-commercial use under the
-// PolyForm Noncommercial license; the others come with a commercial agreement.
+// The plans. Personal is the free key for eligible community use under the
+// Kudurru Community License; the others come with a commercial agreement.
 const (
 	PlanPersonal   Plan = "personal"
 	PlanBusiness   Plan = "business"

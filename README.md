@@ -140,4 +140,24 @@ kudurru was built with substantial help from AI coding assistants: **Claude** (A
 
 ## License
 
-kudurru is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal, non-commercial use is free; use by a business needs a commercial agreement. A free personal key unlocks up to 3 nodes, more than one policy and the features under [`ee/`](ee/) (OIDC single sign-on, the dnsdist and keepalived edge, integrations); DNS answering itself never depends on a key. The license text is [LICENSE](LICENSE), also at [kudurru.io/license/text](https://kudurru.io/license/text/) and in the [docs](https://docs.kudurru.io/project/license/). See [LICENSING.md](LICENSING.md) ([docs](https://docs.kudurru.io/project/licensing/)) for what you may do, how keys work and who to ask, [kudurru.io/license](https://kudurru.io/license) to request a key, and [NOTICE](NOTICE) for third-party notices. dnsdist and keepalived are GPL-2.0 and are distributed only as separate, unmodified programs in their own images.
+The core DNS server and dashboard are **source-available** under the
+[Kudurru Community License](LICENSE). Personal, homelab, qualifying nonprofit
+and isolated community-development uses are permitted under its terms.
+Business and government production use needs an accepted
+[Commercial Software License Agreement](COMMERCIAL_LICENSE_AGREEMENT.md)
+and Order Form, including for no-key features. A free eligible key covers
+up to 3 nodes; commercial enterprise features require the Enterprise plan or
+named modules in the Order Form. DNS answering never depends on a key.
+
+The [`ee/`](ee/LICENSE.md) enterprise materials and [`site/`](site/LICENSE.md)
+documentation have their own notices. Anyone may read the published docs.
+The [`www/`](www/LICENSE.md) marketing website and
+[`license-server/`](license-server/LICENSE.md) issuance service are separately
+licensed for source inspection; the Community License and commercial
+agreement do not grant rights to modify, redistribute or host them.
+
+See [LICENSING.md](LICENSING.md) for the scope and key behavior,
+[kudurru.io/license](https://kudurru.io/license) to request a key, and
+[NOTICE](NOTICE) for third-party notices. dnsdist and keepalived retain their
+GPL licenses and ship as separate, unmodified programs in their own images.
+Historical license grants remain in effect.

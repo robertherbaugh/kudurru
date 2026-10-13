@@ -18,6 +18,7 @@
 !license-server/ui/
 !license-server/scripts/
 !license-server/NOTICE
+!license-server/LICENSE.md
 
 # The public keys kudurru releases trust (the image's default keyring).
 !internal/license/keys/*.pub

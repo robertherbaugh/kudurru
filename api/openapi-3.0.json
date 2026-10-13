@@ -6265,8 +6265,8 @@
   "info": {
     "description": "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
     "license": {
-      "name": "PolyForm-Noncommercial-1.0.0",
-      "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
+      "name": "LicenseRef-Kudurru-Community",
+      "url": "https://kudurru.io/license/text/"
     },
     "title": "kudurru API",
     "version": "v1"

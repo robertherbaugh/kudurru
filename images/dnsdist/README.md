@@ -6,14 +6,14 @@ This image contains two separate programs:
   licensed under the GNU General Public License v2.0 (see `LICENSE.dnsdist`).
   Source: https://github.com/PowerDNS/pdns (the `pdns/dnsdistdist` directory)
   and https://downloads.powerdns.com/releases/.
-- **kudurru**, source-available (PolyForm Noncommercial 1.0.0 plus the `ee/`
+- **kudurru**, source-available (Kudurru Community License plus the `ee/`
   terms; see LICENSING.md), acting as the supervisor (`kudurru edge run`). The
   supervisor needs a license key (`KUDURRU_LICENSE_KEY`) that covers the edge.
 
 The image label `org.opencontainers.image.licenses` says so as an SPDX
-expression, `PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only`: each program keeps
+expression, `LicenseRef-Kudurru-Community AND GPL-2.0-only`: each program keeps
 its own license, and neither license applies to the other program. The terms of
-kudurru (the key, the noncommercial limit) do not restrict what you do with
+kudurru (the key, the community-use limits) do not restrict what you do with
 dnsdist, which you can run without kudurru under the GPL. The base image
 carries other packages under their own licenses (`/usr/share/doc/*/copyright`).
 

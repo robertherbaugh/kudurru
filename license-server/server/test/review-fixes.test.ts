@@ -42,7 +42,7 @@ let n = 0;
 const addr = (tag: string): string => `${tag}-${++n}-${process.pid}@fixes.example`;
 
 function attestation(email: string): Attestation {
-  return { source: 'kudurru.io form', license: 'PolyForm-Noncommercial-1.0.0', statement: ATTESTATION_STATEMENT, at: new Date().toISOString(), ip: '192.0.2.1', userAgent: 'test', email };
+  return { source: 'kudurru.io form', license: 'LicenseRef-Kudurru-Community', statement: ATTESTATION_STATEMENT, at: new Date().toISOString(), ip: '192.0.2.1', userAgent: 'test', email };
 }
 
 /** The form's confirmed request for `email`, as verifyPublicRequest runs it. */

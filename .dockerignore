@@ -15,3 +15,5 @@ site/resources
 # The license portal is not part of this image; its own image builds with
 # license-server/Dockerfile, whose Dockerfile.dockerignore replaces this file.
 license-server
+# The marketing website is separately licensed and is not part of the DNS image.
+www

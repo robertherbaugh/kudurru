@@ -33,7 +33,7 @@ describe("validate", () => {
       "Enter your name.",
       "Enter a valid email address.",
       "Say what you run kudurru for.",
-      "Agree and certify that the key is only for personal, non-commercial use.",
+      "Agree and certify that the key is only for eligible community use.",
     ]);
   });
 

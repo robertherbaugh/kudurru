@@ -428,8 +428,8 @@ edge-check: edge-images
 	hack/edge-root-check.sh $(EDGE_SUPERVISOR_IMAGE)
 	docker run --rm --entrypoint /usr/local/bin/kudurru $(EDGE_SUPERVISOR_IMAGE) version
 	# The supervisor images name both licenses (GPL program + kudurru).
-	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_SUPERVISOR_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-only"
-	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_KEEPALIVED_IMAGE))" = "PolyForm-Noncommercial-1.0.0 AND GPL-2.0-or-later"
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_SUPERVISOR_IMAGE))" = "LicenseRef-Kudurru-Community AND GPL-2.0-only"
+	test "$$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(EDGE_KEEPALIVED_IMAGE))" = "LicenseRef-Kudurru-Community AND GPL-2.0-or-later"
 
 ## kind-e2e: three replicas on a four-node kind cluster with MetalLB and both
 ## charts: dig through the LoadBalancer over UDP and TCP (split and mixed

@@ -53,8 +53,9 @@ func newLicenseCmd(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "license",
 		Short: "Show or check the license key (offline; keys are verified without a license server)",
-		Long: "kudurru is source-available under the PolyForm Noncommercial License 1.0.0 (LICENSE). Running it for\n" +
-			"personal, non-commercial use is free; use by a business needs an agreement. A license key unlocks more\n" +
+		Long: "kudurru is source-available under the Kudurru Community License (LICENSE). Running it for\n" +
+			"eligible personal or nonprofit use is free; business and government production needs an agreement.\n" +
+			"Enterprise materials have their own notice; commercial features depend on the Order Form. A key unlocks more\n" +
 			"than one node, more than one policy and the features under ee/ (OIDC single sign-on, the dnsdist and\n" +
 			"keepalived edge, the integrations). A free personal key covers 3 nodes. See https://kudurru.io/license.\n\n" +
 			"The key is read from --license-key, KUDURRU_LICENSE_KEY, the file KUDURRU_LICENSE_KEY_FILE names, or\n" +

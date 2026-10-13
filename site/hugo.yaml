@@ -103,6 +103,11 @@ cascade:
   - {weight: 3, target: {path: /project/contributing}}
   - {weight: 4, target: {path: /project/licensing}}
   - {weight: 5, target: {path: /project/license}}
+  - {weight: 6, target: {path: /project/commercial-license}}
+  - {weight: 7, target: {path: /project/enterprise-license}}
+  - {weight: 8, target: {path: /project/documentation-license}}
+  - {weight: 9, target: {path: /project/website-license}}
+  - {weight: 10, target: {path: /project/license-server-license}}
 
 module:
   mounts:
@@ -142,10 +147,15 @@ module:
     - {source: ../CHANGELOG.md, target: content/project/changelog.md}
     - {source: ../SECURITY.md, target: content/project/security.md}
     - {source: ../CONTRIBUTING.md, target: content/project/contributing.md}
-    # The license: the rules for people (LICENSING.md) and the PolyForm
-    # Noncommercial License 1.0.0 text (LICENSE), each from its one source.
+    # License summaries, the core Community License, the commercial agreement
+    # and folder-specific notices, each published from its repository source.
     - {source: ../LICENSING.md, target: content/project/licensing.md}
     - {source: ../LICENSE, target: content/project/license.md}
+    - {source: ../COMMERCIAL_LICENSE_AGREEMENT.md, target: content/project/commercial-license.md}
+    - {source: ../ee/LICENSE.md, target: content/project/enterprise-license.md}
+    - {source: LICENSE.md, target: content/project/documentation-license.md}
+    - {source: ../www/LICENSE.md, target: content/project/website-license.md}
+    - {source: ../license-server/LICENSE.md, target: content/project/license-server-license.md}
 
     # Brand (docs/brand): palette and the artwork the templates use.
     - {source: ../docs/brand/tokens.css, target: assets/css/tokens.css}

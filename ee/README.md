@@ -20,12 +20,16 @@ table, the engine and the built-in administrator (`internal/rbac`), the audit
 event types and the log recorder (`internal/audit`), the rollups and the short
 windows of the statistics, and the block page.
 
-The license is the [PolyForm Noncommercial License 1.0.0](../LICENSE) plus
-the additional terms in [LICENSE.md](LICENSE.md). The code here is source-
-available and builds into the same binary as the rest; the key is checked at
-run time, never at build time. How keys work, and the promise that licensing
-never touches DNS answering, is in
-[docs/architecture/licensing.md](../docs/architecture/licensing.md).
+The [enterprise license notice](LICENSE.md) governs this directory. Eligible
+community users may use these features with a valid free entitlement under
+the [Community License](../LICENSE). Business and government production use
+requires an accepted [commercial agreement](../COMMERCIAL_LICENSE_AGREEMENT.md)
+and an Order Form authorizing the Enterprise plan or named modules.
+A Commercial Core purchase alone does not unlock `ee/`.
+
+The code builds into the same binary as the core; keys are checked at run
+time. How keys work, and the design that preserves DNS answering when a key
+lapses, is in [docs/architecture/licensing.md](../docs/architecture/licensing.md).
 
 Rules for code in this directory:
 

@@ -79,7 +79,7 @@ export const myLicenseDetail: MyLicenseDetail = {
     { email: 'charles@example.org', status: 'invited' },
   ],
   withdrawn: null,
-  attestation: { source: 'portal', at: '2026-10-12T08:59:00.000Z', statement: 'I agree', license: 'PolyForm-Noncommercial-1.0.0' },
+  attestation: { source: 'portal', at: '2026-10-12T08:59:00.000Z', statement: 'I agree', license: 'LicenseRef-Kudurru-Community' },
 };
 
 export const myWithdrawnDetail: MyLicenseDetail = {
@@ -151,7 +151,7 @@ export const openRequest: LicenseRequest = {
   requesterEmail: 'grace@example.org',
   name: 'Grace Hopper',
   use: 'DNS for my homelab',
-  attestation: { source: 'kudurru.io form', at: '2026-10-11T12:00:00.000Z', statement: 'I agree', license: 'PolyForm-Noncommercial-1.0.0', email: 'grace@example.org' },
+  attestation: { source: 'kudurru.io form', at: '2026-10-11T12:00:00.000Z', statement: 'I agree', license: 'LicenseRef-Kudurru-Community', email: 'grace@example.org' },
   reviewReason: 'auto_approve_off',
   status: 'open',
   decidedBy: null,
@@ -173,7 +173,7 @@ export const renewalRequest: LicenseRequest = {
   requesterEmail: 'ada@example.org',
   name: 'Ada Lovelace',
   use: 'Renewal of lic_example12',
-  attestation: { source: 'portal', at: '2026-10-12T08:00:00.000Z', statement: 'I agree', license: 'PolyForm-Noncommercial-1.0.0', email: 'ada@example.org' },
+  attestation: { source: 'portal', at: '2026-10-12T08:00:00.000Z', statement: 'I agree', license: 'LicenseRef-Kudurru-Community', email: 'ada@example.org' },
   createdAt: '2026-10-12T08:00:00.000Z',
   personCustomer: { id: 'cus_ada', name: 'Ada Lovelace', kind: 'person' },
   renews: { licenseId: 'lic_example12', expiresOn: '2026-10-30' },

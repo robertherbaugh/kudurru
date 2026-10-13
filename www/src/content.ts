@@ -20,11 +20,11 @@ export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
 export const BUSINESS_SUBJECT = "Business License";
 export const LICENSE_FREE_NODES = 3;
 // The license text: our own copy, rendered from the repository's LICENSE
-// (/license/text/), the docs' copy, and the upstream original.
+// (/license/text/), the docs' copy, and the repository source.
 export const LICENSE_TEXT_PATH = "/license/text/";
-export const LICENSE_TEXT_FILE = "/license/text/PolyForm-Noncommercial-1.0.0.txt";
-export const LICENSE_UPSTREAM_URL = "https://polyformproject.org/licenses/noncommercial/1.0.0";
-export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)";
+export const LICENSE_TEXT_FILE = "/license/text/Kudurru-Community-License.txt";
+export const LICENSE_SOURCE_URL = `${REPO_URL}/blob/main/LICENSE`;
+export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert Herbaugh (https://kudurru.io)";
 // Without a key one Policy can exist: the Policy "default" that the bootstrap
 // seeds (internal/license CommunityPolicies). A key lifts the limit.
 export const LICENSE_FREE_POLICIES = 1;
@@ -40,19 +40,19 @@ export const LICENSE_ROWS: LicenseRow[] = [
   { what: "DNS answering, blocking, zones, the block page, the dashboard, short-term statistics", community: "Yes", personal: "Yes", business: "Yes" },
   { what: "Nodes in one cluster", community: "1", personal: `Up to ${LICENSE_FREE_NODES}`, business: "As agreed" },
   { what: "Policies", community: `${LICENSE_FREE_POLICIES}, the default policy`, personal: "Unlimited", business: "Unlimited" },
-  { what: "Roles beyond the built-in administrator, zone-scoped roles, Kubernetes RBAC", community: "No", personal: "Yes", business: "Yes" },
-  { what: "OIDC single sign-on", community: "No", personal: "Yes", business: "Yes" },
-  { what: "The audit trail and its export", community: "No", personal: "Yes", business: "Yes" },
-  { what: "Long-term statistics (anything older than 24 hours)", community: "No", personal: "Yes", business: "Yes" },
-  { what: "Unblock requests from the block page", community: "No", personal: "Yes", business: "Yes" },
-  { what: "The dnsdist and keepalived edge", community: "No", personal: "Yes", business: "Yes" },
-  { what: "Integrations, such as the external-dns webhook", community: "No", personal: "Yes", business: "Yes" },
-  { what: "Use by a business", community: "No", personal: "No", business: "Yes" },
+  { what: "Roles beyond the built-in administrator, zone-scoped roles, Kubernetes RBAC", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "OIDC single sign-on", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "The audit trail and its export", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "Long-term statistics (anything older than 24 hours)", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "Unblock requests from the block page", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "The dnsdist and keepalived edge", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "Integrations, such as the external-dns webhook", community: "No", personal: "Yes", business: "If included in the Order Form" },
+  { what: "Business or government production use", community: "No", personal: "No", business: "As granted by the agreement" },
 ];
 
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
-  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Source-available and free for personal use; a license key adds OIDC, RBAC and more.";
+  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Core software under the Kudurru Community License: free for eligible personal and nonprofit use; business and government production needs an agreement.";
 
 export function docs(path = "/"): string {
   return DOCS_URL + path;

@@ -29,7 +29,7 @@ describe('LicensePage', () => {
   it('shows the key, the limits and every feature as included', async () => {
     renderWithApp(<LicensePage />, { route: '/license' });
     expect(await screen.findByRole('heading', { level: 1, name: 'License' })).toBeInTheDocument();
-    expect(await screen.findByText('Personal (free, non-commercial)')).toBeInTheDocument();
+    expect(await screen.findByText('Personal / nonprofit (free)')).toBeInTheDocument();
     expect(screen.getByText('Homelab Hank')).toBeInTheDocument();
     expect(screen.getByText('lic_mock0000001')).toBeInTheDocument();
     expect(screen.getByTestId('license-nodes')).toHaveTextContent('2 of 3');

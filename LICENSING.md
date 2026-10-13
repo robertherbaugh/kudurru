@@ -1,22 +1,29 @@
 # Licensing
 
-kudurru is **source-available**, not open source. You can read, build and run
-all of it, and personal use is free. A business that wants to run it needs an
-agreement.
+kudurru is **source-available**. The core DNS server and dashboard use the
+[Kudurru Community License](LICENSE); other areas have the folder-specific
+licenses listed below.
 
-| You are | You may | You need |
-|---|---|---|
-| A person running kudurru at home, in a homelab or for study | Use, modify and share it, for free | Nothing, except a free personal key for more than one node or for the `ee/` features |
-| A charity, school or public research body | The same, under the noncommercial terms | A free personal key on request |
-| A business, or anyone using it for a commercial purpose | Evaluate it | A commercial agreement and a business key. Write to the contact below. |
+| Use | Permission |
+|---|---|
+| Personal, household or homelab | Free under the Community License; a free key unlocks up to 3 nodes and additional features |
+| A qualifying nonprofit | The same free entitlements, subject to Section 2.2 of the Community License |
+| Isolated development, evaluation or security research | Permitted under Section 2.3, including for businesses and governments; this does not permit production DNS service |
+| Business, government, MSP or contractor production | An accepted [Commercial Software License Agreement](COMMERCIAL_LICENSE_AGREEMENT.md) and Order Form are required, including for no-key features |
 
-The license is the [PolyForm Noncommercial License 1.0.0](LICENSE)
-([SPDX](https://spdx.org/licenses/PolyForm-Noncommercial-1.0.0.html)). The text
-is also on [kudurru.io](https://kudurru.io/license/text/) and in the
-[docs](https://docs.kudurru.io/project/license/), all from the one `LICENSE` file. It
-allows any noncommercial purpose; personal use, research, hobby projects and
-use by charities, schools and public bodies count as noncommercial. Anything
-else is commercial and is not licensed by this repository.
+A nonprofit must be legally established, operate without distributing net
+earnings for private benefit, be independent of government control, and not
+provide managed DNS or similar services to businesses or governments. A
+school or research organization's activity alone does not make it eligible.
+
+You may modify and share Covered Software for the permitted community uses.
+Keep the notices, include the license, identify changes, and provide the
+source for changes in distributed executables. Those rights do not cover
+`www/` or `license-server/`.
+
+The Community License text is also on
+[kudurru.io](https://kudurru.io/license/text/) and in the
+[docs](https://docs.kudurru.io/project/license/), all from the one `LICENSE` file.
 
 ## Keys
 
@@ -24,23 +31,26 @@ The same rules, in short form, are on [kudurru.io/license](https://kudurru.io/li
 
 A **license key** unlocks what a single free node does not have:
 
-| | No key (community) | Personal key (free) | Business key |
+| | No key (community) | Personal/nonprofit key (free) | Business key |
 |---|---|---|---|
 | DNS answering, blocking, zones, the block page, the dashboard, short-term statistics, API tokens, the built-in administrator | Yes | Yes | Yes |
 | Nodes in one cluster | 1 | up to 3 | as agreed |
 | Policies | 1 (the seeded default) | unlimited | unlimited |
-| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes |
-| OIDC single sign-on (`ee/oidc`) | No | Yes | Yes |
-| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | Yes |
-| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | Yes |
-| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | Yes |
-| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | Yes |
-| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | Yes |
-| Use by a business | No | No | Yes |
+| Roles beyond the one built-in administrator: role bindings, zone-scoped roles, Kubernetes RBAC (`ee/rbac`) | No | Yes | If included in the Order Form |
+| OIDC single sign-on (`ee/oidc`) | No | Yes | If included in the Order Form |
+| The audit trail: stored events, `GET /audit`, export (`ee/auditstore`); the audit log lines are always written | No | Yes | If included in the Order Form |
+| Long-term statistics: any window older than 24 hours (`ee/longterm`) | No | Yes | If included in the Order Form |
+| Unblock requests: the block page's request form and the review of requests (the block page itself is free) | No | Yes | If included in the Order Form |
+| dnsdist and keepalived edge, VIP (`ee/edge`) | No | Yes | If included in the Order Form |
+| Integrations, such as the external-dns webhook (`ee/integration`) | No | Yes | If included in the Order Form |
+| Business or government production use | No | No | Only as granted by the agreement |
 
-A personal key is only for noncommercial use; the license says so, and the key
-does not change it. A key is not a license by itself: it records the license
-you were granted.
+Free personal/nonprofit keys are only for eligible community use. A key
+records an entitlement; it does not replace the license or agreement. A
+Commercial Core agreement does not automatically authorize enterprise
+features: the Order Form must include the Enterprise plan or named modules.
+MSP, affiliate and government scopes must be authorized in the Order Form.
+The 30-day technical grace period does not extend a commercial subscription.
 
 Give kudurru the key in one of these ways, first match wins:
 
@@ -98,13 +108,22 @@ and `kudurru_license_node_limit` let you alert before a key runs out.
 
 ## Layout
 
-Everything outside `ee/` is under the PolyForm Noncommercial License. The
-directory [`ee/`](ee/) holds the features that need a key; it is under the same
-license plus the extra terms in [`ee/LICENSE.md`](ee/LICENSE.md). The
-blocked-services and safe-search catalog in `internal/listdata/catalogue` is
-data written for kudurru and is licensed under Apache-2.0, so it can be
-published and reused on its own. Third-party software keeps its own licenses
-([NOTICE](NOTICE)).
+| Area | Terms |
+|---|---|
+| Core DNS server, binaries and dashboard | [Kudurru Community License](LICENSE), or an accepted commercial agreement for its authorized scope |
+| `ee/` enterprise materials | [Enterprise notice](ee/LICENSE.md): eligible community entitlements, or Enterprise/named modules in the commercial Order Form |
+| `site/` documentation source and build system | [Documentation notice](site/LICENSE.md): community previews and contributions; commercial private mirrors under Section 3.3 of the agreement |
+| `www/` marketing website | [Website Source-Viewing License](www/LICENSE.md), copyright Robert Herbaugh; inspection only unless separately authorized |
+| `license-server/` issuance service | [License Server Source-Viewing License](license-server/LICENSE.md), copyright Robert Herbaugh; inspection only unless separately authorized |
+
+Anyone may read and link to the published documentation without buying a
+license. A commercial agreement does not grant rights to build, modify,
+redistribute or host the marketing website or license server.
+
+The blocked-services and safe-search catalog in `internal/listdata/catalogue`
+is separately licensed data under Apache-2.0; that license applies only to
+the catalog. Third-party software keeps its own licenses ([NOTICE](NOTICE)).
+Existing grants for historical releases remain in effect.
 
 ## Contributing
 

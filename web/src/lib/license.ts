@@ -43,7 +43,7 @@ export function featureLabel(key: string): string {
 export function planLabel(plan: string | undefined): string {
   switch (plan) {
     case 'personal':
-      return 'Personal (free, non-commercial)';
+      return 'Personal / nonprofit (free)';
     case 'business':
       return 'Business';
     case 'enterprise':
@@ -187,5 +187,5 @@ export function policyLimitNotice(limit: number, names: string[]): { title: stri
 
 /** A sentence for a feature that needs a key; `what` names the thing. */
 export function lockedSentence(what: string): string {
-  return `${what} needs a license key. A free personal key covers up to 3 nodes for non-commercial use; businesses need an agreement.`;
+  return `${what} needs a license key. A free personal/nonprofit key covers up to 3 nodes for eligible community use; business and government production requires an agreement.`;
 }

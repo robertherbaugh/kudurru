@@ -79,8 +79,8 @@ export const POLICY: Readonly<Policy> = Object.freeze({
   approvalLinkTtlDays: APPROVAL_LINK_TTL_DAYS,
 });
 
-/** The license a personal key is certified for (the attestation's `license`, an SPDX id). */
-export const ATTESTATION_LICENSE = 'PolyForm-Noncommercial-1.0.0';
+/** The license a personal key is certified for (the attestation's `license`, a license identifier). */
+export const ATTESTATION_LICENSE = 'LicenseRef-Kudurru-Community';
 
 /**
  * The certification a person ticks before a personal key is issued, word
@@ -88,12 +88,12 @@ export const ATTESTATION_LICENSE = 'PolyForm-Noncommercial-1.0.0';
  * every personal attestation (licenses.attestation, license_requests.attestation).
  */
 export const ATTESTATION_STATEMENT =
-  'I agree and certify this key will only be used for personal, non-commercial use in accordance with the license (PolyForm Noncommercial License 1.0.0)';
+  'I agree and certify this key will only be used for eligible personal, qualifying nonprofit or community-development use in accordance with the license (Kudurru Community License)';
 
-/** Where the PolyForm Noncommercial License 1.0.0 is published (www LICENSE_TEXT_URL). */
-export const NONCOMMERCIAL_LICENSE_URL = 'https://polyformproject.org/licenses/noncommercial/1.0.0';
+/** Where the Kudurru Community License is published (www LICENSE_TEXT_PATH). */
+export const NONCOMMERCIAL_LICENSE_URL = 'https://kudurru.io/license/text/';
 
-/** Where business enquiries go (the user's direction: not through the server). */
+/** Where business inquiries go (the user's direction: not through the server). */
 export const BUSINESS_CONTACT = 'hello@kudurru.io';
 export const BUSINESS_MAILTO = 'mailto:hello@kudurru.io?subject=Business%20License';
 
@@ -110,11 +110,11 @@ export interface PlanInfo {
   description: string;
 }
 
-/** The plans, in the order pickers list them. Labels as the dashboard's planLabel. */
+/** The plans, in the order pickers list them. Portal labels; plan identifiers match the dashboard. */
 export const PLANS: readonly PlanInfo[] = [
-  { key: 'personal', label: 'Personal (free, non-commercial)', description: 'Free key for non-commercial use: a home, a homelab, study, a charity or a school. Up to 3 nodes, every feature.' },
+  { key: 'personal', label: 'Personal / nonprofit (free)', description: 'Free key for eligible personal, homelab, nonprofit or community-development use under the Community License. Up to 3 nodes, every feature.' },
   { key: 'business', label: 'Business', description: 'A business key under a commercial agreement: nodes and features as agreed.' },
-  { key: 'enterprise', label: 'Enterprise', description: 'A business key for a larger agreement.' },
+  { key: 'enterprise', label: 'Enterprise', description: 'Enterprise features authorized by an accepted commercial agreement and Order Form.' },
   { key: 'trial', label: 'Trial', description: 'A short evaluation key. Nodes keep it working for 30 days after it expires, like any key.' },
 ];
 
@@ -222,7 +222,7 @@ export function graceEnds(exp: Date | number): Date {
 
 /** The words every page that hands out a key repeats (docs/guide/admin/13-license.md). */
 export const KEY_IS_NOT_A_LICENSE =
-  'A license key does not give you a license. The key records the license that you have. A free personal key is for non-commercial use only.';
+  'A license key does not give you a license. The key records the license that you have. A free personal/nonprofit key is for eligible community use only.';
 
 /** Keys are checked on the node; this service never sees a node. */
 export const OFFLINE_NOTE = 'Keys are verified offline on each node. No node contacts this service.';

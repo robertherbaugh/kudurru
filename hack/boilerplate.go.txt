@@ -1,6 +1,6 @@
 /*
-Copyright 2026 The kudurru Authors.
+Copyright 2026 Robert Herbaugh.
 
-SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+SPDX-License-Identifier: LicenseRef-Kudurru-Community
 See the LICENSE file in the repository root.
 */

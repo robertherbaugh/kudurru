@@ -89,7 +89,7 @@ export function confirmationMail(m: ConfirmationMail): MailMessage {
         : 'Someone, hopefully you, asked on kudurru.io for a free personal kudurru license key for this address. Confirm the request and the key is sent to this address:',
       m.url,
       `The link works for ${CONFIRM_TTL_HOURS} hours and only once. If you did not ask for a key, ignore this message: nothing happens without the confirmation.`,
-      'A free personal key is for non-commercial use only.',
+      'A free personal/nonprofit key is for eligible community use only.',
       signature(m.publicUrl),
     ),
   };
@@ -177,7 +177,7 @@ export function keyMail(m: KeyMail): MailMessage {
       'The key is attached as license.key and is also here:',
       m.token,
       installHints(),
-      l.plan === 'personal' && `This is a free personal key. It is for personal, non-commercial use only, under the PolyForm Noncommercial License 1.0.0 (${NONCOMMERCIAL_LICENSE_URL}).`,
+      l.plan === 'personal' && `This is a free personal key. It is for eligible personal, qualifying nonprofit or community-development use only, under the Kudurru Community License (${NONCOMMERCIAL_LICENSE_URL}).`,
       KEY_IS_NOT_A_LICENSE,
       OFFLINE_NOTE,
       portal,
