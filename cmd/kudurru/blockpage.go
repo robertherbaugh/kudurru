@@ -9,7 +9,6 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
-	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -32,15 +31,15 @@ func querylogPrivacy(reload *config.Reloadable) func() (querylog.Mode, bool) {
 }
 
 // newUnblockBook is the unblock request book (internal/unblock): requests
-// in the default namespace, the client recorded as querylog.privacy
+// in the selected namespace, the client recorded as querylog.privacy
 // allows, object names keyed by the encryption key.
-func newUnblockBook(st store.Store, reload *config.Reloadable, node string, encKey []byte, logger *slog.Logger) (*unblock.Service, error) {
+func newUnblockBook(st store.Store, reload *config.Reloadable, namespace, node string, encKey []byte, logger *slog.Logger) (*unblock.Service, error) {
 	nameKey, err := unblock.NameKey(encKey)
 	if err != nil {
 		return nil, err
 	}
 	return unblock.New(unblock.Options{
-		Store: st, Namespace: bootstrap.DefaultNamespace, Node: node,
+		Store: st, Namespace: namespace, Node: node,
 		Settings: func() config.UnblockRequests { return reload.Current().UnblockRequests },
 		Privacy:  querylogPrivacy(reload),
 		NameKey:  nameKey,

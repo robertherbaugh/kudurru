@@ -54,6 +54,10 @@ erDiagram
 The bootstrap seeds four objects on the first start, with owner `bootstrap`:
 the root forward zone `.` → `default`, `ClientGroup default` (all
 addresses), `BlockList starter` and `Policy default`.
+Namespaced defaults use the release namespace in Kubernetes and `default`
+in SQLite. An existing `default/default` policy keeps a Kubernetes install
+on `default` until a default policy exists in the release namespace; no
+objects are moved automatically ([upgrade behavior](../deploy/helm.md#default-object-namespace-and-upgrades)).
 
 ### One writer per object
 

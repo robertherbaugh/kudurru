@@ -74,6 +74,27 @@ type Options struct {
 	Logger *slog.Logger
 }
 
+// ResolveNamespace uses the release namespace for new Kubernetes installs.
+// Keep an existing default/default policy (including operator edits) as the
+// fallback until a default policy exists in the release namespace. This
+// preserves legacy installs without moving or overwriting their objects.
+func ResolveNamespace(ctx context.Context, st store.Store, namespace string) (string, error) {
+	if namespace == DefaultNamespace {
+		return namespace, nil
+	}
+	for _, ns := range []string{namespace, DefaultNamespace} {
+		key := store.Key{Kind: "Policy", Namespace: ns, Name: DefaultPolicyName}
+		var pol v1alpha1.Policy
+		switch err := st.Get(ctx, key, &pol); {
+		case err == nil:
+			return ns, nil
+		case !errors.Is(err, store.ErrNotFound):
+			return "", fmt.Errorf("bootstrap: resolve namespace: get %s: %w", key, err)
+		}
+	}
+	return namespace, nil
+}
+
 func (o *Options) setDefaults() {
 	if o.Namespace == "" {
 		o.Namespace = DefaultNamespace

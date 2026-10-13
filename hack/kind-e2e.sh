@@ -116,6 +116,8 @@ wait_ready() {
 api() {
   local pod=$1 method=$2 path=$3 body=${4:-}
   local pf="$WORK/pf.$RANDOM" out="$WORK/body.$RANDOM" pid port="" code
+  # Create the log before the child opens it, so the first read cannot race.
+  : >"$pf"
   kubectl -n "$NS" port-forward "pod/$pod" :8080 >"$pf" 2>&1 &
   pid=$!
   for _ in $(seq 1 50); do
@@ -373,6 +375,33 @@ install_kudurru() {
 install_kudurru false
 # An admin-role token for the API calls (auth.bootstrapToken).
 TOKEN=$(kubectl -n "$NS" get secret kudurru-bootstrap-token -o jsonpath='{.data.token}' | base64 -d)
+
+log "bootstrap and API defaults use the release namespace (#22)"
+release_defaults() {
+  local pod=$1 resource name
+  for resource in clientgroups policies; do
+    check "$pod" "/$resource/$NS/default" --arg ns "$NS" '.metadata.namespace == $ns' || return 1
+  done
+  for name in starter ui-allow ui-deny; do
+    check "$pod" "/blocklists/$NS/$name" --arg ns "$NS" '.metadata.namespace == $ns' || return 1
+  done
+  check "$pod" "/policies/$NS/default" \
+    '(.spec.allowListRefs | index("ui-allow")) != null and (.spec.blockListRefs | index("ui-deny")) != null' || return 1
+  check "$pod" "/clientgroups/$NS/namespace-check" --arg ns "$NS" '.metadata.namespace == $ns'
+}
+namespace_probes() { # pod
+  # A previous attempt may have created the group before its response failed.
+  api "$1" POST /clientgroups \
+    '{"apiVersion":"kudurru.io/v1alpha1","kind":"ClientGroup","metadata":{"name":"namespace-check"},"spec":{"clients":[{"ip":"192.0.2.254"}]}}' >/dev/null ||
+    check "$1" "/clientgroups/$NS/namespace-check" '.metadata.name == "namespace-check"' || return 1
+  local action
+  for action in allow deny; do
+    # Adding the same value again leaves one entry, so these writes can retry.
+    api "$1" POST "/${action}list" '{"values":["namespace-check.invalid"],"type":"exact"}' >/dev/null || return 1
+  done
+}
+eventually 60 "namespace probes" namespace_probes "$(pod_names | head -1)"
+on_every_pod 120 "defaults in $NS" release_defaults
 
 log "replicas spread over the nodes"
 kubectl -n "$NS" get pods -l "$SELECTOR" -o wide

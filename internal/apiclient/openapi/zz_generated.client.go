@@ -1731,8 +1731,10 @@ type AuthStatusLocalLoginMode string
 
 // BatchDeleteInputBody defines model for BatchDeleteInputBody.
 type BatchDeleteInputBody struct {
-	Names     *[]string `json:"names"`
-	Namespace *string   `json:"namespace,omitempty"`
+	Names *[]string `json:"names"`
+
+	// Namespace Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // BindingScope defines model for BindingScope.
@@ -2308,9 +2310,11 @@ type DomainWriteResult struct {
 
 // DomainsRequest defines model for DomainsRequest.
 type DomainsRequest struct {
-	Domains   *[]string `json:"domains"`
-	List      *string   `json:"list,omitempty"`
-	Namespace *string   `json:"namespace,omitempty"`
+	Domains *[]string `json:"domains"`
+	List    *string   `json:"list,omitempty"`
+
+	// Namespace Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // EdgeBackend defines model for EdgeBackend.
@@ -2985,8 +2989,10 @@ type QueriesBody struct {
 
 // QueryActionInputBody defines model for QueryActionInputBody.
 type QueryActionInputBody struct {
-	Action    QueryActionInputBodyAction `json:"action"`
-	Namespace *string                    `json:"namespace,omitempty"`
+	Action QueryActionInputBodyAction `json:"action"`
+
+	// Namespace Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // QueryActionInputBodyAction defines model for QueryActionInputBody.Action.
@@ -4469,7 +4475,7 @@ type UpsertZoneRecordParams struct {
 	// RecordSet DNSRecordSet to write; default api-<zone>.
 	RecordSet *string `form:"recordSet,omitempty" json:"recordSet,omitempty"`
 
-	// Namespace Namespace of the record set; default "default".
+	// Namespace Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
 	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
 }
 
