@@ -55,7 +55,10 @@ authorize that write. Current local groups and private administrator state remai
 authoritative; token scopes narrow administrator permissions too.
 
 `internal/servinghttp` captures the complete publisher lease before checking a
-cookie or API token and keeps it until the bounded handler finishes. CSRF uses
+cookie, API token or OIDC JWT and keeps it until the bounded handler finishes.
+JWTs use only the captured offline verifier and bounded claim policy; unknown
+issuers, expired signatures and oversized proofs cannot trigger discovery or a
+cookie fallback. Original raw proofs survive only for the lease lifetime. CSRF uses
 the same captured enrollment. Authorization rechecks the original proof against
 that view; a caller-supplied principal cannot replace it. Pending publication
 returns 503, and a rejected bearer never falls back to a cookie. Mutations must
@@ -64,7 +67,7 @@ pass the retained raw proof to the current command verifier separately.
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
 revocation, current-command denial and cleanup on cancellation/panic. Production
-production mounting, network provider resources and the public session
+mounting, network provider resources and the public session
 workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.

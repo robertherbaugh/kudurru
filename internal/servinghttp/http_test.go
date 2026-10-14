@@ -41,6 +41,11 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	return newFixturePrepared(t, nil)
+}
+
+func newFixturePrepared(t *testing.T, setup func(*fixture, servingauth.Schema)) *fixture {
+	t.Helper()
 	f := &fixture{now: time.Now().UTC(), csrf: "csrf-secret-value-longer-than-thirty-two-bytes"}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
@@ -99,6 +104,9 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	registry := servingauth.Schema{Scheme: scheme, Kinds: initial.KindManifest, SchemaVersion: store.SchemaVersion}
+	if setup != nil {
+		setup(f, registry)
+	}
 	f.publisher, err = serving.New(serving.Options{Source: f.store, Required: serving.CompleteManifest(), RetryInterval: time.Millisecond, Prepare: func(ctx context.Context, c serving.Candidate) (serving.Prepared, error) {
 		if f.pause.Load() {
 			return serving.Prepared{}, serving.ErrPrepare

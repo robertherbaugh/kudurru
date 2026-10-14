@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -139,14 +140,25 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 func (a *Adapter) selectCredential(r *http.Request) (servingauth.Credential, error) {
 	headers := r.Header.Values("Authorization")
 	if len(headers) != 0 {
-		if len(headers) != 1 || len(headers[0]) > 1024 {
+		if len(headers) != 1 || len(headers[0]) > oidccore.MaxTokenBytes+len("Bearer ") {
 			return servingauth.Credential{}, servingauth.ErrCredentials
 		}
 		parts := strings.Fields(headers[0])
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || !strings.HasPrefix(parts[1], "kdr_") {
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			return servingauth.Credential{}, servingauth.ErrUnsupported
 		}
-		return servingauth.Credential{Kind: servingauth.APIToken, Value: parts[1]}, nil
+		if strings.HasPrefix(parts[1], "kdr_") {
+			if len(headers[0]) > 1024 {
+				return servingauth.Credential{}, servingauth.ErrCredentials
+			}
+			return servingauth.Credential{Kind: servingauth.APIToken, Value: parts[1]}, nil
+		}
+		if len(parts[1]) > oidccore.MaxTokenBytes || strings.Count(parts[1], ".") != 2 {
+			return servingauth.Credential{}, servingauth.ErrUnsupported
+		}
+		// Shape selects a verifier, never an identity or authority. The exact
+		// captured auth owner verifies signature, issuer, audience and policy.
+		return servingauth.Credential{Kind: servingauth.OIDCJWT, Value: parts[1]}, nil
 	}
 	cookies := r.CookiesNamed(a.options.Cookie.NameFor(r))
 	if len(cookies) == 0 {
