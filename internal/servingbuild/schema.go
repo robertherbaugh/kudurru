@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -111,6 +112,16 @@ func (s *Schema) validation(ctx context.Context) replication.Validation {
 
 func (s *Schema) auth() servingauth.Schema {
 	return servingauth.Schema{Scheme: s.scheme, Kinds: slices.Clone(s.kinds), SchemaVersion: store.SchemaVersion}
+}
+
+// PrimaryImageOptions shares this complete local schema and owner validators
+// with the primary driver. The context must span the driver's whole lifetime;
+// each individual image preparation also checks its own operation context.
+func (s *Schema) PrimaryImageOptions(ctx context.Context, clusterID string) primaryruntime.ImageOptions {
+	if s == nil || ctx == nil {
+		return primaryruntime.ImageOptions{}
+	}
+	return primaryruntime.ImageOptions{ClusterID: clusterID, Scheme: s.scheme, Validation: s.validation(ctx)}
 }
 
 func (s *Schema) decode(raw json.RawMessage) (store.Object, error) {

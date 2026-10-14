@@ -41,6 +41,20 @@ func Capture(p *serving.Publisher) pipeline.Capture {
 	}
 }
 
+// CheckWriter checks the request's original concrete lease against the exact
+// elected writer. It never captures a newer lease to repair stale DNS work.
+// This is an ingress check, not transaction admission or replacement exclusion.
+func CheckWriter(req *pipeline.Request, p *serving.Publisher, target serving.TermActivation) error {
+	if req == nil || req.Ctx == nil || p == nil {
+		return pipeline.ErrServingCapture
+	}
+	l, ok := req.Serving.(*lease)
+	if !ok || l == nil {
+		return pipeline.ErrServingCapture
+	}
+	return p.CheckWriterLease(req.Ctx, l.inner, target)
+}
+
 // Component reads an immutable typed owner value while the request holds its
 // lease. A truthful owner wrapper may contain known-empty data; missing, wrongly
 // typed or typed-nil component values fail closed.

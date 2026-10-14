@@ -47,6 +47,31 @@ func (p *PrimaryPublication) Publish(ctx context.Context, _ primaryruntime.Cut, 
 	return p.Wait(ctx, fence, member)
 }
 
+// Capture returns one owned protected lease that actually serves the exact
+// durable member in the given writer incarnation. The caller must release it.
+// A pending or superseded cut is never repaired by reading another owner.
+func (p *PrimaryPublication) Capture(ctx context.Context, writer primaryruntime.PublicationFence, member primaryruntime.Member) (*serving.Lease, error) {
+	if p == nil || p.publisher == nil || member.Zone.ClusterID != writer.Term.ClusterID || member.Incarnation == 0 || member.Sequence == 0 {
+		return nil, primaryruntime.ErrInvalid
+	}
+	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
+	lease, err := p.publisher.CaptureHTTP(ctx)
+	if err == nil || errors.Is(err, serving.ErrPending) {
+		err = p.publisher.CheckWriterLease(ctx, lease, target)
+	}
+	if err == nil {
+		err = publishedMember(lease, member, p.now())
+		if current := p.publisher.CheckWriterLease(ctx, lease, target); current != nil {
+			err = current
+		}
+	}
+	if err != nil {
+		lease.Release()
+		return nil, err
+	}
+	return lease, nil
+}
+
 // Wait observes one protected complete lease per attempt. Exact persisted
 // lifecycle identity is checked before routing, including retired members hidden
 // by a new desired placeholder. No lock is retained while waking or waiting.
@@ -54,23 +79,11 @@ func (p *PrimaryPublication) Wait(ctx context.Context, writer primaryruntime.Pub
 	if writer.Term.Validate() != nil || writer.Incarnation == 0 || member.Zone.ClusterID != writer.Term.ClusterID || member.Incarnation == 0 || member.Sequence == 0 {
 		return primaryruntime.ErrInvalid
 	}
-	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
 	p.Wake()
 	for {
 		changed := p.publisher.Subscribe()
 		authority := p.publisher.AuthorityChanges()
-		lease, err := p.publisher.CaptureHTTP(ctx)
-		if err == nil || errors.Is(err, serving.ErrPending) {
-			err = p.publisher.CheckWriterLease(ctx, lease, target)
-		}
-		if err == nil {
-			err = publishedMember(lease, member, p.now())
-			// Reject cursor changes during owner inspection, even for an exact
-			// old head. The check also reevaluates node-local dependencies.
-			if current := p.publisher.CheckWriterLease(ctx, lease, target); current != nil {
-				err = current
-			}
-		}
+		lease, err := p.Capture(ctx, writer, member)
 		lease.Release()
 		if !errors.Is(err, serving.ErrPending) {
 			return err
