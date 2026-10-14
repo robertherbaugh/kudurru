@@ -380,6 +380,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     name: z.metadata.name,
     zoneName: z.spec.zoneName,
     type: z.spec.type,
+    ...(z.spec.type === 'secondary' && db.secondaryRuntime[z.metadata.name] ? { secondaryRuntime: db.secondaryRuntime[z.metadata.name] } : {}),
     serial: z.status?.serial ?? 0,
     recordCount: z.status?.recordCount ?? 0,
     recordSets: db.recordSets.filter((rs) => rs.spec.zoneRef.name === z.metadata.name).length,
@@ -1541,7 +1542,7 @@ export const handlers = [
     guard(request, 'edge', 'read') ??
     ok({ edge: { enabled: true, state: 'running' }, vip: { enabled: true, state: 'MASTER' }, backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true }], node: 'kudurru-0' }),
   ),
-  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.messages })),
+  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
   // iam and audit -------------------------------------------------------------

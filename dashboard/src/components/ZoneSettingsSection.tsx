@@ -1,6 +1,6 @@
 // The "Zone settings" section of a zone's page: what the new-zone wizard
 // sets (primary: name servers, default TTL, SOA, who may query; forward:
-// upstream group, DNSSEC validation), shown and edited in place with the
+// upstream group, DNSSEC validation; secondary: primaries and TSIG key), with the
 // wizard's own fields. Saving PUTs the DNSZone with If-Match and keeps every
 // field the editor does not show (transfers, NOTIFY, ...).
 import { Badge } from '@astryxdesign/core/Badge';
@@ -15,7 +15,7 @@ import { readOnlyReason, type Ownership } from '../lib/managedBy';
 import { QUERY_ACCESS, SOA_DEFAULTS } from '../lib/zones';
 import { EditableSection } from './EditableSection';
 import { secondsLabel } from './fields/DurationField';
-import { applyDraft, draftFromZone, ForwardFields, primaryError, PrimaryFields, type Draft } from './wizards/ZoneWizard';
+import { applyDraft, draftFromZone, ForwardFields, primaryError, PrimaryFields, secondaryError, SecondaryFields, type Draft } from './wizards/ZoneWizard';
 import { ErrorBanner, useNotify } from './Feedback';
 
 export interface ZoneSettingsSectionProps {
@@ -32,9 +32,11 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   const obj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone) });
   if (obj.error) return <ErrorBanner error={obj.error} />;
   const z = obj.data;
-  if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward')) return null;
+  if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward' && z.spec.type !== 'secondary')) return null;
   const value = draftFromZone(z.spec);
-  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' : undefined;
+  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' :
+    z.spec.type === 'secondary' && z.spec.secondary?.transferProtocol === 'tls'
+      ? 'TLS transfers are not supported here. Set transferProtocol to tcp in the zone configuration to edit these settings.' : undefined;
 
   const save = async (d: Draft) => {
     try {
@@ -57,7 +59,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   return (
     <EditableSection<Draft>
       title="Zone settings"
-      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : 'Where queries for the zone are sent.'}
+      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : value.type === 'secondary' ? 'Primary servers and the key used for AXFR over TCP. SOA timers and TTLs come from the primary.' : 'Where queries for the zone are sent.'}
       value={value}
       readOnlyReason={roReason}
       testId="section-zone-settings"
@@ -75,6 +77,12 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
               {access}
               {value.queryACL.length ? <Text color="secondary"> ({value.queryACL.join(', ')})</Text> : null}
             </MetadataListItem>
+          </MetadataList>
+        ) : value.type === 'secondary' ? (
+          <MetadataList columns="multi">
+            <MetadataListItem label="Primary servers">{value.primaries.length ? value.primaries.join(', ') : <Text color="secondary">none configured</Text>}</MetadataListItem>
+            <MetadataListItem label="Transfer">{z.spec.secondary?.transferProtocol === 'tls' ? 'TLS (unsupported)' : 'AXFR over TCP; default port 53'}</MetadataListItem>
+            <MetadataListItem label="TSIG key name">{value.tsigKeyRef || <Text color="secondary">none (unsigned transfers)</Text>}</MetadataListItem>
           </MetadataList>
         ) : (
           <MetadataList columns="multi">
@@ -95,9 +103,9 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
       }
       edit={(draft, setDraft) => {
         const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
-        return draft.type === 'primary' ? <PrimaryFields d={draft} set={set} /> : <ForwardFields d={draft} set={set} />;
+        return draft.type === 'primary' ? <PrimaryFields d={draft} set={set} /> : draft.type === 'secondary' ? <SecondaryFields d={draft} set={set} /> : <ForwardFields d={draft} set={set} />;
       }}
-      validate={(d) => (d.type === 'primary' ? primaryError(d) : null)}
+      validate={(d) => (d.type === 'primary' ? primaryError(d) : d.type === 'secondary' ? secondaryError(d) : null)}
       onSave={save}
     />
   );

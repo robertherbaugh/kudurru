@@ -1,5 +1,5 @@
 // New zone, in a WizardDialog over the Zones page (?new=1; dev-docs/milestones/m3/ui.md
-// "Pages, wizards and dialogs"): type (primary or forward, with what each
+// "Pages, wizards and dialogs"): type (primary, forward or secondary)
 // does) → apex → the type's settings (primary: name servers, default TTL,
 // SOA timers, who may query; forward: the upstream group) → review → PUT
 // /objects/dnszones/{name}, then the dialog closes and the zone's page
@@ -31,9 +31,9 @@ import { Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { useNavigate } from '../../lib/router';
 import { hostError } from '../../lib/rr';
 import { DEFAULT_GROUP } from '../../lib/upstreams';
-import { aclEntryError, apexError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, usesACL, zoneObjectName } from '../../lib/zones';
+import { aclEntryError, apexError, primaryEndpointError, QUERY_ACCESS, rnameOf, SOA_DEFAULTS, SOA_PRESETS, tsigKeyNameError, usesACL, zoneObjectName } from '../../lib/zones';
 
-type Kind = 'primary' | 'forward';
+type Kind = 'primary' | 'forward' | 'secondary';
 
 export interface Draft {
   type: Kind;
@@ -52,6 +52,8 @@ export interface Draft {
   dnssec: '' | 'on' | 'off';
   fallback: boolean;
   fallbackGroup: string;
+  primaries: string[];
+  tsigKeyRef: string;
 }
 
 export const EMPTY: Draft = {
@@ -71,6 +73,8 @@ export const EMPTY: Draft = {
   dnssec: '',
   fallback: false,
   fallbackGroup: '',
+  primaries: [],
+  tsigKeyRef: '',
 };
 
 const DNSSEC = [
@@ -103,6 +107,12 @@ export function zoneFromDraft(d: Draft): DNSZone {
     if (d.queryAccess !== 'allow' || cleanList(d.queryACL).length) {
       spec.policy = { queryAccess: d.queryAccess, ...(usesACL(d.queryAccess) ? { queryACL: cleanList(d.queryACL) } : {}) };
     }
+  } else if (d.type === 'secondary') {
+    spec.secondary = {
+      primaries: cleanList(d.primaries),
+      transferProtocol: 'tcp',
+      ...(d.tsigKeyRef.trim() ? { tsigKeyRef: d.tsigKeyRef.trim() } : {}),
+    };
   } else {
     spec.forward = {
       ...(d.upstreamGroup ? { upstreamGroup: d.upstreamGroup } : {}),
@@ -226,12 +236,48 @@ export function ForwardFields({ d, set }: { d: Draft; set: SetDraft }) {
   );
 }
 
+export function secondaryError(d: Draft): string | null {
+  return (
+    (!cleanList(d.primaries).length ? 'At least one primary server is required' : null) ??
+    listError(d.primaries, primaryEndpointError) ??
+    tsigKeyNameError(d.tsigKeyRef)
+  );
+}
+
+/** Inbound AXFR configuration, shared by creation and settings editing. */
+export function SecondaryFields({ d, set }: { d: Draft; set: SetDraft }) {
+  return (
+    <>
+      <StringListField
+        label="Primary servers"
+        description="Hostnames or IP addresses, with an optional port (default 53). Use [2001:db8::1]:5353 for IPv6 with a port. Servers are tried in order."
+        value={d.primaries}
+        onChange={(v) => set('primaries', v)}
+        placeholder="ns1.example.com:5353"
+        itemError={primaryEndpointError}
+        addLabel="Add primary server"
+      />
+      <TextField
+        label="TSIG key name"
+        isOptional
+        mono
+        value={d.tsigKeyRef}
+        onChange={(v) => set('tsigKeyRef', v)}
+        placeholder="transfer-key.example."
+        help="Optional key name configured on every node and the primary. Leave empty for unsigned transfers."
+        error={tsigKeyNameError(d.tsigKeyRef) ?? undefined}
+      />
+      <Text type="supporting">Transfers use AXFR over TCP. Refresh, retry, expiry and record TTLs come from the primary's SOA and records.</Text>
+    </>
+  );
+}
+
 /** The draft of an existing zone's settings (the zone page's editor). */
 export function draftFromZone(spec: DNSZoneSpec): Draft {
   const str = (v: number | undefined) => (v === undefined ? '' : String(v));
   return {
     ...EMPTY,
-    type: spec.type === 'forward' ? 'forward' : 'primary',
+    type: spec.type === 'forward' || spec.type === 'secondary' ? spec.type : 'primary',
     apex: spec.zoneName ?? '',
     nameservers: spec.nameservers ?? [],
     defaultTTL: str(spec.defaultTTL),
@@ -247,6 +293,8 @@ export function draftFromZone(spec: DNSZoneSpec): Draft {
     dnssec: spec.forward?.dnssecValidation === undefined ? '' : spec.forward.dnssecValidation ? 'on' : 'off',
     fallback: spec.fallback !== undefined,
     fallbackGroup: spec.fallback?.upstreamGroup ?? '',
+    primaries: spec.secondary?.primaries ?? [],
+    tsigKeyRef: spec.secondary?.tsigKeyRef ?? '',
   };
 }
 
@@ -273,6 +321,10 @@ export function applyDraft(spec: DNSZoneSpec, d: Draft): DNSZoneSpec {
     if (built.policy) Object.assign(policy, built.policy);
     if (Object.keys(policy).length) next.policy = policy;
     else delete next.policy;
+  } else if (d.type === 'secondary') {
+    next.secondary = { ...spec.secondary, primaries: built.secondary?.primaries ?? [] };
+    if (built.secondary?.tsigKeyRef) next.secondary.tsigKeyRef = built.secondary.tsigKeyRef;
+    else delete next.secondary.tsigKeyRef;
   } else {
     next.forward = { ...spec.forward, ...built.forward };
     if (!built.forward?.upstreamGroup) delete next.forward.upstreamGroup;
@@ -293,7 +345,7 @@ export function ZoneWizardDialog({ isOpen, onClose }: ZoneWizardProps & { isOpen
       isOpen={isOpen}
       onClose={onClose}
       title="New zone"
-      subtitle="To bring records from another server, use Import zone file on the Zones page instead."
+      subtitle="Create records here, forward queries, or keep a secondary copy from a primary server."
       what="zone"
     >
       {can('zones', 'write') ? (
@@ -346,13 +398,18 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
                 description: 'kudurru is authoritative: you keep the records here (home.arpa, lab.example) and it answers from them, NOTIFYing secondaries.',
               },
               {
+                value: 'secondary',
+                label: 'Secondary',
+                description: 'Each kudurru node transfers a read-only copy from a primary over TCP and refreshes it using the primary’s SOA timers.',
+              },
+              {
                 value: 'forward',
                 label: 'Forward',
                 description: 'Queries for the zone go to an upstream group, e.g. a corporate or Active Directory DNS for corp.example.',
               },
             ]}
           />
-          <Text type="supporting">Secondary, stub and catalog zones are declared in YAML (<Text type="code">kudurru apply</Text>) in this release.</Text>
+          <Text type="supporting">Stub and catalog zones are reserved for a later release.</Text>
         </>
       ),
     },
@@ -389,7 +446,13 @@ function ZoneWizard({ onClose }: ZoneWizardProps) {
           validate: () => primaryError(d),
           content: <PrimaryFields d={d} set={set} />,
         }
-      : {
+      : d.type === 'secondary' ? {
+          id: 'secondary',
+          label: 'Primary servers',
+          description: 'Where each node obtains its secondary copy of the zone.',
+          validate: () => secondaryError(d),
+          content: <SecondaryFields d={d} set={set} />,
+        } : {
           id: 'forward',
           label: 'Upstream',
           description: 'Where queries for the zone are sent. Answers are cached like any forwarded answer.',
@@ -424,7 +487,7 @@ function Review({ d }: { d: Draft }) {
       <MetadataListItem label="Zone">
         <Text type="code">{s.zoneName}</Text>
       </MetadataListItem>
-      <MetadataListItem label="Type">{s.type === 'primary' ? 'Primary (records served here)' : 'Forward (to an upstream group)'}</MetadataListItem>
+      <MetadataListItem label="Type">{s.type === 'primary' ? 'Primary (records served here)' : s.type === 'secondary' ? 'Secondary (transferred from a primary)' : 'Forward (to an upstream group)'}</MetadataListItem>
       {s.type === 'primary' ? (
         <>
           <MetadataListItem label="Missing names">{s.fallback ? `Resolve through ${s.fallback.upstreamGroup || 'normal resolver routing'}` : 'Answer locally (NXDOMAIN)'}</MetadataListItem>
@@ -439,6 +502,13 @@ function Review({ d }: { d: Draft }) {
             {QUERY_ACCESS.find((q) => q.value === (s.policy?.queryAccess ?? 'allow'))?.label}
             {s.policy?.queryACL?.length ? `: ${s.policy.queryACL.join(', ')}` : ''}
           </MetadataListItem>
+        </>
+      ) : s.type === 'secondary' ? (
+        <>
+          <MetadataListItem label="Primary servers">{s.secondary?.primaries.join(', ')}</MetadataListItem>
+          <MetadataListItem label="Transfer">AXFR over TCP; default port 53</MetadataListItem>
+          <MetadataListItem label="TSIG key name">{s.secondary?.tsigKeyRef ?? 'None (unsigned transfers)'}</MetadataListItem>
+          <MetadataListItem label="SOA timers">From the primary</MetadataListItem>
         </>
       ) : (
         <>

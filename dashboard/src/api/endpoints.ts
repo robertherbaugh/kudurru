@@ -78,10 +78,10 @@ function scopeQuery(s: ScopeParams | undefined): Query {
 
 const enc = encodeURIComponent;
 
-/** A copy of an object without its server-owned status. */
+/** A copy of an object without its server-owned status or response timing. */
 export function withoutStatus<T extends AnyObject>(obj: T): Omit<T, 'status'> {
-  const { status: _status, ...rest } = obj;
-  return rest;
+  const { status: _status, took_ms: _took, ...rest } = obj as T & { took_ms?: number };
+  return rest as Omit<T, 'status'>;
 }
 
 /** /objects path of one object; cluster-scoped kinds omit the namespace. */

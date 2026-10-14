@@ -94,6 +94,39 @@ describe('ZoneWizardDialog', () => {
     await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'herbaugh.network')?.spec).toEqual({ zoneName: 'herbaugh.network.', type: 'primary', fallback: {} }));
   });
 
+  it('requires valid secondary primaries and creates a TCP AXFR configuration with a key name', async () => {
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
+    fireEvent.click(await screen.findByRole('radio', { name: /^Secondary/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Zone name/ }), { target: { value: 'Secondary.Example.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('At least one primary server is required')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add primary server' }));
+    const first = screen.getByRole('textbox', { name: 'Primary servers 1' });
+    fireEvent.change(first, { target: { value: 'ns1.example.com:0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect((await screen.findAllByText(/The port must be 1-65535/)).length).toBeGreaterThan(0);
+    fireEvent.change(first, { target: { value: ' ns1.example.com ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add primary server' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Primary servers 2' }), { target: { value: '192.0.2.1:5353' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add primary server' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Primary servers 3' }), { target: { value: '[2001:db8::1]:5353' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^TSIG key name/ }), { target: { value: ' transfer-key.example. ' } });
+    expect(screen.queryByRole('textbox', { name: /^Responsible mailbox/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const review = await screen.findByTestId('zone-review');
+    expect(review).toHaveTextContent('AXFR over TCP; default port 53');
+    expect(review).toHaveTextContent('transfer-key.example.');
+    expect(review).toHaveTextContent('From the primary');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'secondary.example')?.spec).toEqual({
+      zoneName: 'secondary.example.', type: 'secondary',
+      secondary: { primaries: ['ns1.example.com', '192.0.2.1:5353', '[2001:db8::1]:5353'], transferProtocol: 'tcp', tsigKeyRef: 'transfer-key.example.' },
+    }));
+    await waitFor(() => expect(window.location.pathname).toBe('/zones/secondary.example'));
+  });
+
   it('creates a forward zone with an upstream group picked from the configured ones', async () => {
     renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^Forward/ }));

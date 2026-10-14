@@ -2,6 +2,7 @@
 // against the MSW mock.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { ApiClient } from '../api/client';
 import { endpoints } from '../api/endpoints';
 import type { DNSZoneSpec } from '../api/types';
@@ -9,6 +10,7 @@ import { mockDB, signIn } from '../mocks/handlers';
 import { ownership } from '../lib/managedBy';
 import { API, renderWithApp } from '../test/utils';
 import { findSelector, pick } from '../test/controls';
+import { server } from '../test/setup';
 import { applyDraft, draftFromZone } from './wizards/ZoneWizard';
 import { ZoneDeleteDialog } from './ZoneDeleteDialog';
 import { ZoneSettingsSection } from './ZoneSettingsSection';
@@ -49,6 +51,21 @@ describe('applyDraft', () => {
     const d = draftFromZone(overlay);
     expect(applyDraft(overlay, { ...d, fallbackGroup: '' }).fallback).toEqual({});
     expect(applyDraft(overlay, { ...d, fallback: false })).toEqual(spec);
+  });
+
+  it('preserves secondary protocol, policy, SOA and other settings while clearing the optional key', () => {
+    const secondary: DNSZoneSpec = {
+      zoneName: 'secondary.example.', type: 'secondary',
+      secondary: { primaries: ['ns1.example.com'], tsigKeyRef: 'old-key.', transferProtocol: 'tls' },
+      policy: { queryAccess: 'allowOnlyPrivate', notify: 'none', zoneTransfer: 'deny' },
+      soa: { refresh: 7200 }, defaultTTL: 900, recordSetSelector: { namespaces: ['other'] },
+    };
+    const draft = draftFromZone(secondary);
+    expect(draft.type).toBe('secondary');
+    expect(applyDraft(secondary, draft)).toEqual(secondary);
+    expect(applyDraft(secondary, { ...draft, apex: 'wrong.example', primaries: [' ns2.example.com:5353 ', ''], tsigKeyRef: '' })).toEqual({
+      ...secondary, secondary: { primaries: ['ns2.example.com:5353'], transferProtocol: 'tls' },
+    });
   });
 });
 
@@ -99,6 +116,79 @@ describe('ZoneSettingsSection', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
     await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'public-example')?.spec.fallback).toEqual({ upstreamGroup: 'resolver' }));
     expect(await within(section).findByText('Resolve through resolver')).toBeInTheDocument();
+  });
+
+  function seedSecondary() {
+    const z = {
+      apiVersion: 'kudurru.io/v1alpha1' as const, kind: 'DNSZone' as const,
+      metadata: { name: 'secondary.example', resourceVersion: '12', labels: { owner: 'dns-team' } },
+      status: { serial: 123 },
+      spec: {
+        zoneName: 'secondary.example.', type: 'secondary' as const,
+        secondary: { primaries: ['ns1.example.com'], tsigKeyRef: 'old-key.', transferProtocol: 'tcp' as const },
+        policy: { queryAccess: 'allowOnlyPrivate' as const, zoneTransfer: 'deny' as const },
+      },
+    };
+    mockDB().zones.push(z);
+    return z;
+  }
+
+  it('saves secondary settings with If-Match while preserving policy and metadata', async () => {
+    const z = seedSecondary();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(edit);
+    expect(within(section).queryByRole('combobox', { name: 'Refresh' })).not.toBeInTheDocument();
+    fireEvent.change(within(section).getByRole('textbox', { name: 'Primary servers 1' }), { target: { value: 'ns2.example.com:5353' } });
+    fireEvent.change(within(section).getByRole('textbox', { name: /^TSIG key name/ }), { target: { value: '' } });
+    const saveRequest = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, async ({ request }) => {
+      const body = await request.json();
+      saveRequest(request.headers.get('If-Match'), body);
+      return HttpResponse.json(body);
+    }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    await waitFor(() => expect(saveRequest).toHaveBeenCalledWith('12', {
+      apiVersion: z.apiVersion, kind: z.kind, metadata: z.metadata,
+      spec: { ...z.spec, secondary: { primaries: ['ns2.example.com:5353'], transferProtocol: 'tcp' } },
+    }));
+    await waitFor(() => expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument());
+  });
+
+  it('keeps a conflicting secondary edit open with the reload guidance', async () => {
+    const z = seedSecondary();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(edit);
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, () => HttpResponse.json({ error: { key: 'precondition_failed', message: 'resourceVersion changed' } }, { status: 412 })));
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    expect(await within(section).findByText('The zone changed since this page loaded; reload and edit again.')).toBeInTheDocument();
+    expect(within(section).getByRole('textbox', { name: 'Primary servers 1' })).toHaveValue('ns1.example.com');
+  });
+
+  it.each(['file:/objects.d/secondary.yaml', 'kubernetes'])('keeps %s secondary configuration read-only', async (owner) => {
+    const z = seedSecondary();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership(owner)} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    expect(edit).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(edit);
+    expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument();
+    expect(section).toHaveTextContent('ns1.example.com');
+  });
+
+  it('keeps secondary settings read-only without zones.write', async () => {
+    const z = seedSecondary();
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />, { user: 'viewer' });
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    expect(edit).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(edit);
+    expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument();
   });
 
   it('edits a forward zone and saves it', async () => {

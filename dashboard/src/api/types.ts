@@ -307,6 +307,9 @@ export type ZoneSummary = Omit<S['ZoneSummary'], 'type'> & {
   transfer?: ZoneTransferStatus;
 };
 
+/** The responding node's secondary snapshot, independent of shared status. */
+export type SecondaryRuntime = S['SecondaryRuntime'];
+
 export interface ZoneTransferStatus {
   zoneTransfer: AccessMode;
   notify: NotifyMode;

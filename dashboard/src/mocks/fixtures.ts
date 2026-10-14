@@ -17,6 +17,7 @@ import type {
   Policy,
   QueryRow,
   SettingKey,
+  SecondaryRuntime,
   TimeseriesPoint,
 } from '../api/types';
 import schemaJSON from './data/settings-schema.json';
@@ -38,6 +39,8 @@ export interface MockUser {
 export interface MockDB {
   now: number;
   zones: DNSZone[];
+  /** Node-local receiver state, deliberately separate from DNSZone status. */
+  secondaryRuntime: Record<string, SecondaryRuntime>;
   recordSets: DNSRecordSet[];
   lists: BlockList[];
   groups: ClientGroup[];
@@ -755,6 +758,7 @@ export function createDB(now = FIXED_NOW): MockDB {
   return {
     now,
     zones,
+    secondaryRuntime: {},
     recordSets,
     lists: buildLists(now),
     groups: buildGroups(),
