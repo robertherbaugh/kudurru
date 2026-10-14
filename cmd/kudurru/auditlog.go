@@ -33,7 +33,7 @@ type auditLogStore struct {
 // than the app): the node then shows its own spool and logs why. An
 // apiserver that cannot be reached at start is not a reason to fall back;
 // the shipper retries.
-func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey []byte, logger *slog.Logger) (*auditLogStore, error) {
+func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey, encPrev []byte, logger *slog.Logger) (*auditLogStore, error) {
 	scheme := runtime.NewScheme()
 	if err := auditv1.AddToScheme(scheme); err != nil {
 		return nil, err
@@ -52,17 +52,35 @@ func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, en
 			"component", "audit", "crd", "auditlogs."+auditv1.Group)
 		return nil, nil
 	}
-	sealKey, err := auditlog.SealKey(encKey)
+	sealKeys, err := auditSealKeys(encKey, encPrev)
 	if err != nil {
 		return nil, err
 	}
-	tgt := &auditlog.Target{Client: c, Namespace: ns, SealKey: sealKey}
+	tgt := &auditlog.Target{Client: c, Namespace: ns, SealKey: sealKeys[0]}
 	sh := &audit.Shipper{Source: sp, Target: tgt, Logger: logger}
 	return &auditLogStore{
 		shipper: sh,
-		reader:  &auditlog.Reader{Client: c, Namespace: ns, SealKeys: [][]byte{sealKey}, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()},
+		reader:  &auditlog.Reader{Client: c, Namespace: ns, SealKeys: sealKeys, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()},
 		client:  c,
 	}, nil
+}
+
+// auditSealKeys keeps the current key first for writes and accepts the previous
+// key when verifying batches retained across a cluster encryption-key rotation.
+func auditSealKeys(current, previous []byte) ([][]byte, error) {
+	key, err := auditlog.SealKey(current)
+	if err != nil {
+		return nil, err
+	}
+	keys := [][]byte{key}
+	if len(previous) > 0 {
+		key, err := auditlog.SealKey(previous)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 // prune is the leader's retention job.
