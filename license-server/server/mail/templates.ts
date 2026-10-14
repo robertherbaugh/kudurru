@@ -1,4 +1,5 @@
-// The portal's mails (design spec §6): plain text, American English, the
+// The portal's mails (design spec §6): branded HTML with a complete plain
+// text alternative, American English, the
 // product named "kudurru license portal". One function per mail returns the
 // MailMessage; callers send it after their transaction commits (or, for the
 // confirmation link, before answering). Key mails carry the key in the body
@@ -25,9 +26,9 @@ import {
   planLabel,
 } from '../../shared/catalog';
 import type { MailAttachment, MailMessage } from './types';
+import { brandedMail, PRODUCT_NAME } from './html';
 
-/** The product name every mail signs with. */
-export const PRODUCT_NAME = 'kudurru license portal';
+export { PRODUCT_NAME } from './html';
 
 /** Text for a header line: control characters (CR, LF, …) become spaces. */
 function oneLine(s: string): string {
@@ -77,7 +78,7 @@ export interface ConfirmationMail {
 
 /** The confirmation link of the kudurru.io form. */
 export function confirmationMail(m: ConfirmationMail): MailMessage {
-  return {
+  return brandedMail({
     to: m.to,
     subject: 'Confirm your request for a free kudurru personal key',
     text: paragraphs(
@@ -92,7 +93,12 @@ export function confirmationMail(m: ConfirmationMail): MailMessage {
       'A free personal/nonprofit key is for eligible community use only.',
       signature(m.publicUrl),
     ),
-  };
+  }, {
+    title: 'One step closer.',
+    preview: 'Confirm your email to continue your request for a free personal kudurru key.',
+    publicUrl: m.publicUrl,
+    action: { label: 'Confirm your request', url: m.url },
+  });
 }
 
 // --- keys ------------------------------------------------------------------------
@@ -167,7 +173,7 @@ export function keyMail(m: KeyMail): MailMessage {
   const portal = m.inviteUrl
     ? `See your licenses and download the key again in the ${PRODUCT_NAME}. This link gives you access; it works for ${INVITE_TTL_DAYS} days:\n${m.inviteUrl}`
     : `Your licenses are in the ${PRODUCT_NAME}: ${m.publicUrl}/my/licenses`;
-  return {
+  return brandedMail({
     to: m.to,
     subject: KEY_SUBJECTS[m.kind],
     text: paragraphs(
@@ -184,7 +190,18 @@ export function keyMail(m: KeyMail): MailMessage {
       signature(m.publicUrl),
     ),
     attachments: [licenseKeyAttachment(m.token)],
-  };
+  }, {
+    title: m.kind === 'renewed' ? 'Your renewed key is ready.' : m.kind === 'resent' ? 'Your key, once more.' : 'Your key is ready.',
+    preview: `${planLabel(l.plan)} · ${l.nodes} nodes · valid until ${l.expiresOn} (UTC).`,
+    publicUrl: m.publicUrl,
+    key: m.token,
+    details: [{
+      text: facts,
+      heading: 'Your license',
+      rows: [['License ID', l.id], ['Licensee', l.licensee], ['Plan', planLabel(l.plan)], ['Nodes', String(l.nodes)], ['Features', features], ['Expires', `${l.expiresOn} (UTC)`]],
+    }],
+    action: { label: m.inviteUrl ? 'Access your licenses' : 'View your licenses', url: m.inviteUrl || `${m.publicUrl}/my/licenses` },
+  });
 }
 
 // --- requests that wait for approval ----------------------------------------------
@@ -202,7 +219,7 @@ export interface ReviewWaitingMail {
 /** To the requester: the request waits for an admin's approval. */
 export function reviewWaitingMail(m: ReviewWaitingMail): MailMessage {
   const who = m.approvalRequired ? 'An administrator approves every key before it is sent' : 'An administrator needs to approve this request before a key is sent';
-  return {
+  return brandedMail({
     to: m.to,
     subject: m.renewal ? 'Your renewal of a kudurru personal key is waiting for approval' : 'Your request for a kudurru personal key is waiting for approval',
     text: paragraphs(
@@ -212,7 +229,11 @@ export function reviewWaitingMail(m: ReviewWaitingMail): MailMessage {
         : `Thank you for your request for a free personal kudurru license key. ${who}; your key arrives by email once it is approved. There is nothing else you need to do.`,
       signature(m.publicUrl),
     ),
-  };
+  }, {
+    title: m.renewal ? 'Your renewal is in review.' : 'Your request is in review.',
+    preview: 'We have your request. Your personal key arrives by email once it is approved.',
+    publicUrl: m.publicUrl,
+  });
 }
 
 const REVIEW_REASONS: Record<ReviewReason, string> = {
@@ -286,7 +307,7 @@ export function reviewNeededMail(m: ReviewNeededMail): MailMessage {
         `To change the terms first, use the portal: ${m.publicUrl}/requests`,
       ].join('\n')
     : ['This request needs a closer look (see Why above), so this mail has no approve link. A license admin decides it in the portal after signing in:', `${m.publicUrl}/requests`].join('\n');
-  return {
+  return brandedMail({
     to: m.to,
     subject: m.renews ? `Approve the renewal of ${m.renews.licenseId} for ${name}?` : `Approve a free personal key for ${name}?`,
     text: paragraphs(
@@ -301,7 +322,24 @@ export function reviewNeededMail(m: ReviewNeededMail): MailMessage {
       decide,
       signature(m.publicUrl),
     ),
-  };
+  }, {
+    title: m.renews ? 'A renewal needs your review.' : 'A request needs your review.',
+    preview: `${name} is waiting for approval of a free personal kudurru key.`,
+    publicUrl: m.publicUrl,
+    details: [{
+      text: facts,
+      heading: 'The request',
+      rows: [
+        ['Request', r.id], ['Name', r.name], ['Email', r.email], ['From', sourceLabel(r.source)], ['Why', reviewReasonText(r.reason)],
+        ...(m.renews ? [['Renews', `${m.renews.licenseId} (expires ${m.renews.expiresOn} UTC)`] as const] : []),
+      ],
+    }, {
+      text: terms,
+      heading: m.renews ? 'Approving renews the key with these terms' : 'Approving signs this key',
+      rows: [['Plan', planLabel('personal')], ['Nodes', String(m.terms.nodes)], ['Features', ALL_FEATURES_LABEL], ['Expires', `${m.terms.expiresOn} (UTC) if approved ${m.terms.holdsUntil ? `by ${m.terms.holdsUntil}` : 'today'}`]],
+    }],
+    action: { label: m.approveUrl ? 'Review this request' : 'Open requests in the portal', url: m.approveUrl || `${m.publicUrl}/requests` },
+  });
 }
 
 export interface RejectedMail {
@@ -314,7 +352,7 @@ export interface RejectedMail {
 
 /** To the requester: the request was rejected, with the admin's note. */
 export function rejectedMail(m: RejectedMail): MailMessage {
-  return {
+  return brandedMail({
     to: m.to,
     subject: 'Your request for a kudurru personal key',
     text: paragraphs(
@@ -324,7 +362,11 @@ export function rejectedMail(m: RejectedMail): MailMessage {
       'If you have questions, reply to this message.',
       signature(m.publicUrl),
     ),
-  };
+  }, {
+    title: 'An update on your request.',
+    preview: 'We have reviewed your request for a personal kudurru key.',
+    publicUrl: m.publicUrl,
+  });
 }
 
 // --- members -----------------------------------------------------------------------
@@ -341,7 +383,7 @@ export interface MemberInviteMail {
 
 /** To a new member: access to a customer's licenses. */
 export function memberInviteMail(m: MemberInviteMail): MailMessage {
-  return {
+  return brandedMail({
     to: m.to,
     subject: `Access to the kudurru licenses of ${oneLine(m.customerName)}`,
     text: paragraphs(
@@ -354,5 +396,10 @@ export function memberInviteMail(m: MemberInviteMail): MailMessage {
       KEY_IS_NOT_A_LICENSE,
       signature(m.publicUrl),
     ),
-  };
+  }, {
+    title: 'Your licenses, all in one place.',
+    preview: `You have been given access to the kudurru licenses of ${oneLine(m.customerName)}.`,
+    publicUrl: m.publicUrl,
+    action: { label: m.expiresAt ? 'Accept your invite' : 'View your licenses', url: m.url },
+  });
 }

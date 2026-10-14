@@ -1,5 +1,5 @@
-// The mail seam (design spec §6): plain-text messages with optional
-// attachments. smtp.ts (nodemailer, SMTP_URL) and memory.ts (tests and dev)
+// The mail seam (design spec §6): plain text with an optional branded HTML
+// alternative and attachments. smtp.ts (nodemailer) and memory.ts (tests)
 // implement it. Callers send after their transaction commits and log a
 // failure instead of failing the request where the spec says so (the key
 // stays in the portal and an admin can email it again).
@@ -13,14 +13,18 @@ export interface MailAttachment {
   content: string | Uint8Array;
   /** e.g. text/plain; charset=us-ascii */
   contentType: string;
+  /** Content-ID for an image embedded in the HTML alternative. */
+  cid?: string;
+  contentDisposition?: 'inline' | 'attachment';
 }
 
 export interface MailMessage {
   /** One address. */
   to: string;
   subject: string;
-  /** Plain text only; no HTML mail. */
+  /** Complete plain text fallback, including links and installation instructions. */
   text: string;
+  html?: string;
   /** Overrides MAIL_REPLY_TO. */
   replyTo?: string;
   attachments?: MailAttachment[];

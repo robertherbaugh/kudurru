@@ -132,11 +132,14 @@ export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTrans
           to: { name: '', address: msg.to },
           subject: msg.subject,
           text: msg.text,
+          ...(msg.html ? { html: msg.html } : {}),
           ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
           attachments: (msg.attachments ?? []).map((a) => ({
             filename: a.filename,
             content: typeof a.content === 'string' ? Buffer.from(a.content, 'utf8') : Buffer.from(a.content),
             contentType: a.contentType,
+            ...(a.cid ? { cid: a.cid } : {}),
+            ...(a.contentDisposition ? { contentDisposition: a.contentDisposition } : {}),
           })),
         });
         // Cloudflare can acknowledge DATA with 250 while dropping every
