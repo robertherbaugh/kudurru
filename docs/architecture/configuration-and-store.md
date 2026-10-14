@@ -218,6 +218,8 @@ erDiagram
 | `DNSRecordSet` | namespaced | public | records (external-dns `Endpoint` shape) added to a zone |
 | `BlockList` | namespaced | public | block or allow rules from sources |
 | `ClientGroup` | namespaced | public | who a client is |
+| `Integration` | namespaced | public | provider settings and credential references; execution host in progress |
+| `Kudurru` | cluster, name `default` | public | generated cluster settings and replicated blocking status; serving integration in progress |
 | `Policy` | namespaced | public | what a group gets: lists, schedule, upstream group, safe search |
 | `UnblockRequest` | namespaced | public | a block-page request and its decision |
 | `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
@@ -540,3 +542,82 @@ A schema-2 database cannot be opened by a schema-1 binary. Preserve a backup
 from the earlier binary before testing an upgrade; rollback uses that backup.
 Recovery images can contain credentials and are neither public backups nor
 ordinary object exports.
+
+## Cluster settings object foundation
+
+`Kudurru/default` supplies the canonical object shape for v0.2 cluster settings.
+`spec.settings` has a nested structural schema generated from `config.Schema`
+by `hack/settingscrd`; `make generate` refreshes it before copying the CRD into
+the chart and store validator. Node-scope, host-only, and secret settings are
+excluded. A public settings object cannot name listener files, replace host
+identity providers, or change audit storage. The store and real Kubernetes
+admission tests exercise the same generated fields.
+
+`config.ApplyClusterDocument` prepares a complete configuration from that
+object and local host inputs. Omitted public keys return to compiled defaults,
+so deleting a key cannot retain an older generation's value. Environment locks
+retain their local values; canonical input is validated even when a local lock
+would override it. Initial seeding does not distribute a node's environment
+values. The host and source document remain unchanged during preparation.
+
+```mermaid
+flowchart LR
+    Metadata["config.Schema"] --> Admission["Generated Kudurru admission schema"]
+    Metadata --> Defaults["Public cluster defaults"]
+    Object["Kudurru/default settings"] --> Validate["Validate complete canonical settings"]
+    Defaults --> Validate
+    Host["Local host settings and environment locks"] --> Effective["Prepare effective configuration"]
+    Validate --> Effective
+    Effective --> Bundle["Complete serving bundle"]
+```
+
+The object also carries absolute blocking-disable state in status: an optional
+`disabledUntil` requires `disabled: true`; an absent deadline means indefinite.
+Expiry never restarts with a process. Canonical command writes, migration from
+the old settings-file layer, and production bundle publication are subsequent
+integration steps; the schema and preparation helper alone do not switch the
+existing settings writer.
+
+
+## Complete serving publication
+
+`internal/serving` prepares one whole immutable bundle from a complete SQLite
+replication image. The required component manifest includes objects, zones,
+policy, resolution, response processing, cache behavior, blocking, inventory,
+authentication and runtime data. Owner preparation must provide every component
+with the same canonical generation and verified dependency identity. An error,
+panic, missing component, changed dependency or stale generation retains the
+entire previous bundle.
+
+SQLite issues an opaque token in the same read transaction as the image. The
+publisher checks that token under the SQLite writer barrier before swapping one
+pointer. Compilation, downloads, and resource retirement happen outside that
+barrier. `zonecache.Prepare` supplies strict complete-object view preparation
+without watches or per-builder last-good substitutions.
+
+Requests hold leases. Replacement releases the publisher's reference, while
+old pools and other resources remain alive until the final request or stream
+releases its lease. DNS capture needs no database read and may use last-good
+data during preparation or fencing. Protected HTTP capture also checks the
+in-memory authority and dependency cursors and fails closed while publication
+is pending. Explicit fenced DNS-only publication cannot open authentication,
+readiness, or promotion. Promotion pins the actual serving bundle through its
+commit, then releases the pin before waiting for new-term publication.
+
+```mermaid
+flowchart LR
+    Image["Installed complete SQLite image + token"] --> Prepare["Prepare every owner and exact dependency"]
+    Prepare --> CAS["Writer barrier: token + dependency check"]
+    CAS --> Bundle["One Served bundle"]
+    Bundle --> Leases["DNS / HTTP / stream leases"]
+    Bundle --> Pin["Promotion publication pin"]
+    Leases --> Retire["Retire after final release"]
+```
+
+The publisher and store barrier are implemented and tested against real SQLite
+transactions, races, failure, retirement, and promotion. Production DNS/auth
+adapters, enrollment, activation, and three-process partition/rejoin acceptance
+remain separate integration work. Installed data is never reported as Served
+merely because its database transaction completed. The disconnected-primary
+limitation remains: a former primary can acknowledge writes until it learns of
+a higher term; this publication mechanism does not provide consensus.

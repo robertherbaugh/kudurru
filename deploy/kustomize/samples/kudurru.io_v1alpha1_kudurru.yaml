@@ -1,0 +1,12 @@
+apiVersion: kudurru.io/v1alpha1
+kind: Kudurru
+metadata:
+  name: default
+spec:
+  settings:
+    cache:
+      maxEntries: 100000
+    blocking:
+      defaultResponse: nxdomain
+    response:
+      filterAAAA: false

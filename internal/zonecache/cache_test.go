@@ -51,7 +51,7 @@ func newCache(t testing.TB, st store.Store, opts Options) *Cache {
 var _ health.ReadyFunc = (*Cache)(nil).Ready
 
 func TestDefaultKinds(t *testing.T) {
-	want := []store.Kind{"BlockList", "ClientGroup", "DNSRecordSet", "DNSZone", "Policy"}
+	want := []store.Kind{"BlockList", "ClientGroup", "DNSRecordSet", "DNSZone", "Integration", "Kudurru", "Policy"}
 	if got := DefaultKinds(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("DefaultKinds() = %v, want %v", got, want)
 	}

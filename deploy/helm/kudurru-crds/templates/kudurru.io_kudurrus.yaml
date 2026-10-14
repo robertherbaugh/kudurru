@@ -1,0 +1,941 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+    helm.sh/resource-policy: keep
+  name: kudurrus.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: Kudurru
+    listKind: KudurruList
+    plural: kudurrus
+    singular: kudurru
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Kudurru is the cluster settings singleton named default.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              KudurruSpec owns cluster configuration. The generator replaces Settings'
+              generic Go carrier with the strict nested schema from config.Schema.
+            properties:
+              settings:
+                properties:
+                  auth:
+                    properties:
+                      localLogin:
+                        description: 'Whether people can sign in to the dashboard
+                          with a username and password: enabled for everyone, admins-only
+                          for builtin admins, or disabled (identity providers only).
+                          `kudurru admin` on the server''s admin socket always works,
+                          so you cannot lock yourself out. Gates POST /api/v1/auth/login.'
+                        enum:
+                        - enabled
+                        - admins-only
+                        - disabled
+                        maxLength: 8192
+                        type: string
+                      session:
+                        properties:
+                          idleTimeout:
+                            description: Sign a dashboard user out after this long
+                              without activity, e.g. 30m; at least 1m. Every request
+                              starts the time again.
+                            maxLength: 8192
+                            type: string
+                          lifetime:
+                            description: Longest a dashboard sign-in lasts however
+                              active it is, e.g. 12h; then the user signs in again
+                              and their roles are looked up afresh. At least auth.session.idleTimeout.
+                            maxLength: 8192
+                            type: string
+                          secure:
+                            description: Whether browsers send the session cookie
+                              only over HTTPS (the cookie's Secure attribute). auto
+                              (default) decides per request and suits most setups;
+                              always is for a proxy that terminates TLS without telling
+                              kudurru; never is only for plain HTTP on a network you
+                              trust.
+                            enum:
+                            - auto
+                            - always
+                            - never
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      tokens:
+                        properties:
+                          maxLifetime:
+                            description: Longest lifetime of a new API token, e.g.
+                              2160h (90 days); a token created without an expiry gets
+                              this one. 0 (default) allows tokens that never expire.
+                            maxLength: 8192
+                            type: string
+                        type: object
+                    type: object
+                  blockPage:
+                    properties:
+                      contact:
+                        description: 'How people reach you, shown as "Ask your administrator":
+                          an email address, e.g. admin@home.example, or a link, e.g.
+                          https://wiki.home.example/dns. Empty leaves the line out.'
+                        maxLength: 8192
+                        type: string
+                      dashboardURL:
+                        description: Address of the dashboard the block page links
+                          administrators to, e.g. https://192.168.1.10:8080; the link
+                          opens /queries?domain=... there. Empty builds it from the
+                          block page address and listeners.api; set it when the dashboard
+                          is reached under another name or through a reverse proxy.
+                        maxLength: 8192
+                        type: string
+                      enabled:
+                        description: Show browsers a page that explains why a site
+                          was blocked, instead of a connection error. Turning it on
+                          starts the block page listener (listeners.blockPage) and
+                          allows the blockPage block response; choose that response
+                          in blocking.defaultResponse or a Policy. Blocked A and AAAA
+                          queries then point at blockPage.ipv4 and blockPage.ipv6;
+                          other types get NODATA.
+                        type: boolean
+                      ipv4:
+                        description: 'Address browsers are sent to for the block page,
+                          e.g. 192.168.1.10: this server''s LAN address, or a VIP
+                          or load balancer in front of the block page. Blocked A queries
+                          are answered with it under the blockPage response. Empty
+                          picks the first specific address of listeners.blockPage,
+                          else of listeners.dns; when every listener binds all addresses
+                          (0.0.0.0, ::) there is none, and blockPage.enabled is refused.'
+                        maxLength: 8192
+                        type: string
+                      ipv6:
+                        description: IPv6 address browsers are sent to for the block
+                          page, e.g. fd00::10; blocked AAAA queries are answered with
+                          it under the blockPage response. When blockPage.ipv4 is
+                          empty too, one is picked from the listeners as for IPv4;
+                          without an IPv6 address, AAAA queries get NODATA and browsers
+                          use IPv4.
+                        maxLength: 8192
+                        type: string
+                      message:
+                        description: Text under the heading that tells people why
+                          the site is blocked and what they can do (plain text, at
+                          most 2000 characters; HTML is shown as text).
+                        maxLength: 8192
+                        type: string
+                      rateLimit:
+                        description: Most block page requests one client address may
+                          make per minute, e.g. 120, with bursts up to the same number;
+                          beyond it the page answers 429 Too Many Requests. 0 removes
+                          the limit.
+                        format: int64
+                        maximum: 100000
+                        minimum: 0
+                        type: integer
+                      showDetails:
+                        description: Show what blocked the name (the list, rule, blocked
+                          service, safe search or policy), looked up in the recent
+                          query log. Off shows only the domain, the client, the node
+                          and the time, which keeps your list choices private.
+                        type: boolean
+                      title:
+                        description: Heading of the block page, e.g. This site is
+                          blocked (plain text, at most 200 characters).
+                        maxLength: 8192
+                        type: string
+                    type: object
+                  blocking:
+                    properties:
+                      allowDegraded:
+                        description: Answer queries and report ready while blocklists
+                          are still loading, e.g. right after a restart; queries are
+                          filtered by the lists already loaded. Off, the node reports
+                          not ready until every referenced list is loaded, so load
+                          balancers keep traffic away.
+                        type: boolean
+                      blockTTL:
+                        description: 'How long devices may remember a block answer,
+                          e.g. 10m, unless the Policy sets blockTTL. Keep it short:
+                          after you allow a name, devices keep the cached block until
+                          it expires.'
+                        maxLength: 8192
+                        type: string
+                      catalogue:
+                        properties:
+                          adguardServicesURL:
+                            description: 'Off when empty. Opt-in: a URL of AdGuard''s
+                              HostlistsRegistry blocked-services file, e.g. https://raw.githubusercontent.com/AdguardTeam/HostlistsRegistry/main/assets/services.json,
+                              adds its services (about 140) to the catalogue next
+                              to kudurru''s own; kudurru''s entries win when both
+                              have an ID. That data is GPL-3.0 licensed: kudurru does
+                              not ship it, your instance downloads it (the leader,
+                              on the catalogue refresh interval; the other nodes copy
+                              the leader''s), and the dashboard marks those services
+                              as from AdGuard (GPL-3.0). Check that the licence suits
+                              how you use and share the data. docs/deploy/blocked-services.md.'
+                            maxLength: 8192
+                            type: string
+                          refreshInterval:
+                            description: How often the catalogue at blocking.catalogue.url
+                              and the AdGuard services at blocking.catalogue.adguardServicesURL
+                              are checked for a new version, e.g. 24h; at least 1m.
+                              A conditional GET, so an unchanged document is not downloaded
+                              again.
+                            maxLength: 8192
+                            type: string
+                          url:
+                            description: Leave empty to use the blocked-services and
+                              safe-search catalogue built into kudurru. A URL, e.g.
+                              https://example.com/kudurru-catalogue.json, replaces
+                              it with your own document (schema version 2, or 1, docs/deploy/blocked-services.md).
+                              The leader downloads it and the other nodes copy the
+                              leader's; a document that fails validation leaves the
+                              current catalogue in service.
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      customIP:
+                        properties:
+                          v4:
+                            description: IPv4 address blocked A queries are answered
+                              with when the block response is customIP, e.g. 192.168.1.10
+                              for a server of yours that shows a notice. Empty answers
+                              NODATA.
+                            maxLength: 8192
+                            type: string
+                          v6:
+                            description: IPv6 address blocked AAAA queries are answered
+                              with when the block response is customIP, e.g. fd00::10.
+                              Empty answers NODATA.
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      defaultResponse:
+                        description: What a blocked query is answered with, unless
+                          the client's Policy (blockMode) or the BlockList (response)
+                          chooses otherwise. zeroIP (default) makes the connection
+                          fail at once and suits most networks; blockPage shows browsers
+                          a page that explains the block; refused is discouraged,
+                          because devices then ask another DNS server.
+                        enum:
+                        - zeroIP
+                        - nxdomain
+                        - customIP
+                        - refused
+                        - blockPage
+                        maxLength: 8192
+                        type: string
+                      enabled:
+                        description: Block ads, trackers and other listed names for
+                          the whole network; off answers every query unfiltered. To
+                          pause blocking for a while, use the temporary disable on
+                          the dashboard instead (a runtime toggle, not this key).
+                          Applies to forwarded queries, not to your own zones.
+                        type: boolean
+                      initStrategy:
+                        description: 'What happens at start while blocklists load:
+                          fast (default) serves at once using the copies saved on
+                          disk; blocking waits until every list is loaded; failOnError
+                          also exits when a list cannot be loaded.'
+                        enum:
+                        - fast
+                        - blocking
+                        - failOnError
+                        maxLength: 8192
+                        type: string
+                      refreshInterval:
+                        description: How often blocklists are downloaded again when
+                          a list sets no refreshInterval of its own, e.g. 24h; at
+                          least 1m. In a cluster the leader downloads and the other
+                          nodes copy its result by digest.
+                        maxLength: 8192
+                        type: string
+                    type: object
+                  cache:
+                    properties:
+                      maxEntries:
+                        description: How many answers the cache holds, e.g. 200000;
+                          when it is full the least recently used answer is dropped.
+                          More entries mean more cache hits and more memory; 0 turns
+                          the cache off.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      maxTTL:
+                        description: Longest time an answer stays cached, even when
+                          its record asks for more, e.g. 24h; lower it so changed
+                          addresses show up sooner. 0 sets no upper limit.
+                        maxLength: 8192
+                        type: string
+                      minTTL:
+                        description: Shortest time an answer stays cached, even when
+                          its record asks for less, e.g. 5s. Raising it saves upstream
+                          queries but keeps changed addresses longer; 0 honors every
+                          record's TTL.
+                        maxLength: 8192
+                        type: string
+                      negativeTTL:
+                        description: Longest time a "does not exist" answer (NXDOMAIN
+                          or NODATA) stays cached, e.g. 5m; shorter lets a newly created
+                          name resolve sooner. Below it the zone's SOA minimum applies
+                          (RFC 2308).
+                        maxLength: 8192
+                        type: string
+                      prefetch:
+                        properties:
+                          threshold:
+                            description: 'Refresh popular answers shortly before they
+                              expire, so nobody waits for the upstream: an answer
+                              asked for this many times within cache.prefetch.window
+                              counts as popular, e.g. 5. 0 turns prefetching off.'
+                            format: int64
+                            minimum: 0
+                            type: integer
+                          window:
+                            description: Time over which the hits for cache.prefetch.threshold
+                              are counted, e.g. 2h.
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      serveStale:
+                        properties:
+                          answerTTL:
+                            description: TTL given to an expired answer served this
+                              way, e.g. 30s, so clients ask again soon; after a failed
+                              refresh, queries for the entry also stop waiting for
+                              the upstream for this long. 0 means 30s (RFC 8767).
+                            maxLength: 8192
+                            type: string
+                          maxWait:
+                            description: How long a query for an expired entry waits
+                              for a fresh upstream answer before the expired one is
+                              sent, e.g. 1800ms; 0 means 1800ms (RFC 8767 client response
+                              timer).
+                            maxLength: 8192
+                            type: string
+                          ttl:
+                            description: When every upstream server fails, keep answering
+                              from expired cache entries for up to this long after
+                              they expired, e.g. 72h, so names you already use keep
+                              working through an outage. 0 turns it off (RFC 8767
+                              serve-stale).
+                            maxLength: 8192
+                            type: string
+                        type: object
+                    type: object
+                  database:
+                    properties:
+                      querylog:
+                        properties:
+                          facts:
+                            description: Copy the individual queries, not only the
+                              statistics. At 1000 queries per second that is about
+                              25 GB a day before retention; off keeps the cluster-wide
+                              charts, totals and top lists but the All nodes query
+                              log is empty.
+                            type: boolean
+                          retention:
+                            properties:
+                              raw:
+                                description: 'How long individual queries are kept
+                                  in the central database, e.g. 168h (7 days); whole
+                                  days are dropped. 0 keeps them. Statistics are kept
+                                  like on the nodes: per minute 35 days, per hour
+                                  400 days, per day forever.'
+                                maxLength: 8192
+                                type: string
+                            type: object
+                          ship:
+                            description: With database.dsn set, every node copies
+                              its query log and statistics into the central database,
+                              so the dashboard's All nodes view shows every node's
+                              queries and totals whichever node serves it. Each node
+                              keeps its own querylog.db too. Needs querylog.sink sqlite.
+                            type: boolean
+                        type: object
+                    type: object
+                  dnssec:
+                    properties:
+                      enabled:
+                        description: Validate forwarded DNS answers against the configured
+                          trust anchors. Invalid or incomplete proofs return SERVFAIL
+                          with an extended DNS error; unsigned delegations still work.
+                          Off by default for compatibility. A forward zone can override
+                          this default with spec.forward.dnssecValidation.
+                        type: boolean
+                      negativeTrustAnchors:
+                        description: Temporary exceptions for broken signed domains
+                          (RFC 7646); at most 128. Every exception needs a reason
+                          and an absolute expiry no more than seven days away. It
+                          covers the domain and descendants, never sets AD, and stops
+                          applying at expiry even on cache hits. Reload and restart
+                          do not extend it.
+                        items:
+                          properties:
+                            domain:
+                              description: Domain whose signatures temporarily cannot
+                                be checked, e.g. broken.example; includes its descendants.
+                              maxLength: 8192
+                              type: string
+                            expiresAt:
+                              description: Absolute RFC3339 expiry, e.g. 2026-10-15T12:00:00Z;
+                                no more than seven days from now. Expired entries
+                                are harmless and can be removed.
+                              maxLength: 8192
+                              type: string
+                            reason:
+                              description: Why validation is temporarily bypassed,
+                                in at most 256 characters; record the incident or
+                                repair being tracked.
+                              maxLength: 8192
+                              type: string
+                          required:
+                          - domain
+                          - reason
+                          - expiresAt
+                          type: object
+                        maxItems: 10000
+                        type: array
+                      trustAnchors:
+                        description: Additional trusted DS or DNSKEY records in DNS
+                          presentation format, e.g. a complete DS record for a private
+                          signed zone. At most 64. With useBuiltinAnchors off these
+                          replace the shipped root anchors, and at least one is required.
+                          Changes invalidate the old validation cache context immediately.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      useBuiltinAnchors:
+                        description: Trust the IANA root DS records shipped with this
+                          version. Software upgrades or an operator change maintain
+                          these anchors; no keys are trusted automatically from upstream
+                          responses. Turn off only when dnssec.trustAnchors supplies
+                          all trust roots you need.
+                        type: boolean
+                    type: object
+                  querylog:
+                    properties:
+                      anonymize:
+                        description: 'How client addresses are hidden under the anonymize_client
+                          privacy mode: prefix keeps only the network (IPv4 /24, IPv6
+                          /48), so devices in one network look alike; pseudonym replaces
+                          each address with a code that is stable for a day and cannot
+                          be reversed.'
+                        enum:
+                        - prefix
+                        - pseudonym
+                        maxLength: 8192
+                        type: string
+                      enabled:
+                        description: Record the queries each node answers, for the
+                          dashboard's query log, statistics and charts; off records
+                          nothing and those pages stay empty. Each node keeps its
+                          own log (querylog.db with rollups, the stats API).
+                        type: boolean
+                      exclude:
+                        properties:
+                          clients:
+                            description: 'Clients whose queries are never logged,
+                              e.g. 192.168.1.20, 10.0.0.0/8 or a client name such
+                              as nas: IP addresses, CIDR prefixes or client names.'
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          domains:
+                            description: 'Names that are never logged, e.g. *.home.arpa
+                              or connectivitycheck.gstatic.com: exact names, *.suffix
+                              for a domain and everything below it, or /regex/.'
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          sudn:
+                            description: 'Leave out names that never leave the local
+                              network, which keeps local discovery noise out of the
+                              log: localhost, .local, .home.arpa and private and link-local
+                              reverse zones (special-use names, RFC 6761).'
+                            type: boolean
+                        type: object
+                      privacy:
+                        description: 'How much of each query is kept: full keeps everything;
+                          the other modes hide client addresses, query names or both,
+                          and nothing keeps only per-minute totals. Applied once when
+                          the query is recorded, so it cannot be undone for queries
+                          already logged. Only full stores the answer summary.'
+                        enum:
+                        - full
+                        - anonymize_client
+                        - hide_domains
+                        - hide_domains_clients
+                        - nothing
+                        maxLength: 8192
+                        type: string
+                      retention:
+                        properties:
+                          maxDBBytes:
+                            description: Largest size of the query log database on
+                              each node, e.g. 10GiB; when it is exceeded the oldest
+                              queries are deleted first. 0 removes the cap.
+                            maxLength: 8192
+                            type: string
+                          raw:
+                            description: 'How long individual queries are kept, e.g.
+                              720h (30 days); 0 keeps them until querylog.retention.maxDBBytes
+                              is reached. The totals behind the charts are kept longer:
+                              per minute for 35 days, per hour for 400 days, per day
+                              forever.'
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      sink:
+                        description: 'Where queries are recorded: sqlite (default)
+                          keeps them in a database the dashboard reads; slog writes
+                          one JSON log line per query and stores nothing, for an external
+                          log system.'
+                        enum:
+                        - sqlite
+                        - slog
+                        maxLength: 8192
+                        type: string
+                    type: object
+                  ratelimit:
+                    properties:
+                      enabled:
+                        description: Limit how many queries per minute one address
+                          or network may send over UDP, which blunts floods and reflection
+                          attacks. TCP, DoT, DoH, DoQ and DoH3 are never limited,
+                          nor loopback clients and the health name.
+                        type: boolean
+                      exempt:
+                        description: Addresses or networks that are never rate limited,
+                          e.g. 192.168.1.0/24 for your LAN or the address of a busy
+                          resolver that forwards to kudurru. Loopback always is.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      ipv4:
+                        additionalProperties:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        description: 'Queries per minute allowed per IPv4 address
+                          or network, by prefix length: 32 is one address (default
+                          600), 24 a /24 network (default 6000). Entries merge with
+                          the defaults key by key, and 0 turns a level off. Each prefix
+                          has a token bucket holding one minute''s allowance.'
+                        maxProperties: 10000
+                        type: object
+                      ipv6:
+                        additionalProperties:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        description: 'Queries per minute allowed per IPv6 address
+                          or network, by prefix length: 128 is one address (default
+                          600), 64 a /64 network (6000), 56 a /56 (12000). Entries
+                          merge with the defaults key by key, and 0 turns a level
+                          off.'
+                        maxProperties: 10000
+                        type: object
+                      maxBuckets:
+                        description: Most addresses and networks tracked at once,
+                          e.g. 65536 (0 means 65536); the least recently seen is forgotten
+                          first and starts again with a full allowance.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      slip:
+                        description: Share of over-limit queries, in percent from
+                          0 to 100, answered with an empty truncated reply (TC=1)
+                          instead of being dropped, e.g. 50; real clients then retry
+                          over TCP, which is not limited. 0 drops them all, 100 answers
+                          them all.
+                        format: int64
+                        maximum: 100
+                        minimum: 0
+                        type: integer
+                    type: object
+                  response:
+                    properties:
+                      bogusNXDOMAIN:
+                        description: Return NXDOMAIN when a forwarded answer contains
+                          an address in one of these networks, for upstreams that
+                          redirect missing domains to a search page. At most 256 canonical
+                          IPv4 or IPv6 CIDRs. This result is never immediately changed
+                          by the NXDOMAIN replacement settings.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      dns64:
+                        properties:
+                          excludeDomains:
+                            description: Domains and descendants excluded from DNS64,
+                              e.g. internal.example. At most 256. Both the question
+                              and the final alias target are checked.
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          excludeIPv4:
+                            description: IPv4 networks excluded from DNS64, e.g. 192.168.0.0/16.
+                              At most 256 canonical CIDRs. Excluded addresses never
+                              become synthetic IPv6 answers.
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          prefix:
+                            description: Synthesize IPv6 answers from IPv4 for a NAT64
+                              network. Empty disables DNS64. Use your router's IPv6
+                              /32, /40, /48, /56, /64 or /96 translation prefix, e.g.
+                              64:ff9b::/96. Only AAAA NODATA answers are synthesized;
+                              queries requesting DNSSEC proofs keep the original response.
+                              A Policy can override this for selected clients.
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      filterAAAA:
+                        description: Remove IPv6 addresses and IPv6 service hints
+                          from forwarded responses. AAAA answers become NODATA. This
+                          takes precedence over DNS64 and clears DNSSEC authenticity
+                          on changed answers. A Policy can override this for selected
+                          clients; owned authoritative zones are unaffected.
+                        type: boolean
+                      nxdomainIPv4:
+                        description: Replace upstream NXDOMAIN for A questions with
+                          these IPv4 addresses. Empty preserves NXDOMAIN. At most
+                          16 addresses. This deliberately changes validated negative
+                          answers and clears AD; rebinding protection still applies
+                          to the replacement.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      nxdomainIPv6:
+                        description: Replace upstream NXDOMAIN for AAAA questions
+                          with these IPv6 addresses. Empty preserves NXDOMAIN. At
+                          most 16 addresses. Disabled for clients with IPv6 filtering
+                          enabled; rebinding protection still applies.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      rebinding:
+                        properties:
+                          bypassNetworks:
+                            description: Client networks exempt from rebinding protection.
+                              At most 256 canonical IPv4 or IPv6 CIDRs. Empty protects
+                              all clients; an explicit /0 disables protection for
+                              that address family.
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                          enabled:
+                            description: Refuse forwarded or rewritten answers containing
+                              private, loopback, link-local, unspecified or multicast
+                              addresses, including service hints. Configure private-domain
+                              exceptions for internal forwarding. Owned authoritative
+                              answers and explicit block responses are exempt. An
+                              inspection budget overflow also refuses the response.
+                            type: boolean
+                          privateDomains:
+                            description: Domains allowed to return private addresses,
+                              including descendants. At most 256. Both the original
+                              question and the address record's owner must be in an
+                              allowed domain, so an alias cannot silently escape the
+                              exception.
+                            items:
+                              maxLength: 8192
+                              type: string
+                            maxItems: 10000
+                            type: array
+                        type: object
+                      ttl:
+                        description: Lifetime in seconds for configured rewrites and
+                          NXDOMAIN replacements, from 1 to 86400. Also caps DNS64
+                          answers, which cannot outlive their IPv4 answer or the original
+                          negative SOA TTL.
+                        format: int64
+                        maximum: 86400
+                        minimum: 1
+                        type: integer
+                    type: object
+                  unblockRequests:
+                    properties:
+                      enabled:
+                        description: 'Let people ask for a blocked site to be unblocked:
+                          the block page shows a Request access form, and requests
+                          appear on the dashboard''s Requests page for an administrator
+                          to approve or deny. Needs blockPage.enabled.'
+                        type: boolean
+                      maxPending:
+                        description: Most undecided unblock requests kept across the
+                          cluster, e.g. 1000. When reached, the block page says requests
+                          are paused until an administrator decides some.
+                        format: int64
+                        maximum: 10000
+                        minimum: 1
+                        type: integer
+                      pendingExpiry:
+                        description: Undecided unblock requests expire after this
+                          long, e.g. 336h (14 days); at least 1h.
+                        maxLength: 8192
+                        type: string
+                      rateLimit:
+                        description: Most unblock requests one client may send per
+                          hour, e.g. 5; IPv6 clients are counted per /64. Asking again
+                          for the same name updates the pending request instead of
+                          adding one.
+                        format: int64
+                        maximum: 100
+                        minimum: 1
+                        type: integer
+                      retention:
+                        description: How long decided and expired unblock requests
+                          stay on the Requests page, counted from the decision, e.g.
+                          720h (30 days); at least 1h. A time-limited approval is
+                          kept until it ends.
+                        maxLength: 8192
+                        type: string
+                    type: object
+                  upstreams:
+                    properties:
+                      bootstrap:
+                        description: Plain DNS servers used only to look up the host
+                          names of upstream servers, such as dns.quad9.net in tls://dns.quad9.net,
+                          e.g. 1.1.1.1:53 or 9.9.9.9. Never asked for client queries.
+                        items:
+                          maxLength: 8192
+                          type: string
+                        maxItems: 10000
+                        type: array
+                      conditional:
+                        additionalProperties:
+                          maxLength: 8192
+                          type: string
+                        description: Send queries for some domains to a chosen upstream
+                          group, e.g. home.lan to a group holding your router, so
+                          local device names resolve. Each entry maps a domain suffix
+                          to a group name; the longest matching suffix wins, and a
+                          key may list several suffixes in dnsmasq form, "[/corp.example/10.in-addr.arpa/]".
+                          These answers are never cached.
+                        maxProperties: 10000
+                        type: object
+                      ecs:
+                        properties:
+                          ipv4Prefix:
+                            description: 'How much of an IPv4 client address EDNS
+                              Client Subnet may reveal, as a prefix length from 0
+                              to 32: with 24 (default) only the network, e.g. 203.0.113.0/24,
+                              is sent. Used only when upstreams.ecs.mode is forward
+                              or add.'
+                            format: int64
+                            maximum: 32
+                            minimum: 0
+                            type: integer
+                          ipv6Prefix:
+                            description: 'How much of an IPv6 client address EDNS
+                              Client Subnet may reveal, as a prefix length from 0
+                              to 128: with 56 (default) only the /56 network is sent.
+                              Used only when upstreams.ecs.mode is forward or add.'
+                            format: int64
+                            maximum: 128
+                            minimum: 0
+                            type: integer
+                          mode:
+                            description: Whether upstream servers learn which network
+                              a query came from (EDNS Client Subnet). strip (default)
+                              never tells them, the private choice; forward and add
+                              can get answers from servers nearer the client, at the
+                              cost of revealing part of its address.
+                            enum:
+                            - strip
+                            - forward
+                            - add
+                            maxLength: 8192
+                            type: string
+                        type: object
+                      groups:
+                        additionalProperties:
+                          properties:
+                            servers:
+                              description: DNS servers this group forwards to, e.g.
+                                1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query.
+                                A bare address uses plain DNS on port 53; tls://,
+                                https://, quic://, h3:// and sdns:// stamps encrypt
+                                the queries. Prefix a display name with name=, e.g.
+                                cloudflare=tls://1.1.1.1.
+                              items:
+                                maxLength: 8192
+                                type: string
+                              maxItems: 10000
+                              type: array
+                            strategy:
+                              description: How the servers are picked for each query;
+                                parallel_best suits most setups.
+                              enum:
+                              - parallel_best
+                              - strict
+                              - random
+                              - rtt_weighted
+                              maxLength: 8192
+                              type: string
+                            timeout:
+                              description: How long to wait for one server's answer
+                                before trying another, e.g. 2s; raise it for slow
+                                or distant servers.
+                              maxLength: 8192
+                              type: string
+                          required:
+                          - servers
+                          type: object
+                        description: The DNS servers kudurru asks for names it does
+                          not answer itself, in named groups; the group named default
+                          gets every query nothing else routes. Each group lists servers
+                          (e.g. 1.1.1.1, tls://dns.quad9.net), a strategy that picks
+                          among them and a timeout per server. Conditional forwarding,
+                          forward zones and policies send queries to other groups
+                          by name.
+                        maxProperties: 10000
+                        type: object
+                    type: object
+                type: object
+            type: object
+          status:
+            description: KudurruStatus records runtime state and observed cluster
+              configuration.
+            properties:
+              blocking:
+                description: BlockingStatus is replicated absolute-time state, never
+                  a node-local timer.
+                properties:
+                  disabled:
+                    type: boolean
+                  disabledUntil:
+                    description: |-
+                      DisabledUntil is absent for an indefinite disable. Expiry enables
+                      blocking without waiting for another write or renewing on restart.
+                    format: date-time
+                    type: string
+                required:
+                - disabled
+                type: object
+                x-kubernetes-validations:
+                - message: disabledUntil requires disabled
+                  rule: '!has(self.disabledUntil) || self.disabled'
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: the cluster settings object must be named default
+          rule: self.metadata.name == 'default'
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
