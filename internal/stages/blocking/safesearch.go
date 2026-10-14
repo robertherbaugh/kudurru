@@ -5,6 +5,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	engine "github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -32,7 +33,7 @@ func (s *Stage) catalogue() *catalogue.Catalogue {
 // those addresses directly (NODATA for a type without one). The TTL of
 // the synthesised records is the block TTL, so switching safe search off
 // takes effect as quickly as an unblock.
-func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalogue.Rewrite, next pipeline.Next) (*pipeline.Response, error) {
+func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalogue.Rewrite, ctx engine.Context, next pipeline.Next) (*pipeline.Response, error) {
 	q := req.Msg.Question[0]
 	live := s.live.Load()
 	ttl := d.BlockTTL
@@ -43,7 +44,7 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 	m := new(dns.Msg)
 	m.SetReply(req.Msg)
 	m.RecursionAvailable = true
-	out := &pipeline.Response{Msg: m, Status: pipeline.StatusBlockedSafeSearch, List: rw.List()}
+	out := &pipeline.Response{Msg: m, Status: pipeline.StatusBlockedSafeSearch, List: rw.List(), Origin: pipeline.OriginSynthetic, Modified: true}
 	if rw.Target == "" {
 		hdr := dns.RR_Header{Name: q.Name, Rrtype: q.Qtype, Class: q.Qclass, Ttl: sec}
 		var rendered []string
@@ -62,10 +63,18 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 		out.Rule = "CNAME " + target
 		m.Answer = []dns.RR{&dns.CNAME{Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeCNAME, Class: q.Qclass, Ttl: sec}, Target: target}}
 		if q.Qtype != dns.TypeCNAME {
-			sub := *req
-			sub.Msg = req.Msg.Copy()
-			sub.Msg.Question[0].Name = target
-			resp, err := next(&sub)
+			sub, loop := s.targetRequest(req, target)
+			if loop {
+				m.Rcode, m.Answer = dns.RcodeServerFailure, nil
+				out.Status, out.Origin = pipeline.StatusServfailUpstream, pipeline.OriginFailure
+				finishRewrite(req, m, "rewrite loop")
+				return out, nil
+			}
+			resolve := s.opts.ResolveTarget
+			if resolve == nil {
+				resolve = next
+			}
+			resp, err := resolve(sub)
 			if err != nil {
 				return resp, err
 			}
@@ -73,21 +82,22 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 				return nil, pipeline.ErrNoAnswer
 			}
 			m.Rcode = resp.Msg.Rcode
-			for _, rr := range resp.Msg.Answer {
-				m.Answer = append(m.Answer, dns.Copy(rr))
+			if m.Rcode != dns.RcodeSuccess && m.Rcode != dns.RcodeNameError {
+				return failedRewriteTarget(req, out, resp), nil
 			}
-			if len(resp.Msg.Answer) == 0 {
-				for _, rr := range resp.Msg.Ns {
-					m.Ns = append(m.Ns, dns.Copy(rr))
-				}
-			}
+			m.Answer = append(m.Answer, rewriteCopies(resp.Msg.Answer)...)
+			m.Ns = rewriteCopies(resp.Msg.Ns)
+			m.Extra = dnsExtraWithoutOPT(rewriteCopies(resp.Msg.Extra))
+			out.Origin = pipeline.OriginMixed
 			out.Upstream = resp.Upstream
+			out.Security = resp.Security
 		}
 	}
-	if opt := req.Msg.IsEdns0(); opt != nil {
-		m.SetEdns0(ednsUDPSize, opt.Do())
-		ro := m.IsEdns0()
-		ro.Option = append(ro.Option, &dns.EDNS0_EDE{InfoCode: dns.ExtendedErrorCodeForgedAnswer, ExtraText: rw.List()})
+	finishRewrite(req, m, rw.List())
+	if m.Rcode == dns.RcodeSuccess {
+		if rd := s.inspectContext(d, ctx, m); rd.Action == engine.ActionBlock {
+			return s.block(req, d, rd), nil
+		}
 	}
 	s.metrics.decision(rewriteSafeSearch, groupLabel(req))
 	return out, nil
