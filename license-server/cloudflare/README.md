@@ -25,8 +25,8 @@ without changing the tracked config. Public signing keys
 (`internal/license/keys/*.pub`) are safe to commit and must ship with the
 image; the corresponding private `.key` stays in your secret manager.
 
-No kudurru node ever contacts the portal. Keys are verified offline on each
-node (D163); the portal only issues and delivers them.
+No kudurru node ever contacts the portal, and the portal never connects to
+a node. Keys are verified offline on each node (D163).
 
 ```mermaid
 flowchart LR
