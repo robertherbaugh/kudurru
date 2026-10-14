@@ -60,6 +60,18 @@ func NewNotifyReceiver(m *Manager, reg prometheus.Registerer) *NotifyReceiver {
 
 // Handle receives a NOTIFY through authoritative's opcode dispatcher.
 func (n *NotifyReceiver) Handle(req *pipeline.Request) (*pipeline.Response, error) {
+	return n.handle(req, n.Manager.opts.Cache.Snapshot(), nil, false)
+}
+
+// HandleCaptured receives a hint using objects and immutable credentials from
+// the request's complete serving lease. Root checks lifecycle admission first
+// and retains that lease until return. This method has no live config fallback;
+// expired secondary data may still receive an authorized refresh hint.
+func (n *NotifyReceiver) HandleCaptured(req *pipeline.Request, objects *zonecache.Snapshot, keys *dnsserver.StaticKeyring) (*pipeline.Response, error) {
+	return n.handle(req, objects, keys, true)
+}
+
+func (n *NotifyReceiver) handle(req *pipeline.Request, config *zonecache.Snapshot, keys *dnsserver.StaticKeyring, captured bool) (*pipeline.Response, error) {
 	reply := func(code int, result string) (*pipeline.Response, error) {
 		n.results.WithLabelValues(result).Inc()
 		r := pipeline.Reply(req, code, pipeline.StatusAuthoritative)
@@ -73,8 +85,7 @@ func (n *NotifyReceiver) Handle(req *pipeline.Request) (*pipeline.Response, erro
 	if req.Client.Synthetic || (req.Client.Proto != pipeline.ProtoUDP && req.Client.Proto != pipeline.ProtoTCP && req.Client.Proto != pipeline.ProtoDoT) {
 		return reply(dns.RcodeRefused, "refused")
 	}
-	config := n.Manager.opts.Cache.Snapshot()
-	if config == nil || !config.Authoritative() {
+	if config == nil || !config.Authoritative() || (captured && keys == nil) {
 		return reply(dns.RcodeServerFailure, "configuration")
 	}
 	name := dns.CanonicalName(m.Question[0].Name)
@@ -95,6 +106,18 @@ func (n *NotifyReceiver) Handle(req *pipeline.Request) (*pipeline.Response, erro
 	id := zone.SecondaryIdentity(dz)
 	if key := dz.Spec.Secondary.TSIGKeyRef; key != "" && req.Client.TSIGKey != dnsserver.TSIGKeyName(key) {
 		return reply(dns.RcodeRefused, "refused")
+	}
+	if captured {
+		if req.Ctx == nil || req.Ctx.Err() != nil {
+			return reply(dns.RcodeServerFailure, "configuration")
+		}
+		if req.Client.TSIGKey != "" {
+			proof, verified := dnsserver.VerifiedNotifyFor(req, time.Now())
+			identity, present := keys.Identity(req.Client.TSIGKey)
+			if !verified || !present || proof.Identity() != identity {
+				return reply(dns.RcodeRefused, "refused")
+			}
+		}
 	}
 	if !n.sourceAllowed(dz, id, req.Client.Addr.Addr().Unmap()) {
 		return reply(dns.RcodeRefused, "refused")

@@ -33,6 +33,9 @@ func (s *proofStage) receive(t *testing.T) proofRequest {
 func (*proofStage) Name() string { return "authoritative" }
 func (s *proofStage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Response, error) {
 	p, _ := VerifiedTSIGFor(req, time.Now())
+	if req.Msg.Opcode == dns.OpcodeNotify {
+		p, _ = VerifiedNotifyFor(req, time.Now())
+	}
 	copyReq := *req
 	copyReq.Msg = req.Msg.Copy()
 	s.seen <- proofRequest{req: &copyReq, proof: p}
@@ -233,5 +236,62 @@ func TestStaticTSIGVersionsAndSecretIsolation(t *testing.T) {
 	changed, _ := rotated.Identity(xfrKey)
 	if changed.CredentialVersion == original.CredentialVersion || changed.ProviderVersion == original.ProviderVersion {
 		t.Fatal("rotation retained credential identity")
+	}
+}
+
+func TestVerifiedNotifyProofCannotBecomeUpdate(t *testing.T) {
+	keys := testKeyring(t)
+	stage := &proofStage{seen: make(chan proofRequest, 16)}
+	f := startFixture(t, fixtureOpts{specs: allSpecs(), tsig: keys, stages: []pipeline.Stage{&ingress.Stage{}, stage}})
+	message := func() *dns.Msg {
+		m := new(dns.Msg).SetNotify("example.org.")
+		m.SetTsig(xfrKey, dns.HmacSHA256, 300, time.Now().Unix())
+		return m
+	}
+	for _, proto := range []Protocol{ProtoUDP, ProtoTCP, ProtoDoT} {
+		t.Run(string(proto), func(t *testing.T) {
+			c := &dns.Client{Net: string(proto), Timeout: time.Second, TsigProvider: TSIGProvider(keys)}
+			if proto == ProtoDoT {
+				c.Net, c.TLSConfig = "tcp-tls", (&tlsPool{f.cert}).client("dot")
+			}
+			response, _, err := c.Exchange(message(), f.addr(proto))
+			if err != nil || response == nil || response.IsTsig() == nil {
+				t.Fatal("native NOTIFY proof response", err)
+			}
+			got := stage.receive(t)
+			want, _ := keys.Identity(xfrKey)
+			if got.proof == nil || got.proof.Identity() != want {
+				t.Fatal("NOTIFY lost original verifier identity")
+			}
+			now := got.proof.verifiedAt
+			if _, ok := VerifiedNotifyFor(got.req, now); !ok {
+				t.Fatal("NOTIFY lost original proof")
+			}
+			if _, ok := VerifiedTSIGFor(got.req, now); ok {
+				t.Fatal("NOTIFY authorized UPDATE")
+			}
+			copyReq := *got.req
+			copyReq.Msg = got.req.Msg.Copy()
+			copyReq.Msg.Opcode = dns.OpcodeUpdate
+			if _, ok := VerifiedTSIGFor(&copyReq, now); ok {
+				t.Fatal("changed opcode converted proof authority")
+			}
+			copyReq.Msg = got.req.Msg.Copy()
+			copyReq.Msg.Question[0].Name = "other.example.org."
+			if _, ok := VerifiedNotifyFor(&copyReq, now); ok {
+				t.Fatal("NOTIFY proof changed target")
+			}
+			if _, ok := VerifiedNotifyFor(got.req, got.proof.Deadline()); ok {
+				t.Fatal("expired NOTIFY proof accepted")
+			}
+		})
+	}
+	for _, proto := range []Protocol{ProtoDoH, ProtoDoQ, ProtoDoH3} {
+		if _, err := f.dnsproxyClient(t, proto).Exchange(t.Context(), message()); err != nil {
+			t.Fatal(err)
+		}
+		if got := stage.receive(t); got.proof != nil {
+			t.Fatal("unsupported transport minted NOTIFY proof", proto)
+		}
 	}
 }

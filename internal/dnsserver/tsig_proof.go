@@ -50,7 +50,8 @@ func (k *StaticKeyring) Identity(name string) (TSIGIdentity, bool) {
 type verifiedTSIGKey struct{}
 
 // VerifiedTSIG is an opaque proof emitted only by successful native listener
-// verification of UPDATE against an immutable provider. It pins the detached
+// verification of UPDATE or NOTIFY against an immutable provider. Each accessor
+// requires its exact opcode. It pins the detached
 // parsed request that miekg verified; it is not a re-created original wire MAC
 // proof suitable for forwarding to another node. A zero value proves nothing.
 // Current credential, domain, membership and HA admission are still required
@@ -73,7 +74,7 @@ func (p *VerifiedTSIG) Identity() TSIGIdentity {
 	return p.identity
 }
 
-// Message returns a private copy of the signed parsed UPDATE message.
+// Message returns a private copy of the signed parsed request.
 func (p *VerifiedTSIG) Message() *dns.Msg {
 	if p == nil || p.message == nil {
 		return nil
@@ -104,14 +105,24 @@ var _ json.Marshaler = (*VerifiedTSIG)(nil)
 // A synthetic request, a target subquery or a mutable-provider lookup cannot
 // manufacture this context capability. No store/keyring/network read occurs.
 func VerifiedTSIGFor(req *pipeline.Request, now time.Time) (*VerifiedTSIG, bool) {
+	return verifiedNativeFor(req, now, dns.OpcodeUpdate)
+}
+
+// VerifiedNotifyFor retrieves only an exact native signed NOTIFY proof. A
+// NOTIFY proof cannot authorize UPDATE, even after replacing the message opcode.
+func VerifiedNotifyFor(req *pipeline.Request, now time.Time) (*VerifiedTSIG, bool) {
+	return verifiedNativeFor(req, now, dns.OpcodeNotify)
+}
+
+func verifiedNativeFor(req *pipeline.Request, now time.Time, opcode int) (*VerifiedTSIG, bool) {
 	if req == nil || req.Ctx == nil || req.Client.Synthetic {
 		return nil, false
 	}
 	p, ok := req.Ctx.Value(verifiedTSIGKey{}).(*VerifiedTSIG)
-	if !ok || p == nil || p.message == nil || p.identity.CredentialVersion == "" || now.Before(p.verifiedAt) || !now.Before(p.deadline) || req.Client.Proto != p.proto || req.Client.Addr != p.addr || req.Client.ProxiedFrom != p.proxy || req.Client.TSIGKey != p.identity.Key {
+	if !ok || p == nil || p.message == nil || p.message.Opcode != opcode || p.identity.CredentialVersion == "" || now.Before(p.verifiedAt) || !now.Before(p.deadline) || req.Client.Proto != p.proto || req.Client.Addr != p.addr || req.Client.ProxiedFrom != p.proxy || req.Client.TSIGKey != p.identity.Key {
 		return nil, false
 	}
-	digest, ok := updateMessageDigest(req.Msg)
+	digest, ok := nativeMessageDigest(req.Msg, opcode)
 	if !ok || digest != p.digest {
 		return nil, false
 	}
@@ -122,7 +133,7 @@ func VerifiedTSIGFor(req *pipeline.Request, now time.Time) (*VerifiedTSIG, bool)
 // The type assertion is deliberate: an arbitrary Lookup implementation may
 // rotate between Verify and ServeDNS, so cannot supply a truthful pinned proof.
 func captureVerifiedTSIG(e *env, msg *dns.Msg, client pipeline.Client, now time.Time) *VerifiedTSIG {
-	if e == nil || client.Synthetic || (client.Proto != pipeline.ProtoUDP && client.Proto != pipeline.ProtoTCP && client.Proto != pipeline.ProtoDoT) || msg == nil || msg.Opcode != dns.OpcodeUpdate {
+	if e == nil || client.Synthetic || (client.Proto != pipeline.ProtoUDP && client.Proto != pipeline.ProtoTCP && client.Proto != pipeline.ProtoDoT) || msg == nil || (msg.Opcode != dns.OpcodeUpdate && msg.Opcode != dns.OpcodeNotify) {
 		return nil
 	}
 	provider, ok := e.tsig.(keyringProvider)
@@ -145,18 +156,18 @@ func captureVerifiedTSIG(e *env, msg *dns.Msg, client pipeline.Client, now time.
 	if !now.Before(deadline) {
 		return nil
 	}
-	digest, ok := updateMessageDigest(msg)
+	digest, ok := nativeMessageDigest(msg, msg.Opcode)
 	if !ok {
 		return nil
 	}
 	return &VerifiedTSIG{identity: identity, message: msg.Copy(), digest: digest, proto: client.Proto, addr: client.Addr, proxy: client.ProxiedFrom, verifiedAt: now, deadline: deadline}
 }
 
-func updateMessageDigest(msg *dns.Msg) ([sha256.Size]byte, bool) {
-	if msg == nil || msg.Opcode != dns.OpcodeUpdate || msg.Response {
+func nativeMessageDigest(msg *dns.Msg, opcode int) ([sha256.Size]byte, bool) {
+	if msg == nil || msg.Opcode != opcode || msg.Response || (opcode != dns.OpcodeUpdate && opcode != dns.OpcodeNotify) {
 		return [sha256.Size]byte{}, false
 	}
-	// Compression is a wire encoding choice, not signed UPDATE semantics. Cap
+	// Compression is a wire encoding choice, not signed request semantics. Cap
 	// expanded message size before copying to bound proof workspace.
 	copyHeader := *msg
 	copyHeader.Compress = false

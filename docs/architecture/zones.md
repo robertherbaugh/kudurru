@@ -578,6 +578,15 @@ an original-wire proof for authenticated forwarding and does not replace current
 credential, zone or HA authorization at commit. Ordinary queries and transfers
 retain their existing TSIG behavior.
 
+Native signed NOTIFY has a separate opaque proof bound to its exact opcode,
+message, client, transport and deadline. It cannot be reused as UPDATE evidence.
+`secondary.NotifyReceiver.HandleCaptured` checks that proof against objects and
+immutable keys from the request's complete serving lease, with no live configuration
+fallback. The enclosing callback must retain that lease and check lifecycle
+eligibility. An expired secondary may still accept an authorized refresh hint;
+the hint never renews data itself. Existing production mounting continues to use
+the legacy receiver until complete-owner assembly is installed.
+
 ## Not built yet
 
 Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
