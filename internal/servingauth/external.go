@@ -227,9 +227,13 @@ func requestBinding(provider compiledProvider, identity oidccore.Identity, uid s
 	return oidccore.EvidenceBinding{Kind: oidccore.RequestEvidence, Provider: provider.descriptor.Ref.ID, ProviderUID: provider.descriptor.Ref.UID, Origin: string(provider.descriptor.Ref.Origin), Issuer: identity.Issuer, Subject: identity.Subject, IdentityUID: uid}
 }
 func (v *View) verifyJWT(ctx context.Context, proof Credential, now time.Time) (auth.Principal, error) {
+	p, _, err := v.verifyJWTWithValidity(ctx, proof, now)
+	return p, err
+}
+func (v *View) verifyJWTWithValidity(ctx context.Context, proof Credential, now time.Time) (auth.Principal, credentialValidity, error) {
 	issuer, err := oidccore.RoutingIssuer(proof.Value)
 	if err != nil {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	id := proof.ProviderID
 	if id == "" {
@@ -242,29 +246,29 @@ func (v *View) verifyJWT(ctx context.Context, proof Credential, now time.Time) (
 	}
 	provider, err := v.externalProvider(id)
 	if err != nil || provider.descriptor.Issuer != issuer {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	token, err := provider.resource.Verifier.Verify(ctx, proof.Value, now)
 	if err != nil {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	identity, err := provider.policy.Evaluate(ctx, token, oidccore.BearerIDToken, now)
 	if err != nil {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	existing, err := v.externalAccount(provider, identity, now)
 	if err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, credentialValidity{}, err
 	}
 	if provider.descriptor.Spec.Provisioning.SyncGroups && existing != nil && existing.GroupsVerifiedAt != nil {
 		identity.Groups = intersect(identity.Groups, existing.Groups)
 	}
 	grants, err := v.externalGrants(provider, identity, existing, true)
 	if err != nil || len(grants) == 0 {
-		return auth.Principal{}, ErrDenied
+		return auth.Principal{}, credentialValidity{}, ErrDenied
 	}
 	if err = v.externalFloors(provider, existing, grants, token.Facts().IssuedAt); err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, credentialValidity{}, err
 	}
 	uid := ""
 	if existing != nil {
@@ -272,9 +276,9 @@ func (v *View) verifyJWT(ctx context.Context, proof Credential, now time.Time) (
 	}
 	evidence, err := v.evidenceKeys.SealVerified(requestBinding(provider, identity, uid), provider.evidenceSource(), token, oidccore.BearerIDToken, now)
 	if err != nil {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
-	return detachedPrincipal(auth.Principal{Kind: auth.KindUser, ID: identity.ID(), Name: identity.Username, Provider: identity.Provider, AccountUID: uid, AuthMethod: auth.MethodJWT, Groups: identity.Groups, Grants: grants, GrantsIssuedAt: token.Facts().IssuedAt, CredentialIssuedAt: token.Facts().IssuedAt, External: &auth.ExternalProof{ProviderUID: provider.descriptor.Ref.UID, Origin: string(provider.descriptor.Ref.Origin), Evidence: evidence}}), nil
+	return detachedPrincipal(auth.Principal{Kind: auth.KindUser, ID: identity.ID(), Name: identity.Username, Provider: identity.Provider, AccountUID: uid, AuthMethod: auth.MethodJWT, Groups: identity.Groups, Grants: grants, GrantsIssuedAt: token.Facts().IssuedAt, CredentialIssuedAt: token.Facts().IssuedAt, External: &auth.ExternalProof{ProviderUID: provider.descriptor.Ref.UID, Origin: string(provider.descriptor.Ref.Origin), Evidence: evidence}}), credentialValidity{kind: OIDCJWT, authenticatedAt: now, jwt: token}, nil
 }
 func (v *View) loadExternal(p auth.Principal, now time.Time) (auth.Principal, error) {
 	if p.Kind != auth.KindUser || p.External == nil || now.IsZero() {

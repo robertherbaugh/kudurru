@@ -47,8 +47,12 @@ func (v *View) Authenticate(ctx context.Context, proof Credential, now time.Time
 	}
 }
 func (v *View) verifyToken(wire string, now time.Time) (auth.Principal, error) {
+	p, _, err := v.verifyTokenWithValidity(wire, now)
+	return p, err
+}
+func (v *View) verifyTokenWithValidity(wire string, now time.Time) (auth.Principal, credentialValidity, error) {
 	if len(wire) > 512 {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	id, ok := tokens.Parse(wire)
 	want := tokens.Hash("servingauth unknown credential")
@@ -59,14 +63,18 @@ func (v *View) verifyToken(wire string, now time.Time) (auth.Principal, error) {
 	got := tokens.Hash(wire)
 	match := subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 	if !ok || !known || !match || token.DeletionTimestamp != nil || token.UID == "" || token.CreationTimestamp.IsZero() || token.CreationTimestamp.After(now) || token.Spec.ExpiresAt != nil && !now.Before(token.Spec.ExpiresAt.Time) {
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
+	}
+	validity := credentialValidity{kind: APIToken, authenticatedAt: now}
+	if token.Spec.ExpiresAt != nil {
+		validity.expiresAt = token.Spec.ExpiresAt.Time
 	}
 	owner := token.Spec.Owner
 	p := auth.Principal{AccountUID: owner.UID, AuthMethod: auth.MethodToken, TokenID: id, CredentialIssuedAt: token.CreationTimestamp.Time, Scopes: slices.Clone(token.Spec.Scopes), Grants: slices.Clone(token.Spec.Grants), GrantsIssuedAt: token.CreationTimestamp.Time}
 	switch owner.Kind {
 	case internalv1.OwnerServiceAccount:
 		if owner.ID != "sa:"+owner.Namespace+"/"+owner.Name || owner.Provider != "" && owner.Provider != "kudurru" {
-			return auth.Principal{}, ErrCredentials
+			return auth.Principal{}, credentialValidity{}, ErrCredentials
 		}
 		p.Kind = auth.KindServiceAccount
 		p.ID = owner.ID
@@ -75,19 +83,27 @@ func (v *View) verifyToken(wire string, now time.Time) (auth.Principal, error) {
 		p.ServiceAccount = owner.Namespace + "/" + owner.Name
 	case internalv1.OwnerUser:
 		if owner.Provider != "" && owner.Provider != "local" {
-			return v.verifyExternalToken(token, now)
+			p, err := v.verifyExternalToken(token, now)
+			if err != nil {
+				return auth.Principal{}, credentialValidity{}, err
+			}
+			return p, validity, nil
 		}
 		if owner.ID != "local:"+owner.Name || owner.Namespace != "" || owner.Provider != "" && owner.Provider != "local" {
-			return auth.Principal{}, ErrUnsupported
+			return auth.Principal{}, credentialValidity{}, ErrUnsupported
 		}
 		p.Kind = auth.KindUser
 		p.ID = owner.ID
 		p.Name = owner.Name
 		p.Provider = "local"
 	default:
-		return auth.Principal{}, ErrCredentials
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
-	return v.LoadPrincipal(p, now)
+	p, err := v.LoadPrincipal(p, now)
+	if err != nil {
+		return auth.Principal{}, credentialValidity{}, err
+	}
+	return p, validity, nil
 }
 func (v *View) verifyPassword(ctx context.Context, name, password string, now time.Time) (auth.Principal, error) {
 	user, err := v.passwordAccount(ctx, name, password)
