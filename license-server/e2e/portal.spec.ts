@@ -11,7 +11,7 @@
 // judged by the node's own code (internal/license via nodestatus.go).
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createServer } from 'node:http';
-import { clearMail, listMail, nodeStatus, shot, signIn, waitForKeyMail, waitForMail } from './support';
+import { clearMail, listMail, nodeStatus, PASSWORD, shot, signIn, waitForKeyMail, waitForMail } from './support';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -108,6 +108,21 @@ async function requestPersonalKey(page: Page, request: PersonalRequest, shotName
 
 test.beforeAll(async () => {
   await clearMail();
+});
+
+test('downloads requires sign-in and opens after authentication', async ({ page }) => {
+  await page.goto('/downloads');
+  await expect(page).toHaveURL(/\/login\?next=%2Fdownloads$/);
+  await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toHaveCount(0);
+
+  // Continue from the redirect so the test exercises its original return URL.
+  await page.getByRole('link', { name: /^Sign in with/ }).click();
+  await page.waitForURL(/\/dex\//);
+  await page.locator('input[name="login"]').fill('customer@example.org');
+  await page.locator('input[name="password"]').fill(PASSWORD);
+  await page.locator('button[type="submit"]').click();
+  await expect(page).toHaveURL(/\/downloads$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Downloads' })).toBeVisible();
 });
 
 test('a license admin issues a business license with a feature subset', async ({ browser }) => {
