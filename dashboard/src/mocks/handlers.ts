@@ -381,6 +381,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     zoneName: z.spec.zoneName,
     type: z.spec.type,
     ...(z.spec.type === 'secondary' && db.secondaryRuntime[z.metadata.name] ? { secondaryRuntime: db.secondaryRuntime[z.metadata.name] } : {}),
+    ...(z.spec.type === 'stub' && db.stubRuntime[z.metadata.name] ? { stubRuntime: db.stubRuntime[z.metadata.name] } : {}),
     serial: z.status?.serial ?? 0,
     recordCount: z.status?.recordCount ?? 0,
     recordSets: db.recordSets.filter((rs) => rs.spec.zoneRef.name === z.metadata.name).length,

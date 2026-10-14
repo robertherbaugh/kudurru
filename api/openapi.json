@@ -6525,6 +6525,83 @@
         ],
         "type": "object"
       },
+      "StubAuthority": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "enum": [
+              "udp",
+              "tcp"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "protocol"
+        ],
+        "type": "object"
+      },
+      "StubRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "authorities": {
+            "items": {
+              "$ref": "#/components/schemas/StubAuthority"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConfirmedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "routing",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "state",
+          "authorities"
+        ],
+        "type": "object"
+      },
       "SuggestionsBody": {
         "additionalProperties": false,
         "properties": {
@@ -7689,6 +7766,9 @@
             "minimum": 0,
             "type": "integer"
           },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -7809,6 +7889,9 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "stubRuntime": {
+            "$ref": "#/components/schemas/StubRuntime"
           },
           "type": {
             "type": "string"

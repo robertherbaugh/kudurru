@@ -99,3 +99,52 @@ describe('secondary runtime', () => {
     }
   });
 });
+
+describe('stub runtime', () => {
+  function seedStub(state?: 'pending' | 'routing' | 'expired' | 'unavailable') {
+    mockDB().zones.push({
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name: 'stub.example' },
+      spec: { zoneName: 'stub.example.', type: 'stub', stub: { nameservers: ['tcp://192.0.2.53:5353'] } },
+      status: { serial: 999999, recordCount: 777777, conditions: [{ type: 'Ready', status: 'True', reason: 'Ready' }] },
+    });
+    if (state) mockDB().stubRuntime['stub.example'] = {
+      node: 'kudurru-2', state, serial: 0, authorities: [{ name: 'ns.stub.example.', address: '192.0.2.53:5353', protocol: 'tcp' }],
+      lastConfirmedAt: '2026-10-14T12:00:00Z', expiresAt: '2026-10-14T13:00:00Z',
+      ...(state === 'expired' ? { reason: 'StubExpired', message: 'Route expired; this node answers SERVFAIL.' } : {}),
+    };
+  }
+
+  it.each([
+    [undefined, 'Unknown'], ['pending', 'Pending discovery'], ['routing', 'Routing'], ['expired', 'Expired'], ['unavailable', 'Unavailable'],
+  ] as const)('shows %s from this node and offers no record or transfer actions', async (state, label) => {
+    seedStub(state);
+    const recordsRequest = vi.fn();
+    server.use(http.get(`${API}/zones/stub.example/records`, () => {
+      recordsRequest();
+      return HttpResponse.json({ items: [] });
+    }));
+    const { client } = renderWithApp(<ZoneDetailPage params={{ zone: 'stub.example' }} />, { route: '/zones/stub.example' });
+    const runtime = await screen.findByRole('region', { name: 'Stub on this node' });
+    expect(runtime).toHaveTextContent(label);
+    expect(screen.queryByText(/999999|777777/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Ready', { exact: true })).not.toBeInTheDocument();
+    if (state) {
+      expect(runtime).toHaveTextContent('Last observed SOA serial0');
+      expect(runtime).toHaveTextContent('ns.stub.example. (tcp://192.0.2.53:5353)');
+      expect(runtime).toHaveTextContent(formatDateTime('2026-10-14T13:00:00Z'));
+    }
+    for (const name of ['Add record', 'Import BIND', 'Export', 'Send NOTIFY']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(recordsRequest).not.toHaveBeenCalled();
+  });
+
+  it('lists only observed serial and local availability, with no record count', async () => {
+    seedStub('expired');
+    renderWithApp(<ZonesPage />, { route: '/zones' });
+    const row = (await screen.findByRole('link', { name: 'stub.example.' })).closest('tr')!;
+    expect(row).toHaveTextContent('Expired');
+    expect(row).toHaveTextContent('last observed');
+    expect(row).toHaveTextContent('on node kudurru-2');
+    expect(row).not.toHaveTextContent(/999999|777777|Ready/);
+  });
+});

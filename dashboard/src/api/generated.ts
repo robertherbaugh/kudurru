@@ -3876,6 +3876,28 @@ export interface components {
             /** Format: int64 */
             rows: number;
         };
+        StubAuthority: {
+            address: string;
+            name: string;
+            /** @enum {string} */
+            protocol: "udp" | "tcp";
+        };
+        StubRuntime: {
+            authorities: components["schemas"]["StubAuthority"][];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            lastConfirmedAt?: string;
+            message?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            node: string;
+            reason?: string;
+            /** Format: int64 */
+            serial?: number;
+            /** @enum {string} */
+            state: "pending" | "routing" | "expired" | "unavailable";
+        };
         SuggestionsBody: {
             field: string;
             nodes: components["schemas"]["NodeResult"][] | null;
@@ -4283,6 +4305,7 @@ export interface components {
             secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
+            stubRuntime?: components["schemas"]["StubRuntime"];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -4322,6 +4345,7 @@ export interface components {
             secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
+            stubRuntime?: components["schemas"]["StubRuntime"];
             type: string;
             upstreamGroup?: string;
             zoneName: string;

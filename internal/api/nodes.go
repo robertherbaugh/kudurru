@@ -291,6 +291,23 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 				Message: runtime.Message, Hint: "This node's served serial and expiry are available in the zone's secondary status."})
 		}
 	}
+	if s.opts.Stubs != nil {
+		for _, st := range s.opts.Stubs.Statuses() {
+			runtime := stubRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "stub", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's discovered authorities and expiry are available in the zone's stub status."})
+		}
+	}
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})

@@ -58,6 +58,7 @@ import (
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
@@ -172,6 +173,8 @@ type Options struct {
 	Cache *zonecache.Cache
 	// Secondaries reports transferred data and expiry on the serving node.
 	Secondaries *secondary.Manager
+	// Stubs reports discovered authority routes and expiry on this node.
+	Stubs *stub.Manager
 	// Policy is the policy index source (policy.Source{Cache}).
 	Policy PolicySource
 	// Blocking is the blocking stage; its Toggle backs /dns/blocking.

@@ -18,12 +18,13 @@ A zone is a part of the DNS name space. kudurru serves three types of zone.
 | Primary | kudurru is the authority. You keep the records in kudurru. kudurru answers from these records. |
 | Forward | kudurru sends the queries for the zone to an upstream group. Use it for a company or Active Directory zone. |
 | Secondary | Every kudurru node copies records from an external primary. Changes belong on that primary. |
+| Stub | Each node discovers the zone’s authorities and sends queries directly to them. |
 
 A block list cannot block a name in a primary zone. The records of your own
 zone always get an answer.
 
-The wizard creates primary, forward and secondary zones. Stub and catalog
-types are reserved and are not served yet.
+The wizard creates primary, forward, secondary and stub zones. Catalog zones
+are reserved for a later release.
 
 ### See the zones
 
@@ -205,6 +206,26 @@ credential changes require a fresh AXFR. Invalid deltas retain the last-good
 copy until its existing expiry. Signed zones are diagnosed as unsupported;
 they are not served without their required DNSSEC proofs. Local secondary
 export is not available yet.
+
+### Create a stub zone
+
+Choose **Stub** in the new-zone wizard, enter the zone apex, and add one to 16
+**Bootstrap servers**. Use hostnames or IP addresses, optionally with a port.
+For example, `192.0.2.53` uses UDP port 53, while `tcp://ns.corp.example:5353`
+uses TCP port 5353. Use brackets for IPv6 with a port. TLS is not supported.
+The discovered servers use the successful bootstrap server's protocol and port.
+
+Each node discovers and refreshes the zone's authorities independently. The
+zone page shows **Stub on this node**, including discovered addresses, the last
+observed SOA serial, confirmation and expiry. This is a route, so the page has
+no editable records, import, export, or NOTIFY controls. Change records at the
+external authority; edit bootstrap servers under **Zone settings**.
+
+A failed discovery keeps an unexpired route. Once the route expires, queries
+for the zone answer SERVFAIL until discovery succeeds. Restarting preserves
+the original deadline. Recursive clients receive a direct authority answer;
+non-recursive clients receive the discovered NS/glue referral. Child referrals
+are returned without being followed. Stub answers do not assert DNSSEC AD.
 
 ### Add a record
 

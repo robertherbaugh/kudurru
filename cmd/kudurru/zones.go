@@ -33,6 +33,7 @@ type zoneSummary struct {
 	Ready            any                       `json:"ready"`
 	ManagedBy        string                    `json:"managedBy,omitempty"`
 	SecondaryRuntime *openapi.SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+	StubRuntime      *openapi.StubRuntime      `json:"stubRuntime,omitempty"`
 }
 
 func (z zoneSummary) apex() string { return firstNonEmpty(z.ZoneName, z.Zone) }
@@ -58,7 +59,7 @@ func zoneTable(zs []zoneSummary) *cli.Table {
 	t := &cli.Table{Headers: []string{"NAME", "ZONE", "TYPE", "SERIAL", "RECORDS", "READY", "MANAGED-BY"}}
 	local := false
 	for _, z := range zs {
-		if z.Type == "secondary" {
+		if z.Type == "secondary" || z.Type == "stub" {
 			local = true
 			break
 		}
@@ -80,6 +81,18 @@ func zoneTable(zs []zoneSummary) *cli.Table {
 				}
 				if rt.State != openapi.SecondaryRuntimeStateServing && rt.Serial != nil {
 					serial += " (last)"
+				}
+			}
+		}
+		if z.Type == "stub" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.StubRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(*rt.Serial, 10)
+					if rt.State != openapi.StubRuntimeStateRouting {
+						serial += " (last)"
+					}
 				}
 			}
 		}

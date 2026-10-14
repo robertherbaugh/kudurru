@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
 
@@ -53,6 +54,8 @@ type ZoneSummary struct {
 	DeleteRefusal string `json:"deleteRefusal,omitempty" enum:"default_zone,managed_by"`
 	// SecondaryRuntime is this responding node's state, independent of shared status.
 	SecondaryRuntime *SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+	// StubRuntime describes only this node's discovered routes.
+	StubRuntime *StubRuntime `json:"stubRuntime,omitempty"`
 }
 
 // SecondaryRuntime describes the last published copy on one node. Serial and
@@ -112,6 +115,16 @@ func (s *Server) localZoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets i
 		// Legacy leader-computed serials must not imply a replica is serving.
 		out.Serial, out.RecordCount, out.Ready = 0, 0, false
 		out.Reason, out.Message = "PerNodeTransfer", "Transfer availability is reported per node in secondaryRuntime."
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeStub {
+		var st stub.Status
+		var found bool
+		if s.opts.Stubs != nil {
+			st, found = s.opts.Stubs.StatusFor(z)
+		}
+		out.StubRuntime = stubRuntime(s.opts.NodeName, st, found)
+		out.Serial, out.RecordCount, out.Ready = 0, 0, false
+		out.Reason, out.Message = "PerNodeDiscovery", "Routing availability is reported per node in stubRuntime."
 	}
 	return out
 }
@@ -936,6 +949,9 @@ func chunkEndpoints(eps []v1alpha1.Endpoint, n int) [][]v1alpha1.Endpoint {
 func (s *Server) buildZone(ctx context.Context, z *v1alpha1.DNSZone) (*zone.Zone, error) {
 	if z.Spec.Type == v1alpha1.ZoneTypeSecondary {
 		return nil, errConflict("secondary contents are transferred from their primary", "local secondary export is not available yet")
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeStub {
+		return nil, errConflict("stub zones hold discovered routes, not a complete zone", "inspect stubRuntime for this node's authorities and expiry")
 	}
 	sets, err := s.zoneRecordSets(ctx, z.Name)
 	if err != nil {

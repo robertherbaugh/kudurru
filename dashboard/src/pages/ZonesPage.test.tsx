@@ -94,6 +94,29 @@ describe('ZoneWizardDialog', () => {
     await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'herbaugh.network')?.spec).toEqual({ zoneName: 'herbaugh.network.', type: 'primary', fallback: {} }));
   });
 
+  it('validates stub bootstrap servers and creates a discoverable route', async () => {
+    renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
+    fireEvent.click(await screen.findByRole('radio', { name: /^Stub/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Zone name/ }), { target: { value: 'Stub.Example.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('At least one bootstrap server is required')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add bootstrap server' }));
+    const endpoint = screen.getByRole('textbox', { name: 'Bootstrap servers 1' });
+    fireEvent.change(endpoint, { target: { value: 'tls://ns.example' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect((await screen.findAllByText('Use udp:// or tcp://, or omit the protocol')).length).toBeGreaterThan(0);
+    fireEvent.change(endpoint, { target: { value: ' tcp://ns.example:5353 ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByTestId('zone-review')).toHaveTextContent('Stub (discovered authorities)');
+    expect(screen.getByTestId('zone-review')).toHaveTextContent('tcp://ns.example:5353');
+    fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));
+    await waitFor(() => expect(mockDB().zones.find((z) => z.metadata.name === 'stub.example')?.spec).toEqual({
+      zoneName: 'stub.example.', type: 'stub', stub: { nameservers: ['tcp://ns.example:5353'] },
+    }));
+  });
+
   it('requires valid secondary primaries and creates a TCP AXFR configuration with a key name', async () => {
     renderWithApp(<ZoneWizardDialog isOpen onClose={() => {}} />, { route: '/zones?new=1' });
     fireEvent.click(await screen.findByRole('radio', { name: /^Secondary/ }));

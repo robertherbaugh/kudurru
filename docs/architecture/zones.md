@@ -11,7 +11,8 @@ Code: `api/v1alpha1/dnszone_types.go`, `dnsrecordset_types.go`,
 `internal/zone` (the tree, lookups, transfers), `internal/zoneview` (the
 zonecache view), `internal/controller` (status and serials),
 `internal/notifier`, `internal/secondary` (independent inbound transfers and
-durable copies), `internal/stages/authoritative`.
+durable copies), `internal/stub` (authority discovery and direct queries),
+`internal/stages/authoritative`.
 
 ```mermaid
 erDiagram
@@ -19,7 +20,7 @@ erDiagram
     DNSRecordSet ||--|{ Endpoint : "spec.endpoints[] (max 1000)"
     DNSZone {
         string zoneName "FQDN, immutable"
-        string type "primary | forward | secondary"
+        string type "primary | forward | secondary | stub"
         object soa "mname, rname, refresh, retry, expire, minimum"
         object fallback "optional: resolve missing names, upstreamGroup"
         object policy "queryAccess, zoneTransfer, notify, ACLs, TSIG refs"
@@ -36,8 +37,8 @@ erDiagram
     }
 ```
 
-Primary, forward, and unsigned secondary zones are served. The other types in
-the schema (`stub`, `external`, `catalog`) are accepted but get
+Primary, forward, unsigned secondary, and stub zones are served. The other
+types in the schema (`external`, `catalog`) are accepted but get
 `Ready=False, reason Unsupported`.
 
 Use one DNSZone per canonical apex. If different objects claim the same
@@ -53,6 +54,7 @@ rather than relying on this fallback.
 | `primary` | answers from its own records, with SOA and serial | `home.example.com.` |
 | `forward` | sends the name to an upstream group ([upstreams](upstreams-and-cache.md)) | `corp.example.` → `internal-ad`; the bootstrap root zone `.` → `default` |
 | `secondary` | transfers an external primary's data independently on each node | `partner.example.` from `192.0.2.53:53` |
+| `stub` | discovers the zone's authorities and routes directly to them | `corp.example.` via `tcp://192.0.2.53:5353` |
 
 ## Answering from a zone
 
@@ -66,6 +68,12 @@ flowchart TD
     T -- "forward" --> FS{"snapshot synced?"}
     FS -- "no" --> SF0["SERVFAIL"]
     FS -- "yes" --> FW["set the upstream group hint,<br/>continue to blocking"]
+    T -- "stub" --> ST{"route current<br/>and query ACL allows?"}
+    ST -- "unavailable" --> SS["SERVFAIL; retain zone coverage"]
+    ST -- "denied" --> REF
+    ST -- "yes" --> RD{"client RD?"}
+    RD -- "0" --> SR["local NS/glue referral"]
+    RD -- "1" --> SQ["bounded direct authority query<br/>RD=0; return child referrals"]
     T -- "primary or secondary" --> ACL{"queryAccess /<br/>queryACL allow<br/>the client?"}
     ACL -- "no" --> REF["REFUSED"]
     ACL -- "yes" --> COPY{"secondary copy available<br/>and unexpired?"}
@@ -317,9 +325,64 @@ An unavailable secondary does not make an otherwise healthy node unready.
 Duplicate configured apices publish unavailable coverage instead of retaining
 an old routing view; unrelated zones continue to receive configuration updates.
 
+## Stub routes
+
+Each node's `stub.Manager` discovers SOA, apex NS/glue, then a confirming SOA
+from one of the configured bootstrap servers. Discovery, hostname resolution
+and persistence happen outside queries. A checksummed identity-bound envelope
+in `local.db` stores the discovered servers and absolute validity; it is
+committed before the immutable route is published. Config UID/spec and the
+cluster key bind the copy. A failed refresh retains only an unexpired route;
+restart and disk restore never extend its lifetime.
+
+```mermaid
+sequenceDiagram
+    participant C as zonecache configuration
+    participant M as stub manager (each node)
+    participant B as bootstrap authority
+    participant D as local.db
+    participant Q as query pipeline
+    participant A as discovered authority
+    C->>M: current stub identity
+    M->>B: SOA, apex NS/glue, confirming SOA
+    M->>M: resolve endpoints; bound TTL and SOA expiry
+    M->>D: persist before publishing
+    M->>Q: immutable route
+    alt client RD=0
+        Q-->>Q: return aged NS/glue referral
+    else client RD=1
+        Q->>A: bounded direct query with RD=0
+        A-->>Q: answer or child referral (no iterative chase)
+    end
+```
+
+Bare and `udp://` bootstrap endpoints use UDP, retrying a matching truncated
+response over TCP. `tcp://` uses TCP throughout. Both default to port 53;
+TLS is unsupported. Discovered NS endpoints inherit the successful bootstrap
+server's protocol and port. Only advertised in-bailiwick NS glue is trusted;
+other names resolve with bounded background lookups. Validity is capped by
+SOA expire, NS/glue TTLs, and five minutes for externally resolved addresses.
+Refresh happens by half that validity or SOA refresh, whichever is earlier.
+
+Queries capture the configured zone view once. They use pre-resolved addresses
+and bounded authority exchanges without store or discovery calls. RD=0 returns
+a non-authoritative referral; RD=1 directly asks an authority with RD=0 and
+returns child referrals without iteration. CNAME targets reselect the most
+specific captured zone, including unavailable coverage. Stub AXFR/IXFR is
+refused. Raw DNSSEC data is preserved for DO clients, but stub responses are
+not locally validated, never assert AD, and bypass the ordinary response cache.
+
+Shared status reports `Ready=Unknown/PerNodeDiscovery`; invalid bootstrap
+configuration reports `Ready=False/Invalid`. `stubRuntime` in zone API responses,
+CLI and dashboard exposes the responding node's route, discovered endpoints,
+last observed SOA serial, confirmation, expiry and failures. The observed serial
+does not imply possession of a full zone. `kudurru_stub_*` gauges report local
+availability and deadlines at scrape time. Unavailable or expired routes retain
+coverage and answer SERVFAIL without making unrelated zones unavailable.
+
 ## Not built yet
 
-Stub zones, signed secondary serving, dynamic UPDATE
+Signed secondary serving, dynamic UPDATE
 (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
 UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
 the atomic update handler is installed. Unknown opcodes remain NOTIMP.

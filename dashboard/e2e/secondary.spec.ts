@@ -42,7 +42,7 @@ test('a secondary is created, transferred, edited and expires on this node', asy
     const hostnameEndpoint = primary.dns.replace('127.0.0.1', 'localhost');
     await wizard.getByRole('textbox', { name: 'Primary servers 1' }).fill(hostnameEndpoint);
     await wizard.getByRole('button', { name: 'Next' }).click();
-    await expect(wizard.getByTestId('zone-review')).toContainText('AXFR over TCP');
+    await expect(wizard.getByTestId('zone-review')).toContainText('AXFR/IXFR over TCP');
     await page.screenshot({ path: path.join(screenshotDir, 'secondary-ui-wizard.png'), fullPage: true });
     await wizard.getByRole('button', { name: 'Create zone' }).click();
     await expect(page).toHaveURL((url) => url.pathname === `/zones/${name}`);

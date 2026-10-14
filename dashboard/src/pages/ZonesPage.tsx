@@ -18,6 +18,7 @@ import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { SecondaryAvailability } from '../components/SecondaryRuntime';
+import { StubAvailability } from '../components/StubRuntime';
 import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
@@ -29,8 +30,9 @@ const outcome = (ok: boolean) => ({ color: ok ? 'var(--q-permitted)' : 'var(--q-
 
 export function TransferCell({ z }: { z: ZoneSummary }) {
   if (z.type === 'secondary') {
-    return <Text size="sm">{z.secondaryRuntime?.primary ? `AXFR from ${z.secondaryRuntime.primary}` : 'AXFR over TCP'}</Text>;
+    return <Text size="sm">{z.secondaryRuntime?.primary ? `AXFR/IXFR from ${z.secondaryRuntime.primary}` : 'AXFR/IXFR'}</Text>;
   }
+  if (z.type === 'stub') return <Text color="secondary">No zone transfers</Text>;
   const t = z.transfer;
   if (!t) return <Text color="secondary">–</Text>;
   return (
@@ -81,8 +83,9 @@ const baseColumns: TableColumn<Row>[] = [
     width: pixel(120),
     renderCell: (z) => (
       <VStack gap={0.5}>
-        <Text type="code" size="sm">{z.type === 'secondary' ? z.secondaryRuntime?.serial ?? '–' : z.serial}</Text>
+        <Text type="code" size="sm">{z.type === 'secondary' ? z.secondaryRuntime?.serial ?? '–' : z.type === 'stub' ? z.stubRuntime?.serial ?? '–' : z.serial}</Text>
         {z.type === 'secondary' && z.secondaryRuntime?.serial !== undefined && z.secondaryRuntime.state !== 'serving' ? <Text type="supporting">last snapshot</Text> : null}
+        {z.type === 'stub' && z.stubRuntime?.serial !== undefined ? <Text type="supporting">last observed</Text> : null}
       </VStack>
     ),
   },
@@ -91,13 +94,13 @@ const baseColumns: TableColumn<Row>[] = [
     header: 'Records',
     align: 'end',
     width: pixel(100),
-    renderCell: (z) => <Text hasTabularNumbers>{formatExact(z.type === 'secondary' ? z.secondaryRuntime?.recordCount : z.recordCount)}</Text>,
+    renderCell: (z) => <Text hasTabularNumbers>{formatExact(z.type === 'secondary' ? z.secondaryRuntime?.recordCount : z.type === 'stub' ? undefined : z.recordCount)}</Text>,
   },
   {
     key: 'ready',
     header: 'Availability',
     width: pixel(110),
-    renderCell: (z) => z.type === 'secondary' ? <SecondaryAvailability runtime={z.secondaryRuntime} /> : (z.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />),
+    renderCell: (z) => z.type === 'secondary' ? <SecondaryAvailability runtime={z.secondaryRuntime} /> : z.type === 'stub' ? <StubAvailability runtime={z.stubRuntime} /> : (z.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />),
   },
   { key: 'transfer', header: 'Transfers', width: proportional(1.75, { minWidth: 140 }), renderCell: (z) => <TransferCell z={z} /> },
   { key: 'managedBy', header: 'Managed by', width: proportional(1.5, { minWidth: 120 }), renderCell: (z) => <ManagedBadge owner={z.managedBy} inColumn /> },
@@ -143,7 +146,7 @@ export default function ZonesPage() {
     <Page>
       <PageHeader
         title="Zones"
-        description="Primary, secondary and forward zones. Secondary availability is shown for the responding node. Zones managed by a file or Kubernetes are read-only here."
+        description="Primary, secondary, forward and stub zones. Secondary and stub availability is shown for the responding node. Zones managed by a file or Kubernetes are read-only here."
         actions={
           <>
             <Button

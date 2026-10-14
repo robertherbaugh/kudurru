@@ -118,6 +118,29 @@ describe('ZoneSettingsSection', () => {
     expect(await within(section).findByText('Resolve through resolver')).toBeInTheDocument();
   });
 
+  it('edits stub bootstrap servers with If-Match and preserves access policy', async () => {
+    const z = {
+      apiVersion: 'kudurru.io/v1alpha1' as const, kind: 'DNSZone' as const,
+      metadata: { name: 'stub.example', resourceVersion: '15', labels: { owner: 'dns-team' } },
+      spec: { zoneName: 'stub.example.', type: 'stub' as const, stub: { nameservers: ['192.0.2.53'] }, policy: { queryAccess: 'allowOnlyPrivate' as const } },
+    };
+    mockDB().zones.push(z);
+    renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
+    const section = await screen.findByTestId('section-zone-settings');
+    const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
+    await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(edit);
+    fireEvent.change(within(section).getByRole('textbox', { name: 'Bootstrap servers 1' }), { target: { value: 'tcp://ns.example:5353' } });
+    const saveRequest = vi.fn();
+    server.use(http.put(`${API}/objects/dnszones/${z.metadata.name}`, async ({ request }) => {
+      const body = await request.json();
+      saveRequest(request.headers.get('If-Match'), body);
+      return HttpResponse.json(body);
+    }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
+    await waitFor(() => expect(saveRequest).toHaveBeenCalledWith('15', { ...z, spec: { ...z.spec, stub: { nameservers: ['tcp://ns.example:5353'] } } }));
+  });
+
   function seedSecondary(protocol: 'tcp' | 'tls' = 'tcp') {
     const z = {
       apiVersion: 'kudurru.io/v1alpha1' as const, kind: 'DNSZone' as const,
@@ -200,7 +223,7 @@ describe('ZoneSettingsSection', () => {
     renderWithApp(<ZoneSettingsSection zone="corp-example" own={ownership('api')} />);
     const section = await screen.findByTestId('section-zone-settings');
     fireEvent.click(within(section).getByRole('button', { name: /Edit/ }));
-    expect(await within(section).findByText(/DNSSEC validation/)).toBeInTheDocument();
+    expect(await within(section).findByText('DNSSEC validation', { exact: true })).toBeInTheDocument();
     fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
     await waitFor(() => expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument());
   });

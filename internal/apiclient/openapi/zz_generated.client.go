@@ -1040,6 +1040,48 @@ func (e SourceEntriesKind) Valid() bool {
 	}
 }
 
+// Defines values for StubAuthorityProtocol.
+const (
+	StubAuthorityProtocolTcp StubAuthorityProtocol = "tcp"
+	StubAuthorityProtocolUdp StubAuthorityProtocol = "udp"
+)
+
+// Valid indicates whether the value is a known member of the StubAuthorityProtocol enum.
+func (e StubAuthorityProtocol) Valid() bool {
+	switch e {
+	case StubAuthorityProtocolTcp:
+		return true
+	case StubAuthorityProtocolUdp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StubRuntimeState.
+const (
+	StubRuntimeStateExpired     StubRuntimeState = "expired"
+	StubRuntimeStatePending     StubRuntimeState = "pending"
+	StubRuntimeStateRouting     StubRuntimeState = "routing"
+	StubRuntimeStateUnavailable StubRuntimeState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the StubRuntimeState enum.
+func (e StubRuntimeState) Valid() bool {
+	switch e {
+	case StubRuntimeStateExpired:
+		return true
+	case StubRuntimeStatePending:
+		return true
+	case StubRuntimeStateRouting:
+		return true
+	case StubRuntimeStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TokenOwnerKind.
 const (
 	TokenOwnerKindServiceAccount TokenOwnerKind = "ServiceAccount"
@@ -4065,6 +4107,32 @@ type Stats struct {
 	Rows          int64 `json:"rows"`
 }
 
+// StubAuthority defines model for StubAuthority.
+type StubAuthority struct {
+	Address  string                `json:"address"`
+	Name     string                `json:"name"`
+	Protocol StubAuthorityProtocol `json:"protocol"`
+}
+
+// StubAuthorityProtocol defines model for StubAuthority.Protocol.
+type StubAuthorityProtocol string
+
+// StubRuntime defines model for StubRuntime.
+type StubRuntime struct {
+	Authorities     []StubAuthority  `json:"authorities"`
+	ExpiresAt       *time.Time       `json:"expiresAt,omitempty"`
+	LastConfirmedAt *time.Time       `json:"lastConfirmedAt,omitempty"`
+	Message         *string          `json:"message,omitempty"`
+	NextAttemptAt   *time.Time       `json:"nextAttemptAt,omitempty"`
+	Node            string           `json:"node"`
+	Reason          *string          `json:"reason,omitempty"`
+	Serial          *int64           `json:"serial,omitempty"`
+	State           StubRuntimeState `json:"state"`
+}
+
+// StubRuntimeState defines model for StubRuntime.State.
+type StubRuntimeState string
+
 // SuggestionsBody defines model for SuggestionsBody.
 type SuggestionsBody struct {
 	Field   string        `json:"field"`
@@ -4455,6 +4523,7 @@ type ZoneDetail struct {
 	ResourceVersion  *string                  `json:"resourceVersion,omitempty"`
 	SecondaryRuntime *SecondaryRuntime        `json:"secondaryRuntime,omitempty"`
 	Serial           int32                    `json:"serial"`
+	StubRuntime      *StubRuntime             `json:"stubRuntime,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64 `json:"took_ms"`
@@ -4492,6 +4561,7 @@ type ZoneSummary struct {
 	ResourceVersion  *string                   `json:"resourceVersion,omitempty"`
 	SecondaryRuntime *SecondaryRuntime         `json:"secondaryRuntime,omitempty"`
 	Serial           int32                     `json:"serial"`
+	StubRuntime      *StubRuntime              `json:"stubRuntime,omitempty"`
 	Type             string                    `json:"type"`
 	UpstreamGroup    *string                   `json:"upstreamGroup,omitempty"`
 	ZoneName         string                    `json:"zoneName"`

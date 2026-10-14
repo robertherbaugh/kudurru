@@ -22,6 +22,7 @@ import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { SecondaryAvailability, SecondaryRuntimeSection } from '../components/SecondaryRuntime';
+import { StubAvailability, StubRuntimeSection } from '../components/StubRuntime';
 import { RecordEditor } from '../components/RecordEditor';
 import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneSettingsSection } from '../components/ZoneSettingsSection';
@@ -162,7 +163,9 @@ function ZoneDetail({ zone }: { zone: string }) {
 
   const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone), refetchInterval: 30_000 });
   const secondary = z.data?.type === 'secondary';
-  const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone), enabled: !!z.data && !secondary });
+  const stub = z.data?.type === 'stub';
+  const primary = z.data?.type === 'primary';
+  const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone), enabled: primary });
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
   const canWrite = can('records', 'write');
@@ -290,7 +293,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           z.data ? (
             <>
               <Badge variant="neutral" label={z.data.type} />
-              {secondary ? <SecondaryAvailability runtime={z.data.secondaryRuntime} /> : (
+              {secondary ? <SecondaryAvailability runtime={z.data.secondaryRuntime} /> : stub ? <StubAvailability runtime={z.data.stubRuntime} /> : (
                 <>
                   <Text size="sm">serial {z.data.serial}</Text>
                   <Text size="sm">{z.data.recordCount} records</Text>
@@ -303,7 +306,7 @@ function ZoneDetail({ zone }: { zone: string }) {
         }
         actions={
           <>
-            {z.data && !secondary ? (
+            {z.data && primary ? (
               <>
                 <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
                 <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
@@ -331,20 +334,21 @@ function ZoneDetail({ zone }: { zone: string }) {
       />
       {z.data && !own.editable ? <Banner status="info" title={`Managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       {z.data && own.editable && z.data.type !== 'primary' ? (
-        <Banner status="info" title={`A ${z.data.type} zone`} description={secondary ? 'Records are transferred from the primary and are read-only. Refresh, retry, expiry and TTLs come from the primary. Transferred contents are not listed as editable record sets.' : 'Records of forward and stub zones come from elsewhere and are read-only.'} />
+        <Banner status="info" title={`A ${z.data.type} zone`} description={secondary ? 'Records are transferred from the primary and are read-only. Refresh, retry, expiry and TTLs come from the primary. Transferred contents are not listed as editable record sets.' : stub ? 'Authorities are discovered from the bootstrap servers. Queries go directly to them; this node does not keep an editable copy of the zone.' : 'Queries go to the configured upstream group; records are managed there.'} />
       ) : null}
       {z.data ? <ZoneSettingsSection zone={zone} own={own} /> : null}
       {secondary ? <SecondaryRuntimeSection runtime={z.data?.secondaryRuntime} /> : null}
-      {!secondary && z.data?.transfer ? (
+      {stub ? <StubRuntimeSection runtime={z.data?.stubRuntime} /> : null}
+      {primary && z.data?.transfer ? (
         <Panel title="Transfers and NOTIFY" headingId="xfr">
           <TransferCell z={z.data} />
         </Panel>
       ) : null}
 
-      {!secondary ? <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear /> : null}
-      {!secondary && recs.error ? <ErrorBanner error={recs.error} /> : null}
-      {!secondary && recs.isLoading ? <Loading /> : null}
-      {!secondary && recs.data ? (
+      {primary ? <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear /> : null}
+      {primary && recs.error ? <ErrorBanner error={recs.error} /> : null}
+      {primary && recs.isLoading ? <Loading /> : null}
+      {primary && recs.data ? (
         <Card>
           <Table<RecordRow>
             aria-label={`Records of ${zoneName}`}
@@ -399,8 +403,8 @@ function ZoneDetail({ zone }: { zone: string }) {
         }}
       />
       <ZoneDeleteDialog zone={zone} zoneName={zoneName} isOpen={deleting} onClose={() => setDeleting(false)} onDeleted={() => navigate('/zones')} />
-      {!secondary ? <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} /> : null}
-      {!secondary ? <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} /> : null}
+      {primary ? <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} /> : null}
+      {primary ? <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} /> : null}
     </Page>
   );
 }

@@ -68,6 +68,13 @@ export function primaryEndpointError(value: string): string | null {
   return hostPortError(endpoint);
 }
 
+/** Stub bootstrap endpoints select UDP (default) or TCP, with port 53 by default. */
+export function stubEndpointError(value: string): string | null {
+  const endpoint = value.trim();
+  if (endpoint.includes('://') && !/^(udp|tcp):\/\//.test(endpoint)) return 'Use udp:// or tcp://, or omit the protocol';
+  return primaryEndpointError(endpoint.replace(/^(udp|tcp):\/\//, ''));
+}
+
 /** TSIG references are DNS key names, not secret values. */
 export function tsigKeyNameError(value: string): string | null {
   return value.trim() ? hostError(value) : null;
