@@ -39,6 +39,7 @@ type Zone struct {
 	apexOverride  bool // apex has user records, beyond generated SOA/NS
 	access        accessPolicy
 	transfer      accessPolicy
+	dnssecValidation *bool // nullable forward-zone override
 	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
 	transferKeys []string
 	notify       v1alpha1.NotifyMode
@@ -67,6 +68,7 @@ type Zone struct {
 	// secondaryIdentity binds transferred data to its configuration object.
 	secondaryIdentity string
 	hasSignatures     bool
+	stub              *stubRoute
 }
 
 // Name returns the lowercased absolute zone name.
@@ -93,6 +95,14 @@ func (z *Zone) HasFallback() bool { return z.fallback }
 // FallbackGroup is the chosen forwarding or recursive group; empty uses
 // normal resolver routing.
 func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
+// DNSSECValidation returns a private nullable forward-zone validation override.
+func (z *Zone) DNSSECValidation() *bool {
+	if z.dnssecValidation == nil {
+		return nil
+	}
+	value := *z.dnssecValidation
+	return &value
+}
 
 // ContentHash returns the canonical content hash ("sha256:<hex>") the
 // controller compares with status.contentHash to decide on a serial bump.
@@ -348,6 +358,10 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	}
 	if spec.Type == v1alpha1.ZoneTypeForward {
 		z.upstream = DefaultUpstreamGroup
+		if spec.Forward != nil && spec.Forward.DNSSECValidation != nil {
+			value := *spec.Forward.DNSSECValidation
+			z.dnssecValidation = &value
+		}
 		if spec.Forward != nil && spec.Forward.UpstreamGroup != "" {
 			z.upstream = spec.Forward.UpstreamGroup
 		}

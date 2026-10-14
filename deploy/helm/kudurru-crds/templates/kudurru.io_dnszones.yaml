@@ -130,6 +130,9 @@ spec:
                 description: ForwardSpec configures a forward zone.
                 properties:
                   dnssecValidation:
+                    description: |-
+                      DNSSECValidation overrides the global dnssec.enabled default for
+                      this route. Omit it to inherit the default.
                     type: boolean
                   upstreamGroup:
                     default: default
@@ -429,11 +432,22 @@ spec:
                     type: string
                 type: object
               stub:
-                description: StubSpec configures a stub zone (v0.2).
+                description: |-
+                  StubSpec configures node-local authoritative-server discovery. It does
+                  not transfer the full zone or enable general iterative resolution.
                 properties:
                   nameservers:
+                    description: |-
+                      Nameservers bootstrap SOA/NS/glue discovery outside the query path.
+                      Entries are hostnames or IP addresses with optional ports (default 53),
+                      optionally prefixed with udp:// or tcp://. UDP retries TCP on truncation;
+                      explicit TCP stays TCP. TLS is not supported for stub discovery.
+                      Discovered nameservers inherit the bootstrap transport and port.
                     items:
+                      minLength: 1
                       type: string
+                    maxItems: 16
+                    minItems: 1
                     type: array
                 required:
                 - nameservers
@@ -467,6 +481,8 @@ spec:
               rule: '!has(self.fallback) || self.type == ''primary'''
             - message: secondary zones require secondary configuration
               rule: self.type != 'secondary' || has(self.secondary)
+            - message: stub zones require nameserver configuration
+              rule: self.type != 'stub' || has(self.stub)
           status:
             description: DNSZoneStatus is the observed state of a zone.
             properties:

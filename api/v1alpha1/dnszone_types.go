@@ -112,6 +112,8 @@ type ForwardSpec struct {
 	// +kubebuilder:default=default
 	// +optional
 	UpstreamGroup string `json:"upstreamGroup,omitempty"`
+	// DNSSECValidation overrides the global dnssec.enabled default for
+	// this route. Omit it to inherit the default.
 	// +optional
 	DNSSECValidation *bool `json:"dnssecValidation,omitempty"`
 }
@@ -144,8 +146,17 @@ type SecondarySpec struct {
 	TransferProtocol string `json:"transferProtocol,omitempty"`
 }
 
-// StubSpec configures a stub zone (v0.2).
+// StubSpec configures node-local authoritative-server discovery. It does
+// not transfer the full zone or enable general iterative resolution.
 type StubSpec struct {
+	// Nameservers bootstrap SOA/NS/glue discovery outside the query path.
+	// Entries are hostnames or IP addresses with optional ports (default 53),
+	// optionally prefixed with udp:// or tcp://. UDP retries TCP on truncation;
+	// explicit TCP stays TCP. TLS is not supported for stub discovery.
+	// Discovered nameservers inherit the bootstrap transport and port.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MinLength=1
 	Nameservers []string `json:"nameservers"`
 }
 
@@ -200,6 +211,7 @@ type PublishRule struct {
 // DNSZoneSpec defines the desired state of a zone.
 // +kubebuilder:validation:XValidation:rule="!has(self.fallback) || self.type == 'primary'",message="fallback is only supported for primary zones"
 // +kubebuilder:validation:XValidation:rule="self.type != 'secondary' || has(self.secondary)",message="secondary zones require secondary configuration"
+// +kubebuilder:validation:XValidation:rule="self.type != 'stub' || has(self.stub)",message="stub zones require nameserver configuration"
 type DNSZoneSpec struct {
 	// ZoneName is the fully qualified zone name with a trailing dot.
 	// +kubebuilder:validation:MinLength=1
