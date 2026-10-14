@@ -38,11 +38,20 @@ func (r *Runtime) reconcile(ctx context.Context, id zk.ZoneID, activate bool) (*
 		if l.Spec.Type != public.ZoneTypePrimary || (l.Spec.Phase != zk.PhasePreparing && l.Spec.Phase != zk.PhaseFencing && l.Spec.Phase != zk.PhaseActive) {
 			return nil, ErrInvalid
 		}
-		if l.Spec.Phase == zk.PhasePreparing {
-			l, err = r.FenceParents(ctx, id)
-			if conflicts(err) {
-				continue
+		needsFences := l.Spec.Phase == zk.PhasePreparing
+		if l.Spec.Phase == zk.PhaseFencing {
+			for _, parent := range l.Spec.Parents {
+				if parent.CommitSequence == 0 {
+					needsFences = true
+					break
+				}
 			}
+		}
+		if needsFences {
+			l, err = r.FenceParents(ctx, id)
+			// FenceParents owns bounded fresh-CAS retries. A surfaced conflict
+			// can also mean existing dynamic boundary data; return it before
+			// compiling a child head or attempting witness-free activation.
 			if err != nil {
 				return nil, err
 			}

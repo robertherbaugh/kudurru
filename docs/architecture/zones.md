@@ -474,7 +474,15 @@ admission. NOTIFY delivery is bounded and at least once: a crash after delivery
 but before acknowledgment can duplicate a notification. Receipts currently have
 a finite cap (256 by default), with no eviction until safe retention is defined.
 
-Production driver admission, lifecycle scheduling, listener callback wiring,
+The SQLite adapter now checks the complete desired/admitted roster, source
+UID/resourceVersion/intent, head and lifecycle in one `CommandTx`. Current
+credential publication remains pinned through the whole transaction, and the
+original TSIG deadline also covers writer-lock waits and commit. Every outcome,
+including a rejected or deduplicated request, crosses this admission. A child
+stalled by conflicting dynamic parent data retries its unfinished fences after
+an explicit authorized cleanup; it cannot activate without durable witnesses.
+
+Lifecycle scheduling, production keyring/policy guards, listener callback wiring,
 coherent serving publication and authenticated HA forwarding remain in progress.
 The Kubernetes test adapter exercises exact-object CAS without claiming a
 multi-object transaction. This checkpoint does not yet enable network UPDATE.
