@@ -36,6 +36,7 @@ type migration struct {
 var migrations = []migration{
 	{version: 1, name: "objects, change feed, audit", up: migrate1},
 	{version: 2, name: "replication authority and owned sections", up: migrate2},
+	{version: 3, name: "bind stored credentials to account identities", up: migrateCredentialUIDs},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;

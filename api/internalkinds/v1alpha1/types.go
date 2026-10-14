@@ -102,6 +102,10 @@ type TokenOwner struct {
 	// Provider is "local" for local users, the IdP id for OIDC users.
 	// +optional
 	Provider string `json:"provider,omitempty"`
+	// UID binds local users and service accounts to one object incarnation.
+	// Legacy tokens without a verified binding cannot authenticate.
+	// +optional
+	UID string `json:"uid,omitempty"`
 }
 
 // APITokenSpec is one API token (§8.6). The object name is the 12-char

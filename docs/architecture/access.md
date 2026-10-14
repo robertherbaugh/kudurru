@@ -47,7 +47,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     R(["request to /api/v1"]) --> B{"Authorization:<br/>Bearer kdr_…?"}
-    B -- "yes" --> TOK["API token: look up the id, compare<br/>sha256 in constant time, check expiry"]
+    B -- "yes" --> TOK["API token: look up the id, compare<br/>sha256 in constant time, check expiry<br/>and account UID"]
     B -- "no" --> J{"Bearer JWT?"}
     J -- "yes" --> ISS{"route by iss"}
     ISS -- "a configured OIDC issuer" --> OIDC["verify ID token (JWKS),<br/>aud, azp, claim mapping"]
@@ -62,7 +62,8 @@ flowchart TD
     TOK --> P(["principal"])
     OIDC --> P
     K8S --> P
-    SES --> P
+    SES --> UID["local account UID must match;<br/>load current groups and account state"]
+    UID --> P
     ROOT --> P
     NODE --> P
 ```
@@ -139,6 +140,23 @@ a shared session store or an extra Secret. The cookie is
 serves a self-signed certificate unless told otherwise), HttpOnly and
 SameSite=Lax, and is re-sealed at most once a minute to slide the idle
 timeout.
+
+Local sessions now carry the account UID in their sealed principal, and
+personal and service-account tokens carry it in `spec.owner.uid`. Deleting and
+recreating an account cannot inherit credentials, even within the same second.
+Token creation reads the current account and refuses a supplied stale UID;
+authentication reads memory snapshots. Legacy local cookies without a UID
+require a fresh login.
+
+SQLite schema 3 binds existing tokens before normal decoding, in the same
+transaction as the schema upgrade. Hashes, ownership, status, object metadata
+and audit history are preserved. Missing owners and tokens predating their
+owner remain unbound and cannot authenticate. Equal creation timestamps require
+audit evidence that the current account was created before the token; without
+that evidence, reissue the token. An invalid stored document rolls back the
+entire upgrade, and older binaries reject the newer database schema.
+Kubernetes legacy token conversion is part of the pending offline IAM migration;
+an unbound token is never silently rebound during authentication.
 
 ### The CLI
 

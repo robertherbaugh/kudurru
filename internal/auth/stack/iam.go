@@ -116,7 +116,7 @@ func (s *Stack) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	switch p.Kind {
 	case auth.KindUser:
-		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: p.Name, ID: p.ID, Provider: p.Provider}
+		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: p.Name, ID: p.ID, Provider: p.Provider, UID: p.AccountUID}
 		if p.Provider != "local" {
 			// OIDC users have no stored groups (D48): freeze what they hold
 			// now; the binding source keeps honouring each grant only while
@@ -127,7 +127,7 @@ func (s *Stack) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 		}
 	case auth.KindServiceAccount:
 		ns, name, _ := strings.Cut(p.ServiceAccount, "/")
-		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: name, Namespace: ns}
+		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: name, Namespace: ns, UID: p.AccountUID}
 	default:
 		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "unsupported_principal",
 			Message: "API tokens belong to users and kudurru service accounts; " + string(p.Kind) + " principals cannot own them"})

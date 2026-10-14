@@ -256,13 +256,27 @@ func (t *Tokens) Create(ctx context.Context, o CreateOptions) (string, *internal
 		if o.Owner.Name == "" || o.Owner.ID == "" {
 			return "", nil, fmt.Errorf("%w: a user owner needs name and id", ErrInvalidOwner)
 		}
-	case internalv1.OwnerServiceAccount:
-		if _, ok := t.serviceAccount(o.Owner.Namespace, o.Owner.Name); !ok {
-			var sa internalv1.ServiceAccount
-			if err := t.st.Get(ctx, saKey(o.Owner.Namespace, o.Owner.Name), &sa); err != nil {
-				return "", nil, fmt.Errorf("%w: %s/%s", ErrNoServiceAccount, o.Owner.Namespace, o.Owner.Name)
+		if o.Owner.Provider == "local" || strings.HasPrefix(o.Owner.ID, "local:") {
+			var user internalv1.LocalUser
+			if err := t.st.Get(ctx, store.Key{Kind: internalv1.KindLocalUser, Name: o.Owner.Name}, &user); err != nil {
+				return "", nil, fmt.Errorf("%w: local account unavailable", ErrInvalidOwner)
 			}
+			if user.Spec.Disabled || user.UID == "" || o.Owner.ID != "local:"+user.Name || (o.Owner.UID != "" && o.Owner.UID != string(user.UID)) {
+				return "", nil, ErrInvalidOwner
+			}
+			o.Owner.UID = string(user.UID)
+			o.Owner.Provider = "local"
 		}
+	case internalv1.OwnerServiceAccount:
+		var sa internalv1.ServiceAccount
+		if err := t.st.Get(ctx, saKey(o.Owner.Namespace, o.Owner.Name), &sa); err != nil {
+			return "", nil, fmt.Errorf("%w: %s/%s", ErrNoServiceAccount, o.Owner.Namespace, o.Owner.Name)
+		}
+		if sa.Spec.Disabled || sa.UID == "" || (o.Owner.UID != "" && o.Owner.UID != string(sa.UID)) {
+			return "", nil, ErrInvalidOwner
+		}
+		o.Owner.UID = string(sa.UID)
+		t.sas.Upsert(&sa)
 		o.Owner.ID = ServiceAccountID(o.Owner.Namespace, o.Owner.Name)
 	default:
 		return "", nil, fmt.Errorf("%w: kind %q", ErrInvalidOwner, o.Owner.Kind)
@@ -408,11 +422,15 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	switch owner.Kind {
 	case internalv1.OwnerUser:
 		p.Kind, p.ID, p.Name, p.Provider = auth.KindUser, owner.ID, owner.Name, owner.Provider
+		p.AccountUID = owner.UID
 		if p.Provider == "" && strings.HasPrefix(owner.ID, "local:") {
 			// Tokens minted from a session that did not carry the provider
 			// still belong to the local user store (LoadPrincipal re-reads
 			// the builtin-admin flag, groups and the disabled state).
 			p.Provider = "local"
+		}
+		if p.Provider == "local" && p.AccountUID == "" {
+			return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
 		}
 		if len(tok.Spec.Grants) > 0 {
 			p.Grants = slices.Clone(tok.Spec.Grants)
@@ -423,6 +441,10 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 		if !ok || sa.Spec.Disabled {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("service account missing or disabled"))
 		}
+		if owner.UID == "" || owner.UID != string(sa.UID) {
+			return auth.Principal{}, auth.Unauthenticated(errors.New("token service account identity does not match"))
+		}
+		p.AccountUID = owner.UID
 		// A token older than the account belongs to a deleted account of
 		// the same name (whole-second timestamps on both sides).
 		if created := sa.CreationTimestamp.Time; !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {

@@ -50,16 +50,17 @@ func (t *Tokens) Bootstrap(ctx context.Context, getenv func(string) string) (boo
 		return false, fmt.Errorf("tokens: %s is not a kudurru token (want kdr_<12 chars [a-z0-9]>_<43 chars base64url>; `kudurru token generate` prints one)", source)
 	}
 	ns := t.opts.Namespace
-	if _, err := t.EnsureServiceAccount(ctx, ns, BootstrapAccount, "Bootstrap service account ("+EnvBootstrapToken+")", true); err != nil {
+	sa, err := t.EnsureServiceAccount(ctx, ns, BootstrapAccount, "Bootstrap service account ("+EnvBootstrapToken+")", true)
+	if err != nil {
 		return false, fmt.Errorf("tokens: bootstrap service account: %w", err)
 	}
 	want := internalv1.APITokenSpec{
-		Owner:       internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: BootstrapAccount, Namespace: ns, ID: ServiceAccountID(ns, BootstrapAccount)},
+		Owner:       internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: BootstrapAccount, Namespace: ns, ID: ServiceAccountID(ns, BootstrapAccount), UID: string(sa.UID)},
 		Description: "bootstrap token (" + source + ")",
 		SecretHash:  Hash(wire),
 	}
 	var cur internalv1.APIToken
-	err := t.st.Get(ctx, store.Key{Kind: internalv1.KindAPIToken, Name: id}, &cur)
+	err = t.st.Get(ctx, store.Key{Kind: internalv1.KindAPIToken, Name: id}, &cur)
 	switch {
 	case err == nil && cur.Spec.SecretHash == want.SecretHash && cur.Spec.Owner == want.Owner:
 		t.toks.Upsert(&cur)
