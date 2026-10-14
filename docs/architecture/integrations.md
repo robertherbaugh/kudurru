@@ -205,6 +205,10 @@ allocation and private group evidence without inventing object UIDs or resource
 versions. Strict decoding rejects duplicate or aliased JSON fields and incomplete
 payloads; bounds cover metadata before serialization. Stable name allocation
 retains reservations across omission, and returns new rows as create-only intent.
+Complete image decoding binds every source, allocation, private group and global
+inventory watermark to one validated image. It rejects missing ownership evidence,
+target mismatches and duplicate inventory slots before preparing an overlay;
+actual SQLite restart, replica installation and promotion preserve those proofs.
 Its serving overlay suppresses ineligible live claims while retaining original
 watermarks and merging authorized MAC contributions into detached public groups.
 These functions confer no write authority: the production source command must

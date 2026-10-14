@@ -91,6 +91,13 @@ lifecycle driver and exact complete-bundle publication acknowledgment are tested
 together with real current keyring/policy exclusion. Native UPDATE and a bounded
 durable NOTIFY sender now have signed transport and actual SQLite acceptance,
 including ancestor expiry and recovery after a committed but unpublished update.
+The root command pin now retains provider, host/license/auth-key, TSIG, catalog
+and manager exclusion through final admission, with mandatory original-cut and
+deadline checks. Committed primary status uses exact head/configuration evidence
+and protected publication, preserves dynamic UPDATE data, and avoids competing
+serial writes and status-RV feedback. Native UPDATE/status and real SQLite
+transaction acceptance pass; the separate source-new/head-old serving-readiness
+window remains under correction before production mounting.
 The root runtime assembly is tested with the complete publisher; production
 mounting, Kubernetes barriers and forwarding remain in progress.
 Root request contexts retain the original elector token and cancellation, and

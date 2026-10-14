@@ -618,6 +618,14 @@ RPZ, then SQLite. Acquiring a newer pin does not make an older prepared cut curr
 These adapters have actual manager, complete-builder and SQLite acceptance;
 production mounting remains separate work.
 
+The complete root pin holds every dependency in that order through the actual
+command, including its final admission check. Its mandatory current predicate
+checks the original host, license, provider, key, catalog and manager cuts and
+their absolute deadlines without locks or I/O. Holding a replacement gate does
+not stop time: a deadline crossed while waiting for SQLite rejects UPDATE,
+dedup/no-op responses and background lifecycle or NOTIFY acknowledgment alike.
+The predicate also ends when the pin callback returns.
+
 The catalog uses the same installation contract. Its runtime wrapper retains the
 original restart-required source configuration, verifies actual acquired origins,
 and permits the documented embedded/absent-import fallback explicitly. A catalog
@@ -625,6 +633,25 @@ refresh rebuilds the whole policy bundle even when SQLite is unchanged. Held DNS
 requests keep their original service rules. Changing the configured URL cannot
 relabel an earlier acquisition, and current publication/command pins exclude
 catalog replacement through their complete callback.
+
+### Committed primary status
+
+The SQLite status adapter projects serial, served-record hash and record count
+from the actual committed head in one protected complete lease. Dynamic UPDATE
+records therefore appear in status even though they are absent from desired
+DNSRecordSets. It checks the original writer context, exact public object,
+lifecycle and head tokens, frozen configuration and serving deadlines through
+the final status transaction. It preserves unrelated status fields and never
+allocates a serial. Status-only source changes converge to a no-op.
+
+Pending complete publication defers status without changing the source RV.
+The controller retains desired-record conflict diagnostics, but delegates primary
+status when the capability is installed. Kubernetes and unconfigured controllers
+retain their existing behavior. The adapter and controller have actual SQLite,
+native signed UPDATE and Kubernetes race acceptance; production mounting remains
+open. A separately reproduced lifecycle-source/new-config versus old-head window
+still needs a serving-readiness correction before that mount. Status already
+rejects the mismatched head rather than reporting the new desired generation ready.
 
 ## Not built yet
 
