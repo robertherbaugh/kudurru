@@ -26,7 +26,7 @@ const (
 
 // Kinds must be registered as private kinds in every carrier and replication
 // manifest. Objects are cluster-scoped; source namespace is part of Owner.
-var Kinds = []string{KindIntegrationBudget, KindIntegrationDelivery, KindIntegrationLedger, KindIntegrationOperation}
+var Kinds = []string{KindIntegrationBudget, KindIntegrationDelivery, KindIntegrationLedger, KindIntegrationOperation, KindIntegrationSourceHead, KindIntegrationSourceChunk, KindIntegrationNameAllocation}
 
 // Owner identifies one Integration incarnation, including its cluster.
 type Owner struct {

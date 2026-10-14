@@ -12,7 +12,7 @@ import (
 var SchemeBuilder = runtime.NewSchemeBuilder(func(s *runtime.Scheme) error {
 	s.AddKnownTypes(public.GroupVersion, &IntegrationLedger{}, &IntegrationLedgerList{}, &IntegrationOperation{}, &IntegrationOperationList{}, &IntegrationBudget{}, &IntegrationBudgetList{}, &IntegrationDelivery{}, &IntegrationDeliveryList{})
 	metav1.AddToGroupVersion(s, public.GroupVersion)
-	return nil
+	return AddSourceToScheme(s)
 })
 
 // AddToScheme adds private Integration runtime types without public CRDs.

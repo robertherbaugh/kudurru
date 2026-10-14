@@ -44,7 +44,13 @@ func TestEnvtestRuntimeKindsPrivateCarriersAndSafeExport(t *testing.T) {
 	digest := zonekinds.Digest(data)
 	chunk := &zonekinds.ZoneChunk{ObjectMeta: metav1.ObjectMeta{Name: zonekinds.ChunkName(digest)}, Spec: zonekinds.ZoneChunkSpec{FormatVersion: zonekinds.FormatVersion, Digest: digest, Data: data}}
 	budget := &integration.IntegrationBudget{ObjectMeta: metav1.ObjectMeta{Name: integration.BudgetName("runtime-test", "cloudflare", "account")}, Spec: integration.IntegrationBudgetSpec{FormatVersion: integration.FormatVersion, ClusterID: "runtime-test", Provider: "cloudflare", Account: "account", Sequence: 1, WindowStart: time.Now().UTC(), WindowSeconds: 300, Capacity: 1000}}
-	for _, object := range []store.Object{chunk, budget} {
+	owner := integration.Owner{ClusterID: "runtime-test", Namespace: "default", Name: "unifi", UID: "source-uid"}
+	now := time.Now().UTC().Truncate(time.Second)
+	sourceChunk := &integration.IntegrationSourceChunk{ObjectMeta: metav1.ObjectMeta{Name: integration.SourceChunkName(owner, 1, 0, digest)}, Spec: integration.IntegrationSourceChunkSpec{FormatVersion: 1, Owner: owner, Sequence: 1, Digest: digest, Data: data}}
+	head := &integration.IntegrationSourceHead{ObjectMeta: metav1.ObjectMeta{Name: integration.SourceHeadName(owner)}, Spec: integration.IntegrationSourceHeadSpec{FormatVersion: 1, Owner: owner, Sequence: 1, ConfigDigest: digest, CredentialDigest: digest, RootDigest: digest, AcceptedAt: now, State: "active", Chunks: []integration.SourceChunkRef{{Name: sourceChunk.Name, Digest: digest, Bytes: len(data)}}}}
+	scope := integration.AllocationScope{ClusterID: owner.ClusterID, ZoneUID: "zone-uid", Apex: "example."}
+	allocation := &integration.IntegrationNameAllocation{ObjectMeta: metav1.ObjectMeta{Name: integration.NameAllocationName(scope, "client")}, Spec: integration.IntegrationNameAllocationSpec{FormatVersion: 1, Scope: scope, Label: "client", Owner: owner, ClientID: "client-id", Base: "client", CreatedAt: now}}
+	for _, object := range []store.Object{chunk, budget, sourceChunk, head, allocation} {
 		created, err := s.Apply(ctx, object, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
 		if err != nil {
 			t.Fatal(err)
@@ -75,12 +81,17 @@ func TestEnvtestRuntimeKindsPrivateCarriersAndSafeExport(t *testing.T) {
 	if _, err := s.Apply(ctx, invalid, store.ApplyOptions{Manager: store.ManagerSystem}); err == nil {
 		t.Fatal("private validation was bypassed")
 	}
+	invalidSource := sourceChunk.DeepCopy()
+	invalidSource.Spec.Data = []byte("does not match original source digest")
+	if _, err := s.Apply(ctx, invalidSource, store.ApplyOptions{Manager: store.ManagerSystem}); err == nil {
+		t.Fatal("private source validation was bypassed")
+	}
 	for _, safe := range []bool{false, true} {
 		var out bytes.Buffer
 		if err := s.Snapshot(ctx, &out, store.SnapshotOptions{Safe: safe}); err != nil {
 			t.Fatal(err)
 		}
-		for _, kind := range []string{zonekinds.KindZoneChunk, integration.KindIntegrationBudget} {
+		for _, kind := range append([]string{zonekinds.KindZoneChunk, integration.KindIntegrationBudget}, integration.SourceKinds...) {
 			if strings.Contains(out.String(), "kind: "+kind) == safe {
 				t.Fatalf("safe=%t export private kind %s mismatch", safe, kind)
 			}

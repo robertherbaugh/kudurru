@@ -229,6 +229,14 @@ erDiagram
 | `ServiceAccount` | namespaced | public | a non-human principal; credentials and bootstrap authority stay private |
 | `RoleBinding` | namespaced | public | role at a scope for users, groups, service accounts |
 | `IdentityProvider` | cluster | public | an OIDC provider with operator-granted credential references |
+| `IntegrationSourceHead` / `IntegrationSourceChunk` | cluster | internal | bounded original inbound source evidence and its complete version pointer |
+| `IntegrationNameAllocation` | cluster | internal | retained collision reservation bound to Integration and target zone UIDs |
+
+Inbound runtime carriers use private Secrets in Kubernetes and private objects in
+SQLite. Full backups and replication include them, with explicit zero-count kind
+manifests after deletion; safe configuration exports omit them. Carrier validation
+checks identity, chunk digests and finite bounds. Whole-source current admission
+and publication remain separate from storing these individual records.
 
 The bootstrap seeds four objects on the first start, with owner `bootstrap`:
 the root forward zone `.` → `default`, `ClientGroup default` (all
