@@ -48,10 +48,10 @@ func VerifyChain(events []Event) error {
 	for i := range events {
 		ev := &events[i]
 		if prev != nil && ev.PrevHash != prev.Hash {
-			return fmt.Errorf("audit: event %d does not follow event %d (prev_hash %s, want %s)", ev.ID, prev.ID, ev.PrevHash, prev.Hash)
+			return fmt.Errorf("%w: event %d does not follow event %d (prev_hash %s, want %s)", ErrTampered, ev.ID, prev.ID, ev.PrevHash, prev.Hash)
 		}
 		if want := ChainHash(*ev, ev.PrevHash); ev.Hash != want {
-			return fmt.Errorf("audit: event %d was changed (hash %s, want %s)", ev.ID, ev.Hash, want)
+			return fmt.Errorf("%w: event %d was changed (hash %s, want %s)", ErrTampered, ev.ID, ev.Hash, want)
 		}
 		prev = ev
 	}

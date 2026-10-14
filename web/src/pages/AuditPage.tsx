@@ -292,6 +292,7 @@ function AuditLog() {
         ) : null}
         <Text type="supporting">
           Stored events use hash chains to detect changed records and broken links. Verification checks the complete retained trail, including available batch seals.
+          Results are reused for up to 30 seconds.
         </Text>
         {verify.error ? <ErrorBanner error={verify.error} title="Verification unavailable" /> : null}
         {verify.data ? (

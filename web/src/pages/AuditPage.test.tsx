@@ -101,4 +101,16 @@ describe('AuditPage', () => {
     expect(await screen.findByText('Audit integrity verified')).toBeInTheDocument();
     expect(query).toBe('');
   });
+
+  it('shows storage failures as unavailable instead of an integrity failure', async () => {
+    server.use(
+      http.get('*/api/v1/audit/verify', () => HttpResponse.json({ error: { key: 'unavailable', message: 'audit verification is temporarily unavailable' } }, { status: 503 })),
+    );
+    renderWithApp(<AuditPage />, { route: '/audit' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify integrity' }));
+    expect(await screen.findByText('Verification unavailable')).toBeInTheDocument();
+    expect(screen.getByText('audit verification is temporarily unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Audit verification failed')).toBeNull();
+    expect(screen.queryByText('Audit integrity verified')).toBeNull();
+  });
 });

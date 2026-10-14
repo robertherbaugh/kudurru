@@ -272,8 +272,8 @@ func (s *Server) registerAudit() {
 }
 
 // AuditVerification is the result of checking the retained store, independent
-// of the filters or pagination of GET /audit. Failure is not always tampering:
-// an unavailable storage backend also prevents verification.
+// of the filters or pagination of GET /audit. Storage failures answer 503;
+// Verified=false reports an integrity failure. Results are cached for 30 seconds.
 type AuditVerification struct {
 	Verified  bool      `json:"verified"`
 	CheckedAt time.Time `json:"checkedAt"`
@@ -281,25 +281,6 @@ type AuditVerification struct {
 }
 
 type auditVerifyOutput struct{ Body *AuditVerification }
-
-func (s *Server) verifyAudit(ctx context.Context, _ *struct{}) (*auditVerifyOutput, error) {
-	rd, err := s.auditReader()
-	if err != nil {
-		return nil, err
-	}
-	v, ok := rd.(audit.Verifier)
-	if !ok {
-		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "audit verification is not available for this store", "")
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	err = v.Verify(checkCtx)
-	result := &AuditVerification{Verified: err == nil, CheckedAt: s.opts.Now()}
-	if err != nil {
-		result.Reason = err.Error()
-	}
-	return &auditVerifyOutput{Body: result}, nil
-}
 
 func (s *Server) auditReader() (audit.Reader, error) {
 	if err := s.requireFeature(license.FeatureAudit, "the audit trail"); err != nil {

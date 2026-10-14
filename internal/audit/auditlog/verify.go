@@ -43,7 +43,7 @@ func Verify(ctx context.Context, c client.Reader, namespace string, keys [][]byt
 				continue
 			}
 			if i > 0 && b.Spec.PrevHash != batches[i-1].Spec.Hash {
-				errs = append(errs, fmt.Errorf("auditlog: batch %s does not follow batch %s (a batch between them is missing or changed)", b.Name, batches[i-1].Name))
+				errs = append(errs, fmt.Errorf("%w: auditlog: batch %s does not follow batch %s (a batch between them is missing or changed)", audit.ErrTampered, b.Name, batches[i-1].Name))
 			}
 		}
 	}
@@ -53,24 +53,24 @@ func Verify(ctx context.Context, c client.Reader, namespace string, keys [][]byt
 func verifyBatch(b *auditv1.AuditLog, sealed bool, keys [][]byte) error {
 	s := &b.Spec
 	if sealed && !sealOK(keys, *s) {
-		return fmt.Errorf("auditlog: batch %s: the seal does not verify (changed, or written without the cluster encryption key)", b.Name)
+		return fmt.Errorf("%w: auditlog: batch %s: the seal does not verify (changed, or written without the cluster encryption key)", audit.ErrTampered, b.Name)
 	}
 	if len(s.Events) == 0 || len(s.Events) != s.Count {
-		return fmt.Errorf("auditlog: batch %s: %d events, spec.count %d", b.Name, len(s.Events), s.Count)
+		return fmt.Errorf("%w: auditlog: batch %s: %d events, spec.count %d", audit.ErrTampered, b.Name, len(s.Events), s.Count)
 	}
 	first, last := s.Events[0], s.Events[len(s.Events)-1]
 	if first.PrevHash != s.PrevHash || last.Hash != s.Hash || first.ID != s.FirstID || last.ID != s.LastID {
-		return fmt.Errorf("auditlog: batch %s: events do not match the batch's ids and hashes", b.Name)
+		return fmt.Errorf("%w: auditlog: batch %s: events do not match the batch's ids and hashes", audit.ErrTampered, b.Name)
 	}
 	var prev string
 	for i := range s.Events {
 		e := &s.Events[i]
 		if i > 0 && e.PrevHash != prev {
-			return fmt.Errorf("auditlog: batch %s: event %d does not follow event %d", b.Name, e.ID, s.Events[i-1].ID)
+			return fmt.Errorf("%w: auditlog: batch %s: event %d does not follow event %d", audit.ErrTampered, b.Name, e.ID, s.Events[i-1].ID)
 		}
 		if !e.Stub {
 			if want := audit.ChainHash(toEvent(s, e), e.PrevHash); want != e.Hash {
-				return fmt.Errorf("auditlog: batch %s: event %d was changed", b.Name, e.ID)
+				return fmt.Errorf("%w: auditlog: batch %s: event %d was changed", audit.ErrTampered, b.Name, e.ID)
 			}
 		}
 		prev = e.Hash

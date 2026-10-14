@@ -8,6 +8,7 @@ import (
 	"time"
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -41,7 +42,7 @@ func TestReaderVerifyRotationAndPending(t *testing.T) {
 		t.Fatalf("rotation with good spool: %v, pending calls %d", err, pendingCalls)
 	}
 	reader.SealKeys = [][]byte{current}
-	if err := reader.Verify(ctx); err == nil {
+	if err := reader.Verify(ctx); !errors.Is(err, audit.ErrTampered) {
 		t.Fatal("old batches verified without their seal key")
 	}
 	reader.SealKeys = [][]byte{current, previous}
@@ -60,13 +61,13 @@ func TestReaderVerifyRotationAndPending(t *testing.T) {
 		if err := c.Update(ctx, middle); err != nil {
 			t.Fatal(err)
 		}
-		if err := reader.Verify(ctx); err == nil {
+		if err := reader.Verify(ctx); !errors.Is(err, audit.ErrTampered) {
 			t.Fatal("edited batch verified")
 		}
 		if err := c.Delete(ctx, middle); err != nil {
 			t.Fatal(err)
 		}
-		if err := reader.Verify(ctx); err == nil {
+		if err := reader.Verify(ctx); !errors.Is(err, audit.ErrTampered) {
 			t.Fatal("missing middle batch verified")
 		}
 		return

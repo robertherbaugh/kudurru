@@ -40,7 +40,11 @@ func TestAuditVerificationDetectsDatabaseTampering(t *testing.T) {
 	if _, err := st.RecordAudit(context.Background(), sqlite.AuditEntry{Action: "apitoken.create"}); err != nil {
 		t.Fatal(err)
 	}
-	h := newHarness(t, func(o *Options) { o.AuditReader = auditstore.SQLite{Store: st} })
+	now := time.Now()
+	h := newHarness(t, func(o *Options) {
+		o.AuditReader = auditstore.SQLite{Store: st}
+		o.Now = func() time.Time { return now }
+	})
 	var result AuditVerification
 	h.do(http.MethodGet, "/api/v1/audit/verify", "auditor", nil).want(http.StatusOK).json(&result)
 	if !result.Verified || result.Reason != "" || result.CheckedAt.IsZero() {
@@ -55,8 +59,9 @@ func TestAuditVerificationDetectsDatabaseTampering(t *testing.T) {
 	if _, err := db.Exec("UPDATE audit SET action = 'forged' WHERE id = 1"); err != nil {
 		t.Fatal(err)
 	}
+	now = now.Add(auditVerificationTTL)
 	h.do(http.MethodGet, "/api/v1/audit/verify", "admin", nil).want(http.StatusOK).json(&result)
-	if result.Verified || !strings.Contains(result.Reason, "modified") {
+	if result.Verified || !strings.Contains(result.Reason, "changed") {
 		t.Fatalf("tampering verified: %+v", result)
 	}
 	newHarness(t).do(http.MethodGet, "/api/v1/audit/verify", "admin", nil).want(http.StatusServiceUnavailable)

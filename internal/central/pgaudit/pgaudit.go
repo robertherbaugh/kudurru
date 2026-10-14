@@ -304,12 +304,12 @@ func Verify(ctx context.Context, db *central.DB) error {
 		for _, ev := range evs {
 			switch {
 			case ev.ID != prevID+1:
-				return fmt.Errorf("pgaudit: events %d to %d are missing", prevID+1, ev.ID-1)
+				return fmt.Errorf("%w: pgaudit: events %d to %d are missing", audit.ErrTampered, prevID+1, ev.ID-1)
 			case ev.PrevHash != prev:
-				return fmt.Errorf("pgaudit: event %d does not follow event %d", ev.ID, prevID)
+				return fmt.Errorf("%w: pgaudit: event %d does not follow event %d", audit.ErrTampered, ev.ID, prevID)
 			}
 			if want := audit.ChainHash(canonical(ev, ev.Node), ev.PrevHash); want != ev.Hash {
-				return fmt.Errorf("pgaudit: event %d was changed", ev.ID)
+				return fmt.Errorf("%w: pgaudit: event %d was changed", audit.ErrTampered, ev.ID)
 			}
 			prevID, prev = ev.ID, ev.Hash
 		}
@@ -318,7 +318,7 @@ func Verify(ctx context.Context, db *central.DB) error {
 		}
 	}
 	if prevID != seq || prev != head {
-		return fmt.Errorf("pgaudit: the chain ends at event %d but its head names event %d (events at the end are missing or changed)", prevID, seq)
+		return fmt.Errorf("%w: pgaudit: the chain ends at event %d but its head names event %d (events at the end are missing or changed)", audit.ErrTampered, prevID, seq)
 	}
 	return nil
 }

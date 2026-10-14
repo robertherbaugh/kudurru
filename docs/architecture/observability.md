@@ -197,8 +197,12 @@ cursor pagination and event details. `GET /api/v1/audit/verify` requires
 with a 30-second deadline. It verifies the original SQLite chain, the central
 PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
 batches and their available HMAC seals plus the local pending spool. The
-response reports verification success or the reason verification failed;
-storage errors are not classified as proof of tampering. Hash chains provide
+response reports verification success or a generic integrity failure;
+storage errors and timeouts return 503 with a generic message, with details
+logged on the server. Concurrent requests share one scan, and every result
+(including unavailability) is cached for 30 seconds per serving process.
+Current and previous encryption keys verify batches retained across rotation.
+Hash chains provide
 tamper evidence, not protection from an administrator who can rewrite the
 entire database and its chain. External log copies or exports provide an
 independent record. Deleting complete oldest or newest unanchored batches

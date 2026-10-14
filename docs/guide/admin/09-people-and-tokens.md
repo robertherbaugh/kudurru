@@ -242,7 +242,10 @@ recover those details after revocation.
 **Verify integrity** checks the complete retained audit store, independent of
 the displayed filters. Hash chains detect changed records and broken links;
 Kubernetes batch seals are also checked when the cluster key is available.
-Verification failure can mean changed data or that storage could not be read.
+An integrity failure means changed records, invalid seals or broken links.
+If storage cannot be read or verification times out, the page instead shows
+**Verification unavailable**. Results are reused for up to 30 seconds; the
+reported check time shows when the scan completed.
 Keep logs or exports outside the database for an independent record: someone
 with full database control could rewrite an unkeyed hash chain.
 
