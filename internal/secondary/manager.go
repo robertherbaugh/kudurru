@@ -80,9 +80,11 @@ func (s *Snapshot) Lookup(identity string) *zone.Zone {
 
 // Manager runs one scheduler per replica, with bounded concurrent transfers.
 type Manager struct {
-	opts    Options
-	current atomic.Pointer[Snapshot]
-	wake    chan struct{}
+	opts      Options
+	current   atomic.Pointer[Snapshot]
+	wake      chan struct{}
+	triggerMu sync.Mutex
+	triggers  map[string]bool
 }
 
 // New constructs a manager; invalid global dependencies are startup errors.
@@ -102,7 +104,7 @@ func New(opts Options) (*Manager, error) {
 	if opts.MaxConcurrent <= 0 {
 		opts.MaxConcurrent = 4
 	}
-	m := &Manager{opts: opts, wake: make(chan struct{}, 1)}
+	m := &Manager{opts: opts, wake: make(chan struct{}, 1), triggers: make(map[string]bool)}
 	m.current.Store(&Snapshot{zones: map[string]*zone.Zone{}})
 	opts.Cache.OnPublish(func(*zonecache.Snapshot) { m.Wake() })
 	return m, nil
@@ -114,6 +116,44 @@ func (m *Manager) Wake() {
 	case m.wake <- struct{}{}:
 	default:
 	}
+}
+
+// Trigger schedules an authenticated NOTIFY hint for the exact configuration.
+// Hints coalesce in a bounded queue; they never replace SOA polling or extend
+// expiry. False means the configuration is unavailable, changed, or overloaded.
+func (m *Manager) Trigger(identity string) bool {
+	snap := m.opts.Cache.Snapshot()
+	if snap == nil || !snap.Authoritative() {
+		return false
+	}
+	found := false
+	zones := snap.Objects.Zones()
+	conflicts := zone.ConflictingApices(zones)
+	for _, dz := range zones {
+		if dz.Spec.Type == v1alpha1.ZoneTypeSecondary && zone.SecondaryIdentity(dz) == identity {
+			found = !conflicts[dns.CanonicalName(dz.Spec.ZoneName)]
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	m.triggerMu.Lock()
+	defer m.triggerMu.Unlock()
+	if !m.triggers[identity] && len(m.triggers) >= 128 {
+		return false
+	}
+	m.triggers[identity] = true
+	m.Wake()
+	return true
+}
+
+func (m *Manager) takeTriggers() map[string]bool {
+	m.triggerMu.Lock()
+	defer m.triggerMu.Unlock()
+	out := m.triggers
+	m.triggers = make(map[string]bool)
+	return out
 }
 
 // Snapshot returns the current immutable transferred data.
@@ -186,6 +226,8 @@ type entry struct {
 	next           time.Time
 	busy           bool
 	cancel         context.CancelFunc
+	notified       bool
+	lastAttempt    time.Time
 }
 
 type result struct {
@@ -251,6 +293,11 @@ func (m *Manager) Run(ctx context.Context) error {
 		}
 		m.reconcile(ctx, entries)
 		now := m.opts.Now()
+		for id := range m.takeTriggers() {
+			if e := entries[id]; e != nil {
+				e.notified = true
+			}
+		}
 		// Stable ordering makes initial scheduling deterministic. Running
 		// and retry-delayed zones cannot monopolize the worker budget.
 		ids := slices.Sorted(maps.Keys(entries))
@@ -259,11 +306,20 @@ func (m *Manager) Run(ctx context.Context) error {
 			if active >= m.opts.MaxConcurrent {
 				break
 			}
+			if e.notified && !e.busy {
+				// At most one hint-driven SOA check per second, even under a
+				// NOTIFY flood. A hint during a transfer survives its completion.
+				due := e.lastAttempt.Add(time.Second)
+				if due.Before(e.next) {
+					e.next = due
+				}
+			}
 			if e.busy || now.Before(e.next) {
 				continue
 			}
 			jobCtx, jobCancel := context.WithCancel(ctx)
 			e.busy, e.cancel = true, jobCancel
+			e.notified, e.lastAttempt = false, now
 			active++
 			workers.Add(1)
 			go func(e *entry) {
