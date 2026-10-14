@@ -16,7 +16,6 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	cachedata "github.com/robertherbaugh/kudurru/internal/cache"
@@ -26,6 +25,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
@@ -80,12 +80,12 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
+	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.store.Close() })
-	schema, err := NewSchema(scheme, v, security.ValidateEntry, security.ValidateImage)
+	schema, err := NewSchema(scheme, v, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 	var id string
 	f.token, id = tokens.Generate()
 	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if err := security.InitializeOwners(ctx, tx); err != nil {
+		if err := runtimeowners.Initialize(ctx, tx, f.now); err != nil {
 			return err
 		}
 		u, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice", CreationTimestamp: metav1.NewTime(f.now.Add(-time.Hour))}, Spec: internalv1.LocalUserSpec{Groups: []string{"staff"}}}, store.ApplyOptions{Manager: store.ManagerSystem})

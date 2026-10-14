@@ -14,7 +14,6 @@ import (
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
@@ -27,6 +26,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/sqliteadapter"
 	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -85,14 +85,16 @@ func newFixture(t *testing.T, policy public.ZonePolicy) *fixture {
 	for _, k := range runtimekinds.Private() {
 		private = append(private, store.Kind(k))
 	}
-	f.s, err = sqlite.Open(f.path, sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
+	f.s, err = sqlite.Open(f.path, sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	check(t, err)
 	t.Cleanup(func() { check(t, f.s.Close()) })
 	f.fence = pr.PublicationFence{Term: f.s.Authority().Term, Incarnation: f.s.Authority().Incarnation}
-	check(t, f.s.Command(f.ctx(), f.fence.Term, security.InitializeOwners))
+	check(t, f.s.Command(f.ctx(), f.fence.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		return runtimeowners.Initialize(ctx, tx, time.Now().UTC())
+	}))
 	_, err = f.s.Apply(f.ctx(), &public.Kudurru{ObjectMeta: metav1.ObjectMeta{Name: "default"}}, store.ApplyOptions{Manager: store.ManagerSystem})
 	check(t, err)
-	schema, err := servingbuild.NewSchema(scheme, v, security.ValidateEntry, security.ValidateImage)
+	schema, err := servingbuild.NewSchema(scheme, v, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
 	check(t, err)
 	host, err := config.FromFlat(config.Defaults())
 	check(t, err)

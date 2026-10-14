@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,9 +13,10 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/auth"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
@@ -96,6 +98,17 @@ func TestCompleteOwnersThroughNativeDNSAndHTTP(t *testing.T) {
 
 func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) {
 	f := newFixture(t)
+	ip := netip.MustParseAddr("192.0.2.73")
+	client := inventory.Client{ID: "device", IPs: []netip.Addr{ip}, ObservedAt: f.now, ExpiresAt: f.now.Add(time.Hour)}
+	stageInventory(t, f, "source-uid", 1, []inventory.Client{client})
+	checkInventory := func(lease *serving.Lease) {
+		t.Helper()
+		snapshot := inventoryFromLease(t, lease)
+		got := snapshot.Lookup(ip, f.now)
+		if snapshot.Generation() != 1 || got == nil || got.ID != client.ID || !got.ObservedAt.Equal(client.ObservedAt) || !got.ExpiresAt.Equal(client.ExpiresAt) || snapshot.Lookup(ip, client.ExpiresAt) != nil {
+			t.Fatalf("replica changed original inventory evidence: %+v", got)
+		}
+	}
 	image, err := f.store.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +119,7 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 		private = append(private, store.Kind(kind))
 	}
 	open := func() *sqlite.Store {
-		st, err := sqlite.Open(path, sqlite.Options{Scheme: f.builder.opts.Schema.scheme, Validator: f.builder.opts.Schema.validator, InternalKinds: private, InitialMode: replication.Follower, Identity: "follower-b", ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
+		st, err := sqlite.Open(path, sqlite.Options{Scheme: f.builder.opts.Schema.scheme, Validator: f.builder.opts.Schema.validator, InternalKinds: private, InitialMode: replication.Follower, Identity: "follower-b", ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,6 +166,7 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer held.Release()
+	checkInventory(held)
 	if !held.Bundle().Identity().Base.Same(installed) {
 		t.Fatal("replica served unrelated image")
 	}
@@ -176,6 +190,7 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 			if !lease.Bundle().Identity().Base.Term.Same(promoted.Term) {
 				t.Fatal("old term remained protected-ready")
 			}
+			checkInventory(lease)
 			lease.Release()
 			break
 		}

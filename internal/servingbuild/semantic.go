@@ -12,7 +12,6 @@ import (
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
-	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -34,10 +33,6 @@ type CatalogResource struct {
 	Catalogue *catalogue.Catalogue
 	Source    config.BlockingCatalogue
 }
-
-// InventoryOwner explicitly represents a captured inventory, including empty.
-// A nil Snapshot is a known empty result, never permission for a live fallback.
-type InventoryOwner struct{ Snapshot *inventory.Snapshot }
 
 type semanticOwners struct {
 	objects    *zonecache.Snapshot

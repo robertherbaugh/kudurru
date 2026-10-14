@@ -6,7 +6,6 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
-	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
@@ -22,12 +21,11 @@ import (
 // be a cheap thread-safe memory cursor, with no Store/network I/O or side effects.
 // Nil runtime snapshots explicitly mean no acquired data, preserving coverage.
 type Dependencies struct {
-	Identity  string
-	Host      *config.Config
-	Catalog   CatalogResource
-	Inventory *inventory.Snapshot
-	Auth      servingauth.Dependencies
-	Keys      *dnsserver.StaticKeyring
+	Identity string
+	Host     *config.Config
+	Catalog  CatalogResource
+	Auth     servingauth.Dependencies
+	Keys     *dnsserver.StaticKeyring
 	// KeyringIdentity names the local installation that supplied Keys, from the
 	// same KeyringCut. Equal key bytes after replacement do not reuse this ID.
 	KeyringIdentity string

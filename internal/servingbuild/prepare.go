@@ -77,6 +77,10 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if err != nil {
 		return serving.Prepared{}, err
 	}
+	inventory, err := prepareInventory(candidate.Image, now)
+	if err != nil {
+		return serving.Prepared{}, fmt.Errorf("servingbuild: inventory image: %w", err)
+	}
 	deps, err := opts.Capture(ctx, candidate.Image)
 	transferred := false
 	var owners *semanticOwners
@@ -124,7 +128,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("response", owners.response, nil),
 		component("cache", owners.cache, nil),
 		component("blocking", owners.blocking, nil),
-		component("inventory", &InventoryOwner{Snapshot: deps.Inventory}, nil),
+		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
 		component("runtime", &RuntimeOwner{primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current}, deps.Release),
 	}

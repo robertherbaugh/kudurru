@@ -132,8 +132,12 @@ The official Cloudflare SDK adapter and pending-operation host recovery have loc
 server and actual-store acceptance. UniFi read-only polling and inventory now use authenticated complete
 observations, absolute expiry and explicit collision allocations; optional legacy
 enrichment cannot renew assignments. Official and legacy acquisition have local
-HTTPS and actual host acceptance. Production source commit adapters, durable
-allocation storage, remaining providers, optional writes, external-zone controls
+HTTPS and actual host acceptance. Strict global inventory evidence now persists
+through bounded SQLite transactions, restart, follower installation and promotion.
+The complete builder reads its original expiry and ownership watermarks from the
+same image as DNS and auth, and startup rejects missing history beside existing
+source authority. Production source commit adapters, durable allocation storage,
+remaining providers, optional writes, external-zone controls
 and the dashboard remain open.
 
 None of these checkpoints closes an entire package prematurely. The remaining

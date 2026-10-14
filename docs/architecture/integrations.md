@@ -193,8 +193,11 @@ Writable SQLite startup initializes an explicit empty root only when no prior
 inventory rows or private source authority exist. Followers receive the root
 through replication. Complete image validation requires it, and the
 `inventory-state-v1` feature prevents peers without this owner from silently
-omitting it. Production source admission and allocation updates remain separate
-integration work.
+omitting it. The complete serving builder derives inventory from this same
+candidate image as DNS and authentication. Held requests keep their original
+snapshot and expiry even after replacement or store shutdown; a missing or
+malformed owner rejects the candidate. Production source admission and allocation
+updates remain separate integration work.
 
 ## UniFi inventory adapter
 

@@ -13,7 +13,6 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	cachedata "github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
@@ -22,6 +21,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -62,13 +62,13 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
+	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.store.Close() })
 	if err := f.store.Command(t.Context(), f.store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if err := security.InitializeOwners(ctx, tx); err != nil {
+		if err := runtimeowners.Initialize(ctx, tx, time.Now().UTC()); err != nil {
 			return err
 		}
 		for _, obj := range []store.Object{
@@ -99,7 +99,7 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema, err := servingbuild.NewSchema(scheme, v, security.ValidateEntry, security.ValidateImage)
+	schema, err := servingbuild.NewSchema(scheme, v, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
 	if err != nil {
 		t.Fatal(err)
 	}

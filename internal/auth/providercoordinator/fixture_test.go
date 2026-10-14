@@ -28,7 +28,6 @@ import (
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/credentials"
@@ -36,6 +35,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -221,7 +221,7 @@ func openStore(t *testing.T, path string, mode replication.Mode) *sqlite.Store {
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: localValidator, InitialMode: mode, ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
+	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: localValidator, InitialMode: mode, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func newFixture(t *testing.T, servers ...*providerServer) *fixture {
 	f.clock.Store(time.Now().UTC().UnixNano())
 	f.store = openStore(t, filepath.Join(t.TempDir(), "state.db"), replication.Standalone)
 	command(t, f.store, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if err := security.InitializeOwners(ctx, tx); err != nil {
+		if err := runtimeowners.Initialize(ctx, tx, time.Unix(0, f.clock.Load())); err != nil {
 			return err
 		}
 		created := metav1.NewTime(time.Unix(0, f.clock.Load()).Add(-time.Hour))
@@ -320,7 +320,7 @@ func startFixture(t *testing.T, f *fixture, servers ...*providerServer) *fixture
 	if err != nil {
 		t.Fatal(err)
 	}
-	buildSchema, err := servingbuild.NewSchema(scheme, localValidator, security.ValidateEntry, security.ValidateImage)
+	buildSchema, err := servingbuild.NewSchema(scheme, localValidator, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
 	if err != nil {
 		t.Fatal(err)
 	}
