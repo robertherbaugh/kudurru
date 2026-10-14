@@ -36,8 +36,12 @@ func (s *Store) replicationValidation(ctx context.Context) replication.Validatio
 		if err := s.validate(ctx, check, nil); err != nil {
 			return err
 		}
-		if err := s.validateStatus(ctx, obj.DeepCopyObject().(store.Object), obj.DeepCopyObject().(store.Object)); err != nil {
-			return err
+		// Main validation covers the entire document for kinds without a
+		// status subresource, including self-validating private runtime kinds.
+		if s.opts.Validator.HasStatusSubresource(store.KindOf(obj)) {
+			if err := s.validateStatus(ctx, obj.DeepCopyObject().(store.Object), obj.DeepCopyObject().(store.Object)); err != nil {
+				return err
+			}
 		}
 		if s.opts.ValidateReplicaObject != nil {
 			return s.opts.ValidateReplicaObject(append(json.RawMessage(nil), raw...))

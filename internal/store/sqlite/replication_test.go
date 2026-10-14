@@ -102,6 +102,62 @@ func TestReplicaCompleteReplacementPreservesPrivateStatusAndMetadata(t *testing.
 	}
 }
 
+func TestReplicaPublicIAMWithoutStatusSubresource(t *testing.T) {
+	ctx := context.Background()
+	primary := openTemp(t, internalOptions)
+	binding := mustApply(t, primary, &v1alpha1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "operators", Namespace: "default"},
+		Spec:       v1alpha1.RoleBindingSpec{Role: "admin", Subjects: []v1alpha1.BindingSubject{{Kind: "User", Name: "alice"}}},
+	}, store.ManagerAPI)
+	account := mustApply(t, primary, &v1alpha1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: "automation", Namespace: "default"},
+	}, store.ManagerAPI).(*v1alpha1.ServiceAccount)
+	account.Status.TokenID = "issued-token"
+	if err := primary.UpdateStatus(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	follower := mirror(t, primary)
+	source := imageOf(t, primary)
+	install(t, follower, source)
+	var got v1alpha1.RoleBinding
+	if err := follower.Get(ctx, store.KeyOf(binding), &got); err != nil || got.UID != binding.GetUID() || got.Spec.Role != "admin" {
+		t.Fatalf("binding lost across replica installation: %v", err)
+	}
+	var gotAccount v1alpha1.ServiceAccount
+	if err := follower.Get(ctx, store.KeyOf(account), &gotAccount); err != nil || gotAccount.Status.TokenID != "issued-token" {
+		t.Fatalf("account status lost across replica installation: %v", err)
+	}
+	for _, change := range []string{"invalid spec", "unexpected status"} {
+		t.Run(change, func(t *testing.T) {
+			bad := imageOf(t, primary)
+			for n, raw := range bad.Payload.Objects {
+				var doc map[string]any
+				if err := json.Unmarshal(raw, &doc); err != nil {
+					t.Fatal(err)
+				}
+				if doc["kind"] != "RoleBinding" {
+					continue
+				}
+				if change == "invalid spec" {
+					doc["spec"].(map[string]any)["subjects"] = []any{}
+				} else {
+					doc["status"] = map[string]any{"admin": true}
+				}
+				bad.Payload.Objects[n], _ = json.Marshal(doc)
+			}
+			if err := replication.Seal(bad); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := follower.ValidateImage(ctx, *bad); err == nil {
+				t.Fatal("malformed IAM image accepted")
+			}
+			if !imageOf(t, follower).Generation().Same(source.Generation()) {
+				t.Fatal("validation failure changed installed image")
+			}
+		})
+	}
+}
+
 func TestReplicaInstallRollbackCASIdempotenceAndWatchLineage(t *testing.T) {
 	ctx := context.Background()
 	p := openTemp(t, internalOptions)
