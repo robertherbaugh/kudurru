@@ -493,6 +493,26 @@ Parent witnesses, source identity and effective head incarnation all come from
 that same image. Its later `Cut(now)` calls evaluate only prepared memory and
 absolute expiry; they never capture a live runtime or mark a head published.
 
+`primaryruntime/driver` restores the complete durable roster under the actual
+SQLite publication barrier, then runs one bounded fair reconciliation loop and
+one NOTIFY worker. It keeps the caller's exact writer term and local incarnation;
+source changes, replacement and surviving children are recovered from persisted
+phases. Retiring a parent can release a child's exact historical tombstoned
+witness without changing that old head. Nonprimary activation requires no RR
+head. Diagnostics separate installed state, exact publication acknowledgment and
+active local eligibility. A missing current background guard disables every
+background write, including no-op reconciliation.
+
+`servingbuild.PrimaryPublication` acknowledges commits through one protected
+complete publisher lease. It compares the caller's exact writable term and local
+incarnation, persisted lifecycle identity, sequence, phase, parent witnesses and
+head version, then checks routing from that same bundle. Active primaries must
+actually be admitted and available at the current time. Retirement can acknowledge
+unavailable or removed coverage; a new desired placeholder cannot substitute for
+the old persisted member. Authority and dependency changes invalidate eligibility,
+and waiting retains no database, provider or runtime locks. Failed publication
+does not repeat or roll back a durable commit.
+
 `internal/servingzones` combines that primary part with the same candidate's
 public DNS objects and captured secondary, stub and RPZ snapshots. Acquired
 secondary/RPZ data must match an explicit immutable keyring and the exact
@@ -520,10 +540,14 @@ flowchart LR
     Part --> Compose["Same-candidate serving zones"]
     Bound --> Compose
     Compose --> Bundle["Whole serving bundle publication"]
+    Driver["Exact admitted writer + bounded lifecycle driver"] --> Image
+    Bundle --> Ack["Exact member + current routing acknowledgment"]
+    Ack --> Driver
 ```
 
-Lifecycle scheduling, production keyring/policy guards, listener callback wiring,
-coherent serving publication and authenticated HA forwarding remain in progress.
+The driver and complete publisher are exercised together on actual SQLite.
+Production keyring/policy guards, listener callback wiring, production mounting
+and authenticated HA forwarding remain in progress.
 The Kubernetes test adapter exercises exact-object CAS without claiming a
 multi-object transaction. This checkpoint does not yet enable network UPDATE.
 

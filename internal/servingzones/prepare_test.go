@@ -35,6 +35,7 @@ type fixture struct {
 	registry []replication.Kind
 	runtime  *pr.Runtime
 	now      time.Time
+	fence    pr.PublicationFence
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -51,6 +52,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	f := &fixture{t: t, store: st, scheme: scheme, now: time.Now()}
+	f.fence = pr.PublicationFence{Term: st.Authority().Term, Incarnation: st.Authority().Incarnation}
 	// Expected kinds derive from the local schema, including explicit zero
 	// manifests. The actual candidate never defines its own expected registry.
 	known := scheme.KnownTypes(public.GroupVersion)
@@ -71,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 		}
 		return 0
 	})
-	adapter, err := sqliteadapter.New(sqliteadapter.Options{Store: st})
+	adapter, err := sqliteadapter.New(sqliteadapter.Options{Store: st, Background: fixtureBackground{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,9 +88,19 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
+// This explicit permissive guard is confined to composition fixtures. Real
+// writers require root's immutable provider/policy exclusion through commit.
+type fixtureBackground struct{}
+
+func (fixtureBackground) WithCurrent(_ context.Context, _ pr.PublicationFence, fn func(sqliteadapter.BackgroundPolicy) error) error {
+	return fn(func(context.Context, *sqlite.CommandTx, sqliteadapter.BackgroundCheck) error { return nil })
+}
+
+func (f *fixture) ctx() context.Context { return pr.WithPublicationFence(f.t.Context(), f.fence) }
+
 func (f *fixture) apply(obj store.Object) store.Object {
 	f.t.Helper()
-	saved, err := f.store.Apply(f.t.Context(), obj, store.ApplyOptions{Manager: "api"})
+	saved, err := f.store.Apply(f.ctx(), obj, store.ApplyOptions{Manager: "api"})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -118,7 +130,7 @@ func (f *fixture) begin(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.Zon
 	for _, p := range parents {
 		l.Spec.Parents = append(l.Spec.Parents, pr.ParentObligation(p, l))
 	}
-	l, err = f.runtime.Transition(f.t.Context(), nil, l)
+	l, err = f.runtime.Transition(f.ctx(), nil, l)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -128,26 +140,26 @@ func (f *fixture) active(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.Zo
 	f.t.Helper()
 	l := f.begin(z, parents...)
 	if z.Spec.Type == public.ZoneTypePrimary {
-		if _, err := f.runtime.Reconcile(f.t.Context(), l.Spec.Zone); err != nil {
+		if _, err := f.runtime.Reconcile(f.ctx(), l.Spec.Zone); err != nil {
 			f.t.Fatal(err)
 		}
 	} else {
-		fenced, err := f.runtime.FenceParents(f.t.Context(), l.Spec.Zone)
+		fenced, err := f.runtime.FenceParents(f.ctx(), l.Spec.Zone)
 		if err != nil {
 			f.t.Fatal(err)
 		}
 		next := fenced.DeepCopy()
 		next.Spec.Sequence++
 		next.Spec.Phase = zk.PhaseActive
-		active, err := f.runtime.Transition(f.t.Context(), fenced, next)
+		active, err := f.runtime.Transition(f.ctx(), fenced, next)
 		if err != nil {
 			f.t.Fatal(err)
 		}
-		if err := f.runtime.Observe(f.t.Context(), active, nil, z); err != nil {
+		if err := f.runtime.Observe(f.ctx(), active, nil, z); err != nil {
 			f.t.Fatal(err)
 		}
 	}
-	l, err := f.runtime.ReadLifecycle(f.t.Context(), l.Spec.Zone)
+	l, err := f.runtime.ReadLifecycle(f.ctx(), l.Spec.Zone)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -155,7 +167,7 @@ func (f *fixture) active(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.Zo
 }
 func (f *fixture) image() replication.Image {
 	f.t.Helper()
-	i, err := f.store.ReadGeneration(f.t.Context())
+	i, err := f.store.ReadGeneration(f.ctx())
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -163,7 +175,7 @@ func (f *fixture) image() replication.Image {
 }
 func (f *fixture) options(image replication.Image) Options {
 	f.t.Helper()
-	primary, err := pr.PrepareImage(f.t.Context(), image, pr.ImageOptions{ClusterID: f.store.Info().ClusterID, Scheme: f.scheme, Validation: replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: f.registry}, Now: f.now})
+	primary, err := pr.PrepareImage(f.ctx(), image, pr.ImageOptions{ClusterID: f.store.Info().ClusterID, Scheme: f.scheme, Validation: replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: f.registry}, Now: f.now})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -405,7 +417,7 @@ func TestActualPrimaryTypeReplacementRetainsCoverageUntilNewIncarnation(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	retired, err := f.runtime.RetireSource(t.Context(), old.Spec.Zone, zk.LifecycleSource{UID: token.UID, ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest})
+	retired, err := f.runtime.RetireSource(f.ctx(), old.Spec.Zone, zk.LifecycleSource{UID: token.UID, ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,19 +427,19 @@ func TestActualPrimaryTypeReplacementRetainsCoverageUntilNewIncarnation(t *testi
 		t.Fatal(err)
 	}
 	next.Spec.Incarnation, next.Spec.Sequence = retired.Spec.Incarnation+1, retired.Spec.Sequence+1
-	next, err = f.runtime.Transition(t.Context(), retired, next)
+	next, err = f.runtime.Transition(f.ctx(), retired, next)
 	if err != nil {
 		t.Fatal(err)
 	}
 	unavailable(t, mustPrepare(t, f.options(f.image())), "example.", f.now)
-	fenced, err := f.runtime.FenceParents(t.Context(), next.Spec.Zone)
+	fenced, err := f.runtime.FenceParents(f.ctx(), next.Spec.Zone)
 	if err != nil {
 		t.Fatal(err)
 	}
 	active := fenced.DeepCopy()
 	active.Spec.Phase = zk.PhaseActive
 	active.Spec.Sequence++
-	if _, err := f.runtime.Transition(t.Context(), fenced, active); err != nil {
+	if _, err := f.runtime.Transition(f.ctx(), fenced, active); err != nil {
 		t.Fatal(err)
 	}
 	o := f.options(f.image())
@@ -438,7 +450,7 @@ func TestActualPrimaryTypeReplacementRetainsCoverageUntilNewIncarnation(t *testi
 	if held.Zones(f.now).Match("x.example.").Type() != public.ZoneTypePrimary || !held.Zones(f.now).Match("x.example.").AvailableAt(f.now) {
 		t.Fatal("held old primary changed")
 	}
-	if err := f.store.Delete(t.Context(), store.KeyOf(changed), store.DeleteOptions{Manager: "api"}); err != nil {
+	if err := f.store.Delete(f.ctx(), store.KeyOf(changed), store.DeleteOptions{Manager: "api"}); err != nil {
 		t.Fatal(err)
 	}
 	if p := mustPrepare(t, f.options(f.image())); p.Zones(f.now).Match("x.example.") != nil {
@@ -459,17 +471,17 @@ func TestActualMovedApexAndRecreatedSourceCannotFallBackToLegacy(t *testing.T) {
 	moved.Spec.ZoneName = "new.example."
 	// Ordinary desired writes enforce immutable apex. The production move is
 	// a real delete/recreate of the same source key while its old ledger remains.
-	if _, err := f.store.Apply(t.Context(), moved, store.ApplyOptions{Manager: "api"}); err == nil {
+	if _, err := f.store.Apply(f.ctx(), moved, store.ApplyOptions{Manager: "api"}); err == nil {
 		t.Fatal("ordinary source write changed immutable apex")
 	}
-	if err := f.store.Delete(t.Context(), store.KeyOf(config), store.DeleteOptions{Manager: "api"}); err != nil {
+	if err := f.store.Delete(f.ctx(), store.KeyOf(config), store.DeleteOptions{Manager: "api"}); err != nil {
 		t.Fatal(err)
 	}
 	moved.ObjectMeta = metav1.ObjectMeta{Name: config.Name}
 	moved = f.apply(moved).(*public.DNSZone)
 	for _, recreate := range []bool{false, true} {
 		if recreate {
-			if err := f.store.Delete(t.Context(), store.KeyOf(moved), store.DeleteOptions{Manager: "api"}); err != nil {
+			if err := f.store.Delete(f.ctx(), store.KeyOf(moved), store.DeleteOptions{Manager: "api"}); err != nil {
 				t.Fatal(err)
 			}
 			moved.UID, moved.ResourceVersion = "", ""
@@ -489,7 +501,7 @@ func TestActualMovedApexAndRecreatedSourceCannotFallBackToLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retired, err := f.runtime.RetireSource(t.Context(), old.Spec.Zone, zk.LifecycleSource{UID: string(config.UID), ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest, Removed: true})
+	retired, err := f.runtime.RetireSource(f.ctx(), old.Spec.Zone, zk.LifecycleSource{UID: string(config.UID), ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest, Removed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,19 +511,19 @@ func TestActualMovedApexAndRecreatedSourceCannotFallBackToLegacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	next.Spec.Sequence, next.Spec.Incarnation = retired.Spec.Sequence+1, retired.Spec.Incarnation+1
-	next, err = f.runtime.Transition(t.Context(), retired, next)
+	next, err = f.runtime.Transition(f.ctx(), retired, next)
 	if err != nil {
 		t.Fatal(err)
 	}
 	unavailable(t, mustPrepare(t, f.options(f.image())), "new.example.", f.now)
-	fenced, err := f.runtime.FenceParents(t.Context(), next.Spec.Zone)
+	fenced, err := f.runtime.FenceParents(f.ctx(), next.Spec.Zone)
 	if err != nil {
 		t.Fatal(err)
 	}
 	active := fenced.DeepCopy()
 	active.Spec.Sequence++
 	active.Spec.Phase = zk.PhaseActive
-	if _, err := f.runtime.Transition(t.Context(), fenced, active); err != nil {
+	if _, err := f.runtime.Transition(f.ctx(), fenced, active); err != nil {
 		t.Fatal(err)
 	}
 	if p := mustPrepare(t, f.options(f.image())); p.Zones(f.now).Match("x.new.example.").Type() != public.ZoneTypeForward || p.Zones(f.now).Match("x.old.example.") != nil {

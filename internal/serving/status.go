@@ -59,6 +59,36 @@ func (p *Publisher) Subscribe() <-chan struct{} {
 	return p.changed
 }
 
+// AuthorityChanges subscribes to the source's authority cursor. Background
+// acknowledgment waiters subscribe before capturing a lease, so a fenced writer
+// can stop even while preparation is blocked. This is not a query-path method.
+func (p *Publisher) AuthorityChanges() <-chan struct{} { return p.opts.Source.AuthorityChanges() }
+
+// CheckWriterLease checks that an owned lease is still the current complete,
+// eligible publication in the exact caller's writable incarnation. It reads
+// only memory and confers no transaction authority or continuing exclusion.
+// Call again after examining owner values, before acknowledging a publication.
+func (p *Publisher) CheckWriterLease(ctx context.Context, lease *Lease, target TermActivation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if target.Term.Validate() != nil || target.Incarnation == 0 {
+		return replication.ErrInvalid
+	}
+	if p.closed.Load() {
+		return ErrClosed
+	}
+	a, blocked := p.opts.Source.ServingAuthority()
+	if !a.Term.Same(target.Term) || a.Incarnation != target.Incarnation || !a.Writable() || blocked {
+		return ErrSuperseded
+	}
+	bundle := lease.Bundle()
+	if bundle == nil || bundle != p.current.Load() || !eligible(bundle, a, blocked) {
+		return ErrPending
+	}
+	return nil
+}
+
 // TermActivation is the exact local authority incarnation that must be served
 // before root activates ordinary leader-only writers.
 type TermActivation struct {
