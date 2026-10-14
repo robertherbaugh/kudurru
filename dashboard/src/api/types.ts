@@ -261,6 +261,7 @@ export interface PolicySpec {
   queryLog?: boolean;
   priority?: number;
   rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
+  response?: { dns64Prefix?: string; filterAAAA?: boolean };
   /** Catalogue service IDs (GET /catalogue/services) blocked like a list. */
   blockedServices?: string[];
   /** Catalogue category IDs (GET /catalogue/categories): every service in them, including ones added later. */
