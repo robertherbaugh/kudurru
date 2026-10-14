@@ -97,7 +97,11 @@ Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh
 hints for unavailable copies while rejecting primary coverage, stale source
-identities and stale listener proofs. RPZ has
+identities and stale listener proofs. Secondary, stub and RPZ installations now
+have immutable capture, change broadcasts and replacement exclusion through
+complete publication and current command commit; identical polls preserve the
+installation. Actual manager/full-builder acceptance covers held old copies and
+same-image runtime replacement. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons; selected-policy stage rendering, production
 publication, reporting and UI are in progress.
@@ -136,7 +140,8 @@ HTTPS and actual host acceptance. Strict global inventory evidence now persists
 through bounded SQLite transactions, restart, follower installation and promotion.
 The complete builder reads its original expiry and ownership watermarks from the
 same image as DNS and auth, and startup rejects missing history beside existing
-source authority. Production source commit adapters, durable allocation storage,
+source authority. Strict pure source codecs and stable allocation planning are
+implemented. Production source transactions, durable allocation storage,
 remaining providers, optional writes, external-zone controls
 and the dashboard remain open.
 

@@ -67,6 +67,19 @@ Replaying an unchanged active receipt is deliberately a no-op and cannot record
 that transition. Denied entitlement performs no provider credential or network
 acquisition; current authentication reads the durable floors in its own command.
 
+`providerentitlement` supplies the shared receipt format and pure selection
+helpers. One activation binds the actual cluster, verified management-policy
+profile and a random primary-admitted nonce across the complete provider inventory.
+The profile includes effective license identity, plan, nodes, features and original
+grace deadline; signed issue/not-before times and signing-key identity are not
+profile fields. License cuts still enforce current verification and eligibility.
+A pending nonce grants nothing, and a local license installation ID cannot serve
+as shared authority. Startup, writer turnover and observed license replacement
+must withdraw old authority with floors before admitting a new activation, even
+when the profile is unchanged. Historical restarted or tainted followers wait
+for a new primary activation. The helper has signed-license and actual replica
+acceptance; production reset and follower recovery orchestration remain open.
+
 SQLite startup initializes both owner roots together through an explicit fenced
 command. Followers receive them only in a complete image. The replica feature
 `provider-registry-v1` requires receiver support, and composed image validation
@@ -98,6 +111,18 @@ an unchanged resource until its original deadline; security mismatches retire it
 Unknown token keys never initiate discovery. These resource and transaction
 adapters are tested with real TLS, SQLite and the publisher; the production
 coordinator and login/HTTP mounting remain integration work.
+
+Host-only `auth.providerResources` settings now declare explicit network origins,
+local exceptions, asymmetric JWT algorithms, system trust and extra CA files.
+They require restart and cannot be changed through replicated settings or public
+IdentityProvider objects. The root trust loader captures actual CA bytes before
+locks, deduplicates and sorts them, and enforces 2 MiB/256-certificate limits.
+Linux uses the first existing standard CA bundle; macOS uses `/etc/ssl/cert.pem`
+and BSD uses its documented file locations. It does not query the macOS keychain
+or read `SSL_CERT_FILE`/`SSL_CERT_DIR`. Other platforms need explicit CA files
+with system trust disabled. Missing, malformed or oversized requested trust is
+an error, without partial or implicit system-pool fallback. These inputs and the
+loader are prepared for the complete provider-host mount still in progress.
 
 ```mermaid
 flowchart LR

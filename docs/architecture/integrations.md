@@ -199,6 +199,18 @@ snapshot and expiry even after replacement or store shutdown; a missing or
 malformed owner rejects the candidate. Production source admission and allocation
 updates remain separate integration work.
 
+The pure `ee/integration/inbound` adapter now encodes complete original source
+observations in bounded digest chunks. It validates target, generated-record,
+allocation and private group evidence without inventing object UIDs or resource
+versions. Strict decoding rejects duplicate or aliased JSON fields and incomplete
+payloads; bounds cover metadata before serialization. Stable name allocation
+retains reservations across omission, and returns new rows as create-only intent.
+Its serving overlay suppresses ineligible live claims while retaining original
+watermarks and merging authorized MAC contributions into detached public groups.
+These functions confer no write authority: the production source command must
+admit and save desired objects, allocations and global inventory together, then
+acknowledge the exact primary publication.
+
 ## UniFi inventory adapter
 
 `ee/integration/unifi` polls the official UniFi Network API over verified HTTPS.

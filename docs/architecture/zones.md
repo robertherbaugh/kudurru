@@ -601,6 +601,31 @@ eligibility. An expired secondary may still accept an authorized refresh hint;
 the hint never renews data itself. Existing production mounting continues to use
 the legacy receiver until complete-owner assembly is installed.
 
+### Transferred runtime publication
+
+Secondary, stub and RPZ managers expose immutable installation cuts and broadcast
+actual changes. Identical polling retains the same installation. A new copy,
+credential provenance, expiry or diagnostic state gets a new identity; returning
+to earlier bytes cannot revive an old cut. Captured zone objects keep their
+original absolute expiry.
+
+`servingbuild.TransferredRuntime` composes these cuts into the complete builder,
+wakes the publisher and excludes replacement through its actual SQLite publication
+callback. Current primary commands use the same manager gates through final commit,
+including NOTIFY acknowledgment. Acquisition stays outside these gates. The global
+order is publication, provider resources, host/license, keyring, catalog, secondary, stub,
+RPZ, then SQLite. Acquiring a newer pin does not make an older prepared cut current.
+These adapters have actual manager, complete-builder and SQLite acceptance;
+production mounting remains separate work.
+
+The catalog uses the same installation contract. Its runtime wrapper retains the
+original restart-required source configuration, verifies actual acquired origins,
+and permits the documented embedded/absent-import fallback explicitly. A catalog
+refresh rebuilds the whole policy bundle even when SQLite is unchanged. Held DNS
+requests keep their original service rules. Changing the configured URL cannot
+relabel an earlier acquisition, and current publication/command pins exclude
+catalog replacement through their complete callback.
+
 ## Not built yet
 
 Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
