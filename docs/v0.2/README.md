@@ -52,7 +52,7 @@ real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
 [draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main, currently `a26e223` including the merged
+commits and periodic rebases on main, currently `5de124b` including the merged
 supervisor/VIP work. AXFR/IXFR, verified TLS, inbound NOTIFY
 and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
 Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
@@ -76,7 +76,8 @@ publication and DNS request capture are implemented, including inherited
 alias/DNS64 views, detached-cache fencing and transfer cleanup across all six
 listeners. Authentication now has a complete-image owner and a leased HTTP
 adapter; strict list preparation requires exact published body digests.
-Production owner composition, mounting, public wiring and multi-node
+The real complete-owner builder has restart, follower install, promotion and
+held DNS/HTTP lease acceptance. Production mounting, public wiring and multi-node
 partition/rejoin acceptance remain open; this is not consensus.
 
 RFC 2136 parsing/planning, prerequisite and ownership checks, bounded private
@@ -85,8 +86,10 @@ are implemented. Source reconciliation, committed-primary materialization,
 parent fences and retirement now have a transactional SQLite lifecycle adapter.
 Complete-image primary preparation validates persisted heads, chunks and parent
 witnesses without compiling desired primary records. Native TSIG proofs retain
-their original deadline through transaction admission. Production scheduling,
-publication acknowledgment, forwarding and network UPDATE wiring remain open. RPZ has
+their original deadline through final transaction admission. A bounded durable
+lifecycle driver and exact complete-bundle publication acknowledgment are tested
+together with real current keyring/policy exclusion. Production mounting,
+forwarding, NOTIFY sender binding and network UPDATE wiring remain open. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons; selected-policy stage rendering, production
 publication, reporting and UI are in progress.
@@ -101,14 +104,19 @@ real API server. Complete auth images now preserve durable session enrollment
 and account/provider/grant revocation floors; current commands verify original
 proofs against staged transactional state. TOTP replay consumption and local
 session enrollment commit together, with explicit startup migration and
-restart/promotion coverage. Provider/CEL capabilities, production route adoption,
-enrollment/recovery UI and the wider IAM/session acceptance remain open.
+restart/promotion coverage. Offline signed OIDC/CEL verification, captured provider
+matching, independent external identity/session enrollment and leased HTTP JWT
+authentication are implemented. Durable config-provider identity and acquired
+resource assembly are in progress; production route adoption, enrollment/recovery
+UI and the wider IAM/session acceptance remain open.
 
 The integration host and private ledger now fence per-instance execution,
 preserve operation intent and partial receipts, and enforce durable request
 budgets through retries. Preview and apply share an ownership-aware planner.
-The official Cloudflare SDK provider is in progress; production commit adapters,
-other providers, external-zone controls and the dashboard remain open.
+The official Cloudflare SDK adapter and pending-operation host recovery have local
+server and actual-store acceptance. UniFi polling and inventory are in progress;
+production commit adapters, remaining providers, external-zone controls and the
+dashboard remain open.
 
 None of these checkpoints closes an entire package prematurely. The remaining
 feature packages and detailed follow-ups below retain their full scope.
