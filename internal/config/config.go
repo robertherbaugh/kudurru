@@ -44,14 +44,15 @@ type Config struct {
 	Blocking  Blocking           `koanf:"blocking" json:"blocking"`
 	BlockPage BlockPage          `koanf:"blockPage" json:"blockPage"`
 	// UnblockRequests configures the block page's request form.
-	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
-	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
-	Audit           Audit           `koanf:"audit" json:"audit"`
-	Database        Database        `koanf:"database" json:"database"`
-	RateLimit       RateLimit       `koanf:"ratelimit" json:"ratelimit"`
-	Log             Log             `koanf:"log" json:"log"`
-	Auth            Auth            `koanf:"auth" json:"auth"`
-	RBAC            RBAC            `koanf:"rbac" json:"rbac"`
+	UnblockRequests UnblockRequests  `koanf:"unblockRequests" json:"unblockRequests"`
+	Querylog        Querylog         `koanf:"querylog" json:"querylog"`
+	Audit           Audit            `koanf:"audit" json:"audit"`
+	Database        Database         `koanf:"database" json:"database"`
+	RateLimit       RateLimit        `koanf:"ratelimit" json:"ratelimit"`
+	Log             Log              `koanf:"log" json:"log"`
+	Auth            Auth             `koanf:"auth" json:"auth"`
+	Credentials     CredentialGrants `koanf:"credentials" json:"credentials"`
+	RBAC            RBAC             `koanf:"rbac" json:"rbac"`
 
 	// TSIGKeys are the node's TSIG keys (RFC 8945) for zone transfers and
 	// NOTIFY; secrets stay in files and never pass through the API.
@@ -643,6 +644,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Listeners.API.validate()...)
 	errs = append(errs, c.ExternalDNS.validate()...)
 	errs = append(errs, c.Auth.validate()...)
+	errs = append(errs, c.Credentials.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {
 		if _, ok := c.Upstreams.Groups[group]; !ok {
 			errs = append(errs, fmt.Errorf("upstreams.conditional[%s]: unknown group %q", suffix, group))

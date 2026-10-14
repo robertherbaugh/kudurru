@@ -119,6 +119,26 @@ in the session; deleting or narrowing a binding revokes frozen grants on the
 next request. There is no refresh token: the session lasts 12 hours, or
 30 minutes without activity.
 
+Stored providers can read only exact file paths granted by the operator in
+`credentials.allowedFiles`. This node setting is host-only and requires a
+restart; it is excluded from canonical cluster settings and replication.
+The resolver bounds reads to 64 KiB, requires a regular file, and redacts
+credential-resolution errors. `credentials.allowedEnvironment` reserves the
+equivalent host capability for integration credentials; OIDC does not use it.
+A host-configured `auth.identityProviders` entry separately delegates access
+to its configured secret file, without granting that path to stored objects.
+Config entries retain precedence over same-name stored providers even if their
+secret disappears: a failed config entry cannot activate another issuer.
+
+```mermaid
+flowchart LR
+    Stored["Stored provider reference"] --> Grant["Exact host file grant"]
+    Host["Host-configured provider"] --> Private["Entry's own file capability"]
+    Grant --> Read["Bounded background credential read"]
+    Private --> Read
+    Read --> Registry["OIDC registry; config names stay reserved"]
+```
+
 ### The sealed session cookie
 
 ```mermaid

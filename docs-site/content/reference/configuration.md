@@ -313,6 +313,13 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="audit.store"></a>`audit.store` | `string` | `auto` | cluster | **Audit log store.** Where audit events are kept so every node can show them: auto (default) uses database when database.dsn is set, else auditlog with the kube store driver, else local; database keeps every node's events in the central database (one hash chain); auditlog keeps them in AuditLog objects in the release namespace, read by every replica and kept across restarts; local keeps them on each node (state.db with the sqlite driver, audit-spool.db with kube), so a replica shows only its own. Every event is also a "log":"audit" log line.<br>Allowed: one of auto \| database \| auditlog \| local.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__STORE` |
 | <a id="audit.retention"></a>`audit.retention` | `duration` | `9600h` | cluster | **Keep audit events for.** How long stored audit events are kept, e.g. 9600h (400 days); at least 24h. The log lines are kept by your log system, not by kudurru.<br>*host-only, restart*<br>Environment: `KUDURRU_AUDIT__RETENTION` |
 
+## credentials
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="credentials.allowedFiles"></a>`credentials.allowedFiles` | `string[]` | `[]` | node | **Allowed credential files.** Exact absolute credential file paths that stored identity providers and integrations may reference, e.g. /run/secrets/cloudflare-token. Empty grants no file access; editing a public provider object cannot extend this list.<br>*host-only, restart*<br>Environment: `KUDURRU_CREDENTIALS__ALLOWEDFILES` |
+| <a id="credentials.allowedEnvironment"></a>`credentials.allowedEnvironment` | `string[]` | `[]` | node | **Allowed credential environment variables.** Environment variable names that stored integrations may reference for credentials, e.g. CLOUDFLARE\_API\_TOKEN. Empty grants no environment access; values stay on this host.<br>*host-only, restart*<br>Environment: `KUDURRU_CREDENTIALS__ALLOWEDENVIRONMENT` |
+
 ## rbac
 
 | Key | Type | Default | Scope | Description |

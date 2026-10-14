@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
@@ -15,6 +14,10 @@ import (
 // SecretResolver reads a key of a Secret in the release namespace (the
 // clientSecretRef of an IdentityProvider in Kubernetes).
 type SecretResolver func(ctx context.Context, name, key string) (string, error)
+
+// FileResolver is an explicitly delegated host capability. Stored objects do
+// not acquire filesystem access merely by naming a path.
+type FileResolver func(ctx context.Context, path string) (string, error)
 
 // configEntry is one auth.identityProviders[] entry: the IdentityProvider
 // spec plus its id.
@@ -52,7 +55,7 @@ func ParseConfigEntry(m map[string]any) (*internalv1.IdentityProvider, error) {
 // match a User or Group binding meant for a local account; an explicit ""
 // disables the prefix. The result still needs ProviderConfig.Validate
 // (NewProvider calls it).
-func FromIdentityProvider(ctx context.Context, idp *internalv1.IdentityProvider, secrets SecretResolver) (ProviderConfig, error) {
+func FromIdentityProvider(ctx context.Context, idp *internalv1.IdentityProvider, secrets SecretResolver, files ...FileResolver) (ProviderConfig, error) {
 	s := idp.Spec
 	cfg := ProviderConfig{
 		ID: idp.Name, DisplayName: s.DisplayName, Issuer: s.Issuer, ClientID: s.ClientID,
@@ -74,18 +77,21 @@ func FromIdentityProvider(ctx context.Context, idp *internalv1.IdentityProvider,
 	}
 	switch {
 	case s.ClientSecretFile != "":
-		b, err := os.ReadFile(s.ClientSecretFile)
-		if err != nil {
-			return cfg, fmt.Errorf("oidc provider %q: clientSecretFile: %w", idp.Name, err)
+		if len(files) != 1 || files[0] == nil {
+			return cfg, fmt.Errorf("oidc provider %q: file credential requires a host grant", idp.Name)
 		}
-		cfg.ClientSecret = strings.TrimSpace(string(b))
+		value, err := files[0](ctx, s.ClientSecretFile)
+		if err != nil {
+			return cfg, fmt.Errorf("oidc provider %q: file credential unavailable", idp.Name)
+		}
+		cfg.ClientSecret = strings.TrimSpace(value)
 	case s.ClientSecretRef != nil:
 		if secrets == nil {
 			return cfg, fmt.Errorf("oidc provider %q: clientSecretRef needs the Kubernetes store driver; use clientSecretFile", idp.Name)
 		}
 		v, err := secrets(ctx, s.ClientSecretRef.Name, s.ClientSecretRef.Key)
 		if err != nil {
-			return cfg, fmt.Errorf("oidc provider %q: clientSecretRef %s/%s: %w", idp.Name, s.ClientSecretRef.Name, s.ClientSecretRef.Key, err)
+			return cfg, fmt.Errorf("oidc provider %q: Secret credential unavailable", idp.Name)
 		}
 		cfg.ClientSecret = strings.TrimSpace(v)
 	default:

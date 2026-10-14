@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/oidc"
 	eerbac "github.com/robertherbaugh/kudurru/ee/rbac"
 	"github.com/robertherbaugh/kudurru/internal/auth"
@@ -44,6 +46,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/credentials"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -536,7 +539,7 @@ func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) erro
 		// Config entries own their IDs even while construction is deferred.
 		// Never replace unavailable configured trust with a stored provider.
 		seen[e.idp.Name] = true
-		p, err := s.buildProvider(ctx, e.idp)
+		p, err := s.buildProvider(ctx, e.idp, e.origin == "auth.identityProviders")
 		if err != nil {
 			if first && e.origin == "auth.identityProviders" {
 				if s.opts.RetryUnavailable == nil || !s.opts.RetryUnavailable(err) {
@@ -576,8 +579,27 @@ func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) erro
 	return nil
 }
 
-func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvider) (*oidc.Provider, error) {
-	pc, err := oidc.FromIdentityProvider(ctx, idp, s.secrets)
+func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvider, trustedConfig bool) (*oidc.Provider, error) {
+	files := slices.Clone(s.cfg.Credentials.AllowedFiles)
+	if trustedConfig && idp.Spec.ClientSecretFile != "" {
+		// This separate capability comes only from the host-owned config
+		// entry. Stored objects do not inherit its access to the same path.
+		path, err := filepath.Abs(idp.Spec.ClientSecretFile)
+		if err != nil {
+			return nil, fmt.Errorf("oidc provider %q: invalid configured credential path", idp.Name)
+		}
+		idp = idp.DeepCopy()
+		idp.Spec.ClientSecretFile = path
+		files = append(files, path)
+	}
+	grants, err := credentials.New(credentials.Options{Files: files, FingerprintKey: s.opts.Keys.Current})
+	if err != nil {
+		return nil, err
+	}
+	pc, err := oidc.FromIdentityProvider(ctx, idp, s.secrets, func(ctx context.Context, path string) (string, error) {
+		value, err := grants.Resolve(ctx, publicv1.CredentialReference{File: path})
+		return string(value.Bytes), err
+	})
 	if err != nil {
 		return nil, err
 	}
