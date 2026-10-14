@@ -108,6 +108,7 @@ func (s *Stage) transfer(req *pipeline.Request, gate zone.Gate, z *zone.Zone) *p
 			s.countTransfer(z, TransferFormErr)
 			r := pipeline.Reply(req, dns.RcodeFormatError, pipeline.StatusAuthoritative)
 			r.Upstream = upstreamName(z)
+			r.Origin = pipeline.OriginFailure
 			s.finish(req, r.Msg)
 			return r
 		}
@@ -132,6 +133,7 @@ func (s *Stage) transfer(req *pipeline.Request, gate zone.Gate, z *zone.Zone) *p
 func (s *Stage) refused(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 	r := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL)
 	r.Upstream = upstreamName(z)
+	r.Origin = pipeline.OriginFailure
 	s.finish(req, r.Msg)
 	return r
 }
@@ -140,7 +142,7 @@ func (s *Stage) refused(req *pipeline.Request, z *zone.Zone) *pipeline.Response 
 // to date, or must retry over TCP (RFC 1995 §2, §4).
 func (s *Stage) soaOnly(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 	m := s.xfrMsg(req, []dns.RR{z.SOA()})
-	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: pipeline.OriginAuthoritative, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 }
 
 // axfr streams the whole zone. Msg is the first message; Transfer yields
@@ -153,7 +155,7 @@ func (s *Stage) axfr(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 		first = s.xfrMsg(req, c)
 		break
 	}
-	resp := &pipeline.Response{Msg: first, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	resp := &pipeline.Response{Msg: first, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: pipeline.OriginAuthoritative, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 	resp.Transfer = func(yield func(*dns.Msg) bool) {
 		i := 0
 		for c := range chunks {

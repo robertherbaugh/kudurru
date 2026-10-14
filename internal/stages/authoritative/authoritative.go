@@ -15,6 +15,7 @@
 package authoritative
 
 import (
+	"context"
 	"net/netip"
 	"time"
 
@@ -90,6 +91,10 @@ type Stage struct {
 	ChunkBytes int
 	// Now controls secondary expiry checks, including CNAME targets.
 	Now func() time.Time
+	// Capture optionally supplies one request-pinned serving view.
+	Capture func(*pipeline.Request) zone.Set
+	// StubQuery performs bounded exchanges to captured discovered IP endpoints.
+	StubQuery func(context.Context, *zone.Zone, *dns.Msg) (*dns.Msg, error)
 }
 
 var (
@@ -136,7 +141,12 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return next(req)
 	}
 
-	set := s.zones()
+	var set zone.Set
+	if s.Capture != nil {
+		set = s.Capture(req)
+	} else {
+		set = s.zones()
+	}
 	if set == nil {
 		return s.unsynced(req, zone.GateUnsynced), nil
 	}
@@ -160,10 +170,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if !z.QueryAllowed(client) {
 		r := pipeline.Reply(req, dns.RcodeRefused, pipeline.StatusRefusedACL)
 		r.Upstream = upstreamName(z)
+		r.Origin = pipeline.OriginFailure
 		s.finish(req, r.Msg)
 		return r, nil
 	}
-	if !z.AvailableAt(s.now()) {
+	if !z.RoutingAvailableAt(s.now()) {
 		return s.secondaryUnavailable(req, z), nil
 	}
 	if q.Qtype == dns.TypeAXFR || q.Qtype == dns.TypeIXFR {
@@ -180,7 +191,14 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			}
 		}
 		req.UpstreamGroup = z.UpstreamGroup()
+		req.DNSSECValidation = z.DNSSECValidation()
 		return next(req)
+	}
+	if z.Type() == v1alpha1.ZoneTypeStub {
+		if gate != zone.GateOpen {
+			return s.unsynced(req, gate), nil
+		}
+		return s.stubReply(req, set, z, next, 0)
 	}
 	if gate == zone.GateStale {
 		// Primary data older than maxAge is not served at all (§4.4).
@@ -257,7 +275,7 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 	for {
 		target := last.Target
 		z2 := set.Match(target)
-		if z2 != nil && z2.QueryAllowed(client) && !z2.AvailableAt(s.now()) {
+		if z2 != nil && z2.QueryAllowed(client) && !z2.RoutingAvailableAt(s.now()) {
 			return s.secondaryUnavailable(req, z2), nil
 		}
 		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary) && z2.QueryAllowed(client) {
@@ -277,6 +295,23 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 				return s.reply(req, z2, &r2, answer), nil
 			}
 		}
+		if z2 != nil && z2.Type() == v1alpha1.ZoneTypeStub && z2.QueryAllowed(client) {
+			if set.Gate() != zone.GateOpen {
+				return s.unsynced(req, set.Gate()), nil
+			}
+			sub := subRequest(req, target, q.Qtype, q.Qclass)
+			sub.Msg.RecursionDesired = req.Msg.RecursionDesired
+			resp, err := s.stubReply(sub, set, z2, next, last.Hops)
+			if err == nil && resp != nil && resp.Msg != nil && resp.Msg.Rcode == dns.RcodeServerFailure && len(resp.Msg.Answer) == 0 {
+				out := *resp
+				out.Msg = resp.Msg.Copy()
+				out.Msg.Id = req.Msg.Id
+				out.Msg.Question = append([]dns.Question(nil), req.Msg.Question...)
+				out.Msg.RecursionDesired, out.Msg.CheckingDisabled = req.Msg.RecursionDesired, req.Msg.CheckingDisabled
+				return &out, nil
+			}
+			return s.splice(req, z, answer, resp, err), nil
+		}
 		if !req.Msg.RecursionDesired || (z2 != nil && !z2.QueryAllowed(client)) {
 			// No recursion requested (or the target zone refuses this
 			// client): the partial chain is the answer.
@@ -285,6 +320,7 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 		sub := subRequest(req, target, q.Qtype, q.Qclass)
 		if z2 != nil && z2.Type() == v1alpha1.ZoneTypeForward {
 			sub.UpstreamGroup = z2.UpstreamGroup()
+			sub.DNSSECValidation = z2.DNSSECValidation()
 		}
 		resp, err := next(sub)
 		return s.splice(req, z, answer, resp, err), nil
@@ -305,6 +341,9 @@ func (s *Stage) now() time.Time {
 func (s *Stage) secondaryUnavailable(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
 	r := s.unsynced(req, zone.GateUnsynced)
 	r.Upstream = "secondary:unavailable:" + z.Name()
+	if z.Type() == v1alpha1.ZoneTypeStub {
+		r.Upstream = "stub:unavailable:" + z.Name()
+	}
 	return r
 }
 
@@ -322,6 +361,7 @@ func subRequest(req *pipeline.Request, target string, qtype, qclass uint16) *pip
 	sub.Msg = m
 	sub.Zone = nil
 	sub.UpstreamGroup = ""
+	sub.DNSSECValidation = nil
 	return &sub
 }
 
@@ -332,6 +372,8 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 	if err != nil || resp == nil || resp.Msg == nil {
 		r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUpstream)
 		r.Upstream = upstreamName(z)
+		r.Origin = pipeline.OriginFailure
+		r.Modified = len(chain) > 0
 		r.Msg.Answer = chain
 		s.finish(req, r.Msg)
 		return r
@@ -353,12 +395,16 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 		security = pipeline.DNSSECBogus
 	}
 	return &pipeline.Response{
-		Msg:      out,
-		Status:   resp.Status,
-		Upstream: resp.Upstream,
-		List:     resp.List,
-		Rule:     resp.Rule,
-		DNSSEC:   security,
+		Msg:       out,
+		Status:    resp.Status,
+		Upstream:  resp.Upstream,
+		List:      resp.List,
+		Rule:      resp.Rule,
+		Origin:    pipeline.OriginMixed,
+		Modified:  true,
+		Security:  pipeline.Security{State: pipeline.ValidationUnknown},
+		Cacheable: false,
+		DNSSEC: security,
 	}
 }
 
@@ -374,7 +420,18 @@ func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, ans
 		m.Extra = res.Extra
 	}
 	s.finish(req, m)
-	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z)}
+	modified := res.Wildcard || len(answer) != len(res.Answer)
+	hasDNAME, hasCNAME := false, false
+	for _, rr := range answer {
+		hasDNAME = hasDNAME || rr.Header().Rrtype == dns.TypeDNAME
+		hasCNAME = hasCNAME || rr.Header().Rrtype == dns.TypeCNAME
+	}
+	modified = modified || (hasDNAME && hasCNAME)
+	origin := pipeline.OriginAuthoritative
+	if res.Kind == zone.Loop {
+		origin = pipeline.OriginFailure
+	}
+	return &pipeline.Response{Msg: m, Status: pipeline.StatusAuthoritative, Upstream: upstreamName(z), Origin: origin, Modified: modified, Security: pipeline.Security{State: pipeline.ValidationUnknown}}
 }
 
 // unsynced is the answer while the zone cache cannot vouch for the data
@@ -382,6 +439,7 @@ func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, ans
 // a local zone may own.
 func (s *Stage) unsynced(req *pipeline.Request, gate zone.Gate) *pipeline.Response {
 	r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUnsynced)
+	r.Origin = pipeline.OriginFailure
 	r.Upstream = UpstreamUnsynced
 	if gate == zone.GateStale {
 		r.Upstream = UpstreamStale

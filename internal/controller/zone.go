@@ -14,6 +14,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 )
 
 // NextSerial is the serial rule of decision D12: max(prev+1, unix_now),
@@ -40,16 +41,24 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	if !ok || cur == nil {
 		return false, nil // deleted
 	}
-	if cur.Spec.Type == v1alpha1.ZoneTypeSecondary {
+	if cur.Spec.Type == v1alpha1.ZoneTypeSecondary || cur.Spec.Type == v1alpha1.ZoneTypeStub {
 		// A shared status cannot attest to every node's independent copy.
 		// In particular, never run the primary serial stamper for this type.
+		reason, message := "PerNodeTransfer", "Each node transfers independently; inspect that node's secondary status for its served serial and expiry."
+		ready := metav1.ConditionUnknown
+		if cur.Spec.Type == v1alpha1.ZoneTypeStub {
+			reason, message = "PerNodeDiscovery", "Each node discovers nameservers independently; inspect that node's stub status for routing availability and expiry."
+			if err := stub.ValidateConfig(cur); err != nil {
+				ready, reason, message = metav1.ConditionFalse, v1alpha1.ReasonInvalid, "spec.stub: "+err.Error()
+			}
+		}
 		next := cur.DeepCopy()
 		next.Status.ObservedGeneration = cur.Generation
 		next.Status.Serial, next.Status.RecordCount, next.Status.ContentHash = 0, 0, ""
 		next.Status.NameserverAddresses = nil
 		meta.SetStatusCondition(&next.Status.Conditions, metav1.Condition{
-			Type: v1alpha1.ConditionReady, Status: metav1.ConditionUnknown,
-			Reason: "PerNodeTransfer", Message: "Each node transfers independently; inspect that node's secondary status for its served serial and expiry.",
+			Type: v1alpha1.ConditionReady, Status: ready,
+			Reason: reason, Message: message,
 			ObservedGeneration: cur.Generation, LastTransitionTime: metav1.NewTime(c.opts.Now().Truncate(time.Second)),
 		})
 		meta.RemoveStatusCondition(&next.Status.Conditions, v1alpha1.ConditionDegraded)

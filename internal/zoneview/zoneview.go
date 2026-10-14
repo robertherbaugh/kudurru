@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -60,6 +61,15 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 				zones = append(zones, z)
 				continue
 			}
+			if dz.Spec.Type == v1alpha1.ZoneTypeStub {
+				z, err := zone.BuildStubPlaceholder(dz)
+				if err != nil {
+					logger.Warn("stub zone skipped", "zone", dz.Name, "error", err)
+					continue
+				}
+				zones = append(zones, z)
+				continue
+			}
 			sets := zone.ServedRecordSets(dz, objects.RecordSetsForZone(dz.Name))
 			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now()})
 			if z == nil {
@@ -91,6 +101,7 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 type Source struct {
 	Cache     *zonecache.Cache
 	Secondary *secondary.Manager
+	Stub      *stub.Manager
 }
 
 var _ authoritative.Source = Source{}
@@ -106,9 +117,12 @@ func (s Source) Zones() zone.Set {
 	if !ok || zs == nil {
 		return unsynced{}
 	}
-	base := zs.WithGate(Gate(snap))
+	var base zone.Set = zs.WithGate(Gate(snap))
 	if s.Secondary != nil {
-		return secondarySet{Set: base, copies: s.Secondary.Snapshot()}
+		base = secondarySet{Set: base, copies: s.Secondary.Snapshot()}
+	}
+	if s.Stub != nil {
+		base = stubSet{Set: base, copies: s.Stub.Snapshot()}
 	}
 	return base
 }
@@ -151,3 +165,21 @@ type unsynced struct{}
 func (unsynced) Synced() bool            { return false }
 func (unsynced) Gate() zone.Gate         { return zone.GateUnsynced }
 func (unsynced) Match(string) *zone.Zone { return nil }
+
+// stubSet resolves only the exact configured immutable stub placeholder.
+type stubSet struct {
+	zone.Set
+	copies *stub.Snapshot
+}
+
+func (s stubSet) Match(name string) *zone.Zone {
+	z := s.Set.Match(name)
+	if z != nil && z.Type() == v1alpha1.ZoneTypeStub {
+		if id := z.StubIdentity(); id != "" {
+			if route := s.copies.Lookup(id); route != nil {
+				return route
+			}
+		}
+	}
+	return z
+}
