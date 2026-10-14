@@ -243,15 +243,15 @@ func (s *validation) wildcard(r records, zone, name, ce string) error {
 		return nil
 	}
 	if len(p.nsec3) > 0 {
-		exact, err := s.n3exact(p, ce)
-		if err != nil {
-			return err
-		}
+		// RFC 5155 section 8.8: the verified wildcard answer's RRSIG
+		// establishes the closest encloser. Only next-closer coverage is
+		// required here; an exact closest-encloser NSEC3 is not required in
+		// a positive wildcard response (and BIND omits it).
 		covered, err := s.n3cover(p, nc, false)
 		if err != nil {
 			return err
 		}
-		if exact != nil && covered {
+		if covered {
 			return nil
 		}
 	}

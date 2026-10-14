@@ -54,7 +54,7 @@ func newFixture(t *testing.T) *fixture {
 }
 func (f *fixture) sign(zone signedZone, rrs ...dns.RR) []dns.RR {
 	f.t.Helper()
-	sig := &dns.RRSIG{Hdr: dns.RR_Header{Name: rrs[0].Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: rrs[0].Header().Ttl}, Algorithm: zone.key.Algorithm, KeyTag: zone.key.KeyTag(), SignerName: zone.key.Hdr.Name, Inception: uint32(f.now.Add(-time.Hour).Unix()), Expiration: uint32(f.now.Add(2 * time.Hour).Unix())}
+	sig := &dns.RRSIG{Hdr: dns.RR_Header{Name: rrs[0].Header().Name, Rrtype: dns.TypeRRSIG, Class: dns.ClassINET, Ttl: rrs[0].Header().Ttl}, Algorithm: zone.key.Algorithm, KeyTag: zone.key.KeyTag(), SignerName: zone.key.Hdr.Name, Inception: uint32(f.now.Add(-time.Hour).Unix() & 0xffffffff), Expiration: uint32(f.now.Add(2*time.Hour).Unix() & 0xffffffff)}
 	if err := sig.Sign(zone.signer, rrs); err != nil {
 		f.t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestLiteralWildcardAndMalformedProof(t *testing.T) {
 		if err == nil || r.Security.State != pipeline.ValidationBogus {
 			t.Fatalf("nil answer accepted: %v", err)
 		}
-		lookup := func(ctx context.Context, name string, typ uint16) (*dns.Msg, error) {
+		lookup := func(_ context.Context, name string, typ uint16) (*dns.Msg, error) {
 			return f.reply(name, typ, 0, []dns.RR{rr}, nil), nil
 		}
 		answer = f.positive("www.example.")
@@ -244,6 +244,7 @@ func TestAuthenticatedNegativeNSECAndAliases(t *testing.T) {
 	f.check(v, alias, pipeline.ValidationSecure)
 	for _, bad := range []string{"proof_missing", "type_exists", "name_exists", "signature"} {
 		t.Run(bad, func(t *testing.T) {
+			f.t = t
 			m := nx.Copy()
 			switch bad {
 			case "proof_missing":
@@ -315,6 +316,43 @@ func TestNSEC3NegativeWildcardAndWorkLimits(t *testing.T) {
 	r, err := v.Validate(ctx, m.Question[0], m, f.lookup)
 	if err == nil || r.Security.State != pipeline.ValidationIndeterminate {
 		t.Fatal("canceled validation succeeded")
+	}
+}
+
+func TestNSEC3PositiveWildcardWithoutClosestEncloserRecord(t *testing.T) {
+	f := newFixture(t)
+	v := f.validator(Options{})
+	wild := f.sign(f.child, f.rr("*.wild.example. 60 IN A 192.0.2.1"))
+	for _, rr := range wild {
+		rr.Header().Name = "child.wild.example."
+	}
+	// A positive answer's authenticated RRSIG labels establish wild.example.
+	// as its closest encloser. BIND sends only next-closer coverage here,
+	// without an exact NSEC3 for that encloser (RFC 5155 section 8.8).
+	hash := dns.HashName("other.example.", 1, 0, "")
+	n3 := f.rr(hash + ".example. 300 IN NSEC3 1 0 0 - " + hash + " A RRSIG")
+	m := f.reply("child.wild.example.", dns.TypeA, 0, wild, f.sign(f.child, n3))
+	f.check(v, m, pipeline.ValidationSecure)
+	for _, bad := range []string{"missing", "optout", "not_covered", "signature"} {
+		t.Run(bad, func(t *testing.T) {
+			f.t = t
+			answer := m.Copy()
+			switch bad {
+			case "missing":
+				answer.Ns = nil
+			case "optout":
+				answer.Ns[0].(*dns.NSEC3).Flags = 1
+				answer.Ns = f.sign(f.child, answer.Ns[0])
+			case "not_covered":
+				h := dns.HashName("child.wild.example.", 1, 0, "")
+				answer.Ns[0].Header().Name = h + ".example."
+				answer.Ns[0].(*dns.NSEC3).NextDomain = h
+				answer.Ns = f.sign(f.child, answer.Ns[0])
+			case "signature":
+				answer.Ns[1].(*dns.RRSIG).Signature = "AA=="
+			}
+			f.check(v, answer, pipeline.ValidationBogus)
+		})
 	}
 }
 

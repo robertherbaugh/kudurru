@@ -32,9 +32,9 @@ func TestAnchorMaterialValidation(t *testing.T) {
 				t.Fatalf("valid material rejected: %v", err)
 			}
 			for _, bad := range []string{"", "%%%", k.PublicKey + "\n", base64.StdEncoding.EncodeToString([]byte{1, 2, 3}), base64.StdEncoding.EncodeToString(make([]byte, 64)), base64.StdEncoding.EncodeToString(make([]byte, 32))} {
-				copy := dns.Copy(k).(*dns.DNSKEY)
-				copy.PublicKey = bad
-				if _, err := New(Options{Anchors: []dns.RR{copy}}); err == nil {
+				badKey := dns.Copy(k).(*dns.DNSKEY)
+				badKey.PublicKey = bad
+				if _, err := New(Options{Anchors: []dns.RR{badKey}}); err == nil {
 					t.Fatalf("invalid key material accepted for algorithm %d", alg)
 				}
 			}

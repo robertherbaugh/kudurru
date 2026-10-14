@@ -104,7 +104,7 @@ spec:
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil { //nolint:gosec // test-owned temporary fixture paths
 		t.Fatal(err)
 	}
 	if err := os.Rename(tmp, path); err != nil {

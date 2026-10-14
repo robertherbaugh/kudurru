@@ -3,6 +3,7 @@
 package dnssec
 
 import (
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/base64"
@@ -26,11 +27,13 @@ type NTA struct {
 	ExpiresAt time.Time
 }
 
+// Limits bounds proof retrieval and cryptographic work for each validation.
 type Limits struct {
 	Queries, Hops, RRsets, Signatures, WireBytes, HashWork int
 	NSEC3Iterations                                        uint16
 }
 
+// Options supplies immutable trust configuration and per-query work bounds.
 type Options struct {
 	// Nil anchors uses the shipped IANA root DS set. An empty non-nil set is invalid.
 	Anchors []dns.RR
@@ -55,6 +58,7 @@ func RootAnchors() []dns.RR {
 	return out
 }
 
+// Validator validates with a fixed set of trust anchors and temporary exceptions.
 type Validator struct {
 	anchors map[string][]dns.RR
 	ntas    []NTA
@@ -63,6 +67,7 @@ type Validator struct {
 	id      [32]byte
 }
 
+// New validates configuration and takes private copies of trust material.
 func New(opts Options) (*Validator, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -166,6 +171,7 @@ func supported(a uint8) bool {
 	return false
 }
 
+// ContextID identifies the configured trust material for cache isolation.
 func (v *Validator) ContextID() [32]byte { return v.id }
 
 func (v *Validator) anchorBoundary(name string) string {
@@ -208,7 +214,7 @@ func validPublicKey(k *dns.DNSKEY) bool {
 		modulus := new(big.Int).SetBytes(b[off+n:])
 		return e.Cmp(big.NewInt(3)) >= 0 && e.Bit(0) == 1 && modulus.BitLen() >= 1024 && modulus.BitLen() <= 8192 && modulus.Bit(0) == 1
 	case dns.ECDSAP256SHA256, dns.ECDSAP384SHA384:
-		var curve elliptic.Curve = elliptic.P256()
+		curve := elliptic.P256()
 		size := 64
 		if k.Algorithm == dns.ECDSAP384SHA384 {
 			curve = elliptic.P384()
@@ -217,8 +223,8 @@ func validPublicKey(k *dns.DNSKEY) bool {
 		if len(b) != size {
 			return false
 		}
-		x, y := elliptic.Unmarshal(curve, append([]byte{4}, b...))
-		return x != nil && y != nil
+		_, err := ecdsa.ParseUncompressedPublicKey(curve, append([]byte{4}, b...))
+		return err == nil
 	case dns.ED25519:
 		if len(b) != 32 {
 			return false
@@ -250,6 +256,8 @@ func validPublicKey(k *dns.DNSKEY) bool {
 	}
 	return false
 }
+
+// Now returns the validator clock, shared by trust expiry and cache checks.
 func (v *Validator) Now() time.Time { return v.now() }
 
 func (v *Validator) exception(name string, now time.Time) (time.Time, bool) {

@@ -9,7 +9,10 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
+// LookupFunc retrieves unmodified proof records using the captured resolver route.
 type LookupFunc func(context.Context, string, uint16) (*dns.Msg, error)
+
+// Result contains a private response and locally established security evidence.
 type Result struct {
 	Msg      *dns.Msg
 	Security pipeline.Security
@@ -313,7 +316,7 @@ func (s *validation) answerSet(k rrkey, a, ns records) error {
 		return err
 	}
 	if sig := s.selected[k]; sig != nil {
-		if int(sig.Labels) < dns.CountLabel(k.name) && !(strings.HasPrefix(k.name, "*.") && int(sig.Labels) == dns.CountLabel(k.name)-1) {
+		if int(sig.Labels) < dns.CountLabel(k.name) && (!strings.HasPrefix(k.name, "*.") || int(sig.Labels) != dns.CountLabel(k.name)-1) {
 			if err := s.proofSets(ns, dns.CanonicalName(sig.SignerName)); err != nil {
 				return err
 			}
@@ -351,7 +354,7 @@ func (s *validation) validateSet(k rrkey, r records) (bool, error) {
 	if len(sigs) > s.v.limits.Signatures {
 		return false, incomplete("signature_limit")
 	}
-	var last error = bogus("invalid_signature", dns.ExtendedErrorCodeDNSBogus)
+	last := bogus("invalid_signature", dns.ExtendedErrorCodeDNSBogus)
 	for _, sig := range sigs {
 		zone := dns.CanonicalName(sig.SignerName)
 		if !dns.IsSubDomain(zone, k.name) || k.typ != dns.TypeDS && !dns.IsSubDomain(s.v.anchorBoundary(k.name), zone) {
@@ -573,10 +576,11 @@ func (s *validation) verify(rs []dns.RR, sigs []*dns.RRSIG, keys []*dns.DNSKEY) 
 			continue
 		}
 		// RFC serial arithmetic maps the 32-bit expiration into this epoch.
-		remaining := int64(int32(sig.Expiration - uint32(s.now.Unix())))
+		nowSerial := uint32(s.now.Unix() & 0xffffffff)
+		remaining := int64(int32(sig.Expiration - nowSerial)) //nolint:gosec // RFC 1982 signed serial difference intentionally wraps
 		if remaining <= 0 || !sig.ValidityPeriod(s.now) {
 			code := uint16(dns.ExtendedErrorCodeSignatureExpired)
-			if int32(sig.Inception-uint32(s.now.Unix())) > 0 {
+			if int32(sig.Inception-nowSerial) > 0 { //nolint:gosec // RFC 1982 signed serial difference intentionally wraps
 				code = dns.ExtendedErrorCodeSignatureNotYetValid
 			}
 			last = bogus("signature_time", code)
@@ -585,7 +589,7 @@ func (s *validation) verify(rs []dns.RR, sigs []*dns.RRSIG, keys []*dns.DNSKEY) 
 		for _, key := range keys {
 			if sig.Verify(key, rs) == nil {
 				deadline := s.now.Truncate(time.Second).Add(time.Duration(remaining) * time.Second)
-				lifetime := uint32(deadline.Sub(s.now) / time.Second)
+				lifetime := uint32(deadline.Sub(s.now) / time.Second) //nolint:gosec // positive and bounded by the signed 32-bit remaining lifetime
 				for _, rr := range rs {
 					ttl := min(rr.Header().Ttl, sig.OrigTtl, sig.Hdr.Ttl, lifetime)
 					rr.Header().Ttl = ttl
