@@ -252,7 +252,7 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 			return writeResult{}, err
 		}
 	}
-	opts := store.ApplyOptions{Manager: manager, Force: force}
+	opts := store.ApplyOptions{Manager: manager, Force: force, CreateOnly: req.createOnly}
 	if existing != nil {
 		// Optimistic concurrency between the read above and the write.
 		opts.ExpectedResourceVersion = existing.GetResourceVersion()
