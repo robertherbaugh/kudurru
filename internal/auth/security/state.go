@@ -67,6 +67,9 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 	if err != nil {
 		return err
 	}
+	if err := validateCombined(rows, encoded); err != nil {
+		return err
+	}
 	for _, row := range encoded {
 		if err := tx.PutSection(ctx, "security", row); err != nil {
 			return err
@@ -100,11 +103,12 @@ func rejectLegacyFactors(ctx context.Context, tx *sqlite.CommandTx) error {
 // State is a transaction-bound edit. Its methods expose no mutable snapshot and
 // cannot lower floors, reuse session IDs or remove unexpired enrollments.
 type State struct {
-	tx       *sqlite.CommandTx
-	before   []replication.Entry
-	value    servingauth.Security
-	changed  bool
-	finished bool
+	tx        *sqlite.CommandTx
+	before    []replication.Entry
+	otherRows int
+	value     servingauth.Security
+	changed   bool
+	finished  bool
 }
 
 // Load captures a complete validated owner state in the admitted transaction.
@@ -120,7 +124,8 @@ func Load(ctx context.Context, tx *sqlite.CommandTx) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &State{tx: tx, before: owned(rows), value: v}, nil
+	before := owned(rows)
+	return &State{tx: tx, before: before, otherRows: len(rows) - len(before), value: v}, nil
 }
 
 func owned(rows []replication.Entry) []replication.Entry {
@@ -142,7 +147,7 @@ func (s *State) valid() error {
 }
 
 func (s *State) capacity() error {
-	if len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions) >= servingauth.MaxRows-1 {
+	if s.otherRows+len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions) >= servingauth.MaxRows-1 {
 		return servingauth.ErrBounds
 	}
 	return nil
@@ -323,7 +328,8 @@ func (s *State) Commit(ctx context.Context) error {
 		return ErrConflict
 	}
 	if !s.changed {
-		return nil
+		_, err := servingauth.DecodeSecurity(current)
+		return err
 	}
 	if s.value.Epoch == math.MaxUint64 {
 		return servingauth.ErrBounds
@@ -331,6 +337,9 @@ func (s *State) Commit(ctx context.Context) error {
 	s.value.Epoch++
 	next, err := servingauth.EncodeSecurity(s.value)
 	if err != nil {
+		return err
+	}
+	if err := validateCombined(current, next); err != nil {
 		return err
 	}
 	keep := make(map[string]bool, len(next))
@@ -348,4 +357,17 @@ func (s *State) Commit(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// validateCombined accounts for every owner in the shared section, including
+// changes staged after Load. Replacing only our rows preserves other owners.
+func validateCombined(current, next []replication.Entry) error {
+	combined := append([]replication.Entry(nil), next...)
+	for _, row := range current {
+		if !strings.HasPrefix(row.Key, "auth/") {
+			combined = append(combined, row)
+		}
+	}
+	_, err := servingauth.DecodeSecurity(combined)
+	return err
 }

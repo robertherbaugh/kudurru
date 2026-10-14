@@ -36,6 +36,12 @@ deletion and regrant. Cookies issued at or before a floor are rejected. The new
 version 2 cookie requires its matching enrollment, so activating this owner will
 require users of legacy sealed cookies to sign in again.
 
+Startup initialization and security commands account for every owner's rows in
+the shared security section. They check the combined count and byte limits before
+staging a new auth manifest, including other rows staged after the command loaded
+auth state. Exceeding those limits rolls back the complete command; another
+owner's capacity cannot silently make the next authentication image unreadable.
+
 ```mermaid
 flowchart LR
     I["One complete image"] --> C["Sealed auth cut"]
