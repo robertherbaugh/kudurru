@@ -213,6 +213,10 @@ type Validation struct {
 	Limits         Limits
 	ValidateObject func(json.RawMessage) error
 	ValidateEntry  func(section string, entry Entry) error
+	// ValidateImage checks cross-row owner inventories after generic validation
+	// and digest verification. The image is detached from the accepted encoding;
+	// mutations cannot change the returned Validated value. No I/O is permitted.
+	ValidateImage func(*Image) error
 }
 
 type InstallOptions struct {

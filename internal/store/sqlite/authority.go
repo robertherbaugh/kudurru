@@ -397,6 +397,9 @@ func (s *Store) Promote(ctx context.Context, req replication.PromoteRequest) (re
 	if !image.Generation().Same(req.ExpectedInstalled) || !image.Term.Same(a.Term) {
 		return a, replication.ErrCAS
 	}
+	if _, err := s.ValidateImage(ctx, *image); err != nil {
+		return a, err
+	}
 	if a.MaxObservedEpoch == math.MaxUint64 || a.Incarnation == math.MaxUint64 {
 		return a, replication.ErrInvalid
 	}

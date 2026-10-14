@@ -349,6 +349,9 @@ func validate(i Image, opts Validation) error {
 	if digest != i.PayloadSHA256 {
 		return fmt.Errorf("%w: digest mismatch", ErrInvalid)
 	}
+	if opts.ValidateImage != nil {
+		return opts.ValidateImage(&i)
+	}
 	return nil
 }
 

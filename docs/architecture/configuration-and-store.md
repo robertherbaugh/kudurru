@@ -529,6 +529,13 @@ secondary/stub copies, query logs and response caches remain local. Cluster
 settings have one designated future owner, `Kudurru/default`; the image carries
 an owner reference, not a second settings map.
 
+Complete-image owner validators run after the generic envelope, row and digest
+checks. They enforce cross-row inventories that individual row validators cannot
+prove. SQLite repeats them before replica installation, serving-candidate
+admission and promotion. Opening a database and reading its raw generation remain
+available to explicit startup migrations; neither operation grants serving or HA
+eligibility. Local mutation commands still enforce their own owner invariants.
+
 Every mutation checks its captured member/term/incarnation token inside the
 writer transaction. Observing an authenticated higher epoch durably fences
 the old primary; equal-epoch conflicting promotions stop writes until an

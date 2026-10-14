@@ -67,6 +67,11 @@ func (s *Store) ReadServingCandidate(ctx context.Context) (*replication.Image, G
 	if err != nil {
 		return nil, GenerationToken{}, err
 	}
+	if s.opts.ValidateReplicaImage != nil {
+		if _, err := s.ValidateImage(ctx, *image); err != nil {
+			return nil, GenerationToken{}, err
+		}
+	}
 	a, err := readAuthority(ctx, tx)
 	if err != nil {
 		return nil, GenerationToken{}, err

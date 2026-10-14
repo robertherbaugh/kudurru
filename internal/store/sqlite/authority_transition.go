@@ -37,6 +37,15 @@ func (s *Store) EnablePrimary(ctx context.Context, expected replication.Generati
 	if !current.Same(expected) {
 		return a, replication.ErrCAS
 	}
+	if s.opts.ValidateReplicaImage != nil {
+		image, err := s.readGeneration(ctx, tx)
+		if err != nil {
+			return a, err
+		}
+		if _, err := s.ValidateImage(ctx, *image); err != nil {
+			return a, err
+		}
+	}
 	if a.Mode == replication.Primary && !s.writeBlocked.Load() {
 		return a, nil
 	}

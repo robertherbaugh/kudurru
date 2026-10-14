@@ -22,7 +22,7 @@ func (s *Store) replicationValidation(ctx context.Context) replication.Validatio
 		ki := s.kinds.byKind[k]
 		kinds = append(kinds, replication.Kind{APIVersion: ki.gvk.GroupVersion().String(), Kind: string(k)})
 	}
-	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: kinds, Limits: s.opts.ReplicationLimits, ValidateEntry: s.opts.ValidateReplicaEntry, ValidateObject: func(raw json.RawMessage) error {
+	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: kinds, Limits: s.opts.ReplicationLimits, ValidateImage: s.opts.ValidateReplicaImage, ValidateEntry: s.opts.ValidateReplicaEntry, ValidateObject: func(raw json.RawMessage) error {
 		obj, err := s.replicaObject(raw)
 		if err != nil {
 			return err

@@ -108,6 +108,12 @@ type Options struct {
 	// ValidateReplicaObject checks owner-specific encrypted documents without
 	// importing IAM into the store. It receives a defensive copy.
 	ValidateReplicaObject func(json.RawMessage) error
+	// ValidateReplicaImage checks complete owner inventories after generic
+	// replica validation and before serving-candidate admission or promotion.
+	// It must be pure, bounded and immutable after Open. Open/ReadGeneration
+	// intentionally permit legacy state for explicit transactional migration;
+	// local mutation commands remain responsible for their owner invariants.
+	ValidateReplicaImage func(*replication.Image) error
 	// Validator checks every Apply and UpdateStatus. Default: validator.New()
 	// (compiles the CEL rules of the embedded CRDs; build one per process
 	// and share it when the process already has one).
