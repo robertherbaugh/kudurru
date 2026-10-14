@@ -96,8 +96,19 @@ consumption inside the actual command transaction. Session issuance then loads
 that staged state and enrolls the session in the same transaction. A later
 failure rolls both changes back; concurrent use of one code can enroll only
 one session. Immutable auth views cannot consume a code or accept a factor
-password login. Enrollment, recovery, rate limiting and public routes remain
-part of the pending production workflow.
+password login.
+
+The current command layer also supports factor setup, confirmation, removal and
+administrator recovery. Setup verifies the current local password and existing
+factor, then returns a five-minute purpose-separated challenge and provisioning
+secret through an explicit disclosure API. The challenge binds the exact account
+UID/resource version, prior seed version, keyring and dependency identity.
+Confirmation rechecks current proof, verifies a code from the new seed, and commits
+the seed, replay consumption and session revocation together. Rotation preserves
+the old replay floor; removal and recovery retain the disabled replay row. Recovery
+separately requires current users/write permission and the exact target UID.
+Concurrent confirmation can enroll once; failed callbacks consume nothing.
+Public routes, shared rate limiting and UI remain part of production integration.
 
 ```mermaid
 flowchart LR

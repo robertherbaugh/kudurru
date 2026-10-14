@@ -63,24 +63,9 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 	if d.Principal.Kind != auth.KindUser || d.Principal.Provider != "local" || d.Principal.AccountUID == "" || d.Settings == nil {
 		return Enrollment{}, servingauth.ErrUnsupported
 	}
-	raw, err := json.Marshal(d.Settings.Spec.Settings)
-	if err != nil {
-		return Enrollment{}, servingauth.ErrInvalid
-	}
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		return Enrollment{}, servingauth.ErrInvalid
-	}
-	defaults, err := config.FromFlat(config.Defaults())
+	cfg, err := localLoginConfig(d)
 	if err != nil {
 		return Enrollment{}, err
-	}
-	cfg, _, err := config.ApplyClusterDocument(defaults, document)
-	if err != nil {
-		return Enrollment{}, servingauth.ErrInvalid
-	}
-	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !d.Principal.BuiltinAdmin {
-		return Enrollment{}, servingauth.ErrDenied
 	}
 	if now.IsZero() || cfg.Auth.Session.Lifetime.Std() <= 0 || cfg.Auth.Session.IdleTimeout.Std() <= 0 {
 		return Enrollment{}, servingauth.ErrInvalid
@@ -105,6 +90,32 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 		return Enrollment{}, err
 	}
 	return Enrollment{id: id, csrf: csrf}, nil
+}
+
+func localLoginConfig(d servingauth.SessionDecision) (*config.Config, error) {
+	if d.Settings == nil {
+		return nil, servingauth.ErrInvalid
+	}
+	raw, err := json.Marshal(d.Settings.Spec.Settings)
+	if err != nil {
+		return nil, servingauth.ErrInvalid
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, servingauth.ErrInvalid
+	}
+	defaults, err := config.FromFlat(config.Defaults())
+	if err != nil {
+		return nil, err
+	}
+	cfg, _, err := config.ApplyClusterDocument(defaults, document)
+	if err != nil {
+		return nil, servingauth.ErrInvalid
+	}
+	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !d.Principal.BuiltinAdmin {
+		return nil, servingauth.ErrDenied
+	}
+	return cfg, nil
 }
 
 func randomID() string {
