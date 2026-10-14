@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -62,6 +63,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -395,7 +397,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
-	reg.MustRegister(zoneview.NewCollector(zc)) // kudurru_zone_serial, kudurru_zone_records (§11.6)
 
 	// Blocklists (§7.3, D15): the leader fetches, every node pulls bodies by
 	// digest over the internal listener (D47) and compiles locally.
@@ -450,6 +451,23 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if encKeys.Generated {
 		logger.Info("generated the encryption key", "path", encKeys.Path)
 	}
+	// Every replica receives external zones independently. The cluster key
+	// binds persisted copies even during an apiserver outage; rotating it
+	// requires fresh transfers rather than trusting an unrelated local copy.
+	keyring, err := dnsserver.KeyringFromConfig(cfg.TSIGKeys)
+	if err != nil {
+		return err
+	}
+	secondaryCluster := sha256.Sum256(append([]byte("kudurru/secondary/cluster/v1:"), encKey...))
+	secondaries, err := secondary.New(secondary.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", secondaryCluster), Keyring: keyring,
+		Receiver: &secondary.TransferClient{Keyring: keyring}, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	reg.MustRegister(zoneview.NewCollector(zc, secondaries))
+	reg.MustRegister(secondary.NewCollector(secondaries))
 	var (
 		internalClient *internalapi.Client
 		internalSrv    *internalapi.Server
@@ -496,7 +514,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			// Zones and serials for the edge supervisors (§3.6 step 5).
 			Zones: func(context.Context) internalapi.ZoneList {
 				zl := internalapi.ZoneList{Node: cfg.Node.Name}
-				for _, z := range zoneview.Served(zc) {
+				for _, z := range zoneview.Served(zc, secondaries) {
 					zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Name(), Serial: z.Serial(), Type: string(z.Type())})
 				}
 				return zl
@@ -646,7 +664,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 
-	auth := authoritative.New(zoneview.Source{Cache: zc})
+	auth := authoritative.New(zoneview.Source{Cache: zc, Secondary: secondaries})
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
 
@@ -672,10 +690,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())
 
 	// TSIG keys for transfers and NOTIFY (RFC 8945).
-	keyring, err := dnsserver.KeyringFromConfig(cfg.TSIGKeys)
-	if err != nil {
-		return err
-	}
 	tsigFailures := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "kudurru_dns_tsig_failures_total", Help: "Requests rejected for their TSIG (RFC 8945), by error."}, []string{"error"})
 	reg.MustRegister(tsigFailures)
 
@@ -859,7 +873,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
-		InternalClient: internalClient, License: lic,
+		InternalClient: internalClient, License: lic, Secondaries: secondaries,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
@@ -940,6 +954,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}{
 		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
+		{"secondaries", false, secondaries.Run},
 		{"settings", false, func(ctx context.Context) error {
 			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
 			if settingsManager != nil {
