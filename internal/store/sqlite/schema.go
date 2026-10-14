@@ -38,6 +38,7 @@ var migrations = []migration{
 	{version: 2, name: "replication authority and owned sections", up: migrate2},
 	{version: 3, name: "bind stored credentials to account identities", up: migrateCredentialUIDs},
 	{version: 4, name: "move service account authority to private identities", up: migratePrincipalStates},
+	{version: 5, name: "convert public IAM configuration and references", up: migratePublicIAM},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;

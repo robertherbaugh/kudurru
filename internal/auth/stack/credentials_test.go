@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +19,7 @@ func credentialProvider(file string) *internalv1.IdentityProvider {
 	return &internalv1.IdentityProvider{
 		ObjectMeta: metav1.ObjectMeta{Name: "corp"},
 		Spec: internalv1.IdentityProviderSpec{
-			Issuer: "https://sso.example", ClientID: "kudurru", ClientSecretFile: file,
+			Issuer: "https://sso.example", ClientID: "kudurru", ClientSecretRef: &publicv1.CredentialReference{File: file},
 			RedirectURL: "https://dns.example/api/v1/auth/oidc/corp/callback",
 		},
 	}
@@ -56,6 +57,28 @@ func TestStoredProviderRequiresExactHostGrant(t *testing.T) {
 	}
 }
 
+func TestStoredProviderEnvironmentReferenceUsesHostGrant(t *testing.T) {
+	t.Setenv("IAM_TEST_CREDENTIAL", "private-test-value")
+	obj := credentialProvider("")
+	obj.Spec.ClientSecretRef = &publicv1.CredentialReference{Env: "IAM_TEST_CREDENTIAL"}
+	for _, allowed := range []bool{false, true} {
+		t.Run(fmt.Sprint(allowed), func(t *testing.T) {
+			yaml := testConfig
+			if allowed {
+				yaml += "\ncredentials:\n  allowedEnvironment: [IAM_TEST_CREDENTIAL]\n"
+			}
+			e := newEnv(t, authtest.Memory(t), yaml)
+			p, err := e.s.buildProvider(e.ctx, obj, false)
+			if (err == nil) != allowed {
+				t.Fatal("environment capability did not follow host grant")
+			}
+			if allowed && p.Config().ClientSecret != "private-test-value" {
+				t.Fatal("granted credential not loaded")
+			}
+		})
+	}
+}
+
 func TestConfiguredProviderKeepsNameAndSeparateFileCapability(t *testing.T) {
 	authtest.Drivers(t, func(t *testing.T, st store.Store) {
 		file := filepath.Join(t.TempDir(), "configured-secret")
@@ -64,7 +87,7 @@ func TestConfiguredProviderKeepsNameAndSeparateFileCapability(t *testing.T) {
 		}
 		obj := credentialProvider("")
 		obj.Spec.Issuer = "https://different.example"
-		obj.Spec.ClientSecretRef = &internalv1.SecretKeyRef{Name: "stored", Key: "secret"}
+		obj.Spec.ClientSecretRef = &publicv1.CredentialReference{SecretRef: &publicv1.CredentialSecretRef{Name: "stored", Key: "secret"}}
 		if _, err := st.Apply(t.Context(), obj, store.ApplyOptions{Manager: "test"}); err != nil {
 			t.Fatal(err)
 		}

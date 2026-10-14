@@ -251,6 +251,11 @@ rules:
       - policies
       - unblockrequests
       - dhcpscopes
+      - integrations
+      - kudurrus
+      - identityproviders
+      - rolebindings
+      - serviceaccounts
     verbs:
       - get
       - list
@@ -268,6 +273,10 @@ rules:
       - policies/status
       - unblockrequests/status
       - dhcpscopes/status
+      - integrations/status
+      - kudurrus/status
+      - identityproviders/status
+      - serviceaccounts/status
     verbs:
       - update
       - patch

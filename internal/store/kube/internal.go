@@ -27,8 +27,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
-// Internal kinds (Options.InternalKinds: LocalUser, APIToken, ServiceAccount,
-// RoleBinding, IdentityProvider from api/internalkinds/v1alpha1) are not
+// Internal kinds (Options.InternalKinds: LocalUser, APIToken, PrincipalState
+// from api/internalkinds/v1alpha1) are not
 // CRDs (D26: password and token hashes stay out of `kubectl get`). The
 // driver keeps each object as one Secret in Options.Namespace:
 //

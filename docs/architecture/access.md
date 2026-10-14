@@ -123,8 +123,8 @@ Stored providers can read only exact file paths granted by the operator in
 `credentials.allowedFiles`. This node setting is host-only and requires a
 restart; it is excluded from canonical cluster settings and replication.
 The resolver bounds reads to 64 KiB, requires a regular file, and redacts
-credential-resolution errors. `credentials.allowedEnvironment` reserves the
-equivalent host capability for integration credentials; OIDC does not use it.
+credential-resolution errors. `credentials.allowedEnvironment` grants named
+environment variables to credential references; values remain local.
 A host-configured `auth.identityProviders` entry separately delegates access
 to its configured secret file, without granting that path to stored objects.
 Config entries retain precedence over same-name stored providers even if their
@@ -187,6 +187,32 @@ without matching private authority, bootstrap refuses to elevate it. A crash
 between creating a new account and recording authority can leave an unprivileged
 account; local administrator recovery remains available. Ordinary annotations
 and name reuse cannot grant bootstrap privileges.
+
+ServiceAccount, RoleBinding and IdentityProvider now share the public CRD
+object model. Safe exports include their configuration while continuing to
+omit LocalUser, APIToken and PrincipalState. IdentityProvider uses
+`clientSecretRef` with exactly one `secretRef`, `file` or `env` capability;
+the old `clientSecretFile` field remains accepted only in host configuration.
+Credential Secret namespaces are chosen by the operator, never by public spec.
+
+SQLite schema 5 converts the old file/Secret references in the migration
+transaction, preserving UIDs, creation order, ownership, status and token hashes.
+It validates public admission and rolls back the entire upgrade if a legacy
+document is malformed, ambiguous or exceeds the migration bounds. Conversion
+does not read a file or grant its path. Kubernetes uses new server-issued CRD
+UIDs and therefore needs the offline journal and credential mappings currently
+under implementation; this schema checkpoint alone is not an upgrade-complete
+Kubernetes release.
+
+```mermaid
+flowchart LR
+    Legacy["Legacy IAM configuration"] --> Convert["Bounded strict conversion"]
+    Convert --> Public["Public SA / RoleBinding / IdP"]
+    Public --> Ref["Credential reference"]
+    Ref --> Host["Host-granted resolver"]
+    Private["Private token / user / PrincipalState"] --> UID["Exact account UID binding"]
+    UID --> Public
+```
 
 ### The CLI
 

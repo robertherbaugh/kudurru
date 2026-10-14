@@ -581,23 +581,30 @@ func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) erro
 
 func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvider, trustedConfig bool) (*oidc.Provider, error) {
 	files := slices.Clone(s.cfg.Credentials.AllowedFiles)
-	if trustedConfig && idp.Spec.ClientSecretFile != "" {
+	if trustedConfig && idp.Spec.ClientSecretRef != nil && idp.Spec.ClientSecretRef.File != "" {
 		// This separate capability comes only from the host-owned config
 		// entry. Stored objects do not inherit its access to the same path.
-		path, err := filepath.Abs(idp.Spec.ClientSecretFile)
+		path, err := filepath.Abs(idp.Spec.ClientSecretRef.File)
 		if err != nil {
 			return nil, fmt.Errorf("oidc provider %q: invalid configured credential path", idp.Name)
 		}
 		idp = idp.DeepCopy()
-		idp.Spec.ClientSecretFile = path
+		idp.Spec.ClientSecretRef.File = path
 		files = append(files, path)
 	}
-	grants, err := credentials.New(credentials.Options{Files: files, FingerprintKey: s.opts.Keys.Current})
+	options := credentials.Options{Files: files, Environment: s.cfg.Credentials.AllowedEnvironment, Namespace: s.opts.Namespace, FingerprintKey: s.opts.Keys.Current}
+	if s.secrets != nil {
+		options.Secret = func(ctx context.Context, _, name, key string) ([]byte, error) {
+			value, err := s.secrets(ctx, name, key)
+			return []byte(value), err
+		}
+	}
+	grants, err := credentials.New(options)
 	if err != nil {
 		return nil, err
 	}
-	pc, err := oidc.FromIdentityProvider(ctx, idp, s.secrets, func(ctx context.Context, path string) (string, error) {
-		value, err := grants.Resolve(ctx, publicv1.CredentialReference{File: path})
+	pc, err := oidc.FromIdentityProvider(ctx, idp, func(ctx context.Context, ref publicv1.CredentialReference) (string, error) {
+		value, err := grants.Resolve(ctx, ref)
 		return string(value.Bytes), err
 	})
 	if err != nil {

@@ -55,6 +55,9 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&DHCPScope{}, &DHCPScopeList{},
 		&Integration{}, &IntegrationList{},
 		&Kudurru{}, &KudurruList{},
+		&ServiceAccount{}, &ServiceAccountList{},
+		&RoleBinding{}, &RoleBindingList{},
+		&IdentityProvider{}, &IdentityProviderList{},
 	)
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil

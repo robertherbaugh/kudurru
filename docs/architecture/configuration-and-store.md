@@ -226,9 +226,9 @@ erDiagram
 | `LocalUser` | cluster | internal | local account with an Argon2id hash |
 | `APIToken` | cluster | internal | SHA-256 of a `kdr_` token, owned by a user or service account |
 | `PrincipalState` | cluster | internal | private bootstrap authority bound to an exact service-account UID |
-| `ServiceAccount` | namespaced | internal | a non-human principal |
-| `RoleBinding` | namespaced | internal | role at a scope for users, groups, service accounts |
-| `IdentityProvider` | cluster | internal | an OIDC provider |
+| `ServiceAccount` | namespaced | public | a non-human principal; credentials and bootstrap authority stay private |
+| `RoleBinding` | namespaced | public | role at a scope for users, groups, service accounts |
+| `IdentityProvider` | cluster | public | an OIDC provider with operator-granted credential references |
 
 The bootstrap seeds four objects on the first start, with owner `bootstrap`:
 the root forward zone `.` → `default`, `ClientGroup default` (all
