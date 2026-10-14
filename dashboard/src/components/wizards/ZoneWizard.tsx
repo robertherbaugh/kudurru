@@ -54,6 +54,7 @@ export interface Draft {
   fallbackGroup: string;
   primaries: string[];
   tsigKeyRef: string;
+  transferProtocol: 'tcp' | 'tls';
 }
 
 export const EMPTY: Draft = {
@@ -75,6 +76,7 @@ export const EMPTY: Draft = {
   fallbackGroup: '',
   primaries: [],
   tsigKeyRef: '',
+  transferProtocol: 'tcp',
 };
 
 const DNSSEC = [
@@ -110,7 +112,7 @@ export function zoneFromDraft(d: Draft): DNSZone {
   } else if (d.type === 'secondary') {
     spec.secondary = {
       primaries: cleanList(d.primaries),
-      transferProtocol: 'tcp',
+      transferProtocol: d.transferProtocol,
       ...(d.tsigKeyRef.trim() ? { tsigKeyRef: d.tsigKeyRef.trim() } : {}),
     };
   } else {
@@ -244,7 +246,7 @@ export function secondaryError(d: Draft): string | null {
   );
 }
 
-/** Inbound AXFR configuration, shared by creation and settings editing. */
+/** Inbound transfer configuration, shared by creation and settings editing. */
 export function SecondaryFields({ d, set }: { d: Draft; set: SetDraft }) {
   return (
     <>
@@ -257,6 +259,16 @@ export function SecondaryFields({ d, set }: { d: Draft; set: SetDraft }) {
         itemError={primaryEndpointError}
         addLabel="Add primary server"
       />
+      <ChoiceCards
+        label="Transfer transport"
+        value={d.transferProtocol}
+        onChange={(v) => set('transferProtocol', v === 'tls' ? 'tls' : 'tcp')}
+        choices={[
+          { value: 'tcp', label: 'TCP', description: 'Standard DNS transfers without encryption.' },
+          { value: 'tls', label: 'TLS', description: "Encrypted transfers. The primary's certificate must match its configured hostname or IP and be trusted by every node." },
+        ]}
+        help="Both use port 53 when no port is specified. For a primary listening on the standard TLS port, enter its hostname with :853."
+      />
       <TextField
         label="TSIG key name"
         isOptional
@@ -267,7 +279,7 @@ export function SecondaryFields({ d, set }: { d: Draft; set: SetDraft }) {
         help="Optional key name configured on every node and the primary. Leave empty for unsigned transfers."
         error={tsigKeyNameError(d.tsigKeyRef) ?? undefined}
       />
-      <Text type="supporting">Transfers use AXFR over TCP. Refresh, retry, expiry and record TTLs come from the primary's SOA and records.</Text>
+      <Text type="supporting">The first copy uses AXFR; later changes use IXFR when available. Refresh, retry, expiry and record TTLs come from the primary's SOA and records.</Text>
     </>
   );
 }
@@ -295,6 +307,7 @@ export function draftFromZone(spec: DNSZoneSpec): Draft {
     fallbackGroup: spec.fallback?.upstreamGroup ?? '',
     primaries: spec.secondary?.primaries ?? [],
     tsigKeyRef: spec.secondary?.tsigKeyRef ?? '',
+    transferProtocol: spec.secondary?.transferProtocol === 'tls' ? 'tls' : 'tcp',
   };
 }
 
@@ -322,7 +335,7 @@ export function applyDraft(spec: DNSZoneSpec, d: Draft): DNSZoneSpec {
     if (Object.keys(policy).length) next.policy = policy;
     else delete next.policy;
   } else if (d.type === 'secondary') {
-    next.secondary = { ...spec.secondary, primaries: built.secondary?.primaries ?? [] };
+    next.secondary = { ...spec.secondary, primaries: built.secondary?.primaries ?? [], transferProtocol: d.transferProtocol };
     if (built.secondary?.tsigKeyRef) next.secondary.tsigKeyRef = built.secondary.tsigKeyRef;
     else delete next.secondary.tsigKeyRef;
   } else {
@@ -506,7 +519,7 @@ function Review({ d }: { d: Draft }) {
       ) : s.type === 'secondary' ? (
         <>
           <MetadataListItem label="Primary servers">{s.secondary?.primaries.join(', ')}</MetadataListItem>
-          <MetadataListItem label="Transfer">AXFR over TCP; default port 53</MetadataListItem>
+          <MetadataListItem label="Transfer">AXFR/IXFR over {s.secondary?.transferProtocol === 'tls' ? 'verified TLS' : 'TCP'}; default port 53</MetadataListItem>
           <MetadataListItem label="TSIG key name">{s.secondary?.tsigKeyRef ?? 'None (unsigned transfers)'}</MetadataListItem>
           <MetadataListItem label="SOA timers">From the primary</MetadataListItem>
         </>

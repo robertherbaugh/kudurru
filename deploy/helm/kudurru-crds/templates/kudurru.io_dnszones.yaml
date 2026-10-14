@@ -387,8 +387,10 @@ spec:
                     type: array
                   transferProtocol:
                     default: tcp
-                    description: TransferProtocol currently supports TCP. TLS is reserved
-                      and fails closed.
+                    description: |-
+                      TransferProtocol selects TCP or TLS with certificate and endpoint-name
+                      verification against the node's trust store. There is no plaintext fallback.
+                      Both protocols default to port 53; specify :853 for a standard TLS endpoint.
                     enum:
                     - tcp
                     - tls

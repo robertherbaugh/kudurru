@@ -18,7 +18,7 @@ func TestSecondaryConfigurationValidation(t *testing.T) {
 		{name: "empty primaries", secondary: &v1alpha1.SecondarySpec{Primaries: []string{}}},
 		{name: "empty endpoint", secondary: &v1alpha1.SecondarySpec{Primaries: []string{""}}},
 		{name: "tcp", valid: true, secondary: &v1alpha1.SecondarySpec{Primaries: []string{"primary.example:5300"}, TransferProtocol: "tcp"}},
-		{name: "reserved tls", valid: true, secondary: &v1alpha1.SecondarySpec{Primaries: []string{"[2001:db8::1]:853"}, TransferProtocol: "tls"}},
+		{name: "tls", valid: true, secondary: &v1alpha1.SecondarySpec{Primaries: []string{"[2001:db8::1]:853"}, TransferProtocol: "tls"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			z := typedSample(t, "DNSZone").(*v1alpha1.DNSZone)

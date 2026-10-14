@@ -116,7 +116,7 @@ describe('ZoneWizardDialog', () => {
     expect(screen.queryByRole('textbox', { name: /^Responsible mailbox/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const review = await screen.findByTestId('zone-review');
-    expect(review).toHaveTextContent('AXFR over TCP; default port 53');
+    expect(review).toHaveTextContent('AXFR/IXFR over TCP; default port 53');
     expect(review).toHaveTextContent('transfer-key.example.');
     expect(review).toHaveTextContent('From the primary');
     fireEvent.click(screen.getByRole('button', { name: 'Create zone' }));

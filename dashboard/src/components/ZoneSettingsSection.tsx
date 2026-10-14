@@ -34,9 +34,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   const z = obj.data;
   if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward' && z.spec.type !== 'secondary')) return null;
   const value = draftFromZone(z.spec);
-  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' :
-    z.spec.type === 'secondary' && z.spec.secondary?.transferProtocol === 'tls'
-      ? 'TLS transfers are not supported here. Set transferProtocol to tcp in the zone configuration to edit these settings.' : undefined;
+  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' : undefined;
 
   const save = async (d: Draft) => {
     try {
@@ -59,7 +57,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   return (
     <EditableSection<Draft>
       title="Zone settings"
-      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : value.type === 'secondary' ? 'Primary servers and the key used for AXFR over TCP. SOA timers and TTLs come from the primary.' : 'Where queries for the zone are sent.'}
+      description={value.type === 'primary' ? 'Name servers, TTLs and SOA timers, and who may query the zone.' : value.type === 'secondary' ? 'Primary servers, transfer transport and TSIG key. SOA timers and TTLs come from the primary.' : 'Where queries for the zone are sent.'}
       value={value}
       readOnlyReason={roReason}
       testId="section-zone-settings"
@@ -81,7 +79,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
         ) : value.type === 'secondary' ? (
           <MetadataList columns="multi">
             <MetadataListItem label="Primary servers">{value.primaries.length ? value.primaries.join(', ') : <Text color="secondary">none configured</Text>}</MetadataListItem>
-            <MetadataListItem label="Transfer">{z.spec.secondary?.transferProtocol === 'tls' ? 'TLS (unsupported)' : 'AXFR over TCP; default port 53'}</MetadataListItem>
+            <MetadataListItem label="Transfer">AXFR/IXFR over {value.transferProtocol === 'tls' ? 'verified TLS' : 'TCP'}; default port 53</MetadataListItem>
             <MetadataListItem label="TSIG key name">{value.tsigKeyRef || <Text color="secondary">none (unsigned transfers)</Text>}</MetadataListItem>
           </MetadataList>
         ) : (

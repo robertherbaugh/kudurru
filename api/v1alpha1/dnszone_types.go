@@ -135,7 +135,9 @@ type SecondarySpec struct {
 	// TSIGKeyRef names a key configured in every replica's local keyring.
 	// +optional
 	TSIGKeyRef string `json:"tsigKeyRef,omitempty"`
-	// TransferProtocol currently supports TCP. TLS is reserved and fails closed.
+	// TransferProtocol selects TCP or TLS with certificate and endpoint-name
+	// verification against the node's trust store. There is no plaintext fallback.
+	// Both protocols default to port 53; specify :853 for a standard TLS endpoint.
 	// +kubebuilder:validation:Enum=tcp;tls
 	// +kubebuilder:default=tcp
 	// +optional

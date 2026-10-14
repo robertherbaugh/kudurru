@@ -87,7 +87,7 @@ Validation: secondary zones require secondary configuration (`self.type != 'seco
 | `spec.recordSetSelector.namespaces` | `[]string` |  |
 | `spec.secondary` | `object` | SecondarySpec configures a secondary zone (v0.2). |
 | `spec.secondary.primaries` | `[]string` | **Required.** Primaries are ordered hostnames or IP addresses with optional ports (default 53). Use brackets around IPv6 addresses when specifying a port.<br>Items: at least 1 |
-| `spec.secondary.transferProtocol` | `string` | TransferProtocol currently supports TCP. TLS is reserved and fails closed.<br>Default: `tcp`<br>One of: `tcp`, `tls` |
+| `spec.secondary.transferProtocol` | `string` | TransferProtocol selects TCP or TLS with certificate and endpoint-name verification against the node's trust store. There is no plaintext fallback. Both protocols default to port 53; specify :853 for a standard TLS endpoint.<br>Default: `tcp`<br>One of: `tcp`, `tls` |
 | `spec.secondary.tsigKeyRef` | `string` | TSIGKeyRef names a key configured in every replica's local keyring. |
 | `spec.soa` | `object` | SOASpec holds primary-zone SOA fields. The leader computes primary serials in status (D12); secondaries retain the external primary's complete SOA. |
 | `spec.soa.expire` | `integer` | Default: `1209600`<br>Format: `int32` |

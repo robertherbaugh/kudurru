@@ -118,14 +118,14 @@ describe('ZoneSettingsSection', () => {
     expect(await within(section).findByText('Resolve through resolver')).toBeInTheDocument();
   });
 
-  function seedSecondary() {
+  function seedSecondary(protocol: 'tcp' | 'tls' = 'tcp') {
     const z = {
       apiVersion: 'kudurru.io/v1alpha1' as const, kind: 'DNSZone' as const,
       metadata: { name: 'secondary.example', resourceVersion: '12', labels: { owner: 'dns-team' } },
       status: { serial: 123 },
       spec: {
         zoneName: 'secondary.example.', type: 'secondary' as const,
-        secondary: { primaries: ['ns1.example.com'], tsigKeyRef: 'old-key.', transferProtocol: 'tcp' as const },
+        secondary: { primaries: ['ns1.example.com'], tsigKeyRef: 'old-key.', transferProtocol: protocol },
         policy: { queryAccess: 'allowOnlyPrivate' as const, zoneTransfer: 'deny' as const },
       },
     };
@@ -133,14 +133,16 @@ describe('ZoneSettingsSection', () => {
     return z;
   }
 
-  it('saves secondary settings with If-Match while preserving policy and metadata', async () => {
-    const z = seedSecondary();
+  it.each(['tcp', 'tls'] as const)('saves secondary settings from %s with If-Match while preserving policy and metadata', async (protocol) => {
+    const z = seedSecondary(protocol);
     renderWithApp(<ZoneSettingsSection zone={z.metadata.name} own={ownership('api')} />);
     const section = await screen.findByTestId('section-zone-settings');
     const edit = within(section).getByRole('button', { name: 'Edit Zone settings' });
     await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(edit);
     expect(within(section).queryByRole('combobox', { name: 'Refresh' })).not.toBeInTheDocument();
+    expect(within(section).getByRole('radio', { name: protocol.toUpperCase() })).toBeChecked();
+    fireEvent.click(within(section).getByRole('radio', { name: 'TLS' }));
     fireEvent.change(within(section).getByRole('textbox', { name: 'Primary servers 1' }), { target: { value: 'ns2.example.com:5353' } });
     fireEvent.change(within(section).getByRole('textbox', { name: /^TSIG key name/ }), { target: { value: '' } });
     const saveRequest = vi.fn();
@@ -152,7 +154,7 @@ describe('ZoneSettingsSection', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Save Zone settings' }));
     await waitFor(() => expect(saveRequest).toHaveBeenCalledWith('12', {
       apiVersion: z.apiVersion, kind: z.kind, metadata: z.metadata,
-      spec: { ...z.spec, secondary: { primaries: ['ns2.example.com:5353'], transferProtocol: 'tcp' } },
+      spec: { ...z.spec, secondary: { primaries: ['ns2.example.com:5353'], transferProtocol: 'tls' } },
     }));
     await waitFor(() => expect(within(section).queryByRole('button', { name: 'Save Zone settings' })).not.toBeInTheDocument());
   });
