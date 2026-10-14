@@ -91,6 +91,7 @@ type (
 		Namespace string `json:"namespace,omitempty" doc:"The service account's namespace."`
 		ID        string `json:"id,omitempty" doc:"The owner's principal id (local:alice, oidc:...)."`
 		Provider  string `json:"provider,omitempty" doc:"local, or the identity provider id."`
+		UID       string `json:"uid,omitempty" doc:"Immutable account identity for local users and service accounts."`
 	}
 	// CreatedToken is the answer of POST /auth/tokens; Token, the kdr_
 	// secret, is shown this once.

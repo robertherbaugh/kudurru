@@ -4230,6 +4230,9 @@ type TokenOwner struct {
 
 	// Provider local, or the identity provider id.
 	Provider *string `json:"provider,omitempty"`
+
+	// Uid Immutable account identity for local users and service accounts.
+	Uid *string `json:"uid,omitempty"`
 }
 
 // TokenOwnerKind defines model for TokenOwner.Kind.

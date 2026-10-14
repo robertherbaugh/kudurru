@@ -6959,6 +6959,10 @@
           "provider": {
             "description": "local, or the identity provider id.",
             "type": "string"
+          },
+          "uid": {
+            "description": "Immutable account identity for local users and service accounts.",
+            "type": "string"
           }
         },
         "required": [

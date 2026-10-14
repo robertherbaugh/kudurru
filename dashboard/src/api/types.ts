@@ -393,6 +393,7 @@ export interface TokenOwner {
   namespace?: string;
   id?: string;
   provider?: string;
+  uid?: string;
 }
 
 /** GET /auth/tokens row (stack TokenInfo); never the secret. */
