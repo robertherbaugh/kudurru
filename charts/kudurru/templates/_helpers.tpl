@@ -302,6 +302,8 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if or (not (regexMatch "^[0-9]+$" (toString .preemptDelay))) (gt (int .preemptDelay) 1000) }}{{ fail "keepalived VIP preemptDelay must be an integer in 0-1000" }}{{ end -}}
 {{- if hasKey $names .name }}{{ fail "keepalived VIP names must be unique" }}{{ end -}}
 {{- if hasKey $vrids (toString .vrid) }}{{ fail "keepalived VIP VRIDs must be unique" }}{{ end -}}
+{{/* Compare host text without the prefix length. Alternate IPv6 spellings
+are checked by the supervisor's parsed-address validation. */}}
 {{- $address := first (splitList "/" .address) -}}
 {{- if hasKey $addresses $address }}{{ fail "keepalived VIP addresses must be unique" }}{{ end -}}
 {{- $_ := set $names .name true -}}

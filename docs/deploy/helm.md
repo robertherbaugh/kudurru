@@ -302,16 +302,25 @@ vip:
 ```
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
-override `interface` and set `preemptDelay` (0-1000 seconds). Names and
-VRIDs and addresses must be unique, even when prefix lengths differ. VIPs
+override `interface` and set `preemptDelay` (0-1000 seconds). Names, VRIDs,
+and addresses must be unique, even when prefix lengths differ. VIPs
 and unicast peers must use the same address family. The first VIP prefers
-the first node by name; the second reverses
-priorities, allowing active/active ownership. By default `nopreempt` keeps
+the first node by name; the second reverses priorities, allowing
+active/active ownership. By default `nopreempt` keeps
 ownership stable after recovery; use `kudurru vip rebalance` or an entry's
 `preemptDelay` to restore the preferred owner. Leaving `vrrpInterface`
 empty preserves the existing behavior: VRRP uses each VIP's interface.
 Peer discovery still uses Kubernetes Node InternalIPs, which must be
 reachable through the VRRP interface.
+
+Helm compares address text without the prefix length; it does not
+canonicalize IPv6. Write IPv6 addresses consistently in lowercase,
+compressed notation so Helm can detect duplicates. Equivalent spellings
+such as `2001:db8::1/64` and `2001:DB8:0::1/128` can pass `helm template`,
+but the supervisor compares parsed IP addresses and refuses them before
+starting keepalived. This also covers IPv4-embedded IPv6 spellings such as
+`::ffff:192.0.2.1` and `::ffff:c000:201`. A successful Helm render alone
+does not prove IPv6 address uniqueness.
 
 For an unnumbered VIP interface, select a numbered VRRP interface carrying
 the Node InternalIP. Allow IP protocol 112 between the selected nodes on
