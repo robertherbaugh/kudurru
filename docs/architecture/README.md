@@ -110,11 +110,11 @@ code. The main gaps between the two:
 
 | Planned in the design record | State in the code |
 |---|---|
-| Complete pipeline (`local`, `rewrite`, …) | 9 installed stages, including DNSSEC and the postprocess wrapper; local and rewrite remain reserved |
+| Complete pipeline (`local`, `rewrite`, …) | 10 installed stages, including DNSSEC, configured rewrites and the postprocess wrapper; `local` remains reserved |
 | `follower` and `raft` store drivers | `kube` and `sqlite` only |
 | scatter-gather across nodes | the node list, the stats and the query log are gathered over `:8082` (or read from the central database with `database.dsn`); `/nodes/{other}/health` returns 501 |
 | cluster-wide temporary disable of blocking | per node, in memory |
-| client match by MAC, hostname, DoT/DoH client ID | match by IP and CIDR (the index supports the rest; no transport fills them in) |
+| client match by MAC, hostname, DoT/DoH client ID | immutable inventory matching and opt-in encrypted-transport IDs are implemented; provider inventory filling and edge ID rendering remain in progress |
 | `cluster.role: static` read-only twins | no such key; each twin is an independent sqlite node |
 | secondary zones, NOTIFY in, dynamic UPDATE | independent secondary AXFR/IXFR over TCP/TLS with authenticated NOTIFY fan-out; dynamic UPDATE remains in progress |
 | DHCP server support | DHCPv4 ships in v0.1.0 on Linux: SQLite standalone or three-node quorum failover, or the Kubernetes store with `DHCPScope`/`DHCPLease` objects and one elected replica behind a relay; dashboard setup, direct/relayed subnets, conflict checks, advanced network/boot options, live management, lease import/export and persistent A/PTR ownership; DHCPv6 is excluded |
