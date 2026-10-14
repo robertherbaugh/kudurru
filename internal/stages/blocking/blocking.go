@@ -65,6 +65,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/rpz"
 )
 
 // DefaultBlockTTL is the block response TTL when neither the policy nor
@@ -86,6 +87,10 @@ type IndexSource interface {
 
 // Options configures the stage.
 type Options struct {
+	// RPZ supplies required transferred feeds from the request's pinned
+	// policy/configuration cut. Nil selection means no selected feeds; errors
+	// fail capture. The stage pins its result once and inherits it in targets.
+	RPZ func(*pipeline.Request) (*rpz.Selection, error)
 	// Context supplies operator-published client names/tags for rule matching.
 	// The stage always pins question fields and source IP from the request.
 	Context func(*pipeline.Request) engine.Context
@@ -290,6 +295,15 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	}
 	q := req.Msg.Question[0]
 	ctx := s.ruleContext(req)
+	if req.Msg.RecursionDesired && s.opts.RPZ != nil {
+		selected, err := s.pinRPZ(req)
+		if err != nil {
+			return nil, err
+		}
+		if selected != nil {
+			return s.serveRPZ(req, d, ctx, selected, next)
+		}
+	}
 	bd := d.Selection.EvaluateContext(ctx)
 	switch bd.Action {
 	case engine.ActionBlock:

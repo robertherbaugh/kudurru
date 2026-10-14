@@ -31,6 +31,10 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 	}
 	out := Spec{Name: name, Mode: mode}
 	for i, src := range spec.Sources {
+		if IsRPZSource(src) {
+			out.ExternalPolicy = out.ExternalPolicy || src.IsEnabled()
+			continue
+		}
 		sname := SourceName(i, src)
 		format := parser.Format(src.Format)
 		if lines, f, exclude, ok := InlineLines(src); ok {
@@ -58,6 +62,9 @@ func SpecFromAPI(name string, spec *v1alpha1.BlockListSpec, open SourceOpener) (
 // spec.sources[].exclude plus the rules of entries switched off. ok is
 // false for URL and ConfigMap sources, whose body is fetched.
 func InlineLines(src v1alpha1.ListSource) (lines []string, format parser.Format, exclude []string, ok bool) {
+	if IsRPZSource(src) {
+		return nil, "", nil, false
+	}
 	switch {
 	case len(src.Entries) > 0:
 		lines = make([]string, 0, len(src.Entries))
@@ -77,14 +84,22 @@ func InlineLines(src v1alpha1.ListSource) (lines []string, format parser.Format,
 	return src.Inline, parser.Format(src.Format), src.Exclude, true
 }
 
+// IsRPZSource identifies transferred policy sources, including invalid
+// format-only configurations that must retain fail-closed RPZ coverage.
+func IsRPZSource(src v1alpha1.ListSource) bool {
+	return src.RPZ != nil || src.Format == "rpz"
+}
+
 // SourceName is the name a source carries in compile statistics and in
 // BlockList.status.sources[].name: its explicit name, else its URL, else
-// "configmap/<name>", else "inline-<index>". The list fetcher and the
+// "configmap/<name>", else "rpz-<index>" or "inline-<index>". The list fetcher and the
 // controller key per-source status by it.
 func SourceName(i int, src v1alpha1.ListSource) string {
 	switch {
 	case src.Name != "":
 		return src.Name
+	case IsRPZSource(src):
+		return fmt.Sprintf("rpz-%d", i)
 	case src.URL != "":
 		return src.URL
 	case src.ConfigMapRef != nil:

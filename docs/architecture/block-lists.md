@@ -191,8 +191,38 @@ and fallback overwrite fail, an exact configuration/credential restoration after
 a crash can still recover that candidate; production publication must coordinate
 the source/credential cut with this separate local storage boundary.
 
+The ordinary list fetcher never downloads or parses RPZ sources, including an
+invalid RPZ source. RPZ-only lists retain their policy identity with zero text
+rules; mixed lists compile their ordinary sources separately. Shared source
+counts and digests describe only ordinary rules. RPZ transfer state belongs to
+each node, so shared BlockList status cannot establish feed availability.
+
+The blocking-stage adapter evaluates only the feeds in the selected policy's
+list order. Explicit allow lists and allow-only run first. It resolves the
+original query once, preserves resolver failures, then evaluates QNAME, CNAME
+targets and answer addresses together. Thus an earlier feed's answer-IP rule
+beats a later feed's QNAME rule. PASSTHRU stops RPZ evaluation and continues
+ordinary blocking. Local data, CNAME, NXDOMAIN/NODATA, DROP and TCP-only have
+distinct responses; synthesis removes AD/proofs and remains outside the raw
+resolver cache. CNAME dependencies retain the captured policy and cleanup
+ownership, and feed expiry is checked again after target resolution.
+
+```mermaid
+flowchart TD
+    Query["Selected recursive IN query"] --> Allow["Explicit allow / allow-only"]
+    Allow --> Required["Required feed availability"]
+    Required --> Raw["Resolve original once"]
+    Raw --> Failure{"Resolver failure?"}
+    Failure -- yes --> Preserve["Return original failure"]
+    Failure -- no --> Evaluate["Ordered RPZ evaluation over names and addresses"]
+    Evaluate --> Action["Private policy response, DROP or TCP-only"]
+    Evaluate --> Ordinary["Unmatched / PASSTHRU: ordinary rules over raw response"]
+```
+
 Compiler/runtime/schema acceptance includes native BIND transfers and policy
 comparisons, TSIG/TLS rejection, IXFR, outage/restart, expiry, identity changes
-and persistence faults. Production blocking-stage rendering, node diagnostics,
-`blocked_rpz` reporting, credential/publication fencing and dashboard integration
-remain in progress. This foundation does not yet enable RPZ in the server.
+and persistence faults. Adapter tests cover policy order, all actions, raw-cache
+isolation, bounded CNAME resolution, expiry and response cleanup. Production
+capture/publication, node diagnostics, transport observation, edge isolation
+and dashboard integration remain in progress. The adapter is not yet wired
+into the server.

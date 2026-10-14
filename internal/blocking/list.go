@@ -84,6 +84,10 @@ type Spec struct {
 	Name    string
 	Mode    Mode
 	Sources []Source
+	// ExternalPolicy retains a block-mode list's identity and role while its
+	// RPZ sources execute in a separate engine. It permits zero ordinary
+	// sources, without inventing text rules or source statistics.
+	ExternalPolicy bool
 }
 
 func (s *Spec) validate() error {
@@ -92,7 +96,7 @@ func (s *Spec) validate() error {
 		return ErrNoName
 	case s.Mode != ModeBlock && s.Mode != ModeAllow:
 		return fmt.Errorf("%w (list %q has %q)", ErrBadMode, s.Name, s.Mode)
-	case len(s.Sources) == 0:
+	case len(s.Sources) == 0 && (!s.ExternalPolicy || s.Mode != ModeBlock):
 		return fmt.Errorf("%w (list %q)", ErrNoSources, s.Name)
 	}
 	for _, src := range s.Sources {
@@ -329,7 +333,7 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 		}
 		ok++
 	}
-	if ok == 0 {
+	if ok == 0 && len(spec.Sources) != 0 {
 		return nil, errors.Join(errs...)
 	}
 	c.build(l)
@@ -343,6 +347,7 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 	h := crc32.NewIEEE()
 	_, _ = fmt.Fprintf(h, "kudurru-blocking-v2\x00%s\x00%d\x00", spec.Mode, regexCap)
+	_, _ = fmt.Fprintf(h, "external-policy=%t\x00", spec.ExternalPolicy)
 	var badfilters map[string]bool
 	for _, src := range spec.Sources {
 		rc, err := src.Open()

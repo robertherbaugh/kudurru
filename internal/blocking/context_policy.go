@@ -113,6 +113,34 @@ func (sel *Selection) basic(l *List, ctx Context) candidate {
 	return best
 }
 
+// EvaluateAuthorizationContext checks only explicit selected allow-mode lists
+// and allow-only. Ordinary exceptions, denies and typed rewrites cannot grant
+// authorization or outrank an external policy engine at this boundary.
+func (sel *Selection) EvaluateAuthorizationContext(ctx Context) Decision {
+	if sel == nil {
+		return Decision{}
+	}
+	ctx.Name = NormalizeName(ctx.Name)
+	if !sel.contextual {
+		h := matcher.Hash(ctx.Name)
+		for _, l := range sel.allow {
+			if m, ok := l.primary.match(ctx.Name, h); ok {
+				return Decision{Action: ActionAllow, Reason: ReasonAllowList, List: l.name, Match: m, Name: ctx.Name}
+			}
+		}
+	} else {
+		for _, l := range sel.allow {
+			if c := sel.basic(l, ctx); c.rank >= 0 {
+				return c.decision
+			}
+		}
+	}
+	if sel.opts.AllowOnly {
+		return Decision{Action: ActionBlock, Reason: ReasonAllowOnly, Name: ctx.Name}
+	}
+	return Decision{}
+}
+
 // EvaluateContext applies all modifiers against one original query and the
 // pinned client identity. The fast path remains allocation-free when no list
 // needs contextual rules, preserving the ordinary suffix/exact hot path.
@@ -121,14 +149,8 @@ func (sel *Selection) EvaluateContext(ctx Context) Decision {
 		return sel.Evaluate(ctx.Name)
 	}
 	ctx.Name = NormalizeName(ctx.Name)
-	for _, l := range sel.allow {
-		c := sel.basic(l, ctx)
-		if c.rank >= 0 {
-			return c.decision
-		}
-	}
-	if sel.opts.AllowOnly {
-		return Decision{Action: ActionBlock, Reason: ReasonAllowOnly, Name: ctx.Name}
+	if authorization := sel.EvaluateAuthorizationContext(ctx); authorization.Action != ActionPass {
+		return authorization
 	}
 	if rewrite := sel.rewrites(ctx); rewrite.Action == ActionRewrite {
 		return rewrite

@@ -11,7 +11,7 @@ erDiagram
     Policy }o--o{ BlockList : "blockListRefs (mode block)"
     Policy }o--o{ BlockList : "allowListRefs (mode allow)"
     Policy }o--o{ CatalogueService : "blockedServices / blockedCategories"
-    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries"
+    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries | rpz"
     ClientMatcher {
         string ip
         string cidr
@@ -100,6 +100,14 @@ no weekdays means every day. A schedule that does not parse makes the policy
 `rewrites` is ignored (planned for v0.2).
 
 ## 3. Is this name blocked?
+
+The diagram below describes ordinary list evaluation. The transferred RPZ
+adapter inserts ordered feed evaluation after explicit allow/allow-only and
+before ordinary denies, rewrites and safe search. It uses one resolved response
+for both RPZ and ordinary answer inspection; required unavailable feeds fail
+closed. Production wiring remains open. See
+[transferred RPZ](block-lists.md#transferred-rpz-foundation) for that flow and
+its current implementation boundary.
 
 ```mermaid
 flowchart TD
