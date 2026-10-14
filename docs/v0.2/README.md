@@ -52,11 +52,30 @@ real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
 [draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main. AXFR/IXFR, verified TLS and inbound
-NOTIFY are complete; V2-ZONE and the remaining packages are still in progress.
-Stub zones and signed secondary serving remain open. Signed records are preserved by the data model, while runtime
-service fails explicitly until DNSSEC response/proof assembly exists. The
-other feature packages and detailed follow-ups below retain their scope.
+commits and periodic rebases on main. AXFR/IXFR, verified TLS, inbound NOTIFY
+and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
+Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
+browser create/edit flow. Signed-secondary response assembly is in acceptance
+and remains guarded in the runtime manager until that integration completes.
+
+Local DNSSEC validation, explicit trust/negative-trust anchors, raw cache
+provenance and isolation, and final AD/CD/DO handling are implemented. Real
+BIND NSEC/NSEC3 listener and cache tests cover positive, alias, wildcard,
+negative and tampered data. Response processing adds configured policy
+rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding protection,
+with nullable client-policy overrides, live settings, CLI metadata and dashboard
+editors. Native UDP/TCP and browser acceptance pass; see the
+[response-processing guide](../deploy/response-processing.md). The modifier
+compiler and real edge packet-cache isolation acceptance remain in progress.
+
+The HA storage foundation includes complete versioned replication images,
+atomic replacement, persisted authority fencing and local follower reads.
+Authenticated transport, command transactions and promotion coordination are
+in acceptance. Serving-generation coherence, public wiring and multi-node
+partition/rejoin behavior remain open; this is not a consensus claim.
+
+None of these checkpoints closes an entire package prematurely. The remaining
+feature packages and detailed follow-ups below retain their full scope.
 
 ## Reconcile the backlog before assigning it
 
