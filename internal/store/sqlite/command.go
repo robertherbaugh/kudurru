@@ -295,7 +295,31 @@ func (t *CommandTx) GetSection(ctx context.Context, section, key string) (json.R
 	return json.RawMessage(raw), nil
 }
 
-// ListSections reads registered owner rows ordered by key in this tx.
+// CheckSectionBounds rejects excessive section data before a caller allocates
+// row payloads. The scalar query sees the same transaction, including staged
+// changes. Limits may be zero for an empty section; protocol-default image caps
+// bound the requested budget. Errors poison the command, including read no-ops.
+func (t *CommandTx) CheckSectionBounds(ctx context.Context, section string, maxRows, maxDataBytes int) error {
+	if err := t.valid(ctx); err != nil {
+		return err
+	}
+	limits := (replication.Limits{}).Defaults()
+	if replication.Section(&replication.Payload{}, section) == nil || maxRows < 0 || maxRows > limits.MaxEntries || maxDataBytes < 0 || int64(maxDataBytes) > limits.MaxBytes {
+		return t.poison(replication.ErrInvalid)
+	}
+	var count, size, longestKey int64
+	err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(length(CAST(data AS BLOB))),0),COALESCE(MAX(length(CAST(key AS BLOB))),0) FROM replication_sections WHERE section=?`, section).Scan(&count, &size, &longestKey)
+	if err != nil {
+		return t.poison(err)
+	}
+	if count > int64(maxRows) || size > int64(maxDataBytes) || longestKey > 512 {
+		return t.poison(replication.ErrTooLarge)
+	}
+	return nil
+}
+
+// ListSections reads registered owner rows ordered by key in this tx. Owners
+// call CheckSectionBounds first to enforce their aggregate budget before read.
 func (t *CommandTx) ListSections(ctx context.Context, section string) ([]replication.Entry, error) {
 	if err := t.valid(ctx); err != nil {
 		return nil, err

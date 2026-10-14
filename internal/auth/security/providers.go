@@ -51,7 +51,7 @@ func currentProviderRegistry(ctx context.Context, tx *sqlite.CommandTx) (*provid
 	if tx == nil {
 		return nil, providerregistry.ErrInvalid
 	}
-	rows, err := tx.ListSections(ctx, "security")
+	rows, err := readSecurityRows(ctx, tx)
 	if err != nil {
 		return nil, err
 	}

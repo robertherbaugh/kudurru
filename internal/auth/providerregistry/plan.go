@@ -296,6 +296,9 @@ func (p *Plan) Stage(ctx context.Context, tx *sqlite.CommandTx) error {
 	if tx.Authority().ClusterID != p.after.root.ClusterID {
 		return ErrConflict
 	}
+	if err := tx.CheckSectionBounds(ctx, "security", servingauth.MaxRows, servingauth.MaxSecurityBytes); err != nil {
+		return err
+	}
 	entries, err := tx.ListSections(ctx, "security")
 	if err != nil {
 		return err

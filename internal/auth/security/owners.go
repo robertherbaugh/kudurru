@@ -50,10 +50,22 @@ func InitializeOwners(ctx context.Context, tx *sqlite.CommandTx) error {
 	if err != nil {
 		return err
 	}
-	rows, err := tx.ListSections(ctx, "security")
+	rows, err := readSecurityRows(ctx, tx)
 	if err != nil {
 		return err
 	}
 	_, err = providerregistry.Decode(rows, tx.Authority().ClusterID)
 	return err
+}
+
+// readSecurityRows rejects malformed historical or staged section sizes before
+// allocating their payloads. Open/raw migration does not imply owner validity.
+func readSecurityRows(ctx context.Context, tx *sqlite.CommandTx) ([]replication.Entry, error) {
+	if err := tx.CheckSectionBounds(ctx, "security", servingauth.MaxRows, servingauth.MaxSecurityBytes); err != nil {
+		if errors.Is(err, replication.ErrTooLarge) {
+			return nil, errors.Join(servingauth.ErrBounds, err)
+		}
+		return nil, err
+	}
+	return tx.ListSections(ctx, "security")
 }

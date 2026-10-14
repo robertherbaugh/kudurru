@@ -164,6 +164,7 @@ type Security struct {
 // admitted transaction reader, never a live Store or captured View principal.
 type CurrentReader interface {
 	List(context.Context, store.Kind, store.ListOptions) (store.ObjectList, error)
+	CheckSectionBounds(context.Context, string, int, int) error
 	ListSections(context.Context, string) ([]replication.Entry, error)
 }
 

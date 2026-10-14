@@ -164,6 +164,9 @@ func prepareCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies
 	return Prepare(ctx, cut, deps)
 }
 func captureCurrent(ctx context.Context, reader CurrentReader) (*Cut, error) {
+	if err := reader.CheckSectionBounds(ctx, "security", MaxRows, MaxSecurityBytes); err != nil {
+		return nil, ErrBounds
+	}
 	rows, err := reader.ListSections(ctx, "security")
 	if err != nil {
 		return nil, ErrInvalid

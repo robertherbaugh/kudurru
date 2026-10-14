@@ -31,7 +31,7 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 	if tx == nil {
 		return servingauth.ErrInvalid
 	}
-	rows, err := tx.ListSections(ctx, "security")
+	rows, err := readSecurityRows(ctx, tx)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func Load(ctx context.Context, tx *sqlite.CommandTx) (*State, error) {
 	if tx == nil {
 		return nil, servingauth.ErrInvalid
 	}
-	rows, err := tx.ListSections(ctx, "security")
+	rows, err := readSecurityRows(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +320,7 @@ func (s *State) Commit(ctx context.Context) error {
 		return err
 	}
 	s.finished = true
-	current, err := s.tx.ListSections(ctx, "security")
+	current, err := readSecurityRows(ctx, s.tx)
 	if err != nil {
 		return err
 	}
