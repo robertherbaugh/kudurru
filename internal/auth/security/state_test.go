@@ -23,6 +23,11 @@ import (
 
 func openSecurityStore(t *testing.T, path string) *sqlite.Store {
 	t.Helper()
+	return openSecurityStoreValidator(t, path, servingauth.ValidateEntry)
+}
+
+func openSecurityStoreValidator(t *testing.T, path string, validateEntry func(string, replication.Entry) error) *sqlite.Store {
+	t.Helper()
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +40,7 @@ func openSecurityStore(t *testing.T, path string) *sqlite.Store {
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: v, ValidateReplicaEntry: servingauth.ValidateEntry})
+	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: v, ValidateReplicaEntry: validateEntry})
 	if err != nil {
 		t.Fatal(err)
 	}

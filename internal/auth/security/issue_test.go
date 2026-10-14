@@ -127,7 +127,7 @@ func TestLocalIssuanceRejectsCurrentPolicyAndTokenConversion(t *testing.T) {
 		_, err := IssueLocal(ctx, tx, deps, password, f.now.Add(time.Second))
 		return err
 	})
-	if !errors.Is(err, servingauth.ErrUnsupported) {
-		t.Fatal("TOTP account accepted password-only issuance", err)
+	if !errors.Is(err, servingauth.ErrManifest) {
+		t.Fatal("legacy TOTP seed without replay authority was accepted", err)
 	}
 }

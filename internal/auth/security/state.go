@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
+	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
@@ -33,15 +35,41 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 	if err != nil {
 		return err
 	}
+	initial := servingauth.EmptySecurity(1)
 	if len(owned(rows)) != 0 {
-		_, err := servingauth.DecodeSecurity(rows)
-		return err
+		_, decodeErr := servingauth.DecodeSecurity(rows)
+		if decodeErr == nil {
+			return nil
+		}
+		upgraded, upgradeErr := servingauth.UpgradeSecurityV1(rows)
+		if upgradeErr != nil {
+			return decodeErr
+		}
+		initial = upgraded
 	}
-	initial, err := servingauth.EncodeSecurity(servingauth.EmptySecurity(1))
+	// Old seeds have no durable replay authority. Never adopt one or silently
+	// clear it while installing an empty inventory, even for disabled accounts.
+	accounts, err := tx.List(ctx, "LocalUser", store.ListOptions{Limit: servingauth.MaxObjects + 1})
 	if err != nil {
 		return err
 	}
-	for _, row := range initial {
+	if accounts.Continue != "" || len(accounts.Items) > servingauth.MaxObjects {
+		return servingauth.ErrBounds
+	}
+	for _, object := range accounts.Items {
+		user, ok := object.(*internalv1.LocalUser)
+		if !ok || user == nil {
+			return servingauth.ErrInvalid
+		}
+		if user.Spec.TOTPSecret != "" {
+			return servingauth.ErrUnsupported
+		}
+	}
+	encoded, err := servingauth.EncodeSecurity(initial)
+	if err != nil {
+		return err
+	}
+	for _, row := range encoded {
 		if err := tx.PutSection(ctx, "security", row); err != nil {
 			return err
 		}
@@ -94,7 +122,7 @@ func (s *State) valid() error {
 }
 
 func (s *State) capacity() error {
-	if len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions) >= servingauth.MaxRows-1 {
+	if len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP) >= servingauth.MaxRows-1 {
 		return servingauth.ErrBounds
 	}
 	return nil

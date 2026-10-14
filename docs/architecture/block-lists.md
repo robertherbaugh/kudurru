@@ -97,9 +97,7 @@ comes back with its lists before it can reach anybody. Readiness follows
 source is waiting (unless `blocking.allowDegraded`), and `failOnError` exits
 the process when the first load fails.
 
-## Inside a compiled list
-
-### Complete serving candidates
+## Complete serving candidates
 
 `listfetcher.PrepareComplete` supplies strict list preparation for the complete
 serving publisher. It receives all BlockList objects from one captured image
@@ -125,6 +123,8 @@ flowchart LR
     Verify -->|failure| Retain["Retain previous whole serving bundle"]
     Compile -->|failure| Retain
 ```
+
+## Inside a compiled list
 
 ```mermaid
 flowchart LR
