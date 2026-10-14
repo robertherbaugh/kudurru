@@ -492,6 +492,22 @@ Parent witnesses, source identity and effective head incarnation all come from
 that same image. Its later `Cut(now)` calls evaluate only prepared memory and
 absolute expiry; they never capture a live runtime or mark a head published.
 
+`internal/servingzones` combines that primary part with the same candidate's
+public DNS objects and captured secondary, stub and RPZ snapshots. Acquired
+secondary/RPZ data must match an explicit immutable keyring and the exact
+configuration identity. Binding uses the credential recorded with the acquired
+durable copy, not the scheduler's later credential. Matching restored key bytes
+may reuse an unexpired copy; this is not a fresh-acquisition guarantee.
+
+Nonprimary replacements use persisted lifecycle admission, current source and
+parent witnesses. A source name with an old lifecycle cannot bypass coordination
+by being recreated with a new UID or apex. Admission has a precomputed earliest
+ancestor deadline, checked from memory at query time. Missing or expired runtime
+retains unavailable coverage; retiring primary coverage wins at an equal apex.
+RPZ selection preserves ordered canonical list names and required unavailable
+feeds. Unknown names reject selection; reserved service labels belong to the
+same captured catalog. External zones still require their separate compiler.
+
 ```mermaid
 flowchart LR
     Image["Complete image + local manifest"] --> Validate["Validate all lifecycle, head and chunk carriers"]
@@ -499,7 +515,10 @@ flowchart LR
     Validate --> Missing["Desired-only and retiring unavailable coverage"]
     Committed --> Part["Immutable primary routing part"]
     Missing --> Part
-    Part --> Bundle["Whole serving bundle publication"]
+    Runtime["Captured secondary / stub / RPZ + immutable keys"] --> Bound["Exact acquired runtime binding"]
+    Part --> Compose["Same-candidate serving zones"]
+    Bound --> Compose
+    Compose --> Bundle["Whole serving bundle publication"]
 ```
 
 Lifecycle scheduling, production keyring/policy guards, listener callback wiring,

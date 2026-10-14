@@ -469,7 +469,11 @@ func (m *Manager) publish(entries map[string]*entry) {
 		st := e.status
 		st.NextRefresh = e.next
 		snap.status[id] = st
-		snap.credentials[id] = e.credential
+		if e.data != nil && e.data.Identity == id {
+			// Keep the acquired copy's provenance when current credentials
+			// change; binding must never relabel old data with the new key.
+			snap.credentials[id] = e.data.Credential
+		}
 	}
 	m.current.Store(snap)
 }

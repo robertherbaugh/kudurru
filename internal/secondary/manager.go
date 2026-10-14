@@ -73,8 +73,9 @@ type Status struct {
 
 // Snapshot is immutable. Load it once for each DNS query.
 type Snapshot struct {
-	zones  map[string]*zone.Zone
-	status []Status
+	zones       map[string]*zone.Zone
+	status      []Status
+	credentials map[string]string
 }
 
 // Lookup returns the transferred version matching a configured placeholder.
@@ -392,10 +393,15 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry) {
 }
 
 func (m *Manager) publish(entries map[string]*entry) {
-	snap := &Snapshot{zones: make(map[string]*zone.Zone, len(entries))}
+	snap := &Snapshot{zones: make(map[string]*zone.Zone, len(entries)), credentials: make(map[string]string, len(entries))}
 	for id, e := range entries {
 		if e.z != nil {
 			snap.zones[id] = e.z
+			if e.data != nil && e.data.Identity == id {
+				// Provenance belongs to the acquired/persisted copy, never a
+				// later expected credential from the mutable scheduler entry.
+				snap.credentials[id] = e.data.Credential
+			}
 		}
 		st := e.status
 		st.NextRefresh = e.next

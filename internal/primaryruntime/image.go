@@ -35,10 +35,12 @@ type ImageOptions struct {
 // PreparedImage is a detached primary part of ONE complete candidate. It does
 // not publish, acknowledge publication, retain previous results, or read a store.
 type PreparedImage struct {
-	base     replication.Generation
-	cut      Cut
-	versions map[string]zonestate.Version
-	desired  []string
+	base               replication.Generation
+	cut                Cut
+	versions           map[string]zonestate.Version
+	desired            []string
+	admissionDeadlines map[string]time.Time
+	coordinated        map[string]bool
 }
 
 // Base identifies the complete image from which all members and heads came.
@@ -52,6 +54,31 @@ func (p *PreparedImage) Cut(now time.Time) Cut {
 	c := p.cut
 	c.now = now
 	return c
+}
+
+// Admitted reports exact current-source lifecycle readiness from this image,
+// including parent witnesses and absolute primary/ancestor expiry. It is
+// independent of Published and does not acknowledge whole-bundle publication.
+// Missing members and desired-only placeholders are never admitted. Other
+// owners still check their own node-local secondary/stub/RPZ deadlines.
+func (p *PreparedImage) Admitted(apex string, now time.Time) bool {
+	if p == nil || now.IsZero() {
+		return false
+	}
+	name := canonical(apex)
+	e := p.cut.entries[name]
+	deadline := p.admissionDeadlines[name]
+	return e != nil && p.cut.ready[name] && e.member.Incarnation != 0 && e.member.Phase == zk.PhaseActive && (deadline.IsZero() || now.Before(deadline))
+}
+
+// Coordinated reports whether this complete image persists any lifecycle for
+// the exact desired source key, including retired/deleted or former-UID sources.
+// DNSZone is cluster-scoped: objectName is the exact metadata.name, never a
+// namespace/name pair, UID or apex. No normalization or fresh source inference
+// occurs. A new UID/apex for this key requires an admitted replacement, rather
+// than falling back to uncoordinated legacy membership.
+func (p *PreparedImage) Coordinated(objectName string) bool {
+	return p != nil && p.coordinated[objectName]
 }
 
 // Versions returns detached durable primary heads, including unavailable or
@@ -102,7 +129,9 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	models := make(map[string]*zone.Zone)
 	versions := make(map[string]zonestate.Version)
 	current := make(map[string]bool)
+	coordinated := make(map[string]bool, len(roster.ledgers))
 	for _, l := range roster.ledgers {
+		coordinated[l.Spec.Zone.ObjectName] = true
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -218,18 +247,24 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		apices = append(apices, apex)
 	}
 	slices.SortFunc(apices, func(a, b string) int { return len(a) - len(b) })
+	deadlines := make(map[string]time.Time, len(entries))
 	for _, apex := range apices {
+		deadline := entries[apex].expiry
 		for _, parent := range entries[apex].member.Parents {
 			if !c.ready[parent.Zone.Apex] {
 				c.ready[apex] = false
 			}
+			if expiry := deadlines[parent.Zone.Apex]; !expiry.IsZero() && (deadline.IsZero() || expiry.Before(deadline)) {
+				deadline = expiry
+			}
 		}
+		deadlines[apex] = deadline
 	}
 	slices.Sort(desired)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired}, nil
+	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated}, nil
 }
 
 func imageAncestors(apex string) []string {
