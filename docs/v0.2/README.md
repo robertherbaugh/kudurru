@@ -40,7 +40,8 @@ does not bump versions or change the release workflow.
 ## Implementation progress
 
 The recommended first secondary slice is implemented in `internal/secondary`,
-with raw immutable zone data, TCP AXFR/TSIG, independent per-node SOA timers,
+with raw immutable zone data, TCP/TLS AXFR and IXFR with TSIG, independent
+per-node SOA timers,
 durable last-good copies, expiry coverage, inbound NOTIFY with authenticated
 peer fan-out, and API/CLI/dashboard diagnostics.
 See [the current architecture](../architecture/zones.md#secondary-copies) and
@@ -51,10 +52,9 @@ real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
 [draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main. The initial AXFR package and inbound
+commits and periodic rebases on main. AXFR/IXFR, verified TLS and inbound
 NOTIFY are complete; V2-ZONE and the remaining packages are still in progress.
-IXFR, verified TLS, stub zones and signed secondary serving
-remain open. Signed records are preserved by the data model, while runtime
+Stub zones and signed secondary serving remain open. Signed records are preserved by the data model, while runtime
 service fails explicitly until DNSSEC response/proof assembly exists. The
 other feature packages and detailed follow-ups below retain their scope.
 

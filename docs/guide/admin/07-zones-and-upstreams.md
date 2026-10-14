@@ -169,7 +169,7 @@ Recursive upstream groups validate DNSSEC with their recursion settings.
 4. If the primary requires TSIG, enter the key name. Configure that key's
    secret in `tsigKeys` on every kudurru node; the form does not store secrets.
 5. Review and create the zone. Allow each node's source address through the
-   primary's TCP transfer ACL.
+   primary's transfer ACL.
 
 The zone detail shows the copy on the responding node: serial, record count,
 last confirmation, expiry, next attempt and the latest transfer error. Refresh,
@@ -192,8 +192,17 @@ replica sends a refresh hint to peers over the authenticated internal listener;
 every replica then checks and transfers independently. Lost hints recover at
 the next SOA refresh. NOTIFY never extends expiry by itself.
 
-This secondary implementation uses AXFR over TCP. TLS and IXFR follow in later
-v0.2 work. Signed zones are diagnosed as unsupported;
+Choose TCP or TLS in the transfer settings. TLS checks the primary certificate
+against each node's trust store and requires its hostname or IP in the
+certificate; install a private CA in each node's trust store when needed.
+The default port is 53 for either transport, so include `:853` for a primary
+listening on the standard TLS port. Failed TLS verification never falls back
+to plaintext.
+
+Initial copies use AXFR. Later serial changes use IXFR with automatic AXFR
+fallback when the primary lacks incremental history. Expired copies and
+credential changes require a fresh AXFR. Invalid deltas retain the last-good
+copy until its existing expiry. Signed zones are diagnosed as unsupported;
 they are not served without their required DNSSEC proofs. Local secondary
 export is not available yet.
 

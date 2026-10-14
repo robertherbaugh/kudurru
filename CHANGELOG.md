@@ -17,7 +17,7 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
-- Independent secondary-zone AXFR ingestion over TCP, with optional TSIG,
+- Independent secondary-zone AXFR/IXFR ingestion over TCP or verified TLS, with optional TSIG,
   SOA refresh/retry/expiry, RFC 1982 serial handling and durable node-local
   last-good copies. Invalid, unauthenticated and oversized transfers retain
   previous data; expired or unavailable secondaries answer SERVFAIL.
@@ -30,8 +30,7 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - CNAME/DNAME chasing rechecks the most specific local zone before following
   a target, so parent wildcard data cannot bypass a child zone's data or expiry.
 
-TLS/IXFR ingestion, stub zones and signed secondary serving
-remain subsequent v0.2 work. Inbound NOTIFY now verifies the primary source
+Stub zones and signed secondary serving remain subsequent v0.2 work. Inbound NOTIFY now verifies the primary source
 and configured TSIG, schedules bounded local refreshes, and fans authenticated
 hints to peers so every replica transfers independently.
 

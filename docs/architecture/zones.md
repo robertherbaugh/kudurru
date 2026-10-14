@@ -235,9 +235,13 @@ sequenceDiagram
         R->>N: bounded authenticated refresh hint
         N->>P: independent SOA check and transfer
     end
-    R->>P: TCP SOA (TSIG when configured)
-    alt initial copy or newer serial
-        R->>P: TCP AXFR
+    R->>P: TCP/TLS SOA (TSIG when configured)
+    alt initial, expired or credential-changed copy
+        R->>P: AXFR
+        P-->>R: complete framed and authenticated RR stream
+        R->>R: validate structure, serial and supported data
+    else newer serial with an unexpired base
+        R->>P: IXFR (AXFR fallback when unavailable)
         P-->>R: complete framed and authenticated RR stream
         R->>R: validate structure, serial and supported data
     else same serial
@@ -271,10 +275,22 @@ Transfers use the configured primary order, bounded concurrency (four zones),
 a ten-second deadline per exchange, one million records and 64 MiB of wire
 and expanded DNS data. Invalid framing, SOA mismatches, out-of-zone records,
 serial regression, missing/invalid configured TSIG and size limits reject the
-whole candidate. TCP is currently supported; configured TLS is diagnosed and
-never silently downgraded. The data model preserves DNSSEC and unknown RRs,
+whole candidate. TCP and verified TLS support both SOA polling and transfers.
+TLS verifies the configured endpoint hostname/IP against the node trust store;
+there is no plaintext fallback. Both default to port 53; use an explicit :853
+for the standard TLS port. The data model preserves DNSSEC and unknown RRs,
 but the runtime rejects signed zones until signature/proof response assembly
-is implemented. IXFR remains a subsequent slice.
+is implemented.
+
+IXFR applies authenticated deltas to a private copy, checking old/new SOA
+continuity, serial wrap, matching deletes, duplicate additions and final
+serial. It preserves raw records and publishes only the complete validated
+result through the normal durable path. Primaries without journal history may
+send AXFR format on the same connection; an authenticated NOTIMP may retry
+AXFR with the same deadline and remaining byte budget. Invalid data and
+authentication failures never trigger fallback. Initial, expired, and
+credential-changed copies use AXFR. The receiver bounds live records, bytes,
+cumulative edits and serial steps independently.
 
 Inbound NOTIFY reaches the authoritative opcode handler through ingress. It
 requires an exact secondary apex, an address belonging to a configured primary,
@@ -303,7 +319,7 @@ an old routing view; unrelated zones continue to receive configuration updates.
 
 ## Not built yet
 
-Stub zones, IXFR in, verified TLS transfers, signed secondary serving, dynamic UPDATE
+Stub zones, signed secondary serving, dynamic UPDATE
 (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
 UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
 the atomic update handler is installed. Unknown opcodes remain NOTIMP.
