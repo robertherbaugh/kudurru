@@ -50,7 +50,6 @@ function Navigation({ navKey }: { navKey?: string }) {
 
   const nav = (
     <SideNav
-      aria-label="Main navigation"
       className="k-navigation-nav"
       collapsible={isMobile ? false : { isCollapsed: !isExpanded, hasButton: false }}
       footer={

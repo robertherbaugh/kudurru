@@ -7,7 +7,7 @@ import { Shell } from './Shell';
 async function renderShell() {
   renderWithApp(<Shell />, { route: '/tools' });
   await screen.findByRole('heading', { level: 1, name: 'Tools' });
-  return screen.getByRole('navigation', { name: 'Main navigation' });
+  return screen.getByRole('navigation', { name: 'Side navigation' });
 }
 
 describe('Shell navigation', () => {
