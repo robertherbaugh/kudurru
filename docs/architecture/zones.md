@@ -242,11 +242,15 @@ sequenceDiagram
 ```
 
 The primary's SOA controls refresh, retry and expire. Failed or incomplete
-transfers retain the previous copy until its original deadline. Same-serial
-SOA confirmation renews expiry; loading from disk, restarting or failing a
-refresh never does. At expiry the configured zone remains in suffix matching
-and answers SERVFAIL. Configuration older than zonecache's `maxAge` also
-fails closed, even if transferred records have not expired.
+transfers retain the previous copy until its original deadline. For an
+unexpired copy, same-serial SOA confirmation renews expiry; loading from disk,
+restarting or failing a refresh never does. At expiry the configured zone remains in suffix matching
+and answers SERVFAIL. Recovery after expiry always requires a new AXFR, even
+if the serial is unchanged. The obsolete local serial no longer prevents
+recovery from a primary restored to an older serial; the new transfer must
+still be at least as current as its authenticated SOA poll. Configuration older
+than zonecache's `maxAge` also fails closed, even if transferred records have
+not expired.
 
 The versioned, checksummed `local.db` envelope binds records to object UID and
 complete spec, a fingerprint of the selected TSIG credential, and a cluster
@@ -272,6 +276,8 @@ the last copy's serial, confirmation, expiry, next attempt and failures. An
 expired serial describes retained data, not data currently served. The messages
 API and `kudurru_secondary_*` metrics expose local failures and availability.
 An unavailable secondary does not make an otherwise healthy node unready.
+Duplicate configured apices publish unavailable coverage instead of retaining
+an old routing view; unrelated zones continue to receive configuration updates.
 
 ## Not built yet
 

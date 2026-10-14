@@ -519,7 +519,7 @@ func TestSecondaryStatusRespectsConfigurationGate(t *testing.T) {
 		{name: "live", snapshot: &zonecache.Snapshot{State: zonecache.Live}, available: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := statusAt(st, tc.snapshot, now)
+			got := statusAt(st, tc.snapshot, nil, now)
 			if got.Available != tc.available || (got.ConfigurationError == "") != tc.available {
 				t.Fatalf("status %+v", got)
 			}
@@ -581,4 +581,162 @@ func TestManagerInvalidQueryPolicyFailsBeforeNetwork(t *testing.T) {
 	if r.err == nil || !strings.Contains(r.err.Error(), "invalid secondary configuration") || recv.soaCalls != 0 {
 		t.Fatalf("invalid configuration attempted network: %+v", r)
 	}
+}
+
+func TestManagerExpiredCopyRequiresFreshTransfer(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		advance time.Duration
+		offered uint32
+		fail    bool
+	}{
+		{"unexpired rollback rejected", 29 * time.Second, 99, true},
+		{"expired rollback accepted", 30 * time.Second, 99, false},
+		{"expired equal serial retransferred", 30 * time.Second, 100, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clock := newManagerClock()
+			recv := &managerReceiver{serial: 100}
+			m, _, dz := managerFor(t, clock, recv, managerDB(t))
+			e := &entry{dz: dz, id: zone.SecondaryIdentity(dz), credential: "unsigned"}
+			initial := m.refresh(t.Context(), e)
+			if initial.err != nil {
+				t.Fatal(initial.err)
+			}
+			if err := m.persist(t.Context(), e.id, initial.data); err != nil {
+				t.Fatal(err)
+			}
+			clock.advance(tc.advance)
+			recv.set(tc.offered, nil)
+			// Restore the obsolete copy exactly as a restarted node would.
+			var err error
+			e.data, e.z, err = m.restore(t.Context(), e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := m.refresh(t.Context(), e)
+			if (result.err != nil) != tc.fail {
+				t.Fatalf("refresh error %v", result.err)
+			}
+			if !tc.fail && (result.z.Serial() != tc.offered || recv.count() != 2 || !result.data.ConfirmedAt.Equal(clock.now())) {
+				t.Fatalf("obsolete data reused instead of retransferring: %+v", result)
+			}
+		})
+	}
+}
+
+type replacementReceiver struct {
+	calls                                                 atomic.Int32
+	entered, canceled, releaseOld, newStarted, releaseNew chan struct{}
+}
+
+func (r *replacementReceiver) SOA(ctx context.Context, _ *v1alpha1.DNSZone, _ string) (*dns.SOA, error) {
+	if r.calls.Add(1) == 1 {
+		close(r.entered)
+		<-ctx.Done()
+		close(r.canceled)
+		<-r.releaseOld
+		return managerRecords(1)[0].(*dns.SOA), nil
+	}
+	close(r.newStarted)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-r.releaseNew:
+	}
+	return managerRecords(3)[0].(*dns.SOA), nil
+}
+func (r *replacementReceiver) AXFR(ctx context.Context, _ *v1alpha1.DNSZone, _ string) ([]dns.RR, error) {
+	// Deliberately emulate an I/O completion arriving after cancellation.
+	if ctx.Err() != nil {
+		return managerRecords(1), nil
+	}
+	return managerRecords(3), nil
+}
+func TestManagerConfigurationABARejectsLateTransfer(t *testing.T) {
+	clock := newManagerClock()
+	recv := &replacementReceiver{entered: make(chan struct{}), canceled: make(chan struct{}), releaseOld: make(chan struct{}), newStarted: make(chan struct{}), releaseNew: make(chan struct{})}
+	var oldOnce, newOnce sync.Once
+	releaseOld := func() { oldOnce.Do(func() { close(recv.releaseOld) }) }
+	defer releaseOld()
+	releaseNew := func() { newOnce.Do(func() { close(recv.releaseNew) }) }
+	defer releaseNew()
+	db := managerDB(t)
+	m, st, original := managerFor(t, clock, recv, db)
+	m.opts.MaxConcurrent = 1
+	runManager(t, m)
+	wait := func(ch <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Fatal("configuration transfer did not progress")
+		}
+	}
+	wait(recv.entered)
+	changed := original.DeepCopy()
+	changed.Spec.Secondary.Primaries = []string{"replacement.example"}
+	obj, err := st.Apply(t.Context(), changed, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed = obj.(*v1alpha1.DNSZone)
+	wait(recv.canceled)
+	awaitManager(t, m, changed, func(Status) bool { return true })
+	reverted := changed.DeepCopy()
+	reverted.Spec = original.Spec
+	obj, err = st.Apply(t.Context(), reverted, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reverted = obj.(*v1alpha1.DNSZone)
+	awaitManager(t, m, reverted, func(Status) bool { return true })
+	releaseOld()
+	wait(recv.newStarted)
+	// One worker slot means the canceled result has been processed before the
+	// replacement starts. It must not populate disk or the same identity's new entry.
+	id := zone.SecondaryIdentity(original)
+	if m.Snapshot().Lookup(id) != nil {
+		t.Fatal("canceled transfer populated replacement")
+	}
+	if _, err := db.GetBlob(t.Context(), "secondary/"+id); !errors.Is(err, localdb.ErrNoBlob) {
+		t.Fatalf("canceled transfer persisted under replacement identity: %v", err)
+	}
+	releaseNew()
+	awaitManager(t, m, reverted, func(s Status) bool { return s.Available && s.Serial == 3 })
+	blob, err := db.GetBlob(t.Context(), "secondary/"+id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data envelope
+	if err := json.Unmarshal(blob.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	records, err := data.records()
+	if err != nil || records[0].(*dns.SOA).Serial != 3 {
+		t.Fatal("durable state does not match replacement")
+	}
+}
+
+func TestManagerConflictingApexIsUnavailableInDiagnostics(t *testing.T) {
+	clock := newManagerClock()
+	m, st, dz := managerFor(t, clock, &managerReceiver{serial: 7}, managerDB(t))
+	runManager(t, m)
+	awaitManager(t, m, dz, func(s Status) bool { return s.Available })
+	duplicate := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "conflicting-primary"}, Spec: v1alpha1.DNSZoneSpec{Type: v1alpha1.ZoneTypePrimary, ZoneName: "EXAMPLE."}}
+	if _, err := st.Apply(t.Context(), duplicate, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	blocked := awaitManager(t, m, dz, func(s Status) bool { return s.ConfigurationError != "" })
+	if blocked.Available || blocked.Serial != 7 || !strings.Contains(blocked.ConfigurationError, "Multiple DNSZone") {
+		t.Fatalf("conflict claims to serve: %+v", blocked)
+	}
+	statuses := m.Statuses()
+	if len(statuses) != 1 || statuses[0].Available || statuses[0].ConfigurationError == "" {
+		t.Fatalf("metric diagnostics disagree: %+v", statuses)
+	}
+	if err := st.Delete(t.Context(), store.Key{Kind: "DNSZone", Name: duplicate.Name}, store.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	awaitManager(t, m, dz, func(s Status) bool { return s.Available && s.ConfigurationError == "" })
 }

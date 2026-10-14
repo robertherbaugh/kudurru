@@ -269,7 +269,7 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		if snap := s.opts.Cache.Snapshot(); snap != nil && snap.State == zonecache.FromSnapshot {
 			msg := "serving from the local.db snapshot while the store is unreachable"
 			if snap.Stale {
-				msg = "serving a stale local.db snapshot; names in primary zones answer SERVFAIL"
+				msg = "serving a stale local.db snapshot; names in primary and secondary zones answer SERVFAIL"
 			}
 			add(DiagnosisMessage{Severity: "warning", Source: "zonecache", Reason: "ServingFromSnapshot", Message: msg})
 		}

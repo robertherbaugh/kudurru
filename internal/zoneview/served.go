@@ -31,7 +31,7 @@ func Served(c *zonecache.Cache, copies ...*secondary.Manager) []*zone.Zone {
 	}
 	for _, z := range zs.Zones() {
 		if z.Type() == v1alpha1.ZoneTypeSecondary {
-			if !snap.Authoritative() {
+			if !snap.Authoritative() || z.SecondaryIdentity() == "" {
 				continue
 			}
 			z = transfers.Lookup(z.SecondaryIdentity())

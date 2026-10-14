@@ -127,7 +127,9 @@ func (m *Manager) Statuses() []Status {
 		return nil
 	}
 	wanted := make(map[string]bool)
-	for _, dz := range current.Objects.Zones() {
+	zones := current.Objects.Zones()
+	conflicts := zone.ConflictingApices(zones)
+	for _, dz := range zones {
 		if dz.Spec.Type == v1alpha1.ZoneTypeSecondary {
 			wanted[zone.SecondaryIdentity(dz)] = true
 		}
@@ -135,7 +137,7 @@ func (m *Manager) Statuses() []Status {
 	out := slices.DeleteFunc(slices.Clone(m.Snapshot().status), func(st Status) bool { return !wanted[st.Identity] })
 	now := m.opts.Now()
 	for i := range out {
-		out[i] = statusAt(out[i], current, now)
+		out[i] = statusAt(out[i], current, conflicts, now)
 	}
 	return out
 }
@@ -156,17 +158,21 @@ func (m *Manager) StatusFor(dz *v1alpha1.DNSZone) (Status, bool) {
 	}
 	for _, st := range m.Snapshot().status {
 		if st.Identity == id {
-			return statusAt(st, current, m.opts.Now()), true
+			return statusAt(st, current, zone.ConflictingApices(current.Objects.Zones()), m.opts.Now()), true
 		}
 	}
 	return Status{}, false
 }
 
-func statusAt(st Status, config *zonecache.Snapshot, now time.Time) Status {
+func statusAt(st Status, config *zonecache.Snapshot, conflicts map[string]bool, now time.Time) Status {
 	st.Available = !st.ConfirmedAt.IsZero() && now.Before(st.ExpiresAt)
 	if config == nil || !config.Authoritative() {
 		st.Available = false
 		st.ConfigurationError = "Zone configuration is unavailable or stale; this node answers SERVFAIL."
+	}
+	if apex := dns.CanonicalName(st.Name); conflicts[apex] {
+		st.Available = false
+		st.ConfigurationError = fmt.Sprintf("Multiple DNSZone objects configure %s; this node answers SERVFAIL at the conflicting apex.", apex)
 	}
 	return st
 }
@@ -394,10 +400,14 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 		if err == nil && soa == nil {
 			err = errors.New("primary returned no SOA")
 		}
-		if err == nil && e.z != nil && soa.Serial == e.z.Serial() && credential == e.credential {
+		// RFC 1034 4.3.5: expired data is obsolete. Keep its serial for
+		// diagnostics, but acquire a fresh copy rather than letting that
+		// obsolete serial pin a restored primary out of service forever.
+		baseline := e.z != nil && e.z.AvailableAt(m.opts.Now())
+		if err == nil && baseline && soa.Serial == e.z.Serial() && credential == e.credential {
 			records, err = e.data.records()
 		} else if err == nil {
-			if e.z != nil && soa.Serial != e.z.Serial() && soa.Serial-e.z.Serial() >= 1<<31 {
+			if baseline && soa.Serial != e.z.Serial() && soa.Serial-e.z.Serial() >= 1<<31 {
 				err = errors.New("primary SOA serial is older or ambiguous")
 			} else {
 				records, err = m.opts.Receiver.AXFR(ctx, e.dz, primary)
@@ -411,7 +421,7 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 			} else {
 				// A primary may advance between the SOA poll and transfer,
 				// but must not roll back a version already accepted here.
-				if (e.z != nil && first.Serial != e.z.Serial() && first.Serial-e.z.Serial() >= 1<<31) || (first.Serial != soa.Serial && first.Serial-soa.Serial >= 1<<31) {
+				if (baseline && first.Serial != e.z.Serial() && first.Serial-e.z.Serial() >= 1<<31) || (first.Serial != soa.Serial && first.Serial-soa.Serial >= 1<<31) {
 					err = errors.New("transferred serial is older or ambiguous")
 				} else {
 					confirmed := m.opts.Now().UTC()

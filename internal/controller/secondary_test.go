@@ -21,7 +21,7 @@ func TestSecondaryControllerClearsLegacyStatusWithoutStamping(t *testing.T) {
 	e.apply(secondary)
 	secondary = e.zone("copy")
 	secondary.Status = v1alpha1.DNSZoneStatus{
-		Serial: 98765, ContentHash: "sha256:legacy-primary-hash", RecordCount: 23,
+		Serial: 98765, ContentHash: "sha256:legacy-primary-hash", RecordCount: 23, NameserverAddresses: []string{"192.0.2.99"},
 		Conditions: []metav1.Condition{
 			{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonServing, LastTransitionTime: metav1.NewTime(t0)},
 			{Type: v1alpha1.ConditionDegraded, Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonInvalid, LastTransitionTime: metav1.NewTime(t0)},
@@ -55,7 +55,7 @@ func TestSecondaryControllerClearsLegacyStatusWithoutStamping(t *testing.T) {
 	assertSecondary := func() {
 		t.Helper()
 		cur := e.zone("copy")
-		if cur.Status.Serial != 0 || cur.Status.ContentHash != "" || cur.Status.RecordCount != 0 || cur.Status.ObservedGeneration != cur.Generation {
+		if cur.Status.Serial != 0 || cur.Status.ContentHash != "" || cur.Status.RecordCount != 0 || len(cur.Status.NameserverAddresses) != 0 || cur.Status.ObservedGeneration != cur.Generation {
 			t.Fatalf("shared secondary still reports primary data: %+v", cur.Status)
 		}
 		ready := condition(cur.Status.Conditions, v1alpha1.ConditionReady)

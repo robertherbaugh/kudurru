@@ -7,7 +7,9 @@ package zoneview
 import (
 	"fmt"
 	"log/slog"
-	"sync"
+	"sync/atomic"
+
+	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
@@ -25,22 +27,30 @@ const ViewName = "zones"
 // status.contentHash is the hash of the zone served here. A zone whose
 // spec does not build is skipped and logged (the controller reports the
 // condition); record-set errors drop only the offending endpoints. Duplicate
-// apexes retain the last served zone until the conflict is resolved. On cold
-// start the first metadata name wins deterministically. Other zones continue
-// rebuilding, so an accepted conflict cannot poison the entire view.
+// apices publish unavailable coverage while unrelated zones keep updating.
 func Builder(logger *slog.Logger) zonecache.Builder {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	var mu sync.Mutex
-	var generation uint64
-	lastGood := map[string]*zone.Zone{}
+	var generation atomic.Uint64
 	return zonecache.NewBuilder(ViewName, func(objects zonecache.ObjectSet) (any, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		byApex := map[string][]*zone.Zone{}
-		names := map[string][]string{}
-		for _, dz := range objects.Zones() {
+		var zones []*zone.Zone
+		configured := objects.Zones()
+		conflicts := zone.ConflictingApices(configured)
+		covered := make(map[string]bool)
+		for _, dz := range configured {
+			if apex := dns.CanonicalName(dz.Spec.ZoneName); conflicts[apex] {
+				z, err := zone.BuildUnavailable(apex)
+				if err != nil {
+					return nil, fmt.Errorf("zoneview: conflict coverage: %w", err)
+				}
+				if !covered[z.Name()] {
+					zones = append(zones, z)
+					covered[z.Name()] = true
+				}
+				logger.Warn("zone apex conflict; serving unavailable coverage", "zone", dz.Name, "apex", apex)
+				continue
+			}
 			if dz.Spec.Type == v1alpha1.ZoneTypeSecondary {
 				z, err := zone.BuildSecondaryPlaceholder(dz)
 				if err != nil {
@@ -59,28 +69,12 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 			if !errs.Empty() {
 				logger.Debug("zone built with record errors", "zone", dz.Name, "recordSets", len(errs.RecordSets))
 			}
-			byApex[z.Name()] = append(byApex[z.Name()], z)
-			names[z.Name()] = append(names[z.Name()], dz.Name)
+			zones = append(zones, z)
 		}
-		var zones []*zone.Zone
-		nextGood := make(map[string]*zone.Zone, len(byApex))
-		for apex, candidates := range byApex {
-			selected := candidates[0]
-			if len(candidates) > 1 {
-				if previous := lastGood[apex]; previous != nil {
-					selected = previous
-				}
-				logger.Warn("duplicate zone apex; retaining selected serving data", "apex", apex, "objects", names[apex], "lastGood", lastGood[apex] != nil)
-			}
-			zones = append(zones, selected)
-			nextGood[apex] = selected
-		}
-		generation++
-		snap, err := zone.NewSnapshot(generation, true, zones...)
+		snap, err := zone.NewSnapshot(generation.Add(1), true, zones...)
 		if err != nil {
 			return nil, fmt.Errorf("zoneview: %w", err)
 		}
-		lastGood = nextGood
 		return snap, nil
 	})
 }
@@ -129,8 +123,12 @@ type secondarySet struct {
 func (s secondarySet) Match(name string) *zone.Zone {
 	z := s.Set.Match(name)
 	if z != nil && z.Type() == v1alpha1.ZoneTypeSecondary {
-		if transferred := s.copies.Lookup(z.SecondaryIdentity()); transferred != nil {
-			return transferred
+		// Empty identities mark unavailable conflict coverage, which can
+		// never be replaced by one of the competing objects' runtime copies.
+		if id := z.SecondaryIdentity(); id != "" {
+			if transferred := s.copies.Lookup(id); transferred != nil {
+				return transferred
+			}
 		}
 	}
 	return z

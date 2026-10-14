@@ -44,6 +44,7 @@ func TestSecondaryRuntimeStates(t *testing.T) {
 		serial      bool
 	}{
 		{name: "pending", state: "pending"},
+		{name: "conflicting configuration", state: "unavailable", st: secondary.Status{ConfigurationError: "Multiple DNSZone objects configure this apex."}},
 		{name: "initial failure", state: "unavailable", st: secondary.Status{Error: "key unavailable"}},
 		{name: "valid serial zero", state: "serving", serial: true, st: secondary.Status{Serial: 0, Available: true, RecordCount: 4, ConfirmedAt: now, ExpiresAt: now.Add(time.Hour)}},
 		{name: "last good", state: "serving", serial: true, st: secondary.Status{Serial: 7, Available: true, ConfirmedAt: now, ExpiresAt: now.Add(time.Hour), Error: "primary offline"}},

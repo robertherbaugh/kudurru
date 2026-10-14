@@ -139,6 +139,20 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	if onlyPrimary := Served(cache); len(onlyPrimary) != 1 || onlyPrimary[0].Name() != "home.example." {
 		t.Fatal("served list included an unavailable placeholder")
 	}
+	t.Run("conflict-cannot-select-runtime-copy", func(t *testing.T) {
+		conflict, err := zone.BuildUnavailable(config.Spec.ZoneName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := zone.NewSnapshot(2, true, conflict, base.Match("home.example."), base.Match("outside.test."))
+		if err != nil {
+			t.Fatal(err)
+		}
+		current := secondarySet{Set: snapshot, copies: transfers}
+		if got := current.Match("www.copy.example."); got != conflict || got.AvailableAt(now) {
+			t.Fatal("an existing manager copy replaced conflict coverage")
+		}
+	})
 	for name, mutate := range map[string]func(*v1alpha1.DNSZone){
 		"recreated":       func(z *v1alpha1.DNSZone) { z.UID = "new-instance" },
 		"renamed":         func(z *v1alpha1.DNSZone) { z.Name = "other-object" },
