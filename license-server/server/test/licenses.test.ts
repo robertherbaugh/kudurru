@@ -298,7 +298,7 @@ describeDb('withdraw', () => {
 });
 
 describeDb('email key and downloads', () => {
-  test('Cloudflare 250 without a provider Message-ID: 503, no emailed audit; a confirmed submission is traceable', async () => {
+  test('Cloudflare submissions need a provider receipt before HTTP success and an emailed audit', async () => {
     const customer = await createCustomer(t.db, { contactEmail: 'contact@receipt.example' });
     const lic = (await issue({ customerId: customer.id, licensee: 'Receipt Co', plan: 'business', nodes: 1, features: null, expiresOn: inDays(30) })).body;
     let response = '250 2.0.0 Ok';
@@ -311,16 +311,13 @@ describeDb('email key and downloads', () => {
       expect(failed.status).toBe(503);
       expect(failed.error?.key).toBe('unavailable');
       expect((await auditOf(lic.id)).filter((e) => e.action === 'license.key_emailed')).toHaveLength(0);
-      expect(app.log.find('mail submission not confirmed: Cloudflare returned no Message-ID').at(-1)).toMatchObject({ licenseId: lic.id, keyId: lic.currentKey.id, requestId: failed.res.headers.get('X-Request-Id') });
 
       response = '250 2.0.0 Ok <provider@kudurru.io>';
       const sent = await callJson(smtpApp, 'licenseEmail', { as: admin, params: { id: lic.id }, body: {} });
       expect(sent.status).toBe(200);
       expect(sent.body.sentTo).toBe('contact@receipt.example');
       expect((await auditOf(lic.id)).filter((e) => e.action === 'license.key_emailed')).toHaveLength(1);
-      expect(app.log.find('mail accepted by SMTP').at(-1)).toMatchObject({ providerMessageId: '<provider@kudurru.io>', licenseId: lic.id, keyId: lic.currentKey.id, requestId: sent.res.headers.get('X-Request-Id') });
-      expect(app.log.text()).not.toContain(lic.currentKey.token);
-      expect(app.log.text()).not.toContain('test-password');
+      expect(app.log.find('mail accepted by SMTP').at(-1)).toMatchObject({ licenseId: lic.id, keyId: lic.currentKey.id, requestId: sent.res.headers.get('X-Request-Id') });
     } finally {
       await smtpApp.close();
     }

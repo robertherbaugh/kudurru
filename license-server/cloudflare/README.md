@@ -315,6 +315,13 @@ cloudflare/containers#231). Develop the portal itself with
 twice; matching Ray IDs and trace IDs identify one request. These HTTP logs
 do not confirm inbox delivery.
 
+The container's `mail configured` startup log includes
+`confirmsWithProviderId`. This is `true` for the documented Cloudflare
+SMTP hostname, `smtp.mx.cloudflare.net`, and `false` for other hosts.
+Use that hostname directly for Cloudflare SMTP; a proxy or CNAME alias
+is not automatically identified as Cloudflare and does not enable the
+provider receipt check.
+
 Check the effective sender in the container's `mail configured` startup
 log (`from`) or the portal's System page. The setting is `MAIL_FROM`;
 `EMAIL_FROM` is ignored and leaves the default `licenses@kudurru.io`

@@ -22,6 +22,7 @@ describe('SMTP provider receipts', () => {
     const mailer = smtpMailer(testConfig({ mail: { smtpUrl: 'smtps://api_token:smtp-private-password@smtp.mx.cloudflare.net:465' } }), log, () => ({
       sendMail: () => Promise.resolve(acknowledgement(`250 2.0.0 Ok ${providerMessageId}`)),
     }));
+    expect(log.find('mail configured')[0]).toMatchObject({ host: 'smtp.mx.cloudflare.net', confirmsWithProviderId: true });
     await mailOrUnavailable(mailer, msg, log.child({ requestId: 'req-receipt', licenseId: 'lic_receipt' }));
     expect(log.find('mail accepted by SMTP')).toHaveLength(1);
     expect(log.find('mail accepted by SMTP')[0]).toMatchObject({
@@ -53,6 +54,7 @@ describe('SMTP provider receipts', () => {
     const mailer = smtpMailer(testConfig({ mail: { smtpUrl: 'smtps://mail.example.org:465' } }), log, () => ({
       sendMail: () => Promise.resolve(acknowledgement('250 queued')),
     }));
+    expect(log.find('mail configured')[0]).toMatchObject({ host: 'mail.example.org', confirmsWithProviderId: false });
     await mailOrUnavailable(mailer, msg, log);
     expect(log.find('mail accepted by SMTP')[0]).toMatchObject({ messageId: clientMessageId, providerMessageId: null, responseCode: 250 });
   });

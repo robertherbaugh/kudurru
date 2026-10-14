@@ -20,6 +20,8 @@ import { HttpError } from '../http/errors';
 import type { Logger } from '../log';
 import { unconfiguredMailer, type MailMessage, type Mailer } from './types';
 
+const CLOUDFLARE_SMTP_HOST = 'smtp.mx.cloudflare.net';
+
 /** A send that failed: the short reason, never the message or the credentials. */
 export class MailDeliveryError extends Error {
   override readonly name = 'MailDeliveryError';
@@ -92,6 +94,7 @@ export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTrans
   if (!config.mail.smtpUrl) return unconfiguredMailer;
   const target = parseSmtpUrl(config.mail.smtpUrl);
   const requireTLS = !target.secure && !config.devMode && !isLoopback(target.host);
+  const confirmsWithProviderId = target.host.toLowerCase() === CLOUDFLARE_SMTP_HOST;
   const transport = makeTransport(
     {
       host: target.host,
@@ -111,7 +114,7 @@ export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTrans
     { from: config.mail.from, replyTo: config.mail.replyTo },
   );
   const mailLog = log.child({ component: 'mail' });
-  mailLog.info('mail configured', { host: target.host, port: target.port, secure: target.secure, requireTLS, from: config.mail.from });
+  mailLog.info('mail configured', { host: target.host, port: target.port, secure: target.secure, requireTLS, confirmsWithProviderId, from: config.mail.from });
 
   return {
     configured: true,
@@ -140,8 +143,7 @@ export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTrans
         // suppressed recipient. Only its server-assigned Message-ID proves
         // submission; nodemailer's info.messageId is generated locally.
         // https://developers.cloudflare.com/email-service/api/send-emails/smtp/#suppressed-recipients
-        const cloudflare = target.host.toLowerCase() === 'smtp.mx.cloudflare.net';
-        const providerMessageId = cloudflare ? /<([^<>\s]+@[^<>\s]+)>/.exec(info.response)?.[0] ?? null : null;
+        const providerMessageId = confirmsWithProviderId ? /<([^<>\s]+@[^<>\s]+)>/.exec(info.response)?.[0] ?? null : null;
         const receipt = {
           host: target.host,
           toDomain: domainOf(msg.to),
@@ -152,7 +154,7 @@ export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTrans
           acceptedCount: info.accepted.length,
           rejectedCount: info.rejected.length,
         };
-        if (cloudflare && !providerMessageId) {
+        if (confirmsWithProviderId && !providerMessageId) {
           sendLog.error('mail submission not confirmed: Cloudflare returned no Message-ID', receipt);
           throw new MailDeliveryError('Cloudflare did not confirm the message; check recipient suppressions');
         }
