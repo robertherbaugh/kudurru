@@ -178,6 +178,11 @@ original proof expiry, and must be strictly later than any new floor. Equality
 rejects the command; timestamps are never adjusted to bypass revocation. Cookie
 sealing requires a complete committed view containing the new enrollment.
 
+External issuance rechecks the private verified proof at final command admission,
+after all staged enrollment and other callback work. Expiry or a clock regression
+rolls back the entire enrollment. The outer resource pin still excludes provider
+rotation through the actual commit; a time check alone is not that exclusion.
+
 These owners and commands are tested with real signed JWTs, concurrent concrete
 transactions, rollback, restart, replica installation and promotion. Network
 discovery/exchange, preauth consumption and browser/CLI mounting remain separate

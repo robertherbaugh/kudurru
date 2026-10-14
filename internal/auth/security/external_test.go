@@ -351,3 +351,43 @@ func TestConcurrentExternalIssuanceKeepsOneIndependentIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestExternalProofExpiresAfterEnrollmentBeforeCommandCommit(t *testing.T) {
+	for _, regress := range []bool{false, true} {
+		t.Run(map[bool]string{false: "expired", true: "clock-regression"}[regress], func(t *testing.T) {
+			f := newExternalIssueFixture(t, true)
+			now := f.now.Add(time.Second)
+			proof := f.proof(t, now, "alice", "ops")
+			before, err := f.st.ReadGeneration(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			clock := now
+			var pending Enrollment
+			err = f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				var err error
+				pending, err = IssueExternal(ctx, tx, f.deps, proof, func() time.Time { return clock })
+				if err != nil {
+					return err
+				}
+				// Additional command work may outlive the accepted JWT, even
+				// though the enrollment itself completed while it was valid.
+				clock = now.Add(5 * time.Minute)
+				if regress {
+					clock = now.Add(-time.Nanosecond)
+				}
+				return nil
+			})
+			if !errors.Is(err, servingauth.ErrCredentials) || pending.ID() == "" {
+				t.Fatal("final proof check did not reject staged enrollment", err)
+			}
+			after, err := f.st.ReadGeneration(t.Context())
+			if err != nil || !before.Generation().Same(after.Generation()) {
+				t.Fatal("expired enrollment retained identity, session or revision", err)
+			}
+			if _, _, err := pending.Seal(f.view(t), now); err == nil {
+				t.Fatal("rolled-back enrollment produced a cookie")
+			}
+		})
+	}
+}

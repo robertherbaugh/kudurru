@@ -73,6 +73,15 @@ func IssueExternal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.D
 		IssuedAt: issuedAt, ExpiresAt: issuedAt.Add(lifetime), IdleExpiresAt: issuedAt.Add(idle),
 		Grants: slices.Clone(d.Grants), CSRFHash: servingauth.CSRFHash(csrf), Evidence: evidence,
 	}
+	if err := tx.RequireCommitCheck(func(context.Context) error {
+		now := clock().UTC()
+		if now.Before(issuedAt) || !now.Before(record.ExpiresAt) || !now.Before(record.IdleExpiresAt) || d.ValidAt(now) != nil {
+			return servingauth.ErrCredentials
+		}
+		return nil
+	}); err != nil {
+		return Enrollment{}, err
+	}
 	if err := s.enrollExternal(record); err != nil {
 		return Enrollment{}, err
 	}

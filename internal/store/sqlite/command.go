@@ -74,7 +74,7 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 	}
 	// No-op authorization/dedup replay still crossed the same fenced barrier.
 	if !t.changed {
-		return nil
+		return t.checkCommit(ctx)
 	}
 	if err := advanceRevision(ctx, tx, &a); err != nil {
 		return err
@@ -92,6 +92,9 @@ func (s *Store) Command(ctx context.Context, expected replication.Term, fn func(
 				return err
 			}
 		}
+	}
+	if err := t.checkCommit(ctx); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
@@ -125,6 +128,7 @@ type CommandTx struct {
 	changed   bool
 	mutations []*mutation
 	rvs       []uint64
+	checks    []func(context.Context) error
 }
 
 func (t *CommandTx) valid(ctx context.Context) error {

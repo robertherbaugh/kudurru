@@ -537,6 +537,17 @@ memory. SQLite uses `synchronous=FULL` for all writer connections, including
 reconnections and standalone databases. Restoring a public backup remains an
 apply operation subject to the same writer fence.
 
+`sqlite.Command` runs current authorization, staged reads and writes in one
+fenced transaction. It also accepts up to 16 final checks of already pinned
+immutable dependencies and the actual clock. Those checks run after the callback
+and complete-image validation, immediately before commit or a successful no-op;
+a denial rolls back object, security, audit, receipt and revision changes together.
+Checks cannot access the ended transaction or acquire publication/provider locks.
+Callers retain dependency replacement exclusion through the entire command.
+This defines admission time; wall time may still advance while SQLite syncs.
+External enrollment registers a final proof check so a JWT that expires during
+later command work cannot create a session.
+
 An accepted replacement rotates the local watch lineage and closes old
 watches; object resource versions remain those of the source. Consumers that
 need a coherent generation must subscribe before `ReadGeneration` and publish
