@@ -102,6 +102,7 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 		t.Fatal(err)
 	}
 	f.deps = Dependencies{Identity: "test-host-v1", Host: host, Catalog: CatalogResource{Catalogue: catalogue.Embedded(), Source: host.Blocking.Catalogue}, Keys: keys, Auth: servingauth.Dependencies{ConfigProviders: []servingauth.ProviderSource{}, ProviderResources: []servingauth.ProviderResource{}, Identity: "test-auth-v1", ExpectedIdentity: "test-auth-v1", Permissions: permissions, License: servingauth.LicensePolicy{RBAC: true}, CurrentKey: bytes.Repeat([]byte{3}, 32)}}
+	f.deps.KeyringIdentity = "test-keyring-v1"
 	lists, err := listfetcher.OpenDiskCache(t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +114,7 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 		if keyrings != nil {
 			cut := keyrings.Capture()
 			d.Keys = cut.Keys()
+			d.KeyringIdentity = cut.Identity()
 			d.Identity += "/" + cut.Identity()
 			d.Current = func() bool { return f.epoch.Load() == epoch && !f.blocked.Load() && cut.Current() }
 		}

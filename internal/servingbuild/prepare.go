@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
@@ -32,8 +33,11 @@ func New(opts Options) (*Builder, error) {
 // RuntimeOwner retains the exact primary versions and bound local runtime part.
 // Preparing a version does not acknowledge actual publication to an UPDATE.
 type RuntimeOwner struct {
-	primary *primaryruntime.PreparedImage
-	zones   *servingzones.Prepared
+	primary         *primaryruntime.PreparedImage
+	zones           *servingzones.Prepared
+	keys            *dnsserver.StaticKeyring
+	keyringIdentity string
+	current         func() bool
 }
 
 // Primary returns an immutable owner for exact publication acknowledgment.
@@ -41,6 +45,17 @@ func (r *RuntimeOwner) Primary() *primaryruntime.PreparedImage { return r.primar
 
 // Zones returns the immutable, credential-bound runtime selection owner.
 func (r *RuntimeOwner) Zones() *servingzones.Prepared { return r.zones }
+
+// NotifyKeys returns credentials from this owner's complete prepared dependency
+// cut. The caller must retain the containing serving lease throughout use. The
+// predicate covers every captured dependency; it takes no locks and does no I/O.
+// It does not grant current writer admission or exclude dependency replacement.
+func (r *RuntimeOwner) NotifyKeys() (string, *dnsserver.StaticKeyring, func() bool) {
+	if r == nil {
+		return "", nil, nil
+	}
+	return r.keyringIdentity, r.keys, r.current
+}
 
 // Prepare implements serving.PrepareFunc. The returned resource references
 // transfer to the publisher. Every earlier failure releases all acquired owners.
@@ -76,7 +91,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if err != nil {
 		return serving.Prepared{}, err
 	}
-	if deps.Identity == "" || len(deps.Identity) > 512 || deps.Host == nil || deps.Current == nil || deps.Keys == nil {
+	if deps.Identity == "" || len(deps.Identity) > 512 || deps.Host == nil || deps.Current == nil || deps.Keys == nil || deps.KeyringIdentity == "" || len(deps.KeyringIdentity) > 512 {
 		return serving.Prepared{}, serving.ErrDependency
 	}
 	// Persisted config identity/precedence belongs to this candidate. A local
@@ -111,7 +126,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", &InventoryOwner{Snapshot: deps.Inventory}, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{primary: primary, zones: zones}, deps.Release),
+		component("runtime", &RuntimeOwner{primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current}, deps.Release),
 	}
 	// List content and pure auth policy have exact owner identities in addition
 	// to the captured host dependency revision and canonical image identity.

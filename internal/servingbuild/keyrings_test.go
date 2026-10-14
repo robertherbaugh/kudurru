@@ -155,3 +155,46 @@ func TestKeyringGuardCoversActualSQLitePublicationCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRuntimeNotifyKeysRetainCompleteDependencyCut(t *testing.T) {
+	first, second := ring(t, "a"), ring(t, "b")
+	o, err := NewKeyringOwner(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFixtureWithKeyrings(t, o)
+	capture := func() (string, *dnsserver.StaticKeyring, func() bool) {
+		t.Helper()
+		lease, err := f.pub.CaptureHTTP(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(lease.Release)
+		value, _ := lease.Bundle().Component("runtime")
+		runtime, ok := value.(*RuntimeOwner)
+		if !ok {
+			t.Fatal("missing complete runtime owner")
+		}
+		return runtime.NotifyKeys()
+	}
+	oldID, oldKeys, oldCurrent := capture()
+	if oldID != o.Capture().Identity() || oldKeys != first || oldCurrent == nil || !oldCurrent() {
+		t.Fatal("runtime did not retain its prepared keyring")
+	}
+	for _, keys := range []*dnsserver.StaticKeyring{second, first} {
+		if err := o.Replace(t.Context(), keys); err != nil {
+			t.Fatal(err)
+		}
+		f.waitCurrent(t)
+		id, got, current := capture()
+		if id != o.Capture().Identity() || id == oldID || got != keys || !current() || oldCurrent() || oldKeys != first {
+			t.Fatal("replacement mixed complete owners or revived an old NOTIFY cut")
+		}
+	}
+	_, _, current := capture()
+	// Current includes non-key dependencies, even though the keys remain valid.
+	f.epoch.Add(1)
+	if current() || !o.Capture().Current() {
+		t.Fatal("NOTIFY predicate ignored another changed dependency")
+	}
+}
