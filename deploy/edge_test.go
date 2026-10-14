@@ -3,8 +3,77 @@ package deploy_test
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
+
+func TestChartMultipleVIPsAndSupervisorDiscovery(t *testing.T) {
+	values := `edge: {enabled: true}
+vip:
+  provider: keepalived
+  keepalived:
+    interface: eth1
+    vrrpInterface: eth0
+    vips:
+      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
+      - {name: dns-b, address: 10.35.10.54/24, interface: eth2, vrid: 54, preemptDelay: 30}
+`
+	out, err := renderChart(t, values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRendered(t, out)
+	r.checkGeneric(t)
+	pod := mapOf(dig(r.wantEdge(t, "DaemonSet"), "spec", "template"))
+	args := list(r.container(t, pod, "keepalived")["args"])
+	for _, want := range []string{"--vip=dns-a=10.35.10.53/24@eth1#53", "--vip=dns-b=10.35.10.54/24@eth2#54", "--vrrp-interface=eth0", "--preempt-delay=dns-b=30"} {
+		if !slices.Contains(args, any(want)) {
+			t.Errorf("args lack %s: %v", want, args)
+		}
+	}
+	svc := r.object(t, "Service", "kudurru-edge-status")
+	if dig(svc, "spec", "clusterIP") != "None" || dig(svc, "spec", "publishNotReadyAddresses") != true || len(list(dig(svc, "spec", "ports"))) != 2 {
+		t.Fatalf("discovery service = %v", svc)
+	}
+	server := r.container(t, r.pod(t), "kudurru")
+	found := false
+	for _, e := range list(server["env"]) {
+		if dig(e, "name") == "KUDURRU_EDGE_SUPERVISORS" {
+			found = dig(e, "value") == "endpointslice:kudurru-system/kudurru-edge-status"
+		}
+	}
+	if !found {
+		t.Fatal("server lacks supervisor discovery source")
+	}
+	for name, bad := range map[string]string{
+		"duplicate name":    strings.Replace(values, "name: dns-b", "name: dns-a", 1),
+		"duplicate VRID":    strings.Replace(values, "vrid: 54", "vrid: 53", 1),
+		"VRID out of range": strings.Replace(values, "vrid: 54", "vrid: 256", 1),
+		"missing VRID":      strings.Replace(values, ", vrid: 54", "", 1),
+		"invalid delay":     strings.Replace(values, "preemptDelay: 30", "preemptDelay: -1", 1),
+		"invalid interface": strings.Replace(values, "vrrpInterface: eth0", "vrrpInterface: 'eth0 bad'", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := renderChart(t, bad); err == nil {
+				t.Fatal("invalid VIP configuration accepted")
+			}
+		})
+	}
+}
+
+func TestChartStandaloneEdgeStatusPermissions(t *testing.T) {
+	out, err := renderChart(t, "mode: standalone\nedge: {enabled: true}\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRendered(t, out)
+	r.wantObject(t, "Role", "kudurru-edge-status")
+	r.wantObject(t, "RoleBinding", "kudurru-edge-status")
+	if dig(r.pod(t), "spec", "automountServiceAccountToken") != true {
+		t.Fatal("standalone edge discovery needs its ServiceAccount token")
+	}
+}
 
 // The edge derives the internal API token and CA from the same keys as
 // serve. Missing credentials silently disable zone polling and send local

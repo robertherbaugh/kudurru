@@ -733,8 +733,9 @@ func (s *Supervisor) Handler() http.Handler {
 		_, _ = w.Write([]byte(msg + "\n"))
 	})
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
+		ready, message := s.Ready()
 		s.mu.Lock()
-		body := map[string]any{"endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath()}
+		body := map[string]any{"ready": ready, "message": message, "endpoints": s.endpoints, "authoritativeZones": s.zones, "config": s.MainPath()}
 		if s.status != nil {
 			body["dnsdist"] = s.status
 		}

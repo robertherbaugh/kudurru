@@ -1828,6 +1828,9 @@
           "name": {
             "type": "string"
           },
+          "node": {
+            "type": "string"
+          },
           "up": {
             "type": "boolean"
           }
@@ -1844,6 +1847,9 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "message": {
+            "type": "string"
           },
           "state": {
             "type": "string"
@@ -1869,6 +1875,12 @@
           "node": {
             "type": "string"
           },
+          "supervisors": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeSupervisorStatus"
+            },
+            "type": "array"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -1876,14 +1888,70 @@
           },
           "vip": {
             "$ref": "#/components/schemas/EdgeComponent"
+          },
+          "vips": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeVIP"
+            },
+            "type": "array"
           }
         },
         "required": [
           "edge",
           "vip",
           "backends",
+          "vips",
+          "supervisors",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "EdgeSupervisorStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/EdgeComponent"
+          },
+          "node": {
+            "type": "string"
+          },
+          "vip": {
+            "$ref": "#/components/schemas/EdgeComponent"
+          }
+        },
+        "required": [
+          "node",
+          "edge",
+          "vip"
+        ],
+        "type": "object"
+      },
+      "EdgeVIP": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "priority": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "node",
+          "state",
+          "priority"
         ],
         "type": "object"
       },

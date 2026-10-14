@@ -2319,26 +2319,46 @@ type DomainsRequest struct {
 
 // EdgeBackend defines model for EdgeBackend.
 type EdgeBackend struct {
-	Address string `json:"address"`
-	Name    string `json:"name"`
-	Up      bool   `json:"up"`
+	Address string  `json:"address"`
+	Name    string  `json:"name"`
+	Node    *string `json:"node,omitempty"`
+	Up      bool    `json:"up"`
 }
 
 // EdgeComponent defines model for EdgeComponent.
 type EdgeComponent struct {
 	Enabled bool    `json:"enabled"`
+	Message *string `json:"message,omitempty"`
 	State   *string `json:"state,omitempty"`
 }
 
 // EdgeInfo defines model for EdgeInfo.
 type EdgeInfo struct {
-	Backends []EdgeBackend `json:"backends"`
-	Edge     EdgeComponent `json:"edge"`
-	Node     string        `json:"node"`
+	Backends    []EdgeBackend          `json:"backends"`
+	Edge        EdgeComponent          `json:"edge"`
+	Node        string                 `json:"node"`
+	Supervisors []EdgeSupervisorStatus `json:"supervisors"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64       `json:"took_ms"`
 	Vip    EdgeComponent `json:"vip"`
+	Vips   []EdgeVIP     `json:"vips"`
+}
+
+// EdgeSupervisorStatus defines model for EdgeSupervisorStatus.
+type EdgeSupervisorStatus struct {
+	Edge EdgeComponent `json:"edge"`
+	Node string        `json:"node"`
+	Vip  EdgeComponent `json:"vip"`
+}
+
+// EdgeVIP defines model for EdgeVIP.
+type EdgeVIP struct {
+	Address  *string `json:"address,omitempty"`
+	Name     string  `json:"name"`
+	Node     string  `json:"node"`
+	Priority int64   `json:"priority"`
+	State    string  `json:"state"`
 }
 
 // Endpoint defines model for Endpoint.

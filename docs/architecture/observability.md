@@ -13,6 +13,23 @@ Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
 `internal/metrics`, `internal/health`, `internal/audit`.
 
+The Nodes page also polls `GET /api/v1/edge` every ten seconds. In Helm,
+the server discovers every separate edge pod through the headless
+`<release>-edge-status` Service's EndpointSlices, then reads `/status` on
+the supervisors' health listeners (8084 for dnsdist, 8085 for keepalived)
+in parallel with two-second request deadlines. Unready pods remain in
+discovery. The response includes aggregate readiness, each supervisor,
+backends as observed by each edge, and each VIP's state and priority.
+`MASTER` identifies the node holding a VIP; `BACKUP` reports only that
+node's own state. An unavailable supervisor cannot report a live owner.
+Older supervisors use `/healthz/ready` to supplement their status
+document. dnsdist's private API key stays inside the edge pod.
+
+For a local edge outside Helm, set `KUDURRU_EDGE_STATUS_URL` and, when
+keepalived runs alongside it, `KUDURRU_VIP_STATUS_URL` to the health
+listeners (for example, `http://127.0.0.1:8084` and port 8085). The Compose
+examples set these automatically.
+
 ## The query log pipeline
 
 ```mermaid

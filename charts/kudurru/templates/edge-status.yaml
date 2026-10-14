@@ -1,0 +1,54 @@
+{{- if include "kudurru.edge.separate" . }}
+# Discovery of every supervisor, including unready pods. The server reads
+# EndpointSlices directly so dnsPolicy Default does not need cluster DNS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge-status
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kudurru.edge.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "kudurru.edge.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: edge-ready
+      port: 8084
+      targetPort: edge-ready
+      protocol: TCP
+    {{- if eq .Values.vip.provider "keepalived" }}
+    - name: vip-health
+      port: 8085
+      targetPort: vip-health
+      protocol: TCP
+    {{- end }}
+{{- if and (include "kudurru.standalone" .) .Values.rbac.create }}
+---
+# Standalone's object store needs no Kubernetes API, but edge discovery does.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge-status
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kudurru.fullname" . }}-edge-status
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kudurru.fullname" . }}-edge-status
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kudurru.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

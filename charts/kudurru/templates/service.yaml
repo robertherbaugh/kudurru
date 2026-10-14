@@ -93,12 +93,17 @@ metadata:
   labels:
     {{- include "kudurru.labels" . | nindent 4 }}
     kudurru.io/service: api
-  {{- with .Values.service.api.annotations }}
+  {{- with (include "kudurru.api.annotations" . | fromYaml) }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   type: {{ .Values.service.api.type }}
+  sessionAffinity: {{ .Values.service.api.sessionAffinity }}
+  {{- if and (eq .Values.service.api.sessionAffinity "ClientIP") .Values.service.api.sessionAffinityConfig }}
+  sessionAffinityConfig:
+    {{- toYaml .Values.service.api.sessionAffinityConfig | nindent 4 }}
+  {{- end }}
   selector:
     {{- include "kudurru.selectorLabels" . | nindent 4 }}
   ports:

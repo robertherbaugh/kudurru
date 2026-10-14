@@ -736,7 +736,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
+	edgeSupervisors, vipSupervised, err := edgeStatusSource(restCfg, cfg.Node.Name)
+	if err != nil {
+		return err
+	}
 	apiSrv, err := api.New(api.Options{
+		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),

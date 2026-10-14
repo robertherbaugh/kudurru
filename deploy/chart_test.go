@@ -255,6 +255,63 @@ var chartCases = []chartCase{
 			t.Errorf("ingress host = %v", dig(ing, "spec", "rules", 0, "host"))
 		}
 	}},
+	{name: "traefik-ingressroute-sticky", values: "service: {api: {port: 8090}}\ningress: {enabled: true, kind: IngressRoute, className: traefik, host: dns.example.com, traefik: {entryPoints: [websecure, dmz-websecure], tls: {secretName: dns-tls}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		route := r.object(t, "IngressRoute", "kudurru")
+		r.wantNoKind(t, "Ingress")
+		if route["apiVersion"] != "traefik.io/v1alpha1" || dig(route, "metadata", "annotations", "kubernetes.io/ingress.class") != "traefik" {
+			t.Errorf("IngressRoute metadata = %v", route)
+		}
+		if len(list(dig(route, "spec", "entryPoints"))) != 2 || dig(route, "spec", "tls", "secretName") != "dns-tls" || dig(route, "spec", "routes", 0, "match") != "Host(`dns.example.com`)" {
+			t.Errorf("IngressRoute routing = %v", route)
+		}
+		backend := mapOf(dig(route, "spec", "routes", 0, "services", 0))
+		if backend["name"] != "kudurru-api" || backend["port"] != 8090 || backend["nativeLB"] != false {
+			t.Errorf("IngressRoute backend = %v", backend)
+		}
+		cookie := mapOf(dig(backend, "sticky", "cookie"))
+		if cookie["name"] != "kudurru_instance" || cookie["secure"] != true || cookie["httpOnly"] != true || cookie["sameSite"] != "lax" {
+			t.Errorf("sticky cookie = %v", cookie)
+		}
+	}},
+	{name: "traefik-ingressroute-sticky-disabled", values: "ingress: {enabled: true, kind: IngressRoute, host: dns.example.com, traefik: {sticky: {enabled: false}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		route := r.object(t, "IngressRoute", "kudurru")
+		if dig(route, "spec", "routes", 0, "services", 0, "sticky") != nil || mapOf(dig(route, "spec", "tls")) == nil {
+			t.Errorf("disabled affinity/default TLS = %v", route)
+		}
+	}},
+	{name: "traefik-ingress-sticky", values: "ingress: {enabled: true, className: traefik, host: dns.example.com}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantObject(t, "Ingress", "kudurru")
+		ann := mapOf(dig(r.object(t, "Service", "kudurru-api"), "metadata", "annotations"))
+		for key, want := range map[string]string{"cookie": "true", "cookie.name": "kudurru_instance", "cookie.secure": "true", "cookie.httponly": "true", "cookie.samesite": "lax"} {
+			if ann["traefik.ingress.kubernetes.io/service.sticky."+key] != want {
+				t.Errorf("Traefik annotations = %v", ann)
+			}
+		}
+		if ann["traefik.ingress.kubernetes.io/service.nativelb"] != "false" {
+			t.Errorf("Traefik must route directly to pods: %v", ann)
+		}
+	}},
+	{name: "traefik-sticky-annotation-override", values: "ingress: {enabled: true, className: traefik, host: dns.example.com}\nservice: {api: {annotations: {traefik.ingress.kubernetes.io/service.sticky.cookie.name: custom-cookie, example.com/custom: kept}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		ann := mapOf(dig(r.object(t, "Service", "kudurru-api"), "metadata", "annotations"))
+		if ann["traefik.ingress.kubernetes.io/service.sticky.cookie.name"] != "custom-cookie" || ann["example.com/custom"] != "kept" {
+			t.Errorf("explicit annotations were overwritten: %v", ann)
+		}
+	}},
+	{name: "api-session-affinity", values: "service: {api: {type: NodePort, sessionAffinity: ClientIP, sessionAffinityConfig: {clientIP: {timeoutSeconds: 600}}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		svc := r.object(t, "Service", "kudurru-api")
+		if dig(svc, "spec", "sessionAffinity") != "ClientIP" || dig(svc, "spec", "sessionAffinityConfig", "clientIP", "timeoutSeconds") != 600 {
+			t.Errorf("API affinity = %v", dig(svc, "spec"))
+		}
+		if dig(r.object(t, "Service", "kudurru-dns"), "spec", "sessionAffinity") != nil {
+			t.Error("API affinity changed DNS routing")
+		}
+	}},
+	{name: "api-session-affinity-none", values: "service: {api: {sessionAffinity: None}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		svc := r.object(t, "Service", "kudurru-api")
+		if dig(svc, "spec", "sessionAffinityConfig") != nil {
+			t.Errorf("disabled API affinity must omit its configuration: %v", dig(svc, "spec"))
+		}
+	}},
 	{name: "monitoring", values: "serviceMonitor: {enabled: true}\npodMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		r.wantObject(t, "ServiceMonitor", "kudurru")
 		r.wantObject(t, "PodMonitor", "kudurru")
@@ -462,6 +519,14 @@ var failCases = []struct{ name, values, want string }{
 	{"hostnetwork-without-net-bind-service", "hostNetwork: {enabled: true}\nsecurityContext: {capabilities: {drop: [ALL], add: []}}", "NET_BIND_SERVICE"},
 	{"hostnetwork-persistence", "hostNetwork: {enabled: true}\npersistence: {querylog: {enabled: true}}", "hostNetwork DaemonSet"},
 	{"ingress-without-host", "ingress: {enabled: true}", "ingress.host"},
+	{"bad-ingress-kind", "ingress: {kind: Gateway}", "ingress.kind"},
+	{"traefik-wrong-tls-shape", "ingress: {enabled: true, kind: IngressRoute, host: dns.example.com, tls: [{secretName: dns-tls}]}", "ingress.traefik.tls"},
+	{"traefik-without-entrypoints", "ingress: {enabled: true, kind: IngressRoute, host: dns.example.com, traefik: {entryPoints: []}}", "entryPoints"},
+	{"traefik-invalid-host-rule", "ingress: {enabled: true, kind: IngressRoute, host: 'dns.example.com` || Path(`/admin'}", "ingress.host"},
+	{"traefik-invalid-cookie", "ingress: {enabled: true, kind: IngressRoute, host: dns.example.com, traefik: {sticky: {cookie: {sameSite: invalid}}}}", "sameSite"},
+	{"bad-api-affinity", "service: {api: {sessionAffinity: Cookie}}", "sessionAffinity"},
+	{"api-affinity-timeout-zero", "service: {api: {sessionAffinity: ClientIP, sessionAffinityConfig: {clientIP: {timeoutSeconds: 0}}}}", "timeoutSeconds"},
+	{"api-affinity-timeout-long", "service: {api: {sessionAffinity: ClientIP, sessionAffinityConfig: {clientIP: {timeoutSeconds: 86401}}}}", "timeoutSeconds"},
 	{"short-proxy-secret", "edge: {enabled: true, proxyProtocolSecret: short}", "at least 32 bytes"},
 	{"edge-backend-53", "edge: {enabled: true, backendPort: 53}", "backendPort"},
 	{"block-page-without-address", "blockPage: {enabled: true}", "blockPage.ipv4 or blockPage.ipv6"},

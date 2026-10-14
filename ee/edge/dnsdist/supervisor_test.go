@@ -2,6 +2,7 @@ package dnsdist
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -223,6 +224,19 @@ func TestSupervisorLifecycle(t *testing.T) {
 	h.sup.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/healthz/ready", nil))
 	if rec.Code != 503 {
 		t.Errorf("/healthz/ready = %d, want 503", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.sup.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/status", nil))
+	var status struct {
+		Ready   bool         `json:"ready"`
+		Message string       `json:"message"`
+		DNSDist ServerStatus `json:"dnsdist"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Ready || !strings.Contains(status.Message, "0 of 3") || status.DNSDist.UpCount() != 0 {
+		t.Fatalf("unready status = %+v", status)
 	}
 	rec = httptest.NewRecorder()
 	h.sup.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
