@@ -231,6 +231,7 @@ func TestWatchSettingsReloads(t *testing.T) {
 func TestRestartRequired(t *testing.T) {
 	hot := map[string]bool{"log.level": true}
 	for _, p := range []string{
+		"dnssec.enabled", "dnssec.useBuiltinAnchors", "dnssec.trustAnchors", "dnssec.negativeTrustAnchors",
 		"upstreams.groups", "upstreams.bootstrap", "upstreams.conditional", "upstreams.ecs.mode", "upstreams.ecs.ipv4Prefix", "upstreams.ecs.ipv6Prefix",
 		"upstreams.recursion.dnssec", "upstreams.recursion.qnameMinimization", "upstreams.recursion.ipv6", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints",
 		"cache.maxEntries", "cache.minTTL", "cache.maxTTL", "cache.negativeTTL", "cache.prefetch.threshold", "cache.prefetch.window",

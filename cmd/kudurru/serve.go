@@ -68,15 +68,18 @@ import (
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
 	"github.com/robertherbaugh/kudurru/internal/stages/control"
+	dnssecstage "github.com/robertherbaugh/kudurru/internal/stages/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	logstage "github.com/robertherbaugh/kudurru/internal/stages/log"
+	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -468,6 +471,15 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	reg.MustRegister(zoneview.NewCollector(zc, secondaries))
 	reg.MustRegister(secondary.NewCollector(secondaries))
+	stubClient := &stub.Client{}
+	stubCluster := sha256.Sum256(append([]byte("kudurru/stub/cluster/v1:"), encKey...))
+	stubs, err := stub.New(stub.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", stubCluster), Discoverer: stubClient, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	reg.MustRegister(stub.NewCollector(stubs))
 	notifyReceiver := secondary.NewNotifyReceiver(secondaries, reg)
 	var (
 		internalClient *internalapi.Client
@@ -603,7 +615,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		collector = qlAsync
 	}
 
-	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
+	// Postprocess wraps all answering stages; DNSSEC validates raw forwarded
+	// answers before the cache stores them. The log observer sees the result.
 	// One recursive resolver for every recursive group, kept across reloads
 	// so its delegation and key caches survive settings changes.
 	var rec *recursor.Resolver
@@ -623,6 +636,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	fwd := upstreamstage.NewStage(upSet)
+	validation, err := cfg.DNSSEC.Validator(nil)
+	if err != nil {
+		return err
+	}
+	if err := fwd.SetValidation(validation, cfg.DNSSEC.Enabled); err != nil {
+		return err
+	}
 	queryUpstreams = func() []upstream.ServerStatus { return fwd.Set().Status() }
 	hostname, _ := os.Hostname()
 
@@ -670,15 +690,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 
-	auth := authoritative.New(zoneview.Source{Cache: zc, Secondary: secondaries})
+	auth := authoritative.New(zoneview.Source{Cache: zc, Secondary: secondaries, Stub: stubs})
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
 	auth.Notify = notifyReceiver.Handle
+	auth.StubQuery = stubClient.Exchange
 
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
 		identify.New(polSrc, nil),
 		control.New(control.Options{}),
+		&postprocess.Stage{},
 		auth,
 		bs,
 	}
@@ -687,8 +709,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	rc := cache.New(cache.OptionsFrom(cfg.Cache, cache.NewMetrics(reg)))
 	cs := cachestage.New(rc, cachestage.SettingsFrom(cfg.Cache), fwd)
 	cs.SetDisabled(cfg.Cache.MaxEntries == 0)
-	stages = append(stages, cs)
-	stages = append(stages, fwd)
+	stages = append(stages, cs, dnssecstage.New(fwd), fwd)
 	chain, err := pipeline.New(stages...)
 	if err != nil {
 		return err
@@ -880,7 +901,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
-		InternalClient: internalClient, License: lic, Secondaries: secondaries,
+		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
@@ -962,6 +983,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
 		{"secondaries", false, secondaries.Run},
+		{"stubs", false, stubs.Run},
 		{"secondary-notify-sources", false, notifyReceiver.Run},
 		{"secondary-notify-fanout", false, notifyFanout.Run},
 		{"settings", false, func(ctx context.Context) error {

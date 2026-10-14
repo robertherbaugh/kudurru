@@ -86,6 +86,37 @@ func TestObserverEvent(t *testing.T) {
 	}
 }
 
+func TestObserverUsesValidationProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		origin   pipeline.ResponseOrigin
+		state    pipeline.ValidationState
+		modified bool
+		ad       bool
+		want     querylog.DNSSECState
+	}{
+		{"DO off", pipeline.OriginForwarded, pipeline.ValidationSecure, false, false, querylog.DNSSECSecure},
+		{"untrusted AD", pipeline.OriginForwarded, pipeline.ValidationUnknown, false, true, querylog.DNSSECUnknown},
+		{"unsigned", pipeline.OriginForwarded, pipeline.ValidationInsecure, false, false, querylog.DNSSECInsecure},
+		{"bogus", pipeline.OriginFailure, pipeline.ValidationBogus, false, false, querylog.DNSSECBogus},
+		{"indeterminate", pipeline.OriginFailure, pipeline.ValidationIndeterminate, false, false, querylog.DNSSECIndeterminate},
+		{"modified", pipeline.OriginForwarded, pipeline.ValidationSecure, true, false, querylog.DNSSECUnknown},
+		{"local alias", pipeline.OriginMixed, pipeline.ValidationSecure, false, false, querylog.DNSSECUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &recorder{}
+			o := &Observer{Collector: rec}
+			req := request("example.", dns.TypeA)
+			m := reply(req, dns.RcodeSuccess)
+			m.AuthenticatedData = tc.ad
+			o.Observe(req, &pipeline.Response{Msg: m, Origin: tc.origin, Security: pipeline.Security{State: tc.state}, Modified: tc.modified}, nil, time.Millisecond)
+			if len(rec.events) != 1 || rec.events[0].DNSSEC != tc.want {
+				t.Fatal("recorded wire flags or modified data as validated")
+			}
+		})
+	}
+}
+
 // TestObserverPolicy: the deciding policy of the identify stage's
 // decision reaches the event; no decision leaves it empty.
 func TestObserverPolicy(t *testing.T) {

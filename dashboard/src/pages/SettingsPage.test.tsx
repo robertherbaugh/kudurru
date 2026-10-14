@@ -266,6 +266,23 @@ describe('SettingsPage', () => {
     expect(within(row('upstreams.recursion.dnssec')).getByRole('link', { name: 'Also on the Upstreams page' })).toHaveAttribute('href', '/upstreams');
   });
 
+  it('edits DNSSEC and preserves an absolute exception expiry', async () => {
+    const expiry = '2026-10-15T12:34:56Z';
+    (mockDB().settings.dnssec as Record<string, unknown>).negativeTrustAnchors = [{ domain: 'broken.example.', reason: 'Signer incident', expiresAt: expiry }];
+    renderWithApp(<SettingsPage />, { route: '/settings?view=expert&q=dnssec' });
+    const sw = await waitFor(() => within(row('dnssec.enabled')).getByRole('switch'));
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    await waitFor(() => expect((mockDB().settings.dnssec as Record<string, unknown>).enabled).toBe(true));
+    const exceptions = row('dnssec.negativeTrustAnchors');
+    expect(within(exceptions).getByLabelText('Expires at (UTC)')).toBeInTheDocument();
+    fireEvent.change(within(exceptions).getByRole('textbox', { name: 'Reason' }), { target: { value: 'Repair confirmed with owner' } });
+    fireEvent.click(within(exceptions).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect((mockDB().settings.dnssec as Record<string, unknown>).negativeTrustAnchors).toEqual([
+      { domain: 'broken.example.', reason: 'Repair confirmed with owner', expiresAt: expiry },
+    ]));
+  });
+
   it('shows the block page section with the HTTPS caveat and a sandboxed preview', async () => {
     renderWithApp(<SettingsPage />, { route: '/settings' });
     const section = await screen.findByRole('region', { name: 'Block page' });

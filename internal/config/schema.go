@@ -93,6 +93,7 @@ const (
 	GroupListeners    = "Listeners"
 	GroupDHCP         = "DHCP"
 	GroupUpstreams    = "Upstreams"
+	GroupDNSSEC       = "DNSSEC"
 	GroupCache        = "Cache"
 	GroupBlocking     = "Blocking"
 	GroupBlockPage    = "Block page"
@@ -107,7 +108,7 @@ const (
 
 // Groups lists the UI sections in display order.
 var Groups = []string{
-	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupCache, GroupBlocking, GroupBlockPage, GroupQuerylog, GroupDatabase,
+	GroupNode, GroupListeners, GroupDHCP, GroupUpstreams, GroupDNSSEC, GroupCache, GroupBlocking, GroupBlockPage, GroupQuerylog, GroupDatabase,
 	GroupRateLimit, GroupSecurity, GroupZones, GroupIntegrations, GroupLogging,
 }
 
@@ -244,6 +245,14 @@ var (
 // Schema is the settings metadata table. Every leaf of Config must have an
 // entry; TestSchemaMatchesConfig enforces it.
 var Schema = []Key{
+	{Path: "dnssec.enabled", Type: TypeBool, Scope: ScopeCluster, Default: false, Help: "Validate forwarded DNS answers against the configured trust anchors. Invalid or incomplete proofs return SERVFAIL with an extended DNS error; unsigned delegations still work. Off by default for compatibility. A forward zone can override this default with spec.forward.dnssecValidation.", Label: "Validate DNSSEC", Group: GroupDNSSEC},
+	{Path: "dnssec.useBuiltinAnchors", Type: TypeBool, Scope: ScopeCluster, Default: true, Help: "Trust the IANA root DS records shipped with this version. Software upgrades or an operator change maintain these anchors; no keys are trusted automatically from upstream responses. Turn off only when dnssec.trustAnchors supplies all trust roots you need.", Label: "Use built-in root trust anchors", Group: GroupDNSSEC},
+	{Path: "dnssec.trustAnchors", Type: TypeStringList, Scope: ScopeCluster, Default: []string{}, Help: "Additional trusted DS or DNSKEY records in DNS presentation format, e.g. a complete DS record for a private signed zone. At most 64. With useBuiltinAnchors off these replace the shipped root anchors, and at least one is required. Changes invalidate the old validation cache context immediately.", Label: "Additional trust anchors", Group: GroupDNSSEC, Items: &Shape{Type: TypeString}},
+	{Path: "dnssec.negativeTrustAnchors", Type: TypeList, Scope: ScopeCluster, Default: []map[string]any{}, Help: "Temporary exceptions for broken signed domains (RFC 7646); at most 128. Every exception needs a reason and an absolute expiry no more than seven days away. It covers the domain and descendants, never sets AD, and stops applying at expiry even on cache hits. Reload and restart do not extend it.", Label: "Temporary validation exceptions", Group: GroupDNSSEC, Items: &Shape{Type: TypeObject, Fields: []Field{
+		{Name: "domain", Label: "Domain", Help: "Domain whose signatures temporarily cannot be checked, e.g. broken.example; includes its descendants.", Required: true, Shape: Shape{Type: TypeString, Format: FormatDomain}},
+		{Name: "reason", Label: "Reason", Help: "Why validation is temporarily bypassed, in at most 256 characters; record the incident or repair being tracked.", Required: true, Shape: Shape{Type: TypeString}},
+		{Name: "expiresAt", Label: "Expires at", Help: "Absolute RFC3339 expiry, e.g. 2026-10-15T12:00:00Z; no more than seven days from now. Expired entries are harmless and can be removed.", Required: true, Shape: Shape{Type: TypeString, Format: FormatDateTime}},
+	}}},
 	{Path: "node.name", Type: TypeString, Scope: ScopeNode, Default: "", Help: "Name of this server in the dashboard, the query log and the block page, e.g. dns1. Empty uses the hostname. Every node of a cluster needs its own name; it identifies the node to the others.", HostOnly: true, RestartRequired: true, Label: "Node name", Group: GroupNode},
 	{Path: "node.lameduck", Type: TypeDuration, Scope: ScopeNode, Default: "2s", Help: "How long the server keeps answering after it is told to stop, so devices and load balancers move to another server first, e.g. 2s; 0 stops at once. During this window readiness (/healthz/ready) answers 503 and the health name SERVFAIL, then the listeners close. The Helm chart also runs kudurru lameduck in preStop.", HostOnly: true, RestartRequired: true, Label: "Lameduck drain window", Group: GroupNode, Presets: []string{"0s", "2s", "5s", "10s"}},
 	{Path: "node.dataDir", Type: TypeString, Scope: ScopeNode, Default: "/var/lib/kudurru", Help: "Directory where kudurru keeps its data, e.g. /var/lib/kudurru; it must be writable and should survive restarts and be backed up. It holds the object store (state.db), the query log (querylog.db), the zone snapshot (local.db), downloaded lists and keys.", HostOnly: true, RestartRequired: true, Label: "Data directory", Group: GroupNode},

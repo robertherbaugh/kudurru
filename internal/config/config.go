@@ -36,6 +36,7 @@ type Config struct {
 	Store     StoreConfig `koanf:"store" json:"store"`
 	DHCP      DHCP        `koanf:"dhcp" json:"dhcp"`
 	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
+	DNSSEC    DNSSEC      `koanf:"dnssec" json:"dnssec"`
 	Cache     Cache       `koanf:"cache" json:"cache"`
 	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
 	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
@@ -615,6 +616,9 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Upstreams.validate()...)
 	errs = append(errs, c.Cache.validate()...)
+	if _, err := c.DNSSEC.Validator(nil); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, c.Blocking.validate()...)
 	errs = append(errs, c.validateBlockPage()...)
 	errs = append(errs, c.validateUnblockRequests()...)

@@ -61,12 +61,22 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 		if config.ChangedUnder(changed, "log.level") && t.level != nil {
 			t.level.Set(parseLevel(next.Log.Level))
 		}
-		if config.ChangedUnder(changed, "upstreams") && t.upstreams != nil {
-			set, err := buildUpstreams(next, changed, t.upOpts)
+		if config.ChangedUnder(changed, "upstreams", "dnssec") && t.upstreams != nil {
+			validation, err := next.DNSSEC.Validator(nil)
+			var set *upstream.Set
+			if err == nil {
+				set, err = buildUpstreams(next, changed, t.upOpts)
+			}
+			var prev *upstream.Set
+			if err == nil {
+				prev, err = t.upstreams.Replace(set, validation, next.DNSSEC.Enabled)
+			}
 			if err != nil {
-				log.Error("upstream settings not applied", "err", err)
+				if set != nil {
+					_ = set.Close()
+				}
+				log.Error("resolution settings not applied", "err", err)
 			} else {
-				prev := t.upstreams.Swap(set)
 				go func() {
 					select {
 					case <-time.After(upstreamRetireGrace):
@@ -79,7 +89,7 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 				if t.cache != nil {
 					t.cache.Flush()
 				}
-				log.Info("upstreams reloaded", "groups", set.Groups())
+				log.Info("resolution settings reloaded", "groups", set.Groups(), "dnssec", next.DNSSEC.Enabled)
 			}
 		}
 		if config.ChangedUnder(changed, "cache") && t.cache != nil && t.cacheStg != nil {

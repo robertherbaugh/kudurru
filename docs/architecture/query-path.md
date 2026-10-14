@@ -1,7 +1,7 @@
 # A query's journey
 
 Every DNS query, on every transport, goes through the same fixed chain of
-seven stages. A stage either answers (and the query goes no further), or
+nine installed stages. A stage either answers (and the query goes no further), or
 calls the next stage and may look at the answer on the way back. When the
 chain returns, an observer records the outcome. This page walks that path.
 
@@ -9,7 +9,20 @@ Code: `internal/dnsserver` (transports), `internal/pipeline` (the chain and
 the status taxonomy), `internal/stages/*` (one package per stage), and the
 wiring in `cmd/kudurru/serve.go`.
 
-![The seven stages in a row, with the answers each one can give, the forward-zone hint and the response-side check in blocking](diagrams/query-pipeline.excalidraw.svg)
+```mermaid
+flowchart LR
+    I[ingress] --> ID[identify] --> C[control] --> P[postprocess]
+    P --> A[authoritative] --> B[blocking] --> K[cache] --> D[dnssec] --> U[upstream]
+    U -. raw answer .-> D
+    D -. validated raw answer .-> K
+    K -. client copy .-> B
+    B -. response .-> P
+    P -. final flags and proof representation .-> L[log observer]
+```
+
+`postprocess` is a wrapper: it runs on the way back from the answering
+stages. `upstream` stays terminal. Reserved `local` and `rewrite` stages
+fit after postprocess and blocking, respectively.
 
 ## Before the pipeline: transports
 
@@ -61,18 +74,19 @@ NOTAUTH by the transport, also before the pipeline.
 
 | # | Stage | Question it answers | Can answer with | Status values |
 |---|---|---|---|---|
-| 1 | `ingress` | Is this query sane, and is the client within its rate? | TC=1 or silence over the UDP rate limit; NOTIMP for any opcode but QUERY; FORMERR; BADVERS; REFUSED for `ANY`; CHAOS `id.server`/`version.bind`; the `health.kudurru.internal.` TXT | `blocked_rate_limit`, `dropped`, `refused_acl`, `special_domain` |
+| 1 | `ingress` | Is this query sane, and is the client within its rate? | TC=1 or silence over the UDP rate limit; NOTIMP for opcodes other than QUERY, NOTIFY and UPDATE; FORMERR; BADVERS; REFUSED for `ANY`; CHAOS `id.server`/`version.bind`; the `health.kudurru.internal.` TXT | `blocked_rate_limit`, `dropped`, `refused_acl`, `special_domain` |
 | 2 | `identify` | Which client groups, which policy? | never answers; attaches `Client.GroupIDs` and the policy decision | none |
 | 3 | `control` | Is the message malformed? | nothing (a drop) | `dropped` |
-| 4 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
-| 5 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
-| 6 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
-| 7 | `upstream` | Who knows the answer? | always answers (it is the last stage); a recursive group resolves from the root servers and validates DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
+| 4 | `postprocess` | What may this client receive? | on response unwinding, finalizes AD/CD/DO from local security provenance on a private copy | preserves the answering status |
+| 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
+| 6 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
+| 7 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
+| 8 | `dnssec` | Is the raw forwarded answer authentic? | validates proofs when enabled; SERVFAIL and EDE for bogus or indeterminate data | `dnssec_bogus` |
+| 9 | `upstream` | Who knows the answer? | always answers (it is the last stage); recursive groups resolve from the root and validate DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
 
 The order puts the cheap and the certain first. Authoritative answers come
 before blocking, so your own zones are never blocked. Blocking comes before
-the cache, so a block is never cached and one cached answer can serve every
-client; blocking also wraps the cache, so cached answers are still inspected
+the cache, so a block is never cached and one raw cached answer can serve clients with the same resolution context; blocking also wraps the cache, so cached answers are still inspected
 on the way out.
 
 ### The whole decision as one flowchart
@@ -81,15 +95,17 @@ on the way out.
 flowchart TD
     Q(["query"]) --> RL{"UDP and over<br/>the rate limit?"}
     RL -- "yes" --> SLIP["50 %: empty TC=1 answer<br/>50 %: silence"]
-    RL -- "no" --> SAN{"opcode QUERY, one question,<br/>EDNS version 0, not ANY?"}
+    RL -- "no" --> SAN{"supported opcode and shape,<br/>EDNS version 0?"}
     SAN -- "no" --> ERR["NOTIMP / FORMERR /<br/>BADVERS / REFUSED"]
     SAN -- "yes" --> SPEC{"CHAOS or<br/>health.kudurru.internal.?"}
     SPEC -- "yes" --> SPA["answer directly<br/>special_domain"]
     SPEC -- "no" --> ID["identify: groups + policy"]
     ID --> CTL{"malformed?"}
     CTL -- "yes" --> NONE["send nothing<br/>dropped"]
-    CTL -- "no" --> ZONE{"longest matching zone"}
-    ZONE -- "primary zone" --> ACL{"queryAccess<br/>allows client?"}
+    CTL -- "no" --> OP{"QUERY?"}
+    OP -- "NOTIFY / UPDATE" --> HANDLER["authorized protocol handler"]
+    OP -- "yes" --> ZONE{"longest matching zone"}
+    ZONE -- "primary / secondary zone" --> ACL{"queryAccess<br/>allows client?"}
     ACL -- "no" --> REF["REFUSED"]
     ACL -- "yes" --> SYNC{"snapshot synced<br/>(and fresh)?"}
     SYNC -- "no" --> SF["SERVFAIL, never NXDOMAIN<br/>servfail_unsynced"]
@@ -104,11 +120,15 @@ flowchart TD
     C -- "fresh" --> CA["cached"]
     C -- "stale" --> ST["refresh or<br/>cached_stale"]
     C -- "miss" --> UP["upstream group"]
-    UP --> INS{"answer's CNAMEs or<br/>IPs blocked?"}
+    UP --> VAL{"DNSSEC enabled?<br/>authenticate raw answer"}
+    VAL -- "bogus / incomplete" --> FAIL["SERVFAIL + EDE"]
+    VAL -- "valid / bypass" --> RAW["store raw answer and provenance"]
+    RAW --> INS{"answer's CNAMEs or<br/>IPs blocked?"}
     CA --> INS
     ST --> INS
     INS -- "yes" --> BC["block answer<br/>blocked_cname"]
-    INS -- "no" --> OK["answer<br/>forwarded / cached / ..."]
+    INS -- "no" --> FIN["postprocess: finalize AD/CD/DO"]
+    FIN --> OK["answer<br/>forwarded / cached / ..."]
 ```
 
 The bootstrap creates a root forward zone `.` pointing at the `default`
@@ -129,6 +149,7 @@ sequenceDiagram
     participant A as authoritative
     participant B as blocking
     participant K as cache
+    participant V as dnssec
     participant U as upstream
     participant R as 1.1.1.1
     C->>P: A example.org
@@ -136,11 +157,14 @@ sequenceDiagram
     A->>B: zone "." is forward → hint "default"
     B->>B: lists: no match
     B->>K: next
-    K->>U: miss → one shared fetch
+    K->>V: miss → one shared raw fetch
+    V->>U: pinned resolver/trust plan
     U->>R: query (fresh ID, RD, ECS stripped)
     R-->>U: A 93.184.215.14, TTL 300
-    U-->>K: forwarded, cacheable
-    K->>K: store (TTL clamped 5 s..24 h)
+    U-->>V: raw answer and proofs
+    V->>V: validate when enabled
+    V-->>K: raw answer + security provenance
+    K->>K: store, bounded by proof deadlines
     K-->>B: answer
     B->>B: inspect answer: IP not on a list
     B-->>C: answer (status forwarded)
@@ -222,7 +246,7 @@ use this list (`internal/pipeline/status.go`).
 |---|---|---|
 | answered | `forwarded`, `cached`, `cached_stale`, `authoritative`, `prefetch_refresh`, `special_domain` | `local_record`, `retried`, `in_progress` |
 | blocked | `blocked_list`, `blocked_regex`, `blocked_exact`, `blocked_cname`, `blocked_safesearch`, `blocked_rate_limit` | `blocked_upstream`, `blocked_rpz` |
-| error | `refused_acl`, `dropped`, `servfail_upstream`, `timeout_upstream`, `servfail_unsynced`, `dnssec_bogus` | none |
+| error | `refused_acl`, `dropped`, `servfail_upstream`, `timeout_upstream`, `servfail_unsynced`, `dnssec_bogus` | — |
 
 ## What the stages read
 
@@ -232,12 +256,25 @@ an immutable value that something else swaps atomically:
 | Value | Read by | Replaced by |
 |---|---|---|
 | zonecache snapshot: zones, the policy index, compiled lists | authoritative, identify, blocking | the zonecache rebuild after a store event or a list change ([configuration](configuration-and-store.md)) |
-| upstream groups | upstream, cache (ECS subnet) | a reload of `upstreams.*` |
+| captured route/trust plan and cache epoch | upstream, DNSSEC, cache | one atomic replacement on `upstreams.*` or `dnssec.*` reload |
 | cache settings | cache | a reload of `cache.*` |
 | blocking defaults, the blocking toggle | blocking | a reload of `blocking.*`; `POST /api/v1/dns/blocking` |
 | rate limits | ingress | a reload of `ratelimit.*` |
 | safe-search catalogue | blocking | the catalogue refresher |
 | query log privacy | query log collector | a reload of `querylog.*` |
+
+## DNSSEC and raw cache provenance
+
+Validation defaults off; a forward zone can override the global setting.
+The validator uses shipped IANA root anchors and explicit operator anchors,
+with bounded proof queries on the captured route. NTAs expire absolutely,
+including on cache hits. AD comes only from locally secure, unmodified data
+with current proofs; CD bypasses validation in a separate cache context.
+The cache retains raw proof material and validation metadata before response
+personalization, and stale serving cannot outlive a proof deadline. A flush,
+route/trust reload or NTA expiry fences detached cache insertions. Restarted
+cache data rebinds only to an identical semantic context. See the
+[operator runbook](../deploy/dnssec-validation.md).
 
 ## After the chain: the observer
 
@@ -249,12 +286,10 @@ there.
 
 ## Not built yet
 
-`local` (custom host records, `.local`/`.onion`/RFC 6303 answers), `rewrite`
-(DNS rewrites, views, DNS64), `dnssec` (validation of forwarded answers) and
-`postprocess` (rebinding protection) are planned stages whose names are
-reserved in `pipeline.Order`; no package implements them. Recursive upstream
-groups already answer the RFC 6303 and special-use names themselves and
-validate their own answers inside the upstream stage. NSID is not implemented, and
+`local` (custom host records, `.local`/`.onion`/RFC 6303 answers) and `rewrite`
+(DNS rewrites, views, DNS64) remain reserved in `pipeline.Order`. The installed
+postprocess wrapper currently finalizes security flags and proof visibility;
+rebinding protection and the other response modifiers remain subsequent work. Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
 

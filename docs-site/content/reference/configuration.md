@@ -47,6 +47,15 @@ privileged behavior). *restart* keys take effect after a restart (in
 Kubernetes the chart rolls the pods); every other key is applied while the
 server runs. *write-only* keys are never returned by the API.
 
+## dnssec
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="dnssec.enabled"></a>`dnssec.enabled` | `bool` | `false` | cluster | **Validate DNSSEC.** Validate forwarded DNS answers against the configured trust anchors. Invalid or incomplete proofs return SERVFAIL with an extended DNS error; unsigned delegations still work. Off by default for compatibility. A forward zone can override this default with spec.forward.dnssecValidation.<br>Environment: `KUDURRU_DNSSEC__ENABLED` |
+| <a id="dnssec.useBuiltinAnchors"></a>`dnssec.useBuiltinAnchors` | `bool` | `true` | cluster | **Use built-in root trust anchors.** Trust the IANA root DS records shipped with this version. Software upgrades or an operator change maintain these anchors; no keys are trusted automatically from upstream responses. Turn off only when dnssec.trustAnchors supplies all trust roots you need.<br>Environment: `KUDURRU_DNSSEC__USEBUILTINANCHORS` |
+| <a id="dnssec.trustAnchors"></a>`dnssec.trustAnchors` | `string[]` | `[]` | cluster | **Additional trust anchors.** Additional trusted DS or DNSKEY records in DNS presentation format, e.g. a complete DS record for a private signed zone. At most 64. With useBuiltinAnchors off these replace the shipped root anchors, and at least one is required. Changes invalidate the old validation cache context immediately.<br>Environment: `KUDURRU_DNSSEC__TRUSTANCHORS` |
+| <a id="dnssec.negativeTrustAnchors"></a>`dnssec.negativeTrustAnchors` | `list` | `[]` | cluster | **Temporary validation exceptions.** Temporary exceptions for broken signed domains (RFC 7646); at most 128. Every exception needs a reason and an absolute expiry no more than seven days away. It covers the domain and descendants, never sets AD, and stops applying at expiry even on cache hits. Reload and restart do not extend it.<br>Allowed: items: {domain (required): string (format domain); reason (required): string; expiresAt (required): string (format date-time)}.<br>Environment: file only. |
+
 ## node
 
 | Key | Type | Default | Scope | Description |
