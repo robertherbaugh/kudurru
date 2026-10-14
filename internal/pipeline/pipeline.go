@@ -28,9 +28,9 @@ var Order = []string{
 // ErrNoAnswer is returned when every stage called next and nothing answered.
 var ErrNoAnswer = errors.New("pipeline: no stage produced an answer")
 
-// ErrDrop is returned (with a nil Response) by a stage that decided the
-// query must not be answered at all: the control stage drops malformed
-// queries this way. Observers record such queries as StatusDropped.
+// ErrDrop is returned by a stage that decided the query must not be answered
+// at all. A metadata-only Response may retain its policy status, list, rule
+// and cleanup ownership. With no Response, observers use StatusDropped.
 // Transports should send nothing for UDP and DoQ and close the TCP, DoT,
 // DoH or DoH3 exchange; a transport that does not check for ErrDrop
 // answers SERVFAIL as it does for any error.

@@ -1,6 +1,7 @@
 package blocking
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -9,6 +10,73 @@ import (
 	engine "github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
+
+func TestRewriteDependencyDropAndTruncation(t *testing.T) {
+	for _, safe := range []bool{false, true} {
+		for _, outcome := range []string{"drop", "truncated", "error"} {
+			t.Run(fmt.Sprintf("safesearch=%t/%s", safe, outcome), func(t *testing.T) {
+				ix := modifierIndex(t, "||alias.example^$dnsrewrite=target.example")
+				name, client := "alias.example.", "192.0.2.1"
+				if safe {
+					ix, name, client = familyIndex(t), "www.google.com.", "10.0.90.5"
+				}
+				closed := 0
+				failure := errors.New("target failed")
+				var dependency *pipeline.Response
+				st, err := New(Options{ResolveTarget: func(sub *pipeline.Request) (*pipeline.Response, error) {
+					dependency = pipeline.Reply(sub, dns.RcodeSuccess, pipeline.StatusBlockedRPZ)
+					dependency.List, dependency.Rule = "default/feed", "target.policy.test. tcp-only"
+					dependency.AddCleanup(func() { closed++ })
+					switch outcome {
+					case "drop":
+						dependency.Msg, dependency.Rule = nil, "target.policy.test. drop"
+						return dependency, pipeline.ErrDrop
+					case "error":
+						dependency.Msg.Rcode, dependency.Status = dns.RcodeServerFailure, pipeline.StatusDNSSECBogus
+						dependency.Security.State = pipeline.ValidationBogus
+						return dependency, failure
+					default:
+						dependency.Msg.Truncated, dependency.Msg.AuthenticatedData = true, true
+						dependency.Security.State = pipeline.ValidationSecure
+						rr, _ := dns.NewRR(sub.Question().Name + " 60 IN A 192.0.2.1")
+						dependency.Msg.Answer = []dns.RR{rr}
+						return dependency, nil
+					}
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				req := modifierRequest(ix, name, dns.TypeA, client)
+				out, err := st.Serve(req, neverNext(t))
+				if out == nil || closed != 0 {
+					t.Fatalf("lost dependency ownership: response=%v closed=%d", out, closed)
+				}
+				switch outcome {
+				case "drop":
+					if !errors.Is(err, pipeline.ErrDrop) || out.Msg != nil || out.Status != pipeline.StatusBlockedRPZ || out.List != dependency.List || out.Rule != dependency.Rule {
+						t.Fatalf("lost drop diagnostic: %+v %v", out, err)
+					}
+				case "error":
+					if !errors.Is(err, failure) || out.Msg.Question[0].Name != name || out.Status != pipeline.StatusDNSSECBogus || out.Security.State != pipeline.ValidationBogus || len(out.Msg.Answer) != 0 {
+						t.Fatalf("lost target failure: %+v %v", out, err)
+					}
+				default:
+					if err != nil || !out.Msg.Truncated || out.Msg.Question[0].Name != name || len(out.Msg.Answer) != 0 || out.Msg.AuthenticatedData || out.Security.State != pipeline.ValidationUnknown || out.Cacheable || !out.Modified || out.List != dependency.List || out.Rule != dependency.Rule || out.Status != pipeline.StatusBlockedRPZ {
+						t.Fatalf("truncation became positive alias: %+v %v", out, err)
+					}
+					if len(dependency.Msg.Answer) != 1 || !dependency.Msg.AuthenticatedData {
+						t.Fatal("mutated target message")
+					}
+				}
+				out.Close()
+				out.Close()
+				if closed != 1 {
+					t.Fatalf("dependency cleanup count=%d", closed)
+				}
+			})
+		}
+	}
+}
 
 func TestRewriteDependencyFailureRetainsEDEAndAuthorityBoundary(t *testing.T) {
 	for _, safe := range []bool{false, true} {

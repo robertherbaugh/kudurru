@@ -281,6 +281,10 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		if errors.Is(err, pipeline.ErrDrop) {
 			out.Status, out.Rcode = pipeline.StatusDropped.String(), "none"
 			out.StatusClass = string(pipeline.StatusDropped.Class())
+			if resp != nil {
+				out.Status, out.StatusClass = resp.Status.String(), string(resp.Status.Class())
+				out.Upstream, out.List, out.Rule = resp.Upstream, resp.List, resp.Rule
+			}
 		}
 		return &dnsQueryOutput{Body: out}, nil
 	}

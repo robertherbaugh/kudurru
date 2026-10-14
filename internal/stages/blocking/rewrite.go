@@ -43,13 +43,13 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 			resolve = func(r *pipeline.Request) (*pipeline.Response, error) { return s.Serve(r, next) }
 		}
 		resp, err := resolve(sub)
-		if resp != nil {
-			out.AddCleanup(resp.Close)
-		}
 		if err != nil {
-			out.Close()
-			return nil, err
+			if resp != nil && resp.Msg != nil {
+				return failedRewriteTarget(req, out, resp), err
+			}
+			return resp, err
 		}
+		out.AddCleanup(resp.Close)
 		if resp == nil || resp.Msg == nil {
 			out.Close()
 			return nil, pipeline.ErrNoAnswer
@@ -62,14 +62,7 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 			failed.AddCleanup(out.Close)
 			return failed, nil
 		}
-		m.Answer = append(m.Answer, rewriteCopies(resp.Msg.Answer)...)
-		m.Ns = rewriteCopies(resp.Msg.Ns)
-		m.Extra = rewriteCopies(resp.Msg.Extra)
-		// OPT belongs to the synthesized request/response, not the target.
-		m.Extra = dnsExtraWithoutOPT(m.Extra)
-		out.Origin = pipeline.OriginMixed
-		out.Upstream = resp.Upstream
-		out.Security = resp.Security
+		appendRewriteTarget(out, resp)
 	}
 	finishRewrite(req, m, bd.List)
 	if m.Rcode == dns.RcodeSuccess {
@@ -79,6 +72,23 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 		}
 	}
 	return out, nil
+}
+
+// A truncated dependency requires the original client to retry too. Partial
+// target data must not become a complete-looking positive alias response.
+func appendRewriteTarget(out, dependency *pipeline.Response) {
+	if dependency.Msg.Truncated {
+		out.Msg.Truncated, out.Msg.Answer = true, nil
+		if dependency.Status.Class() == pipeline.ClassBlocked {
+			out.Status, out.List, out.Rule = dependency.Status, dependency.List, dependency.Rule
+		}
+	} else {
+		out.Msg.Answer = append(out.Msg.Answer, rewriteCopies(dependency.Msg.Answer)...)
+		out.Msg.Ns = rewriteCopies(dependency.Msg.Ns)
+		out.Msg.Extra = dnsExtraWithoutOPT(rewriteCopies(dependency.Msg.Extra))
+		out.Security = dependency.Security
+	}
+	out.Origin, out.Upstream = pipeline.OriginMixed, dependency.Upstream
 }
 
 // Preserve the failing dependency's EDE and security diagnostics while keeping

@@ -75,13 +75,13 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 				resolve = next
 			}
 			resp, err := resolve(sub)
-			if resp != nil {
-				out.AddCleanup(resp.Close)
-			}
 			if err != nil {
-				out.Close()
+				if resp != nil && resp.Msg != nil {
+					return failedRewriteTarget(req, out, resp), err
+				}
 				return resp, err
 			}
+			out.AddCleanup(resp.Close)
 			if resp == nil || resp.Msg == nil {
 				out.Close()
 				return nil, pipeline.ErrNoAnswer
@@ -92,12 +92,7 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 				failed.AddCleanup(out.Close)
 				return failed, nil
 			}
-			m.Answer = append(m.Answer, rewriteCopies(resp.Msg.Answer)...)
-			m.Ns = rewriteCopies(resp.Msg.Ns)
-			m.Extra = dnsExtraWithoutOPT(rewriteCopies(resp.Msg.Extra))
-			out.Origin = pipeline.OriginMixed
-			out.Upstream = resp.Upstream
-			out.Security = resp.Security
+			appendRewriteTarget(out, resp)
 		}
 	}
 	finishRewrite(req, m, rw.List())
