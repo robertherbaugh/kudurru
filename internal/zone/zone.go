@@ -66,10 +66,12 @@ type Zone struct {
 	nextExpiry time.Time
 	generation int64
 	// secondaryIdentity binds transferred data to its configuration object.
-	secondaryIdentity string
-	hasSignatures     bool
-	secondaryProofs   *SecondaryProofs
-	stub              *stubRoute
+	secondaryIdentity    string
+	hasSignatures        bool
+	secondaryProofs      *SecondaryProofs
+	stub                 *stubRoute
+	committed            bool
+	committedUnavailable bool
 }
 
 // Name returns the lowercased absolute zone name.
@@ -124,6 +126,13 @@ func (z *Zone) Names() int { return z.tree.count }
 // zone at that instant so expired records leave service on time. For a
 // secondary with data it returns the transferred zone's expiry.
 func (z *Zone) NextExpiry() time.Time { return z.nextExpiry }
+
+// CommittedAvailableAt checks the durable primary deadline. Other models are
+// unaffected. AvailableAt's owner must delegate here before its type check.
+func (z *Zone) CommittedAvailableAt(now time.Time) bool {
+	return !z.committed || (!z.committedUnavailable && z.soa != nil &&
+		(z.nextExpiry.IsZero() || now.Before(z.nextExpiry)))
+}
 
 // SOA returns a copy of the zone's SOA record, or nil for forward zones and
 // secondary placeholders.

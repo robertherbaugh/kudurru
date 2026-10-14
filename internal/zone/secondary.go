@@ -43,10 +43,13 @@ func SecondaryIdentity(dz *v1alpha1.DNSZone) string {
 func (z *Zone) SecondaryIdentity() string { return z.secondaryIdentity }
 
 // AvailableAt reports whether this zone has data that may be served at now.
-// Other zone types are always available. Secondary placeholders and data
-// at or beyond expiry are unavailable. Query callers must check this before
+// Committed primary and secondary data enforce their captured deadlines.
+// Placeholders and data at or beyond expiry are unavailable. Callers check this before
 // Lookup/LookupFrom and answer SERVFAIL while retaining authority coverage.
 func (z *Zone) AvailableAt(now time.Time) bool {
+	if !z.CommittedAvailableAt(now) {
+		return false
+	}
 	return z.typ != v1alpha1.ZoneTypeSecondary ||
 		(z.soa != nil && !z.nextExpiry.IsZero() && now.Before(z.nextExpiry))
 }

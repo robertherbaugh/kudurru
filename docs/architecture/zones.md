@@ -411,23 +411,43 @@ aggregate. The SQLite adapter commits through its writer transaction and term
 fence. Kubernetes stages immutable Secrets and replaces the head using its
 exact resourceVersion; a conflict requires a new read and a fresh plan.
 
+`internal/primaryzone` reads the complete actual desired source set, bounded by
+count, bytes, pages and time. SQLite pages share one transaction; Kubernetes
+uses continuation tokens and checks the zone identity and intent around the
+list. Failed or incomplete reads never remove committed records. Compilation
+uses the primary builder's selector, oldest-source and set-identifier rules,
+preserves dynamic records and reserves inactive managed names. Policy changes
+advance the authorization epoch; data changes make one serial decision.
+
+The coordinator prebuilds the actual primary tree before committing, then
+publishes only that exact committed root. The materializer retains frozen ACLs,
+raw RRs and serials, and serves unavailable primary coverage at exact expiry.
+Restart loads the verified aggregate. Durable acceptance and local publication
+are separate results; bounded desired-write receipts identify pending, committed,
+equivalent and superseded inputs without ordering opaque resource versions.
+
 ```mermaid
 flowchart LR
     H["Read committed head"] --> P["Fresh sources or UPDATE prerequisites<br/>and current authorization"]
     P --> C["Bound and prepare complete aggregate"]
-    C --> I["Stage immutable chunks"]
+    C --> B["Prebuild primary tree and unavailable coverage"]
+    B --> I["Stage immutable chunks"]
     I --> CAS["Commit one head<br/>data + serial + authority + NOTIFY intent"]
     CAS -- "conflict" --> H
-    CAS -- "success" --> B["Materialize committed primary<br/>serving adapter in progress"]
+    CAS -- "success" --> S["Install exact prebuilt committed root"]
+    S --> Q["Memory-only captured routing and version"]
 ```
 
 Race tests exercise real SQLite and Kubernetes writers, API/file projections
 alongside UPDATE, authorization changes, interrupted preparations, durable
 reopen, immutable chunks and outages. Codec tests include a 100,004-record zone
 and allocation limits before copying or decoding policy and receipt data.
-The listener, desired-source reconciliation, primary materialization, TSIG
-version barrier, acknowledgment and NOTIFY delivery adapters are still being
-integrated. This storage checkpoint does not yet enable network UPDATE.
+Desired reconciliation and primary materialization tests also cover real-driver
+source races, restarts, raw TXT/unknown records, exact-expiry failure coverage,
+initial unavailable authority, bounded waiters and truthful desired receipts.
+Runtime membership and lifecycle barriers, listener wiring, TSIG version
+barriers, API acknowledgment and NOTIFY delivery remain in progress. This
+checkpoint does not yet enable network UPDATE.
 
 ## Not built yet
 
