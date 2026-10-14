@@ -2,12 +2,42 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { mockDB } from '../mocks/handlers';
-import { getSelector, pick } from '../test/controls';
+import { getSelector, optionLabels, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
+import { ScopeSelector } from '../components/ScopeSelector';
 import ClientsPage, { matcherFor } from './ClientsPage';
 
 describe('ClientsPage', () => {
+  it('requests the selected scope and shows central and partial inventory status', async () => {
+    const seen: URLSearchParams[] = [];
+    server.use(http.get(`${API}/clients`, ({ request }) => {
+      const p = new URL(request.url).searchParams;
+      seen.push(p);
+      const node = p.get('node');
+      return HttpResponse.json({
+        scope: node ? 'node' : 'cluster',
+        nodes: node ? [{ name: node, ok: true }] : [{ name: 'kudurru-0', ok: true }, { name: 'kudurru-1', ok: false }],
+        partial: !node,
+        ...(!node ? { source: 'central' } : {}),
+        items: [{ key: node ? '192.0.2.9' : '192.0.2.1', name: node ? 'remote-device' : 'cluster-device', count: node ? 4 : 7, blocked: 1 }],
+      });
+    }));
+    renderWithApp(<><ScopeSelector /><ClientsPage /></>, { route: '/clients' });
+    await screen.findByRole('link', { name: 'cluster-device' });
+    expect(seen[0]?.get('scope')).toBe('cluster');
+    expect(seen[0]?.get('window')).toBe('24h');
+    expect(seen[0]?.has('node')).toBe(false);
+    expect(screen.getByTestId('scope-note')).toHaveTextContent('All nodes (2) (central database) · Partial results: 1 node delayed or unavailable');
+    await waitFor(() => expect(optionLabels(getSelector('Node scope'))).toContain('kudurru-1'));
+    pick(getSelector('Node scope'), 'kudurru-1');
+    const row = (await screen.findByRole('link', { name: 'remote-device' })).closest('tr')!;
+    expect(within(row).getByRole('link', { name: '4' })).toHaveAttribute('href', '/queries?client=192.0.2.9');
+    expect(seen.at(-1)?.get('scope')).toBe('node');
+    expect(seen.at(-1)?.get('node')).toBe('kudurru-1');
+    expect(screen.getByTestId('scope-note')).toHaveTextContent('Node kudurru-1');
+  });
+
   it('renders the server rows: key, name, group, counts and last seen', async () => {
     renderWithApp(<ClientsPage />, { route: '/clients' });
     const table = await screen.findByRole('table', { name: 'Clients' });

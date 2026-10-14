@@ -236,7 +236,7 @@ Click **Refresh** to retrieve current events or **Export** to download JSON line
 revoked. Signing in to the dashboard does not create an API token.
 Deployment scripts that create temporary tokens and revoke them afterward
 produce matching pairs of entries. Select **APIToken** in **Kind** to see
-only token events. Older entries may lack token details; the log cannot
+only token events. Older entries can lack token details; the log cannot
 recover those details after revocation.
 
 **Verify integrity** checks the complete retained audit store, independent of

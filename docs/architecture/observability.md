@@ -210,6 +210,8 @@ storage errors and timeouts return 503 with a generic message, with details
 logged on the server. Concurrent requests share one scan, and every result
 (including unavailability) is cached for 30 seconds per serving process.
 Current and previous encryption keys verify batches retained across rotation.
+Keep the previous key until the old-sealed batches have been pruned before
+dropping it or rotating again; see [the rotation runbook](../deploy/runbooks.md#rotating-the-encryption-key).
 Hash chains provide
 tamper evidence, not protection from an administrator who can rewrite the
 entire database and its chain. External log copies or exports provide an

@@ -1,5 +1,14 @@
 // Formatting helpers shared by tiles, tables and charts.
 
+/** Keep the release/prerelease, dropping git-describe and build metadata. */
+export function formatVersion(version: string | undefined): string {
+  const raw = version?.trim();
+  if (!raw) return '–';
+  const tagged = raw.replace(/-\d+-g[\da-f]+(?:-dirty)?$/i, '').replace(/-dirty$/i, '').split('+')[0] ?? '';
+  const release = /^v?(\d+\.\d+\.\d+(?:-[\da-z-]+(?:\.[\da-z-]+)*)?)$/i.exec(tagged);
+  return release ? `v${release[1]}` : 'dev';
+}
+
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
 const whole = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 

@@ -29,6 +29,7 @@ import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { QueryLogTable } from '../components/QueryLogTable';
+import { ScopeNote } from '../components/ScopeSelector';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
 import { listEntryError } from '../lib/objectSchemas';
@@ -48,7 +49,7 @@ export default function ClientDetailPage({ params }: PageProps) {
   const [pick, setPick] = useState<string[]>([]);
   const [domain, setDomain] = useState('');
 
-  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
+  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list(scope, { window: '24h' }), refetchInterval: 60_000 });
   const recent = useQuery({ queryKey: qk.queries('client', scope, key), queryFn: () => api.queries.list(scope, { client: key, limit: RECENT }), enabled: can('querylog', 'read') });
   const { ctx, ready, error } = useDeriveContext();
   const c = clients.data?.items.find((x) => x.key === key);
@@ -120,6 +121,7 @@ export default function ClientDetailPage({ params }: PageProps) {
       <PageHeader
         title={display ?? key}
         back={{ href: '/clients', label: 'Clients' }}
+        actions={clients.data?.scope ? <ScopeNote scope={clients.data} /> : null}
         meta={
           <>
             {display ? <Code size="inherit">{key}</Code> : null}

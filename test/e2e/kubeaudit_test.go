@@ -42,6 +42,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	if assets == "" {
 		t.Skip("envtest binaries not found: run `make envtest` or set KUBEBUILDER_ASSETS")
 	}
+	auditBin, nodeEnv := licensedAuditFixture(t)
 	var crds []*apiextensionsv1.CustomResourceDefinition
 	for _, glob := range []string{"config/crd/bases/*.yaml", "config/crd/audit/*.yaml"} {
 		files, _ := filepath.Glob(filepath.Join(root, glob))
@@ -81,7 +82,9 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	if _, err := rand.Read(key); err != nil {
 		t.Fatal(err)
 	}
-	nodeEnv := []string{"KUDURRU_ENCRYPTION_KEY=" + hex.EncodeToString(key), "KUBECONFIG=" + kubeconfig}
+	nodeEnv = append(nodeEnv,
+		"KUDURRU_ENCRYPTION_KEY="+hex.EncodeToString(key), "KUBECONFIG="+kubeconfig,
+	)
 
 	names := []string{"kudurru-0", "kudurru-1", "kudurru-2"}
 	specs := make([]kudurrutest.NodeSpec, len(names))
@@ -96,7 +99,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 			specs[i] = spec
 			cfg["store"] = map[string]any{"driver": "kube"}
 			kudurrutest.WriteConfig(t, spec.Config, cfg)
-			nodes[i] = kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: nodeEnv})
+			nodes[i] = kudurrutest.StartReady(t, auditBin, spec, kudurrutest.Options{Env: nodeEnv})
 		}
 		return nodes
 	}
@@ -104,7 +107,7 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 
 	// A token from node 0's admin socket; tokens are Secrets, valid on
 	// every replica.
-	out, err := exec.Command(kudurruBin, "admin", "create-token", "--socket", filepath.Join(specs[0].DataDir, "admin.sock"), "--description", "e2e").Output() //nolint:gosec // the test's binary
+	out, err := exec.Command(auditBin, "admin", "create-token", "--socket", filepath.Join(specs[0].DataDir, "admin.sock"), "--description", "e2e").Output() //nolint:gosec // the test's binary
 	if err != nil {
 		t.Fatalf("create-token: %v", err)
 	}

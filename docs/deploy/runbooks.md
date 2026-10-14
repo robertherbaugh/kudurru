@@ -6,11 +6,14 @@ Kubernetes clusters that resolve through kudurru need DNS before (and
 while) the control plane is reachable (docs/architecture.md §4.4, D79-D80,
 D91).
 
-**How it works.** Every pod writes its materialised object set to
+**How it works.** Every pod writes its materialized object set to
 `/var/lib/kudurru/local.db` after the first full sync, then at most every
-30 s when it changes and every 5 min while unchanged. A pod that starts
-while the apiserver is unreachable waits `store.kube.startupTimeout` (15 s),
-loads `local.db`, reports ready and serves cached and forwarded answers and
+30 s when it changes and every 5 min while unchanged. Startup store reads
+have deadlines bounded by `store.kube.startupTimeout` (15 s by default);
+apiserver availability failures defer bootstrap and identity initialization.
+After those bounded reads, the zone cache waits the startup timeout, loads
+`local.db`, reports ready for a fresh snapshot and serves cached and
+forwarded answers and
 primary zones from the snapshot (`kudurru_store_snapshot_serving 1`). Once
 the snapshot is older than `store.kube.snapshot.maxAge` (24 h), names under
 primary zones answer SERVFAIL (never NXDOMAIN) while forwarding continues.
@@ -50,6 +53,61 @@ but not rescheduling.
 **Docker and compose** keep the whole store in `state.db`; there is no
 apiserver dependency to recover from.
 
+## Clients show only the gateway
+
+Symptoms: the query log, top clients and per-client chart show a router
+address for devices configured to use a DNS VIP directly. Per-device
+ClientGroups also apply to that router address.
+
+The version 0.1 listeners identify DNS clients by the packet's source
+address, or by the source in an authenticated PROXYv2 header from dnsdist.
+Plain DNS has no HTTP `X-Client-IP` or `X-Forwarded-For` header. The
+dashboard's trusted reverse proxies affect API requests, not DNS identity.
+Incoming ECS is not a trusted device identity. DoT/DoH client IDs and
+MAC/hostname discovery are not populated by these listeners.
+
+1. On two devices with different addresses, send different names to each
+   published VIP over both transports, for example:
+
+   ```sh
+   dig @<dns-vip> device-a.identity-check.invalid A
+   dig +tcp @<dns-vip> device-a.identity-check.invalid A
+   ```
+
+   Use `device-b` on the second device. Find the names in the query log
+   with **All nodes** selected. Compare the recorded client addresses;
+   then compare the corresponding node scopes and Clients inventory.
+2. If the query log already has the gateway address, capture traffic on
+   the node's external interface before it enters Kubernetes. If queries
+   already arrive from the gateway, check its DNS proxy, DNS interception
+   and source NAT rules. Preserve the device source for traffic to the
+   DNS VIP and provide a return route to the device network. Changing
+   kudurru's trusted-proxy CIDRs cannot recover an address already lost
+   upstream.
+3. If ingress has the device address but the log has a node or pod address,
+   inspect the DNS Service and its endpoints:
+
+   ```sh
+   kubectl -n <namespace> get service <dns-service> -o yaml
+   kubectl -n <namespace> get endpointslices \
+     -l kubernetes.io/service-name=<dns-service> -o wide
+   ```
+
+   Use `service.dns.externalTrafficPolicy: Local` for LoadBalancer and
+   NodePort Services (the chart default). With `edge.enabled`, the
+   published Service must select the edge pods and target dnsdist's DNS
+   ports. Extra Services created outside the chart need the same selectors
+   and traffic policy; selecting kudurru's backend pods bypasses dnsdist.
+4. If the address survives to dnsdist, check that backends use PROXYv2,
+   `listeners.proxyProtocolFrom` permits the actual edge source, and both
+   sides use the same TLV 0xE0 secret. Rejected headers drop the query;
+   they do not silently fall back to the edge address. Check
+   `kudurru_dns_dropped_total{reason=~"proxy_.*"}`.
+5. Repeat the two-device UDP/TCP test after the network change. Apply an
+   exact-IP ClientGroup to one device and confirm the other keeps its own
+   policy. Old rollups still include the gateway's historical queries;
+   use a time window beginning after the change.
+
 ## Rotating the encryption key
 
 The cluster encryption key (`KUDURRU_ENCRYPTION_KEY_FILE`) seals sessions
@@ -60,6 +118,16 @@ start, sessions sealed under the old key stay valid until their lifetime
 (12 h by default), and during rotation nodes issue internal certificates
 from the previous CA and clients retry the previous token, so old and new
 pods interoperate.
+
+With `audit.store: auditlog`, the cluster key also seals retained Kubernetes
+audit batches. Keep the previous key until all batches sealed with it have
+been pruned, as well as until the old sessions have expired. The default
+`audit.retention` is 400 days; the session lifetime alone is not sufficient.
+Verification accepts only the current and previous keys, so do not replace
+the previous key with another rotation while batches still need it.
+Dropping a needed key makes those batch seals unverifiable and produces an
+integrity failure even when the events are unchanged. Local SQLite and
+central PostgreSQL audit chains do not use these Kubernetes batch seals.
 
 **Helm:**
 
@@ -75,7 +143,8 @@ kubectl -n $NS create secret generic kudurru-encryption-key \
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru -n $NS --reuse-values \
   --set auth.encryptionKeyPreviousSecret=kudurru-encryption-key-previous
 kubectl -n $NS rollout status deployment/kudurru
-# 4. after the session lifetime (12 h), drop the previous key
+# 4. after old sessions expire AND old-sealed AuditLog batches are pruned,
+# drop the previous key (12 h alone suffices only without AuditLog seals)
 helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru -n $NS --reuse-values \
   --set auth.encryptionKeyPreviousSecret=
 kubectl -n $NS delete secret kudurru-encryption-key-previous && shred -u old.key
@@ -88,7 +157,8 @@ Secret's content does not restart anything.
 create a new `secrets/encryption_key`, add the secret
 `encryption_key_previous` and
 `KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE: /run/secrets/encryption_key_previous`
-to the kudurru service, `docker compose up -d`; remove both after 12 h. In
+to the kudurru service, `docker compose up -d`; remove both after the old
+sessions expire and any old-sealed AuditLog batches have been pruned. In
 the HA shape do every step on all three hosts before moving to the next.
 
 **Never** replace the key without keeping the previous one: stored secrets
@@ -117,14 +187,12 @@ across a schema change are therefore not supported: back up first.
    (or `kubectl apply --server-side -f crds.yaml` from the release).
 2. `helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version <v> -n kudurru-system --reuse-values`.
    The Deployment rolls with `maxUnavailable: 0, maxSurge: 1`; each pod
-   sleeps `lameduckSeconds` in preStop, then drains (readiness 503) on
-   SIGTERM. The PDB keeps at least one replica serving; the edge restarts
-   its dnsdist once per surge batch. A preStop `sleep` only covers the
-   Service endpoints: dnsdist keeps sending queries until the process stops
-   answering `health.kudurru.internal.`. `kudurru lameduck <seconds>s` as
-   the preStop command (readiness 503 *and* the health name SERVFAIL, so
-   every dnsdist drains the pod within its 2 s check window, D51) closes
-   that gap; the chart switches to it in a follow-up (docs/followups.md).
+   runs `kudurru lameduck <seconds>s` in preStop: readiness answers 503
+   and `health.kudurru.internal.` answers SERVFAIL while ordinary DNS
+   keeps serving, so Service endpoints and dnsdist drain the pod before
+   it exits. SIGTERM also drains for `node.lameduck` (default 2 s).
+   The PDB keeps at least one replica serving; the edge restarts its
+   dnsdist once per surge batch.
 3. Watch `kubectl -n kudurru-system rollout status` and the
    `KudurruServfailRatio` alert.
 
@@ -148,7 +216,7 @@ restarts the service only if it was running.
 ## Central database unavailable
 
 Symptoms: the `KudurruCentralDatabaseDown` alert, `CentralUnreachable` on the
-Diagnosis page, the Audit tab and **All nodes** answer "unavailable".
+Diagnosis page, the Audit Log page and **All nodes** answer "unavailable".
 
 DNS is not affected, and nothing is lost while the nodes keep their own
 copies: each node writes its audit events and query log locally first and
@@ -171,7 +239,7 @@ data locally until then.
 ## AuditLog CRD missing
 
 Symptom: the log line "the AuditLog CRD is not installed" and each replica's
-Audit tab showing only its own events. The `kudurru-crds` chart is older than
+Audit Log page showing only its own events. The `kudurru-crds` chart is older than
 the app: upgrade it (`helm upgrade kudurru-crds …`) and restart the
 kudurru pods. The events recorded meanwhile are in each pod's
 `audit-spool.db` and are shipped after the restart, unless the pod was

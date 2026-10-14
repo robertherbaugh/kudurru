@@ -122,6 +122,12 @@ type Options struct {
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
 	Now func() time.Time
+	// RetryUnavailable allows kube API availability errors to defer identity
+	// loading to Run. Empty caches deny local credentials until recovery.
+	// nil preserves synchronous startup, including sqlite error handling.
+	RetryUnavailable func(error) bool
+	// InitializationTimeout bounds each attempt when RetryUnavailable is set.
+	InitializationTimeout time.Duration
 }
 
 // Stack is the assembled identity layer.
@@ -146,11 +152,15 @@ type Stack struct {
 	idps         *objcache.Cache[*internalv1.IdentityProvider]
 	configIDPs   []*internalv1.IdentityProvider
 
-	registry atomic.Pointer[oidc.Registry]
-	regMu    sync.Mutex
-	regDiag  []string
+	registry        atomic.Pointer[oidc.Registry]
+	regMu           sync.Mutex
+	regDiag         []string
+	registryPending bool
 
-	middleware func(http.Handler) http.Handler
+	middleware         func(http.Handler) http.Handler
+	initializePending  bool
+	usersBootstrapped  bool
+	tokensBootstrapped bool
 }
 
 // New builds the stack: it validates the configuration, primes the
@@ -245,18 +255,12 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	s.roleBindings = objcache.New[*internalv1.RoleBinding](opts.Store, internalv1.KindRoleBinding, objcache.Options{Logger: log})
 	s.roleBindings.OnChange(s.syncRoleBindings)
 	s.idps = objcache.New[*internalv1.IdentityProvider](opts.Store, internalv1.KindIdentityProvider, objcache.Options{Logger: log})
-	for _, prime := range []func(context.Context) error{s.users.Prime, s.tokens.Prime, s.roleBindings.Prime, s.idps.Prime} {
-		if err := prime(ctx); err != nil {
-			return nil, fmt.Errorf("stack: loading identity objects: %w", err)
+	if err := s.initialize(ctx); err != nil {
+		if ctx.Err() != nil || opts.RetryUnavailable == nil || !opts.RetryUnavailable(err) {
+			return nil, err
 		}
-	}
-
-	// First boot.
-	if _, err := s.users.Bootstrap(ctx, users.BootstrapOptions{Getenv: opts.Getenv, PasswordFile: cfg.Auth.Bootstrap.AdminPasswordFile, Out: opts.Out, Identity: cfg.Node.Name}); err != nil {
-		return nil, err
-	}
-	if _, err := s.tokens.Bootstrap(ctx, opts.Getenv); err != nil {
-		return nil, err
+		s.initializePending = true
+		log.Warn("identity initialization deferred until the apiserver is available", "error", err)
 	}
 
 	// Sessions.
@@ -284,13 +288,14 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		}
 		s.configIDPs = append(s.configIDPs, idp)
 	}
-	if err := s.rebuildRegistry(ctx); err != nil {
+	if err := s.rebuildRegistry(ctx, true); err != nil {
 		return nil, err
 	}
+	s.initializePending = s.initializePending || s.registryPending
 	// Later IdentityProvider changes (the watch started by Run) rebuild the
 	// registry; failures then only produce diagnoses.
 	bg := context.WithoutCancel(ctx)
-	s.idps.OnChange(func() { _ = s.rebuildRegistry(bg) })
+	s.idps.OnChange(func() { _ = s.rebuildRegistry(bg, true) })
 
 	if s.admin, err = adminsock.New(adminsock.Options{
 		Policy: auth.PeerPolicy{GID: cfg.Auth.AdminSocket.Group}, Users: s.users, Tokens: s.tokens,
@@ -398,12 +403,71 @@ func (s *Stack) activeRegistry() *oidc.Registry {
 
 // Run keeps the identity caches current until ctx is done.
 func (s *Stack) Run(ctx context.Context) error {
+	if s.initializePending {
+		for {
+			if err := s.initialize(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				if !s.opts.RetryUnavailable(err) {
+					return err
+				}
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(time.Second):
+				}
+				continue
+			}
+			break
+		}
+	}
 	var wg sync.WaitGroup
 	wg.Go(func() { _ = s.users.Run(ctx) })
 	wg.Go(func() { _ = s.tokens.Run(ctx) })
 	wg.Go(func() { _ = s.roleBindings.Run(ctx) })
 	wg.Go(func() { _ = s.idps.Run(ctx) })
 	wg.Wait()
+	return nil
+}
+
+// initialize runs before watches so Prime cannot overwrite a concurrent
+// watch update. Bootstrap is retried against the store, never inferred from
+// an empty offline cache (which must not create replacement credentials).
+// Keep priming until recovery completes, but never replay successful
+// bootstrap steps: a later retry must preserve credential revocations.
+func (s *Stack) initialize(ctx context.Context) error {
+	if s.opts.RetryUnavailable != nil {
+		timeout := s.opts.InitializationTimeout
+		if timeout <= 0 {
+			timeout = 5 * time.Second
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	for _, prime := range []func(context.Context) error{s.users.Prime, s.tokens.Prime, s.roleBindings.Prime, s.idps.Prime} {
+		if err := prime(ctx); err != nil {
+			return fmt.Errorf("stack: loading identity objects: %w", err)
+		}
+	}
+	if !s.usersBootstrapped {
+		if _, err := s.users.Bootstrap(ctx, users.BootstrapOptions{Getenv: s.opts.Getenv, PasswordFile: s.cfg.Auth.Bootstrap.AdminPasswordFile, Out: s.opts.Out, Identity: s.cfg.Node.Name}); err != nil {
+			return err
+		}
+		s.usersBootstrapped = true
+	}
+	if !s.tokensBootstrapped {
+		if _, err := s.tokens.Bootstrap(ctx, s.opts.Getenv); err != nil {
+			return err
+		}
+		s.tokensBootstrapped = true
+	}
+	if s.sealed != nil {
+		// A configured clientSecretRef may also have been unavailable on
+		// startup. Retry it without discarding config validation failures.
+		return s.rebuildRegistry(ctx, false)
+	}
 	return nil
 }
 
@@ -432,10 +496,20 @@ func (s *Stack) syncRoleBindings() {
 // IdentityProvider objects. Config entries win over objects with the same
 // id; providers that fail to build are skipped and reported by Diagnoses.
 // At startup (first build) a broken config entry is an error.
-func (s *Stack) rebuildRegistry(ctx context.Context) error {
+func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) error {
 	s.regMu.Lock()
 	defer s.regMu.Unlock()
-	first := s.registry.Load() == nil
+	first := s.registry.Load() == nil || s.registryPending
+	if s.opts.RetryUnavailable != nil {
+		timeout := s.opts.InitializationTimeout
+		if timeout <= 0 {
+			timeout = 5 * time.Second
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	var pendingErr error
 	var (
 		providers []*oidc.Provider
 		diag      []string
@@ -459,15 +533,20 @@ func (s *Stack) rebuildRegistry(ctx context.Context) error {
 			diag = append(diag, fmt.Sprintf("%s: id %q is already defined in the config file (ignored)", e.origin, e.idp.Name))
 			continue
 		}
+		// Config entries own their IDs even while construction is deferred.
+		// Never replace unavailable configured trust with a stored provider.
+		seen[e.idp.Name] = true
 		p, err := s.buildProvider(ctx, e.idp)
 		if err != nil {
 			if first && e.origin == "auth.identityProviders" {
-				return err
+				if s.opts.RetryUnavailable == nil || !s.opts.RetryUnavailable(err) {
+					return err
+				}
+				pendingErr = err
 			}
 			diag = append(diag, fmt.Sprintf("%s: %v (ignored)", e.origin, err))
 			continue
 		}
-		seen[e.idp.Name] = true
 		providers = append(providers, p)
 	}
 	reg, err := oidc.NewRegistry(providers...)
@@ -489,6 +568,11 @@ func (s *Stack) rebuildRegistry(ctx context.Context) error {
 	}
 	s.registry.Store(reg)
 	s.regDiag = diag
+	s.registryPending = pendingErr != nil
+	if pendingErr != nil && !deferUnavailable {
+		// Run must keep retrying until configured providers can be built.
+		return fmt.Errorf("stack: identity provider initialization: %w", pendingErr)
+	}
 	return nil
 }
 

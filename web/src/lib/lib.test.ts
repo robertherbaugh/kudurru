@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiClient, ApiError, encodeQuery } from '../api/client';
 import type { BlockList } from '../api/types';
 import { apiBaseFor, joinBase, stripBase } from './basePath';
-import { formatCount, formatCountdown, parseDuration, toGoDuration } from './format';
+import { formatCount, formatCountdown, formatVersion, parseDuration, toGoDuration } from './format';
 import { listHealth } from './listHealth';
 import { ownership, readOnlyReason, withMeta } from './managedBy';
 import { isApiURL, isAppRoute, matchPath } from './router';
@@ -46,6 +46,21 @@ describe('router', () => {
 });
 
 describe('format', () => {
+  it.each([
+    ['0.1.0', 'v0.1.0'],
+    ['v0.1.0', 'v0.1.0'],
+    [' v0.1.0-RC.2 ', 'v0.1.0-RC.2'],
+    ['v0.1.0-rc.1+build.123', 'v0.1.0-rc.1'],
+    ['v0.1.0-rc.1-12-gdeadbee-dirty', 'v0.1.0-rc.1'],
+    ['v0.1.0-12-gdeadbee', 'v0.1.0'],
+    ['v0.1.0-dirty', 'v0.1.0'],
+    ['1.2.3-beta.2+linux.amd64', 'v1.2.3-beta.2'],
+    ['dev', 'dev'],
+    ['devel-055b3ae', 'dev'],
+    [undefined, '–'],
+    ['', '–'],
+  ])('shows release version %s as %s', (version, label) => expect(formatVersion(version)).toBe(label));
+
   it.each([
     [999, '999'],
     [9_999, '9,999'],

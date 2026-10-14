@@ -47,14 +47,14 @@ export function seriesFor(ts: Timeseries | undefined): { x: number[]; series: St
 
 const CLIENT_COLORS = ['blue', 'teal', 'orange', 'purple', 'pink', 'green', 'cyan', 'indigo', 'brown', 'red'];
 
-/** One series per top client plus "other clients" (the last counts column). */
+/** One series per top client plus the API's "other" aggregate. */
 export function clientSeriesFor(ct: ClientTimeseries | undefined): { x: number[]; series: StackSeries[] } {
   const pts = ct?.points ?? [];
   const clients = ct?.clients ?? [];
   const series: StackSeries[] = clients.map((c, i) => ({
     key: c.key,
-    label: c.name ?? c.key,
-    color: `var(--color-data-categorical-${CLIENT_COLORS[i % CLIENT_COLORS.length]})`,
+    label: c.key === 'other' ? 'Other clients' : (c.name ?? c.key),
+    color: c.key === 'other' ? 'var(--q-other)' : `var(--color-data-categorical-${CLIENT_COLORS[i % CLIENT_COLORS.length]})`,
     values: pts.map((p) => p.counts[i] ?? 0),
   }));
   if (pts.some((p) => p.counts.length > clients.length)) {

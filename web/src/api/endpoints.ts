@@ -9,7 +9,7 @@ import type {
   AuditVerification,
   AuthStatus,
   BlockingState,
-  ClientItem,
+  ClientsResult,
   ClientTimeseries,
   ClusterInfo,
   CreateTokenRequest,
@@ -188,7 +188,7 @@ export function endpoints(c: ApiClient) {
     },
 
     clients: {
-      list: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientItem>>('/clients', q),
+      list: (s: ScopeParams, q: { window?: string } = {}) => c.get<ClientsResult>('/clients', { ...scopeQuery(s), ...q }),
     },
 
     runtime: {

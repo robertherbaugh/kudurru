@@ -237,7 +237,16 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: http client: %w", err)
 	}
-	mapper, err := apiutil.NewDynamicRESTMapper(cfg, httpClient)
+	// RESTMapping has no caller context. Bound discovery independently so a
+	// black-holed apiserver cannot hold startup before local.db is served.
+	// Keep the watch client's timeout unchanged.
+	discoveryCfg := rest.CopyConfig(cfg)
+	discoveryCfg.Timeout = opts.StartupTimeout
+	discoveryHTTP, err := rest.HTTPClientFor(discoveryCfg)
+	if err != nil {
+		return nil, fmt.Errorf("store/kube: discovery http client: %w", err)
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(discoveryCfg, discoveryHTTP)
 	if err != nil {
 		return nil, fmt.Errorf("store/kube: rest mapper: %w", err)
 	}

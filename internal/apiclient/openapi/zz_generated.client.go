@@ -1939,7 +1939,7 @@ type ClientItem struct {
 	Group   *string `json:"group,omitempty"`
 	Key     string  `json:"key"`
 
-	// LastSeen The newest query from the client on this node (hour precision once its query rows aged out).
+	// LastSeen The newest query from the client in the selected scope (hour precision once its query rows aged out).
 	LastSeen *time.Time `json:"last_seen,omitempty"`
 	Name     *string    `json:"name,omitempty"`
 }
@@ -1971,6 +1971,20 @@ type ClientTimeseriesBody struct {
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64   `json:"took_ms"`
 	Until  time.Time `json:"until"`
+}
+
+// ClientsBody defines model for ClientsBody.
+type ClientsBody struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string       `json:"continue,omitempty"`
+	Items    []ClientItem  `json:"items"`
+	Nodes    *[]NodeResult `json:"nodes"`
+	Partial  bool          `json:"partial"`
+	Scope    string        `json:"scope"`
+	Source   *string       `json:"source,omitempty"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
 }
 
 // ClusterInfo defines model for ClusterInfo.
@@ -2563,16 +2577,6 @@ type ListCatalogueService struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
 	Continue *string            `json:"continue,omitempty"`
 	Items    []CatalogueService `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
-// ListClientItem defines model for ListClientItem.
-type ListClientItem struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string      `json:"continue,omitempty"`
-	Items    []ClientItem `json:"items"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -20168,7 +20172,7 @@ type ListClientsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListClientItem
+	JSON200 *ClientsBody
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -20186,7 +20190,7 @@ type ListClientsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListClientsResponse) GetJSON200() *ListClientItem {
+func (r ListClientsResponse) GetJSON200() *ClientsBody {
 	return r.JSON200
 }
 
@@ -32561,7 +32565,7 @@ func ParseListClientsResponse(rsp *http.Response) (*ListClientsResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListClientItem
+		var dest ClientsBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

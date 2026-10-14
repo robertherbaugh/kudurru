@@ -4,6 +4,7 @@ Four work packages, merged with two integration fixes (the superseded lameduck c
 
 | Package | Report | Headline |
 |---|---|---|
+| Final v0.1 feature review | [features-v0.1.md](features-v0.1.md) | Shipping feature matrix, Talos client-address evidence, Clients scope and outage-startup fixes, remaining GA gates |
 | Security review | [security.md](security.md) | 11 confirmed findings fixed with regression tests (4 medium: SSRF via list URLs, inherited credentials after account re-creation, proxy-keyed login lockouts, webhook on all interfaces); SECURITY.md |
 | Security review, v0.1 round | [security-v0.1-round.md](security-v0.1-round.md) | 17 findings on the block page, unblock requests, allowlists, catalogue fetchers, entries APIs and the release pipeline, fixed with regression tests (3 medium: a branch shadowing the release tag, a signing identity matching any workflow, a quadratic entries PATCH) |
 | Measurements, v0.1 | [measurements-v0.1.md](measurements-v0.1.md) | In Docker on 4 CPUs: 142k q/s cached, 72k mix, 40k all-forwarded with no loss; 82 µs at 10k q/s; ready in 0.4 s, a 1M-entry list enforced in 2.6 s; upgrade from the oldest data format 16/16; five bugs fixed (Docker volume permissions, query-log memory under unique-name floods, a stale auth cache entry, a record write race, Cloudflare DoT refusals); 72 h soak running |
