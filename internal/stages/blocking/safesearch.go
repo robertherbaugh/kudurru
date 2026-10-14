@@ -35,7 +35,7 @@ func (s *Stage) catalogue() *catalogue.Catalogue {
 // takes effect as quickly as an unblock.
 func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalogue.Rewrite, ctx engine.Context, next pipeline.Next) (*pipeline.Response, error) {
 	q := req.Msg.Question[0]
-	live := s.live.Load()
+	live := s.view(req).defaults
 	ttl := d.BlockTTL
 	if ttl <= 0 {
 		ttl = live.blockTTL
@@ -75,15 +75,22 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 				resolve = next
 			}
 			resp, err := resolve(sub)
+			if resp != nil {
+				out.AddCleanup(resp.Close)
+			}
 			if err != nil {
+				out.Close()
 				return resp, err
 			}
 			if resp == nil || resp.Msg == nil {
+				out.Close()
 				return nil, pipeline.ErrNoAnswer
 			}
 			m.Rcode = resp.Msg.Rcode
 			if m.Rcode != dns.RcodeSuccess && m.Rcode != dns.RcodeNameError {
-				return failedRewriteTarget(req, out, resp), nil
+				failed := failedRewriteTarget(req, out, resp)
+				failed.AddCleanup(out.Close)
+				return failed, nil
 			}
 			m.Answer = append(m.Answer, rewriteCopies(resp.Msg.Answer)...)
 			m.Ns = rewriteCopies(resp.Msg.Ns)
@@ -96,6 +103,7 @@ func (s *Stage) safeSearch(req *pipeline.Request, d *policy.Decision, rw catalog
 	finishRewrite(req, m, rw.List())
 	if m.Rcode == dns.RcodeSuccess {
 		if rd := s.inspectContext(d, ctx, m); rd.Action == engine.ActionBlock {
+			out.Close()
 			return s.block(req, d, rd), nil
 		}
 	}

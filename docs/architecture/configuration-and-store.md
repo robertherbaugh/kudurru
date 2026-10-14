@@ -621,10 +621,21 @@ flowchart LR
     Leases --> Retire["Retire after final release"]
 ```
 
-The publisher and store barrier are implemented and tested against real SQLite
-transactions, races, failure, retirement, and promotion. Production DNS/auth
-adapters, enrollment, activation, and three-process partition/rejoin acceptance
-remain separate integration work. Installed data is never reported as Served
+The DNS adapters capture one lease before identification and read typed policy,
+zone, inventory, resolver, response, cache and blocking views from that lease.
+Missing owners fail closed. Alias and DNS64 subqueries inherit the capture;
+detached cache work clones its lease and fences late fills against retired
+resolver/cache incarnations, including A → B → A changes. Transfers hold the
+lease until consumption or explicit response cleanup, including streams never
+iterated. UDP, TCP, DoT, DoH, DoH3, DoQ and the API query caller release cleanup.
+The explicit transfer adapter reads the captured zone set; its legacy live-set
+entry point is rejected once capture is installed.
+
+The publisher, store barrier and DNS adapters are tested against real SQLite
+publication, concurrent owner changes, failure, retirement, promotion and native
+listeners. Complete production owner composition, authentication adapters,
+enrollment, activation and three-process partition/rejoin acceptance remain
+integration work. Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of
 a higher term; this publication mechanism does not provide consensus.

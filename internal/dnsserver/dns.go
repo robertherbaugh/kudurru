@@ -300,7 +300,8 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 	if !ok {
 		return
 	}
-	m, stream := h.resolve(context.Background(), r, client)
+	m, stream, cleanup := h.resolve(context.Background(), r, client)
+	defer cleanup()
 	if m == nil {
 		if proto != pipeline.ProtoUDP {
 			_ = w.Close()

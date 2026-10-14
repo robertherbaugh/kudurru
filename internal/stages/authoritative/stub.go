@@ -61,6 +61,7 @@ func (s *Stage) stubReply(req *pipeline.Request, set zone.Set, z *zone.Zone, nex
 		res := zone.Result{Kind: zone.CNAME, Answer: chain, Target: target, Hops: count}
 		resp, err := s.chase(req, set, z, res, next)
 		if err != nil || resp == nil {
+			resp.Close()
 			return s.stubFailure(req, z), nil
 		}
 		resp.Msg.Authoritative, resp.Msg.AuthenticatedData = false, false

@@ -18,6 +18,8 @@ import (
 type Stage struct {
 	Now      func() time.Time
 	settings atomic.Pointer[responsepolicy.Settings]
+	// Capture supplies immutable settings from the request's complete cut.
+	Capture func(*pipeline.Request) (*responsepolicy.Settings, error)
 }
 
 // SetSettings publishes a validated immutable plan for subsequent requests.
@@ -31,7 +33,20 @@ func (*Stage) Name() string { return "postprocess" }
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
 	settings, ok := req.ResponseSettings.(*responsepolicy.Settings)
 	if !ok {
-		settings = s.settings.Load()
+		if s.Capture != nil {
+			var err error
+			settings, err = s.Capture(req)
+			if err != nil {
+				return nil, err
+			}
+		} else if req.Serving != nil {
+			return nil, pipeline.ErrServingCapture
+		} else {
+			settings = s.settings.Load()
+		}
+		if settings == nil && req.Serving != nil {
+			return nil, pipeline.ErrServingCapture
+		}
 		req.ResponseSettings = settings
 	}
 	resp, err := next(req)
@@ -42,7 +57,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if qt == dns.TypeAXFR || qt == dns.TypeIXFR {
 		return resp, err
 	}
+	inner := resp
 	resp = settings.Guard(req, resp)
+	if resp != inner {
+		resp.AddCleanup(inner.Close)
+	}
 	out := *resp
 	out.Msg = resp.Msg.Copy()
 	now := time.Now()

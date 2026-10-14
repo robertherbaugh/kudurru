@@ -6,6 +6,7 @@ import "time"
 // Modified responses do not authenticate newly synthesized records.
 type ValidationState uint8
 
+// Raw validation outcomes.
 const (
 	ValidationUnknown ValidationState = iota
 	ValidationSecure
@@ -23,8 +24,10 @@ func (s ValidationState) String() string {
 
 var validationNames = [...]string{"unknown", "secure", "insecure", "bogus", "indeterminate"}
 
+// ResponseOrigin records which owner produced the answer.
 type ResponseOrigin uint8
 
+// Answer provenance; the zero value establishes no forwarding provenance.
 const (
 	OriginUnknown ResponseOrigin = iota
 	OriginForwarded

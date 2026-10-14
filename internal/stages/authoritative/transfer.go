@@ -206,7 +206,25 @@ func ixfrSerial(m *dns.Msg, z *zone.Zone) (uint32, bool) {
 // calling into the same code. The channel is buffered with every chunk and
 // closed, so a consumer that stops early leaks nothing.
 func (s *Stage) Transfer(name string, serial uint32) (<-chan []dns.RR, error) {
-	set := s.zones()
+	// Once captured serving is wired, request-free capability calls cannot
+	// select a coherent cut. Call TransferCaptured with the retained request.
+	if s.Capture != nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	return s.transferChunks(s.zones(), name, serial)
+}
+
+// TransferCaptured reads only the typed zone.Set supplied by Stage.Capture.
+// Chunk resources are borrowed from req.Serving; callers retain/clone that
+// lease through consumption. IXFR SOA and AXFR fallback use this same set.
+func (s *Stage) TransferCaptured(req *pipeline.Request, name string, serial uint32) (<-chan []dns.RR, error) {
+	if req == nil || req.Serving == nil || s.Capture == nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	return s.transferChunks(s.Capture(req), name, serial)
+}
+
+func (s *Stage) transferChunks(set zone.Set, name string, serial uint32) (<-chan []dns.RR, error) {
 	if set == nil || set.Gate() != zone.GateOpen {
 		return nil, ErrUnsynced
 	}

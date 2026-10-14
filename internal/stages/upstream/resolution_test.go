@@ -69,7 +69,7 @@ func TestReplacePublicationIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer setB.Close()
+	defer func() { _ = setB.Close() }()
 	vA, _ := dnssec.New(dnssec.Options{})
 	vB, _ := dnssec.New(dnssec.Options{})
 	if _, err := a.Replace(setA, vA, false); err != nil {

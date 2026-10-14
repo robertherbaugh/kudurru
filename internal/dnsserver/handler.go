@@ -6,6 +6,7 @@ import (
 	"iter"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -56,7 +57,9 @@ func (h *Handler) timeout() time.Duration {
 // and doh/doh3 abort the HTTP exchange. Resolve itself, which must return
 // a message, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
-	if m, _ := h.resolve(ctx, r, client); m != nil {
+	m, _, cleanup := h.resolve(ctx, r, client)
+	defer cleanup()
+	if m != nil {
 		return m
 	}
 	return servfail(r)
@@ -80,41 +83,60 @@ func servfail(r *dns.Msg) *dns.Msg {
 // (pipeline.Response.Transfer, an AXFR/IXFR stream). When the stream is
 // non-nil it yields every message of the answer, starting with the
 // returned one, and the caller writes those instead.
-func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg]) {
+func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg], func()) {
 	timeout := h.timeout()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// The consumer owns cancellation through writing/streaming. In particular,
+	// do not cancel a transfer before its iterator has even been called.
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			cancel()
+		}
+	}()
 
 	req := &pipeline.Request{Ctx: ctx, Msg: r, Received: time.Now(), Client: client}
 	req.Deadline = req.Received.Add(timeout)
 
 	resp, err := h.Chain.Serve(req)
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			cancel()
+			resp.Close()
+		})
+	}
+	handedOff = true
 	if (err == nil && IsDrop(resp)) || errors.Is(err, pipeline.ErrDrop) {
-		return nil, nil
+		return nil, nil, cleanup
 	}
 	if err != nil || resp == nil || resp.Msg == nil {
 		if err != nil && !errors.Is(err, pipeline.ErrNoAnswer) {
 			h.logger().Debug("pipeline error", "err", err, "q", req.Question().Name, "proto", client.Proto.String())
 		}
-		return servfail(r), nil
+		return servfail(r), nil, cleanup
 	}
 	m := resp.Msg
 	m.Id = r.Id
 	if resp.Transfer == nil {
-		return m, nil
+		return m, nil, cleanup
 	}
 	id := r.Id
 	return m, func(yield func(*dns.Msg) bool) {
+		defer cleanup()
 		for x := range resp.Transfer {
+			if ctx.Err() != nil {
+				return
+			}
 			x.Id = id
 			if !yield(x) {
 				return
 			}
 		}
-	}
+	}, cleanup
 }
 
 // resolveFreshID is Resolve for transports whose clients send a fixed
@@ -129,7 +151,8 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 func (h *Handler) resolveFreshID(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
 	orig := r.Id
 	r.Id = dns.Id()
-	m, _ := h.resolve(ctx, r, client)
+	m, _, cleanup := h.resolve(ctx, r, client)
+	defer cleanup()
 	r.Id = orig
 	if m != nil {
 		m.Id = orig

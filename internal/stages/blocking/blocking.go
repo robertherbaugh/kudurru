@@ -151,6 +151,8 @@ func OptionsFromConfig(c *config.Config) Options {
 
 // Stage implements pipeline.Stage.
 type Stage struct {
+	// Capture supplies immutable defaults/runtime/catalogue from Request.Serving.
+	Capture func(*pipeline.Request) (*View, error)
 	opts    Options
 	live    atomic.Pointer[defaults]
 	toggle  *Toggle
@@ -265,6 +267,10 @@ func groupLabel(req *pipeline.Request) string {
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	view, err := s.pin(req)
+	if err != nil {
+		return nil, err
+	}
 	if req.Msg == nil || req.Msg.Opcode != dns.OpcodeQuery || len(req.Msg.Question) != 1 || req.Question().Qclass != dns.ClassINET || req.Question().Qtype == dns.TypeAXFR || req.Question().Qtype == dns.TypeIXFR {
 		return next(req)
 	}
@@ -278,7 +284,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if !d.Filters() || req.Msg == nil || len(req.Msg.Question) == 0 {
 		return next(req)
 	}
-	if !s.Enabled() {
+	if !view.enabled(s.opts.Now()) {
 		s.metrics.decision(passDisabled, groupLabel(req))
 		return next(req)
 	}
@@ -297,7 +303,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 	}
 	if d.SafeSearchOn() && q.Qclass == dns.ClassINET {
-		if rw, ok := s.catalogue().RewriteFor(q.Name, d.SafeSearchMode); ok {
+		if rw, ok := view.catalogue.RewriteFor(q.Name, d.SafeSearchMode); ok {
 			return s.safeSearch(req, d, rw, ctx, next)
 		}
 	}
@@ -307,6 +313,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return resp, err
 	}
 	if rd := s.inspectContext(d, ctx, resp.Msg); rd.Action == engine.ActionBlock {
+		resp.Close()
 		return s.block(req, d, rd), nil
 	}
 	s.countQuestion(req, bd)
@@ -416,7 +423,7 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 	}
 	s.metrics.listHit(bd.List)
 
-	live := s.live.Load()
+	live := s.view(req).defaults
 	mode, v4, v6 := d.BlockMode, live.customV4, live.customV6
 	if info != nil && info.Response != "" {
 		mode = info.Response
@@ -449,6 +456,9 @@ func (s *Stage) ruleContext(req *pipeline.Request) engine.Context {
 	ctx := engine.Context{}
 	if s.opts.Context != nil {
 		ctx = s.opts.Context(req)
+	}
+	if req.Client.IdentityCaptured {
+		ctx.ClientNames, ctx.Tags = req.Client.Names, req.Client.Tags
 	}
 	q := req.Question()
 	ctx.Name, ctx.Type, ctx.Class = q.Name, q.Qtype, q.Qclass

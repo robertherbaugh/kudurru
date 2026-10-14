@@ -105,6 +105,9 @@ type Request struct {
 	Client   Client
 	Received time.Time
 	Deadline time.Time
+	// Serving holds one immutable owner cut. Synchronous subqueries borrow it;
+	// work that outlives the caller must Clone and release its own lease.
+	Serving ServingLease
 	// Zone is set by the authoritative stage when a zone matched. It is an
 	// opaque handle here to keep miekg types out of the zone model; the
 	// authoritative stage stores a *zone.Zone.
@@ -167,6 +170,7 @@ type Response struct {
 	// them, kept for observers and for transports that cannot stream.
 	// Stages set it only for requests that arrived over TCP or DoT.
 	Transfer iter.Seq[*dns.Msg]
+	cleanup  *responseCleanup
 }
 
 // DNSSEC is the validation state of an answer (RFC 4033 §5). The values
@@ -201,6 +205,7 @@ type Observer interface {
 type Chain struct {
 	stages    []Stage
 	observers []Observer
+	capture   Capture
 }
 
 // New validates that stages follow Order (subset, same relative order) and
@@ -248,18 +253,47 @@ func (c *Chain) Stages() []string {
 }
 
 // Serve runs the request through the chain and notifies observers.
-func (c *Chain) Serve(req *Request) (*Response, error) {
+func (c *Chain) Serve(req *Request) (resp *Response, err error) {
 	if req.Received.IsZero() {
 		req.Received = time.Now()
 	}
 	if req.Ctx == nil {
 		req.Ctx = context.Background()
 	}
-	resp, err := c.serveFrom(0, req)
+	var owned ServingLease
+	completed := false
+	defer func() {
+		if !completed {
+			resp.Close() // an observer panic must not strand response ownership
+		}
+		if owned != nil {
+			owned.Release()
+			req.Serving = nil
+		}
+	}()
+	if req.Serving == nil && c.capture != nil {
+		owned, err = c.capture(req)
+		if err == nil && owned == nil {
+			err = ErrServingCapture
+		}
+		if err == nil {
+			req.Serving = owned
+		}
+	}
+	if err == nil {
+		resp, err = c.serveFrom(0, req)
+	}
 	latency := time.Since(req.Received)
 	for _, o := range c.observers {
 		o.Observe(req, resp, err, latency)
 	}
+	if err != nil {
+		resp.Close()
+	} else if resp != nil && resp.Transfer != nil && owned != nil {
+		resp.AddCleanup(owned.Release)
+		owned = nil // the transport now owns stream cleanup
+	}
+	completed = true
 	return resp, err
 }
 

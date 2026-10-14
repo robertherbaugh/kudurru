@@ -77,6 +77,7 @@ func (s *Stage) signedSplice(req *pipeline.Request, z *zone.Zone, answer, author
 	r := s.splice(req, z, answer, resp, err)
 	r.Msg.Ns = appendSignedAuthority(authority, r.Msg.Ns)
 	if signedResponseOverBudget(r.Msg) {
+		r.Close()
 		return s.signedFailure(req, z)
 	}
 	return r

@@ -19,7 +19,7 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 	q := req.Question()
 	ttl := d.BlockTTL
 	if ttl <= 0 {
-		ttl = s.live.Load().blockTTL
+		ttl = s.view(req).defaults.blockTTL
 	}
 	m := new(dns.Msg)
 	m.SetReply(req.Msg)
@@ -43,17 +43,24 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 			resolve = func(r *pipeline.Request) (*pipeline.Response, error) { return s.Serve(r, next) }
 		}
 		resp, err := resolve(sub)
+		if resp != nil {
+			out.AddCleanup(resp.Close)
+		}
 		if err != nil {
+			out.Close()
 			return nil, err
 		}
 		if resp == nil || resp.Msg == nil {
+			out.Close()
 			return nil, pipeline.ErrNoAnswer
 		}
 		m.Rcode = resp.Msg.Rcode
 		// A failed target must remain failed, including expired/unavailable local
 		// authority. Never turn its SERVFAIL into a positive synthetic CNAME.
 		if m.Rcode != dns.RcodeSuccess && m.Rcode != dns.RcodeNameError {
-			return failedRewriteTarget(req, out, resp), nil
+			failed := failedRewriteTarget(req, out, resp)
+			failed.AddCleanup(out.Close)
+			return failed, nil
 		}
 		m.Answer = append(m.Answer, rewriteCopies(resp.Msg.Answer)...)
 		m.Ns = rewriteCopies(resp.Msg.Ns)
@@ -67,6 +74,7 @@ func (s *Stage) rewrite(req *pipeline.Request, d *policy.Decision, bd engine.Dec
 	finishRewrite(req, m, bd.List)
 	if m.Rcode == dns.RcodeSuccess {
 		if rd := s.inspectContext(d, ctx, m); rd.Action == engine.ActionBlock {
+			out.Close()
 			return s.block(req, d, rd), nil
 		}
 	}

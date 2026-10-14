@@ -23,6 +23,8 @@ import (
 // Stage implements pipeline.Stage.
 type Stage struct {
 	state atomic.Pointer[resolutionState]
+	// Capture supplies the immutable route/trust cut held by Request.Serving.
+	Capture func(*pipeline.Request) (*View, error)
 
 	// Group, Servers and Timeout describe the group built by the
 	// convenience constructor New, for startup logging; they are empty for
@@ -132,6 +134,23 @@ func (s *Stage) Bind(req *pipeline.Request) (*upstream.QueryPlan, error) {
 		return n, err
 	}
 	state := s.state.Load()
+	if s.Capture != nil {
+		view, err := s.Capture(req)
+		if err != nil {
+			return nil, err
+		}
+		if view == nil {
+			return nil, pipeline.ErrServingCapture
+		}
+		p, err := view.set.Plan(req, view.validator, view.enabled, view.epoch, view.current)
+		if err == nil {
+			req.Resolution = p
+		}
+		return p, err
+	}
+	if req.Serving != nil {
+		return nil, pipeline.ErrServingCapture
+	}
 	p, err := state.set.Plan(req, state.validator, state.enabled, state.epoch, func() bool { return s.state.Load() == state })
 	if err == nil {
 		req.Resolution = p

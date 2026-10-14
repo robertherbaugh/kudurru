@@ -67,6 +67,13 @@ type TransferProvider interface {
 	Transfer(zone string, serial uint32) (<-chan []dns.RR, error)
 }
 
+// CapturedTransferProvider is the request-bound alternative. The caller holds
+// Request.Serving until it finishes reading the returned chunks and enforces
+// transfer authorization. It never consults the legacy live Source.
+type CapturedTransferProvider interface {
+	TransferCaptured(*pipeline.Request, string, uint32) (<-chan []dns.RR, error)
+}
+
 // Stage implements pipeline.Stage.
 type Stage struct {
 	// Source is required.
@@ -144,7 +151,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	var set zone.Set
 	if s.Capture != nil {
 		set = s.Capture(req)
-	} else {
+	} else if req.Serving == nil {
 		set = s.zones()
 	}
 	if set == nil {
@@ -378,6 +385,7 @@ func subRequest(req *pipeline.Request, target string, qtype, qclass uint16) *pip
 // data kudurru does not own) and takes the status of the inner answer.
 func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp *pipeline.Response, err error) *pipeline.Response {
 	if err != nil || resp == nil || resp.Msg == nil {
+		resp.Close()
 		r := pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusServfailUpstream)
 		r.Upstream = upstreamName(z)
 		r.Origin = pipeline.OriginFailure
@@ -402,7 +410,7 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 	if resp.DNSSEC == pipeline.DNSSECBogus {
 		security = pipeline.DNSSECBogus
 	}
-	return &pipeline.Response{
+	result := &pipeline.Response{
 		Msg:       out,
 		Status:    resp.Status,
 		Upstream:  resp.Upstream,
@@ -414,6 +422,8 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 		Cacheable: false,
 		DNSSEC: security,
 	}
+	result.AddCleanup(resp.Close)
+	return result
 }
 
 // reply renders a lookup result.

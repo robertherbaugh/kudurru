@@ -267,6 +267,7 @@ func (s *Server) dnsQuery(ctx context.Context, in *dnsQueryInput) (*dnsQueryOutp
 		Client: pipeline.Client{Addr: netip.AddrPortFrom(client, 0), Proto: proto, ClientID: "api-dig", Synthetic: true},
 	}
 	resp, err := s.opts.Chain.Serve(preq)
+	defer func() { resp.Close() }() // nil-safe, including error and unused stream responses
 	out := &DNSQueryResult{
 		Name: name, Type: dns.TypeToString[qtype], Client: client.String(), Node: s.opts.NodeName,
 		Answer: []string{}, Authority: []string{}, Additional: []string{},
