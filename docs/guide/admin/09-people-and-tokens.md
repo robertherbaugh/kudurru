@@ -50,7 +50,7 @@ message **Not permitted** with the name of the missing permission.
 
 Figure 1 shows the page.
 
-![The page Access and audit on the tab You and tokens. It shows the account admin with the role admin, and the section API tokens with a form and a table.](../images/access.png)
+![The Access page on the You and tokens tab. It shows the account admin with the role admin, and the API tokens section with a form and a table.](../images/access.png)
 
 *Figure 1. The page Access.*
 
@@ -211,7 +211,7 @@ on the other replicas.
 
 1. Open **System** > **Audit Log**. Figure 4 shows the audit table.
 
-![The tab Audit with the filters Actor and Kind and a table. Each row has the time, the actor, the action, the object, the result and the address.](../images/access-audit.png)
+![The Audit Log page with Actor, Kind and Time order controls, integrity verification, and an expandable table. Each row has the time, actor, action, object, result and request address.](../images/access-audit.png)
 
 *Figure 4. The audit table.*
 

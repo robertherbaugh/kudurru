@@ -174,7 +174,7 @@ const auditColumns: TableColumn<AuditRow>[] = [
   },
 ];
 
-/** The audit trail is licensed (feature "audit"); locked, the tab asks for nothing. */
+/** The audit trail is licensed (feature "audit"); locked, the page asks for nothing. */
 function Audit() {
   const f = useFeature('audit');
   if (!f.ready) return <Loading />;
