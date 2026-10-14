@@ -254,6 +254,7 @@ export default function QueryLogPage() {
       ) : first ? (
         <Text type="supporting" as="p" data-testid="log-totals">
           {formatExact(first.records_filtered)} of {formatExact(first.records_total)} queries match
+          {central ? ' (central database)' : ''}
           {first.earliest_ts_memory ? `; in memory since ${formatDateTime(first.earliest_ts_memory)}` : ''}
           {first.earliest_ts_disk ? `; on disk since ${formatDateTime(first.earliest_ts_disk)}` : ''}
         </Text>

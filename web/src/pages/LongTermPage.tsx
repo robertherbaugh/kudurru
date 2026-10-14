@@ -166,7 +166,12 @@ function LongTermView() {
         actions={
           <>
             {ts.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
-            {ts.data ? <Text type="supporting">{Math.round(ts.data.step / 60)} min buckets</Text> : null}
+            {ts.data ? (
+              <Text type="supporting">
+                {ts.data.source === 'central' ? 'Central database · ' : ''}
+                {Math.round(ts.data.step / 60)} min buckets
+              </Text>
+            ) : null}
           </>
         }
       >
