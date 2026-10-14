@@ -166,10 +166,20 @@ and personal-token grants intersect frozen grants with current subject authority
 scopes and persistent floors still apply. Missing identity rows with retained
 floors cannot silently reprovision a new UID.
 
-These owners are tested with real signed JWTs, concrete command transactions,
-restart, replica installation and promotion. Network discovery/exchange, durable
-issuance commands and browser/CLI mounting remain separate work; the existing
-production OIDC adapter rejects expression policies until it adopts this owner.
+`security.IssueExternal` resolves raw proof against the current command, creates
+or reuses the independent identity UID, and atomically commits profile, group
+snapshot, revocation floors and session enrollment. Initial groups come from the
+verified proof; later group updates obey `syncGroups`. Username changes and group
+removal raise the account floor. Issuance samples the real clock again, rechecks
+original proof expiry, and must be strictly later than any new floor. Equality
+rejects the command; timestamps are never adjusted to bypass revocation. Cookie
+sealing requires a complete committed view containing the new enrollment.
+
+These owners and commands are tested with real signed JWTs, concurrent concrete
+transactions, rollback, restart, replica installation and promotion. Network
+discovery/exchange, preauth consumption and browser/CLI mounting remain separate
+work; the existing production OIDC adapter rejects expression policies until it
+adopts this owner.
 
 ## Principals
 

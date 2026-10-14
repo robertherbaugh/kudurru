@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -93,10 +94,21 @@ func IssueLocal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depe
 }
 
 func localLoginConfig(d servingauth.SessionDecision) (*config.Config, error) {
-	if d.Settings == nil {
+	cfg, err := sessionConfig(d.Settings)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !d.Principal.BuiltinAdmin {
+		return nil, servingauth.ErrDenied
+	}
+	return cfg, nil
+}
+
+func sessionConfig(settings *publicv1.Kudurru) (*config.Config, error) {
+	if settings == nil {
 		return nil, servingauth.ErrInvalid
 	}
-	raw, err := json.Marshal(d.Settings.Spec.Settings)
+	raw, err := json.Marshal(settings.Spec.Settings)
 	if err != nil {
 		return nil, servingauth.ErrInvalid
 	}
@@ -111,9 +123,6 @@ func localLoginConfig(d servingauth.SessionDecision) (*config.Config, error) {
 	cfg, _, err := config.ApplyClusterDocument(defaults, document)
 	if err != nil {
 		return nil, servingauth.ErrInvalid
-	}
-	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !d.Principal.BuiltinAdmin {
-		return nil, servingauth.ErrDenied
 	}
 	return cfg, nil
 }
