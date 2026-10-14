@@ -194,6 +194,24 @@ type WriterToken struct {
 }
 type writerTokenKey struct{}
 
+// WriterTokenFromContext returns only the token already carried by admitted
+// work, such as an elector callback. It never samples or adopts current writer
+// authority. Callers may copy this opaque token onto a request context while
+// preserving cancellation from both the request and the elected work.
+func WriterTokenFromContext(ctx context.Context) (WriterToken, bool) {
+	if ctx == nil {
+		return WriterToken{}, false
+	}
+	t, ok := ctx.Value(writerTokenKey{}).(WriterToken)
+	return t, ok && t.member != "" && t.incarnation != 0 && t.term.Validate() == nil
+}
+
+// Term returns the captured term, without any claim of continuing authority.
+func (t WriterToken) Term() replication.Term { return t.term }
+
+// Incarnation returns the captured local writer incarnation, never a successor.
+func (t WriterToken) Incarnation() uint64 { return t.incarnation }
+
 // WithWriterToken binds a mutation context to the captured authority incarnation.
 func WithWriterToken(ctx context.Context, t WriterToken) context.Context {
 	return context.WithValue(ctx, writerTokenKey{}, t)
