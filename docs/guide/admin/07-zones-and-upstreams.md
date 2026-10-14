@@ -157,8 +157,9 @@ keep normal primary-zone behavior: missing names answer NXDOMAIN.
 The upstream group must exist. [Create an upstream
 group](#create-an-upstream-group) first if it does not.
 
-NOTE: The per-zone DNSSEC setting is reserved for a later version.
-Recursive upstream groups validate DNSSEC with their recursion settings.
+Forwarded-answer DNSSEC validation and the per-zone override are implemented
+on the v0.2 development branch. In v0.1.0, recursive upstream groups validate
+DNSSEC using their recursion settings.
 
 ### Create a secondary zone
 

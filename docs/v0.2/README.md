@@ -52,7 +52,7 @@ real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
 [draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main, currently `5de124b` including the merged
+commits and periodic rebases on main, currently `e6df232` including the merged
 supervisor/VIP work. AXFR/IXFR, verified TLS, inbound NOTIFY
 and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
 Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
@@ -100,6 +100,8 @@ transaction acceptance pass. Primary serving now requires the committed head's
 configuration and source receipt to match the current DNSZone; advancing only
 the lifecycle source cannot expose old configuration. Pending DNSRecordSet-only
 edits retain the last committed records until reconciliation.
+Captured primary routing, admission and publication diagnostics also agree at
+the earliest ancestor expiry, including after durable restore and parent refresh.
 The root runtime assembly is tested with the complete publisher; production
 mounting, Kubernetes barriers and forwarding remain in progress.
 The combined root assembly now runs provider acquisition/publication on every
@@ -109,6 +111,10 @@ joined shutdown checks pass. Fresh enrolled followers stay unavailable until the
 first valid replica arrives, then recover within the same running assembly.
 SQLite startup initializes canonical public settings
 once, retaining existing values and excluding local environment overrides.
+The optional canonical settings API adapter now uses the captured HTTP image and
+current commands for durable singleton writes, leaving runtime changes to complete
+publication. Real HTTP/SQLite merge, reset, no-op and stale-request tests pass;
+the production route mount remains open.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh
@@ -131,7 +137,9 @@ discovered durable write and exercises explicit uncertain-UID recovery on a
 real API server. Complete auth images now preserve durable session enrollment
 and account/provider/grant revocation floors; current commands verify original
 proofs against staged transactional state. TOTP replay consumption and local
-session enrollment commit together, with explicit startup migration and
+session enrollment commit together, and current commands recheck private verified
+credential deadlines at final commit/no-op without parsing or consuming TOTP again.
+Local issuance retains explicit startup migration and
 restart/promotion coverage. Offline signed OIDC/CEL verification, captured provider
 matching, independent external identity/session enrollment and leased HTTP JWT
 authentication are implemented. Durable config-provider identities, retained tombstones and complete accepted

@@ -514,6 +514,12 @@ coverage remains until the persisted lifecycle permits removal or replacement.
 Parent witnesses, source identity and effective head incarnation all come from
 that same image. Its later `Cut(now)` calls evaluate only prepared memory and
 absolute expiry; they never capture a live runtime or mark a head published.
+Routing and derived publication diagnostics now use the same earliest absolute
+ancestor deadline as admission. The exact boundary installs unavailable coverage
+even when the child's own head has no expiry. Image preparation, runtime rebuild
+and durable restore precompute immutable deadline maps; lookup takes no ancestor
+walk. Raw head expiry, status evidence, versions and exact acknowledgment remain
+unchanged, and held cuts keep their original deadlines after a parent refresh.
 
 `primaryruntime/driver` restores the complete durable roster under the actual
 SQLite publication barrier, then runs one bounded fair reconciliation loop and

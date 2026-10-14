@@ -29,8 +29,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 - CNAME/DNAME chasing rechecks the most specific local zone before following
   a target, so parent wildcard data cannot bypass a child zone's data or expiry.
+- Current SQLite commands recheck verified credential expiry at final admission,
+  including no-op and dedup results. Captured primary routing now enforces the
+  earliest ancestor expiry without changing durable head evidence.
 
-Stub zones and signed secondary serving remain subsequent v0.2 work. Inbound NOTIFY now verifies the primary source
+Stub zones and signed secondary serving are implemented on the development
+branch. Inbound NOTIFY verifies the primary source
 and configured TSIG, schedules bounded local refreshes, and fans authenticated
 hints to peers so every replica transfers independently.
 
