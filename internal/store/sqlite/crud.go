@@ -422,6 +422,8 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	}
 	if m.key.Kind == internalkinds.KindAPIToken {
 		entry.Before, entry.After = tokenAuditDocument(entry.Before), tokenAuditDocument(entry.After)
+	} else if internalkinds.IsInternal(string(m.key.Kind)) {
+		entry.Before, entry.After = nil, nil
 	}
 	if err := insertAudit(ctx, q, &entry); err != nil {
 		return 0, err

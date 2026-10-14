@@ -374,7 +374,10 @@ func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, e
 	if err != nil {
 		return nil, auditError(err)
 	}
-	out := &AuditPage{Items: evs, Node: s.opts.NodeName}
+	out := &AuditPage{Items: make([]AuditEvent, len(evs)), Node: s.opts.NodeName}
+	for i, ev := range evs {
+		out.Items[i] = audit.RedactDocuments(ev)
+	}
 	if out.Items == nil {
 		out.Items = []AuditEvent{}
 	}
@@ -409,7 +412,7 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 				return
 			}
 			for _, ev := range evs {
-				if enc.Encode(ev) != nil {
+				if enc.Encode(audit.RedactDocuments(ev)) != nil {
 					return
 				}
 			}

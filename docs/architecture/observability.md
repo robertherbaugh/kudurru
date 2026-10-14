@@ -184,6 +184,13 @@ instead of falling back to `system`. The dashboard shows safe token
 details and offers an `APIToken` kind filter. Older events with no token
 document cannot recover that information after the token is revoked.
 
+Audit list and export responses redact historical token documents with the
+same allowlist and omit documents for other internal identity kinds. New
+SQLite identity mutations also omit those documents. Stored records and
+their hashes remain unchanged; verification reads the original store, not
+the redacted response. Exported hashes describe the original stored data
+and cannot be recomputed from redacted documents.
+
 The dashboard's separate **Audit Log** page supports newest/oldest order,
 cursor pagination and event details. `GET /api/v1/audit/verify` requires
 `audit.read` and the audit license, and checks the complete retained store
