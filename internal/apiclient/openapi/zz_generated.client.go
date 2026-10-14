@@ -248,42 +248,6 @@ func (e DHCPSetupManagedBy) Valid() bool {
 	}
 }
 
-// Defines values for DHCPSetupMode.
-const (
-	DHCPSetupModeKubernetes DHCPSetupMode = "kubernetes"
-	DHCPSetupModeNode       DHCPSetupMode = "node"
-)
-
-// Valid indicates whether the value is a known member of the DHCPSetupMode enum.
-func (e DHCPSetupMode) Valid() bool {
-	switch e {
-	case DHCPSetupModeKubernetes:
-		return true
-	case DHCPSetupModeNode:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for DHCPStatusMode.
-const (
-	DHCPStatusModeKubernetes DHCPStatusMode = "kubernetes"
-	DHCPStatusModeNode       DHCPStatusMode = "node"
-)
-
-// Valid indicates whether the value is a known member of the DHCPStatusMode enum.
-func (e DHCPStatusMode) Valid() bool {
-	switch e {
-	case DHCPStatusModeKubernetes:
-		return true
-	case DHCPStatusModeNode:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for DNSQueryRequestProto.
 const (
 	DNSQueryRequestProtoDoh  DNSQueryRequestProto = "doh"
@@ -707,18 +671,24 @@ func (e RoleBindingInfoSource) Valid() bool {
 	}
 }
 
-// Defines values for SectionOwner.
+// Defines values for SecondaryRuntimeState.
 const (
-	SectionOwnerGitops SectionOwner = "gitops"
-	SectionOwnerUi     SectionOwner = "ui"
+	SecondaryRuntimeStateExpired     SecondaryRuntimeState = "expired"
+	SecondaryRuntimeStatePending     SecondaryRuntimeState = "pending"
+	SecondaryRuntimeStateServing     SecondaryRuntimeState = "serving"
+	SecondaryRuntimeStateUnavailable SecondaryRuntimeState = "unavailable"
 )
 
-// Valid indicates whether the value is a known member of the SectionOwner enum.
-func (e SectionOwner) Valid() bool {
+// Valid indicates whether the value is a known member of the SecondaryRuntimeState enum.
+func (e SecondaryRuntimeState) Valid() bool {
 	switch e {
-	case SectionOwnerGitops:
+	case SecondaryRuntimeStateExpired:
 		return true
-	case SectionOwnerUi:
+	case SecondaryRuntimeStatePending:
+		return true
+	case SecondaryRuntimeStateServing:
+		return true
+	case SecondaryRuntimeStateUnavailable:
 		return true
 	default:
 		return false
@@ -863,24 +833,6 @@ func (e SettingKeyFormat) Valid() bool {
 	case SettingKeyFormatUpstream:
 		return true
 	case SettingKeyFormatUrl:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SettingKeyManagedBy.
-const (
-	SettingKeyManagedByGitops SettingKeyManagedBy = "gitops"
-	SettingKeyManagedByUi     SettingKeyManagedBy = "ui"
-)
-
-// Valid indicates whether the value is a known member of the SettingKeyManagedBy enum.
-func (e SettingKeyManagedBy) Valid() bool {
-	switch e {
-	case SettingKeyManagedByGitops:
-		return true
-	case SettingKeyManagedByUi:
 		return true
 	default:
 		return false
@@ -1073,24 +1025,6 @@ func (e SourceEntriesKind) Valid() bool {
 	case SourceEntriesKindInline:
 		return true
 	case SourceEntriesKindUrl:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SourceInfoType.
-const (
-	SourceInfoTypePihole     SourceInfoType = "pihole"
-	SourceInfoTypeTechnitium SourceInfoType = "technitium"
-)
-
-// Valid indicates whether the value is a known member of the SourceInfoType enum.
-func (e SourceInfoType) Valid() bool {
-	switch e {
-	case SourceInfoTypePihole:
-		return true
-	case SourceInfoTypeTechnitium:
 		return true
 	default:
 		return false
@@ -2319,7 +2253,6 @@ type DHCPClasslessRoute struct {
 type DHCPConfig struct {
 	EnvLocked    []string             `json:"envLocked"`
 	Etag         string               `json:"etag"`
-	ManagedBy    *string              `json:"managedBy,omitempty"`
 	Management   DHCPConfigManagement `json:"management"`
 	Node         string               `json:"node"`
 	Options      DHCPPoolOptions      `json:"options"`
@@ -2507,7 +2440,6 @@ type DHCPScopeServer struct {
 // DHCPScopeSummary defines model for DHCPScopeSummary.
 type DHCPScopeSummary struct {
 	Interface  string                     `json:"interface"`
-	ManagedBy  *string                    `json:"managedBy,omitempty"`
 	Management DHCPScopeSummaryManagement `json:"management"`
 	Name       string                     `json:"name"`
 	RelayOnly  bool                       `json:"relayOnly"`
@@ -2528,16 +2460,13 @@ type DHCPSetup struct {
 	Failover            DHCPFailover       `json:"failover"`
 	FailoverInitialized bool               `json:"failoverInitialized"`
 	ManagedBy           DHCPSetupManagedBy `json:"managedBy"`
-	Mode                DHCPSetupMode      `json:"mode"`
 	Node                string             `json:"node"`
 	PendingScopes       []string           `json:"pendingScopes"`
 	RestartRequired     bool               `json:"restartRequired"`
 	Revision            string             `json:"revision"`
 	RuntimeError        string             `json:"runtimeError"`
-	ScopeOwners         *map[string]string `json:"scopeOwners,omitempty"`
 	ScopeRevisions      map[string]string  `json:"scopeRevisions"`
 	Scopes              []DHCPSetupScope   `json:"scopes"`
-	ServerAddress       *string            `json:"serverAddress,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs            float64 `json:"took_ms"`
@@ -2546,9 +2475,6 @@ type DHCPSetup struct {
 
 // DHCPSetupManagedBy defines model for DHCPSetup.ManagedBy.
 type DHCPSetupManagedBy string
-
-// DHCPSetupMode defines model for DHCPSetup.Mode.
-type DHCPSetupMode string
 
 // DHCPSetupRequest defines model for DHCPSetupRequest.
 type DHCPSetupRequest struct {
@@ -2590,23 +2516,15 @@ type DHCPSetupScope struct {
 
 // DHCPStatus defines model for DHCPStatus.
 type DHCPStatus struct {
-	Available     bool               `json:"available"`
-	Enabled       bool               `json:"enabled"`
-	Failover      *ReplicationStatus `json:"failover,omitempty"`
-	InvalidScopes *map[string]string `json:"invalidScopes,omitempty"`
-	Mode          DHCPStatusMode     `json:"mode"`
-	Node          string             `json:"node"`
-	RuntimeError  *string            `json:"runtimeError,omitempty"`
-	Scopes        []DHCPScopeSummary `json:"scopes"`
-	ServerAddress *string            `json:"serverAddress,omitempty"`
-	ServingNode   *string            `json:"servingNode,omitempty"`
+	Available bool               `json:"available"`
+	Enabled   bool               `json:"enabled"`
+	Failover  *ReplicationStatus `json:"failover,omitempty"`
+	Node      string             `json:"node"`
+	Scopes    []DHCPScopeSummary `json:"scopes"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
 }
-
-// DHCPStatusMode defines model for DHCPStatus.Mode.
-type DHCPStatusMode string
 
 // DHCPTopology defines model for DHCPTopology.
 type DHCPTopology struct {
@@ -2672,29 +2590,6 @@ type DNSQueryResult struct {
 	TookMs   float64 `json:"took_ms"`
 	Type     string  `json:"type"`
 	Upstream *string `json:"upstream,omitempty"`
-}
-
-// DNSRecordSet defines model for DNSRecordSet.
-type DNSRecordSet struct {
-	ApiVersion *string             `json:"apiVersion,omitempty"`
-	Kind       *string             `json:"kind,omitempty"`
-	Metadata   *ObjectMeta         `json:"metadata,omitempty"`
-	Spec       DNSRecordSetSpec    `json:"spec"`
-	Status     *DNSRecordSetStatus `json:"status,omitempty"`
-}
-
-// DNSRecordSetSpec defines model for DNSRecordSetSpec.
-type DNSRecordSetSpec struct {
-	Endpoints *[]Endpoint `json:"endpoints"`
-	ZoneRef   ObjectRef   `json:"zoneRef"`
-}
-
-// DNSRecordSetStatus defines model for DNSRecordSetStatus.
-type DNSRecordSetStatus struct {
-	Conditions         *[]Condition        `json:"conditions,omitempty"`
-	Names              *int64              `json:"names,omitempty"`
-	ObservedGeneration *int64              `json:"observedGeneration,omitempty"`
-	Publications       *[]PublicationState `json:"publications,omitempty"`
 }
 
 // DhcpReservationInputBody defines model for DhcpReservationInputBody.
@@ -3220,26 +3115,6 @@ type ListListSearchHit struct {
 	TookMs float64 `json:"took_ms"`
 }
 
-// ListMigrationAuthorityChange defines model for ListMigrationAuthorityChange.
-type ListMigrationAuthorityChange struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string                    `json:"continue,omitempty"`
-	Items    []MigrationAuthorityChange `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
-// ListMigrationRun defines model for ListMigrationRun.
-type ListMigrationRun struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string        `json:"continue,omitempty"`
-	Items    []MigrationRun `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
 // ListNodeInfo defines model for ListNodeInfo.
 type ListNodeInfo struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -3303,17 +3178,6 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
-// ManagedFieldsEntry defines model for ManagedFieldsEntry.
-type ManagedFieldsEntry struct {
-	ApiVersion  *string                 `json:"apiVersion,omitempty"`
-	FieldsType  *string                 `json:"fieldsType,omitempty"`
-	FieldsV1    *map[string]interface{} `json:"fieldsV1,omitempty"`
-	Manager     *string                 `json:"manager,omitempty"`
-	Operation   *string                 `json:"operation,omitempty"`
-	Subresource *string                 `json:"subresource,omitempty"`
-	Time        *time.Time              `json:"time,omitempty"`
-}
-
 // Me defines model for Me.
 type Me struct {
 	Csrf *string `json:"csrf,omitempty"`
@@ -3339,62 +3203,6 @@ type MePrincipal struct {
 	Name   string   `json:"name"`
 }
 
-// MigrationAdoptInputBody defines model for MigrationAdoptInputBody.
-type MigrationAdoptInputBody struct {
-	Zones []MigrationAuthorityChange `json:"zones"`
-}
-
-// MigrationAuthorityChange defines model for MigrationAuthorityChange.
-type MigrationAuthorityChange struct {
-	AddressRecordSet  *DNSRecordSet `json:"addressRecordSet,omitempty"`
-	Error             *string       `json:"error,omitempty"`
-	Name              string        `json:"name"`
-	Nameservers       []string      `json:"nameservers"`
-	Namespace         *string       `json:"namespace,omitempty"`
-	Primary           string        `json:"primary"`
-	ResourceVersion   string        `json:"resourceVersion"`
-	TargetNameservers *[]string     `json:"targetNameservers,omitempty"`
-	ZoneName          string        `json:"zoneName"`
-}
-
-// MigrationCutover defines model for MigrationCutover.
-type MigrationCutover struct {
-	Actor       string          `json:"actor"`
-	Addresses   *[]string       `json:"addresses,omitempty"`
-	FinishedAt  *time.Time      `json:"finishedAt,omitempty"`
-	Items       []MigrationItem `json:"items"`
-	Nameservers []string        `json:"nameservers"`
-	StartedAt   time.Time       `json:"startedAt"`
-	Status      string          `json:"status"`
-}
-
-// MigrationCutoverPlan defines model for MigrationCutoverPlan.
-type MigrationCutoverPlan struct {
-	Addresses   *[]string                  `json:"addresses,omitempty"`
-	Nameservers []string                   `json:"nameservers"`
-	Revision    string                     `json:"revision"`
-	Warnings    []string                   `json:"warnings"`
-	Zones       []MigrationAuthorityChange `json:"zones"`
-}
-
-// MigrationCutoverPreviewInputBody defines model for MigrationCutoverPreviewInputBody.
-type MigrationCutoverPreviewInputBody struct {
-	Addresses   *[]string `json:"addresses,omitempty"`
-	Nameservers []string  `json:"nameservers"`
-}
-
-// MigrationItem defines model for MigrationItem.
-type MigrationItem struct {
-	Error           *string `json:"error,omitempty"`
-	ErrorKey        *string `json:"errorKey,omitempty"`
-	Hint            *string `json:"hint,omitempty"`
-	Kind            string  `json:"kind"`
-	Name            string  `json:"name"`
-	Namespace       *string `json:"namespace,omitempty"`
-	ResourceVersion *string `json:"resourceVersion,omitempty"`
-	Result          string  `json:"result"`
-}
-
 // MigrationRequest defines model for MigrationRequest.
 type MigrationRequest struct {
 	// Credential Technitium API token or Pi-hole v6 application password.
@@ -3404,15 +3212,9 @@ type MigrationRequest struct {
 	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 
 	// LocalZones Pi-hole local DNS suffixes to make authoritative, for example home.arpa.
-	LocalZones *[]string `json:"localZones,omitempty"`
-
-	// NameserverAddresses Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers.
-	NameserverAddresses *[]string `json:"nameserverAddresses,omitempty"`
-
-	// Nameservers Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover.
-	Nameservers *[]string              `json:"nameservers,omitempty"`
-	Namespace   *string                `json:"namespace,omitempty"`
-	Source      MigrationRequestSource `json:"source"`
+	LocalZones *[]string              `json:"localZones,omitempty"`
+	Namespace  *string                `json:"namespace,omitempty"`
+	Source     MigrationRequestSource `json:"source"`
 
 	// Url Source web console URL, including any reverse-proxy prefix.
 	Url string `json:"url"`
@@ -3424,48 +3226,8 @@ type MigrationRequestSource string
 // MigrationResult defines model for MigrationResult.
 type MigrationResult struct {
 	Items         []ApplyResult `json:"items"`
-	JournalError  *string       `json:"journalError,omitempty"`
-	RunID         string        `json:"runID"`
 	Settings      *SettingsBody `json:"settings,omitempty"`
 	SettingsError *string       `json:"settingsError,omitempty"`
-}
-
-// MigrationRun defines model for MigrationRun.
-type MigrationRun struct {
-	Data     MigrationRunSpec `json:"data"`
-	Id       string           `json:"id"`
-	Revision string           `json:"revision"`
-}
-
-// MigrationRunSpec defines model for MigrationRunSpec.
-type MigrationRunSpec struct {
-	Actor             string             `json:"actor"`
-	Cutovers          []MigrationCutover `json:"cutovers"`
-	Deadline          *time.Time         `json:"deadline,omitempty"`
-	Failure           *string            `json:"failure,omitempty"`
-	FinishedAt        *time.Time         `json:"finishedAt,omitempty"`
-	Items             []MigrationItem    `json:"items"`
-	JournalError      *string            `json:"journalError,omitempty"`
-	SettingsError     *string            `json:"settingsError,omitempty"`
-	SettingsPersisted *bool              `json:"settingsPersisted,omitempty"`
-	Source            string             `json:"source"`
-	SourceURL         *string            `json:"sourceURL,omitempty"`
-	StartedAt         time.Time          `json:"startedAt"`
-	Status            string             `json:"status"`
-	Warnings          []string           `json:"warnings"`
-	Zones             []MigrationZone    `json:"zones"`
-}
-
-// MigrationZone defines model for MigrationZone.
-type MigrationZone struct {
-	Name                string   `json:"name"`
-	Nameservers         []string `json:"nameservers"`
-	Namespace           *string  `json:"namespace,omitempty"`
-	OriginalNameservers []string `json:"originalNameservers"`
-	OriginalPrimary     string   `json:"originalPrimary"`
-	Primary             string   `json:"primary"`
-	Uid                 *string  `json:"uid,omitempty"`
-	ZoneName            string   `json:"zoneName"`
 }
 
 // Missing defines model for Missing.
@@ -3532,52 +3294,12 @@ type ObjectList struct {
 	TookMs float64 `json:"took_ms"`
 }
 
-// ObjectMeta defines model for ObjectMeta.
-type ObjectMeta struct {
-	Annotations                *map[string]string    `json:"annotations,omitempty"`
-	CreationTimestamp          *time.Time            `json:"creationTimestamp,omitempty"`
-	DeletionGracePeriodSeconds *int64                `json:"deletionGracePeriodSeconds,omitempty"`
-	DeletionTimestamp          *time.Time            `json:"deletionTimestamp,omitempty"`
-	Finalizers                 *[]string             `json:"finalizers,omitempty"`
-	GenerateName               *string               `json:"generateName,omitempty"`
-	Generation                 *int64                `json:"generation,omitempty"`
-	Labels                     *map[string]string    `json:"labels,omitempty"`
-	ManagedFields              *[]ManagedFieldsEntry `json:"managedFields,omitempty"`
-	Name                       *string               `json:"name,omitempty"`
-	Namespace                  *string               `json:"namespace,omitempty"`
-	OwnerReferences            *[]OwnerReference     `json:"ownerReferences,omitempty"`
-	ResourceVersion            *string               `json:"resourceVersion,omitempty"`
-	SelfLink                   *string               `json:"selfLink,omitempty"`
-	Uid                        *string               `json:"uid,omitempty"`
-}
-
 // ObjectOwner defines model for ObjectOwner.
 type ObjectOwner struct {
 	Kind      string  `json:"kind"`
 	ManagedBy *string `json:"managedBy,omitempty"`
 	Name      string  `json:"name"`
 	Namespace *string `json:"namespace,omitempty"`
-}
-
-// ObjectRef defines model for ObjectRef.
-type ObjectRef struct {
-	Name      string  `json:"name"`
-	Namespace *string `json:"namespace,omitempty"`
-}
-
-// OwnerReference defines model for OwnerReference.
-type OwnerReference struct {
-	ApiVersion         string `json:"apiVersion"`
-	BlockOwnerDeletion *bool  `json:"blockOwnerDeletion,omitempty"`
-	Controller         *bool  `json:"controller,omitempty"`
-	Kind               string `json:"kind"`
-	Name               string `json:"name"`
-	Uid                string `json:"uid"`
-}
-
-// OwnershipInputBody defines model for OwnershipInputBody.
-type OwnershipInputBody struct {
-	Revision string `json:"revision"`
 }
 
 // PasswordChangeRequest defines model for PasswordChangeRequest.
@@ -3594,12 +3316,9 @@ type PasswordChangeRequest struct {
 
 // Plan defines model for Plan.
 type Plan struct {
-	Objects   []map[string]interface{} `json:"objects"`
-	Selection *Selection               `json:"selection,omitempty"`
-	Settings  map[string]interface{}   `json:"settings"`
-	Source    *SourceInfo              `json:"source,omitempty"`
-	Warnings  []string                 `json:"warnings"`
-	Zones     *[]ZoneAuthority         `json:"zones,omitempty"`
+	Objects  []map[string]interface{} `json:"objects"`
+	Settings map[string]interface{}   `json:"settings"`
+	Warnings []string                 `json:"warnings"`
 }
 
 // Point defines model for Point.
@@ -3842,13 +3561,6 @@ type ProviderSpecific struct {
 	Value string `json:"value"`
 }
 
-// PublicationState defines model for PublicationState.
-type PublicationState struct {
-	Integration string  `json:"integration"`
-	Message     *string `json:"message,omitempty"`
-	State       string  `json:"state"`
-}
-
 // PurgeResult defines model for PurgeResult.
 type PurgeResult struct {
 	CentralDeleted *int64 `json:"central_deleted,omitempty"`
@@ -4070,22 +3782,22 @@ type SafeSearchEngine struct {
 	Target *string `json:"target,omitempty"`
 }
 
-// Section defines model for Section.
-type Section struct {
-	EnvLocked  bool         `json:"envLocked"`
-	Owner      SectionOwner `json:"owner"`
-	Revision   *string      `json:"revision,omitempty"`
-	Switchable bool         `json:"switchable"`
+// SecondaryRuntime defines model for SecondaryRuntime.
+type SecondaryRuntime struct {
+	ExpiresAt       *time.Time            `json:"expiresAt,omitempty"`
+	LastConfirmedAt *time.Time            `json:"lastConfirmedAt,omitempty"`
+	Message         *string               `json:"message,omitempty"`
+	NextAttemptAt   *time.Time            `json:"nextAttemptAt,omitempty"`
+	Node            string                `json:"node"`
+	Primary         *string               `json:"primary,omitempty"`
+	Reason          *string               `json:"reason,omitempty"`
+	RecordCount     *int64                `json:"recordCount,omitempty"`
+	Serial          *int64                `json:"serial,omitempty"`
+	State           SecondaryRuntimeState `json:"state"`
 }
 
-// SectionOwner defines model for Section.Owner.
-type SectionOwner string
-
-// Selection defines model for Selection.
-type Selection struct {
-	Objects  []string `json:"objects"`
-	Settings []string `json:"settings"`
-}
+// SecondaryRuntimeState defines model for SecondaryRuntime.State.
+type SecondaryRuntimeState string
 
 // ServiceAccountInfo defines model for ServiceAccountInfo.
 type ServiceAccountInfo struct {
@@ -4176,36 +3888,32 @@ type SettingFieldType string
 
 // SettingKey defines model for SettingKey.
 type SettingKey struct {
-	Default         interface{}          `json:"default"`
-	Enum            *[]SettingOption     `json:"enum,omitempty"`
-	EnvLocked       bool                 `json:"envLocked"`
-	Fields          *[]SettingField      `json:"fields,omitempty"`
-	Format          *SettingKeyFormat    `json:"format,omitempty"`
-	Group           *string              `json:"group,omitempty"`
-	Help            string               `json:"help"`
-	HostOnly        bool                 `json:"hostOnly"`
-	Items           *SettingShape        `json:"items,omitempty"`
-	Keys            *SettingShape        `json:"keys,omitempty"`
-	Label           *string              `json:"label,omitempty"`
-	ManagedBy       *SettingKeyManagedBy `json:"managedBy,omitempty"`
-	Max             *int64               `json:"max,omitempty"`
-	Min             *int64               `json:"min,omitempty"`
-	Path            string               `json:"path"`
-	Presets         *[]string            `json:"presets,omitempty"`
-	Ref             *SettingKeyRef       `json:"ref,omitempty"`
-	RestartRequired bool                 `json:"restartRequired"`
-	Scope           SettingKeyScope      `json:"scope"`
-	Type            string               `json:"type"`
-	Value           interface{}          `json:"value"`
-	Values          *SettingShape        `json:"values,omitempty"`
-	WriteOnly       bool                 `json:"writeOnly"`
+	Default         interface{}       `json:"default"`
+	Enum            *[]SettingOption  `json:"enum,omitempty"`
+	EnvLocked       bool              `json:"envLocked"`
+	Fields          *[]SettingField   `json:"fields,omitempty"`
+	Format          *SettingKeyFormat `json:"format,omitempty"`
+	Group           *string           `json:"group,omitempty"`
+	Help            string            `json:"help"`
+	HostOnly        bool              `json:"hostOnly"`
+	Items           *SettingShape     `json:"items,omitempty"`
+	Keys            *SettingShape     `json:"keys,omitempty"`
+	Label           *string           `json:"label,omitempty"`
+	Max             *int64            `json:"max,omitempty"`
+	Min             *int64            `json:"min,omitempty"`
+	Path            string            `json:"path"`
+	Presets         *[]string         `json:"presets,omitempty"`
+	Ref             *SettingKeyRef    `json:"ref,omitempty"`
+	RestartRequired bool              `json:"restartRequired"`
+	Scope           SettingKeyScope   `json:"scope"`
+	Type            string            `json:"type"`
+	Value           interface{}       `json:"value"`
+	Values          *SettingShape     `json:"values,omitempty"`
+	WriteOnly       bool              `json:"writeOnly"`
 }
 
 // SettingKeyFormat defines model for SettingKey.Format.
 type SettingKeyFormat string
-
-// SettingKeyManagedBy defines model for SettingKey.ManagedBy.
-type SettingKeyManagedBy string
 
 // SettingKeyRef defines model for SettingKey.Ref.
 type SettingKeyRef string
@@ -4248,12 +3956,10 @@ type SettingShapeType string
 // SettingsBody defines model for SettingsBody.
 type SettingsBody struct {
 	Changed         *[]string              `json:"changed,omitempty"`
-	Conflicts       *[]string              `json:"conflicts,omitempty"`
 	Node            string                 `json:"node"`
 	Persisted       *bool                  `json:"persisted,omitempty"`
 	RestartRequired *[]string              `json:"restartRequired,omitempty"`
 	Scope           SettingsBodyScope      `json:"scope"`
-	Sections        *map[string]Section    `json:"sections,omitempty"`
 	Settings        map[string]interface{} `json:"settings"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -4262,17 +3968,6 @@ type SettingsBody struct {
 
 // SettingsBodyScope defines model for SettingsBody.Scope.
 type SettingsBodyScope string
-
-// SettingsYAMLBody defines model for SettingsYAMLBody.
-type SettingsYAMLBody struct {
-	Revision string `json:"revision"`
-	Yaml     string `json:"yaml"`
-}
-
-// SettingsYAMLInputBody defines model for SettingsYAMLInputBody.
-type SettingsYAMLInputBody struct {
-	Proposed *map[string]interface{} `json:"proposed,omitempty"`
-}
 
 // SourceEntries defines model for SourceEntries.
 type SourceEntries struct {
@@ -4353,15 +4048,6 @@ type SourceEntry struct {
 	// Value inline: the line as written; url and configMap: the rule as the source's format normalises it (one item per host of a hosts line); entries: the rendered rule.
 	Value string `json:"value"`
 }
-
-// SourceInfo defines model for SourceInfo.
-type SourceInfo struct {
-	Type SourceInfoType `json:"type"`
-	Url  string         `json:"url"`
-}
-
-// SourceInfoType defines model for SourceInfo.Type.
-type SourceInfoType string
 
 // Stats defines model for Stats.
 type Stats struct {
@@ -4731,13 +4417,6 @@ type VersionOutputBody struct {
 	Version string  `json:"version"`
 }
 
-// ZoneAuthority defines model for ZoneAuthority.
-type ZoneAuthority struct {
-	Name        string    `json:"name"`
-	Nameservers *[]string `json:"nameservers"`
-	Primary     string    `json:"primary"`
-}
-
 // ZoneDeleteResult defines model for ZoneDeleteResult.
 type ZoneDeleteResult struct {
 	DryRun         bool     `json:"dryRun"`
@@ -4755,18 +4434,18 @@ type ZoneDeleteResult struct {
 
 // ZoneDetail defines model for ZoneDetail.
 type ZoneDetail struct {
-	DeleteRefusal   *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
-	Fallback        *ZoneFallbackSpec        `json:"fallback,omitempty"`
-	ManagedBy       *string                  `json:"managedBy,omitempty"`
-	Message         *string                  `json:"message,omitempty"`
-	Name            string                   `json:"name"`
-	Object          map[string]interface{}   `json:"object"`
-	Ready           bool                     `json:"ready"`
-	Reason          *string                  `json:"reason,omitempty"`
-	RecordCount     int64                    `json:"recordCount"`
-	RecordSets      int64                    `json:"recordSets"`
-	ResourceVersion *string                  `json:"resourceVersion,omitempty"`
-	Serial          int32                    `json:"serial"`
+	DeleteRefusal    *ZoneDetailDeleteRefusal `json:"deleteRefusal,omitempty"`
+	ManagedBy        *string                  `json:"managedBy,omitempty"`
+	Message          *string                  `json:"message,omitempty"`
+	Name             string                   `json:"name"`
+	Object           map[string]interface{}   `json:"object"`
+	Ready            bool                     `json:"ready"`
+	Reason           *string                  `json:"reason,omitempty"`
+	RecordCount      int64                    `json:"recordCount"`
+	RecordSets       int64                    `json:"recordSets"`
+	ResourceVersion  *string                  `json:"resourceVersion,omitempty"`
+	SecondaryRuntime *SecondaryRuntime        `json:"secondaryRuntime,omitempty"`
+	Serial           int32                    `json:"serial"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64 `json:"took_ms"`
@@ -4777,11 +4456,6 @@ type ZoneDetail struct {
 
 // ZoneDetailDeleteRefusal defines model for ZoneDetail.DeleteRefusal.
 type ZoneDetailDeleteRefusal string
-
-// ZoneFallbackSpec defines model for ZoneFallbackSpec.
-type ZoneFallbackSpec struct {
-	UpstreamGroup *string `json:"upstreamGroup,omitempty"`
-}
 
 // ZoneRecord defines model for ZoneRecord.
 type ZoneRecord struct {
@@ -4798,20 +4472,20 @@ type ZoneRecord struct {
 
 // ZoneSummary defines model for ZoneSummary.
 type ZoneSummary struct {
-	DeleteRefusal   *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
-	Fallback        *ZoneFallbackSpec         `json:"fallback,omitempty"`
-	ManagedBy       *string                   `json:"managedBy,omitempty"`
-	Message         *string                   `json:"message,omitempty"`
-	Name            string                    `json:"name"`
-	Ready           bool                      `json:"ready"`
-	Reason          *string                   `json:"reason,omitempty"`
-	RecordCount     int64                     `json:"recordCount"`
-	RecordSets      int64                     `json:"recordSets"`
-	ResourceVersion *string                   `json:"resourceVersion,omitempty"`
-	Serial          int32                     `json:"serial"`
-	Type            string                    `json:"type"`
-	UpstreamGroup   *string                   `json:"upstreamGroup,omitempty"`
-	ZoneName        string                    `json:"zoneName"`
+	DeleteRefusal    *ZoneSummaryDeleteRefusal `json:"deleteRefusal,omitempty"`
+	ManagedBy        *string                   `json:"managedBy,omitempty"`
+	Message          *string                   `json:"message,omitempty"`
+	Name             string                    `json:"name"`
+	Ready            bool                      `json:"ready"`
+	Reason           *string                   `json:"reason,omitempty"`
+	RecordCount      int64                     `json:"recordCount"`
+	RecordSets       int64                     `json:"recordSets"`
+	ResourceVersion  *string                   `json:"resourceVersion,omitempty"`
+	SecondaryRuntime *SecondaryRuntime         `json:"secondaryRuntime,omitempty"`
+	Serial           int32                     `json:"serial"`
+	Type             string                    `json:"type"`
+	UpstreamGroup    *string                   `json:"upstreamGroup,omitempty"`
+	ZoneName         string                    `json:"zoneName"`
 }
 
 // ZoneSummaryDeleteRefusal defines model for ZoneSummary.DeleteRefusal.
@@ -5110,12 +4784,6 @@ type AddDomainsParamsAction string
 // AddDomainsParamsKind defines parameters for AddDomains.
 type AddDomainsParamsKind string
 
-// ListMigrationRunsParams defines parameters for ListMigrationRuns.
-type ListMigrationRunsParams struct {
-	Limit    *int64  `form:"limit,omitempty" json:"limit,omitempty"`
-	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
-}
-
 // PatchNodeConfigJSONBody defines parameters for PatchNodeConfig.
 type PatchNodeConfigJSONBody map[string]interface{}
 
@@ -5317,12 +4985,6 @@ type PurgeQuerylogParams struct {
 
 // PatchSettingsJSONBody defines parameters for PatchSettings.
 type PatchSettingsJSONBody map[string]interface{}
-
-// PatchSettingsParams defines parameters for PatchSettings.
-type PatchSettingsParams struct {
-	// IfMatch Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams.
-	IfMatch *string `json:"If-Match,omitempty"`
-}
 
 // StatsClientTimeseriesParams defines parameters for StatsClientTimeseries.
 type StatsClientTimeseriesParams struct {
@@ -5546,9 +5208,6 @@ type PatchDenylistEntryJSONRequestBody = DomainEntryPatch
 // BatchDenylistEntriesJSONRequestBody defines body for BatchDenylistEntries for application/json ContentType.
 type BatchDenylistEntriesJSONRequestBody = DomainEntriesBatch
 
-// BatchDeleteDhcpscopesJSONRequestBody defines body for BatchDeleteDhcpscopes for application/json ContentType.
-type BatchDeleteDhcpscopesJSONRequestBody = BatchDeleteInputBody
-
 // SetBlockingJSONRequestBody defines body for SetBlocking for application/json ContentType.
 type SetBlockingJSONRequestBody = SetBlockingInputBody
 
@@ -5564,23 +5223,11 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
 
-// AdoptExistingImportsJSONRequestBody defines body for AdoptExistingImports for application/json ContentType.
-type AdoptExistingImportsJSONRequestBody = MigrationAdoptInputBody
-
 // ApplyMigrationJSONRequestBody defines body for ApplyMigration for application/json ContentType.
 type ApplyMigrationJSONRequestBody = Plan
 
 // PreviewMigrationJSONRequestBody defines body for PreviewMigration for application/json ContentType.
 type PreviewMigrationJSONRequestBody = MigrationRequest
-
-// DecommissionMigrationJSONRequestBody defines body for DecommissionMigration for application/json ContentType.
-type DecommissionMigrationJSONRequestBody = MigrationCutoverPlan
-
-// PreviewMigrationDecommissionJSONRequestBody defines body for PreviewMigrationDecommission for application/json ContentType.
-type PreviewMigrationDecommissionJSONRequestBody = MigrationCutoverPreviewInputBody
-
-// StartMigrationJSONRequestBody defines body for StartMigration for application/json ContentType.
-type StartMigrationJSONRequestBody = Plan
 
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
@@ -5620,12 +5267,6 @@ type QueryActionJSONRequestBody = QueryActionInputBody
 
 // PatchSettingsJSONRequestBody defines body for PatchSettings for application/json ContentType.
 type PatchSettingsJSONRequestBody PatchSettingsJSONBody
-
-// ChangeSettingsOwnershipJSONRequestBody defines body for ChangeSettingsOwnership for application/json ContentType.
-type ChangeSettingsOwnershipJSONRequestBody = OwnershipInputBody
-
-// ExportSettingsSectionYAMLJSONRequestBody defines body for ExportSettingsSectionYAML for application/json ContentType.
-type ExportSettingsSectionYAMLJSONRequestBody = SettingsYAMLInputBody
 
 // ApproveUnblockRequestJSONRequestBody defines body for ApproveUnblockRequest for application/json ContentType.
 type ApproveUnblockRequestJSONRequestBody = UnblockApproval
@@ -6179,20 +5820,6 @@ type ClientInterface interface {
 	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
 	BatchDenylistEntries(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// BatchDeleteDhcpscopesWithBody Delete several dhcpscopes
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-	BatchDeleteDhcpscopesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// BatchDeleteDhcpscopes Delete several dhcpscopes
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-	BatchDeleteDhcpscopes(ctx context.Context, body BatchDeleteDhcpscopesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// GetBlocking Blocking state of this node
 	//
 	// Corresponds with GET /dns/blocking (the `GetBlocking` operationId).
@@ -6309,20 +5936,6 @@ type ClientInterface interface {
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// AdoptExistingImportsWithBody Track reviewed previous imports without reimporting records
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-	AdoptExistingImportsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// AdoptExistingImports Track reviewed previous imports without reimporting records
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-	AdoptExistingImports(ctx context.Context, body AdoptExistingImportsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// ApplyMigrationWithBody Apply a reviewed migration preview
 	//
 	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
@@ -6341,11 +5954,6 @@ type ClientInterface interface {
 	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
 	ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListExistingImports Find previous API imports without a migration run
-	//
-	// Corresponds with GET /imports/existing (the `ListExistingImports` operationId).
-	ListExistingImports(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
 	//
 	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
@@ -6363,58 +5971,6 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
 	PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListMigrationRuns List migration runs
-	//
-	// Corresponds with GET /imports/runs (the `ListMigrationRuns` operationId).
-	ListMigrationRuns(ctx context.Context, params *ListMigrationRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetMigrationRun Read a migration run and its cutovers
-	//
-	// Corresponds with GET /imports/runs/{id} (the `GetMigrationRun` operationId).
-	GetMigrationRun(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DecommissionMigrationWithBody Replace imported zone authority and record the results
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-	DecommissionMigrationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DecommissionMigration Replace imported zone authority and record the results
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-	DecommissionMigration(ctx context.Context, id string, body DecommissionMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PreviewMigrationDecommissionWithBody Preview replacing an imported zone's NS and SOA primary
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-	PreviewMigrationDecommissionWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PreviewMigrationDecommission Preview replacing an imported zone's NS and SOA primary
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-	PreviewMigrationDecommission(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// StartMigrationWithBody Start a reviewed migration in the background
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /imports/start (the `StartMigration` operationId).
-	StartMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// StartMigration Start a reviewed migration in the background
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /imports/start (the `StartMigration` operationId).
-	StartMigration(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// InfoMessages Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -6739,47 +6295,19 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithBody(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchSettings Change cluster-scope settings (JSON merge patch)
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettings(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchSettings(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SettingsSchema The settings metadata table
 	//
 	// Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 	SettingsSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ChangeSettingsOwnershipWithBody Adopt or release a settings section using its reviewed revision
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-	ChangeSettingsOwnershipWithBody(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ChangeSettingsOwnership Adopt or release a settings section using its reviewed revision
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-	ChangeSettingsOwnership(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ExportSettingsSectionYAMLWithBody Generate Helm values for the current or proposed complete section without writing
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-	ExportSettingsSectionYAMLWithBody(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ExportSettingsSectionYAML Generate Helm values for the current or proposed complete section without writing
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-	ExportSettingsSectionYAML(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatsClientTimeseries Per-client query volume over time
 	//
@@ -8105,40 +7633,6 @@ func (c *Client) BatchDenylistEntries(ctx context.Context, body BatchDenylistEnt
 	return c.Client.Do(req)
 }
 
-// BatchDeleteDhcpscopesWithBody Delete several dhcpscopes
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-func (c *Client) BatchDeleteDhcpscopesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewBatchDeleteDhcpscopesRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// BatchDeleteDhcpscopes Delete several dhcpscopes
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-func (c *Client) BatchDeleteDhcpscopes(ctx context.Context, body BatchDeleteDhcpscopesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewBatchDeleteDhcpscopesRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // GetBlocking Blocking state of this node
 //
 // Corresponds with GET /dns/blocking (the `GetBlocking` operationId).
@@ -8435,40 +7929,6 @@ func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
-// AdoptExistingImportsWithBody Track reviewed previous imports without reimporting records
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-func (c *Client) AdoptExistingImportsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAdoptExistingImportsRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// AdoptExistingImports Track reviewed previous imports without reimporting records
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-func (c *Client) AdoptExistingImports(ctx context.Context, body AdoptExistingImportsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAdoptExistingImportsRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // ApplyMigrationWithBody Apply a reviewed migration preview
 //
 // Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
@@ -8507,21 +7967,6 @@ func (c *Client) ApplyMigration(ctx context.Context, body ApplyMigrationJSONRequ
 	return c.Client.Do(req)
 }
 
-// ListExistingImports Find previous API imports without a migration run
-//
-// Corresponds with GET /imports/existing (the `ListExistingImports` operationId).
-func (c *Client) ListExistingImports(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListExistingImportsRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // PreviewMigrationWithBody Preview an API migration from Pi-hole v6 or Technitium
 //
 // Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
@@ -8550,138 +7995,6 @@ func (c *Client) PreviewMigrationWithBody(ctx context.Context, contentType strin
 // Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
 func (c *Client) PreviewMigration(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewMigrationRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ListMigrationRuns List migration runs
-//
-// Corresponds with GET /imports/runs (the `ListMigrationRuns` operationId).
-func (c *Client) ListMigrationRuns(ctx context.Context, params *ListMigrationRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListMigrationRunsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetMigrationRun Read a migration run and its cutovers
-//
-// Corresponds with GET /imports/runs/{id} (the `GetMigrationRun` operationId).
-func (c *Client) GetMigrationRun(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetMigrationRunRequest(c.Server, id)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DecommissionMigrationWithBody Replace imported zone authority and record the results
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-func (c *Client) DecommissionMigrationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDecommissionMigrationRequestWithBody(c.Server, id, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DecommissionMigration Replace imported zone authority and record the results
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-func (c *Client) DecommissionMigration(ctx context.Context, id string, body DecommissionMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDecommissionMigrationRequest(c.Server, id, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// PreviewMigrationDecommissionWithBody Preview replacing an imported zone's NS and SOA primary
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-func (c *Client) PreviewMigrationDecommissionWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPreviewMigrationDecommissionRequestWithBody(c.Server, id, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// PreviewMigrationDecommission Preview replacing an imported zone's NS and SOA primary
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-func (c *Client) PreviewMigrationDecommission(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPreviewMigrationDecommissionRequest(c.Server, id, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// StartMigrationWithBody Start a reviewed migration in the background
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /imports/start (the `StartMigration` operationId).
-func (c *Client) StartMigrationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStartMigrationRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// StartMigration Start a reviewed migration in the background
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /imports/start (the `StartMigration` operationId).
-func (c *Client) StartMigration(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStartMigrationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9535,8 +8848,8 @@ func (c *Client) GetSettings(ctx context.Context, reqEditors ...RequestEditorFn)
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *Client) PatchSettingsWithBody(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchSettingsRequestWithBody(c.Server, params, contentType, body)
+func (c *Client) PatchSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSettingsRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9552,8 +8865,8 @@ func (c *Client) PatchSettingsWithBody(ctx context.Context, params *PatchSetting
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *Client) PatchSettings(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPatchSettingsRequest(c.Server, params, body)
+func (c *Client) PatchSettings(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchSettingsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9569,74 +8882,6 @@ func (c *Client) PatchSettings(ctx context.Context, params *PatchSettingsParams,
 // Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 func (c *Client) SettingsSchema(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSettingsSchemaRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ChangeSettingsOwnershipWithBody Adopt or release a settings section using its reviewed revision
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-func (c *Client) ChangeSettingsOwnershipWithBody(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewChangeSettingsOwnershipRequestWithBody(c.Server, section, action, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ChangeSettingsOwnership Adopt or release a settings section using its reviewed revision
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-func (c *Client) ChangeSettingsOwnership(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewChangeSettingsOwnershipRequest(c.Server, section, action, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ExportSettingsSectionYAMLWithBody Generate Helm values for the current or proposed complete section without writing
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-func (c *Client) ExportSettingsSectionYAMLWithBody(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExportSettingsSectionYAMLRequestWithBody(c.Server, section, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ExportSettingsSectionYAML Generate Helm values for the current or proposed complete section without writing
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-func (c *Client) ExportSettingsSectionYAML(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExportSettingsSectionYAMLRequest(c.Server, section, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12884,46 +12129,6 @@ func NewBatchDenylistEntriesRequestWithBody(server string, contentType string, b
 	return req, nil
 }
 
-// NewBatchDeleteDhcpscopesRequest calls the generic BatchDeleteDhcpscopes builder with application/json body
-func NewBatchDeleteDhcpscopesRequest(server string, body BatchDeleteDhcpscopesJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewBatchDeleteDhcpscopesRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewBatchDeleteDhcpscopesRequestWithBody constructs an http.Request for the BatchDeleteDhcpscopes method, with any body, and a specified content type
-func NewBatchDeleteDhcpscopesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/dhcpscopes:batchDelete")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewGetBlockingRequest constructs an http.Request for the GetBlocking method
 func NewGetBlockingRequest(server string) (*http.Request, error) {
 	var err error
@@ -13477,46 +12682,6 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewAdoptExistingImportsRequest calls the generic AdoptExistingImports builder with application/json body
-func NewAdoptExistingImportsRequest(server string, body AdoptExistingImportsJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewAdoptExistingImportsRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewAdoptExistingImportsRequestWithBody constructs an http.Request for the AdoptExistingImports method, with any body, and a specified content type
-func NewAdoptExistingImportsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/adopt")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewApplyMigrationRequest calls the generic ApplyMigration builder with application/json body
 func NewApplyMigrationRequest(server string, body ApplyMigrationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -13557,33 +12722,6 @@ func NewApplyMigrationRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
-// NewListExistingImportsRequest constructs an http.Request for the ListExistingImports method
-func NewListExistingImportsRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/existing")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewPreviewMigrationRequest calls the generic PreviewMigration builder with application/json body
 func NewPreviewMigrationRequest(server string, body PreviewMigrationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -13605,240 +12743,6 @@ func NewPreviewMigrationRequestWithBody(server string, contentType string, body 
 	}
 
 	operationPath := fmt.Sprintf("/imports/preview")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewListMigrationRunsRequest constructs an http.Request for the ListMigrationRuns method
-func NewListMigrationRunsRequest(server string, params *ListMigrationRunsParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/runs")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if params.Limit != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Continue != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetMigrationRunRequest constructs an http.Request for the GetMigrationRun method
-func NewGetMigrationRunRequest(server string, id string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/runs/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewDecommissionMigrationRequest calls the generic DecommissionMigration builder with application/json body
-func NewDecommissionMigrationRequest(server string, id string, body DecommissionMigrationJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewDecommissionMigrationRequestWithBody(server, id, "application/json", bodyReader)
-}
-
-// NewDecommissionMigrationRequestWithBody constructs an http.Request for the DecommissionMigration method, with any body, and a specified content type
-func NewDecommissionMigrationRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/runs/%s/decommission", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewPreviewMigrationDecommissionRequest calls the generic PreviewMigrationDecommission builder with application/json body
-func NewPreviewMigrationDecommissionRequest(server string, id string, body PreviewMigrationDecommissionJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPreviewMigrationDecommissionRequestWithBody(server, id, "application/json", bodyReader)
-}
-
-// NewPreviewMigrationDecommissionRequestWithBody constructs an http.Request for the PreviewMigrationDecommission method, with any body, and a specified content type
-func NewPreviewMigrationDecommissionRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/runs/%s/decommission/preview", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewStartMigrationRequest calls the generic StartMigration builder with application/json body
-func NewStartMigrationRequest(server string, body StartMigrationJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewStartMigrationRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewStartMigrationRequestWithBody constructs an http.Request for the StartMigration method, with any body, and a specified content type
-func NewStartMigrationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/imports/start")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -16203,18 +15107,18 @@ func NewGetSettingsRequest(server string) (*http.Request, error) {
 }
 
 // NewPatchSettingsRequest calls the generic PatchSettings builder with application/json body
-func NewPatchSettingsRequest(server string, params *PatchSettingsParams, body PatchSettingsJSONRequestBody) (*http.Request, error) {
+func NewPatchSettingsRequest(server string, body PatchSettingsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPatchSettingsRequestWithBody(server, params, "application/json", bodyReader)
+	return NewPatchSettingsRequestWithBody(server, "application/json", bodyReader)
 }
 
 // NewPatchSettingsRequestWithBody constructs an http.Request for the PatchSettings method, with any body, and a specified content type
-func NewPatchSettingsRequestWithBody(server string, params *PatchSettingsParams, contentType string, body io.Reader) (*http.Request, error) {
+func NewPatchSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -16238,21 +15142,6 @@ func NewPatchSettingsRequestWithBody(server string, params *PatchSettingsParams,
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	if params != nil {
-
-		if params.IfMatch != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("If-Match", headerParam0)
-		}
-
-	}
 
 	return req, nil
 }
@@ -16280,107 +15169,6 @@ func NewSettingsSchemaRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return req, nil
-}
-
-// NewChangeSettingsOwnershipRequest calls the generic ChangeSettingsOwnership builder with application/json body
-func NewChangeSettingsOwnershipRequest(server string, section string, action string, body ChangeSettingsOwnershipJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewChangeSettingsOwnershipRequestWithBody(server, section, action, "application/json", bodyReader)
-}
-
-// NewChangeSettingsOwnershipRequestWithBody constructs an http.Request for the ChangeSettingsOwnership method, with any body, and a specified content type
-func NewChangeSettingsOwnershipRequestWithBody(server string, section string, action string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "section", section, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "action", action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/settings/sections/%s/ownership/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewExportSettingsSectionYAMLRequest calls the generic ExportSettingsSectionYAML builder with application/json body
-func NewExportSettingsSectionYAMLRequest(server string, section string, body ExportSettingsSectionYAMLJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewExportSettingsSectionYAMLRequestWithBody(server, section, "application/json", bodyReader)
-}
-
-// NewExportSettingsSectionYAMLRequestWithBody constructs an http.Request for the ExportSettingsSectionYAML method, with any body, and a specified content type
-func NewExportSettingsSectionYAMLRequestWithBody(server string, section string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "section", section, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/settings/sections/%s/yaml", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -18406,20 +17194,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /denylist:batch (the `BatchDenylistEntries` operationId).
 	BatchDenylistEntriesWithResponse(ctx context.Context, body BatchDenylistEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDenylistEntriesResponse, error)
 
-	// BatchDeleteDhcpscopesWithBodyWithResponse Delete several dhcpscopes
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-	BatchDeleteDhcpscopesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDeleteDhcpscopesResponse, error)
-
-	// BatchDeleteDhcpscopesWithResponse Delete several dhcpscopes
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-	BatchDeleteDhcpscopesWithResponse(ctx context.Context, body BatchDeleteDhcpscopesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteDhcpscopesResponse, error)
-
 	// GetBlockingWithResponse Blocking state of this node
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -18552,20 +17326,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
 
-	// AdoptExistingImportsWithBodyWithResponse Track reviewed previous imports without reimporting records
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-	AdoptExistingImportsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdoptExistingImportsResponse, error)
-
-	// AdoptExistingImportsWithResponse Track reviewed previous imports without reimporting records
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-	AdoptExistingImportsWithResponse(ctx context.Context, body AdoptExistingImportsJSONRequestBody, reqEditors ...RequestEditorFn) (*AdoptExistingImportsResponse, error)
-
 	// ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
 	//
 	// Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
@@ -18584,13 +17344,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /imports/apply (the `ApplyMigration` operationId).
 	ApplyMigrationWithResponse(ctx context.Context, body ApplyMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyMigrationResponse, error)
 
-	// ListExistingImportsWithResponse Find previous API imports without a migration run
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /imports/existing (the `ListExistingImports` operationId).
-	ListExistingImportsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListExistingImportsResponse, error)
-
 	// PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
 	//
 	// Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
@@ -18608,62 +17361,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /imports/preview (the `PreviewMigration` operationId).
 	PreviewMigrationWithResponse(ctx context.Context, body PreviewMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationResponse, error)
-
-	// ListMigrationRunsWithResponse List migration runs
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /imports/runs (the `ListMigrationRuns` operationId).
-	ListMigrationRunsWithResponse(ctx context.Context, params *ListMigrationRunsParams, reqEditors ...RequestEditorFn) (*ListMigrationRunsResponse, error)
-
-	// GetMigrationRunWithResponse Read a migration run and its cutovers
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /imports/runs/{id} (the `GetMigrationRun` operationId).
-	GetMigrationRunWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetMigrationRunResponse, error)
-
-	// DecommissionMigrationWithBodyWithResponse Replace imported zone authority and record the results
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-	DecommissionMigrationWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecommissionMigrationResponse, error)
-
-	// DecommissionMigrationWithResponse Replace imported zone authority and record the results
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-	DecommissionMigrationWithResponse(ctx context.Context, id string, body DecommissionMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*DecommissionMigrationResponse, error)
-
-	// PreviewMigrationDecommissionWithBodyWithResponse Preview replacing an imported zone's NS and SOA primary
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-	PreviewMigrationDecommissionWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationDecommissionResponse, error)
-
-	// PreviewMigrationDecommissionWithResponse Preview replacing an imported zone's NS and SOA primary
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-	PreviewMigrationDecommissionWithResponse(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationDecommissionResponse, error)
-
-	// StartMigrationWithBodyWithResponse Start a reviewed migration in the background
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/start (the `StartMigration` operationId).
-	StartMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error)
-
-	// StartMigrationWithResponse Start a reviewed migration in the background
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /imports/start (the `StartMigration` operationId).
-	StartMigrationWithResponse(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error)
 
 	// InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
 	//
@@ -19044,14 +17741,14 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithBodyWithResponse(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
+	PatchSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
 
 	// PatchSettingsWithResponse Change cluster-scope settings (JSON merge patch)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /settings (the `PatchSettings` operationId).
-	PatchSettingsWithResponse(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
+	PatchSettingsWithResponse(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error)
 
 	// SettingsSchemaWithResponse The settings metadata table
 	//
@@ -19059,34 +17756,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /settings/_schema (the `SettingsSchema` operationId).
 	SettingsSchemaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SettingsSchemaResponse, error)
-
-	// ChangeSettingsOwnershipWithBodyWithResponse Adopt or release a settings section using its reviewed revision
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-	ChangeSettingsOwnershipWithBodyWithResponse(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error)
-
-	// ChangeSettingsOwnershipWithResponse Adopt or release a settings section using its reviewed revision
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-	ChangeSettingsOwnershipWithResponse(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error)
-
-	// ExportSettingsSectionYAMLWithBodyWithResponse Generate Helm values for the current or proposed complete section without writing
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-	ExportSettingsSectionYAMLWithBodyWithResponse(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error)
-
-	// ExportSettingsSectionYAMLWithResponse Generate Helm values for the current or proposed complete section without writing
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-	ExportSettingsSectionYAMLWithResponse(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error)
 
 	// StatsClientTimeseriesWithResponse Per-client query volume over time
 	//
@@ -24136,103 +22805,6 @@ func (r BatchDenylistEntriesResponse) ContentType() string {
 	return ""
 }
 
-type BatchDeleteDhcpscopesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Processed
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON200() *Processed {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r BatchDeleteDhcpscopesResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r BatchDeleteDhcpscopesResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r BatchDeleteDhcpscopesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r BatchDeleteDhcpscopesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r BatchDeleteDhcpscopesResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetBlockingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -25389,103 +23961,6 @@ func (r ListUsersResponse) ContentType() string {
 	return ""
 }
 
-type AdoptExistingImportsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *MigrationResult
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON200() *MigrationResult {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r AdoptExistingImportsResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r AdoptExistingImportsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r AdoptExistingImportsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r AdoptExistingImportsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r AdoptExistingImportsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type ApplyMigrationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -25583,89 +24058,6 @@ func (r ApplyMigrationResponse) ContentType() string {
 	return ""
 }
 
-type ListExistingImportsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListMigrationAuthorityChange
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListExistingImportsResponse) GetJSON200() *ListMigrationAuthorityChange {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r ListExistingImportsResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ListExistingImportsResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r ListExistingImportsResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ListExistingImportsResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r ListExistingImportsResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r ListExistingImportsResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r ListExistingImportsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListExistingImportsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListExistingImportsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListExistingImportsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type PreviewMigrationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -25757,484 +24149,6 @@ func (r PreviewMigrationResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PreviewMigrationResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type ListMigrationRunsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListMigrationRun
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON200() *ListMigrationRun {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r ListMigrationRunsResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r ListMigrationRunsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListMigrationRunsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListMigrationRunsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListMigrationRunsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetMigrationRunResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *MigrationRun
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetMigrationRunResponse) GetJSON200() *MigrationRun {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r GetMigrationRunResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r GetMigrationRunResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r GetMigrationRunResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r GetMigrationRunResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r GetMigrationRunResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r GetMigrationRunResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r GetMigrationRunResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r GetMigrationRunResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetMigrationRunResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetMigrationRunResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetMigrationRunResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DecommissionMigrationResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *MigrationResult
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON200() *MigrationResult {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r DecommissionMigrationResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r DecommissionMigrationResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DecommissionMigrationResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DecommissionMigrationResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DecommissionMigrationResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type PreviewMigrationDecommissionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *MigrationCutoverPlan
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON200() *MigrationCutoverPlan {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r PreviewMigrationDecommissionResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r PreviewMigrationDecommissionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r PreviewMigrationDecommissionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PreviewMigrationDecommissionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r PreviewMigrationDecommissionResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-// StartMigrationResponse202Headers the declared response headers of an HTTP 202 response for StartMigration
-type StartMigrationResponse202Headers struct {
-	Location *string
-}
-
-type StartMigrationResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON202 the response for an HTTP 202 `application/json` response
-	JSON202 *MigrationRun
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-	// Headers202 the parsed response headers for an HTTP 202 response
-	Headers202 *StartMigrationResponse202Headers
-}
-
-// GetJSON202 returns the response for an HTTP 202 `application/json` response
-func (r StartMigrationResponse) GetJSON202() *MigrationRun {
-	return r.JSON202
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r StartMigrationResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r StartMigrationResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r StartMigrationResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r StartMigrationResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r StartMigrationResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r StartMigrationResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r StartMigrationResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r StartMigrationResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r StartMigrationResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r StartMigrationResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r StartMigrationResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r StartMigrationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -30284,200 +28198,6 @@ func (r SettingsSchemaResponse) ContentType() string {
 	return ""
 }
 
-type ChangeSettingsOwnershipResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *SettingsBody
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON200() *SettingsBody {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r ChangeSettingsOwnershipResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r ChangeSettingsOwnershipResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ChangeSettingsOwnershipResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ChangeSettingsOwnershipResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ChangeSettingsOwnershipResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type ExportSettingsSectionYAMLResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *SettingsYAMLBody
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *Error
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *Error
-	// JSON403 the response for an HTTP 403 `application/json` response
-	JSON403 *Error
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *Error
-	// JSON409 the response for an HTTP 409 `application/json` response
-	JSON409 *Error
-	// JSON422 the response for an HTTP 422 `application/json` response
-	JSON422 *Error
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *Error
-	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON200() *SettingsYAMLBody {
-	return r.JSON200
-}
-
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON400() *Error {
-	return r.JSON400
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON401() *Error {
-	return r.JSON401
-}
-
-// GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON403() *Error {
-	return r.JSON403
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON404() *Error {
-	return r.JSON404
-}
-
-// GetJSON409 returns the response for an HTTP 409 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON409() *Error {
-	return r.JSON409
-}
-
-// GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON422() *Error {
-	return r.JSON422
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON500() *Error {
-	return r.JSON500
-}
-
-// GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r ExportSettingsSectionYAMLResponse) GetJSON503() *Error {
-	return r.JSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r ExportSettingsSectionYAMLResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ExportSettingsSectionYAMLResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ExportSettingsSectionYAMLResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ExportSettingsSectionYAMLResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type StatsClientTimeseriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -33383,32 +31103,6 @@ func (c *ClientWithResponses) BatchDenylistEntriesWithResponse(ctx context.Conte
 	return ParseBatchDenylistEntriesResponse(rsp)
 }
 
-// BatchDeleteDhcpscopesWithBodyWithResponse Delete several dhcpscopes
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-func (c *ClientWithResponses) BatchDeleteDhcpscopesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDeleteDhcpscopesResponse, error) {
-	rsp, err := c.BatchDeleteDhcpscopesWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseBatchDeleteDhcpscopesResponse(rsp)
-}
-
-// BatchDeleteDhcpscopesWithResponse Delete several dhcpscopes
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /dhcpscopes:batchDelete (the `BatchDeleteDhcpscopes` operationId).
-func (c *ClientWithResponses) BatchDeleteDhcpscopesWithResponse(ctx context.Context, body BatchDeleteDhcpscopesJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteDhcpscopesResponse, error) {
-	rsp, err := c.BatchDeleteDhcpscopes(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseBatchDeleteDhcpscopesResponse(rsp)
-}
-
 // GetBlockingWithResponse Blocking state of this node
 //
 // Returns a wrapper object for the known response body format(s).
@@ -33649,32 +31343,6 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 	return ParseListUsersResponse(rsp)
 }
 
-// AdoptExistingImportsWithBodyWithResponse Track reviewed previous imports without reimporting records
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-func (c *ClientWithResponses) AdoptExistingImportsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdoptExistingImportsResponse, error) {
-	rsp, err := c.AdoptExistingImportsWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseAdoptExistingImportsResponse(rsp)
-}
-
-// AdoptExistingImportsWithResponse Track reviewed previous imports without reimporting records
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/adopt (the `AdoptExistingImports` operationId).
-func (c *ClientWithResponses) AdoptExistingImportsWithResponse(ctx context.Context, body AdoptExistingImportsJSONRequestBody, reqEditors ...RequestEditorFn) (*AdoptExistingImportsResponse, error) {
-	rsp, err := c.AdoptExistingImports(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseAdoptExistingImportsResponse(rsp)
-}
-
 // ApplyMigrationWithBodyWithResponse Apply a reviewed migration preview
 //
 // Uses the normal object validation, ownership, license and per-object permission checks. Writes are not transactional; inspect every result. Settings are applied only after all objects succeed.
@@ -33705,19 +31373,6 @@ func (c *ClientWithResponses) ApplyMigrationWithResponse(ctx context.Context, bo
 	return ParseApplyMigrationResponse(rsp)
 }
 
-// ListExistingImportsWithResponse Find previous API imports without a migration run
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /imports/existing (the `ListExistingImports` operationId).
-func (c *ClientWithResponses) ListExistingImportsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListExistingImportsResponse, error) {
-	rsp, err := c.ListExistingImports(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListExistingImportsResponse(rsp)
-}
-
 // PreviewMigrationWithBodyWithResponse Preview an API migration from Pi-hole v6 or Technitium
 //
 // Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
@@ -33746,110 +31401,6 @@ func (c *ClientWithResponses) PreviewMigrationWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParsePreviewMigrationResponse(rsp)
-}
-
-// ListMigrationRunsWithResponse List migration runs
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /imports/runs (the `ListMigrationRuns` operationId).
-func (c *ClientWithResponses) ListMigrationRunsWithResponse(ctx context.Context, params *ListMigrationRunsParams, reqEditors ...RequestEditorFn) (*ListMigrationRunsResponse, error) {
-	rsp, err := c.ListMigrationRuns(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListMigrationRunsResponse(rsp)
-}
-
-// GetMigrationRunWithResponse Read a migration run and its cutovers
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /imports/runs/{id} (the `GetMigrationRun` operationId).
-func (c *ClientWithResponses) GetMigrationRunWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetMigrationRunResponse, error) {
-	rsp, err := c.GetMigrationRun(ctx, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetMigrationRunResponse(rsp)
-}
-
-// DecommissionMigrationWithBodyWithResponse Replace imported zone authority and record the results
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-func (c *ClientWithResponses) DecommissionMigrationWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecommissionMigrationResponse, error) {
-	rsp, err := c.DecommissionMigrationWithBody(ctx, id, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDecommissionMigrationResponse(rsp)
-}
-
-// DecommissionMigrationWithResponse Replace imported zone authority and record the results
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/runs/{id}/decommission (the `DecommissionMigration` operationId).
-func (c *ClientWithResponses) DecommissionMigrationWithResponse(ctx context.Context, id string, body DecommissionMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*DecommissionMigrationResponse, error) {
-	rsp, err := c.DecommissionMigration(ctx, id, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDecommissionMigrationResponse(rsp)
-}
-
-// PreviewMigrationDecommissionWithBodyWithResponse Preview replacing an imported zone's NS and SOA primary
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-func (c *ClientWithResponses) PreviewMigrationDecommissionWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewMigrationDecommissionResponse, error) {
-	rsp, err := c.PreviewMigrationDecommissionWithBody(ctx, id, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePreviewMigrationDecommissionResponse(rsp)
-}
-
-// PreviewMigrationDecommissionWithResponse Preview replacing an imported zone's NS and SOA primary
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/runs/{id}/decommission/preview (the `PreviewMigrationDecommission` operationId).
-func (c *ClientWithResponses) PreviewMigrationDecommissionWithResponse(ctx context.Context, id string, body PreviewMigrationDecommissionJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewMigrationDecommissionResponse, error) {
-	rsp, err := c.PreviewMigrationDecommission(ctx, id, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePreviewMigrationDecommissionResponse(rsp)
-}
-
-// StartMigrationWithBodyWithResponse Start a reviewed migration in the background
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/start (the `StartMigration` operationId).
-func (c *ClientWithResponses) StartMigrationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error) {
-	rsp, err := c.StartMigrationWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseStartMigrationResponse(rsp)
-}
-
-// StartMigrationWithResponse Start a reviewed migration in the background
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /imports/start (the `StartMigration` operationId).
-func (c *ClientWithResponses) StartMigrationWithResponse(ctx context.Context, body StartMigrationJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMigrationResponse, error) {
-	rsp, err := c.StartMigration(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseStartMigrationResponse(rsp)
 }
 
 // InfoMessagesWithResponse Diagnosis messages (objects, policies, lists, readiness)
@@ -34543,8 +32094,8 @@ func (c *ClientWithResponses) GetSettingsWithResponse(ctx context.Context, reqEd
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Context, params *PatchSettingsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
-	rsp, err := c.PatchSettingsWithBody(ctx, params, contentType, body, reqEditors...)
+func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
+	rsp, err := c.PatchSettingsWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -34556,8 +32107,8 @@ func (c *ClientWithResponses) PatchSettingsWithBodyWithResponse(ctx context.Cont
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /settings (the `PatchSettings` operationId).
-func (c *ClientWithResponses) PatchSettingsWithResponse(ctx context.Context, params *PatchSettingsParams, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
-	rsp, err := c.PatchSettings(ctx, params, body, reqEditors...)
+func (c *ClientWithResponses) PatchSettingsWithResponse(ctx context.Context, body PatchSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchSettingsResponse, error) {
+	rsp, err := c.PatchSettings(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -34575,58 +32126,6 @@ func (c *ClientWithResponses) SettingsSchemaWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseSettingsSchemaResponse(rsp)
-}
-
-// ChangeSettingsOwnershipWithBodyWithResponse Adopt or release a settings section using its reviewed revision
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-func (c *ClientWithResponses) ChangeSettingsOwnershipWithBodyWithResponse(ctx context.Context, section string, action string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error) {
-	rsp, err := c.ChangeSettingsOwnershipWithBody(ctx, section, action, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseChangeSettingsOwnershipResponse(rsp)
-}
-
-// ChangeSettingsOwnershipWithResponse Adopt or release a settings section using its reviewed revision
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /settings/sections/{section}/ownership/{action} (the `ChangeSettingsOwnership` operationId).
-func (c *ClientWithResponses) ChangeSettingsOwnershipWithResponse(ctx context.Context, section string, action string, body ChangeSettingsOwnershipJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeSettingsOwnershipResponse, error) {
-	rsp, err := c.ChangeSettingsOwnership(ctx, section, action, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseChangeSettingsOwnershipResponse(rsp)
-}
-
-// ExportSettingsSectionYAMLWithBodyWithResponse Generate Helm values for the current or proposed complete section without writing
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-func (c *ClientWithResponses) ExportSettingsSectionYAMLWithBodyWithResponse(ctx context.Context, section string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error) {
-	rsp, err := c.ExportSettingsSectionYAMLWithBody(ctx, section, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseExportSettingsSectionYAMLResponse(rsp)
-}
-
-// ExportSettingsSectionYAMLWithResponse Generate Helm values for the current or proposed complete section without writing
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /settings/sections/{section}/yaml (the `ExportSettingsSectionYAML` operationId).
-func (c *ClientWithResponses) ExportSettingsSectionYAMLWithResponse(ctx context.Context, section string, body ExportSettingsSectionYAMLJSONRequestBody, reqEditors ...RequestEditorFn) (*ExportSettingsSectionYAMLResponse, error) {
-	rsp, err := c.ExportSettingsSectionYAML(ctx, section, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseExportSettingsSectionYAMLResponse(rsp)
 }
 
 // StatsClientTimeseriesWithResponse Per-client query volume over time
@@ -39208,88 +36707,6 @@ func ParseBatchDenylistEntriesResponse(rsp *http.Response) (*BatchDenylistEntrie
 	return response, nil
 }
 
-// ParseBatchDeleteDhcpscopesResponse parses an HTTP response from a BatchDeleteDhcpscopesWithResponse call
-func ParseBatchDeleteDhcpscopesResponse(rsp *http.Response) (*BatchDeleteDhcpscopesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &BatchDeleteDhcpscopesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Processed
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetBlockingResponse parses an HTTP response from a GetBlockingWithResponse call
 func ParseGetBlockingResponse(rsp *http.Response) (*GetBlockingResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -40251,88 +37668,6 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 	return response, nil
 }
 
-// ParseAdoptExistingImportsResponse parses an HTTP response from a AdoptExistingImportsWithResponse call
-func ParseAdoptExistingImportsResponse(rsp *http.Response) (*AdoptExistingImportsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &AdoptExistingImportsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest MigrationResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseApplyMigrationResponse parses an HTTP response from a ApplyMigrationWithResponse call
 func ParseApplyMigrationResponse(rsp *http.Response) (*ApplyMigrationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -40395,74 +37730,6 @@ func ParseApplyMigrationResponse(rsp *http.Response) (*ApplyMigrationResponse, e
 			return nil, err
 		}
 		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseListExistingImportsResponse parses an HTTP response from a ListExistingImportsWithResponse call
-func ParseListExistingImportsResponse(rsp *http.Response) (*ListExistingImportsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListExistingImportsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListMigrationAuthorityChange
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -40560,415 +37827,6 @@ func ParsePreviewMigrationResponse(rsp *http.Response) (*PreviewMigrationRespons
 		}
 		response.JSON503 = &dest
 
-	}
-
-	return response, nil
-}
-
-// ParseListMigrationRunsResponse parses an HTTP response from a ListMigrationRunsWithResponse call
-func ParseListMigrationRunsResponse(rsp *http.Response) (*ListMigrationRunsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListMigrationRunsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListMigrationRun
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetMigrationRunResponse parses an HTTP response from a GetMigrationRunWithResponse call
-func ParseGetMigrationRunResponse(rsp *http.Response) (*GetMigrationRunResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetMigrationRunResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest MigrationRun
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDecommissionMigrationResponse parses an HTTP response from a DecommissionMigrationWithResponse call
-func ParseDecommissionMigrationResponse(rsp *http.Response) (*DecommissionMigrationResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DecommissionMigrationResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest MigrationResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePreviewMigrationDecommissionResponse parses an HTTP response from a PreviewMigrationDecommissionWithResponse call
-func ParsePreviewMigrationDecommissionResponse(rsp *http.Response) (*PreviewMigrationDecommissionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PreviewMigrationDecommissionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest MigrationCutoverPlan
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseStartMigrationResponse parses an HTTP response from a StartMigrationWithResponse call
-func ParseStartMigrationResponse(rsp *http.Response) (*StartMigrationResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &StartMigrationResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
-		var dest MigrationRun
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON202 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	switch {
-	case rsp.StatusCode == 202:
-		var headers StartMigrationResponse202Headers
-		if values := rsp.Header.Values("Location"); len(values) > 0 {
-			var value string
-			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			}
-			headers.Location = &value
-		}
-		response.Headers202 = &headers
 	}
 
 	return response, nil
@@ -44541,170 +41399,6 @@ func ParseSettingsSchemaResponse(rsp *http.Response) (*SettingsSchemaResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseChangeSettingsOwnershipResponse parses an HTTP response from a ChangeSettingsOwnershipWithResponse call
-func ParseChangeSettingsOwnershipResponse(rsp *http.Response) (*ChangeSettingsOwnershipResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ChangeSettingsOwnershipResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SettingsBody
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseExportSettingsSectionYAMLResponse parses an HTTP response from a ExportSettingsSectionYAMLWithResponse call
-func ParseExportSettingsSectionYAMLResponse(rsp *http.Response) (*ExportSettingsSectionYAMLResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ExportSettingsSectionYAMLResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SettingsYAMLBody
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

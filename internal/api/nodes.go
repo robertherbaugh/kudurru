@@ -274,6 +274,23 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 			add(DiagnosisMessage{Severity: "warning", Source: "zonecache", Reason: "ServingFromSnapshot", Message: msg})
 		}
 	}
+	if s.opts.Secondaries != nil {
+		for _, st := range s.opts.Secondaries.Statuses() {
+			runtime := secondaryRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "secondary", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's served serial and expiry are available in the zone's secondary status."})
+		}
+	}
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})

@@ -54,6 +54,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -169,6 +170,8 @@ type Options struct {
 	// Cache is the zonecache; list and zone reads come from its snapshot
 	// when it has synced.
 	Cache *zonecache.Cache
+	// Secondaries reports transferred data and expiry on the serving node.
+	Secondaries *secondary.Manager
 	// Policy is the policy index source (policy.Source{Cache}).
 	Policy PolicySource
 	// Blocking is the blocking stage; its Toggle backs /dns/blocking.

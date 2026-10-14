@@ -9,12 +9,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
@@ -49,6 +51,69 @@ type ZoneSummary struct {
 	// managed by a file, an integration, Kubernetes or the system; empty
 	// when the zone can be deleted.
 	DeleteRefusal string `json:"deleteRefusal,omitempty" enum:"default_zone,managed_by"`
+	// SecondaryRuntime is this responding node's state, independent of shared status.
+	SecondaryRuntime *SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+}
+
+// SecondaryRuntime describes the last published copy on one node. Serial and
+// RecordCount are absent until a complete copy exists; serial zero is valid.
+type SecondaryRuntime struct {
+	Node            string     `json:"node"`
+	State           string     `json:"state" enum:"pending,serving,expired,unavailable"`
+	Serial          *uint32    `json:"serial,omitempty" format:"int64" minimum:"0" maximum:"4294967295"`
+	RecordCount     *int       `json:"recordCount,omitempty"`
+	Primary         string     `json:"primary,omitempty"`
+	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
+	NextAttemptAt   *time.Time `json:"nextAttemptAt,omitempty"`
+	Reason          string     `json:"reason,omitempty"`
+	Message         string     `json:"message,omitempty"`
+}
+
+func secondaryRuntime(node string, st secondary.Status, found bool) *SecondaryRuntime {
+	out := &SecondaryRuntime{Node: node, State: "pending", Reason: "TransferPending", Message: "Waiting for this node's first complete transfer."}
+	if !found {
+		return out
+	}
+	out.Primary = st.Primary
+	if !st.NextRefresh.IsZero() {
+		out.NextAttemptAt = &st.NextRefresh
+	}
+	if !st.ConfirmedAt.IsZero() {
+		out.Serial, out.RecordCount = &st.Serial, &st.RecordCount
+		out.LastConfirmedAt, out.ExpiresAt = &st.ConfirmedAt, &st.ExpiresAt
+		out.State, out.Reason, out.Message = "expired", "SecondaryExpired", "The last copy has expired; this node answers SERVFAIL for this zone."
+		if st.Available {
+			out.State, out.Reason, out.Message = "serving", "", ""
+		}
+	}
+	if st.Error != "" {
+		if out.State == "pending" {
+			out.State = "unavailable"
+		}
+		out.Reason = "SecondaryTransfer"
+		out.Message = st.Error
+	}
+	if st.ConfigurationError != "" {
+		out.State, out.Reason, out.Message = "unavailable", "ConfigurationUnavailable", st.ConfigurationError
+	}
+	return out
+}
+
+func (s *Server) localZoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets int) ZoneSummary {
+	out := zoneSummary(z, recordSets, managedSets)
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary {
+		var st secondary.Status
+		var found bool
+		if s.opts.Secondaries != nil {
+			st, found = s.opts.Secondaries.StatusFor(z)
+		}
+		out.SecondaryRuntime = secondaryRuntime(s.opts.NodeName, st, found)
+		// Legacy leader-computed serials must not imply a replica is serving.
+		out.Serial, out.RecordCount, out.Ready = 0, 0, false
+		out.Reason, out.Message = "PerNodeTransfer", "Transfer availability is reported per node in secondaryRuntime."
+	}
+	return out
 }
 
 // ZoneDeleteResult is DELETE /zones/{zone}: what was deleted with the
@@ -308,7 +373,7 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
 			continue
 		}
-		items = append(items, zoneSummary(z, counts[z.Name], managed[z.Name]))
+		items = append(items, s.localZoneSummary(z, counts[z.Name], managed[z.Name]))
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &zoneListOutput{Body: newList(items, "")}, nil
@@ -361,7 +426,7 @@ func (s *Server) getZone(ctx context.Context, in *zonePathInput) (*zoneDetailOut
 	if err != nil {
 		return nil, err
 	}
-	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: zoneSummary(z, len(sets), len(managedRecordSets(sets))), Object: m}}, nil
+	return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: s.localZoneSummary(z, len(sets), len(managedRecordSets(sets))), Object: m}}, nil
 }
 
 // isRootZone reports whether z is the root zone ".": the bootstrap
@@ -583,6 +648,9 @@ func (s *Server) upsertZoneRecord(ctx context.Context, in *upsertRecordInput) (*
 	if err != nil {
 		return nil, err
 	}
+	if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+		return nil, errConflict("only primary zones accept record edits", "edit the records on the zone's primary")
+	}
 	ep := in.Body
 	if ep.DNSName == "" || ep.RecordType == "" {
 		return nil, errInvalid("body: dnsName and recordType are required")
@@ -785,6 +853,9 @@ func (s *Server) importZone(ctx context.Context, in *importInput) (*importOutput
 	}
 	origin := in.Origin
 	if z != nil {
+		if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+			return nil, errConflict("only primary zones accept record imports", "edit the records on the zone's primary")
+		}
 		origin = z.Spec.ZoneName
 	}
 	im, err := zone.ImportBIND(bytes.NewReader(in.RawBody), origin)
@@ -863,6 +934,9 @@ func chunkEndpoints(eps []v1alpha1.Endpoint, n int) [][]v1alpha1.Endpoint {
 // buildZone compiles the zone the way replicas serve it (the same
 // selection the controller hashes) from the store.
 func (s *Server) buildZone(ctx context.Context, z *v1alpha1.DNSZone) (*zone.Zone, error) {
+	if z.Spec.Type == v1alpha1.ZoneTypeSecondary {
+		return nil, errConflict("secondary contents are transferred from their primary", "local secondary export is not available yet")
+	}
 	sets, err := s.zoneRecordSets(ctx, z.Name)
 	if err != nil {
 		return nil, err
@@ -903,6 +977,9 @@ func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutp
 		return nil, newError(http.StatusUnprocessableEntity, KeyUnprocessable,
 			"NOTIFY is unavailable for zones with missing-name fallback",
 			"ordinary secondaries cannot reproduce this zone's fallback behavior")
+	}
+	if z.Spec.Type != v1alpha1.ZoneTypePrimary {
+		return nil, errConflict("manual NOTIFY is available for primary zones", "secondary zones refresh independently on every node")
 	}
 	if s.opts.Notifier == nil {
 		return nil, errNotImplemented("NOTIFY")

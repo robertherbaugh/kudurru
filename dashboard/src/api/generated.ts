@@ -935,23 +935,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/imports/adopt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Track reviewed previous imports without reimporting records */
-        post: operations["adoptExistingImports"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/imports/apply": {
         parameters: {
             query?: never;
@@ -972,23 +955,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/imports/existing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Find previous API imports without a migration run */
-        get: operations["listExistingImports"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/imports/preview": {
         parameters: {
             query?: never;
@@ -1003,91 +969,6 @@ export interface paths {
          * @description Reads the source using transient credentials; returns objects, a settings merge patch and conversion warnings. Requires settings.write, which permits credentialed requests to caller-selected HTTP(S) targets, including loopback, link-local and internal service addresses. This grants SSRF-equivalent network access even without other administrator permissions; grant it only to trusted administrators and use network egress controls to restrict reachable targets. Source HTTP failure status codes are reported, but error response bodies and credentials are not exposed. Credentials are never stored. No destination writes occur.
          */
         post: operations["previewMigration"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/imports/runs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List migration runs */
-        get: operations["listMigrationRuns"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/imports/runs/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read a migration run and its cutovers */
-        get: operations["getMigrationRun"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/imports/runs/{id}/decommission": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Replace imported zone authority and record the results */
-        post: operations["decommissionMigration"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/imports/runs/{id}/decommission/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Preview replacing an imported zone's NS and SOA primary */
-        post: operations["previewMigrationDecommission"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/imports/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start a reviewed migration in the background */
-        post: operations["startMigration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1606,40 +1487,6 @@ export interface paths {
         get: operations["settingsSchema"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/sections/{section}/ownership/{action}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Adopt or release a settings section using its reviewed revision */
-        post: operations["changeSettingsOwnership"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/sections/{section}/yaml": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Generate Helm values for the current or proposed complete section without writing */
-        post: operations["exportSettingsSectionYAML"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2701,25 +2548,6 @@ export interface components {
             type: string;
             upstream?: string;
         };
-        DNSRecordSet: {
-            apiVersion?: string;
-            kind?: string;
-            metadata?: components["schemas"]["ObjectMeta"];
-            spec: components["schemas"]["DNSRecordSetSpec"];
-            status?: components["schemas"]["DNSRecordSetStatus"];
-        };
-        DNSRecordSetSpec: {
-            endpoints: components["schemas"]["Endpoint"][] | null;
-            zoneRef: components["schemas"]["ObjectRef"];
-        };
-        DNSRecordSetStatus: {
-            conditions?: components["schemas"]["Condition"][] | null;
-            /** Format: int64 */
-            names?: number;
-            /** Format: int64 */
-            observedGeneration?: number;
-            publications?: components["schemas"]["PublicationState"][] | null;
-        };
         DhcpReservationInputBody: {
             hostname?: string;
             /** Format: ipv4 */
@@ -3181,26 +3009,6 @@ export interface components {
              */
             took_ms: number;
         };
-        ListMigrationAuthorityChange: {
-            /** @description Opaque keyset token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["MigrationAuthorityChange"][];
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-        };
-        ListMigrationRun: {
-            /** @description Opaque keyset token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["MigrationRun"][];
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-        };
         ListNodeInfo: {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
@@ -3260,18 +3068,6 @@ export interface components {
             password: string;
             username: string;
         };
-        ManagedFieldsEntry: {
-            apiVersion?: string;
-            fieldsType?: string;
-            fieldsV1?: {
-                [key: string]: unknown;
-            };
-            manager?: string;
-            operation?: string;
-            subresource?: string;
-            /** Format: date-time */
-            time?: string;
-        };
         Me: {
             csrf?: string;
             /** @description The local user must change the password (POST /auth/password) before using the API. */
@@ -3295,52 +3091,6 @@ export interface components {
             kind: string;
             name: string;
         };
-        MigrationAdoptInputBody: {
-            zones: components["schemas"]["MigrationAuthorityChange"][];
-        };
-        MigrationAuthorityChange: {
-            addressRecordSet?: components["schemas"]["DNSRecordSet"];
-            error?: string;
-            name: string;
-            nameservers: string[];
-            namespace?: string;
-            primary: string;
-            resourceVersion: string;
-            targetNameservers?: string[] | null;
-            zoneName: string;
-        };
-        MigrationCutover: {
-            actor: string;
-            addresses?: string[] | null;
-            /** Format: date-time */
-            finishedAt?: string;
-            items: components["schemas"]["MigrationItem"][];
-            nameservers: string[];
-            /** Format: date-time */
-            startedAt: string;
-            status: string;
-        };
-        MigrationCutoverPlan: {
-            addresses?: string[] | null;
-            nameservers: string[];
-            revision: string;
-            warnings: string[];
-            zones: components["schemas"]["MigrationAuthorityChange"][];
-        };
-        MigrationCutoverPreviewInputBody: {
-            addresses?: string[] | null;
-            nameservers: string[];
-        };
-        MigrationItem: {
-            error?: string;
-            errorKey?: string;
-            hint?: string;
-            kind: string;
-            name: string;
-            namespace?: string;
-            resourceVersion?: string;
-            result: string;
-        };
         MigrationRequest: {
             /** @description Technitium API token or Pi-hole v6 application password. */
             credential: string;
@@ -3348,10 +3098,6 @@ export interface components {
             insecureSkipVerify?: boolean;
             /** @description Pi-hole local DNS suffixes to make authoritative, for example home.arpa. */
             localZones?: string[] | null;
-            /** @description Serving IPs or VIPs. Generates in-zone NS names and matching A/AAAA records. Mutually exclusive with nameservers. */
-            nameserverAddresses?: string[] | null;
-            /** @description Replace imported authoritative NS names and SOA primary with these kudurru DNS names; first name becomes SOA primary. Empty preserves source authority for a later cutover. */
-            nameservers?: string[] | null;
             namespace?: string;
             /** @enum {string} */
             source: "pihole" | "technitium";
@@ -3360,45 +3106,8 @@ export interface components {
         };
         MigrationResult: {
             items: components["schemas"]["ApplyResult"][];
-            journalError?: string;
-            runID: string;
             settings?: components["schemas"]["SettingsBody"];
             settingsError?: string;
-        };
-        MigrationRun: {
-            data: components["schemas"]["MigrationRunSpec"];
-            id: string;
-            revision: string;
-        };
-        MigrationRunSpec: {
-            actor: string;
-            cutovers: components["schemas"]["MigrationCutover"][];
-            /** Format: date-time */
-            deadline?: string;
-            failure?: string;
-            /** Format: date-time */
-            finishedAt?: string;
-            items: components["schemas"]["MigrationItem"][];
-            journalError?: string;
-            settingsError?: string;
-            settingsPersisted?: boolean;
-            source: string;
-            sourceURL?: string;
-            /** Format: date-time */
-            startedAt: string;
-            status: string;
-            warnings: string[];
-            zones: components["schemas"]["MigrationZone"][];
-        };
-        MigrationZone: {
-            name: string;
-            nameservers: string[];
-            namespace?: string;
-            originalNameservers: string[];
-            originalPrimary: string;
-            primary: string;
-            uid?: string;
-            zoneName: string;
         };
         Missing: {
             resource: string;
@@ -3460,51 +3169,11 @@ export interface components {
              */
             took_ms: number;
         };
-        ObjectMeta: {
-            annotations?: {
-                [key: string]: string;
-            };
-            /** Format: date-time */
-            creationTimestamp?: string;
-            /** Format: int64 */
-            deletionGracePeriodSeconds?: number;
-            /** Format: date-time */
-            deletionTimestamp?: string;
-            finalizers?: string[] | null;
-            generateName?: string;
-            /** Format: int64 */
-            generation?: number;
-            labels?: {
-                [key: string]: string;
-            };
-            managedFields?: components["schemas"]["ManagedFieldsEntry"][] | null;
-            name?: string;
-            namespace?: string;
-            ownerReferences?: components["schemas"]["OwnerReference"][] | null;
-            resourceVersion?: string;
-            selfLink?: string;
-            uid?: string;
-        };
         ObjectOwner: {
             kind: string;
             managedBy?: string;
             name: string;
             namespace?: string;
-        };
-        ObjectRef: {
-            name: string;
-            namespace?: string;
-        };
-        OwnerReference: {
-            apiVersion: string;
-            blockOwnerDeletion?: boolean;
-            controller?: boolean;
-            kind: string;
-            name: string;
-            uid: string;
-        };
-        OwnershipInputBody: {
-            revision: string;
         };
         PasswordChangeRequest: {
             /** @description The current password. */
@@ -3518,13 +3187,10 @@ export interface components {
             objects: {
                 [key: string]: unknown;
             }[];
-            selection?: components["schemas"]["Selection"];
             settings: {
                 [key: string]: unknown;
             };
-            source?: components["schemas"]["SourceInfo"];
             warnings: string[];
-            zones?: components["schemas"]["ZoneAuthority"][] | null;
         };
         Point: {
             /** Format: int64 */
@@ -3736,11 +3402,6 @@ export interface components {
         ProviderSpecific: {
             name: string;
             value: string;
-        };
-        PublicationState: {
-            integration: string;
-            message?: string;
-            state: string;
         };
         PurgeResult: {
             /** Format: int64 */
@@ -3957,16 +3618,23 @@ export interface components {
             /** @description CNAME target in strict mode. */
             target?: string;
         };
-        Section: {
-            envLocked: boolean;
+        SecondaryRuntime: {
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            lastConfirmedAt?: string;
+            message?: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            node: string;
+            primary?: string;
+            reason?: string;
+            /** Format: int64 */
+            recordCount?: number;
+            /** Format: int64 */
+            serial?: number;
             /** @enum {string} */
-            owner: "gitops" | "ui";
-            revision?: string;
-            switchable: boolean;
-        };
-        Selection: {
-            objects: string[];
-            settings: string[];
+            state: "pending" | "serving" | "expired" | "unavailable";
         };
         ServiceAccountInfo: {
             builtinAdmin: boolean;
@@ -4063,8 +3731,6 @@ export interface components {
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
             label?: string;
-            /** @enum {string} */
-            managedBy?: "gitops" | "ui";
             /** Format: int64 */
             max?: number;
             /** Format: int64 */
@@ -4107,15 +3773,11 @@ export interface components {
         };
         SettingsBody: {
             changed?: string[] | null;
-            conflicts?: string[] | null;
             node: string;
             persisted?: boolean;
             restartRequired?: string[] | null;
             /** @enum {string} */
             scope: "node" | "cluster";
-            sections?: {
-                [key: string]: components["schemas"]["Section"];
-            };
             settings: {
                 [key: string]: unknown;
             };
@@ -4124,15 +3786,6 @@ export interface components {
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
-        };
-        SettingsYAMLBody: {
-            revision: string;
-            yaml: string;
-        };
-        SettingsYAMLInputBody: {
-            proposed?: {
-                [key: string]: unknown;
-            };
         };
         SourceEntries: {
             /** @description Token for the next page; empty on the last page. */
@@ -4214,11 +3867,6 @@ export interface components {
             line: number;
             /** @description inline: the line as written; url and configMap: the rule as the source's format normalises it (one item per host of a hosts line); entries: the rendered rule. */
             value: string;
-        };
-        SourceInfo: {
-            /** @enum {string} */
-            type: "pihole" | "technitium";
-            url: string;
         };
         Stats: {
             /** Format: int64 */
@@ -4598,11 +4246,6 @@ export interface components {
             took_ms: number;
             version: string;
         };
-        ZoneAuthority: {
-            name: string;
-            nameservers: string[] | null;
-            primary: string;
-        };
         ZoneDeleteResult: {
             dryRun: boolean;
             /** Format: int64 */
@@ -4624,7 +4267,6 @@ export interface components {
         ZoneDetail: {
             /** @enum {string} */
             deleteRefusal?: "default_zone" | "managed_by";
-            fallback?: components["schemas"]["ZoneFallbackSpec"];
             managedBy?: string;
             message?: string;
             name: string;
@@ -4638,6 +4280,7 @@ export interface components {
             /** Format: int64 */
             recordSets: number;
             resourceVersion?: string;
+            secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
             /**
@@ -4648,9 +4291,6 @@ export interface components {
             type: string;
             upstreamGroup?: string;
             zoneName: string;
-        };
-        ZoneFallbackSpec: {
-            upstreamGroup?: string;
         };
         ZoneRecord: {
             dnsName: string;
@@ -4669,7 +4309,6 @@ export interface components {
         ZoneSummary: {
             /** @enum {string} */
             deleteRefusal?: "default_zone" | "managed_by";
-            fallback?: components["schemas"]["ZoneFallbackSpec"];
             managedBy?: string;
             message?: string;
             name: string;
@@ -4680,6 +4319,7 @@ export interface components {
             /** Format: int64 */
             recordSets: number;
             resourceVersion?: string;
+            secondaryRuntime?: components["schemas"]["SecondaryRuntime"];
             /** Format: int32 */
             serial: number;
             type: string;
@@ -10670,102 +10310,6 @@ export interface operations {
             };
         };
     };
-    adoptExistingImports: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MigrationAdoptInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrationResult"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     applyMigration: {
         parameters: {
             query?: never;
@@ -10862,80 +10406,6 @@ export interface operations {
             };
         };
     };
-    listExistingImports: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListMigrationAuthorityChange"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     previewMigration: {
         parameters: {
             query?: never;
@@ -10956,470 +10426,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Plan"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    listMigrationRuns: {
-        parameters: {
-            query?: {
-                limit?: number;
-                continue?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListMigrationRun"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getMigrationRun: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrationRun"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    decommissionMigration: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MigrationCutoverPlan"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrationResult"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    previewMigrationDecommission: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MigrationCutoverPreviewInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrationCutoverPlan"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    startMigration: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Plan"];
-            };
-        };
-        responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    Location?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MigrationRun"];
                 };
             };
             /** @description Bad Request */
@@ -15281,10 +14287,7 @@ export interface operations {
     patchSettings: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Reviewed upstreams section revision from GET /settings. Send this header for safe concurrent upstream edits; stale revisions return 412. Optional for backward compatibility: omitting it uses the server's current snapshot, so client edits can overwrite newer values. Ignored for patches that do not touch upstreams. */
-                "If-Match"?: string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -15426,203 +14429,6 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    changeSettingsOwnership: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                section: string;
-                action: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OwnershipInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsBody"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    exportSettingsSectionYAML: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                section: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SettingsYAMLInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsYAMLBody"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
                 headers: {
                     [name: string]: unknown;
                 };

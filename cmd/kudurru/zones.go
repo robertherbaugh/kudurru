@@ -16,6 +16,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
+	"github.com/robertherbaugh/kudurru/internal/apiclient/openapi"
 	"github.com/robertherbaugh/kudurru/internal/cli"
 )
 
@@ -23,14 +24,15 @@ import (
 // /zones/{zone}): "type, serial, recordCount, ready, managedBy". The
 // object name is "name"; the zone apex is read from "zoneName" or "zone".
 type zoneSummary struct {
-	Name        string `json:"name"`
-	ZoneName    string `json:"zoneName,omitempty"`
-	Zone        string `json:"zone,omitempty"`
-	Type        string `json:"type"`
-	Serial      uint32 `json:"serial"`
-	RecordCount int    `json:"recordCount"`
-	Ready       any    `json:"ready"`
-	ManagedBy   string `json:"managedBy,omitempty"`
+	Name             string                    `json:"name"`
+	ZoneName         string                    `json:"zoneName,omitempty"`
+	Zone             string                    `json:"zone,omitempty"`
+	Type             string                    `json:"type"`
+	Serial           uint32                    `json:"serial"`
+	RecordCount      int                       `json:"recordCount"`
+	Ready            any                       `json:"ready"`
+	ManagedBy        string                    `json:"managedBy,omitempty"`
+	SecondaryRuntime *openapi.SecondaryRuntime `json:"secondaryRuntime,omitempty"`
 }
 
 func (z zoneSummary) apex() string { return firstNonEmpty(z.ZoneName, z.Zone) }
@@ -54,8 +56,38 @@ func readyString(v any) string {
 
 func zoneTable(zs []zoneSummary) *cli.Table {
 	t := &cli.Table{Headers: []string{"NAME", "ZONE", "TYPE", "SERIAL", "RECORDS", "READY", "MANAGED-BY"}}
+	local := false
 	for _, z := range zs {
-		t.Add(z.Name, firstNonEmpty(z.apex(), "-"), z.Type, strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), firstNonEmpty(z.ManagedBy, "-"))
+		if z.Type == "secondary" {
+			local = true
+			break
+		}
+	}
+	if local {
+		t.Headers = append(t.Headers, "NODE")
+	}
+	for _, z := range zs {
+		serial, count, state, node := strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), "-"
+		if z.Type == "secondary" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.SecondaryRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(int64(*rt.Serial), 10)
+				}
+				if rt.RecordCount != nil {
+					count = strconv.FormatInt(*rt.RecordCount, 10)
+				}
+				if rt.State != openapi.SecondaryRuntimeStateServing && rt.Serial != nil {
+					serial += " (last)"
+				}
+			}
+		}
+		row := []string{z.Name, firstNonEmpty(z.apex(), "-"), z.Type, serial, count, state, firstNonEmpty(z.ManagedBy, "-")}
+		if local {
+			row = append(row, node)
+		}
+		t.Add(row...)
 	}
 	return t
 }
