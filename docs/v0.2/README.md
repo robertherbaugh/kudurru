@@ -52,7 +52,8 @@ real BIND transfers and the browser create/edit/expiry workflow.
 
 The full 11-package release is being implemented in a single
 [draft PR #54](https://github.com/robertherbaugh/kudurru/pull/54), with small
-commits and periodic rebases on main. AXFR/IXFR, verified TLS, inbound NOTIFY
+commits and periodic rebases on main, currently `a26e223` including the merged
+supervisor/VIP work. AXFR/IXFR, verified TLS, inbound NOTIFY
 and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
 Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
 browser create/edit flow. Signed-secondary response assembly supports NSEC/NSEC3 and opt-out, with
@@ -68,11 +69,28 @@ editors. Native UDP/TCP and browser acceptance pass; see the
 [response-processing guide](../deploy/response-processing.md). The modifier
 compiler and real edge packet-cache isolation acceptance remain in progress.
 
-The HA storage foundation includes complete versioned replication images,
-atomic replacement, persisted authority fencing and local follower reads.
-Authenticated transport, command transactions and promotion coordination are
-in acceptance. Serving-generation coherence, public wiring and multi-node
-partition/rejoin behavior remain open; this is not a consensus claim.
+The HA foundation includes complete versioned replication images, atomic
+replacement, persisted authority fencing, local follower reads, authenticated
+transport, command transactions and promotion coordination. Complete-bundle
+publication and DNS request capture are implemented, including inherited
+alias/DNS64 views, detached-cache fencing and transfer cleanup across all six
+listeners. Production owner composition, authentication capture, public wiring
+and multi-node partition/rejoin acceptance remain open; this is not consensus.
+
+RFC 2136 parsing/planning, prerequisite and ownership checks, bounded private
+zone aggregates, SQLite transactions and Kubernetes immutable-chunk/head CAS
+are implemented. Source reconciliation, committed-primary materialization,
+lifecycle/TSIG/HA integration and network UPDATE remain in progress. RPZ has
+bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
+native BIND policy comparisons; selected-policy stage rendering, production
+publication, reporting and UI are in progress.
+
+Credential identity now binds immutable account UIDs, and service-account
+bootstrap authority resides in private UID-bound PrincipalState objects.
+Stored provider files require exact host grants. Public IAM schemas and
+transactional SQLite conversion are being integrated with the offline
+Kubernetes journal and credential mappings. This checkpoint does not certify
+Kubernetes upgrades or complete the wider IAM/session package.
 
 None of these checkpoints closes an entire package prematurely. The remaining
 feature packages and detailed follow-ups below retain their full scope.
