@@ -39,7 +39,7 @@ func SemanticDigest(wire []byte) (string, error) {
 	return zk.Digest(b), nil
 }
 func validateProof(p ProofIdentity, digest string) error {
-	if p.Principal.Key != canonical(p.Principal.Key) || p.Principal.Key == "." || p.SemanticDigest != digest || p.Term.Validate() != nil || p.AuthorityIncarnation == 0 {
+	if p.Principal.Key != canonical(p.Principal.Key) || p.Principal.Key == "." || p.SemanticDigest != digest || p.Term.Validate() != nil || p.AuthorityIncarnation == 0 || p.NotAfter.IsZero() {
 		return ErrInvalid
 	}
 	if p.Algorithm != dns.HmacSHA256 && p.Algorithm != dns.HmacSHA512 {
@@ -86,6 +86,11 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 		return outcome(err)
 	}
 	if err := validateProof(proof, digest); err != nil {
+		return outcome(err)
+	}
+	ctx, signatureCancel := context.WithDeadline(ctx, proof.NotAfter)
+	defer signatureCancel()
+	if err := ctx.Err(); err != nil {
 		return outcome(err)
 	}
 	if request.Zone.ClusterID != proof.Term.ClusterID {

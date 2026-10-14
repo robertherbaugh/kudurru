@@ -86,6 +86,9 @@ type ProofIdentity struct {
 	ProviderVersion, Algorithm, Transport, Domain, Subject, RetryID, SemanticDigest string
 	Term                                                                            replication.Term
 	AuthorityIncarnation                                                            uint64
+	// NotAfter is the verification-time signature deadline. Admission carries
+	// it through the entire transaction, including writer-lock waits and commit.
+	NotAfter time.Time
 }
 
 // VerifiedUpdate carries detached semantics and an opaque verification proof.

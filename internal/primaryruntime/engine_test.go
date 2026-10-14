@@ -61,7 +61,7 @@ func (h *harness) request(l *zk.ZoneLifecycle, retry, text string, prereq bool) 
 		term = sql.Authority().Term
 		incarnation = sql.Authority().Incarnation
 	}
-	p := ProofIdentity{Principal: dynamicupdate.Principal{Key: "key.", Version: "v1"}, ProviderVersion: "immutable-provider-v1", Algorithm: dns.HmacSHA256, Transport: "udp", Domain: "test-zone-update", Subject: "test-key", RetryID: retry, SemanticDigest: digest, Term: term, AuthorityIncarnation: incarnation}
+	p := ProofIdentity{Principal: dynamicupdate.Principal{Key: "key.", Version: "v1"}, ProviderVersion: "immutable-provider-v1", Algorithm: dns.HmacSHA256, Transport: "udp", Domain: "test-zone-update", Subject: "test-key", RetryID: retry, SemanticDigest: digest, Term: term, AuthorityIncarnation: incarnation, NotAfter: time.Now().Add(time.Minute)}
 	return VerifiedUpdate{Zone: l.Spec.Zone, Wire: wire, Proof: &issuedProof{identity: p}}
 }
 func TestActualUpdatePublicationFailureReplayAndAuth(t *testing.T) {

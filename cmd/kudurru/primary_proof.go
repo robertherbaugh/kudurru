@@ -73,6 +73,7 @@ func (p *primaryUpdateIngress) capture(req *pipeline.Request, id zonekinds.ZoneI
 		ProviderVersion: key.ProviderVersion, Algorithm: key.Algorithm, Transport: req.Client.Proto.String(),
 		Domain: primaryUpdateDomain(id), Subject: key.Key, RetryID: uuid.NewString(), SemanticDigest: digest,
 		Term: authority.Term, AuthorityIncarnation: authority.Incarnation,
+		NotAfter: proof.Deadline(),
 	}}
 	return primaryruntime.VerifiedUpdate{Zone: id, Wire: wire, Proof: sealed}, nil
 }

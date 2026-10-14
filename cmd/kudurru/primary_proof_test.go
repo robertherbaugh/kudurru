@@ -51,7 +51,7 @@ func TestPrimaryUpdateIngressUsesNativeProofAndPinsAuthority(t *testing.T) {
 			return err
 		}
 		key, _ := keys.Identity("update-key.")
-		if identity.Principal.Version != key.CredentialVersion || identity.ProviderVersion != key.ProviderVersion || identity.Term != term || identity.AuthorityIncarnation != 7 || identity.Domain != primaryUpdateDomain(id) || identity.RetryID == "" || reads != 1 {
+		if identity.Principal.Version != key.CredentialVersion || identity.ProviderVersion != key.ProviderVersion || identity.Term != term || identity.AuthorityIncarnation != 7 || identity.Domain != primaryUpdateDomain(id) || identity.RetryID == "" || identity.NotAfter.IsZero() || reads != 1 {
 			return errors.New("proof lost pinned authority or credential identity")
 		}
 		badWire := append([]byte(nil), command.Wire...)
@@ -74,6 +74,16 @@ func TestPrimaryUpdateIngressUsesNativeProofAndPinsAuthority(t *testing.T) {
 		}}
 		if _, err := follower.capture(req, id); err == nil {
 			return errors.New("follower minted a writable UPDATE proof")
+		}
+		native, ok := dnsserver.VerifiedTSIGFor(req, time.Now())
+		if !ok || !identity.NotAfter.Equal(native.Deadline()) {
+			return errors.New("command lost original signature deadline")
+		}
+		ingress.now = func() time.Time { return identity.NotAfter }
+		_, expired := ingress.Verify(req.Ctx, command.Proof, command.Wire)
+		ingress.now = nil
+		if expired == nil {
+			return errors.New("signature deadline admitted an expired proof")
 		}
 		// The runtime owns a detached copy even if a later stage changes the
 		// original parsed message; the sealed proof remains for original data.
