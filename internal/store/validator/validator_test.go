@@ -24,7 +24,7 @@ const (
 func TestNewKnowsEveryKind(t *testing.T) {
 	v := testValidator(t)
 	got := fmt.Sprint(v.Kinds())
-	if want := "[BlockList ClientGroup DHCPScope DNSRecordSet DNSZone Policy UnblockRequest]"; got != want {
+	if want := "[BlockList ClientGroup DHCPScope DNSRecordSet DNSZone Integration Policy UnblockRequest]"; got != want {
 		t.Fatalf("Kinds() = %s, want %s", got, want)
 	}
 	for kind := range sampleFiles {
