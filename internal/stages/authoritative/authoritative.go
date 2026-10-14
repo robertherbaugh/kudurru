@@ -16,6 +16,7 @@ package authoritative
 
 import (
 	"net/netip"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -87,6 +88,8 @@ type Stage struct {
 	// wire size); zero means zone.DefaultChunkBytes (64 KiB minus room for
 	// the header, OPT and TSIG).
 	ChunkBytes int
+	// Now controls secondary expiry checks, including CNAME targets.
+	Now func() time.Time
 }
 
 var (
@@ -160,6 +163,9 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		s.finish(req, r.Msg)
 		return r, nil
 	}
+	if !z.AvailableAt(s.now()) {
+		return s.secondaryUnavailable(req, z), nil
+	}
 	if q.Qtype == dns.TypeAXFR || q.Qtype == dns.TypeIXFR {
 		return s.transfer(req, gate, z), nil
 	}
@@ -181,12 +187,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return s.unsynced(req, gate), nil
 	}
 
-	var res zone.Result
-	if z.HasFallback() && gate == zone.GateOpen {
-		res = z.LookupStep(q.Name, q.Qtype, 0)
-	} else {
-		res = z.Lookup(q.Name, q.Qtype)
-	}
+	res := lookupWithin(set, z, q.Name, q.Qtype, 0)
 	if gate == zone.GateUnsynced && !res.Positive() {
 		return s.unsynced(req, gate), nil
 	}
@@ -256,13 +257,11 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 	for {
 		target := last.Target
 		z2 := set.Match(target)
-		if z2 != nil && z2.Type() == v1alpha1.ZoneTypePrimary && z2.QueryAllowed(client) {
-			var r2 zone.Result
-			if z2.HasFallback() && set.Gate() == zone.GateOpen {
-				r2 = z2.LookupStep(target, q.Qtype, last.Hops)
-			} else {
-				r2 = z2.LookupFrom(target, q.Qtype, last.Hops)
-			}
+		if z2 != nil && z2.QueryAllowed(client) && !z2.AvailableAt(s.now()) {
+			return s.secondaryUnavailable(req, z2), nil
+		}
+		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary) && z2.QueryAllowed(client) {
+			r2 := lookupWithin(set, z2, target, q.Qtype, last.Hops)
 			switch r2.Kind {
 			case zone.CNAME:
 				answer = append(answer, r2.Answer...)
@@ -290,6 +289,23 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 		resp, err := next(sub)
 		return s.splice(req, z, answer, resp, err), nil
 	}
+}
+
+func lookupWithin(set zone.Set, z *zone.Zone, name string, qtype uint16, hops int) zone.Result {
+	return z.LookupWithin(name, qtype, hops, func(target string) bool { return set.Match(target) == z })
+}
+
+func (s *Stage) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func (s *Stage) secondaryUnavailable(req *pipeline.Request, z *zone.Zone) *pipeline.Response {
+	r := s.unsynced(req, zone.GateUnsynced)
+	r.Upstream = "secondary:unavailable:" + z.Name()
+	return r
 }
 
 // subRequest builds the query for a chain target that leaves local data.

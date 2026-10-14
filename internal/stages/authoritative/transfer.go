@@ -212,8 +212,11 @@ func (s *Stage) Transfer(name string, serial uint32) (<-chan []dns.RR, error) {
 	if z == nil || z.Name() != dns.CanonicalName(name) {
 		return nil, ErrZoneNotFound
 	}
-	if z.Type() != v1alpha1.ZoneTypePrimary || z.HasFallback() {
+	if (z.Type() != v1alpha1.ZoneTypePrimary && z.Type() != v1alpha1.ZoneTypeSecondary) || z.HasFallback() {
 		return nil, ErrNotTransferable
+	}
+	if !z.AvailableAt(s.now()) {
+		return nil, ErrUnsynced
 	}
 	var chunks [][]dns.RR
 	if serial != 0 && z.UpToDate(serial) {
