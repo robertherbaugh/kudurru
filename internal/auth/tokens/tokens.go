@@ -44,10 +44,11 @@ const (
 
 // Errors of Create and Revoke.
 var (
-	ErrNotFound         = errors.New("tokens: no such token")
-	ErrLifetimeTooLong  = errors.New("tokens: expiry exceeds auth.tokens.maxLifetime")
-	ErrInvalidOwner     = errors.New("tokens: invalid owner")
-	ErrNoServiceAccount = errors.New("tokens: no such service account")
+	ErrNotFound          = errors.New("tokens: no such token")
+	ErrLifetimeTooLong   = errors.New("tokens: expiry exceeds auth.tokens.maxLifetime")
+	ErrInvalidOwner      = errors.New("tokens: invalid owner")
+	ErrNoServiceAccount  = errors.New("tokens: no such service account")
+	ErrBootstrapIdentity = errors.New("tokens: existing account lacks private bootstrap authority; use local recovery with a new account")
 )
 
 // Generate returns a fresh token in wire form and its id.
@@ -116,11 +117,12 @@ const lastUsedInterval = time.Minute
 
 // Tokens is the token store and the bearer kdr_ step of the chain.
 type Tokens struct {
-	st   store.Store
-	opts Options
-	toks *objcache.Cache[*internalv1.APIToken]
-	sas  *objcache.Cache[*internalv1.ServiceAccount]
-	log  *slog.Logger
+	st         store.Store
+	opts       Options
+	toks       *objcache.Cache[*internalv1.APIToken]
+	sas        *objcache.Cache[*internalv1.ServiceAccount]
+	principals *objcache.Cache[*internalv1.PrincipalState]
+	log        *slog.Logger
 
 	usedMu sync.Mutex
 	used   map[string]time.Time
@@ -155,10 +157,11 @@ func New(opts Options) (*Tokens, error) {
 	}
 	return &Tokens{
 		st: opts.Store, opts: opts, log: opts.Logger,
-		toks:   objcache.New[*internalv1.APIToken](opts.Store, internalv1.KindAPIToken, objcache.Options{Logger: opts.Logger}),
-		sas:    objcache.New[*internalv1.ServiceAccount](opts.Store, internalv1.KindServiceAccount, objcache.Options{Logger: opts.Logger}),
-		used:   map[string]time.Time{},
-		usedCh: make(chan usage, 256),
+		toks:       objcache.New[*internalv1.APIToken](opts.Store, internalv1.KindAPIToken, objcache.Options{Logger: opts.Logger}),
+		sas:        objcache.New[*internalv1.ServiceAccount](opts.Store, internalv1.KindServiceAccount, objcache.Options{Logger: opts.Logger}),
+		principals: objcache.New[*internalv1.PrincipalState](opts.Store, internalv1.KindPrincipalState, objcache.Options{Logger: opts.Logger}),
+		used:       map[string]time.Time{},
+		usedCh:     make(chan usage, 256),
 	}, nil
 }
 
@@ -173,7 +176,10 @@ func (t *Tokens) Prime(ctx context.Context) error {
 	if err := t.toks.Prime(ctx); err != nil {
 		return err
 	}
-	return t.sas.Prime(ctx)
+	if err := t.sas.Prime(ctx); err != nil {
+		return err
+	}
+	return t.principals.Prime(ctx)
 }
 
 // Run keeps both caches current and writes lastUsedAt/IP (at most once a
@@ -182,6 +188,7 @@ func (t *Tokens) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	wg.Go(func() { _ = t.toks.Run(ctx) })
 	wg.Go(func() { _ = t.sas.Run(ctx) })
+	wg.Go(func() { _ = t.principals.Run(ctx) })
 	for {
 		select {
 		case <-ctx.Done():
@@ -354,6 +361,17 @@ func (t *Tokens) EnsureServiceAccount(ctx context.Context, namespace, name, desc
 	var cur internalv1.ServiceAccount
 	err := t.st.Get(ctx, saKey(namespace, name), &cur)
 	if err == nil {
+		if builtinAdmin {
+			owner := accountOwner(&cur)
+			var state internalv1.PrincipalState
+			if err := t.st.Get(ctx, store.Key{Kind: internalv1.KindPrincipalState, Name: internalv1.PrincipalStateName(owner)}, &state); err != nil {
+				return nil, ErrBootstrapIdentity
+			}
+			if state.Spec.Owner != owner || !state.Spec.BuiltinAdmin {
+				return nil, ErrBootstrapIdentity
+			}
+			t.principals.Upsert(&state)
+		}
 		t.sas.Upsert(&cur)
 		return &cur, nil
 	}
@@ -361,15 +379,24 @@ func (t *Tokens) EnsureServiceAccount(ctx context.Context, namespace, name, desc
 		return nil, err
 	}
 	sa := &internalv1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: internalv1.ServiceAccountSpec{Description: description, BuiltinAdmin: builtinAdmin}}
+		Spec: internalv1.ServiceAccountSpec{Description: description}}
 	if err := sa.Validate(); err != nil {
 		return nil, err
 	}
-	out, err := t.st.Apply(ctx, sa, store.ApplyOptions{Manager: store.ManagerSystem})
+	out, err := t.st.Apply(ctx, sa, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
 	if err != nil {
 		return nil, err
 	}
 	created := out.(*internalv1.ServiceAccount)
+	if builtinAdmin {
+		owner := accountOwner(created)
+		state := &internalv1.PrincipalState{ObjectMeta: metav1.ObjectMeta{Name: internalv1.PrincipalStateName(owner)}, Spec: internalv1.PrincipalStateSpec{Owner: owner, BuiltinAdmin: true}}
+		out, err := t.st.Apply(ctx, state, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
+		if err != nil {
+			return nil, err
+		}
+		t.principals.Upsert(out.(*internalv1.PrincipalState))
+	}
 	t.sas.Upsert(created)
 	return created, nil
 }
@@ -454,7 +481,7 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 		p.Name = "serviceaccount:" + owner.Namespace + ":" + owner.Name
 		p.ServiceAccount = owner.Namespace + "/" + owner.Name
 		p.Provider = "kudurru"
-		p.BuiltinAdmin = sa.Spec.BuiltinAdmin
+		p.BuiltinAdmin = t.BuiltinAdmin(sa)
 	default:
 		return auth.Principal{}, auth.Unauthenticated(errors.New("token owner kind unknown"))
 	}

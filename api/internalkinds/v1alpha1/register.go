@@ -34,6 +34,7 @@ import (
 // Kind names of the internal kinds, as store.Kind strings.
 const (
 	KindLocalUser        = "LocalUser"
+	KindPrincipalState   = "PrincipalState"
 	KindAPIToken         = "APIToken"
 	KindServiceAccount   = "ServiceAccount"
 	KindRoleBinding      = "RoleBinding"
@@ -45,7 +46,7 @@ const (
 // Options.InternalKinds: sqlite skips the CRD validator for them (they call
 // Validate instead) and omits them from safe snapshots; kube maps them to
 // Secrets.
-var Kinds = []string{KindAPIToken, KindIdentityProvider, KindLocalUser, KindMigrationRun, KindRoleBinding, KindServiceAccount}
+var Kinds = []string{KindAPIToken, KindIdentityProvider, KindLocalUser, KindMigrationRun, KindPrincipalState, KindRoleBinding, KindServiceAccount}
 
 // Namespaced reports whether an internal kind is namespaced.
 // ServiceAccount and RoleBinding are; the others are cluster-scoped.
@@ -77,6 +78,7 @@ func addKnownTypes(s *runtime.Scheme) error {
 	s.AddKnownTypes(public.GroupVersion,
 		&LocalUser{}, &LocalUserList{},
 		&APIToken{}, &APITokenList{},
+		&PrincipalState{}, &PrincipalStateList{},
 		&ServiceAccount{}, &ServiceAccountList{},
 		&RoleBinding{}, &RoleBindingList{},
 		&IdentityProvider{}, &IdentityProviderList{},

@@ -238,7 +238,7 @@ func (s *Stack) handleIAMServiceAccounts(w http.ResponseWriter, r *http.Request)
 	items := []ServiceAccountInfo{}
 	for _, sa := range sas {
 		items = append(items, ServiceAccountInfo{Namespace: sa.Namespace, Name: sa.Name, Description: sa.Spec.Description,
-			Disabled: sa.Spec.Disabled, BuiltinAdmin: sa.Spec.BuiltinAdmin, Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name)))})
+			Disabled: sa.Spec.Disabled, BuiltinAdmin: s.tokens.BuiltinAdmin(sa), Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name)))})
 	}
 	writeList(w, r, items, nil)
 }

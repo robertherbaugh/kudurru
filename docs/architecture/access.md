@@ -158,6 +158,16 @@ entire upgrade, and older binaries reject the newer database schema.
 Kubernetes legacy token conversion is part of the pending offline IAM migration;
 an unbound token is never silently rebound during authentication.
 
+Service-account bootstrap authority lives in private `PrincipalState` objects,
+keyed by the account UID. ServiceAccount specs no longer contain a
+`builtinAdmin` field. Schema 4 moves the old flag and its identity binding in
+one transaction; a conflicting private row aborts the upgrade. New bootstrap
+accounts use an atomic create-only precondition. If an account already exists
+without matching private authority, bootstrap refuses to elevate it. A crash
+between creating a new account and recording authority can leave an unprivileged
+account; local administrator recovery remains available. Ordinary annotations
+and name reuse cannot grant bootstrap privileges.
+
 ### The CLI
 
 `kudurru login --token kdr_…` stores a token. `kudurru login --username`

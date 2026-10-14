@@ -181,10 +181,6 @@ type ServiceAccountSpec struct {
 	// Disabled refuses every token of the account.
 	// +optional
 	Disabled bool `json:"disabled,omitempty"`
-	// BuiltinAdmin grants the admin role implicitly (the bootstrap
-	// service account of KUDURRU_BOOTSTRAP_TOKEN).
-	// +optional
-	BuiltinAdmin bool `json:"builtinAdmin,omitempty"`
 }
 
 // ServiceAccountStatus records use.

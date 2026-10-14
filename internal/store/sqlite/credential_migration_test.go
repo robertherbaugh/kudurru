@@ -65,7 +65,7 @@ func legacyToken(name string, owner internalv1.TokenOwner, at time.Time) *intern
 func TestCredentialMigrationPreservesIdentityAndRestart(t *testing.T) {
 	db, path := legacyCredentialDB(t)
 	at := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
-	sa := &internalv1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "ci", Namespace: "dns", CreationTimestamp: metav1.NewTime(at)}, Spec: internalv1.ServiceAccountSpec{BuiltinAdmin: true}}
+	sa := &internalv1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "ci", Namespace: "dns", CreationTimestamp: metav1.NewTime(at)}}
 	u := &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice", CreationTimestamp: metav1.NewTime(at)}}
 	insertLegacyCredential(t, db, sa, 1)
 	insertLegacyCredential(t, db, u, 2)

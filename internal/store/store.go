@@ -24,7 +24,7 @@ import (
 // SchemaVersion is compiled into the binary and recorded by every driver.
 // A newer on-disk version refuses to start; an older one is migrated in one
 // transaction (decision D11).
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // Kind is the object kind name, e.g. "DNSZone".
 type Kind string

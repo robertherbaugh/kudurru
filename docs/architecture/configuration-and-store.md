@@ -225,6 +225,7 @@ erDiagram
 | `DHCPScope` | cluster | public | a DHCPv4 pool, its options, relays and reservations (served with the Kubernetes store, D180) |
 | `LocalUser` | cluster | internal | local account with an Argon2id hash |
 | `APIToken` | cluster | internal | SHA-256 of a `kdr_` token, owned by a user or service account |
+| `PrincipalState` | cluster | internal | private bootstrap authority bound to an exact service-account UID |
 | `ServiceAccount` | namespaced | internal | a non-human principal |
 | `RoleBinding` | namespaced | internal | role at a scope for users, groups, service accounts |
 | `IdentityProvider` | cluster | internal | an OIDC provider |
