@@ -222,6 +222,8 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	}
 }
 func (h *Host) execute(ctx context.Context, j *job, c command) answer {
+	ctx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+	defer cancel()
 	f, g, err := h.captured(j)
 	if err != nil {
 		return answer{err: err}
@@ -229,7 +231,10 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 	if err := h.fence(ctx, j, g); err != nil {
 		return answer{err: err}
 	}
-	ctx = scoped(ctx, j, g)
+	ctx, err = h.scopedOriginal(ctx, j, f, g)
+	if err != nil {
+		return answer{err: err}
+	}
 	switch c.kind {
 	case "deliver":
 		return answer{err: h.queueEvent(ctx, j, f, g, c)}
@@ -262,9 +267,7 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			if err == nil && observer {
 				var observation *Result
 				observation, err = h.observe(ctx, j, g)
-				if observation != nil {
-					result.Clients = observation.Clients
-				}
+				result = combineResult(result, observation)
 			}
 		} else if observer {
 			if c.expected != "" {
@@ -275,12 +278,19 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			return answer{err: ErrUnsupported}
 		}
 		if stale := h.fence(ctx, j, g); stale != nil {
+			if result != nil && result.Source != nil && result.Source.Committed && !result.Source.Published && result.Pending == 0 {
+				result.Pending = 1
+			}
+			h.setLocal(j, "Degraded", "ReconcileFenced", valueResult(result), false)
 			return answer{result: result, err: stale}
 		}
 		if err != nil {
 			h.setLocal(j, "Degraded", "ReconcileFailed", valueResult(result), true)
 		} else {
 			phase, reason := "Ready", "Synced"
+			if result == nil {
+				return answer{err: ErrInvalid}
+			}
 			if result.Pending > 0 || result.Conflicts > 0 {
 				phase, reason = "Degraded", "ConflictsOrPending"
 			}
@@ -338,7 +348,29 @@ func valueResult(r *Result) Result {
 	if r == nil {
 		return Result{}
 	}
-	return *r
+	out := *r
+	if r.Source != nil {
+		s := *r.Source
+		out.Source = &s
+	}
+	return out
+}
+
+func combineResult(outbound, source *Result) *Result {
+	if outbound == nil && source == nil {
+		return nil
+	}
+	out := valueResult(outbound)
+	if source != nil {
+		observation := valueResult(source)
+		out.Applied += observation.Applied
+		out.Pending += observation.Pending
+		out.Conflicts += observation.Conflicts
+		out.Unchanged += observation.Unchanged
+		out.Clients = observation.Clients
+		out.Source = observation.Source
+	}
+	return &out
 }
 func safeError(ctx context.Context, err error) error {
 	if err := ctx.Err(); err != nil {
@@ -358,6 +390,7 @@ func (h *Host) publishStatus(ctx context.Context, j *job, g ExecutionGuard) {
 	}
 	h.mu.RLock()
 	s := h.statuses[j.key]
+	s.Result = valueResult(&s.Result)
 	s.CredentialFingerprints = j.frame.instance.CredentialFingerprints()
 	h.mu.RUnlock()
 	if h.opts.Status(ctx, g, s) != nil {

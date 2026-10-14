@@ -10,12 +10,29 @@ import (
 
 type scopeKey struct{}
 type requestScope struct {
-	j *job
-	g ExecutionGuard
+	j        *job
+	g        ExecutionGuard
+	original *requestOrigin
+}
+
+// Captured at command entry, before any publisher/observer network work.
+// Receipts or a same-guard refresh cannot substitute a newer frame/lease.
+type requestOrigin struct {
+	instance *Instance
+	lease    context.Context
 }
 
 func scoped(ctx context.Context, j *job, g ExecutionGuard) context.Context {
-	return context.WithValue(ctx, scopeKey{}, requestScope{j, g})
+	return context.WithValue(ctx, scopeKey{}, requestScope{j: j, g: g})
+}
+
+func (h *Host) scopedOriginal(ctx context.Context, j *job, f frame, g ExecutionGuard) (context.Context, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.jobs[j.key] != j || !j.active || j.guard != g.Ledger || j.frame.instance != f.instance || j.frame.input.BundleID != g.BundleID || j.ctx.Err() != nil || j.leaseCtx == nil || j.leaseCtx.Err() != nil {
+		return nil, ErrFenced
+	}
+	return context.WithValue(ctx, scopeKey{}, requestScope{j: j, g: g, original: &requestOrigin{instance: f.instance, lease: j.leaseCtx}}), nil
 }
 func (p providerHost) guard(ctx context.Context) (ExecutionGuard, error) {
 	s, ok := ctx.Value(scopeKey{}).(requestScope)

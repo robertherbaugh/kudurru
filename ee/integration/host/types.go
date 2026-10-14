@@ -93,6 +93,14 @@ type Result struct {
 	PreviewDigest                          string
 	Applied, Pending, Conflicts, Unchanged int
 	Clients                                int
+	Source                                 *SourceOutcome
+}
+
+// SourceOutcome retains durable admission even when publication is pending.
+// ReceiptID is a bounded opaque identifier, never provider response text.
+type SourceOutcome struct {
+	ReceiptID                          string
+	Committed, Published, Deduplicated bool
 }
 
 // DesiredBatch enters root's existing admission/publication seam.
@@ -121,16 +129,25 @@ type Reader interface {
 
 // Options injects root-owned capture, authority, admission, and licensed wiring.
 type Options struct {
-	Capture                                                     func(context.Context) (Input, error)
-	Factory                                                     func(string) (integration.Integration, error)
-	Elector                                                     func(string) store.Elector
-	Fence                                                       func(context.Context, ExecutionGuard) error
-	Ledger                                                      *ledger.Repository
-	Reader                                                      Reader
-	Inventory                                                   *inventory.Holder
-	Publish                                                     func(context.Context, ExecutionGuard, DesiredBatch) error
-	Status                                                      func(context.Context, ExecutionGuard, InstanceStatus) error
-	Resolve                                                     func(context.Context, dns.Question) (*dns.Msg, error)
+	Capture   func(context.Context) (Input, error)
+	Factory   func(string) (integration.Integration, error)
+	Elector   func(string) store.Elector
+	Fence     func(context.Context, ExecutionGuard) error
+	Ledger    *ledger.Repository
+	Reader    Reader
+	Inventory *inventory.Holder
+	Publish   func(context.Context, ExecutionGuard, DesiredBatch) error
+	// Preferred source callbacks replace BOTH legacy Publish and Inventory.
+	// ValidateSource is pure and runs before defensive copying. BeforeObserve
+	// binds original root proofs once, retaining release through commit/ack.
+	ValidateSource func(ExecutionGuard, SourceSnapshot) error
+	CommitSource   func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error)
+	BeforeObserve  func(requestCtx, originalLeaseCtx context.Context, guard ExecutionGuard) (boundCtx context.Context, release func(), err error)
+	Status         func(context.Context, ExecutionGuard, InstanceStatus) error
+	Resolve        func(context.Context, dns.Question) (*dns.Msg, error)
+	// In preferred source mode Allowed must be a concurrency-safe, lock-free
+	// memory/clock predicate: it is also invoked by the actual final check.
+	// Root separately excludes original license/resource replacement.
 	Allowed                                                     func() bool
 	Logger                                                      *slog.Logger
 	Metrics                                                     prometheus.Registerer
@@ -151,6 +168,7 @@ type Host struct {
 	running         atomic.Bool
 	sequence        atomic.Uint64
 	requestSequence atomic.Uint64
+	sourceSequence  atomic.Uint64
 }
 type frame struct {
 	instance *Instance
@@ -188,6 +206,9 @@ type answer struct {
 // New validates bounded execution dependencies without doing I/O.
 func New(o Options) (*Host, error) {
 	if o.Capture == nil || o.Elector == nil || o.Fence == nil || o.Ledger == nil || o.Reader == nil {
+		return nil, ErrInvalid
+	}
+	if (o.ValidateSource == nil) != (o.CommitSource == nil) || o.CommitSource != nil && o.BeforeObserve == nil {
 		return nil, ErrInvalid
 	}
 	if o.Factory == nil {

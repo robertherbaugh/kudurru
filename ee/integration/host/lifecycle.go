@@ -29,6 +29,7 @@ func (h *Host) Statuses() []InstanceStatus {
 	defer h.mu.RUnlock()
 	out := make([]InstanceStatus, 0, len(h.statuses))
 	for _, s := range h.statuses {
+		s.Result = valueResult(&s.Result)
 		s.CredentialFingerprints = maps.Clone(s.CredentialFingerprints)
 		out = append(out, s)
 	}
@@ -120,7 +121,12 @@ func (h *Host) refresh(ctx context.Context) {
 			// changing desired sources. They must not trigger a self-sync loop.
 			changed := j.sourceDigest != sourceDigest
 			j.sourceDigest = sourceDigest
-			j.frame = frame{i, input}
+			// An identical capture is the same immutable cut. Keep its original
+			// frame so periodic polls cannot fence a longer source observation.
+			// Any real bundle/source/RV replacement still revokes that frame.
+			if changed || j.frame.input.BundleID != input.BundleID || j.frame.instance.definition.ResourceVersion != i.definition.ResourceVersion {
+				j.frame = frame{i, input}
+			}
 			if j.active {
 				j.guard.IntegrationResourceVersion = i.definition.ResourceVersion
 			}
@@ -272,7 +278,7 @@ func (h *Host) setLocal(j *job, phase, reason string, result Result, leader bool
 		return
 	}
 	old := h.statuses[j.key]
-	s := InstanceStatus{Owner: j.frame.instance.owner, Phase: phase, Reason: reason, Leader: leader, Result: result, LastSync: old.LastSync, CredentialFingerprints: j.frame.instance.CredentialFingerprints()}
+	s := InstanceStatus{Owner: j.frame.instance.owner, Phase: phase, Reason: reason, Leader: leader, Result: valueResult(&result), LastSync: old.LastSync, CredentialFingerprints: j.frame.instance.CredentialFingerprints()}
 	if phase == "Ready" {
 		s.LastSync = h.opts.Now()
 	}
