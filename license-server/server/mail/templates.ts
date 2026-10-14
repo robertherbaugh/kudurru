@@ -26,10 +26,9 @@ import {
   planLabel,
 } from '../../shared/catalog';
 import type { MailAttachment, MailMessage } from './types';
-import { brandedMail } from './html';
+import { brandedMail, PRODUCT_NAME } from './html';
 
-/** The product name every mail signs with. */
-export const PRODUCT_NAME = 'kudurru license portal';
+export { PRODUCT_NAME } from './html';
 
 /** Text for a header line: control characters (CR, LF, …) become spaces. */
 function oneLine(s: string): string {

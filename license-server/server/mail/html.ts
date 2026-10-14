@@ -2,6 +2,7 @@
 // components or CSS variables. Brand values and artwork come from docs/brand;
 // regenerate brand.json with scripts/mail-brand.py. No external image/font
 // requests: the logo is a CID attachment embedded in the server bundle.
+import { NONCOMMERCIAL_LICENSE_URL } from '../../shared/catalog';
 import brand from './brand.json';
 import type { MailMessage } from './types';
 
@@ -9,6 +10,9 @@ const { ink, clay, paper, stone } = brand.colors;
 const sans = 'Inter, Arial, Helvetica, sans-serif';
 const mono = 'Consolas, Menlo, monospace';
 const LOGO_CID = 'kudurru-logo@kudurru.io';
+
+/** The product name in both the plain text signature and HTML footer. */
+export const PRODUCT_NAME = 'kudurru license portal';
 
 interface MailPresentation {
   title: string;
@@ -32,20 +36,20 @@ function link(url: string, label = url): string {
   return `<a href="${escape(url)}" style="color:${ink};text-decoration:underline;overflow-wrap:anywhere;word-break:break-word;">${escape(label)}</a>`;
 }
 
-/** Escape all copy before turning http(s) URLs into links. */
-function copy(text: string): string {
+/** Escape all copy; only explicitly trusted URLs become clickable links. */
+function copy(text: string, allowedUrls: readonly string[] = []): string {
   let out = '';
   let at = 0;
   for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/g)) {
     const url = match[0].replace(/[.,;:!?)]+$/, '');
-    out += escape(text.slice(at, match.index)) + link(url);
+    out += escape(text.slice(at, match.index)) + (allowedUrls.includes(url) ? link(url) : escape(url));
     at = match.index + url.length;
   }
   return (out + escape(text.slice(at))).replace(/\n/g, '<br>');
 }
 
-function paragraph(text: string): string {
-  return `<p style="margin:0 0 20px;font-size:15px;line-height:1.7;overflow-wrap:anywhere;word-break:break-word;">${copy(text)}</p>`;
+function paragraph(text: string, allowedUrls: readonly string[] = []): string {
+  return `<p style="margin:0 0 20px;font-size:15px;line-height:1.7;overflow-wrap:anywhere;word-break:break-word;">${copy(text, allowedUrls)}</p>`;
 }
 
 function button(action: NonNullable<MailPresentation['action']>): string {
@@ -67,25 +71,44 @@ export function brandedMail(message: MailMessage, presentation: MailPresentation
   const { title, preview, publicUrl, action } = presentation;
   // Each template ends with the product name and portal URL as one paragraph;
   // the HTML footer supplies that same signature.
-  const parts = message.text.trimEnd().split('\n\n').slice(0, -1);
+  const allParts = message.text.trimEnd().split('\n\n');
+  if (allParts.at(-1) !== `${PRODUCT_NAME}\n${publicUrl}`) {
+    throw new Error('mail text must end with the signature paragraph');
+  }
+  const parts = allParts.slice(0, -1);
+  const allowedUrls = [publicUrl, `${publicUrl}/my/licenses`, `${publicUrl}/requests`, NONCOMMERCIAL_LICENSE_URL, ...(action ? [action.url] : [])];
+  const matchedDetails = new Set<NonNullable<MailPresentation['details']>[number]>();
+  let keyShown = false;
   let actionShown = false;
   const body = parts.map((part) => {
     const facts = presentation.details?.find((block) => block.text === part);
-    if (facts) return details(facts);
-    if (presentation.key && part === presentation.key) {
+    if (facts) {
+      matchedDetails.add(facts);
+      return details(facts);
+    }
+    if (presentation.key !== undefined && part === presentation.key) {
+      keyShown = true;
       return `<p style="margin:0 0 24px;padding:16px;border:1px solid ${stone};font-family:${mono};font-size:12px;line-height:1.7;overflow-wrap:anywhere;word-break:break-all;">${escape(part)}</p>`;
     }
     if (action && part === action.url) {
       actionShown = true;
-      return button(action) + paragraph(`Or open this link: ${action.url}`);
+      return button(action) + paragraph(`Or open this link: ${action.url}`, allowedUrls);
     }
-    const rendered = paragraph(part);
+    const rendered = paragraph(part, allowedUrls);
     if (action && part.includes(action.url)) {
       actionShown = true;
       return rendered + button(action);
     }
     return rendered;
   }).join('');
+  // A template change must not silently drop a table or the key box. Errors
+  // name the broken contract without exposing recipient data or key material.
+  if (presentation.details?.some((block) => !matchedDetails.has(block))) {
+    throw new Error('mail HTML details must match complete text paragraphs');
+  }
+  if (presentation.key !== undefined && !keyShown) {
+    throw new Error('mail HTML key must match a complete text paragraph');
+  }
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${escape(message.subject)}</title>
 <style>@media only screen and (max-width:620px){.email-shell{width:100%!important}.email-content{padding:28px 20px!important}.email-header{padding:24px 20px!important}.email-title{font-size:28px!important}}</style></head>
@@ -104,7 +127,7 @@ ${body}${action && !actionShown ? button(action) : ''}
 </td></tr>
 <tr><td style="padding:24px 20px;border-top:1px solid ${stone};color:${ink};font-size:12px;line-height:1.8;text-align:center;">
 <p style="margin:0 0 8px;font-family:${mono};">authority over every zone.</p>
-<p style="margin:0;">${link(publicUrl, 'kudurru license portal')} &nbsp;&middot;&nbsp; ${link('https://kudurru.io', 'kudurru.io')}</p>
+<p style="margin:0;">${link(publicUrl, PRODUCT_NAME)} &nbsp;&middot;&nbsp; ${link('https://kudurru.io', 'kudurru.io')}</p>
 </td></tr></table>
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;
