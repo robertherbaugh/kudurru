@@ -114,6 +114,22 @@ func Identity(ctx context.Context) (serving.Identity, error) {
 	return lease.Bundle().Identity(), nil
 }
 
+// CheckWriter checks this request's ORIGINAL complete lease against the
+// publisher and carried writer target. It neither captures a replacement lease
+// nor grants transaction authority. Root retains the writer and dependency pins,
+// reauthorizes the raw Credential in CommandTx, and calls this memory-only check
+// again at final commit, including for deduplication and no-op commands.
+func CheckWriter(ctx context.Context, publisher *serving.Publisher, target serving.TermActivation) error {
+	if ctx == nil || publisher == nil {
+		return serving.ErrComponents
+	}
+	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	if lease == nil || lease.Bundle() == nil {
+		return serving.ErrReleased
+	}
+	return publisher.CheckWriterLease(ctx, lease, target)
+}
+
 // Middleware captures BEFORE authentication and retains every owner through
 // the entire handler, including streaming responses. An unavailable complete
 // bundle returns 503 and never attempts independent live authentication.

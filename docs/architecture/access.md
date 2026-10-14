@@ -169,6 +169,10 @@ the same captured enrollment. Authorization rechecks the original proof against
 that view; a caller-supplied principal cannot replace it. Pending publication
 returns 503, and a rejected bearer never falls back to a cookie. Mutations must
 pass the retained raw proof to the current command verifier separately.
+The HTTP writer check uses that original request lease and the carried writer
+target at entry and final commit. A newer publication cannot repair an old
+request. This memory-only check is safe inside the actual transaction hook;
+it does not replace current credential verification or dependency exclusion.
 
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
