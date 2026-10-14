@@ -7,7 +7,7 @@
 // (/invites/:token), and a Permission is checked against Me.permissions
 // inside the shell.
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { Building2, Inbox, KeyRound, ScrollText, Server, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
+import { Building2, Download, Inbox, KeyRound, ScrollText, Server, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { Permission } from '@shared/permissions';
 import { matchPath } from './ui/lib/router';
 
@@ -40,6 +40,7 @@ const Invite = lazy(() => import('./pages/InvitePage'));
 const Home = lazy(() => import('./pages/HomePage'));
 const MyLicenses = lazy(() => import('./pages/MyLicensesPage'));
 const MyLicense = lazy(() => import('./pages/MyLicensePage'));
+const Downloads = lazy(() => import('./pages/DownloadsPage'));
 const Licenses = lazy(() => import('./pages/LicensesPage'));
 const License = lazy(() => import('./pages/LicensePage'));
 const Customers = lazy(() => import('./pages/CustomersPage'));
@@ -58,6 +59,7 @@ export const ROUTES: RouteDef[] = [
   { path: '/', navKey: 'home', label: 'Home', access: 'session', page: Home },
   { path: '/my/licenses', navKey: 'my', label: 'My licenses', access: 'self.read', page: MyLicenses, section: 'Licenses', icon: KeyRound },
   { path: '/my/licenses/:id', navKey: 'my', label: 'License', access: 'self.read', page: MyLicense },
+  { path: '/downloads', navKey: 'downloads', label: 'Downloads', access: 'session', page: Downloads, section: 'Licenses', icon: Download },
   { path: '/licenses', navKey: 'licenses', label: 'Licenses', access: 'licenses.read', page: Licenses, section: 'Licensing', icon: ShieldCheck },
   { path: '/licenses/:id', navKey: 'licenses', label: 'License', access: 'licenses.read', page: License },
   { path: '/customers', navKey: 'customers', label: 'Customers', access: 'customers.read', page: Customers, section: 'Licensing', icon: Building2 },
