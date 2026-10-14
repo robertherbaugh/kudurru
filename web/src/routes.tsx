@@ -42,8 +42,8 @@ export interface RouteDef {
   section: Section;
   icon: LucideIcon;
   page: Page;
-  /** Stats/log pages show the node selector. */
-  scoped?: boolean;
+  /** true: the toolbar shows the node selector; inline: the page owns it. */
+  scoped?: boolean | 'inline';
   /** Not listed in the navigation (detail pages). */
   hidden?: boolean;
 }
@@ -80,8 +80,8 @@ const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
 
 export const ROUTES: RouteDef[] = [
   { path: '/', navKey: 'dashboard', label: 'Dashboard', section: 'Overview', icon: Gauge, page: Dashboard, scoped: true },
-  { path: '/queries', navKey: 'queries', label: 'Query log', section: 'Overview', icon: Activity, page: QueryLog, scoped: true },
-  { path: '/history', navKey: 'history', label: 'Long-term', section: 'Overview', icon: History, page: LongTerm, scoped: true },
+  { path: '/queries', navKey: 'queries', label: 'Query log', section: 'Overview', icon: Activity, page: QueryLog, scoped: 'inline' },
+  { path: '/history', navKey: 'history', label: 'Long-term', section: 'Overview', icon: History, page: LongTerm, scoped: 'inline' },
   { path: '/lists', navKey: 'lists', label: 'Lists', section: 'Filtering', icon: ListChecks, page: Lists },
   { path: '/lists/new', navKey: 'lists', label: 'New list', section: 'Filtering', icon: ListChecks, page: newRedirect('/lists'), hidden: true },
   { path: '/lists/:ns/:name', navKey: 'lists', label: 'List', section: 'Filtering', icon: ListChecks, page: ListDetail, hidden: true },
