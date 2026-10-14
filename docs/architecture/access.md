@@ -54,9 +54,18 @@ staged changes and dedup replay. A previously authenticated principal cannot
 authorize that write. Current local groups and private administrator state remain
 authoritative; token scopes narrow administrator permissions too.
 
-This owner is tested across held old/new views, store closure, restart, actual
-replica installation and promotion. HTTP/publisher wiring, provider capabilities,
-TOTP replay consumption and the public session workflow remain in progress. The
+`internal/servinghttp` captures the complete publisher lease before checking a
+cookie or API token and keeps it until the bounded handler finishes. CSRF uses
+the same captured enrollment. Authorization rechecks the original proof against
+that view; a caller-supplied principal cannot replace it. Pending publication
+returns 503, and a rejected bearer never falls back to a cookie. Mutations must
+pass the retained raw proof to the current command verifier separately.
+
+These owners are tested across held old/new views, store closure, restart, actual
+replica installation and promotion. The HTTP bridge also tests held reads during
+revocation, current-command denial and cleanup on cancellation/panic. Production
+owner composition and mounting, provider capabilities, TOTP replay consumption
+and the public session workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.
 
