@@ -20,7 +20,7 @@ import { SelectField } from '../components/fields/SelectField';
 import { Page, PageHeader } from '../components/layout/Page';
 import { PurgeQueryLog } from '../components/PurgeQueryLog';
 import { QueryLogTable, type UnblockLink } from '../components/QueryLogTable';
-import { ScopeNote } from '../components/ScopeSelector';
+import { ScopeSelector } from '../components/ScopeSelector';
 import { SuggestInput } from '../components/SuggestInput';
 import { domainKey } from '../components/unblock/UnblockParts';
 import { formatDateTime, formatExact } from '../lib/format';
@@ -102,22 +102,23 @@ export default function QueryLogPage() {
     setLiveRows((prev) => [...batch.slice().reverse(), ...prev].slice(0, LIVE_MAX));
     setFresh(new Set(batch.map(queryIdentity)));
   }, []);
-  // The central database's log (All nodes, D161) numbers rows its own way;
-  // the live tail streams the nodes' rows with the nodes' ids, so it is
-  // neither run nor merged into it.
+  // Central history and node streams use different IDs. While following
+  // a central-backed log, show only live rows; refresh history on return.
   const central = q.data?.pages[0]?.source === 'central';
-  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live && !central, onRows, onScope: setTailScope });
+  const liveOnly = central && live;
+  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live, onRows, onScope: setTailScope });
 
   const rows = useMemo(() => {
     const seen = new Set<string>();
     const out: QueryRow[] = [];
-    for (const r of [...(central ? [] : liveRows), ...(q.data?.pages.flatMap((p) => p.queries) ?? [])]) {
+    const history = liveOnly ? [] : q.data?.pages.flatMap((p) => p.queries) ?? [];
+    for (const r of [...(central && !live ? [] : liveRows), ...history]) {
       if (seen.has(queryIdentity(r))) continue;
       seen.add(queryIdentity(r));
       out.push(r);
     }
     return out;
-  }, [central, liveRows, q.data]);
+  }, [central, live, liveOnly, liveRows, q.data]);
 
   const first = q.data?.pages[0];
   const action = useMutation({
@@ -162,23 +163,30 @@ export default function QueryLogPage() {
         title="Query log"
         actions={
           <>
-            <ScopeNote scope={live ? tailScope ?? first : first} />
+            <ScopeSelector allLabel="All" response={live ? tailScope : first} />
             <Switch
               label="Live tail"
               description={
-                central
-                  ? 'Choose a node to follow it live'
-                  : tail === 'unsupported'
-                    ? 'This browser has no EventSource'
-                    : tail === 'retrying'
-                      ? 'Reconnecting…'
+                tail === 'unsupported'
+                  ? 'This browser has no EventSource'
+                  : tail === 'retrying'
+                    ? 'Reconnecting…'
+                    : tail === 'connecting'
+                      ? 'Connecting…'
                       : tail === 'live'
                         ? 'Streaming new queries'
                         : undefined
               }
-              value={live && !central}
-              isDisabled={tail === 'unsupported' || central}
-              onChange={setLive}
+              value={live}
+              isDisabled={tail === 'unsupported'}
+              onChange={(enabled) => {
+                if (central) {
+                  setLiveRows([]);
+                  setFresh(new Set());
+                  if (!enabled) void qc.invalidateQueries({ queryKey: qk.queries('log', scope, filters) });
+                }
+                setLive(enabled);
+              }}
             />
             <PurgeQueryLog
               onPurged={() => {
@@ -239,7 +247,11 @@ export default function QueryLogPage() {
         </Text>
       ) : null}
 
-      {first ? (
+      {liveOnly ? (
+        <Text type="supporting" as="p" data-testid="log-totals">
+          Live queries from active nodes
+        </Text>
+      ) : first ? (
         <Text type="supporting" as="p" data-testid="log-totals">
           {formatExact(first.records_filtered)} of {formatExact(first.records_total)} queries match
           {first.earliest_ts_memory ? `; in memory since ${formatDateTime(first.earliest_ts_memory)}` : ''}
@@ -251,9 +263,10 @@ export default function QueryLogPage() {
 
       <QueryLogTable
         rows={rows}
+        emptyMessage={live ? 'Waiting for new queries…' : undefined}
         fresh={fresh}
-        hasMore={!!q.hasNextPage}
-        loadingMore={q.isFetchingNextPage}
+        hasMore={!liveOnly && !!q.hasNextPage}
+        loadingMore={!liveOnly && q.isFetchingNextPage}
         onLoadMore={loadMore}
         canAct={canWrite}
         onAction={(row, a) => action.mutate({ row, action: a })}

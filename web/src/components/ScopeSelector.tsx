@@ -7,7 +7,7 @@ import { useScope } from '../api/context';
 import { useNodes } from '../api/hooks';
 import { SelectField } from './fields/SelectField';
 
-export function ScopeSelector() {
+export function ScopeSelector({ allLabel, response }: { allLabel?: string; response?: ResponseScope }) {
   const { scope, node, setScope } = useScope();
   const nodes = useNodes();
   const value = scope === 'node' && node ? node : '';
@@ -19,8 +19,9 @@ export function ScopeSelector() {
       isLabelHidden
       size="sm"
       value={value}
-      emptyLabel={`All nodes${names.length ? ` (${names.length})` : ''}`}
+      emptyLabel={allLabel ?? `All nodes${names.length ? ` (${names.length})` : ''}`}
       options={names.map((n) => ({ value: n, label: n }))}
+      help={scopeWarning(response)}
       onChange={(v) => setScope(v ? { scope: 'node', node: v } : { scope: 'cluster' })}
     />
   );
@@ -34,15 +35,20 @@ export interface ResponseScope {
   source?: string;
 }
 
-/** "All nodes: a, b" / "Node kudurru-0" with partial-result warning; "(central database)" when it answered. */
+function scopeWarning(scope?: ResponseScope): string | undefined {
+  if (!scope?.partial) return undefined;
+  const failed = scope.nodes.filter((n) => !n.ok).length;
+  return failed ? `Partial results: ${failed} ${failed === 1 ? 'node' : 'nodes'} delayed or unavailable` : 'Partial results';
+}
+
+/** A bounded summary: node counts instead of a growing list of pod names. */
 export function ScopeNote({ scope }: { scope?: ResponseScope }) {
   if (!scope) return null;
-  const failed = scope.nodes.filter((n) => !n.ok);
   return (
     <Text type="supporting" data-testid="scope-note">
-      {scope.scope === 'node' ? `Node ${scope.nodes.map((n) => n.name).join(', ')}` : `All nodes: ${scope.nodes.map((n) => n.name).join(', ')}`}
+      {scope.scope === 'node' ? `Node ${scope.nodes[0]?.name ?? ''}` : `All nodes (${scope.nodes.length})`}
       {scope.source === 'central' ? ' (central database)' : ''}
-      {scope.partial ? ` (partial: ${failed.map((n) => n.name).join(', ')} did not answer)` : ''}
+      {scope.partial ? ` · ${scopeWarning(scope)}` : ''}
     </Text>
   );
 }
