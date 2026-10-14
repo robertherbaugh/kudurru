@@ -41,6 +41,9 @@ the shared security section. They check the combined count and byte limits befor
 staging a new auth manifest, including other rows staged after the command loaded
 auth state. Exceeding those limits rolls back the complete command; another
 owner’s capacity cannot silently make the next authentication image unreadable.
+Current transaction reads first use scalar SQL row and byte counts, including
+staged data, before allocating section payloads. Malformed historical data cannot
+bypass those limits merely because it predates owner validation.
 
 `internal/auth/providerregistry` owns a separate `oidc-provider/v1/root` manifest
 in the same replicated section. Configured providers receive independent durable
@@ -70,8 +73,31 @@ command. Followers receive them only in a complete image. The replica feature
 rejects missing or incomplete inventories before installation, serving capture or
 promotion. The complete builder derives config-provider precedence from that
 same registry image; local resource omission cannot reveal a shadowed object.
-Background resource acquisition, current command pins and production login/HTTP
-assembly remain separate integration work.
+
+`internal/auth/providerresources` acquires discovery and JWKS in bounded background
+jobs. Each immutable resource binds the actual credential fingerprint, explicit
+trust roots, endpoint and algorithm policy, management entitlement, and the exact
+accepted source receipt. Config and stored-object credential capabilities remain
+separate. Changed desired authority installs an unavailable resource before any
+network call; a privately verified acquisition candidate still needs durable
+receipt admission. Old jobs and held leases cannot revive across A → B → A.
+
+Current commands hold the resource pin through writer waits, final validation and
+commit, including no-op responses. Their provider dependencies come from the
+actual staged registry and IdentityProvider objects. Authority changes use
+publication exclusion, exclusive resource replacement, then SQLite in that order.
+They stage revocation floors before receipts and replace the desired resource cut
+before releasing exclusion. A failed replacement retires the memory cut and
+requires fresh canonical capture. Complete publication uses the same resource
+exclusion through its pointer swap. No network or credential resolution occurs
+under these guards or during authentication.
+
+Explicit TLS/origin policy, bounded document parsing and absolute resource
+freshness apply to discovery and JWKS refresh. Transient failures can retain only
+an unchanged resource until its original deadline; security mismatches retire it.
+Unknown token keys never initiate discovery. These resource and transaction
+adapters are tested with real TLS, SQLite and the publisher; the production
+coordinator and login/HTTP mounting remain integration work.
 
 ```mermaid
 flowchart LR
@@ -104,8 +130,7 @@ pass the retained raw proof to the current command verifier separately.
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
 revocation, current-command denial and cleanup on cancellation/panic. Production
-mounting, network provider resources and the public session
-workflow remain in progress. The
+mounting and the public session workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.
 
