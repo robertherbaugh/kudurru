@@ -21,8 +21,8 @@ import (
 // Order is the fixed stage order. "log" is implemented as an Observer
 // because it must see the final response; it is listed for documentation.
 var Order = []string{
-	"ingress", "identify", "control", "local", "authoritative", "blocking",
-	"rewrite", "cache", "dnssec", "upstream", "postprocess", "log",
+	"ingress", "identify", "control", "postprocess", "local", "authoritative", "blocking",
+	"rewrite", "cache", "dnssec", "upstream", "log",
 }
 
 // ErrNoAnswer is returned when every stage called next and nothing answered.
@@ -119,6 +119,12 @@ type Request struct {
 	// internal/policy depends on this package. The value is shared and
 	// immutable: stages must not modify it.
 	Policy any
+	// Resolution pins the immutable resolver/validator plan for this question.
+	// It is separate from any serving-configuration bundle held by a caller.
+	Resolution any
+	// DNSSECValidation overrides the resolver default for a forward zone.
+	// Nil inherits the global default. Earlier stages must not mutate it.
+	DNSSECValidation *bool
 }
 
 // Question returns the first question or a zero value.
@@ -131,12 +137,16 @@ func (r *Request) Question() dns.Question {
 
 // Response is what a stage produces.
 type Response struct {
-	Msg       *dns.Msg
-	Status    Status
-	Upstream  string // dictionary name, never a raw IP
-	List      string // matched list for the UI "why" row
-	Rule      string // matched rule text
-	Cacheable bool
+	Msg        *dns.Msg
+	Status     Status
+	Upstream   string // dictionary name, never a raw IP
+	List       string // matched list for the UI "why" row
+	Rule       string // matched rule text
+	Cacheable  bool
+	Origin     ResponseOrigin
+	Security   Security
+	Modified   bool
+	CacheScope CacheScope
 	// DNSSEC is the validation state of the answer: set by recursive
 	// upstream groups (and kept by the cache); unknown for everything
 	// kudurru did not validate.
