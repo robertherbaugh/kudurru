@@ -89,7 +89,10 @@ witnesses without compiling desired primary records. Native TSIG proofs retain
 their original deadline through final transaction admission. A bounded durable
 lifecycle driver and exact complete-bundle publication acknowledgment are tested
 together with real current keyring/policy exclusion. Production mounting,
-forwarding, NOTIFY sender binding and network UPDATE wiring remain open. RPZ has
+forwarding, NOTIFY sender binding and network UPDATE wiring remain in progress.
+Root request contexts retain the original elector token and cancellation, and
+complete runtime owners retain the exact prepared keyring installation for
+notification admission. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons; selected-policy stage rendering, production
 publication, reporting and UI are in progress.
@@ -106,17 +109,22 @@ proofs against staged transactional state. TOTP replay consumption and local
 session enrollment commit together, with explicit startup migration and
 restart/promotion coverage. Offline signed OIDC/CEL verification, captured provider
 matching, independent external identity/session enrollment and leased HTTP JWT
-authentication are implemented. Durable config-provider identity and acquired
-resource assembly are in progress; production route adoption, enrollment/recovery
+authentication are implemented. Durable config-provider identities, retained tombstones and complete accepted
+authority inventories now compose with auth revocation floors in one transaction.
+Complete owner validation gates replica installation and serving; acquired
+resource assembly is in progress; production route adoption, enrollment/recovery
 UI and the wider IAM/session acceptance remain open.
 
 The integration host and private ledger now fence per-instance execution,
 preserve operation intent and partial receipts, and enforce durable request
 budgets through retries. Preview and apply share an ownership-aware planner.
 The official Cloudflare SDK adapter and pending-operation host recovery have local
-server and actual-store acceptance. UniFi polling and inventory are in progress;
-production commit adapters, remaining providers, external-zone controls and the
-dashboard remain open.
+server and actual-store acceptance. UniFi read-only polling and inventory now use authenticated complete
+observations, absolute expiry and explicit collision allocations; optional legacy
+enrichment cannot renew assignments. Official and legacy acquisition have local
+HTTPS and actual host acceptance. Production source commit adapters, durable
+allocation storage, remaining providers, optional writes, external-zone controls
+and the dashboard remain open.
 
 None of these checkpoints closes an entire package prematurely. The remaining
 feature packages and detailed follow-ups below retain their full scope.
