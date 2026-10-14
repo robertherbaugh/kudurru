@@ -92,7 +92,7 @@ func prepare(t *edge.Topology) (*edge.Topology, error) {
 // A kudurru health answer is TXT "<node-id> <serial-epoch>"; the helper
 // returns the first TXT character-string of the answer section.
 const luaHealthHelpers = `local function kudurru_health_txt(dr)
-  if dr.dh:getRCODE() ~= DNSRCode.NOERROR then
+  if dr.rcode ~= DNSRCode.NOERROR then
     return nil
   end
   local packet = dr:getContent()

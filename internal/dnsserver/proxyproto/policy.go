@@ -81,10 +81,11 @@ var (
 func exemptLoopback(a netip.Addr) bool { return a == loopback4 || a == loopback6 }
 
 // Policy decides which PROXYv2 headers are honoured: the transport peer must
-// be listed in proxyProtocolFrom (hosts or CIDRs) and the header must carry
-// TLV 0xE0 equal to the shared secret. When no secret is configured only the
+// be listed in proxyProtocolFrom (hosts or CIDRs). PROXY commands must carry
+// TLV 0xE0 equal to the shared secret; LOCAL commands retain the transport
+// peer without requiring a TLV. When no secret is configured only the
 // loopback peers 127.0.0.1 and ::1 may send headers, without the TLV.
-// Everything else is dropped and counted.
+// Headers that fail these checks are dropped and counted.
 //
 // A nil or empty Policy is disabled: listeners do not inspect traffic at all.
 // A Policy is safe for concurrent use.
@@ -247,6 +248,12 @@ func (p *Policy) authenticate(peer netip.AddrPort, h *Header) (netip.AddrPort, b
 	if !p.Trusted(peerAddr) {
 		return netip.AddrPort{}, false, p.drop(ReasonUntrustedPeer, peer, errUntrusted)
 	}
+	// dnsdist uses LOCAL for health checks without the query-rule TLV.
+	// LOCAL never delegates an identity: retain the transport peer, just
+	// as for a plain DNS query. The peer allowlist still applies.
+	if h.Command == CommandLocal {
+		return peer, false, nil
+	}
 	if p.secret != nil {
 		v, ok := h.TLV(TLVTypeSecret)
 		if !ok {
@@ -259,9 +266,6 @@ func (p *Policy) authenticate(peer netip.AddrPort, h *Header) (netip.AddrPort, b
 		// Unreachable through NewPolicy; kept so a hand-built Policy fails
 		// closed.
 		return netip.AddrPort{}, false, p.drop(ReasonUnauthenticated, peer, errNeedTLV)
-	}
-	if h.Command == CommandLocal {
-		return peer, false, nil
 	}
 	switch h.Family {
 	case FamilyINET, FamilyINET6:
@@ -279,7 +283,7 @@ func (p *Policy) authenticate(peer netip.AddrPort, h *Header) (netip.AddrPort, b
 //
 //   - No signature: b is an ordinary query; it is returned unchanged,
 //     attributed to peer.
-//   - An authenticated header: the payload after the header is returned with
+//   - An accepted header: the payload after the header is returned with
 //     the client address from the header; proxied reports whether that
 //     address came from the header (false for LOCAL and AF_UNSPEC headers).
 //   - Anything else: the drop is counted and a *DropError returned.
@@ -310,7 +314,7 @@ func (p *Policy) Datagram(peer netip.AddrPort, b []byte) (payload []byte, client
 //
 //   - for a connection without a header, the bytes it consumed (to be
 //     replayed before further reads) and peer;
-//   - for an authenticated header, no bytes, the client address and whether
+//   - for an accepted header, no bytes, the client address and whether
 //     it came from the header;
 //   - otherwise a *DropError (counted) or the read error.
 //

@@ -212,6 +212,43 @@ func TestProxyProtocolEndToEnd(t *testing.T) {
 	}
 }
 
+// dnsdist's health checks use LOCAL without the per-query secret TLV.
+// A LOCAL header cannot claim a different client, even with source fields.
+func TestProxyProtocolLocalKeepsTransportPeer(t *testing.T) {
+	policy := mustPolicy(t, []string{"127.0.0.2/32"}, proxySecret)
+	f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoUDP}, {Protocol: ProtoTCP}}, proxy: policy})
+	wire, _ := query("example.com").Pack()
+	for _, proto := range []Protocol{ProtoUDP, ProtoTCP} {
+		t.Run(string(proto), func(t *testing.T) {
+			dst := f.addr(proto)
+			transport := proxyproto.TransportDatagram
+			if proto == ProtoTCP {
+				transport = proxyproto.TransportStream
+			}
+			h := proxyproto.Header{Command: proxyproto.CommandLocal, Family: proxyproto.FamilyINET, Transport: transport,
+				Source: realClient, Destination: netip.MustParseAddrPort(dst)}
+			prefix, err := h.Append(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var resp *dns.Msg
+			if proto == ProtoUDP {
+				resp, err = udpFrom(t, "127.0.0.2", dst, append(prefix, wire...), 2*time.Second)
+			} else {
+				resp, err = tcpFrom(t, "127.0.0.2", dst, prefix, wire, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkA(t, resp)
+			client, _ := f.rec.last(t)
+			if client.Addr.Addr() != netip.MustParseAddr("127.0.0.2") || client.ProxiedFrom.IsValid() {
+				t.Fatalf("LOCAL changed the client identity: %+v", client)
+			}
+		})
+	}
+}
+
 // TestProxyProtocolLoopbackWithoutSecret is the compose single-edge profile:
 // dnsdist shares the network namespace, proxyProtocolFrom is loopback only
 // and no secret is configured, so headers from 127.0.0.1 are honoured

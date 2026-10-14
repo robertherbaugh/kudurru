@@ -260,6 +260,11 @@ Service's EndpointSlices (`--backends-from
 endpointslice:<ns>/<release>-headless`) and exposes readiness and
 `/metrics` on :8084.
 
+Dnsdist uses a LOCAL PROXYv2 header for backend health checks.
+Kudurru accepts LOCAL from listed peers and keeps the transport peer as the
+client. LOCAL cannot delegate an identity. Normal PROXYv2 queries still
+need the TLV 0xE0 secret before Kudurru uses an advertised client address.
+
 The dnsdist container runs as uid 953 under the Restricted standard, and
 binds :53 through the pod's `ip_unprivileged_port_start` sysctl. Two cases
 need more than Kubernetes gives a non-root process, because added
@@ -298,8 +303,9 @@ vip:
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
 override `interface` and set `preemptDelay` (0-1000 seconds). Names and
-VRIDs and addresses must be unique, even when prefix lengths differ. VIPs and unicast peers must use the same address
-family. The first VIP prefers the first node by name; the second reverses
+VRIDs and addresses must be unique, even when prefix lengths differ. VIPs
+and unicast peers must use the same address family. The first VIP prefers
+the first node by name; the second reverses
 priorities, allowing active/active ownership. By default `nopreempt` keeps
 ownership stable after recovery; use `kudurru vip rebalance` or an entry's
 `preemptDelay` to restore the preferred owner. Leaving `vrrpInterface`
