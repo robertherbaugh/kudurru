@@ -155,4 +155,12 @@ func TestProviderChangesCommitFloorsAndReceiptsAtomically(t *testing.T) {
 	if !ownerState(t, st).ProviderFloors[0].ValidAfter.Equal(at.Add(3 * time.Second)) {
 		t.Fatal("withdrawal lost its floor")
 	}
+	// Management entitlement can return with byte-identical license and
+	// credentials. Explicit reactivation must still raise the old proof floor.
+	command(t, st, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		return AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{accepted}, at.Add(4*time.Second))
+	})
+	if !ownerState(t, st).ProviderFloors[0].ValidAfter.Equal(at.Add(4 * time.Second)) {
+		t.Fatal("identical receipt reactivation revived old proof authority")
+	}
 }

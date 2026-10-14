@@ -56,6 +56,14 @@ their accepted receipt. A newly configured provider retires a shadowed object's
 accepted authority. History has an explicit finite cap and is never silently
 evicted to recover capacity.
 
+Management entitlement loss and regain is a security transition even if the
+license or provider credentials return with identical bytes. The root owner
+must withdraw and later reactivate accepted authority with revocation floors,
+or assign a new captured entitlement identity and admit its changed receipt.
+Replaying an unchanged active receipt is deliberately a no-op and cannot record
+that transition. Denied entitlement performs no provider credential or network
+acquisition; current authentication reads the durable floors in its own command.
+
 SQLite startup initializes both owner roots together through an explicit fenced
 command. Followers receive them only in a complete image. The replica feature
 `provider-registry-v1` requires receiver support, and composed image validation
