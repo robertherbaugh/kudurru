@@ -174,6 +174,19 @@ target at entry and final commit. A newer publication cannot repair an old
 request. This memory-only check is safe inside the actual transaction hook;
 it does not replace current credential verification or dependency exclusion.
 
+The root current-command adapter retains the original elected episode and holds
+publication, provider, host/license/auth-key, TSIG, catalog and manager exclusion
+through the whole SQLite command. Only the coordinator's host wrapper expands
+these lower pins; the publication source and primary guard keep their existing
+base host pins. Current raw authentication runs before mutations or a dedup result.
+`ReauthorizeCurrentWithClock` retains private validity from that same successful
+verification and checks it again at final admission, including no-ops. Token
+expiry, enrolled cookie absolute/idle expiry and verified JWT time bounds reject
+at equality; a clock moving before authentication time also rejects. This final
+check performs no store read, parsing, crypto or policy evaluation. Password/TOTP
+consumption remains once in the transaction, and enrolled external cookies keep
+their own durable deadlines rather than inheriting the source JWT's expiry.
+
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
 revocation, current-command denial and cleanup on cancellation/panic. Production

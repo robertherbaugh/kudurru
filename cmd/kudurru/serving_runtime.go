@@ -173,7 +173,7 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
-	s.providers, err = providercoordinator.New(providercoordinator.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, Schema: authSchema, Host: s.host.Host, HostChanges: s.host.Changes, PinHost: s.host.PinHost, Admit: s.host.CheckAdmission, Now: o.Now})
+	s.providers, err = providercoordinator.New(providercoordinator.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, Schema: authSchema, Host: s.host.Host, HostChanges: s.host.Changes, PinHost: s.pinProviderHost, Admit: s.host.CheckAdmission, Now: o.Now})
 	if err != nil {
 		return nil, err
 	}
