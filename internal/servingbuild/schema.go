@@ -28,15 +28,16 @@ type Schema struct {
 	kinds     []replication.Kind
 	public    map[store.Kind]bool
 	entry     func(string, replication.Entry) error
+	image     func(*replication.Image) error
 }
 
 // NewSchema checks local registration before any candidate can be prepared.
-// The supplied scheme, validator and entry validator must remain immutable.
-func NewSchema(scheme *runtime.Scheme, validation *validator.Validator, entry func(string, replication.Entry) error) (*Schema, error) {
-	if scheme == nil || validation == nil || entry == nil {
+// The supplied scheme and row/image validators must remain immutable.
+func NewSchema(scheme *runtime.Scheme, validation *validator.Validator, entry func(string, replication.Entry) error, image func(*replication.Image) error) (*Schema, error) {
+	if scheme == nil || validation == nil || entry == nil || image == nil {
 		return nil, fmt.Errorf("servingbuild: complete local validators required")
 	}
-	s := &Schema{scheme: scheme, validator: validation, public: map[store.Kind]bool{}, entry: entry}
+	s := &Schema{scheme: scheme, validator: validation, public: map[store.Kind]bool{}, entry: entry, image: image}
 	for _, kind := range validation.Kinds() {
 		s.public[kind] = true
 	}
@@ -83,7 +84,7 @@ func compare(a, b string) int {
 }
 
 func (s *Schema) validation(ctx context.Context) replication.Validation {
-	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateObject: func(raw json.RawMessage) error {
+	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateImage: s.image, ValidateObject: func(raw json.RawMessage) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

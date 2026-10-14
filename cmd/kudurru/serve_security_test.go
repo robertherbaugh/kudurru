@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -45,6 +46,13 @@ func TestOpenStoreInitializesSecurityOnceAndValidatesOwnerRows(t *testing.T) {
 	owner, err := servingauth.DecodeSecurity(first.Payload.Security)
 	if err != nil || owner.Epoch != 1 {
 		t.Fatal("production driver did not seed owner manifest", err)
+	}
+	registry, err := providerregistry.Decode(first.Payload.Security, first.Term.ClusterID)
+	if err != nil || registry.Epoch() != 1 || len(registry.Sources()) != 0 {
+		t.Fatal("production driver did not seed explicit provider registry", err)
+	}
+	if _, _, err := st.ReadServingCandidate(t.Context()); err != nil {
+		t.Fatal("initialized owners not eligible for preparation", err)
 	}
 	when := time.Now().UTC()
 	err = st.Command(t.Context(), st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {

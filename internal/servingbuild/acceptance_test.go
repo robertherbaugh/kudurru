@@ -12,6 +12,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -105,7 +106,7 @@ func TestWholeBundleAfterActualFollowerInstallRestartAndPromotion(t *testing.T) 
 		private = append(private, store.Kind(kind))
 	}
 	open := func() *sqlite.Store {
-		st, err := sqlite.Open(path, sqlite.Options{Scheme: f.builder.opts.Schema.scheme, Validator: f.builder.opts.Schema.validator, InternalKinds: private, InitialMode: replication.Follower, Identity: "follower-b", ValidateReplicaEntry: servingauth.ValidateEntry})
+		st, err := sqlite.Open(path, sqlite.Options{Scheme: f.builder.opts.Schema.scheme, Validator: f.builder.opts.Schema.validator, InternalKinds: private, InitialMode: replication.Follower, Identity: "follower-b", ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
 		if err != nil {
 			t.Fatal(err)
 		}

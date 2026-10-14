@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
@@ -57,6 +58,10 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if err != nil {
 		return serving.Prepared{}, fmt.Errorf("servingbuild: primary image: %w", err)
 	}
+	registry, err := providerregistry.Decode(candidate.Image.Payload.Security, base.Term.ClusterID)
+	if err != nil {
+		return serving.Prepared{}, err
+	}
 	deps, err := opts.Capture(ctx, candidate.Image)
 	transferred := false
 	var owners *semanticOwners
@@ -74,6 +79,10 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if deps.Identity == "" || len(deps.Identity) > 512 || deps.Host == nil || deps.Current == nil || deps.Keys == nil {
 		return serving.Prepared{}, serving.ErrDependency
 	}
+	// Persisted config identity/precedence belongs to this candidate. A local
+	// resource capture cannot omit a configured provider to reveal an object
+	// with the same ID; absent or mismatched resources remain unavailable.
+	deps.Auth.ConfigProviders = registry.ConfigSources()
 	owners, err = prepareSemantic(ctx, candidate, opts, deps, now)
 	if err != nil {
 		owners = nil // prepareSemantic already retired its partial resources.

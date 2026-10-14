@@ -26,7 +26,7 @@ func openSecurityStore(t *testing.T, path string) *sqlite.Store {
 	return openSecurityStoreValidator(t, path, servingauth.ValidateEntry)
 }
 
-func openSecurityStoreValidator(t *testing.T, path string, validateEntry func(string, replication.Entry) error) *sqlite.Store {
+func openSecurityStoreValidator(t *testing.T, path string, validateEntry func(string, replication.Entry) error, validateImage ...func(*replication.Image) error) *sqlite.Store {
 	t.Helper()
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
@@ -40,7 +40,11 @@ func openSecurityStoreValidator(t *testing.T, path string, validateEntry func(st
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: v, ValidateReplicaEntry: validateEntry})
+	var imageValidator func(*replication.Image) error
+	if len(validateImage) > 0 {
+		imageValidator = validateImage[0]
+	}
+	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, InternalKinds: private, Validator: v, ValidateReplicaEntry: validateEntry, ValidateReplicaImage: imageValidator})
 	if err != nil {
 		t.Fatal(err)
 	}

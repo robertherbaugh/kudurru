@@ -40,7 +40,30 @@ Startup initialization and security commands account for every owner's rows in
 the shared security section. They check the combined count and byte limits before
 staging a new auth manifest, including other rows staged after the command loaded
 auth state. Exceeding those limits rolls back the complete command; another
-owner's capacity cannot silently make the next authentication image unreadable.
+owner’s capacity cannot silently make the next authentication image unreadable.
+
+`internal/auth/providerregistry` owns a separate `oidc-provider/v1/root` manifest
+in the same replicated section. Configured providers receive independent durable
+UIDs and creation times; spec edits retain them, removal retains a tombstone, and
+recreation gets a new UID. Both config and object providers have exact accepted
+credential/trust/entitlement receipts. Replacing or withdrawing a receipt raises
+the old incarnation's auth floor in the same SQLite command, before staging the
+registry plan. No-op receipt admission still checks the actual staged source.
+
+Authority acceptance supplies the complete active inventory across both origins.
+Omitted receipts become inactive history; unavailable unchanged providers retain
+their accepted receipt. A newly configured provider retires a shadowed object's
+accepted authority. History has an explicit finite cap and is never silently
+evicted to recover capacity.
+
+SQLite startup initializes both owner roots together through an explicit fenced
+command. Followers receive them only in a complete image. The replica feature
+`provider-registry-v1` requires receiver support, and composed image validation
+rejects missing or incomplete inventories before installation, serving capture or
+promotion. The complete builder derives config-provider precedence from that
+same registry image; local resource omission cannot reveal a shadowed object.
+Background resource acquisition, current command pins and production login/HTTP
+assembly remain separate integration work.
 
 ```mermaid
 flowchart LR

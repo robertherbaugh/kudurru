@@ -67,7 +67,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/settings"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
-	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -160,7 +159,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
 			Validator: v, Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
-			ValidateReplicaEntry: servingauth.ValidateEntry,
+			ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage,
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
@@ -170,11 +169,11 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		case err != nil:
 			return nil, nil, nil, err
 		}
-		// Seed the explicit auth-owner manifest once, under the same persisted
+		// Seed both explicit security-owner manifests under the same persisted
 		// writer fence as commands. An enrolled follower receives it only from
 		// its complete primary image; missing or malformed history is not reset.
 		if s.Authority().Writable() {
-			if err := s.Command(ctx, s.Authority().Term, security.Initialize); err != nil {
+			if err := s.Command(ctx, s.Authority().Term, security.InitializeOwners); err != nil {
 				_ = s.Close()
 				return nil, nil, nil, fmt.Errorf("initialize auth security: %w", err)
 			}

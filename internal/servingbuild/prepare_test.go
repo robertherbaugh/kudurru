@@ -80,12 +80,12 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 	for _, kind := range runtimekinds.Private() {
 		private = append(private, store.Kind(kind))
 	}
-	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: servingauth.ValidateEntry})
+	f.store, err = sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: private, ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.store.Close() })
-	schema, err := NewSchema(scheme, v, servingauth.ValidateEntry)
+	schema, err := NewSchema(scheme, v, security.ValidateEntry, security.ValidateImage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
 	var id string
 	f.token, id = tokens.Generate()
 	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if err := security.Initialize(ctx, tx); err != nil {
+		if err := security.InitializeOwners(ctx, tx); err != nil {
 			return err
 		}
 		u, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice", CreationTimestamp: metav1.NewTime(f.now.Add(-time.Hour))}, Spec: internalv1.LocalUserSpec{Groups: []string{"staff"}}}, store.ApplyOptions{Manager: store.ManagerSystem})
