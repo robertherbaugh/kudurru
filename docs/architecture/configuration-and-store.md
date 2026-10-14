@@ -239,6 +239,12 @@ objects are moved automatically ([upgrade behavior](../deploy/helm.md#default-ob
 
 ### One writer per object
 
+`ApplyOptions.CreateOnly` requires the object to be absent at commit time.
+An existing object conflicts even when its content is identical or `Force` is
+set. SQLite checks within its transaction; Kubernetes uses a create request
+for both CRDs and private Secrets, so a concurrent creator cannot turn a
+bootstrap or migration operation into an update.
+
 Every write carries a **manager**, recorded as the object's owner in the
 `kudurru.io/managed-by` annotation: `api`, `file:<path>`,
 `integration:<name>`, `bootstrap` or `system`.

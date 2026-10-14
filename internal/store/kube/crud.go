@@ -181,6 +181,9 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		precondition := ""
 		switch {
 		case cur != nil:
+			if opts.CreateOnly {
+				return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+			}
 			if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != cur.ResourceVersion {
 				return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, cur.ResourceVersion, opts.ExpectedResourceVersion)
 			}
@@ -207,6 +210,17 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		u, err := applyPayload(ki, obj, opts.Manager, precondition)
 		if err != nil {
 			return nil, err
+		}
+		if opts.CreateOnly {
+			// SSA can update an object created after the GET. POST is the
+			// apiserver's atomic absence precondition, including equal specs.
+			if err := s.c.Create(ctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
+				if apierrors.IsAlreadyExists(err) {
+					return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+				}
+				return nil, writeError("create", key, err)
+			}
+			return fromUnstructured(ki, u)
 		}
 		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), applyOpts...)
 		if err == nil {

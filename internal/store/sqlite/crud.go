@@ -552,6 +552,9 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 		m.typ, m.action = store.Added, "create"
 	} else {
 		p := prev.obj
+		if opts.CreateOnly {
+			return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+		}
 		if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != p.GetResourceVersion() {
 			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, p.GetResourceVersion(), opts.ExpectedResourceVersion)
 		}

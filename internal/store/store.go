@@ -114,6 +114,9 @@ type ApplyOptions struct {
 	// ExpectedResourceVersion enables optimistic concurrency; a mismatch is
 	// ErrConflict.
 	ExpectedResourceVersion string
+	// CreateOnly requires an absent object. Existing objects conflict even
+	// when identical or Force is true; the check holds at the commit boundary.
+	CreateOnly bool
 	// Force overrides managedBy (admin only, audited).
 	Force bool
 }
