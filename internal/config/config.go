@@ -31,15 +31,16 @@ const EnvPrefix = "KUDURRU_"
 // Config is the typed view of kudurru.yaml. Node-scoped sections are host
 // local; cluster-scoped sections are the Kudurru singleton.
 type Config struct {
-	Node      Node        `koanf:"node" json:"node"`
-	Listeners Listeners   `koanf:"listeners" json:"listeners"`
-	Store     StoreConfig `koanf:"store" json:"store"`
-	DHCP      DHCP        `koanf:"dhcp" json:"dhcp"`
-	Upstreams Upstreams   `koanf:"upstreams" json:"upstreams"`
-	DNSSEC    DNSSEC      `koanf:"dnssec" json:"dnssec"`
-	Cache     Cache       `koanf:"cache" json:"cache"`
-	Blocking  Blocking    `koanf:"blocking" json:"blocking"`
-	BlockPage BlockPage   `koanf:"blockPage" json:"blockPage"`
+	Node      Node               `koanf:"node" json:"node"`
+	Listeners Listeners          `koanf:"listeners" json:"listeners"`
+	Store     StoreConfig        `koanf:"store" json:"store"`
+	DHCP      DHCP               `koanf:"dhcp" json:"dhcp"`
+	Upstreams Upstreams          `koanf:"upstreams" json:"upstreams"`
+	DNSSEC    DNSSEC             `koanf:"dnssec" json:"dnssec"`
+	Response  ResponseProcessing `koanf:"response" json:"response"`
+	Cache     Cache              `koanf:"cache" json:"cache"`
+	Blocking  Blocking           `koanf:"blocking" json:"blocking"`
+	BlockPage BlockPage          `koanf:"blockPage" json:"blockPage"`
 	// UnblockRequests configures the block page's request form.
 	UnblockRequests UnblockRequests `koanf:"unblockRequests" json:"unblockRequests"`
 	Querylog        Querylog        `koanf:"querylog" json:"querylog"`
@@ -617,6 +618,9 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Upstreams.validate()...)
 	errs = append(errs, c.Cache.validate()...)
 	if _, err := c.DNSSEC.Validator(nil); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := c.Response.Compile(); err != nil {
 		errs = append(errs, err)
 	}
 	errs = append(errs, c.Blocking.validate()...)

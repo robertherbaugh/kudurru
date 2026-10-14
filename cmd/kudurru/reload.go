@@ -16,6 +16,7 @@ import (
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
+	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
@@ -29,14 +30,15 @@ const upstreamRetireGrace = 30 * time.Second
 // restartRequired must be handled here; config.TestRestartRequired pins
 // the list.
 type reloadTargets struct {
-	logger    *slog.Logger
-	level     *slog.LevelVar
-	upstreams *upstreamstage.Stage
-	upOpts    upstream.Options
-	cache     *cache.Cache
-	cacheStg  *cachestage.Stage
-	blocking  *blockingstage.Stage
-	blockPage *blockpage.Server
+	logger      *slog.Logger
+	level       *slog.LevelVar
+	upstreams   *upstreamstage.Stage
+	upOpts      upstream.Options
+	cache       *cache.Cache
+	cacheStg    *cachestage.Stage
+	blocking    *blockingstage.Stage
+	blockPage   *blockpage.Server
+	postprocess *postprocess.Stage
 	// edgeFlush empties the local edge's resolver cache when the block
 	// answers change; nil skips it.
 	edgeFlush *dnsdist.CacheFlusher
@@ -100,6 +102,17 @@ func subscribeReload(ctx context.Context, r *config.Reloadable, t reloadTargets)
 				t.cache.Flush()
 			}
 			t.cacheStg.SetDisabled(off)
+		}
+		if config.ChangedUnder(changed, "response") && t.postprocess != nil {
+			settings, err := next.Response.Compile()
+			if err != nil {
+				log.Error("response settings not applied", "err", err)
+			} else {
+				t.postprocess.SetSettings(settings)
+				if t.edgeFlush != nil {
+					t.edgeFlush.BlockResponsesChanged()
+				}
+			}
 		}
 		if config.ChangedUnder(changed, "blocking", "blockPage") && t.blocking != nil {
 			t.blocking.Reconfigure(blockingstage.OptionsFromConfig(next))

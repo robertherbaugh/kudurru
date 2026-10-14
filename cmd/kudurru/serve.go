@@ -73,6 +73,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	logstage "github.com/robertherbaugh/kudurru/internal/stages/log"
 	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
+	"github.com/robertherbaugh/kudurru/internal/stages/rewrite"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
@@ -696,13 +697,20 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	auth.Notify = notifyReceiver.Handle
 	auth.StubQuery = stubClient.Exchange
 
+	responseSettings, err := cfg.Response.Compile()
+	if err != nil {
+		return err
+	}
+	post := &postprocess.Stage{}
+	post.SetSettings(responseSettings)
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
 		identify.New(polSrc, nil),
 		control.New(control.Options{}),
-		&postprocess.Stage{},
+		post,
 		auth,
 		bs,
+		&rewrite.Stage{},
 	}
 	// The cache stage always exists; cache.maxEntries 0 makes it pass
 	// queries through, so the key can change at runtime.
@@ -1047,7 +1055,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	subscribeReload(ctx, reload, reloadTargets{
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
+		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
 	})
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {

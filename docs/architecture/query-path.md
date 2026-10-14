@@ -12,17 +12,19 @@ wiring in `cmd/kudurru/serve.go`.
 ```mermaid
 flowchart LR
     I[ingress] --> ID[identify] --> C[control] --> P[postprocess]
-    P --> A[authoritative] --> B[blocking] --> K[cache] --> D[dnssec] --> U[upstream]
+    P --> A[authoritative] --> B[blocking] --> R[rewrite] --> K[cache] --> D[dnssec] --> U[upstream]
     U -. raw answer .-> D
     D -. validated raw answer .-> K
-    K -. client copy .-> B
+    K -. client copy .-> R
+    R -. synthesized response .-> B
     B -. response .-> P
-    P -. final flags and proof representation .-> L[log observer]
+    P -. rebinding and final flags .-> L[log observer]
 ```
 
 `postprocess` is a wrapper: it runs on the way back from the answering
-stages. `upstream` stays terminal. Reserved `local` and `rewrite` stages
-fit after postprocess and blocking, respectively.
+stages. `upstream` stays terminal. The reserved `local` stage fits after
+postprocess. `rewrite` wraps the raw cache so every hit receives the current
+client policy before response blocking and rebinding checks.
 
 ## Before the pipeline: transports
 
@@ -77,12 +79,13 @@ NOTAUTH by the transport, also before the pipeline.
 | 1 | `ingress` | Is this query sane, and is the client within its rate? | TC=1 or silence over the UDP rate limit; NOTIMP for opcodes other than QUERY, NOTIFY and UPDATE; FORMERR; BADVERS; REFUSED for `ANY`; CHAOS `id.server`/`version.bind`; the `health.kudurru.internal.` TXT | `blocked_rate_limit`, `dropped`, `refused_acl`, `special_domain` |
 | 2 | `identify` | Which client groups, which policy? | never answers; attaches `Client.GroupIDs` and the policy decision | none |
 | 3 | `control` | Is the message malformed? | nothing (a drop) | `dropped` |
-| 4 | `postprocess` | What may this client receive? | on response unwinding, finalizes AD/CD/DO from local security provenance on a private copy | preserves the answering status |
+| 4 | `postprocess` | What may this client receive? | captures response settings; on response unwinding, checks rebinding and finalizes AD/CD/DO on a private copy | preserves the answering status |
 | 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced` |
 | 6 | `blocking` | Is the name blocked for this client? | a block answer, a safe-search CNAME; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch` |
-| 7 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
-| 8 | `dnssec` | Is the raw forwarded answer authentic? | validates proofs when enabled; SERVFAIL and EDE for bogus or indeterminate data | `dnssec_bogus` |
-| 9 | `upstream` | Who knows the answer? | always answers (it is the last stage); recursive groups resolve from the root and validate DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
+| 7 | `rewrite` | What response does this client need? | configured rewrites, DNS64, AAAA filtering and NXDOMAIN handling; synthesis clears AD and obsolete proofs | `local_record` for configured rewrites; otherwise preserves source status |
+| 8 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
+| 9 | `dnssec` | Is the raw forwarded answer authentic? | validates proofs when enabled; SERVFAIL and EDE for bogus or indeterminate data | `dnssec_bogus` |
+| 10 | `upstream` | Who knows the answer? | always answers (it is the last stage); recursive groups resolve from the root and validate DNSSEC | `forwarded`, `servfail_upstream`, `timeout_upstream`, `dnssec_bogus` |
 
 The order puts the cheap and the certain first. Authoritative answers come
 before blocking, so your own zones are never blocked. Blocking comes before
@@ -286,10 +289,11 @@ there.
 
 ## Not built yet
 
-`local` (custom host records, `.local`/`.onion`/RFC 6303 answers) and `rewrite`
-(DNS rewrites, views, DNS64) remain reserved in `pipeline.Order`. The installed
-postprocess wrapper currently finalizes security flags and proof visibility;
-rebinding protection and the other response modifiers remain subsequent work. Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
+`local` (custom host records, `.local`/`.onion`/RFC 6303 answers) remains
+reserved in `pipeline.Order`; client-group authoritative views remain subsequent
+work. [Response processing](../deploy/response-processing.md) implements
+configured rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding.
+Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`. The control stage has no
 configuration keys yet, so it only drops malformed queries.
 

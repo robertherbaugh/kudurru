@@ -122,6 +122,9 @@ type Request struct {
 	// Resolution pins the immutable resolver/validator plan for this question.
 	// It is separate from any serving-configuration bundle held by a caller.
 	Resolution any
+	// ResponseSettings is the immutable response-processing plan captured by
+	// postprocess before entering answering stages. Subqueries inherit it.
+	ResponseSettings any
 	// DNSSECValidation overrides the resolver default for a forward zone.
 	// Nil inherits the global default. Earlier stages must not mutate it.
 	DNSSECValidation *bool
