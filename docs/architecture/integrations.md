@@ -9,8 +9,8 @@ The [sample](../../config/samples/kudurru.io_v1alpha1_integration.yaml) starts
 suspended so applying an example cannot publish records.
 
 The schema, credential resolver, publication planner, durable ownership ledger,
-background host and Cloudflare SDK adapter are implemented. Production commit
-adapters, other providers and API/dashboard controls remain parts of the full
+background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
+Production commit adapters, remaining providers and API/dashboard controls remain parts of the full
 [v0.2 implementation](../v0.2/README.md).
 
 ```mermaid
@@ -172,5 +172,52 @@ flowchart LR
 
 Actual SDK tests against local HTTP servers cover UID-bound ownership, paging
 drift, wire records, partial batches, ambiguous responses and restart recovery.
-Production admission/mounting and host recovery of mixed intermediate attributes
-remain required before enabling the adapter in a running server.
+Host recovery covers mixed intermediate attributes. Production admission and
+mounting remain required before enabling the adapter in a running server.
+
+## UniFi inventory adapter
+
+`ee/integration/unifi` polls the official UniFi Network API over verified HTTPS.
+The supported read contract is Network 10.6.106. It uses the MIT-licensed
+unpoller/unifi data types and request builder; every actual request still passes
+through the host's original context and durable request budget. Redirects,
+ambient proxies and hidden retries are disabled. An explicit leaf-certificate
+pin replaces CA trust while retaining hostname and certificate-time checks.
+
+Site, network and connected-client pagination has bounded pages, bytes, attempts
+and total observations. Complete client assignments are read twice, followed by
+site/network/version verification; observed drift publishes nothing. Optional
+legacy enrichment is limited to supported local Network 9/10 endpoints. Saved
+names and notes can enrich metadata, but historical timestamps and fixed-IP
+reservations never create a fresh address claim.
+
+Successful connected-client observations produce absolute expiry, normally three
+poll intervals. Failed polls retain that original deadline; complete omission
+withdraws an address immediately. Restart requires a new observation. Ambiguous
+address claims never fall back to an older owner. Queries read only the immutable
+published inventory, including after the controller becomes unavailable.
+
+When DNS inventory is enabled, the host lends the provider a copy of its original
+captured destination zone. Forward records retain each observation's expiry.
+Explicit authenticated network prefixes define bounded reverse-zone coverage;
+PTRs require a live, unambiguous address and a unique allocated forward name.
+Network/note groups contribute MAC matchers only, preserving IP reassignment
+semantics. Devices without MACs cannot acquire group membership through an IP.
+
+```mermaid
+flowchart LR
+    Host["Original host cut + request budget"] --> Poll["Bounded authenticated complete reads"]
+    Poll --> Facts["Connected assignments with absolute expiry"]
+    Facts --> Names["Explicit stable name allocations"]
+    Names --> Desired["Forward/PTR records and MAC group contributions"]
+    Facts --> Inventory["Immutable query inventory"]
+    Desired --> Commit["Root-owned current admission and publication"]
+```
+
+Collision names require an explicit allocation map; absent ambiguous allocations
+fail closed. Production durable allocation, source-owned record/group merging,
+manual membership preservation and reverse-child lifecycle admission remain root
+integration work. Local HTTPS and actual host tests cover rotation, lease loss,
+expiry, restart, drift, TLS, budget/cancellation and query-time memory isolation.
+Optional DHCP DNS pushes, gateway mirroring and actions remain subsequent slices;
+unsupported configured writes currently return an error.
