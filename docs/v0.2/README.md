@@ -100,6 +100,11 @@ transaction acceptance pass; the separate source-new/head-old serving-readiness
 window remains under correction before production mounting.
 The root runtime assembly is tested with the complete publisher; production
 mounting, Kubernetes barriers and forwarding remain in progress.
+The combined root assembly now runs provider acquisition/publication on every
+role and resets provider floors under the original elected writer before primary
+work. Actual elector, native UPDATE, license replacement, restart/promotion and
+joined shutdown checks pass. SQLite startup initializes canonical public settings
+once, retaining existing values and excluding local environment overrides.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh

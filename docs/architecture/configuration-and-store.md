@@ -593,6 +593,12 @@ retain their local values; canonical input is validated even when a local lock
 would override it. Initial seeding does not distribute a node's environment
 values. The host and source document remain unchanged during preparation.
 
+SQLite startup now seeds a missing singleton in the same actual command that
+initializes private runtime manifests. It captures only public cluster settings
+from the primary's existing effective configuration; environment-locked keys use
+compiled defaults. A present singleton is preserved exactly on later starts,
+including after host configuration changes. Followers never seed it locally.
+
 ```mermaid
 flowchart LR
     Metadata["config.Schema"] --> Admission["Generated Kudurru admission schema"]
@@ -606,10 +612,9 @@ flowchart LR
 
 The object also carries absolute blocking-disable state in status: an optional
 `disabledUntil` requires `disabled: true`; an absent deadline means indefinite.
-Expiry never restarts with a process. Canonical command writes, migration from
-the old settings-file layer, and production bundle publication are subsequent
-integration steps; the schema and preparation helper alone do not switch the
-existing settings writer.
+Expiry never restarts with a process. Canonical API command writes and production
+bundle mounting remain integration steps; startup migration does not switch the
+existing settings writer by itself.
 
 
 ## Complete serving publication
@@ -697,8 +702,16 @@ a scale optimization.
 The publisher, builder, store barrier and DNS/HTTP adapters are tested against real
 SQLite publication, concurrent owner changes, missing list bodies, rollback,
 retirement, restart, replica installation, promotion and native UDP/TCP listeners.
-Command assembly, production mounting, activation and three-process partition/
-rejoin acceptance remain integration work. Installed data is never reported as Served
+The root SQLite assembly now connects providerhost, coordinator, complete
+publication, current command pins, primary driver and status projection. Its
+always-on workers perform acquisition and publication on every role; a separate
+writer entry retains the original elector token, resets provider floors, reconciles
+the startup config-provider manifest and joins old work before replacement.
+License and manager/catalog/key changes wake complete preparation. Native signed
+UPDATE, license replacement recovery, follower restart/promotion and joined
+shutdown are tested through this assembly. Production `serve.go` mounting and
+three-process partition/rejoin acceptance remain integration work.
+Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of
 a higher term; this publication mechanism does not provide consensus.
