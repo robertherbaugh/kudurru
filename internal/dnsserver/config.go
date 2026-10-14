@@ -23,16 +23,24 @@ func SpecsFromConfig(l config.Listeners) []Spec {
 		return Spec{Protocol: p, Address: address, Path: path, CertFile: t.CertFile, KeyFile: t.KeyFile}
 	}
 	for _, x := range l.DoT {
-		specs = append(specs, tlsSpec(ProtoDoT, x.Address, "", x.TLS))
+		s := tlsSpec(ProtoDoT, x.Address, "", x.TLS)
+		s.ClientIDDomain = x.ClientIDDomain
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoH {
-		specs = append(specs, tlsSpec(ProtoDoH, x.Address, x.Path, x.TLS))
+		s := tlsSpec(ProtoDoH, x.Address, x.Path, x.TLS)
+		s.ClientIDs = x.ClientIDs
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoQ {
-		specs = append(specs, tlsSpec(ProtoDoQ, x.Address, "", x.TLS))
+		s := tlsSpec(ProtoDoQ, x.Address, "", x.TLS)
+		s.ClientIDDomain = x.ClientIDDomain
+		specs = append(specs, s)
 	}
 	for _, x := range l.DoH3 {
-		specs = append(specs, tlsSpec(ProtoDoH3, x.Address, x.Path, x.TLS))
+		s := tlsSpec(ProtoDoH3, x.Address, x.Path, x.TLS)
+		s.ClientIDs = x.ClientIDs
+		specs = append(specs, s)
 	}
 	return specs
 }

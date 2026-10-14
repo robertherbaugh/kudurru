@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"encoding/binary"
 	"errors"
@@ -245,7 +247,9 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 		return
 	}
 
-	resp := l.env.handler.resolveFreshID(st.Context(), req, clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ))
+	client := clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ)
+	client.ClientID = clientid.FromSNI(conn.ConnectionState().TLS.ServerName, l.spec.ClientIDDomain)
+	resp := l.env.handler.resolveFreshID(st.Context(), req, client)
 	if resp == nil {
 		// A pipeline drop: reset the stream without a response.
 		st.CancelRead(DoQRequestCancelled)

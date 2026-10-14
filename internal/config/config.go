@@ -3,6 +3,8 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"errors"
 	"fmt"
 	"net/netip"
@@ -147,6 +149,8 @@ type TLSFiles struct {
 type TLSListener struct {
 	Address string   `koanf:"address" json:"address"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDDomain opts into <id>.<domain> SNI policy selectors.
+	ClientIDDomain string `koanf:"clientIDDomain" json:"clientIDDomain,omitempty"`
 }
 
 // HTTPListener is a DoH (tcp, h2 and http/1.1) or DoH3 (udp, h3) bind.
@@ -154,6 +158,8 @@ type HTTPListener struct {
 	Address string   `koanf:"address" json:"address"`
 	Path    string   `koanf:"path" json:"path"`
 	TLS     TLSFiles `koanf:"tls" json:"tls"`
+	// ClientIDs opts into /path/<id> policy selectors, never authentication.
+	ClientIDs bool `koanf:"clientIDs" json:"clientIDs,omitempty"`
 }
 
 // Listener is an HTTP bind.
@@ -688,6 +694,20 @@ func (c *Cache) validate() []error {
 // listener.
 func (l *Listeners) validateTLS() []error {
 	var errs []error
+	for _, listeners := range [][]TLSListener{l.DoT, l.DoQ} {
+		for _, listener := range listeners {
+			if listener.ClientIDDomain != "" && !clientid.Domain(listener.ClientIDDomain) {
+				errs = append(errs, errors.New("listeners: clientIDDomain must be a DNS suffix with room for an ID label"))
+			}
+		}
+	}
+	for _, listeners := range [][]HTTPListener{l.DoH, l.DoH3} {
+		for _, listener := range listeners {
+			if listener.ClientIDs && strings.HasSuffix(listener.Path, "/") {
+				errs = append(errs, errors.New("listeners: client ID base path must not end with /"))
+			}
+		}
+	}
 	check := func(key string, i int, path string) {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			errs = append(errs, fmt.Errorf("listeners.%s[%d].path %q must start with /", key, i, path))

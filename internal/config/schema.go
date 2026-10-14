@@ -186,8 +186,8 @@ var (
 		listenerAddress("53"),
 		{Name: "protocols", Label: "Protocols", Help: "Transports served on this address: udp, tcp or both. Empty serves both, which is what devices expect.", Shape: Shape{Type: TypeStringList, Items: &Shape{Type: TypeString, Enum: dnsProtocols}, Default: []string{"udp", "tcp"}}},
 	}}
-	dotListenerShape   = &Shape{Type: TypeObject, Fields: []Field{listenerAddress("853"), listenerTLS}}
-	httpListenerShape  = &Shape{Type: TypeObject, Fields: []Field{listenerAddress("443"), listenerPath, listenerTLS}}
+	dotListenerShape   = &Shape{Type: TypeObject, Fields: []Field{listenerAddress("853"), listenerTLS, {Name: "clientIDDomain", Label: "Client ID domain", Help: "Optional DNS suffix for client policy IDs: phone.dot.example.com selects phone when this is dot.example.com. Requires a matching wildcard certificate. IDs are selectors, not authentication.", Shape: Shape{Type: TypeString, Format: FormatDomain}}}}
+	httpListenerShape  = &Shape{Type: TypeObject, Fields: []Field{listenerAddress("443"), listenerPath, listenerTLS, {Name: "clientIDs", Label: "Client ID paths", Help: "Accept /dns-query/phone (or the configured path plus /phone) as a client policy selector. IDs are client chosen and are not authentication.", Shape: Shape{Type: TypeBool, Default: false}}}}
 	upstreamGroupShape = &Shape{Type: TypeObject, Fields: []Field{
 		{Name: "mode", Label: "Mode", Help: "forward (default) sends queries to the servers below; recursive resolves names itself from the root servers, so no single provider sees every name, and validates DNSSEC (see upstreams.recursion).", Shape: Shape{Type: TypeString, Enum: upstreamModes, Default: UpstreamModeForward}},
 		{Name: "servers", Label: "Servers", Help: "DNS servers this group forwards to, e.g. 1.1.1.1, tls://dns.quad9.net or https://dns.google/dns-query. A bare address uses plain DNS on port 53; tls://, https://, quic://, h3:// and sdns:// stamps encrypt the queries. Prefix a display name with name=, e.g. cloudflare=tls://1.1.1.1. Required in forward mode; a recursive group has none.",

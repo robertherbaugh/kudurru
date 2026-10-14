@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"encoding/base64"
 	"errors"
@@ -27,14 +29,16 @@ const dohMIME = "application/dns-message"
 // GET with ?dns=<base64url> and POST with an application/dns-message body.
 // The response carries Cache-Control: max-age=<smallest TTL>.
 type dohHandler struct {
-	h       *Handler
-	path    string
-	proto   pipeline.Proto
-	maxBody int
+	h         *Handler
+	path      string
+	proto     pipeline.Proto
+	maxBody   int
+	clientIDs bool
 }
 
 func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != d.path {
+	id, matches := clientid.FromPath(r.URL.Path, d.path, d.clientIDs)
+	if !matches || r.URL.EscapedPath() != r.URL.Path {
 		http.NotFound(w, r)
 		return
 	}
@@ -85,7 +89,9 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed DNS message", http.StatusBadRequest)
 		return
 	}
-	resp := d.h.resolveFreshID(r.Context(), req, clientFromHTTP(r, d.proto))
+	client := clientFromHTTP(r, d.proto)
+	client.ClientID = id
+	resp := d.h.resolveFreshID(r.Context(), req, client)
 	if resp == nil {
 		// A pipeline drop: abort the exchange without a response (HTTP/2
 		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
@@ -99,7 +105,9 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	hdr := w.Header()
 	hdr.Set("Content-Type", dohMIME)
-	hdr.Set("Cache-Control", cacheControl(resp))
+	// Every reply can depend on client policy, even without an explicit ID.
+	// Shared HTTP caches must never reuse one client's answer for another.
+	hdr.Set("Cache-Control", "private, "+cacheControl(resp))
 	hdr.Set("Content-Length", strconv.Itoa(len(out)))
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
@@ -168,7 +176,7 @@ func newDoHListener(spec Spec, e *env) (Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, path: spec.Path, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
+	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
 	lim := e.limits
 	l.srv = &http.Server{
 		Handler:           l.handler,

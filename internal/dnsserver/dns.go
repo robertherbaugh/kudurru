@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"crypto/tls"
 	"errors"
@@ -275,7 +277,7 @@ func (l *dnsListener) Serve(ctx context.Context) error {
 
 // ServeDNS implements dns.Handler.
 func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	serveMiekg(l.env.handler, l.env, l.proto, w, r)
+	serveMiekg(l.env.handler, l.env, l.proto, w, r, l.spec.ClientIDDomain)
 }
 
 // serveMiekg answers one message delivered by a miekg/dns server. Requests
@@ -285,8 +287,15 @@ func (l *dnsListener) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // over UDP nothing is written, over TCP and DoT the connection is closed
 // (other queries pipelined on it are abandoned, as a client that is being
 // dropped deserves).
-func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg) {
+func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, r *dns.Msg, clientIDDomain ...string) {
 	client := clientFrom(w.RemoteAddr(), proto)
+	if client.ClientID == "" && proto == pipeline.ProtoDoT && len(clientIDDomain) > 0 {
+		if cs, ok := w.(dns.ConnectionStater); ok {
+			if state := cs.ConnectionState(); state != nil {
+				client.ClientID = clientid.FromSNI(state.ServerName, clientIDDomain[0])
+			}
+		}
+	}
 	sig, ok := verifyTSIG(h, e, w, r, &client)
 	if !ok {
 		return

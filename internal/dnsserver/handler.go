@@ -145,6 +145,7 @@ func clientFrom(addr net.Addr, proto pipeline.Proto) pipeline.Client {
 	if pa, ok := addr.(*proxyproto.Addr); ok {
 		c.Addr = pa.Client
 		c.ProxiedFrom = proxyproto.AddrPort(pa.Proxy).Addr()
+		c.ClientID = pa.ClientID
 		return c
 	}
 	c.Addr = proxyproto.AddrPort(addr)
