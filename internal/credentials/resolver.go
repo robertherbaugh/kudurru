@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,6 +28,14 @@ var (
 	// ErrUnavailable means an allowed credential cannot currently be loaded.
 	ErrUnavailable = errors.New("credential is unavailable")
 )
+
+// resolutionError preserves retry classification without exposing provider
+// response bodies through ordinary error formatting or diagnostics.
+type resolutionError struct{ cause error }
+
+func (resolutionError) Error() string      { return ErrUnavailable.Error() }
+func (e resolutionError) GoString() string { return e.Error() }
+func (e resolutionError) Unwrap() []error  { return []error{ErrUnavailable, e.cause} }
 
 // Options is trusted node configuration. Public objects may select only these
 // capabilities; they cannot extend the namespace, path or environment lists.
@@ -113,7 +120,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref v1alpha1.CredentialReference
 		var err error
 		data, err = r.secret(ctx, r.namespace, s.Name, s.Key)
 		if err != nil {
-			return Value{}, fmt.Errorf("%w: Secret %s/%s", ErrUnavailable, r.namespace, s.Name)
+			return Value{}, resolutionError{cause: err}
 		}
 		identity = "secret:" + r.namespace + "/" + s.Name + "/" + s.Key
 	case ref.File != "":

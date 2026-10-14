@@ -42,12 +42,13 @@ types in the schema (`external`, `catalog`) are accepted but get
 `Ready=False, reason Unsupported`.
 
 Use one DNSZone per canonical apex. If different objects claim the same
-apex, the serving builder logs the conflict and retains the previously
-served zone for that apex. On cold start the first object by metadata name
-wins deterministically. Other zones keep rebuilding, and removing the
+apex, the serving builder logs the conflict and installs unavailable coverage
+for that apex. This v0.2 rule supersedes v0.1's last-good duplicate selection:
+neither ambiguous primary authority nor an acquired secondary may answer.
+Unrelated zones continue rebuilding, including on cold start. Removing the
 duplicate lets the affected zone publish its current data. Cross-object
 admission does not reject duplicates, so remove the conflicting object
-rather than relying on this fallback.
+to recover serving at that apex.
 
 | Type | kudurru does | Example |
 |---|---|---|

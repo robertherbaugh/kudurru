@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,11 +79,17 @@ func TestBoundedSecretsAndErrorRedaction(t *testing.T) {
 			t.Fatal("invalid credential accepted")
 		}
 	}
+	cause := errors.New("upstream response contains private-test-value")
 	r, _ := New(Options{Namespace: "resolver", Secret: func(context.Context, string, string, string) ([]byte, error) {
-		return nil, errors.New("upstream response contains private-test-value")
+		return nil, cause
 	}, FingerprintKey: bytes.Repeat([]byte{42}, 32)})
 	_, err := r.Resolve(t.Context(), v1alpha1.CredentialReference{SecretRef: &v1alpha1.CredentialSecretRef{Name: "provider", Key: "token"}})
-	if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), "private-test-value") {
-		t.Fatal("secret provider error leaked")
+	if !errors.Is(err, ErrUnavailable) || !errors.Is(err, cause) {
+		t.Fatal("secret provider error lost its retry classification")
+	}
+	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
+		if strings.Contains(fmt.Sprintf(format, err), "private-test-value") {
+			t.Fatal("secret provider error leaked")
+		}
 	}
 }

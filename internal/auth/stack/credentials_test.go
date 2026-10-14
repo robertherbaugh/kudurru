@@ -108,7 +108,7 @@ func TestConfiguredProviderKeepsNameAndSeparateFileCapability(t *testing.T) {
 		if err := os.Remove(file); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.s.rebuildRegistry(e.ctx); err != nil {
+		if err := e.s.rebuildRegistry(e.ctx, true); err != nil {
 			t.Fatal(err)
 		}
 		if _, ok := e.s.registry.Load().Provider("corp"); ok {

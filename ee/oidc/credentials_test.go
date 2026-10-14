@@ -3,6 +3,7 @@ package oidc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,5 +41,13 @@ func TestCredentialFilesNeedDelegationAndErrorsAreRedacted(t *testing.T) {
 	_, err = FromIdentityProvider(t.Context(), idp, func(context.Context, publicv1.CredentialReference) (string, error) { return "private-value", leaking })
 	if err == nil || strings.Contains(err.Error(), "private-value") {
 		t.Fatal("Secret resolver error not redacted")
+	}
+	if !errors.Is(err, leaking) {
+		t.Fatal("provider error lost its retry classification")
+	}
+	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
+		if strings.Contains(fmt.Sprintf(format, err), "private-value") {
+			t.Fatal("provider diagnostic leaked credential error")
+		}
 	}
 }

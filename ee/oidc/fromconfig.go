@@ -116,7 +116,7 @@ func FromIdentityProvider(ctx context.Context, idp *internalv1.IdentityProvider,
 	}
 	v, err := resolver(ctx, *s.ClientSecretRef)
 	if err != nil {
-		return cfg, fmt.Errorf("oidc provider %q: credential unavailable", idp.Name)
+		return cfg, credentialError{provider: idp.Name, cause: err}
 	}
 	cfg.ClientSecret = strings.TrimSpace(v)
 	return cfg, nil
@@ -128,3 +128,16 @@ func prefixOr(p *string, def string) string {
 	}
 	return *p
 }
+
+// credentialError keeps typed availability errors available to startup retry
+// policy without including credential-loader details in logs or API diagnoses.
+type credentialError struct {
+	provider string
+	cause    error
+}
+
+func (e credentialError) Error() string {
+	return fmt.Sprintf("oidc provider %q: clientSecretRef credential unavailable", e.provider)
+}
+func (e credentialError) GoString() string { return e.Error() }
+func (e credentialError) Unwrap() error    { return e.cause }

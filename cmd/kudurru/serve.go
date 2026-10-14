@@ -327,7 +327,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		identityGate = iamgate.New(migration)
-		_, status, err := identityGate.Capture(ctx)
+		initCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+		_, status, err := identityGate.Capture(initCtx)
+		cancel()
 		disableIdentityBootstrap = err != nil
 		if disableIdentityBootstrap {
 			logger.Warn("remote identity admission disabled; inspect kudurru iam migrate status", "state", status.State, "releaseNamespace", releaseNamespace)
