@@ -124,6 +124,11 @@ address; `--vrrp-interface` (`vip.keepalived.vrrpInterface`) optionally
 selects a separate interface for advertisements and default unicast
 source discovery.
 
+VIP names, addresses and VRIDs must be unique. Keepalived tracks both the
+VRRP interface and each VIP's address interface; loss of either link faults
+the instance and withdraws its address. Gratuitous ARP uses the address
+interface ([Helm guide](../deploy/helm.md)).
+
 The supervisor renders `keepalived.conf` (VRRPv3 unicast, `state BACKUP`,
 `nopreempt`, `auth_hmac`, priority `200 - 10 × index`), checks it, and runs
 keepalived. keepalived itself calls two kudurru programs:

@@ -142,7 +142,7 @@ func fakeDNSDist(args []string) int {
 		}
 		servers := []map[string]any{}
 		for i, b := range fc.backends {
-			servers = append(servers, map[string]any{"id": fmt.Sprint(i), "name": b, "address": b, "state": state})
+			servers = append(servers, map[string]any{"id": i, "name": b, "address": b, "state": state})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"daemon_type": "dnsdist", "version": "fake", "servers": servers})
 	})

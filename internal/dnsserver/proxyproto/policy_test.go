@@ -212,7 +212,8 @@ func TestDatagramMatrix(t *testing.T) {
 		{name: "::1 without secret accepted", policy: loopbackOnly, peer: loopbackV6, in: header(t, CommandProxy, nil), wantClient: realClient, wantProxied: true},
 		{name: "unlisted loopback alias dropped", policy: loopbackOnly, peer: loopbackB, in: header(t, CommandProxy, nil), wantDrop: ReasonUntrustedPeer},
 		{name: "LOCAL keeps the peer", policy: withSecret, peer: dnsdistA, in: header(t, CommandLocal, secretTLV(testSecret)), wantClient: dnsdistA},
-		{name: "LOCAL still needs the TLV", policy: withSecret, peer: dnsdistA, in: header(t, CommandLocal, nil), wantDrop: ReasonUnauthenticated},
+		{name: "LOCAL health check without TLV keeps the peer", policy: withSecret, peer: dnsdistA, in: header(t, CommandLocal, nil), wantClient: dnsdistA},
+		{name: "LOCAL from untrusted peer is dropped", policy: withSecret, peer: neighbour, in: header(t, CommandLocal, nil), wantDrop: ReasonUntrustedPeer},
 		{name: "no header from allowed peer is plain", policy: withSecret, peer: dnsdistA, in: nil, wantClient: dnsdistA},
 		{name: "no header from anyone is plain", policy: withSecret, peer: neighbour, in: nil, wantClient: neighbour},
 	}

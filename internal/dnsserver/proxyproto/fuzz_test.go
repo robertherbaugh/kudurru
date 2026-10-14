@@ -83,6 +83,12 @@ func FuzzDatagram(f *testing.F) {
 			if perr != nil {
 				t.Fatalf("accepted an unparsable header: %v", perr)
 			}
+			if h.Command == CommandLocal {
+				if client != peer || proxied {
+					t.Fatal("LOCAL must retain the transport identity")
+				}
+				continue
+			}
 			if v, ok := h.TLV(TLVTypeSecret); !ok || !bytes.Equal(v, testSecret) {
 				t.Fatal("accepted a header without the secret")
 			}

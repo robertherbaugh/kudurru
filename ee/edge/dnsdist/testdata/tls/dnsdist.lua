@@ -2,7 +2,7 @@
 -- Functions only: loaded next to dnsdist.yml without configuration directives.
 
 local function kudurru_health_txt(dr)
-  if dr.dh:getRCODE() ~= DNSRCode.NOERROR then
+  if dr.rcode ~= DNSRCode.NOERROR then
     return nil
   end
   local packet = dr:getContent()

@@ -38,14 +38,20 @@ flowchart TD
     SIG -- "no" --> PEER["client = transport peer"]
     SIG -- "yes" --> LIST{"peer listed in<br/>listeners.proxyProtocolFrom?<br/>(hosts, or CIDRs when<br/>a secret is set)"}
     LIST -- "no" --> DROP1["drop<br/>proxy_untrusted_peer"]
-    LIST -- "yes" --> SEC{"secret file<br/>configured?"}
+    LIST -- "yes" --> LOCAL{"LOCAL command?"}
+    LOCAL -- "yes (no delegated identity)" --> PEER
+    LOCAL -- "no" --> SEC{"secret file<br/>configured?"}
     SEC -- "yes" --> TLV{"TLV 0xE0 equals<br/>the secret?"}
     TLV -- "no" --> DROP2["drop<br/>proxy_unauthenticated"]
     TLV -- "yes" --> CMD
     SEC -- "no (only 127.0.0.1<br/>and ::1 may be listed)" --> CMD{"PROXY command"}
     CMD -- "PROXY, INET/INET6" --> HDR["client = address in the header<br/>ProxiedFrom = dnsdist"]
-    CMD -- "LOCAL / AF_UNSPEC" --> PEER
+    CMD -- "AF_UNSPEC" --> PEER
 ```
+
+Dnsdist health checks use LOCAL without the query-rule TLV.
+For LOCAL, Kudurru keeps the transport peer and applies no advertised identity.
+The peer allowlist still applies. PROXY commands still require the shared secret.
 
 Drops never reach the pipeline; they are counted in
 `kudurru_dns_dropped_total{reason}`. A bad TSIG signature is answered with
