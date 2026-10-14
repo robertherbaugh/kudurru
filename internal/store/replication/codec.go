@@ -13,7 +13,7 @@ import (
 )
 
 func FeatureNames() []string {
-	return []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1"}
+	return []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1"}
 }
 
 // Canonical checks duplicate JSON keys/depth and preserves numbers exactly.

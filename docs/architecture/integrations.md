@@ -175,6 +175,27 @@ drift, wire records, partial batches, ambiguous responses and restart recovery.
 Host recovery covers mixed intermediate attributes. Production admission and
 mounting remain required before enabling the adapter in a running server.
 
+## Durable inventory evidence
+
+`internal/inventory/persistence` stores the complete global inventory in the
+replication runtime section: one versioned root and immutable digest-addressed
+chunks. It retains source revisions, original observation and expiry timestamps,
+and winning, removed or ambiguous address ownership. Restart and replica install
+do not renew observations or reconstruct history from the current client list.
+
+The owner is limited to 257 rows and 64 MiB. Concrete SQLite commands check the
+literal owner prefix's row and byte totals before loading payloads. Replacement
+checks the exact root digest and generation, then stages one generation advance
+in the same transaction as the caller's source authority. A failed callback or
+final admission rolls back all staged rows.
+
+Writable SQLite startup initializes an explicit empty root only when no prior
+inventory rows or private source authority exist. Followers receive the root
+through replication. Complete image validation requires it, and the
+`inventory-state-v1` feature prevents peers without this owner from silently
+omitting it. Production source admission and allocation updates remain separate
+integration work.
+
 ## UniFi inventory adapter
 
 `ee/integration/unifi` polls the official UniFi Network API over verified HTTPS.

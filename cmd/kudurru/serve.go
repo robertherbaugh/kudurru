@@ -34,7 +34,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
-	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
@@ -66,6 +65,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
@@ -159,7 +159,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
 			Validator: v, Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
-			ValidateReplicaEntry: security.ValidateEntry, ValidateReplicaImage: security.ValidateImage,
+			ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage,
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
@@ -169,13 +169,15 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		case err != nil:
 			return nil, nil, nil, err
 		}
-		// Seed both explicit security-owner manifests under the same persisted
+		// Seed explicit security and inventory manifests under the same persisted
 		// writer fence as commands. An enrolled follower receives it only from
 		// its complete primary image; missing or malformed history is not reset.
 		if s.Authority().Writable() {
-			if err := s.Command(ctx, s.Authority().Term, security.InitializeOwners); err != nil {
+			if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				return runtimeowners.Initialize(ctx, tx, time.Now().UTC())
+			}); err != nil {
 				_ = s.Close()
-				return nil, nil, nil, fmt.Errorf("initialize auth security: %w", err)
+				return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
 			}
 		}
 		st = s
