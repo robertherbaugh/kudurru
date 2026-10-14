@@ -75,6 +75,13 @@ type Client struct {
 	ProxiedFrom netip.Addr
 	ClientID    string
 	MACs        []string
+	// Names and Tags are captured from the same immutable inventory snapshot
+	// as MACs. Names are normalized DNS names; tags are provider labels, not
+	// policy GroupIDs. Slices are shared and read-only.
+	Names, Tags []string
+	// IdentityCaptured also marks a known-empty inventory result so policy
+	// matching never consults a newer mutable hostname source mid-query.
+	IdentityCaptured bool
 	// GroupIDs are the client's ClientGroups ("namespace/name", sorted),
 	// set by the identify stage. The slice is shared with the policy
 	// index: read it, never modify it.

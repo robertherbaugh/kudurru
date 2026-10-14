@@ -18,6 +18,7 @@ package identify
 import (
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 )
@@ -32,6 +33,9 @@ type Source interface {
 type Stage struct {
 	src Source
 	now func() time.Time
+	// Inventory supplies complete immutable snapshots. It is optional for
+	// embedders; production always installs the shared inventory holder.
+	Inventory interface{ Snapshot() *inventory.Snapshot }
 }
 
 // New returns the stage. now is the clock for schedules when a request
@@ -48,16 +52,23 @@ func (s *Stage) Name() string { return "identify" }
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	at := req.Received
+	if at.IsZero() {
+		at = s.now()
+	}
+	if s.Inventory != nil && !req.Client.IdentityCaptured {
+		req.Client.IdentityCaptured = true
+		req.Client.MACs, req.Client.Names, req.Client.Tags = nil, nil, nil
+		if c := s.Inventory.Snapshot().Lookup(req.Client.Addr.Addr(), at); c != nil {
+			req.Client.MACs, req.Client.Names, req.Client.Tags = c.MACs, c.Names(), c.Tags
+		}
+	}
 	var ix *policy.Index
 	if s.src != nil {
 		ix = s.src.Index()
 	}
 	if ix == nil {
 		return next(req)
-	}
-	at := req.Received
-	if at.IsZero() {
-		at = s.now()
 	}
 	m := ix.Identify(req.Client)
 	req.Client.GroupIDs = m.GroupIDs

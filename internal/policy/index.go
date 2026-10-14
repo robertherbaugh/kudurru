@@ -45,6 +45,9 @@ type Options struct {
 	DefaultNamespace string
 	// Hostnames feeds the hostname and nameGlob tier; nil in v0.1.
 	Hostnames HostnameResolver
+	// Inventory enables MAC and captured hostname matching supplied by the
+	// identify stage. It does not perform any inventory reads during Build.
+	Inventory bool
 	// ExceptionScope says which deny rules a @@ exception cancels; the
 	// default blocking.ScopeList matches list semantics D73.
 	ExceptionScope blocking.ExceptionScope
@@ -395,13 +398,15 @@ func Build(in Input, opts Options) *Index {
 		b.compileGroup(i, g)
 	}
 	b.intern()
-	if len(b.needHosts) > 0 && opts.Hostnames == nil {
+	if len(b.needHosts) > 0 && opts.Hostnames == nil && !opts.Inventory {
 		for _, id := range b.needHosts {
 			b.diag("ClientGroup", id, ReasonUnsupported, "hostname and nameGlob matchers need a hostname source; none is configured, so they never match")
 		}
 	}
-	for _, id := range b.needMAC {
-		b.diag("ClientGroup", id, ReasonUnsupported, "mac matchers need an inventory integration (v0.2); they match only when the transport supplies MAC addresses")
+	if !opts.Inventory {
+		for _, id := range b.needMAC {
+			b.diag("ClientGroup", id, ReasonUnsupported, "mac matchers need an inventory source; none is configured")
+		}
 	}
 	slices.SortStableFunc(ix.diags, func(a, b Diagnosis) int {
 		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Object, b.Object), cmp.Compare(a.Reason, b.Reason), cmp.Compare(a.Message, b.Message))
@@ -900,15 +905,8 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 		}
 	}
 	if len(ix.mac) > 0 {
-		for _, raw := range c.MACs {
-			if m, ok := ix.mac[raw]; ok {
-				return m
-			}
-			if n, ok := normalizeMAC(raw); ok {
-				if m, ok := ix.mac[n]; ok {
-					return m
-				}
-			}
+		if m := ix.byMACs(c.MACs); m != nil {
+			return m
 		}
 	}
 	if valid {
@@ -919,8 +917,12 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 		if m := t.lookup(a); m != nil {
 			return m
 		}
-		if ix.hostnames != nil && (len(ix.hostname) > 0 || len(ix.globs) > 0) {
-			if m := ix.byHostname(ix.hostnames.Hostnames(a)); m != nil {
+		if len(ix.hostname) > 0 || len(ix.globs) > 0 {
+			names := c.Names
+			if !c.IdentityCaptured && ix.hostnames != nil {
+				names = ix.hostnames.Hostnames(a)
+			}
+			if m := ix.byHostname(names); m != nil {
 				return m
 			}
 		}
@@ -939,6 +941,42 @@ func (ix *Index) Identify(c pipeline.Client) *Membership {
 		}
 	}
 	return ix.def
+}
+
+func (ix *Index) byMACs(macs []string) *Membership {
+	var first *Membership
+	var groups []int
+	for _, raw := range macs {
+		m := ix.mac[raw]
+		if m == nil {
+			if n, ok := normalizeMAC(raw); ok {
+				m = ix.mac[n]
+			}
+		}
+		if m == nil || m == first {
+			continue
+		}
+		if first == nil {
+			first = m
+			continue
+		}
+		if groups == nil {
+			for _, id := range first.GroupIDs {
+				if n, ok := slices.BinarySearch(ix.groupIDs, id); ok {
+					groups = append(groups, n)
+				}
+			}
+		}
+		for _, id := range m.GroupIDs {
+			if n, ok := slices.BinarySearch(ix.groupIDs, id); ok && !slices.Contains(groups, n) {
+				groups = append(groups, n)
+			}
+		}
+	}
+	if groups == nil {
+		return first
+	}
+	return ix.joinMembership(groups, TierMAC)
 }
 
 // byHostname runs the hostname tier, then the nameGlob tier.
@@ -976,6 +1014,10 @@ func (ix *Index) byHostname(names []string) *Membership {
 		}
 		return ix.globOne[groups[0]]
 	}
+	return ix.joinMembership(groups, tier)
+}
+
+func (ix *Index) joinMembership(groups []int, tier Tier) *Membership {
 	slices.Sort(groups)
 	key := fmt.Sprintf("%d:%s", tier, groupKey(groups))
 	if m, ok := ix.dynamic.Load(key); ok {

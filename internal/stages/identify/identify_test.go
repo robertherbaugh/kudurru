@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 )
@@ -27,6 +28,49 @@ func index() *policy.Index {
 				Schedule: &v1alpha1.Schedule{Weekdays: []string{"mon"}, Start: "08:00", End: "12:00"}}},
 		},
 	}, policy.Options{})
+}
+
+func TestInventoryIdentityUsesOneLiveSnapshot(t *testing.T) {
+	now := time.Now()
+	inv := inventory.New(func() time.Time { return now })
+	ip := netip.MustParseAddr("192.0.2.9")
+	client := inventory.Client{ID: "phone", IPs: []netip.Addr{ip}, MACs: []string{"02:00:00:00:00:09"}, Hostname: "phone.lan", Tags: []string{"child"}, ObservedAt: now, ExpiresAt: now.Add(time.Minute)}
+	if err := inv.Replace("test", 1, []inventory.Client{client}); err != nil {
+		t.Fatal(err)
+	}
+	group := func(name string, matcher v1alpha1.ClientMatcher) *v1alpha1.ClientGroup {
+		return &v1alpha1.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{matcher}}}
+	}
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		group("default", v1alpha1.ClientMatcher{CIDR: "0.0.0.0/0"}),
+		group("device", v1alpha1.ClientMatcher{MAC: client.MACs[0]}),
+		group("hostname", v1alpha1.ClientMatcher{Hostname: client.Hostname}),
+		group("remote", v1alpha1.ClientMatcher{ClientID: "phone"}),
+	}}, policy.Options{Inventory: true})
+	st := New(policy.Static{Idx: ix}, func() time.Time { return now })
+	st.Inventory = inv
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	req := &pipeline.Request{Client: pipeline.Client{Addr: netip.AddrPortFrom(ip, 53), ClientID: "phone"}}
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"device"}) || !slices.Equal(req.Client.Tags, []string{"child"}) {
+		t.Fatalf("identity not applied: %+v", req.Client)
+	}
+	now = now.Add(time.Minute)
+	if _, err := st.Serve(req, next); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(req.Client.GroupIDs, []string{"device"}) {
+		t.Fatal("captured request identity changed during dependency resolution")
+	}
+	fresh := &pipeline.Request{Client: pipeline.Client{Addr: req.Client.Addr, ClientID: "phone"}}
+	if _, err := st.Serve(fresh, next); err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.Client.MACs) != 0 || !slices.Equal(fresh.Client.GroupIDs, []string{"remote"}) {
+		t.Fatalf("stale inventory masked ClientID: %+v", fresh.Client)
+	}
 }
 
 func TestServe(t *testing.T) {
