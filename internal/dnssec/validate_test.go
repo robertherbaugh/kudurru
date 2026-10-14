@@ -392,6 +392,27 @@ func TestNSEC3OptOutInsecureDelegation(t *testing.T) {
 	f.check(v, m, pipeline.ValidationBogus)
 }
 
+func TestDirectDSOptOutAndParentAuthority(t *testing.T) {
+	f := newFixture(t)
+	v := f.validator(Options{})
+	h := dns.HashName("example.", 1, 0, "")
+	n3 := f.rr(h + ".example. 300 IN NSEC3 1 1 0 - " + h + " NS SOA RRSIG DNSKEY")
+	m := f.reply("plain.example.", dns.TypeDS, 0, nil, append(f.sign(f.child, f.soa()), f.sign(f.child, n3)...))
+	f.check(v, m, pipeline.ValidationInsecure)
+	bad := m.Copy()
+	bad.Rcode = dns.RcodeNameError
+	f.check(v, bad, pipeline.ValidationBogus)
+	n3.(*dns.NSEC3).Flags = 0
+	m.Ns = append(f.sign(f.child, f.soa()), f.sign(f.child, n3)...)
+	f.check(v, m, pipeline.ValidationBogus)
+	// Exact signed NODATA for a non-delegation name remains secure.
+	m.Ns = append(f.sign(f.child, f.soa()), f.sign(f.child, f.rr("plain.example. 300 IN NSEC z.example. A RRSIG NSEC"))...)
+	f.check(v, m, pipeline.ValidationSecure)
+	// The child zone itself cannot deny the DS that is held by its parent.
+	m = f.reply("example.", dns.TypeDS, 0, nil, append(f.sign(f.child, f.soa()), f.sign(f.child, f.rr("example. 300 IN NSEC z.example. SOA NS RRSIG NSEC DNSKEY"))...))
+	f.check(v, m, pipeline.ValidationBogus)
+}
+
 func TestNTAExpiryIdentityAndImmutability(t *testing.T) {
 	f := newFixture(t)
 	nta := NTA{Domain: "EXAMPLE", Reason: "operator recovery", ExpiresAt: f.now.Add(time.Hour)}

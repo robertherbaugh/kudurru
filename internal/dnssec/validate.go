@@ -282,8 +282,24 @@ func (s *validation) validate(q dns.Question, m *dns.Msg) error {
 			if err := s.proofSets(ns, sk.name); err != nil {
 				return err
 			}
+			// DS belongs to the parent side of a cut. A child's signed SOA
+			// cannot establish absence of its parent's DS RRset.
+			if q.Qtype == dns.TypeDS && sk.name == name && name != "." {
+				return bogus("ds_denial_from_child", dns.ExtendedErrorCodeDNSBogus)
+			}
 			if err := s.denial(ns, sk.name, name, q.Qtype, m.Rcode == dns.RcodeNameError, false); err != nil {
-				return err
+				// A direct DS NODATA reply can use the parent's NSEC3 opt-out
+				// closest-encloser proof (RFC 5155 section 8.9). It establishes
+				// an insecure delegation, not secure name nonexistence; never
+				// apply this fallback to NXDOMAIN or assert AD for it (§9.2).
+				f, isFault := err.(*fault)
+				if q.Qtype != dns.TypeDS || m.Rcode != dns.RcodeSuccess || !isFault || f.reason != "wildcard_denial_missing" {
+					return err
+				}
+				if err := s.denial(ns, sk.name, name, q.Qtype, false, true); err != nil {
+					return err
+				}
+				s.insecure = true
 			}
 		}
 		break
