@@ -8,6 +8,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 )
 
 // Decision is the merged policy that applies to one client at one moment.
@@ -43,6 +44,12 @@ type Decision struct {
 	SafeSearch *bool
 	// SafeSearchMode is strict, moderate or empty (strict).
 	SafeSearchMode string
+	// Rewrites are ordered by policy priority, then specificity within each
+	// policy. Response overrides inherit each highest-priority explicit field.
+	Rewrites []*responsepolicy.Rewrite
+	Response *responsepolicy.Overrides
+	// ResponseInvalid fails recursive queries closed until invalid response configuration is corrected.
+	ResponseInvalid bool
 
 	// Selection holds the policy's lists resolved against the compiled
 	// lists of the same snapshot; nil when no policy applies.
@@ -108,7 +115,10 @@ type compiledPolicy struct {
 	sched    *schedule // nil: always active
 	// allow and block are the resolved snapshot names of allowListRefs and
 	// blockListRefs.
-	allow, block []string
+	allow, block    []string
+	rewrites        []*responsepolicy.Rewrite
+	response        *responsepolicy.Overrides
+	responseInvalid bool
 }
 
 // maxEagerSched bounds the scheduled policies of one set whose

@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 )
 
 // Names of the bootstrap defaults (internal/bootstrap seeds them).
@@ -508,6 +509,19 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 	for _, p := range pols {
 		id := objectID(p.Namespace, p.Name)
 		cp := &compiledPolicy{id: id, spec: &p.Spec, priority: p.Spec.Priority}
+		var specs []responsepolicy.RewriteSpec
+		for _, r := range p.Spec.Rewrites {
+			specs = append(specs, responsepolicy.RewriteSpec{Name: r.Name, Type: r.Type, CNAME: r.CNAME, Targets: r.Targets})
+		}
+		var responseErr error
+		cp.rewrites, responseErr = responsepolicy.CompileRewrites(specs)
+		if responseErr == nil && p.Spec.Response != nil {
+			cp.response, responseErr = responsepolicy.CompileOverrides(p.Spec.Response.DNS64Prefix, p.Spec.Response.FilterAAAA)
+		}
+		if responseErr != nil {
+			cp.responseInvalid = true
+			b.diag("Policy", id, "InvalidResponsePolicy", "%s", responseErr)
+		}
 		if p.Spec.Schedule != nil {
 			s, err := compileSchedule(p.Spec.Schedule)
 			if err != nil {
@@ -582,7 +596,11 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 	top := active[0]
 	d := &Decision{Policy: top.id, Fallback: fallback, AllowOnly: top.spec.AllowOnly, lists: infos}
 	var allow, block []string
+	var responseOverrides []*responsepolicy.Overrides
 	for _, p := range active {
+		d.Rewrites = append(d.Rewrites, p.rewrites...)
+		d.ResponseInvalid = d.ResponseInvalid || p.responseInvalid
+		responseOverrides = append(responseOverrides, p.response)
 		d.Policies = append(d.Policies, p.id)
 		s := p.spec
 		if d.BlockMode == "" {
@@ -607,6 +625,7 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 		block = append(block, p.block...)
 	}
 	refs := slices.Concat(allow, block)
+	d.Response = responsepolicy.MergeOverrides(responseOverrides)
 	// Select keeps the first occurrence of each name and gives every list
 	// the role of its own mode; all names are known, so it cannot fail.
 	d.Selection, _ = lists.Select(refs, blocking.SelectOptions{AllowOnly: d.AllowOnly, ExceptionScope: scope})
