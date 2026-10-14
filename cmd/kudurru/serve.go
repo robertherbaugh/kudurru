@@ -51,6 +51,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
@@ -397,7 +398,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
 	// services import (blocking.catalogue.adguardServicesURL).
 	catalogs := catalogue.NewHolder(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs, Hostnames: leaseDNS}, logger)); err != nil {
+	clientInventory := inventory.New(nil)
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs, Inventory: true, Hostnames: leaseDNS}, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -671,6 +673,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	polSrc := policy.Source{Cache: zc}
 	bopts := blockingstage.OptionsFromConfig(cfg)
 	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogs
+	bopts.Context = func(req *pipeline.Request) blocking.Context {
+		q := req.Question()
+		return blocking.Context{Name: q.Name, Type: q.Qtype, Class: q.Qclass, ClientIP: req.Client.Addr.Addr(), ClientID: req.Client.ClientID, ClientNames: req.Client.Names, Tags: req.Client.Tags}
+	}
+	var rewriteTarget pipeline.Next
+	bopts.ResolveTarget = func(req *pipeline.Request) (*pipeline.Response, error) {
+		return rewriteTarget(req)
+	}
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
 		return err
@@ -703,9 +713,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	post := &postprocess.Stage{}
 	post.SetSettings(responseSettings)
+	idStage := identify.New(polSrc, nil)
+	idStage.Inventory = clientInventory
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
-		identify.New(polSrc, nil),
+		idStage,
 		control.New(control.Options{}),
 		post,
 		auth,
@@ -722,6 +734,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	// Rewrite dependencies keep the captured client/settings but enter normal
+	// authority and recursive policy dispatch for their own target name. This
+	// prevents CNAME rewrites from bypassing configured child-zone coverage.
+	dependencies, err := pipeline.New(auth, bs, &rewrite.Stage{}, cs, dnssecstage.New(fwd), fwd)
+	if err != nil {
+		return err
+	}
+	rewriteTarget = dependencies.Serve
 	chain.Observe(&logstage.Observer{Node: cfg.Node.Name, Collector: collector, Metrics: dnsMetrics})
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())
 
