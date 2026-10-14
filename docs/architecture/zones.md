@@ -482,6 +482,26 @@ including a rejected or deduplicated request, crosses this admission. A child
 stalled by conflicting dynamic parent data retries its unfinished fences after
 an explicit authorized cleanup; it cannot activate without durable witnesses.
 
+`primaryruntime.PrepareImage` reconstructs committed primary routing from one
+complete replication image and the explicit local kind manifest, including
+zero-count kinds. It validates every head and chunk, including historical heads
+and orphan chunks awaiting collection. Desired primaries without a committed
+head install unavailable coverage with no invented durable version. Retiring
+coverage remains until the persisted lifecycle permits removal or replacement.
+Parent witnesses, source identity and effective head incarnation all come from
+that same image. Its later `Cut(now)` calls evaluate only prepared memory and
+absolute expiry; they never capture a live runtime or mark a head published.
+
+```mermaid
+flowchart LR
+    Image["Complete image + local manifest"] --> Validate["Validate all lifecycle, head and chunk carriers"]
+    Validate --> Committed["Exact committed primary data and witnesses"]
+    Validate --> Missing["Desired-only and retiring unavailable coverage"]
+    Committed --> Part["Immutable primary routing part"]
+    Missing --> Part
+    Part --> Bundle["Whole serving bundle publication"]
+```
+
 Lifecycle scheduling, production keyring/policy guards, listener callback wiring,
 coherent serving publication and authenticated HA forwarding remain in progress.
 The Kubernetes test adapter exercises exact-object CAS without claiming a
