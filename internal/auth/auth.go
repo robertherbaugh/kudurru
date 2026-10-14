@@ -36,9 +36,13 @@ type Principal struct {
 	// AuthMethod is how the principal authenticated: cookie, token, jwt,
 	// k8s, unix, internal.
 	AuthMethod string
-	// AccountUID binds a local credential to its account incarnation. It is
-	// persisted in sessions; unlike roles, it is never refreshed by name.
+	// AccountUID binds a local, service-account or external credential to its
+	// account incarnation. Unprovisioned external bearer identities have no UID.
+	// It is persisted in sessions and never refreshed by name.
 	AccountUID string
+	// External is private captured-owner provenance, never a wire credential or
+	// authority to mutate. Current commands still require the original raw proof.
+	External *ExternalProof `json:"-"`
 
 	// The fields below are filled per request by the authenticators and
 	// LoadPrincipal (§8.8); sealed sessions persist none of them.
