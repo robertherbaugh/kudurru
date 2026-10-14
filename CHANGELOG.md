@@ -13,6 +13,26 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   when it next renews or reconnects. **DHCP** > **Leases** has a **Reserve**
   action that prefills the reservation from a lease.
 
+## [0.2.0] - unreleased
+
+### Added
+
+- Independent secondary-zone AXFR ingestion over TCP, with optional TSIG,
+  SOA refresh/retry/expiry, RFC 1982 serial handling and durable node-local
+  last-good copies. Invalid, unauthenticated and oversized transfers retain
+  previous data; expired or unavailable secondaries answer SERVFAIL.
+- Secondary configuration in the zone wizard/settings and node-specific
+  serial, availability, expiry and failure reporting in the API, dashboard
+  and metrics. Transferred records remain read-only.
+
+### Fixed
+
+- CNAME/DNAME chasing rechecks the most specific local zone before following
+  a target, so parent wildcard data cannot bypass a child zone's data or expiry.
+
+TLS/IXFR ingestion, inbound NOTIFY, stub zones and signed secondary serving
+remain subsequent v0.2 work; this entry describes the first secondary slice.
+
 ## [0.1.0] - 2026-10-18
 
 **“stone” — the first release.** Authoritative DNS, a forwarding or

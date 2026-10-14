@@ -10,7 +10,8 @@ record sets and the copies held by secondaries are the clay copies.
 Code: `api/v1alpha1/dnszone_types.go`, `dnsrecordset_types.go`,
 `internal/zone` (the tree, lookups, transfers), `internal/zoneview` (the
 zonecache view), `internal/controller` (status and serials),
-`internal/notifier`, `internal/stages/authoritative`.
+`internal/notifier`, `internal/secondary` (independent inbound transfers and
+durable copies), `internal/stages/authoritative`.
 
 ```mermaid
 erDiagram
@@ -18,7 +19,7 @@ erDiagram
     DNSRecordSet ||--|{ Endpoint : "spec.endpoints[] (max 1000)"
     DNSZone {
         string zoneName "FQDN, immutable"
-        string type "primary | forward"
+        string type "primary | forward | secondary"
         object soa "mname, rname, refresh, retry, expire, minimum"
         object fallback "optional: resolve missing names, upstreamGroup"
         object policy "queryAccess, zoneTransfer, notify, ACLs, TSIG refs"
@@ -35,8 +36,8 @@ erDiagram
     }
 ```
 
-Only `primary` and `forward` zones are served. The other types in the
-schema (`secondary`, `stub`, `external`, `catalog`) are accepted but get
+Primary, forward, and unsigned secondary zones are served. The other types in
+the schema (`stub`, `external`, `catalog`) are accepted but get
 `Ready=False, reason Unsupported`.
 
 Use one DNSZone per canonical apex. If different objects claim the same
@@ -51,6 +52,7 @@ rather than relying on this fallback.
 |---|---|---|
 | `primary` | answers from its own records, with SOA and serial | `home.example.com.` |
 | `forward` | sends the name to an upstream group ([upstreams](upstreams-and-cache.md)) | `corp.example.` → `internal-ad`; the bootstrap root zone `.` → `default` |
+| `secondary` | transfers an external primary's data independently on each node | `partner.example.` from `192.0.2.53:53` |
 
 ## Answering from a zone
 
@@ -64,9 +66,11 @@ flowchart TD
     T -- "forward" --> FS{"snapshot synced?"}
     FS -- "no" --> SF0["SERVFAIL"]
     FS -- "yes" --> FW["set the upstream group hint,<br/>continue to blocking"]
-    T -- "primary" --> ACL{"queryAccess /<br/>queryACL allow<br/>the client?"}
+    T -- "primary or secondary" --> ACL{"queryAccess /<br/>queryACL allow<br/>the client?"}
     ACL -- "no" --> REF["REFUSED"]
-    ACL -- "yes" --> XFR{"AXFR or IXFR?"}
+    ACL -- "yes" --> COPY{"secondary copy available<br/>and unexpired?"}
+    COPY -- "no" --> SF1["SERVFAIL; retain zone coverage"]
+    COPY -- "yes, or primary" --> XFR{"AXFR or IXFR?"}
     XFR -- "yes" --> TR["transfer (below)"]
     XFR -- "no" --> GATE{"snapshot state"}
     GATE -- "unsynced" --> UNS["lookup: serve only a found<br/>name or a referral; anything else<br/>SERVFAIL, never NXDOMAIN"]
@@ -88,7 +92,10 @@ The rule "**never NXDOMAIN while unsynced**" matters: a replica that has not
 loaded its zones must not tell the world that names do not exist, because
 resolvers cache negative answers. Wildcards (RFC 4592) and DNAME are handled
 inside the lookup. Records with `disabled: true` or a past `expiresAt` are
-left out when the zone is built, and the zone is rebuilt at the next expiry.
+left out when a primary zone is built, and the zone is rebuilt at the next
+record expiry. Alias targets reselect the most specific configured zone before
+continuing, including a secondary nested under a primary. An unavailable
+secondary cannot be bypassed by a parent wildcard or the root forwarder.
 
 `queryAccess` and `zoneTransfer` take one of six modes: `deny`, `allow`,
 `allowOnlyPrivate`, `allowOnlyZoneNameServers`, `useNetworkACL` (the ordered
@@ -129,7 +136,7 @@ and do not encode fallback settings.
 
 ## Which records are served
 
-Several record sets can feed one zone, from several namespaces. The zone's
+Several record sets can feed one primary zone, from several namespaces. The zone's
 `recordSetSelector` says which namespaces and labels may contribute. The
 controller and the dataplane apply the same rule, so the content hash always
 matches what is served:
@@ -146,8 +153,9 @@ dropped endpoints raise `Degraded` with the reason.
 
 ## Serials
 
-Replicas never compute a serial. The leader's controller stamps it into the
-zone's status, and every node serves `status.serial`.
+For primary zones, the leader's controller stamps the serial into the zone's
+status, and every node serves `status.serial`. Secondary copies retain the
+external primary's SOA and serial, including serial zero and RFC 1982 wrap.
 
 ```mermaid
 sequenceDiagram
@@ -205,8 +213,68 @@ keys are node settings (`tsigKeys`, write-only), not store objects. While
 the snapshot is not open, transfers answer SERVFAIL. Every message of a
 signed transfer is signed.
 
+## Secondary copies
+
+Every replica runs `secondary.Manager`; it does not depend on leadership.
+Configuration and query ACLs come from the normal zonecache snapshot. Raw
+transferred records never become `DNSRecordSet` objects.
+
+```mermaid
+sequenceDiagram
+    participant C as zonecache configuration
+    participant R as secondary manager (each node)
+    participant P as external primary
+    participant D as node local.db
+    participant Q as authoritative queries
+    C->>R: publish secondary configuration
+    R->>D: load identity-bound copy and absolute expiry
+    R->>P: TCP SOA (TSIG when configured)
+    alt initial copy or newer serial
+        R->>P: TCP AXFR
+        P-->>R: complete framed and authenticated RR stream
+        R->>R: validate structure, serial and supported data
+    else same serial
+        R->>R: confirm existing contents
+    end
+    R->>D: atomically persist copy, confirmation and expiry
+    R->>Q: publish immutable snapshot
+    Q->>Q: check current configuration identity and expiry
+```
+
+The primary's SOA controls refresh, retry and expire. Failed or incomplete
+transfers retain the previous copy until its original deadline. Same-serial
+SOA confirmation renews expiry; loading from disk, restarting or failing a
+refresh never does. At expiry the configured zone remains in suffix matching
+and answers SERVFAIL. Configuration older than zonecache's `maxAge` also
+fails closed, even if transferred records have not expired.
+
+The versioned, checksummed `local.db` envelope binds records to object UID and
+complete spec, a fingerprint of the selected TSIG credential, and a cluster
+anchor derived from the cluster encryption key. A changed configuration,
+recreated object, rotated encryption key or changed TSIG secret requires a
+fresh transfer. Persisted copies require a persistent node data directory;
+replacing an ephemeral volume loses that node's copy. Data is committed before
+publication. Queries only read immutable memory, with no database/network I/O.
+
+Transfers use the configured primary order, bounded concurrency (four zones),
+a ten-second deadline per exchange, one million records and 64 MiB of wire
+and expanded DNS data. Invalid framing, SOA mismatches, out-of-zone records,
+serial regression, missing/invalid configured TSIG and size limits reject the
+whole candidate. TCP is currently supported; configured TLS is diagnosed and
+never silently downgraded. The data model preserves DNSSEC and unknown RRs,
+but the runtime rejects signed zones until signature/proof response assembly
+is implemented. IXFR and inbound NOTIFY remain subsequent slices.
+
+Shared secondary status has `Ready=Unknown`, reason `PerNodeTransfer`; the
+controller clears legacy primary serial/hash/count fields. Zone API responses
+and the dashboard show `secondaryRuntime` for the responding node, including
+the last copy's serial, confirmation, expiry, next attempt and failures. An
+expired serial describes retained data, not data currently served. The messages
+API and `kudurru_secondary_*` metrics expose local failures and availability.
+An unavailable secondary does not make an otherwise healthy node unready.
+
 ## Not built yet
 
-Secondary and stub zones (transfers in), NOTIFY in, dynamic UPDATE
+Stub zones, IXFR in, verified TLS transfers, signed secondary serving, NOTIFY in, dynamic UPDATE
 (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
 Today any opcode other than QUERY is answered NOTIMP at ingress.

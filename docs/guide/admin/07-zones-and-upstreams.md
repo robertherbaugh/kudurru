@@ -11,18 +11,19 @@ external DNS servers that kudurru asks.
 
 ## Zones
 
-A zone is a part of the DNS name space. kudurru has two types of zone.
+A zone is a part of the DNS name space. kudurru serves three types of zone.
 
 | Type | Meaning |
 |---|---|
 | Primary | kudurru is the authority. You keep the records in kudurru. kudurru answers from these records. |
 | Forward | kudurru sends the queries for the zone to an upstream group. Use it for a company or Active Directory zone. |
+| Secondary | Every kudurru node copies records from an external primary. Changes belong on that primary. |
 
 A block list cannot block a name in a primary zone. The records of your own
 zone always get an answer.
 
-NOTE: In this release the wizard makes primary and forward zones. Secondary,
-stub and catalog zones need a YAML file and the command `kudurru apply`.
+The wizard creates primary, forward and secondary zones. Stub and catalog
+types are reserved and are not served yet.
 
 ### See the zones
 
@@ -36,7 +37,9 @@ The zone `.` is the root zone. It is a forward zone that the system makes.
 It sends all other queries to the upstream group `default`.
 
 The column **Serial** shows the SOA serial. kudurru increases it when you
-change a record. **Ready** shows **Ready** when the zone answers.
+change a primary record. Secondary serials and availability are labeled with
+the responding node; different replicas may temporarily report different
+copies. Shared Kubernetes status does not assert that every secondary is ready.
 
 ### Create a primary zone
 
@@ -155,6 +158,36 @@ group](#create-an-upstream-group) first if it does not.
 
 NOTE: The per-zone DNSSEC setting is reserved for a later version.
 Recursive upstream groups validate DNSSEC with their recursion settings.
+
+### Create a secondary zone
+
+1. Open **DNS** > **Zones** > **New zone** and select **Secondary**.
+2. Enter the zone's apex, such as `partner.example.`.
+3. Enter one or more primary addresses in preference order. Hostnames and IPs
+   are accepted, with port 53 by default: `primary.example`, `192.0.2.53:5300`,
+   or `[2001:db8::53]:5300`.
+4. If the primary requires TSIG, enter the key name. Configure that key's
+   secret in `tsigKeys` on every kudurru node; the form does not store secrets.
+5. Review and create the zone. Allow each node's source address through the
+   primary's TCP transfer ACL.
+
+The zone detail shows the copy on the responding node: serial, record count,
+last confirmation, expiry, next attempt and the latest transfer error. Refresh,
+retry, expiry and record TTLs come from the primary's SOA and records. Records
+are read-only in kudurru; its local record editor and import are unavailable
+for secondaries.
+
+A failed refresh keeps the last good copy until expiry. At expiry, that node
+answers SERVFAIL for the zone until it refreshes successfully. Restarting does
+not extend the deadline. Keep each node's data directory on persistent storage
+to retain copies across restarts; an ephemeral replacement needs a new transfer.
+Changes to the secondary configuration or its credentials also require a fresh
+transfer. Other zones can continue to answer while this secondary is unavailable.
+
+This first secondary implementation uses AXFR over TCP. TLS, IXFR and inbound
+NOTIFY follow in later v0.2 work. Signed zones are diagnosed as unsupported;
+they are not served without their required DNSSEC proofs. Local secondary
+export is not available yet.
 
 ### Add a record
 

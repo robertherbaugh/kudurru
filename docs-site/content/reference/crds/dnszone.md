@@ -30,6 +30,7 @@ Columns of `kubectl get dnszones`:
 DNSZoneSpec defines the desired state of a zone.
 
 Validation: fallback is only supported for primary zones (`!has(self.fallback) || self.type == 'primary'`)
+Validation: secondary zones require secondary configuration (`self.type != 'secondary' || has(self.secondary)`)
 
 | Field | Type | Description |
 |---|---|---|
@@ -41,7 +42,7 @@ Validation: fallback is only supported for primary zones (`!has(self.fallback) |
 | `spec.dnssec.keySecretRef` | `object` | ObjectRef points at another kudurru object. Namespace is omitted for cluster-scoped kinds and for same-namespace references. |
 | `spec.dnssec.keySecretRef.name` | `string` | **Required.**<br>Length: at least 1 |
 | `spec.dnssec.keySecretRef.namespace` | `string` |  |
-| `spec.external` | `object` | ExternalSpec synthesises records from Kubernetes objects (v0.2). |
+| `spec.external` | `object` | ExternalSpec synthesizes records from Kubernetes objects (v0.2). |
 | `spec.external.gateway` | `boolean` |  |
 | `spec.external.ingress` | `boolean` |  |
 | `spec.external.loadBalancerServices` | `boolean` |  |
@@ -85,10 +86,10 @@ Validation: fallback is only supported for primary zones (`!has(self.fallback) |
 | `spec.recordSetSelector.labelSelector.matchLabels` | `map[string]string` | matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed. |
 | `spec.recordSetSelector.namespaces` | `[]string` |  |
 | `spec.secondary` | `object` | SecondarySpec configures a secondary zone (v0.2). |
-| `spec.secondary.primaries` | `[]string` | **Required.** |
-| `spec.secondary.transferProtocol` | `string` | Default: `tcp`<br>One of: `tcp`, `tls` |
-| `spec.secondary.tsigKeyRef` | `string` |  |
-| `spec.soa` | `object` | SOASpec holds the SOA fields the operator controls. The serial is computed by the leader and lives in status (decision D12). |
+| `spec.secondary.primaries` | `[]string` | **Required.** Primaries are ordered hostnames or IP addresses with optional ports (default 53). Use brackets around IPv6 addresses when specifying a port.<br>Items: at least 1 |
+| `spec.secondary.transferProtocol` | `string` | TransferProtocol currently supports TCP. TLS is reserved and fails closed.<br>Default: `tcp`<br>One of: `tcp`, `tls` |
+| `spec.secondary.tsigKeyRef` | `string` | TSIGKeyRef names a key configured in every replica's local keyring. |
+| `spec.soa` | `object` | SOASpec holds primary-zone SOA fields. The leader computes primary serials in status (D12); secondaries retain the external primary's complete SOA. |
 | `spec.soa.expire` | `integer` | Default: `1209600`<br>Format: `int32` |
 | `spec.soa.minimum` | `integer` | Default: `300`<br>Format: `int32` |
 | `spec.soa.mname` | `string` |  |
@@ -117,7 +118,7 @@ DNSZoneStatus is the observed state of a zone.
 | `status.published[].lastSyncTime` | `string` | Format: `date-time` |
 | `status.published[].managed` | `integer` |  |
 | `status.recordCount` | `integer` |  |
-| `status.serial` | `integer` | Serial is stamped by the leader as max(prev+1, unix\_now) whenever ContentHash changes. Replicas serve this value.<br>Format: `int32` |
+| `status.serial` | `integer` | Serial is stamped by the leader as max(prev+1, unix\_now) whenever ContentHash changes for primary zones. Secondary serials and counts belong to each replica's transferred data, not this shared status.<br>Format: `int32` |
 
 ## Example
 
