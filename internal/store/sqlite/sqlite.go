@@ -3,7 +3,7 @@
 // D9-D12, D30, D70): every kudurru.io object lives as a JSON row in an
 // embedded, cgo-free SQLite database (modernc.org/sqlite).
 //
-// Layout of state.db (schema migration 1):
+// Layout of state.db (schema migrations 1 and 2):
 //
 //   - objects: one row per (kind, namespace, name) holding the whole object
 //     as JSON plus the columns the driver queries: uid, generation,
@@ -17,9 +17,14 @@
 //     compaction horizon.
 //   - audit: one hash-chained row per mutation, written in the same
 //     transaction as the mutation (D30, §11.4).
+//   - replication_sections: explicit runtime/security/membership/dedup rows
+//     owned by the same transaction as canonical objects.
+//   - replication_quarantine: private complete losing-branch images, local
+//     recovery evidence never replicated or included in ordinary backups.
 //
 // resourceVersion is one database-wide counter, rendered as a decimal
-// string; it only increases. Writes are serialised in-process (one writer
+// string; it increases within a source branch. Replica replacement may reset
+// it; local watch lineages separate branches. Writes are serialised (one writer
 // connection, BEGIN IMMEDIATE) and the database file is locked against a
 // second process, so the driver is the only writer of state.db.
 //
@@ -43,6 +48,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -59,6 +65,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
@@ -86,10 +93,21 @@ var (
 	// resourceVersion this store has not reached (the caller holds a
 	// version from another or a restored state.db and must relist).
 	ErrResourceVersionTooNew = errors.New("store/sqlite: resourceVersion is newer than the store")
+	ErrWatchLineage          = errors.New("store/sqlite: watch cursor belongs to another lineage; relist")
 )
 
 // Options configures Open. The zero value is usable.
 type Options struct {
+	// InitialMode applies ONLY to a database with no authority metadata.
+	// Follower opens unenrolled and cannot seed or generate its own cluster.
+	InitialMode       replication.Mode
+	ReplicationLimits replication.Limits
+	// ValidateReplicaEntry verifies sealed/security extension rows. Owners
+	// register validation before those sections are enabled.
+	ValidateReplicaEntry func(string, replication.Entry) error
+	// ValidateReplicaObject checks owner-specific encrypted documents without
+	// importing IAM into the store. It receives a defensive copy.
+	ValidateReplicaObject func(json.RawMessage) error
 	// Validator checks every Apply and UpdateStatus. Default: validator.New()
 	// (compiles the CEL rules of the embedded CRDs; build one per process
 	// and share it when the process already has one).
@@ -189,10 +207,14 @@ type Store struct {
 	sinceCompacted int // writes since the last feed compaction (under wmu)
 	compactEvery   int
 
-	head      atomic.Uint64 // last committed resourceVersion
-	compacted atomic.Uint64 // the change feed holds every seq > compacted
-	clusterID string
-	epoch     uint64
+	head              atomic.Uint64 // last committed resourceVersion
+	compacted         atomic.Uint64 // the change feed holds every seq > compacted
+	clusterID         string
+	epoch             uint64
+	authority         atomic.Pointer[replication.Authority]
+	authorityChanged  chan struct{} // replaced/closed under wmu
+	generationChanged chan struct{} // coalesced complete-image notifications
+	writeBlocked      atomic.Bool   // fail closed if persisting a fence fails
 
 	bus *broadcaster
 
@@ -233,13 +255,15 @@ func Open(path string, opts Options) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{
-		opts:     opts,
-		path:     path,
-		kinds:    kinds,
-		internal: map[store.Kind]bool{},
-		log:      opts.Logger,
-		lock:     lock,
-		bus:      newBroadcaster(),
+		opts:              opts,
+		path:              path,
+		kinds:             kinds,
+		internal:          map[store.Kind]bool{},
+		log:               opts.Logger,
+		lock:              lock,
+		bus:               newBroadcaster(),
+		authorityChanged:  make(chan struct{}),
+		generationChanged: make(chan struct{}),
 
 		compactEvery: defaultCompactEvery,
 	}
@@ -278,20 +302,33 @@ func Open(path string, opts Options) (*Store, error) {
 	if err := s.loadMeta(ctx); err != nil {
 		return fail(err)
 	}
+	if err := s.initializeAuthority(ctx); err != nil {
+		return fail(err)
+	}
+	if s.Authority().Mode != replication.Standalone {
+		if _, err := s.w.ExecContext(ctx, `PRAGMA synchronous=FULL`); err != nil {
+			return fail(err)
+		}
+	}
 	return s, nil
 }
 
 // dsn builds a modernc.org/sqlite URI with the pragmas every connection
-// needs: WAL (readers never block the writer), synchronous=NORMAL (durable
-// at checkpoints; the last commits before a power cut may be lost, never
-// corrupted), a busy timeout and foreign keys. The writer begins every
+// needs: WAL (readers never block the writer), synchronous=FULL for writers,
+// a busy timeout and foreign keys. The writer begins every
 // transaction IMMEDIATE so the write lock is taken up front; readers are
 // query_only.
 func dsn(path string, busy time.Duration, writer bool) string {
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout("+strconv.FormatInt(busy.Milliseconds(), 10)+")")
 	q.Add("_pragma", "journal_mode(WAL)")
-	q.Add("_pragma", "synchronous(NORMAL)")
+	if writer {
+		// A connection reopened after a failure must not forget HA durability.
+		// Persisted promotion/fencing can outlive the original startup mode.
+		q.Add("_pragma", "synchronous(FULL)")
+	} else {
+		q.Add("_pragma", "synchronous(NORMAL)")
+	}
 	q.Add("_pragma", "foreign_keys(1)")
 	if writer {
 		q.Set("_txlock", "immediate")
@@ -311,14 +348,17 @@ func (s *Store) loadMeta(ctx context.Context) error {
 	if s.epoch, err = strconv.ParseUint(m[metaClusterEpoch], 10, 64); err != nil {
 		return fmt.Errorf("store/sqlite: bad %s %q: %w", metaClusterEpoch, m[metaClusterEpoch], err)
 	}
-	rv, err := strconv.ParseUint(m[metaResourceVersion], 10, 64)
+	rv, err := strconv.ParseUint(m[metaResourceVersion], 10, 63)
 	if err != nil {
 		return fmt.Errorf("store/sqlite: bad %s %q: %w", metaResourceVersion, m[metaResourceVersion], err)
 	}
 	s.head.Store(rv)
-	c, err := strconv.ParseUint(m[metaFeedCompacted], 10, 64)
+	c, err := strconv.ParseUint(m[metaFeedCompacted], 10, 63)
 	if err != nil {
 		return fmt.Errorf("store/sqlite: bad %s %q: %w", metaFeedCompacted, m[metaFeedCompacted], err)
+	}
+	if c > rv {
+		return fmt.Errorf("store/sqlite: compacted cursor exceeds head")
 	}
 	s.compacted.Store(c)
 	return nil
@@ -329,12 +369,15 @@ func (s *Store) Path() string { return s.path }
 
 // Info implements store.Store.
 func (s *Store) Info() store.Info {
+	a := s.Authority()
 	return store.Info{
 		Driver:        DriverName,
 		SchemaVersion: store.SchemaVersion,
-		ClusterID:     s.clusterID,
-		Epoch:         s.epoch,
-		Leader:        s.opts.Identity,
+		ClusterID:     a.Term.ClusterID,
+		Epoch:         a.Term.Epoch,
+		Leader:        a.Term.PrimaryName,
+		MemberID:      a.MemberID, PrimaryID: a.Term.PrimaryID, PromotionID: a.Term.PromotionID,
+		Role: string(a.Mode), Fenced: a.Mode == replication.Fenced || a.Mode == replication.Conflict || s.writeBlocked.Load(), Revision: a.Installed.Revision,
 	}
 }
 
@@ -349,6 +392,8 @@ func (s *Store) Close() error {
 	s.closeOnce.Do(func() {
 		s.wmu.Lock()
 		s.closed.Store(true)
+		close(s.authorityChanged)
+		close(s.generationChanged)
 		s.wmu.Unlock()
 		s.bus.close()
 		if _, cerr := s.w.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); cerr != nil {
@@ -381,13 +426,13 @@ func (s *Store) closeDBs() error {
 
 func (s *Store) isClosed() bool { return s.closed.Load() }
 
-// Elector implements store.Store: one process owns state.db, so it is
-// always the leader. The election name is recorded on the elector.
+// Elector implements store.Store with dynamic durable authority. The election
+// name is recorded on the elector; followers and fenced nodes never lead.
 func (s *Store) Elector(name string) store.Elector {
 	return &Elector{name: name, identity: s.opts.Identity, s: s}
 }
 
-// Elector is the sqlite driver's store.Elector: always the leader.
+// Elector is the sqlite driver's authority-driven store.Elector.
 type Elector struct {
 	name     string
 	identity string
@@ -399,25 +444,16 @@ var _ store.Elector = (*Elector)(nil)
 // Name returns the election name the elector was created with.
 func (e *Elector) Name() string { return e.name }
 
-// Run calls onStarted with the term context (D78), blocks until ctx ends,
-// then calls onStopped. It never loses leadership and returns nil when ctx
-// ends.
+// Run starts/cancels leader terms as durable authority changes. Each term
+// context carries its captured writer token for the final mutation barrier.
 func (e *Elector) Run(ctx context.Context, onStarted func(term context.Context), onStopped func()) error {
-	if e.s.isClosed() {
-		return store.ErrClosed
-	}
-	if onStarted != nil {
-		onStarted(ctx)
-	}
-	<-ctx.Done()
-	if onStopped != nil {
-		onStopped()
-	}
-	return nil
+	return e.runDynamic(ctx, onStarted, onStopped)
 }
 
-// IsLeader reports true while the store is open.
-func (e *Elector) IsLeader() bool { return !e.s.isClosed() }
+// IsLeader reports whether this open store currently owns write authority.
+func (e *Elector) IsLeader() bool {
+	return !e.s.isClosed() && !e.s.writeBlocked.Load() && e.s.Authority().Writable()
+}
 
-// Leader returns this process's identity.
-func (e *Elector) Leader() string { return e.identity }
+// Leader returns the authoritative primary's display identity.
+func (e *Elector) Leader() string { return e.s.Authority().Term.PrimaryName }

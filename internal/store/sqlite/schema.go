@@ -35,6 +35,7 @@ type migration struct {
 // (TestMigrationsCoverSchemaVersion).
 var migrations = []migration{
 	{version: 1, name: "objects, change feed, audit", up: migrate1},
+	{version: 2, name: "replication authority and owned sections", up: migrate2},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;
@@ -92,6 +93,18 @@ CREATE INDEX audit_by_ts ON audit(ts);
 
 func migrate1(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, schemaV1)
+	return err
+}
+
+func migrate2(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `CREATE TABLE replication_sections (
+		section TEXT NOT NULL CHECK (section IN ('runtime', 'security', 'membership', 'dedup')),
+		key TEXT NOT NULL, data TEXT NOT NULL,
+		PRIMARY KEY(section, key)
+	) STRICT, WITHOUT ROWID;
+	CREATE TABLE replication_quarantine (
+		generation TEXT PRIMARY KEY, image TEXT NOT NULL
+	) STRICT, WITHOUT ROWID;`)
 	return err
 }
 

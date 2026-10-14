@@ -242,6 +242,11 @@ type mutation struct {
 // caller passed a resourceVersion precondition) such a race is
 // store.ErrConflict instead.
 func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*mutation, error)) (store.Object, error) {
+	var err error
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for attempt := 1; ; attempt++ {
 		locked := attempt > optimisticAttempts
 		if locked {
@@ -249,6 +254,15 @@ func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*
 		}
 		m, err := plan(s.rq)
 		if err != nil || m.noop {
+			if err == nil {
+				if !locked {
+					s.wmu.Lock()
+				}
+				_, err = s.checkWriter(ctx, s.rq)
+				if !locked {
+					s.wmu.Unlock()
+				}
+			}
 			if locked {
 				s.wmu.Unlock()
 			}
@@ -297,6 +311,10 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := cachedTx{tx: tx, c: s.ws}
+	a, err := s.checkWriter(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 
 	rvs := make([]uint64, len(ms))
 	for i, m := range ms {
@@ -305,6 +323,9 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		}
 	}
 	rv := rvs[len(rvs)-1]
+	if err := advanceRevision(ctx, tx, &a); err != nil {
+		return nil, err
+	}
 
 	compactTo := uint64(0)
 	s.sinceCompacted += len(ms)
@@ -325,6 +346,8 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		s.sinceCompacted = 0
 	}
 	s.head.Store(rv)
+	s.publishAuthorityLocked(a)
+	s.publishGenerationLocked()
 	out := make([]store.Object, len(ms))
 	for i, m := range ms {
 		s.bus.publish(change{seq: rvs[i], typ: m.typ, key: m.key, obj: m.obj})
@@ -658,6 +681,10 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return err
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	var ms []*mutation
@@ -687,7 +714,8 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 		}
 	}
 	if len(ms) == 0 {
-		return nil
+		_, err := s.checkWriter(ctx, s.rq)
+		return err
 	}
 	if _, err := s.commitAllLocked(ctx, ms); err != nil {
 		if errors.Is(err, errRaced) {
