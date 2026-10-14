@@ -7,7 +7,7 @@ import (
 )
 
 var SchemeBuilder = runtime.NewSchemeBuilder(func(s *runtime.Scheme) error {
-	s.AddKnownTypes(public.GroupVersion, &ZoneState{}, &ZoneStateList{}, &ZoneChunk{}, &ZoneChunkList{})
+	s.AddKnownTypes(public.GroupVersion, &ZoneState{}, &ZoneStateList{}, &ZoneChunk{}, &ZoneChunkList{}, &ZoneLifecycle{}, &ZoneLifecycleList{})
 	metav1.AddToGroupVersion(s, public.GroupVersion)
 	return nil
 })

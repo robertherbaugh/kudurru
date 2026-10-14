@@ -76,7 +76,11 @@ func kubeStore(t testing.TB) *kube.Store {
 	if err := admin.Create(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "dns"}}); err != nil {
 		t.Fatal(err)
 	}
-	s, err := kube.New(cfg, kube.Options{Scheme: scheme(t), InternalKinds: []store.Kind{zonekinds.KindZoneState, zonekinds.KindZoneChunk}})
+	var private []store.Kind
+	for _, kind := range zonekinds.Kinds {
+		private = append(private, store.Kind(kind))
+	}
+	s, err := kube.New(cfg, kube.Options{Scheme: scheme(t), InternalKinds: private})
 	if err != nil {
 		t.Fatal(err)
 	}

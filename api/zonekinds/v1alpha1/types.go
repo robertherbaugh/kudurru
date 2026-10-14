@@ -21,7 +21,7 @@ const (
 	LifecycleTombstoned = "tombstoned"
 )
 
-var Kinds = []string{KindZoneChunk, KindZoneState}
+var Kinds = []string{KindZoneChunk, KindZoneState, KindZoneLifecycle}
 
 // ZoneID fences cluster restore and delete/recreate, even for the same apex.
 type ZoneID struct {

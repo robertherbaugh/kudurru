@@ -20,7 +20,11 @@ func zoneStateOptions(t testing.TB) Options {
 	if err := zonekinds.AddToScheme(s); err != nil {
 		t.Fatal(err)
 	}
-	return Options{Scheme: s, InternalKinds: []store.Kind{zonekinds.KindZoneState, zonekinds.KindZoneChunk}}
+	var private []store.Kind
+	for _, kind := range zonekinds.Kinds {
+		private = append(private, store.Kind(kind))
+	}
+	return Options{Scheme: s, InternalKinds: private}
 }
 func zoneStateRepository(t testing.TB, s *Store) (*zonestate.Repository, zonestate.Backend) {
 	t.Helper()
