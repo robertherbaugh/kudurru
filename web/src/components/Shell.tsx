@@ -65,7 +65,7 @@ export function Shell() {
       heading={<Brand />}
       endContent={
         <HStack gap={2} vAlign="center" wrap="wrap">
-          {match?.route.scoped && !['/queries', '/history'].includes(match.route.path) ? <ScopeSelector /> : null}
+          {match?.route.scoped === true ? <ScopeSelector /> : null}
           <MessagesBadge />
           <AppearanceButton />
           <AccountMenu />
