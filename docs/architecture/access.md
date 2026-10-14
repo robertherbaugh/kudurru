@@ -108,6 +108,41 @@ flowchart LR
     Commit --> Published["Committed auth view seals cookie"]
 ```
 
+### Offline provider verification and claim policy
+
+`internal/auth/oidccore` verifies signed ID tokens against an explicitly captured
+issuer, asymmetric algorithm allowlist and public JWKS. It performs no discovery,
+refresh, store read or enrollment. An opaque verified token carries detached
+claims and typed issuance/expiry times. Policy evaluation checks time again, so
+holding a verified token does not extend its lifetime. Browser evaluation also
+requires the verifier's nonce and optional `at_hash` check.
+
+The compiler consumes the public IdentityProvider scalar and expression fields.
+CEL exposes only `claims`, with bounded source, AST, comprehension depth and
+per-expression/aggregate execution cost. Validation rules return booleans;
+username/display/email mappings return strings; group mappings return string
+lists. Missing claims, type errors and exhausted budgets deny authentication.
+Prefixes, verified-email requirements and exact allowed email domains still
+apply after mapping. Identity remains the provider/issuer/subject tuple.
+
+```mermaid
+flowchart LR
+    Keys["Captured issuer + public JWKS"] --> Verify["Offline signature and time checks"]
+    Proof["Raw ID token + optional browser proof"] --> Verify
+    Verify --> Facts["Opaque verified facts"]
+    Spec["Captured public provider spec"] --> Compile["Bounded scalar/CEL compiler"]
+    Compile --> Evaluate["Current-time audience and claim policy"]
+    Facts --> Evaluate
+    Evaluate --> Identity["External identity; no granted rights"]
+```
+
+The host must bind verifier and policy identities to the exact provider UID,
+origin and spec, then apply current durable revocation and authorization policy.
+This pure package is tested with actual signed JWTs for all ten supported
+asymmetric algorithms. Captured provider integration, durable external sessions
+and browser/CLI flows remain separate work; the existing production OIDC adapter
+rejects expression policies until it adopts the captured compiler.
+
 ## Principals
 
 | Kind | Comes from | Typical caller |
