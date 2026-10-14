@@ -87,7 +87,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | docs/m5/security-v0.1-round.md | before v0.1.0 |
+| Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | docs/m5/security-v0.1-round.md | release operations (verify for each release) |
 | Optional `httpsOnly` for `blocking.catalogue.adguardServicesURL` (and BlockList URLs): a plain-http document can be changed in transit | docs/m5/security-v0.1-round.md | v0.2 |
 
 ## Dashboard (web/)
@@ -98,7 +98,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
 | Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
 | Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since docs/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |
-| Self-host the brand fonts (Inter, JetBrains Mono; docs/brand) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
+| Self-host the brand fonts (Inter, JetBrains Mono; branding) in the Kudurru theme instead of the system fallback stack | UX round 3 (D140) | v0.2 |
 | Settings schema `Shape` has no help field, so list items and map keys show no help of their own (fields and enum options do) | UX round 3 | v0.2 |
 | Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
 ## CLI
@@ -128,7 +128,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 
 | Item | Source | Target |
 |---|---|---|
-| Spikes (a) dnsdist console directives under YAML, (b) PROXYv2 + chashed with a real dnsdist and `kdig +quic/+tls/+https`, (h) keepalived 2.4.3 on two VMs (lameduck keeps the VIP, `vip drain` moves it, node loss moves it). Spike (f), kind + MetalLB, runs on GitHub's runners in the kind workflow (hack/kind-e2e.sh) | week-1 spikes, dnsserver spike | owner's hardware (GA gate, docs/release-checklist.md §3) |
+| Spikes (a) dnsdist console directives under YAML, (b) PROXYv2 + chashed with a real dnsdist and `kdig +quic/+tls/+https`, (h) keepalived 2.4.3 on two VMs (lameduck keeps the VIP, `vip drain` moves it, node loss moves it). Spike (f), kind + MetalLB, runs on GitHub's runners in the kind workflow (hack/kind-e2e.sh) | week-1 spikes, dnsserver spike | deployment acceptance (docs/release-checklist.md §3) |
 
 ## End to end and fuzzing (docs/m5/e2e.md)
 
@@ -137,7 +137,7 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | Item | Source | Target |
 |---|---|---|
 | E2E-2: sqlite nodes cannot form a cluster. serve.go hard-codes `cluster.Self` membership for the sqlite driver, so node B cannot be pointed at node A's internal listener for list bodies, and every sqlite node reports itself as leader. The two-node test drives `/internal/status` and `/internal/lists/{digest}` with the derived credentials instead. Needs a `cluster.static` setting (peers, leader) feeding `cluster.Static` | docs/m5/e2e.md | v0.2 (compose HA) |
-| e2e still missing from §13.1: the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). Actual outage startup and envtest recovery are covered by cmd/kudurru/serve_offline_test.go and serve_recovery_test.go; kind + Helm with MetalLB runs in hack/kind-e2e.sh | docs/m5/e2e.md, docs/m5/features-v0.1.md | v0.2 (AdGuard Home and Knot); the 2-VM failover stays a GA gate (docs/release-checklist.md §3) |
+| e2e still missing from §13.1: the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). Actual outage startup and envtest recovery are covered by cmd/kudurru/serve_offline_test.go and serve_recovery_test.go; kind + Helm with MetalLB runs in hack/kind-e2e.sh | docs/m5/e2e.md, docs/m5/features-v0.1.md | v0.2 (AdGuard Home and Knot); verify 2-VM failover for each deployment (docs/release-checklist.md §3) |
 
 ## Central database and cluster-wide audit (D155-D161)
 

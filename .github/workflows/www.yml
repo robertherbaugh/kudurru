@@ -9,7 +9,7 @@ on:
     branches: [main]
     paths:
       - www/**
-      - docs/brand/**
+      - branding/**
       - docs/guide/images/**
       - VERSION
       - LICENSE
@@ -19,7 +19,7 @@ on:
   pull_request:
     paths:
       - www/**
-      - docs/brand/**
+      - branding/**
       - docs/guide/images/**
       - VERSION
       - LICENSE

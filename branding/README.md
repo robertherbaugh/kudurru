@@ -2,6 +2,11 @@
 
 Ready-to-use raster artwork built from the 13 supplied logos. The kit includes clean transparent logos and marks, app icons, a favicon, a repository social card, and reusable color tokens.
 
+`branding/` is the canonical source for artwork, original images, color
+tokens and export scripts. The website and documentation build from this
+folder; the dashboard, block page and license portal embed generated copies.
+Changes require the owner's review through [.github/CODEOWNERS](../.github/CODEOWNERS).
+
 ![kudurru logo variants, marks, and palette](assets/kudurru-brand-sheet.png)
 
 ## Choose a logo
@@ -32,7 +37,9 @@ All production files use lowercase kebab-case names under [assets/](assets/). Th
 | [kudurru-social.png](assets/kudurru-social.png) | 1200 × 630, opaque PNG | Repository social preview |
 | [kudurru-brand-sheet.png](assets/kudurru-brand-sheet.png) | 1440 × 1240, opaque PNG | Quick visual reference |
 
-The social card is available for upload to repository settings; it has not been published there. The dashboard (`web/`, React + Astryx, D69) exists since milestone M3; the v0.1 fix round applies this brand to it: the tokens in `tokens.css`/`tokens.json`, the favicon and the app icons.
+The social card is available for upload to repository settings. The
+v0.1.0 dashboard (`web/`, React + Astryx, D69) uses this brand's palette,
+favicon and app icons.
 
 ## Identity and copy
 
@@ -54,7 +61,12 @@ Use [tokens.css](tokens.css) for CSS custom properties (`--kudurru-ink`, `--kudu
 
 Ink on Paper has approximately **14.3:1** contrast. Clay on Paper has approximately **4.1:1**; use Ink for normal-sized body text on Paper. Production exports use these exact foreground colors, with antialiasing at their edges.
 
-The supplied wordmark and tagline remain image artwork; their original fonts are unknown. Inter is the recommended future UI font, with system sans serif fallbacks. JetBrains Mono is the recommendation for commands and DNS records, with system monospace fallbacks. No font files or runtime font dependencies are included.
+The supplied wordmark and tagline remain image artwork; their original fonts
+are unknown. Inter is the recommended UI font, with system sans serif
+fallbacks. JetBrains Mono is the recommendation for commands and DNS
+records, with system monospace fallbacks. The website self-hosts these
+fonts; the dashboard themes use system fonts. The branding kit itself
+includes no font files.
 
 ## Usage
 
@@ -69,8 +81,8 @@ Example for a page that follows the viewer's color scheme:
 ```html
 <picture>
   <source media="(prefers-color-scheme: dark)"
-          srcset="docs/brand/assets/kudurru-logo-mixed-paper.png">
-  <img src="docs/brand/assets/kudurru-logo-mixed.png"
+          srcset="branding/assets/kudurru-logo-mixed-paper.png">
+  <img src="branding/assets/kudurru-logo-mixed.png"
        width="420" height="140" alt="kudurru">
 </picture>
 ```
@@ -86,7 +98,21 @@ To reproduce from the repository root:
 ```sh
 python3 -m venv .context/brand-venv
 .context/brand-venv/bin/pip install Pillow==11.3.0
-.context/brand-venv/bin/python3 docs/brand/build-assets.py
+.context/brand-venv/bin/python3 branding/build-assets.py
 ```
 
 The script rewrites production assets, manifests, and tokens; it leaves source PNGs unchanged. The [earlier generation prompts](prompts.md) remain as design reference, not as provenance for these supplied files. Raster PNGs are not editable vector masters.
+
+After changing production artwork, regenerate the embedded dashboard,
+block-page and email assets from the repository root:
+
+```sh
+.context/brand-venv/bin/python3 web/scripts/brand-assets.py
+.context/brand-venv/bin/python3 license-server/scripts/mail-brand.py
+```
+
+The dashboard and license portal keep their Astryx theme sources in
+[`web/src/themes/kudurru/`](../web/src/themes/kudurru/) and
+[`license-server/ui/src/themes/kudurru/`](../license-server/ui/src/themes/kudurru/).
+Palette changes also need updates there; the image export scripts do not
+rebuild themes. The websites read this kit during their builds.

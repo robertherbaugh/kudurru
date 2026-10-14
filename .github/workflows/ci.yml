@@ -20,7 +20,7 @@ on:
 permissions:
   contents: read
 jobs:
-  # Changes confined to docs/, site/, www/ and license-server/ skip the
+  # Changes confined to docs/, site/, www/, branding/ and license-server/ skip the
   # jobs below; docs.yml, www.yml and license-server.yml still check them.
   # Jobs are skipped rather than filtering the workflow with paths-ignore,
   # because a skipped job satisfies a
@@ -39,11 +39,11 @@ jobs:
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           # Run everything unless git can list the changes and every one is
-          # under docs/, site/, www/ or license-server/ (a new branch or an
+          # under docs/, site/, www/, branding/ or license-server/ (a new branch or an
           # unreachable force-pushed base runs everything).
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|license-server)/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|license-server|branding)/' <<<"$files"; then
               code=false
             fi
           fi

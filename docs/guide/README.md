@@ -41,6 +41,7 @@ kudurru has these functions:
 | [10. Command line](admin/10-command-line.md) | The `kudurru` command |
 | [11. Maintenance](admin/11-maintenance.md) | Back up, restore, upgrade and recover |
 | [12. Troubleshooting](admin/12-troubleshooting.md) | Problems and their solutions |
+| [13. License and keys](admin/13-license.md) | License terms, feature entitlements and installing a key |
 
 ## How to read this guide
 
@@ -56,9 +57,10 @@ kudurru has these functions:
 
 ## Version
 
-This guide describes kudurru 0.1. This version is a release candidate. The
-list of open items is in the [release checklist](../release-checklist.md).
-Some functions are for later versions. The guide says so where it matters.
+This guide describes kudurru v0.1.0 ("stone"), dated 16 October 2026.
+The [changelog](../../CHANGELOG.md) lists the release changes and known
+limitations. Some functions are for later versions. The guide says so
+where it matters.
 
 ## More information
 

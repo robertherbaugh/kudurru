@@ -157,9 +157,9 @@ module:
     - {source: ../www/LICENSE.md, target: content/project/website-license.md}
     - {source: ../license-server/LICENSE.md, target: content/project/license-server-license.md}
 
-    # Brand (docs/brand): palette and the artwork the templates use.
-    - {source: ../docs/brand/tokens.css, target: assets/css/tokens.css}
-    - source: ../docs/brand/assets
+    # Brand (branding): palette and the artwork the templates use.
+    - {source: ../branding/tokens.css, target: assets/css/tokens.css}
+    - source: ../branding/assets
       target: static/brand
       files:
         - favicon.ico

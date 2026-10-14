@@ -28,6 +28,19 @@ Every commit must also carry a `Signed-off-by: Name <email>` line
 The DCO sign-off does not replace acceptance of the contributor agreement.
 Pull requests without both are not merged.
 
+## Ownership and review
+
+Changes to the license server, marketing website, licensing terms and
+enforcement, and branding require review from `@robertherbaugh` under
+[CODEOWNERS](.github/CODEOWNERS). The ownership rules also cover CI and
+release publishing. The repository's branch rules require code-owner
+approval on `main` and the release branches; a CODEOWNERS file must be
+present on the pull request's base branch for GitHub to apply it.
+
+Original artwork, exported assets and color tokens live in
+[branding/](branding/README.md). Update that source and regenerate app
+copies with the documented export scripts.
+
 ## Building
 
 ```sh
@@ -52,7 +65,7 @@ Open pull requests against `main`; each push to one builds `ghcr.io/robertherbau
 - `internal/rbac/permissions.yaml` is the single source for roles, Kubernetes ClusterRoles and the docs table. Every API route declares its permission; a lint fails the build otherwise.
 - `internal/config/schema.go` describes every settings key. Keys flagged `hostOnly` can never be set through the API.
 
-Deferred features have seams documented in [architecture.md §13.1](docs/architecture.md#131-v01--stone-a-credible-daily-driver-16-weeks-one-release-cycle). Land a deferred feature by filling its seam, not by adding a parallel path.
+Deferred features have seams documented in [architecture.md §13.1](docs/architecture.md#131-v010--stone). Land a deferred feature by filling its seam, not by adding a parallel path.
 
 ## Decisions
 

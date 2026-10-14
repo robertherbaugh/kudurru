@@ -15,6 +15,7 @@ docker compose up -d
 kdig @127.0.0.1 +tls example.com
 ```
 
-The supervisor image and `kudurru edge run` are milestone M4 deliverables;
-until they are published use [../single](../single/). See
+v0.1.0 includes the supervisor image and `kudurru edge run`. Set
+`KUDURRU_LICENSE_KEY` to a key with the edge entitlement before starting
+Compose (a free eligible personal key covers it). See
 [docs/deploy/docker.md](../../../docs/deploy/docker.md).

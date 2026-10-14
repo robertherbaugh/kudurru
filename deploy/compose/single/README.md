@@ -9,7 +9,7 @@ dig @127.0.0.1 example.com
 curl -s localhost:8081/healthz      # inside the container network; or: docker compose exec kudurru kudurru health
 ```
 
-Sign in at http://localhost:8080/ as `admin` with the password from
+Sign in at https://localhost:8080/ as `admin` with the password from
 `secrets/admin_password`; the UI asks for a new one. The file is read only
 while no user exists.
 

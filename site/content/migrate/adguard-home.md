@@ -23,7 +23,7 @@ hand.
 | DNS blocklists | [`BlockList`](/reference/crds/blocklist/) objects with `mode: block` and `url` sources | Refreshed every `spec.refreshInterval`; `kudurru lists refresh <name>` fetches now |
 | DNS allowlists | `BlockList` objects with `mode: allow`, referenced from a Policy's `allowListRefs` | Allow wins across every list that applies |
 | Custom filtering rules | an inline source (`inline:` lines) with `format: adblock`, or `kudurru lists allow` / `deny` for single domains | See the rule support below |
-| Persistent clients (IP, CIDR, ClientID) | entries of a [`ClientGroup`](/reference/crds/clientgroup/): `ip`, `cidr`, `clientID`, `hostname`, `nameGlob` | MAC entries are accepted but match only once the v0.2 client inventory supplies addresses |
+| Persistent clients (IP, CIDR, ClientID) | entries of a [`ClientGroup`](/reference/crds/clientgroup/): `ip` or `cidr` in v0.1.0 | Client-ID, hostname, name-pattern and MAC fields are accepted by the schema but have no production inventory or listener source yet; use addresses for matching |
 | Per-client settings (filters, upstreams) | a [`Policy`](/reference/crds/policy/) for that group: `blockListRefs`, `allowListRefs`, `upstreamGroup`, `blockMode`, `queryLog` | The highest `priority` wins per setting when several policies match. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
 | Client tags | none | Use client groups |
 | Schedules (pause per client) | `Policy.spec.schedule`: weekdays, start and end time, time zone | The policy applies only inside its window |

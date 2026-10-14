@@ -16,12 +16,15 @@ links:
 
 ## Status
 
-kudurru v0.1 ("stone") is in release preparation. **No version has been
-tagged yet.** The guides use the image and chart names that
-the v0.1.0 release publishes (`ghcr.io/robertherbaugh/kudurru:0.1.0`,
-`oci://ghcr.io/robertherbaugh/charts/kudurru`); until that tag exists, build
-from source: `make web-build build` writes `bin/kudurru` with the dashboard
-embedded, and `make docker` builds the image ([Contributing](/project/contributing/)).
+**v0.1.0 ("stone") · 16 October 2026.** The first release includes the
+resolver, primary and forward zones, outbound zone transfers, blocking,
+the dashboard and CLI, Kubernetes CRDs and Helm charts, and optional edge
+supervisors. Use `ghcr.io/robertherbaugh/kudurru:0.1.0` for Docker and
+`--version 0.1.0` with the Helm charts. See the
+[changelog](/project/changelog/) for the release scope and known limitations,
+or the [release assets](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
+for binaries and packages. The [architecture tour](/architecture/#built-and-not-built)
+describes what is implemented and what is planned.
 
 ## Source-available, free at home
 

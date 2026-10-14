@@ -17,10 +17,11 @@ kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
 helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
-  --namespace kudurru-system
+  --namespace kudurru-system --set replicaCount=1
 ```
 
-The default is `mode: kubernetes`: two replicas of a Deployment storing
+This command starts one replica without a license key. The chart defaults
+to `mode: kubernetes` with two replicas of a Deployment storing
 objects as CRDs (kube driver), a Lease-elected controller, one
 mixed-protocol `LoadBalancer` Service on :53 with
 `externalTrafficPolicy: Local` (client addresses are the product), a PDB,
@@ -369,11 +370,13 @@ config:
 They render into two ConfigMaps (D25): `<release>-node` is the file
 `serve --config` reads and its checksum annotation rolls the pods;
 `<release>-settings` holds the cluster keys and is mounted at
-`/etc/kudurru/settings` for hot reload. **Today the binary reads only the
-node file**, so the chart also merges the settings into it and a settings
-change rolls the pods; once the settings file is read and watched
-(docs/followups.md) the merge goes away and settings changes apply without a
-restart.
+`/etc/kudurru/settings` for hot reload through `KUDURRU_SETTINGS_FILE`.
+The binary reads and watches that settings file. The chart also merges
+the settings into the node file, so Helm settings changes roll the pods
+through its checksum annotation. Direct edits to the mounted settings
+ConfigMap reload hot keys without a restart. In Kubernetes, kudurru's API
+refuses settings writes; edit the ConfigMap or Helm values. See
+[configuration and the store](../architecture/configuration-and-store.md#settings).
 
 Seed objects with `objects:` (post-install hook resources in
 mode=kubernetes: created once, then owned by kubectl and the UI).

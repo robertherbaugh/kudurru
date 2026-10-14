@@ -1,4 +1,4 @@
-"""Export the email's bundled brand assets (requires Pillow, as docs/brand does).
+"""Export the email's bundled brand assets (requires Pillow, as branding does).
 
 Run from the repository root:
   python3 license-server/scripts/mail-brand.py
@@ -14,7 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 root = Path(__file__).resolve().parents[2]
-brand = root / "docs/brand"
+brand = root / "branding"
 tokens = json.loads((brand / "tokens.json").read_text())
 logo = Image.open(brand / "assets/kudurru-logo-mixed-paper.png")
 logo = logo.resize((576, 192), Image.Resampling.LANCZOS)

@@ -10,4 +10,10 @@ Each report records what was built, the exact commands, the measurements against
 | (g) CRD + CEL validator | [store-validator.md](store-validator.md) | pass | +12.9 MB binary (+6.7 MB with controller-runtime); found two CRDs the apiserver refused (fixed) |
 | (i) DoT/DoH/DoQ/DoH3 + PROXYv2 | [dnsserver-quic.md](dnsserver-quic.md) | pass | all six transports through one registry; 15/15 forgery cases dropped; +448 KiB for quic-go; DoQ 100 k q/s multiplexed on loopback |
 
-Still open because the sandbox has no Docker, kind, dnsdist or second VM: (a) dnsdist console under YAML, (b) PROXYv2 + chashed with a real dnsdist, (f) mixed-protocol LoadBalancer on kind + MetalLB, (h) keepalived 2.4.3 on two VMs.
+These are historical development reports. At the end of the spike phase,
+the sandbox could not run (a) dnsdist console under YAML, (b) PROXYv2 +
+chashed with a real dnsdist, (f) kind + MetalLB or (h) two-VM keepalived.
+kind + MetalLB subsequently moved to CI. Deployment checks for the edge
+and VIP are in the [release checklist](../release-checklist.md#3-checks-before-ga-ci-and-the-owners-hardware);
+v0.1.0's behavior and limitations are in the [architecture tour](../architecture/README.md)
+and [changelog](../../CHANGELOG.md).

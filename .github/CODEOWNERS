@@ -1,0 +1,52 @@
+# GitHub requires these owners to have write access to the repository.
+# Branch rules must require code-owner reviews to enforce approval.
+# Patterns without a leading slash also match files in nested directories.
+
+# Ownership rules, CI, publishing and release promotion.
+/.github/                              @robertherbaugh
+/hack/release-tag.sh                   @robertherbaugh
+/hack/candidate-published.sh           @robertherbaugh
+/.goreleaser.yaml                      @robertherbaugh
+
+# The license issuance service and marketing website.
+/license-server/                       @robertherbaugh
+/www/                                  @robertherbaugh
+
+# License terms, notices, contribution grants and license-named code/tests.
+*LICENSE*                              @robertherbaugh
+*license*                              @robertherbaugh
+*License*                              @robertherbaugh
+*LICENSING*                            @robertherbaugh
+*licensing*                            @robertherbaugh
+*Licensing*                            @robertherbaugh
+*LICENCE*                              @robertherbaugh
+*licence*                              @robertherbaugh
+*NOTICE*                               @robertherbaugh
+*COPYING*                              @robertherbaugh
+*COPYRIGHT*                            @robertherbaugh
+/CONTRIBUTING.md                       @robertherbaugh
+/docs/guide/admin/13-license.md         @robertherbaugh
+/docs/architecture/licensing.md         @robertherbaugh
+
+# License verification, enterprise code and entitlement enforcement.
+/internal/license/                     @robertherbaugh
+/hack/licensegen/                      @robertherbaugh
+/ee/                                   @robertherbaugh
+/cmd/kudurru/serve.go                   @robertherbaugh
+/cmd/kudurru/edge.go                    @robertherbaugh
+/cmd/kudurru/vip.go                     @robertherbaugh
+/cmd/kudurru/blockpage.go               @robertherbaugh
+/internal/api/                         @robertherbaugh
+/internal/auth/stack/                  @robertherbaugh
+/internal/rbac/                        @robertherbaugh
+/internal/audit/                       @robertherbaugh
+/internal/blockpage/                   @robertherbaugh
+
+# Canonical artwork, tokens and source files, plus generated app branding.
+/branding/                             @robertherbaugh
+/web/scripts/brand-assets.py            @robertherbaugh
+/web/src/assets/                       @robertherbaugh
+/web/src/themes/kudurru/                @robertherbaugh
+/web/src/components/BrandLogo.tsx       @robertherbaugh
+/web/public/favicon.ico                @robertherbaugh
+/web/public/icon-*.png                  @robertherbaugh

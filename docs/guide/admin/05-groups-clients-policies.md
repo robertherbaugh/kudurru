@@ -98,14 +98,14 @@ A matcher has a kind and a value.
 |---|---|---|
 | **IP address** | `192.168.1.30` | One device |
 | **CIDR range** | `192.168.1.0/24` | Each address in the range |
-| **Client ID** | A name that the device sends | Reserved: the version 0.1 listeners do not receive client IDs |
-| **MAC address** | `aa:bb:cc:dd:ee:ff` | A device, only when the transport gives the MAC address |
+| **Client ID** | A name that the device sends | Reserved: the v0.1.0 listeners do not receive client IDs |
+| **MAC address** | `aa:bb:cc:dd:ee:ff` | Reserved: the v0.1.0 listeners do not receive MAC addresses |
 
 To add a client that you already see, click **Add** next to the client in
 the list **Seen in the last 24 hours**. To add many values, click **Paste
 many**.
 
-CAUTION: Version 0.1 does not receive client IDs, MAC addresses or hostnames
+CAUTION: Version 0.1.0 does not receive client IDs, MAC addresses or hostnames
 from its DNS listeners. Use an IP address or a range for device groups.
 If queries arrive from the router's address, all devices using that router
 share its group. See [Clients shows only the router or gateway](12-troubleshooting.md#filtering).

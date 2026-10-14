@@ -216,7 +216,7 @@ alternative. The HTML uses Kudurru's Ink, Paper and Clay palette, an embedded
 logo, and buttons for confirmation, review and portal access. The logo travels
 as an inline CID attachment; no external image or font host is needed. Key
 emails still include the exact token and `license.key` attachment. The brand
-assets are embedded in the server bundle; regenerate them from `docs/brand`
+assets are embedded in the server bundle; regenerate them from `branding`
 with `python3 license-server/scripts/mail-brand.py` from the repository root
 (Pillow 11.3.0, as for the brand exports).
 

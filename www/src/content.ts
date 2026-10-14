@@ -1,5 +1,5 @@
 // Everything the pages say. Claims here follow CHANGELOG.md (0.1.0), the
-// README and bench/baseline.txt; when a feature moves between releases,
+// docs/architecture, docs/deploy and bench/baseline.txt; when a feature moves between releases,
 // change it here and nowhere else.
 
 export const SITE_URL = "https://kudurru.io";
@@ -73,7 +73,7 @@ export const NAV: NavLink[] = [
   { label: "License", href: "/license/" },
 ];
 
-// The README's lineage table: what each reference project contributed.
+// The README's lineage table: the ideas that inspired the design.
 export interface Lineage {
   idea: string;
   from: { name: string; href: string }[];
@@ -82,19 +82,19 @@ export interface Lineage {
 
 export const LINEAGE: Lineage[] = [
   {
-    idea: "Replicated, API-first, one binary with roles",
+    idea: "API-first design and one binary",
     from: [{ name: "Gravity", href: "https://github.com/BeryJu/gravity" }],
-    meaning: "One kudurru binary runs every role. The store replicates configuration; nobody copies it by hand.",
+    meaning: "Every node runs the resolver, API and dashboard. Kubernetes replicas share configuration through the apiserver.",
   },
   {
-    idea: "The extreme feature set",
+    idea: "Authoritative DNS and encrypted transports",
     from: [{ name: "Technitium", href: "https://technitium.com/dns/" }],
-    meaning: "Typed zones with real SOA serials, AXFR and IXFR, NOTIFY, TSIG, every encrypted transport, per-zone access policies.",
+    meaning: "Primary and forward zones, SOA serial management, AXFR and IXFR out, NOTIFY out, TSIG on UDP/TCP/DoT, DoT/DoH/DoQ/DoH3 and per-zone query ACLs.",
   },
   {
-    idea: "The dashboard everyone loves",
+    idea: "A clear view of DNS activity",
     from: [{ name: "Pi-hole", href: "https://pi-hole.net/" }],
-    meaning: "Stat tiles, 24-hour charts, drill-down everywhere, a query log that says why, and multi-node views Pi-hole never had.",
+    meaning: "Stat tiles, 24-hour charts, a query log that says why, one-click allow/deny and views across nodes.",
   },
   {
     idea: "Powerful blocking",
@@ -102,12 +102,12 @@ export const LINEAGE: Lineage[] = [
       { name: "blocky", href: "https://github.com/0xERR0R/blocky" },
       { name: "AdGuard Home", href: "https://github.com/AdguardTeam/AdGuardHome" },
     ],
-    meaning: "hosts, domain, adblock and regex lists; client groups; per-group policies and schedules; zero-allocation matchers behind a CI gate.",
+    meaning: "hosts, domain, adblock and regex lists; client groups; per-group policies and schedules; zero-allocation matchers with a benchmark regression gate.",
   },
   {
     idea: "Load balancing at the edge",
     from: [{ name: "dnsdist", href: "https://dnsdist.org" }],
-    meaning: "A kudurru supervisor renders, checks and runs dnsdist in front of every node. Client IPs survive through authenticated PROXYv2.",
+    meaning: "An optional kudurru supervisor renders, checks and runs dnsdist. Authenticated PROXYv2 preserves client IPs on the backend hop.",
   },
   {
     idea: "Virtual IPs on bare metal",
@@ -122,18 +122,17 @@ export const TOGETHER: { title: string; body: string; release?: string }[] = [
     body: "In a cluster, zones, records, lists, groups and policies are Kubernetes objects. In Docker the same YAML goes into SQLite.",
   },
   {
-    title: "OIDC login with real RBAC",
+    title: "OIDC sign-in and role-based access control",
     body: "viewer, auditor, operator, zone-admin and admin, scoped per zone. A login with no role binding is refused, never silently admin. Needs a license key (free for personal use).",
   },
   {
-    title: "A simple integration model",
-    body: "Write records to Cloudflare for split horizon, pull client inventory from UniFi.",
-    release: "v0.2",
+    title: "An integration framework",
+    body: "The external-dns webhook provider writes records in v0.1.0. The Cloudflare split-horizon sink and UniFi inventory source are planned for v0.2. Integrations need a license key (free for eligible personal use).",
   },
 ];
 
-// The v0.1 pipeline. pipeline.Order also reserves rewrite, dnssec and
-// postprocess; those stages arrive with later releases.
+// The v0.1.0 query path: seven pipeline stages, then the log observer.
+// pipeline.Order also reserves local, rewrite, dnssec and postprocess.
 export type StageId =
   | "ingress"
   | "identify"
@@ -145,14 +144,14 @@ export type StageId =
   | "log";
 
 export const STAGES: { id: StageId; does: string }[] = [
-  { id: "ingress", does: "Decodes the message, applies PROXYv2 and per-prefix rate limits" },
-  { id: "identify", does: "Maps the source address or DoT/DoH client ID to a client and its groups" },
-  { id: "control", does: "Refuses malformed queries, answers CHAOS and health probes" },
+  { id: "ingress", does: "Checks query shape and per-prefix rate limits; answers CHAOS and health probes" },
+  { id: "identify", does: "Matches the source IP or CIDR to client groups and their merged policies" },
+  { id: "control", does: "Drops malformed queries" },
   { id: "authoritative", does: "Answers names in local zones from an in-memory tree" },
   { id: "blocking", does: "Evaluates the client's merged policies: lists, services, safe search" },
   { id: "cache", does: "Sharded TTL cache with prefetch, serve-stale and in-flight coalescing" },
   { id: "upstream", does: "Forwards to the client's upstream group over DoT, DoH, DoQ or Do53" },
-  { id: "log", does: "Records the answer and the reason for it in the query log" },
+  { id: "log", does: "After the chain returns, the observer records the answer and its reason" },
 ];
 
 export type Status = "blocked" | "rewritten" | "authoritative" | "cached" | "forwarded" | "truncated";
@@ -370,7 +369,7 @@ export const REGISTERS: Register[] = [
     points: [
       "Wildcards, CNAME and DNAME chasing, NODATA versus NXDOMAIN, per-zone query ACLs",
       "SOA serial stamping with coalescing, records that expire on their own, BIND zone file import and export",
-      "AXFR and IXFR out with TSIG on every transport, NOTIFY with retries",
+      "AXFR and IXFR out; TSIG on UDP, TCP and DoT; NOTIFY out with retries",
       "SERVFAIL, never NXDOMAIN, for a primary zone that has not loaded yet",
     ],
     figure: { value: "50–80", unit: "ms", caption: "AXFR of a 100,000-record zone" },
@@ -397,7 +396,7 @@ export const REGISTERS: Register[] = [
     title: "Lists, groups, schedules. No allocations.",
     lead: "A clean-room parser compiles hosts, domain, adblock and regex lists into one matcher chain. Allow wins, @@ exceptions apply, and answers are checked through their CNAME chain.",
     points: [
-      "Client groups by IP, CIDR or DoT/DoH client ID, each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)",
+      "Client groups by IP and CIDR, with merged policies and weekday schedules (a policy beyond the default needs a license key, free for eligible personal use)",
       "150 blocked services in 14 categories, and safe search for the search engines and video sites that document it",
       "A block page that says which list blocked a site, with a request-access form that reaches an admin",
       "Answers with zeroIP, NXDOMAIN, a custom IP or REFUSED, tagged with EDE 15 or 17",
@@ -408,7 +407,7 @@ export const REGISTERS: Register[] = [
   {
     id: "identity",
     label: "Identity",
-    title: "OIDC logins. Real roles.",
+    title: "OIDC sign-in. Scoped roles.",
     lead: "Sign in with your identity provider, or with local accounts on a single box. Every write lands in the audit trail with who did it and which permission allowed it.",
     points: [
       "OIDC with a backend-for-frontend and PKCE; local users with Argon2id and lockouts",
@@ -426,12 +425,12 @@ export const REGISTERS: Register[] = [
     title: "The apiserver is the replicated store.",
     lead: "DNSZone, DNSRecordSet, BlockList, ClientGroup and Policy are CRDs. Every replica watches them and serves from memory, so an apiserver outage does not stop answers.",
     points: [
-      "Helm charts kudurru and kudurru-crds, rendered and checked across 42 value combinations",
-      "Each object records who manages it: the API, a file, an integration or Kubernetes. Two sources of truth cannot happen",
-      "An external-dns webhook provider (needs a license key, free for personal use), and a read-only watch of DNSEndpoint",
+      "Helm charts kudurru and kudurru-crds, with a render matrix checked against the binary's configuration schema and kubeconform",
+      "Each object records its owner: the API, a file, an integration or Kubernetes. Writes from another source are rejected",
+      "An external-dns webhook provider that writes DNSRecordSet objects (needs a license key, free for eligible personal use)",
       "The same YAML works in Docker: kudurru apply -f zone.yaml",
     ],
-    figure: { value: "42", caption: "chart value combinations rendered and checked with kubeconform on every change" },
+    figure: { value: "2", caption: "Helm charts, with configuration and Kubernetes schema checks" },
     link: { label: "Helm guide", href: docs("/deploy/helm/") },
   },
   {
@@ -468,10 +467,10 @@ export interface Shape {
 }
 
 export const SHAPES: Shape[] = [
-  { name: "docker run, compose", truth: "state.db on a volume", answers: "one node", writes: "n/a", release: "v0.1" },
-  { name: "Kubernetes, several replicas", truth: "CRDs in the apiserver", answers: "every pod, through apiserver outages", writes: "apiserver HA", release: "v0.1" },
-  { name: "Kubernetes, one node (Pi-hole on k3s)", truth: "state.db on a PVC", answers: "one pod", writes: "n/a", release: "v0.1" },
-  { name: "Compose HA, static twins", truth: "the same file-managed config on each node", answers: "all nodes, VIP", writes: "files only", release: "v0.1" },
+  { name: "docker run, compose", truth: "state.db on a volume", answers: "one node", writes: "n/a", release: "v0.1.0" },
+  { name: "Kubernetes, several replicas", truth: "CRDs in the apiserver", answers: "every pod, through apiserver outages", writes: "apiserver HA", release: "v0.1.0" },
+  { name: "Kubernetes, one node (Pi-hole on k3s)", truth: "state.db on a PVC", answers: "one pod", writes: "n/a", release: "v0.1.0" },
+  { name: "Compose HA, static twins", truth: "the same file-managed config on independent SQLite nodes", answers: "all nodes, VIP", writes: "distribute files to every node", release: "v0.1.0" },
   { name: "Compose HA, follower mode", truth: "the primary's state.db", answers: "all nodes", writes: "primary, fenced promote", release: "v0.2" },
   { name: "Compose HA, raft", truth: "replicated state.db", answers: "all nodes", writes: "any node", release: "v1.0" },
 ];
@@ -502,21 +501,23 @@ export function installs(version: string): Install[] {
         `  ${IMAGE}:${version}`,
         "dig @127.0.0.1 example.com",
       ],
-      note: "The dashboard is on port 8080. Sign in as admin with the password in secrets/admin_password.",
+      note: "Open https://<host>:8080/ and sign in as admin with the password in secrets/admin_password. The first start creates a self-signed certificate; keep a safe copy of the encryption key.",
       href: docs("/deploy/docker/"),
     },
     {
       id: "helm",
       label: "Helm",
       lines: [
+        "kubectl create namespace kudurru-system",
+        "kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted",
         `helm install kudurru-crds ${CHARTS}/kudurru-crds \\`,
         `  --version ${version}`,
         `helm install kudurru ${CHARTS}/kudurru --version ${version} \\`,
-        "  --set replicaCount=2",
+        "  --namespace kudurru-system --set replicaCount=1",
         "kubectl apply -f zone.yaml",
         "kubectl get dnszones",
       ],
-      note: "The CRD chart keeps the CRDs on uninstall, so removing kudurru never deletes your zones.",
+      note: "Start with one replica and no license key. For more replicas, add a key as described in the Helm guide. The separate CRD chart keeps your zones when the server chart is uninstalled.",
       href: docs("/deploy/helm/"),
     },
     {
@@ -551,7 +552,7 @@ export interface Release {
 
 export const ROADMAP: Release[] = [
   {
-    version: "v0.1",
+    version: "v0.1.0",
     name: "stone",
     meaning: "The stone itself: one record of authority.",
     items: [

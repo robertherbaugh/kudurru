@@ -1,5 +1,5 @@
 // Email clients need tables and inline styles rather than the portal's UI
-// components or CSS variables. Brand values and artwork come from docs/brand;
+// components or CSS variables. Brand values and artwork come from branding;
 // regenerate brand.json with scripts/mail-brand.py. No external image/font
 // requests: the logo is a CID attachment embedded in the server bundle.
 import { NONCOMMERCIAL_LICENSE_URL } from '../../shared/catalog';
