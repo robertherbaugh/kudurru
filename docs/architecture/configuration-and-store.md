@@ -419,7 +419,9 @@ the Kubernetes Events sink exists but is not wired yet.
 
 ## Settings
 
-Settings are not store objects. Each key in the metadata table
+The existing production settings path uses files and a live configuration
+pointer; the v0.2 canonical object and command adapter are described below.
+Each key in the metadata table
 (`internal/config/schema.go`) has a **scope** and flags:
 
 | Scope | Examples | Changed how |
@@ -612,9 +614,19 @@ flowchart LR
 
 The object also carries absolute blocking-disable state in status: an optional
 `disabledUntil` requires `disabled: true`; an absent deadline means indefinite.
-Expiry never restarts with a process. Canonical API command writes and production
-bundle mounting remain integration steps; startup migration does not switch the
-existing settings writer by itself.
+Expiry never restarts with a process.
+
+The optional canonical API adapter now reads settings and their schema values
+from the original complete HTTP lease. It validates a merge patch, then writes
+only named public keys to the actual singleton through current raw authentication,
+the original writer and complete dependency exclusion. A stale request cannot
+overwrite a newer configuration; identical writes still cross final credential
+and writer checks. Map merges and null resets preserve the API's existing behavior.
+Successful PATCH replies acknowledge durable desired values. Subsequent serving
+reads wait for complete publication; the adapter never writes the legacy file or
+changes the independent reload pointer. Actual HTTP/SQLite tests cover these
+paths. Production bundle mounting remains open; startup migration alone does not
+switch the existing settings writer.
 
 
 ## Complete serving publication

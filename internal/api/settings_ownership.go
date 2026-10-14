@@ -45,7 +45,7 @@ func (s *Server) registerSettingsOwnership() {
 			if err != nil {
 				return nil, ownershipError(err)
 			}
-			out := s.settingsBody(config.ScopeCluster, nil, nil)
+			out := s.settingsBody(s.config(), config.ScopeCluster, nil, nil)
 			yes := true
 			out.Body.Persisted = &yes
 			return out, nil

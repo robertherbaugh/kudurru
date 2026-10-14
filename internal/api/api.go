@@ -133,6 +133,15 @@ type SettingsWriter interface {
 	WriteSettings(ctx context.Context, next *config.Config, changed []string) error
 }
 
+// CanonicalSettings reads the original request's complete settings image and
+// persists changes through current command admission. Implementations return a
+// detached effective config and reject stale requests. A successful write is a
+// durable acknowledgment; serving changes only after complete publication.
+type CanonicalSettings interface {
+	Settings(context.Context) (*config.Config, error)
+	SettingsWriter
+}
+
 // UpstreamStatus reports the upstream servers (*upstream.Set).
 type UpstreamStatus interface {
 	Status() []upstream.ServerStatus
@@ -205,6 +214,9 @@ type Options struct {
 	Settings          SettingsWriter
 	SettingsOwnership *settings.Manager
 	Reload            *config.Reloadable
+	// CanonicalSettings replaces cluster settings reads/writes only. It never
+	// updates Reload or the legacy settings file after a canonical commit.
+	CanonicalSettings CanonicalSettings
 	// Objects is the file-managed objects loader (CheckAPIWrite for the
 	// ha-static shape, diagnoses for /info/messages).
 	Objects *objects.Loader
