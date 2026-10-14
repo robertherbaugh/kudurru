@@ -319,7 +319,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// identities. This gate performs no work on the DNS path. Recheck every IAM
 	// mutation independently of the HTTP request's earlier admission result.
 	var identityGate *iamgate.Gate
-	var disableIdentityBootstrap bool
 	if restCfg != nil {
 		migration, err := newKubeIAMMigrator(restCfg, cfg, releaseNamespace)
 		if err != nil {
@@ -329,8 +328,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		initCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
 		_, status, err := identityGate.Capture(initCtx)
 		cancel()
-		disableIdentityBootstrap = err != nil
-		if disableIdentityBootstrap {
+		if err != nil {
 			logger.Warn("remote identity admission disabled; inspect kudurru iam migrate status", "state", status.State, "releaseNamespace", releaseNamespace)
 		}
 		st = &iamgate.Store{Store: st, Gate: identityGate}
@@ -841,16 +839,21 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
-	stackOpts.DisableBootstrap = disableIdentityBootstrap
 	if identityGate != nil {
 		stackOpts.TokenMigration = iamgate.ResolveToken
+		stackOpts.InitializationAdmission = func(ctx context.Context) error {
+			_, _, err := identityGate.Capture(ctx)
+			return err
+		}
 	}
 	stackOpts.Kube = restCfg
 	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
 	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {
 		stackOpts.Namespace = releaseNamespace
-		stackOpts.RetryUnavailable = kube.IsUnavailable
+		stackOpts.RetryUnavailable = func(err error) bool {
+			return kube.IsUnavailable(err) || errors.Is(err, iamgate.ErrClosed)
+		}
 		stackOpts.InitializationTimeout = kubeStartupTimeout(cfg)
 	}
 	if internalCreds != nil {

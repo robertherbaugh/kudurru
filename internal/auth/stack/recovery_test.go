@@ -19,6 +19,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/oidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
+	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -276,6 +277,36 @@ func TestDeferredIdentityRecoveryResumesUnfinishedSteps(t *testing.T) {
 				t.Fatal("user bootstrap failed to resume or replayed after successful completion")
 			}
 		})
+	}
+}
+
+func TestDeferredInitializationAdmissionReopensBeforeBootstrap(t *testing.T) {
+	st := &recoveringIdentityStore{Store: authtest.Memory(t)}
+	st.available.Store(true) // The identity store is reachable; admission is not.
+	wire, id := tokens.Generate()
+	opts := recoveryOptions(t, st, wire)
+	opts.RetryUnavailable = func(err error) bool { return errors.Is(err, iamgate.ErrClosed) }
+	var admitted atomic.Bool
+	opts.InitializationAdmission = func(context.Context) error {
+		if !admitted.Load() {
+			return iamgate.ErrClosed
+		}
+		return nil
+	}
+	s, err := New(t.Context(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.initializePending || s.usersBootstrapped || s.tokensBootstrapped || len(s.Users().List()) != 0 || len(s.Tokens().List("")) != 0 {
+		t.Fatal("closed current admission seeded identity state")
+	}
+	admitted.Store(true)
+	runRecoveredStack(t, s, st)
+	if _, ok := s.Tokens().Get(id); !ok {
+		t.Fatal("reopened admission did not resume bootstrap")
+	}
+	if principal, err := s.Tokens().Verify(t.Context(), wire, "192.0.2.1"); err != nil || !principal.BuiltinAdmin {
+		t.Fatal("recovered bootstrap token not usable", err)
 	}
 }
 

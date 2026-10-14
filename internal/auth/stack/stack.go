@@ -137,6 +137,10 @@ type Options struct {
 	RetryUnavailable func(error) bool
 	// InitializationTimeout bounds each attempt when RetryUnavailable is set.
 	InitializationTimeout time.Duration
+	// InitializationAdmission checks current migration/bootstrap eligibility on
+	// every unfinished initialization attempt. A retryable outage must not be
+	// converted to a permanent DisableBootstrap decision from a startup sample.
+	InitializationAdmission func(context.Context) error
 }
 
 // Stack is the assembled identity layer.
@@ -455,6 +459,11 @@ func (s *Stack) initialize(ctx context.Context) error {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
+	}
+	if s.opts.InitializationAdmission != nil {
+		if err := s.opts.InitializationAdmission(ctx); err != nil {
+			return err
+		}
 	}
 	for _, prime := range []func(context.Context) error{s.users.Prime, s.tokens.Prime, s.roleBindings.Prime, s.idps.Prime} {
 		if err := prime(ctx); err != nil {

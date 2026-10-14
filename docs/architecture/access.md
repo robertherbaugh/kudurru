@@ -428,7 +428,10 @@ The gate runs before identity bootstrap and outside the HTTP authentication
 stack, including login and OIDC callbacks. It admits at most eight concurrent
 checks, each bounded to five seconds. Closed admission returns a sanitized 503
 with retry advice; IAM mutations independently recheck current admission before
-writing. DNS snapshots exclude management IAM kinds and DNS queries never call
+writing. Every unfinished initialization attempt captures fresh admission before
+priming and bootstrap. A startup API outage defers initialization and retries;
+it does not permanently disable user or token bootstrap. Explicitly disabled
+bootstrap stays disabled. DNS snapshots exclude management IAM kinds and DNS queries never call
 this gate. These reads do not provide a multi-object Kubernetes transaction:
 migration still requires all readers and writers to remain stopped. Complete
 immutable authentication publication and durable session state remain separate
