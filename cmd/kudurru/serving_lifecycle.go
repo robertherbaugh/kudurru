@@ -118,6 +118,14 @@ func (s *servingRuntime) observeHost(ctx context.Context) error {
 				return nil
 			}
 			image, token, err := s.opts.Store.ReadServingCandidate(ctx)
+			// An enrolled follower can start before its first replica arrives.
+			// Keep observing without granting a host or initializing any roots;
+			// the subscribed generation/authority signals cover a racing install.
+			// This exception is local to a missing initial follower image, never
+			// a general retry of read-only commands or malformed installed data.
+			if errors.Is(err, replication.ErrReadOnly) && a.Installed.Term.ClusterID == "" {
+				return nil
+			}
 			if err != nil {
 				return err
 			}
