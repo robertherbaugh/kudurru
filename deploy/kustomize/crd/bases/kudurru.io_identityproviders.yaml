@@ -66,58 +66,105 @@ spec:
                   (§8.4).
                 properties:
                   displayName:
-                    description: ClaimRef names a claim.
+                    description: ClaimRef maps a claim or string expression; empty
+                      selects the default claim.
                     properties:
                       claim:
                         maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
                   email:
-                    description: ClaimRef names a claim.
+                    description: ClaimRef maps a claim or string expression; empty
+                      selects the default claim.
                     properties:
                       claim:
                         maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
                   groups:
-                    description: PrefixedClaim names a claim and the prefix prepended
-                      to its values.
+                    description: |-
+                      PrefixedClaim maps a claim or expression and prepends a prefix. An empty
+                      mapping selects the provider's default claim behavior.
                     properties:
                       claim:
                         maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
                         type: string
                       prefix:
                         maxLength: 256
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
                   username:
-                    description: PrefixedClaim names a claim and the prefix prepended
-                      to its values.
+                    description: |-
+                      PrefixedClaim maps a claim or expression and prepends a prefix. An empty
+                      mapping selects the provider's default claim behavior.
                     properties:
                       claim:
                         maxLength: 256
+                        minLength: 1
+                        type: string
+                      expression:
+                        maxLength: 4096
+                        minLength: 1
                         type: string
                       prefix:
                         maxLength: 256
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: claim and expression are mutually exclusive
+                      rule: '!(has(self.claim) && has(self.expression))'
                 type: object
               claimValidationRules:
                 items:
-                  description: ClaimValidationRule requires a claim to equal a value
-                    (§8.4).
+                  description: ClaimValidationRule requires scalar equality or a boolean
+                    CEL expression.
                   properties:
                     claim:
                       maxLength: 256
                       minLength: 1
                       type: string
+                    expression:
+                      description: Expression evaluates signed claims and must produce
+                        a boolean.
+                      maxLength: 4096
+                      minLength: 1
+                      type: string
                     requiredValue:
+                      description: RequiredValue defaults to the empty string for
+                        scalar equality.
                       maxLength: 2048
                       type: string
-                  required:
-                  - claim
-                  - requiredValue
                   type: object
+                  x-kubernetes-validations:
+                  - message: exactly one claim or expression is required
+                    rule: has(self.claim) != has(self.expression)
+                  - message: requiredValue belongs only to a claim rule
+                    rule: '!has(self.expression) || !has(self.requiredValue) || self.requiredValue.size()
+                      == 0'
                 maxItems: 64
                 type: array
               cliClientID:

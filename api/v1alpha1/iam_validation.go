@@ -146,6 +146,35 @@ func (p *IdentityProvider) Validate() error {
 	if p.Spec.ClientID == "" {
 		errs.add("spec.clientID", "required")
 	}
+	for i, rule := range p.Spec.ClaimValidationRules {
+		path := fmt.Sprintf("spec.claimValidationRules[%d]", i)
+		if (rule.Claim == "") == (rule.Expression == "") {
+			errs.add(path, "exactly one claim or expression is required")
+		}
+		if rule.Expression != "" && rule.RequiredValue != "" {
+			errs.add(path+".requiredValue", "belongs only to a claim rule")
+		}
+		if len(rule.Claim) > 256 || len(rule.Expression) > 4096 || len(rule.RequiredValue) > 2048 {
+			errs.add(path, "claim rule exceeds its bounds")
+		}
+	}
+	if len(p.Spec.ClaimValidationRules) > 64 {
+		errs.add("spec.claimValidationRules", "at most 64 rules are allowed")
+	}
+	m := p.Spec.ClaimMappings
+	for _, field := range []struct{ name, claim, expression string }{
+		{"username", m.Username.Claim, m.Username.Expression},
+		{"groups", m.Groups.Claim, m.Groups.Expression},
+		{"displayName", m.DisplayName.Claim, m.DisplayName.Expression},
+		{"email", m.Email.Claim, m.Email.Expression},
+	} {
+		if field.claim != "" && field.expression != "" {
+			errs.add("spec.claimMappings."+field.name, "claim and expression are mutually exclusive")
+		}
+		if len(field.claim) > 256 || len(field.expression) > 4096 {
+			errs.add("spec.claimMappings."+field.name, "claim mapping exceeds its bounds")
+		}
+	}
 	if r := p.Spec.ClientSecretRef; r == nil {
 		errs.add("spec.clientSecretRef", "required")
 	} else {

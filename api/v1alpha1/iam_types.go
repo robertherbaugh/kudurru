@@ -128,30 +128,53 @@ type SecretKeyRef struct {
 	Key  string `json:"key"`
 }
 
-// ClaimValidationRule requires a claim to equal a value (§8.4).
+// ClaimValidationRule requires scalar equality or a boolean CEL expression.
+// +kubebuilder:validation:XValidation:rule="has(self.claim) != has(self.expression)",message="exactly one claim or expression is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.expression) || !has(self.requiredValue) || self.requiredValue.size() == 0",message="requiredValue belongs only to a claim rule"
 type ClaimValidationRule struct {
+	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
-	Claim string `json:"claim"`
+	Claim string `json:"claim,omitempty"`
+	// RequiredValue defaults to the empty string for scalar equality.
+	// +optional
 	// +kubebuilder:validation:MaxLength=2048
-	RequiredValue string `json:"requiredValue"`
+	RequiredValue string `json:"requiredValue,omitempty"`
+	// Expression evaluates signed claims and must produce a boolean.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	Expression string `json:"expression,omitempty"`
 }
 
-// PrefixedClaim names a claim and the prefix prepended to its values.
+// PrefixedClaim maps a claim or expression and prepends a prefix. An empty
+// mapping selects the provider's default claim behavior.
+// +kubebuilder:validation:XValidation:rule="!(has(self.claim) && has(self.expression))",message="claim and expression are mutually exclusive"
 type PrefixedClaim struct {
 	// +optional
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	Claim string `json:"claim,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	Expression string `json:"expression,omitempty"`
 	// +optional
 	// +kubebuilder:validation:MaxLength=256
 	Prefix *string `json:"prefix,omitempty"`
 }
 
-// ClaimRef names a claim.
+// ClaimRef maps a claim or string expression; empty selects the default claim.
+// +kubebuilder:validation:XValidation:rule="!(has(self.claim) && has(self.expression))",message="claim and expression are mutually exclusive"
 type ClaimRef struct {
 	// +optional
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
 	Claim string `json:"claim,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	Expression string `json:"expression,omitempty"`
 }
 
 // ClaimMappings turns claims into a username and groups (§8.4).

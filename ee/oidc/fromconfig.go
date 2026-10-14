@@ -82,6 +82,17 @@ func ParseConfigEntry(m map[string]any) (*internalv1.IdentityProvider, error) {
 // (NewProvider calls it).
 func FromIdentityProvider(ctx context.Context, idp *internalv1.IdentityProvider, resolver CredentialResolver) (ProviderConfig, error) {
 	s := idp.Spec
+	// This legacy live provider has no captured CEL compiler. Never silently
+	// discard a stored authentication restriction while its replacement lands.
+	m := s.ClaimMappings
+	if m.Username.Expression != "" || m.Groups.Expression != "" || m.DisplayName.Expression != "" || m.Email.Expression != "" {
+		return ProviderConfig{}, errors.New("oidc: expression policy requires captured provider authentication")
+	}
+	for _, rule := range s.ClaimValidationRules {
+		if rule.Expression != "" {
+			return ProviderConfig{}, errors.New("oidc: expression policy requires captured provider authentication")
+		}
+	}
 	cfg := ProviderConfig{
 		ID: idp.Name, DisplayName: s.DisplayName, Issuer: s.Issuer, ClientID: s.ClientID,
 		CLIClientID: s.CLIClientID, Audiences: s.Audiences, RedirectURL: s.RedirectURL, Scopes: s.Scopes,

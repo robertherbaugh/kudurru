@@ -44,3 +44,32 @@ func TestPublicIAMAdmission(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderExpressionAdmission(t *testing.T) {
+	v := testValidator(t)
+	for _, tc := range []struct {
+		name  string
+		field string
+		value any
+		valid bool
+	}{
+		{"scalar", "claimValidationRules", []any{map[string]any{"claim": "hd", "requiredValue": "example.org"}}, true},
+		{"empty scalar", "claimValidationRules", []any{map[string]any{"claim": "optional"}}, true},
+		{"boolean expression", "claimValidationRules", []any{map[string]any{"expression": "claims.email_verified == true"}}, true},
+		{"empty rule", "claimValidationRules", []any{map[string]any{}}, false},
+		{"ambiguous rule", "claimValidationRules", []any{map[string]any{"claim": "hd", "expression": "true"}}, false},
+		{"expression with scalar", "claimValidationRules", []any{map[string]any{"expression": "true", "requiredValue": "true"}}, false},
+		{"default mapping", "claimMappings", map[string]any{"username": map[string]any{"prefix": "corp:"}}, true},
+		{"expression mapping", "claimMappings", map[string]any{"groups": map[string]any{"expression": "claims.groups"}}, true},
+		{"ambiguous mapping", "claimMappings", map[string]any{"email": map[string]any{"claim": "email", "expression": "claims.email"}}, false},
+		{"expression cap", "claimMappings", map[string]any{"displayName": map[string]any{"expression": strings.Repeat("x", 4097)}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := map[string]any{"issuer": "https://sso.example", "clientID": "test", "clientSecretRef": map[string]any{"env": "OIDC_SECRET"}, tc.field: tc.value}
+			u := &unstructured.Unstructured{Object: map[string]any{"apiVersion": v1alpha1.GroupVersion.String(), "kind": "IdentityProvider", "metadata": map[string]any{"name": "test"}, "spec": spec}}
+			if err := v.ValidateUnstructured(t.Context(), u, nil); (err == nil) != tc.valid {
+				t.Fatalf("valid=%v, got %v", tc.valid, err)
+			}
+		})
+	}
+}

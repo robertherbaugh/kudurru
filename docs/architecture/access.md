@@ -284,6 +284,14 @@ omit LocalUser, APIToken and PrincipalState. IdentityProvider uses
 the old `clientSecretFile` field remains accepted only in host configuration.
 Credential Secret namespaces are chosen by the operator, never by public spec.
 
+The provider schema also distinguishes scalar claim rules from bounded CEL
+expressions. A rule selects exactly one claim or expression; mappings may keep
+their existing defaults or select one form. Scalar comparison defaults to an
+empty required value. Each expression is limited to 4 KiB, with at most 64
+validation rules. The captured offline provider compiler is being implemented;
+the existing live provider adapter rejects expressions before resolving a
+credential, so a stored restriction cannot be silently ignored.
+
 SQLite schema 5 converts the old file/Secret references in the migration
 transaction, preserving UIDs, creation order, ownership, status and token hashes.
 It validates public admission and rolls back the entire upgrade if a legacy
