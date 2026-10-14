@@ -47,7 +47,9 @@ func (r *Runtime) PrepareRestore(p *PreparedImage) (*Restore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Restore{owner: r, entries: entries, cut: Cut{snapshot: snapshot, entries: maps.Clone(entries), ready: ready}}, nil
+	cut := Cut{snapshot: snapshot, entries: maps.Clone(entries), ready: ready}
+	cut.deadlines = cut.effectiveDeadlines()
+	return &Restore{owner: r, entries: entries, cut: cut}, nil
 }
 
 // InstallRestore does only a memory swap. Call under the exact candidate

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,10 +31,11 @@ type Runtime struct {
 // Cut pins routing, lifecycle and versions together. Its maps and models are
 // private and immutable; Member returns a detached copy of its parent slice.
 type Cut struct {
-	snapshot *zone.Snapshot
-	entries  map[string]*entry
-	now      time.Time
-	ready    map[string]bool
+	snapshot  *zone.Snapshot
+	entries   map[string]*entry
+	now       time.Time
+	ready     map[string]bool
+	deadlines map[string]time.Time
 }
 
 // Synced reports whether routing is initialized.
@@ -60,12 +62,42 @@ func (c Cut) Match(name string) *zone.Zone {
 	if e == nil {
 		return nil
 	}
-	if !c.eligible(e) || (!e.expiry.IsZero() && !c.now.Before(e.expiry)) {
+	if !c.eligible(e) || !c.unexpired(e) {
 		return e.coverage
 	}
 	return z
 }
 func (c Cut) eligible(e *entry) bool { return c.ready[e.member.Zone.Apex] }
+
+func (c Cut) unexpired(e *entry) bool {
+	deadline := c.deadlines[e.member.Zone.Apex]
+	// The effective deadline never replaces raw committed expiry. Retain its
+	// check even for a cut without a precomputed map.
+	return (e.expiry.IsZero() || c.now.Before(e.expiry)) && (deadline.IsZero() || c.now.Before(deadline))
+}
+
+// effectiveDeadlines prepares immutable serving deadlines from this exact
+// roster. Parent obligations are strict ancestors, so one ordered pass suffices.
+// Raw entries and their durable head/member evidence remain unchanged.
+func (c Cut) effectiveDeadlines() map[string]time.Time {
+	apices := make([]string, 0, len(c.entries))
+	for apex := range c.entries {
+		apices = append(apices, apex)
+	}
+	slices.SortFunc(apices, func(a, b string) int { return len(a) - len(b) })
+	deadlines := make(map[string]time.Time, len(c.entries))
+	for _, apex := range apices {
+		deadline := c.entries[apex].expiry
+		for _, parent := range c.entries[apex].member.Parents {
+			if expiry := deadlines[parent.Zone.Apex]; !expiry.IsZero() && (deadline.IsZero() || expiry.Before(deadline)) {
+				deadline = expiry
+			}
+		}
+		deadlines[apex] = deadline
+	}
+	return deadlines
+}
+
 func (c Cut) readiness() map[string]bool {
 	ready := make(map[string]bool, len(c.entries))
 	for apex, e := range c.entries {
@@ -113,7 +145,7 @@ func (c Cut) Member(apex string) (Member, bool) {
 	}
 	m := e.member
 	m.Parents = append([]zk.ParentFence(nil), m.Parents...)
-	m.Published = m.Published && c.eligible(e) && (e.expiry.IsZero() || c.now.Before(e.expiry))
+	m.Published = m.Published && c.eligible(e) && c.unexpired(e)
 	return m, true
 }
 
@@ -176,6 +208,7 @@ func (r *Runtime) rebuild() {
 	snapshot, _ := zone.NewSnapshot(r.generation, true, models...)
 	r.cut = Cut{snapshot: snapshot, entries: entries}
 	r.cut.ready = r.cut.readiness()
+	r.cut.deadlines = r.cut.effectiveDeadlines()
 }
 
 func (r *Runtime) build(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View, config *public.DNSZone) (*entry, error) {

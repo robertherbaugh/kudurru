@@ -287,6 +287,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		}
 		deadlines[apex] = deadline
 	}
+	c.deadlines = deadlines
 	slices.Sort(desired)
 	if err := ctx.Err(); err != nil {
 		return nil, err
