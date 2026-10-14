@@ -1722,6 +1722,8 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 
 | D188 | Primary lifecycle and publication | Keep private ZoneLifecycle intent/incarnations separate from the sole RR authority in ZoneState. Fence every primary ancestor before child activation; admit later ancestors against the complete current roster. Retirement tombstones the old head before replacement. Admit every UPDATE outcome against current source, credential and writer state; acknowledge wire success only after complete local publication. Recover durable NOTIFY intent with exact head acknowledgment | Parent and child heads are independent CAS objects; coverage must remain conservative during partial work, same-UID type changes and commit/publication failures | Raw desired-primary fallback; stale source RV substitution; child activation from preflight alone; head-only publication success; memory-only NOTIFY acknowledgment |
 
+| D189 | Coherent auth views and durable session provenance | Compile auth from one full object/security image independent of DNS kind readiness. Require explicit versioned security inventories, UID-bound session enrollment, and persistent account/provider/grant floors. Lease the complete view for HTTP reads; reverify raw proof using current CommandTx for mutations and dedup. Legacy cookies require new enrollment | Per-kind caches and sealed cookies alone cannot preserve coherent identity, revocation or delete/regrant behavior across restart and promotion | Live auth fallback during captured reads; authorizing writes from a captured Principal; public-only auth images; resetting missing security history; converting scoped tokens into unrestricted sessions |
+
 ---
 
 ## 17. Glossary

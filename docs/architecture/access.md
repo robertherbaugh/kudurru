@@ -19,6 +19,47 @@ grant, so role bindings and Kubernetes SubjectAccessReview grant nothing. The
 first-boot administrator, the bootstrap token and the admin socket keep full
 access.
 
+## Coherent authentication owner foundation
+
+`internal/servingauth` prepares an immutable auth view from one complete SQLite
+replication image. Its input includes public ServiceAccount, RoleBinding and
+IdentityProvider configuration, private LocalUser, APIToken and PrincipalState
+objects, the Kudurru singleton, and versioned security state. Public IAM objects
+remain outside DNS snapshot readiness. Explicit empty manifest entries are valid;
+missing kinds, a safe export, or missing security history cannot create a view.
+
+The required `auth/v1/root` row inventories every auth-owned security row and
+records a monotonic epoch. Sessions bind the exact account UID and issuance epoch
+to durable enrollment, expiry, grants, a CSRF verifier and revocation state.
+Account/provider floors also bind UIDs; normalized grant floors persist across
+deletion and regrant. Cookies issued at or before a floor are rejected. The new
+version 2 cookie requires its matching enrollment, so activating this owner will
+require users of legacy sealed cookies to sign in again.
+
+```mermaid
+flowchart LR
+    I["One complete image"] --> C["Sealed auth cut"]
+    D["Pinned key and management policy"] --> V["Immutable auth view"]
+    C --> V
+    V --> R["Leased HTTP read"]
+    P["Raw credential proof"] --> T["Current command transaction"]
+    T --> A["Reverify current account and permissions"]
+    A --> W["Mutation or dedup response"]
+```
+
+Local passwords, local/service-account tokens and enrolled cookies verify without
+store reads from the view. Command authentication instead rereads the current
+identities and security rows through an actual `sqlite.CommandTx`, including
+staged changes and dedup replay. A previously authenticated principal cannot
+authorize that write. Current local groups and private administrator state remain
+authoritative; token scopes narrow administrator permissions too.
+
+This owner is tested across held old/new views, store closure, restart, actual
+replica installation and promotion. HTTP/publisher wiring, provider capabilities,
+TOTP replay consumption and the public session workflow remain in progress. The
+request diagrams below describe the existing production stack until that wiring
+is installed. Kubernetes migration admission is a separate verified journal gate.
+
 ## Principals
 
 | Kind | Comes from | Typical caller |
