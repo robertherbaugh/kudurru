@@ -182,6 +182,13 @@ explains the lists.
 Turn on **Live tail** at the top right of the page. New queries show at the
 top of the table when they arrive. Turn the switch off to stop.
 
+Select **All** beside the switch to follow every active node, or select a
+node to follow only that node. The selector has a search field when the
+list is long. A short warning reports how many nodes have partial results.
+
+When query history comes from a central database, turning on **Live tail**
+shows only incoming queries. Turning it off returns to refreshed history.
+
 ### Delete old rows
 
 The role Admin is necessary for this function.

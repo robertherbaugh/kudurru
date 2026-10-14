@@ -88,11 +88,19 @@ flowchart LR
     SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
     PG --> CR["central reader<br/>(the node reader's code,<br/>PostgreSQL dialect)"]
     CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
+    API --> HISTORY["dashboard history<br/>(central IDs)"]
+    TAIL["active replicas' live tails"] --> STREAM["GET /queries/stream<br/>scope=cluster, SSE fan-out"]
+    STREAM --> LIVE["dashboard live queries<br/>(node IDs only)"]
 ```
 
 A node keeps the rows it has not shipped, even past its own retention, so
 an outage of the database delays the cluster view but loses nothing the
 node still holds.
+
+The live tail follows the active replicas directly, even with a central
+database. While enabled, the dashboard shows only incoming queries; it
+does not merge node IDs with central history. Stopping the tail refreshes
+history from the database.
 
 ## Metrics
 

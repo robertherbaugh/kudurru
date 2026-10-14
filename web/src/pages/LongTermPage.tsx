@@ -8,7 +8,7 @@ import { DateTimeInput, type ISODateTimeString } from '@astryxdesign/core/DateTi
 import { Grid } from '@astryxdesign/core/Grid';
 import { HStack } from '@astryxdesign/core/HStack';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
-import { VStack } from '@astryxdesign/core/Stack';
+import { StackItem, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useQuery } from '@tanstack/react-query';
@@ -20,7 +20,7 @@ import { StackedBars } from '../charts/StackedBars';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { FeatureLocked } from '../components/FeatureLocked';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
-import { ScopeNote } from '../components/ScopeSelector';
+import { ScopeSelector } from '../components/ScopeSelector';
 import { TopList } from '../components/TopList';
 import { formatCount, formatExact, formatPercent } from '../lib/format';
 import { useNavigate, useSearchParams } from '../lib/router';
@@ -112,26 +112,37 @@ function LongTermView() {
 
   return (
     <Page>
-      <PageHeader
-        title="Long-term"
-        meta={<ScopeNote scope={ts.data} />}
-        actions={
-          // The segmented control renders no label, so the row lines up on the controls' bottom edge.
-          <HStack gap={2} vAlign="end" wrap="wrap">
-            <SegmentedControl label="Range" value={preset === 'custom' ? '' : preset} onChange={(v) => setParams({ range: v, from: null, to: null })}>
-              {PRESETS.map((p) => (
-                <SegmentedControlItem key={p.value} value={p.value} label={p.label} />
-              ))}
-            </SegmentedControl>
+      <VStack gap={2}>
+        <PageHeader title="Long-term" />
+        <HStack gap={2} vAlign="end" wrap="wrap" role="group" aria-label="Long-term controls">
+          <ScopeSelector allLabel="All" response={ts.data} />
+          <SegmentedControl size="sm" label="Range" value={preset === 'custom' ? '' : preset} onChange={(v) => setParams({ range: v, from: null, to: null })}>
+            {PRESETS.map((p) => (
+              <SegmentedControlItem key={p.value} value={p.value} label={p.label} />
+            ))}
+          </SegmentedControl>
+          <StackItem size="fill" className="k-range-bound">
             <DateTimeInput
               label="From"
+              size="sm"
+              width="100%"
+              className="k-compact-datetime"
               value={(toLocalInput(from) || undefined) as ISODateTimeString | undefined}
               onChange={(v) => setParams({ from: fromLocalInput(v ?? '') || null, to })}
             />
-            <DateTimeInput label="To" value={(toLocalInput(to) || undefined) as ISODateTimeString | undefined} onChange={(v) => setParams({ to: fromLocalInput(v ?? '') || null, from })} />
-          </HStack>
-        }
-      />
+          </StackItem>
+          <StackItem size="fill" className="k-range-bound">
+            <DateTimeInput
+              label="To"
+              size="sm"
+              width="100%"
+              className="k-compact-datetime"
+              value={(toLocalInput(to) || undefined) as ISODateTimeString | undefined}
+              onChange={(v) => setParams({ to: fromLocalInput(v ?? '') || null, from })}
+            />
+          </StackItem>
+        </HStack>
+      </VStack>
 
       <Grid columns={{ minWidth: 200, repeat: 'fit' }} gap={4} role="list" aria-label="Totals for the range">
         {tiles.map((t) => (
@@ -155,7 +166,12 @@ function LongTermView() {
         actions={
           <>
             {ts.data?.approximate ? <Badge variant="warning" label="approximate" /> : null}
-            {ts.data ? <Text type="supporting">{Math.round(ts.data.step / 60)} min buckets</Text> : null}
+            {ts.data ? (
+              <Text type="supporting">
+                {ts.data.source === 'central' ? 'Central database · ' : ''}
+                {Math.round(ts.data.step / 60)} min buckets
+              </Text>
+            ) : null}
           </>
         }
       >
