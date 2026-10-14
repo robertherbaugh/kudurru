@@ -80,6 +80,13 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		// on time (the build is stale from that instant).
 		c.queues[KindDNSZone].AddAfter(key, time.Until(build.NextExpiry))
 	}
+	if capability := c.opts.CommittedPrimaryStatus; capability != nil && cur.Spec.Type == v1alpha1.ZoneTypePrimary {
+		wrote, retryAfter, err := capability.Reconcile(ctx, cur.DeepCopy())
+		if retryAfter > 0 {
+			c.queues[KindDNSZone].AddAfter(key, retryAfter)
+		}
+		return wrote, err
+	}
 	now := c.opts.Now()
 
 	next := cur.DeepCopy()

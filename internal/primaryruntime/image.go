@@ -42,6 +42,7 @@ type PreparedImage struct {
 	admissionDeadlines map[string]time.Time
 	coordinated        map[string]bool
 	durable            map[zk.ZoneID]*entry
+	status             map[string]PrimaryStatusObservation
 }
 
 // Base identifies the complete image from which all members and heads came.
@@ -149,6 +150,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	current := make(map[string]bool)
 	coordinated := make(map[string]bool, len(roster.ledgers))
 	durable := make(map[zk.ZoneID]*entry, len(roster.ledgers))
+	status := make(map[string]PrimaryStatusObservation, len(roster.ledgers))
 	for _, l := range roster.ledgers {
 		coordinated[l.Spec.Zone.ObjectName] = true
 		if err := ctx.Err(); err != nil {
@@ -163,7 +165,8 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 				return nil, fmt.Errorf("%w: lifecycle/head phase mismatch", ErrInvalid)
 			}
 		}
-		e, err := r.build(ctx, l, view, config)
+		var raw primaryModelStatus
+		e, err := r.buildWithStatus(ctx, l, view, config, &raw)
 		if err != nil {
 			return nil, err
 		}
@@ -172,6 +175,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		}
 		entries[l.Spec.Zone.Apex] = e
 		durable[l.Spec.Zone] = e
+		status[l.Spec.Zone.ObjectName] = imageStatus(e, z, raw)
 		current[l.Spec.Zone.Apex] = imageCurrentSource(l, z)
 		if l.Spec.Type != public.ZoneTypePrimary {
 			continue // Other owners supply nonprimary data, never this builder.
@@ -284,7 +288,8 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable}, nil
+	imageStatusDeadlines(status)
+	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, status: status}, nil
 }
 
 func imageAncestors(apex string) []string {

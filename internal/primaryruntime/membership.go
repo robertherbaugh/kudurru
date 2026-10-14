@@ -179,6 +179,13 @@ func (r *Runtime) rebuild() {
 }
 
 func (r *Runtime) build(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View, config *public.DNSZone) (*entry, error) {
+	return r.buildWithStatus(ctx, l, v, config, nil)
+}
+
+// buildWithStatus retains scalar metadata from the same real model before
+// expiry or lifecycle coverage selects an unavailable model. It does no extra
+// build and adds no live runtime status authority.
+func (r *Runtime) buildWithStatus(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View, config *public.DNSZone, status *primaryModelStatus) (*entry, error) {
 	if l.Validate() != nil || l.ResourceVersion == "" {
 		return nil, ErrInvalid
 	}
@@ -206,7 +213,17 @@ func (r *Runtime) build(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.V
 		active.Aggregate = owned
 		active.Head = v.Head.DeepCopy()
 		active.Head.Spec.Lifecycle = zk.LifecycleActive
-		m, err := zonestate.NewMaterializer(zonestate.MaterializerOptions{Build: primaryzone.BuildCommitted, Limits: r.o.Limits})
+		builder := primaryzone.BuildCommitted
+		if status != nil {
+			builder = func(ctx context.Context, view *zonestate.View) (*zone.Zone, error) {
+				model, err := primaryzone.BuildCommitted(ctx, view)
+				if err == nil {
+					*status = primaryModelStatus{serial: model.Serial(), hash: model.ContentHash(), count: model.RecordCount()}
+				}
+				return model, err
+			}
+		}
+		m, err := zonestate.NewMaterializer(zonestate.MaterializerOptions{Build: builder, Limits: r.o.Limits})
 		if err != nil {
 			return nil, err
 		}
