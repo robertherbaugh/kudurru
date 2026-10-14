@@ -143,6 +143,7 @@ func TestLicensedFeaturesAnswer402(t *testing.T) {
 	routes := []struct{ name, method, path string }{
 		{"audit trail", http.MethodGet, "/api/v1/audit"},
 		{"audit export", http.MethodGet, "/api/v1/audit/export"},
+		{"audit verification", http.MethodGet, "/api/v1/audit/verify"},
 		{"long-term statistics", http.MethodGet, "/api/v1/stats/summary?window=7d"},
 		{"long-term range", http.MethodGet, "/api/v1/stats/timeseries?from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:00Z"},
 		{"unblock requests", http.MethodGet, "/api/v1/unblockrequests"},

@@ -43,16 +43,16 @@ message **Not permitted** with the name of the missing permission.
 
 ### See your own roles
 
-1. Open **System** > **Access & audit**.
+1. Open **System** > **Access**.
 2. Read the section **Signed in as**. It shows your user name, your groups
    and your roles.
 3. Click **Permissions** to see each permission that you have.
 
 Figure 1 shows the page.
 
-![The page Access and audit on the tab You and tokens. It shows the account admin with the role admin, and the section API tokens with a form and a table.](../images/access.png)
+![The Access page on the You and tokens tab. It shows the account admin with the role admin, and the API tokens section with a form and a table.](../images/access.png)
 
-*Figure 1. The page Access & audit.*
+*Figure 1. The page Access.*
 
 ## Give a role to a person
 
@@ -122,7 +122,7 @@ hours at the most. You can change these times with
 
 ## See the identity data
 
-Click the tab **Identity** on the page **Access & audit**. Figure 2 shows it.
+Click the tab **Identity** on the page **Access**. Figure 2 shows it.
 
 ![The tab Identity with the message Read-only in this release, and the tables Local users, Service accounts, Role bindings and Identity providers.](../images/access-identity.png)
 
@@ -155,7 +155,7 @@ roles of the person who made the token, or fewer.
 
 ### Make a token
 
-1. Open **System** > **Access & audit**. The tab **You & tokens** shows.
+1. Open **System** > **Access**. The tab **You & tokens** shows.
 2. In **Description**, enter what the token is for, for example
    `home-assistant`.
 3. In **Expires in**, select a time. The default is 30 days.
@@ -209,25 +209,45 @@ NOTE: In Kubernetes, kudurru keeps the entries in AuditLog objects. All
 replicas show the same entries. An entry can take up to 30 seconds to show
 on the other replicas.
 
-1. Open **System** > **Access & audit**.
-2. Click the tab **Audit**. Figure 4 shows it.
+1. Open **System** > **Audit Log**. Figure 4 shows the audit table.
 
-![The tab Audit with the filters Actor and Kind and a table. Each row has the time, the actor, the action, the object, the result and the address.](../images/access-audit.png)
+![The Audit Log page with Actor, Kind and Time order controls, integrity verification, and an expandable table. Each row has the time, actor, action, object, result and request address.](../images/access-audit.png)
 
-*Figure 4. The tab Audit.*
+*Figure 4. The audit table.*
 
 | Column | Meaning |
 |---|---|
 | **Time** | The time of the action |
 | **Actor** | The person or the program |
 | **Action** | What happened, for example `policy.update` |
-| **Object** | The kind and the name of the object |
+| **Object** | The kind and the name of the object. API tokens also show their label, owner, expiry and scopes when recorded. |
 | **Result** | `success` or `denied`. A `denied` entry shows the permission that was missing. |
 | **From** | The address that the request came from, and how kudurru authorized it |
 
-Use the filters **Actor** and **Kind** to limit the rows. Click **Load older
-events** to see more. Click **Export** to download the log as a file of JSON
-lines.
+Use **Actor** and **Kind** to filter the rows. **Time order** switches between
+newest first and oldest first. Click **Load older events** (or **Load newer
+events** when oldest first) to continue through the retained trail. Click a row
+or its chevron to expand the request context, before and after documents, and
+chain hashes beneath it. Enter or Space toggles the focused row; the arrow
+keys move between rows, as in the query table.
+Click **Refresh** to retrieve current events or **Export** to download JSON lines.
+
+`apitoken.create` means a token was created; `apitoken.delete` means it was
+revoked. Signing in to the dashboard does not create an API token.
+Deployment scripts that create temporary tokens and revoke them afterward
+produce matching pairs of entries. Select **APIToken** in **Kind** to see
+only token events. Older entries may lack token details; the log cannot
+recover those details after revocation.
+
+**Verify integrity** checks the complete retained audit store, independent of
+the displayed filters. Hash chains detect changed records and broken links;
+Kubernetes batch seals are also checked when the cluster key is available.
+An integrity failure means changed records, invalid seals or broken links.
+If storage cannot be read or verification times out, the page instead shows
+**Verification unavailable**. Results are reused for up to 30 seconds; the
+reported check time shows when the scan completed.
+Keep logs or exports outside the database for an independent record: someone
+with full database control could rewrite an unkeyed hash chain.
 
 You can also read the log on the command line:
 

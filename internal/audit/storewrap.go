@@ -12,6 +12,7 @@ import (
 
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -38,7 +39,7 @@ type WrapOptions struct {
 // driver audits its own writes in state.db (§4.3 item 5). It is for
 // drivers that keep no audit rows (kube). A write that changes nothing
 // (same resourceVersion) is not recorded. Internal kinds (local users,
-// tokens, ...) are recorded without documents. A recorder failure is
+// tokens, ...) omit documents except for safe token details. A recorder failure is
 // logged and never fails the write: the object is already stored.
 func WrapStore(st store.Store, rec Recorder, opts WrapOptions) store.Store {
 	if opts.Now == nil {
@@ -172,12 +173,21 @@ func (w *recordingStore) record(ctx context.Context, key store.Key, verb, manage
 		Result:   ResultSuccess,
 		Manager:  manager,
 	}
+	if req, ok := ctx.Value(requestContextKey{}).(requestContext); ok {
+		ev.Actor, ev.Request = req.actor, req.request
+		if req.authz != nil {
+			ev.Authz = req.authz()
+		}
+		// Forwarded auth routes authorize in the identity handler after the API
+		// middleware. Their decision is on the write's context, not API state.
+		if dec, ok := auth.DecisionFrom(ctx); ok && dec.Allowed {
+			ev.Authz = dec.Path
+		}
+	}
 	if after != nil {
 		ev.ResourceVersion = after.GetResourceVersion()
 	}
-	if !internalkinds.IsInternal(string(key.Kind)) {
-		ev.Before, ev.After = document(before), document(after)
-	}
+	ev.Before, ev.After = document(before), document(after)
 	// The write is done: a cancelled request must not lose its record.
 	if err := w.rec.Record(context.WithoutCancel(ctx), Sanitize(ev)); err != nil {
 		w.opts.Logger.Warn("audit: recording a store write failed", "action", ev.Action, "object", key.String(), "err", err)
@@ -201,6 +211,12 @@ func actorFromContext(ctx context.Context, manager string) Actor {
 // Diff.
 func document(obj store.Object) json.RawMessage {
 	if obj == nil {
+		return nil
+	}
+	if tok, ok := obj.(*internalkinds.APIToken); ok {
+		return Diff(tok.AuditDocument())
+	}
+	if internalkinds.IsInternal(string(store.KeyOf(obj).Kind)) {
 		return nil
 	}
 	cp, ok := obj.DeepCopyObject().(store.Object)

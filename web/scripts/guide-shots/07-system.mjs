@@ -37,8 +37,7 @@ export default async function () {
     await page.getByText('Identity', { exact: true }).first().click();
     await settle(1000);
     await shot('access-identity');
-    await page.getByText('Audit', { exact: true }).first().click();
-    await settle(1000);
+    await go('/audit');
     await shot('access-audit');
   });
   await group('appearance', async () => {

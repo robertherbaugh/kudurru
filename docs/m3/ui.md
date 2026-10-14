@@ -57,7 +57,8 @@ Pages (all in the side navigation, each a lazily loaded chunk; `src/routes.tsx`)
 | Tools | built-in dig (`POST /dns/query`, answer/authority/additional, list/rule/upstream/zone/CNAME chain/EDE), cache flush (one name or all), object import through `POST /apply` with per-document results, backup/export links (objects as JSON, zones as BIND, audit), doctor report assembled from version, nodes, health, query-log status and diagnosis |
 | Diagnosis | `/info/messages` sorted by severity with links to the object; badge in the top bar and the navigation |
 | License | `GET /license`: the state (no key, active, grace, expired, invalid), plan, licensee, id, source and expiry; nodes in use against the limit and the policy limit; every licensed feature (`lib/license.ts` FEATURES, in step with internal/license Features) as included or "needs a key"; how to put a key on a node (flag, environment, file, data directory; no key is typed into the browser), the contact and the links to kudurru.io/license and LICENSING.md. A banner above every page (`LicenseBanner`) appears only for an invalid or expired key, one in its grace period, one expiring within 30 days (information, dismissable) and a cluster over its node limit; a node without a key is not nagged |
-| Access & audit | the principal, roles and permission matrix; own API tokens (secret shown once, revoke); read-only IAM (users, service accounts, role bindings, identity providers); audit log with filters and export |
+| Access | the principal, roles and permission matrix; own API tokens (secret shown once, revoke); read-only IAM (users, service accounts, role bindings, identity providers) |
+| Audit Log | a separate System navigation entry; filters, newest/oldest order, cursor pagination, event details, export and verification of the complete retained trail |
 
 Cross-cutting:
 
@@ -119,7 +120,7 @@ links to /license) instead of its content, and the queries behind it are not
 sent, so the server answers no 402 and the browser logs no failed request
 (the Playwright suite fails on console errors). The Long-term page (`longterm`),
 the Requests pages and the unblock lookups of the query log and the sidebar
-badge (`requests`) and the Audit tab (`audit`) work this way; the Identity tab
+badge (`requests`) and the Audit Log page (`audit`) work this way; the Identity tab
 shows a warning on role bindings (`rbac`) and identity providers (`oidc`)
 that are configured but switched off; Policies and a group's page disable
 "New policy" at the node's `policyLimit` (1 without a valid key, which the

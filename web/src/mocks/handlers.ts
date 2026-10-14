@@ -1543,6 +1543,9 @@ export const handlers = [
   http.get(`${B}/license`, ({ request }) =>
     guard(request, 'settings', 'read') ?? ok({ ...db.license, nodesInUse: db.nodes.length, overLimit: db.nodes.length > db.license.nodes }),
   ),
+  http.get(`${B}/audit/verify`, ({ request }) =>
+    guard(request, 'audit', 'read') ?? needsLicense('audit', 'the audit trail') ?? ok({ verified: true, checkedAt: new Date(db.now).toISOString() }),
+  ),
   http.get(`${B}/audit`, ({ request }) => {
     const g = guard(request, 'audit', 'read') ?? needsLicense('audit', 'the audit trail');
     if (g) return g;

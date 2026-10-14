@@ -73,8 +73,8 @@ test('nodes: the node is listed, ready, with its health', async ({ page }) => {
   await expectRendered(page);
 });
 
-test('access: the audit tab lists entries', async ({ page }) => {
-  await page.goto('/access?tab=audit');
+test('audit: the audit page lists entries', async ({ page }) => {
+  await page.goto('/audit');
   await settle(page);
   const rows = main(page).getByRole('table', { name: /audit/i }).locator('tbody tr');
   await expect.poll(() => rows.count(), { message: 'audit rows' }).toBeGreaterThan(0);

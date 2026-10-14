@@ -17,6 +17,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 |---|---|---|---|
 | GET | `/api/v1/audit` | Audit events of this node (oldest first; order=desc for newest first) | `audit.read` (cluster) |
 | GET | `/api/v1/audit/export` | Audit events as JSON lines | `audit.export` (cluster) |
+| GET | `/api/v1/audit/verify` | Verify the complete retained audit chain and available batch seals | `audit.read` (cluster) |
 
 ## auth
 

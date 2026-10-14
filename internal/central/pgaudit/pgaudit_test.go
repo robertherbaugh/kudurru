@@ -2,6 +2,7 @@ package pgaudit_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -159,9 +160,12 @@ func TestVerifyDetectsChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		err := pgaudit.Verify(ctx, db)
+		err := (&pgaudit.Reader{DB: db}).Verify(ctx)
 		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
 			t.Fatalf("%q: %v", tc.change, err)
+		}
+		if tc.want != "" && !errors.Is(err, audit.ErrTampered) {
+			t.Fatalf("integrity failure must be distinguishable from storage errors: %v", err)
 		}
 	}
 }

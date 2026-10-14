@@ -13,10 +13,14 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
+// Verify checks the SQLite driver's original chain before conversion to events.
+func (s SQLite) Verify(ctx context.Context) error { return s.Store.VerifyAudit(ctx) }
+
 // SQLiteStore is the part of *sqlite.Store the SQLite recorder uses.
 type SQLiteStore interface {
 	RecordAudit(ctx context.Context, e sqlite.AuditEntry) (sqlite.AuditEntry, error)
 	ReadAudit(ctx context.Context, q sqlite.AuditQuery) ([]sqlite.AuditEntry, error)
+	VerifyAudit(ctx context.Context) error
 }
 
 var _ audit.Recorder = SQLite{}

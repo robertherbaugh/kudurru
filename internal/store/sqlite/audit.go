@@ -314,10 +314,10 @@ func (s *Store) VerifyAudit(ctx context.Context) error {
 			e := &page[i]
 			// The oldest retained row may point at a pruned predecessor.
 			if !first && e.PrevHash != prev {
-				return fmt.Errorf("store/sqlite: audit row %d does not chain to row before it", e.ID)
+				return fmt.Errorf("%w: store/sqlite: audit row %d does not chain to row before it", store.ErrAuditIntegrity, e.ID)
 			}
 			if auditHash(e) != e.Hash {
-				return fmt.Errorf("store/sqlite: audit row %d was modified", e.ID)
+				return fmt.Errorf("%w: store/sqlite: audit row %d was modified", store.ErrAuditIntegrity, e.ID)
 			}
 			prev, first, after = e.Hash, false, e.ID
 		}

@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -419,10 +420,26 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	if m.typ != store.Deleted {
 		entry.After = json.RawMessage(data)
 	}
+	if m.key.Kind == internalkinds.KindAPIToken {
+		entry.Before, entry.After = tokenAuditDocument(entry.Before), tokenAuditDocument(entry.After)
+	} else if internalkinds.IsInternal(string(m.key.Kind)) {
+		entry.Before, entry.After = nil, nil
+	}
 	if err := insertAudit(ctx, q, &entry); err != nil {
 		return 0, err
 	}
 	return rv, nil
+}
+
+func tokenAuditDocument(data json.RawMessage) json.RawMessage {
+	if data == nil {
+		return nil
+	}
+	var tok internalkinds.APIToken
+	if err := json.Unmarshal(data, &tok); err != nil {
+		return nil
+	}
+	return tok.AuditDocument()
 }
 
 // compactFeed drops change-feed rows at or below seq.

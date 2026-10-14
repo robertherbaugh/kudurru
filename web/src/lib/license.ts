@@ -28,7 +28,7 @@ export interface FeatureInfo {
 export const FEATURES: FeatureInfo[] = [
   { key: 'rbac', label: 'Roles and access control', unlocks: 'Role bindings, roles scoped to zones and Kubernetes RBAC. Without it the built-in administrator is the only role.' },
   { key: 'oidc', label: 'Single sign-on', unlocks: 'Sign-in and API tokens through OpenID Connect identity providers.' },
-  { key: 'audit', label: 'Audit trail', unlocks: 'The stored audit events, the Audit tab and the export. Audit log lines are always written.' },
+  { key: 'audit', label: 'Audit trail', unlocks: 'The Audit Log page, stored events, integrity verification and export. Audit log lines are always written.' },
   { key: 'longterm', label: 'Long-term statistics', unlocks: 'Statistics for periods older than 24 hours. They are collected either way.' },
   { key: 'requests', label: 'Unblock requests', unlocks: 'The request form on the block page and the Requests page. The block page itself is free.' },
   { key: 'edge', label: 'High-availability edge', unlocks: 'The dnsdist and keepalived supervisors and the floating address.' },

@@ -182,3 +182,36 @@ flowchart LR
 Store writes are audited by the driver. The API adds what no store write
 covers: denied requests, the blocking toggle, cache flushes, query-log
 purges, NOTIFY and list refreshes.
+
+Token creation and revocation are actual `apitoken.create` and
+`apitoken.delete` store writes. Their audit documents keep an allowlist of
+the label, owner, expiry and scopes; the token and its hash are excluded.
+Kubernetes store events also carry the authenticated principal and HTTP
+request context. Admin-socket writes name the admitted local-root peer
+instead of falling back to `system`. The dashboard shows safe token
+details and offers an `APIToken` kind filter. Older events with no token
+document cannot recover that information after the token is revoked.
+
+Audit list and export responses redact historical token documents with the
+same allowlist and omit documents for other internal identity kinds. New
+SQLite identity mutations also omit those documents. Stored records and
+their hashes remain unchanged; verification reads the original store, not
+the redacted response. Exported hashes describe the original stored data
+and cannot be recomputed from redacted documents.
+
+The dashboard's separate **Audit Log** page supports newest/oldest order,
+cursor pagination and event details. `GET /api/v1/audit/verify` requires
+`audit.read` and the audit license, and checks the complete retained store
+with a 30-second deadline. It verifies the original SQLite chain, the central
+PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
+batches and their available HMAC seals plus the local pending spool. The
+response reports verification success or a generic integrity failure;
+storage errors and timeouts return 503 with a generic message, with details
+logged on the server. Concurrent requests share one scan, and every result
+(including unavailability) is cached for 30 seconds per serving process.
+Current and previous encryption keys verify batches retained across rotation.
+Hash chains provide
+tamper evidence, not protection from an administrator who can rewrite the
+entire database and its chain. External log copies or exports provide an
+independent record. Deleting complete oldest or newest unanchored batches
+cannot be detected from the surviving batches alone.

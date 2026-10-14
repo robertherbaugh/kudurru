@@ -102,8 +102,8 @@ body {
 .k-chart .u-over { cursor: pointer; }
 
 /*
- * Query log rows (components/QueryLogTable.tsx) are focusable and toggle
- * their "why" row; the Table has no focus style for a focusable row.
+ * Query and audit log rows are focusable and toggle their detail row;
+ * the Table has no focus style for a focusable row.
  */
 .k-log-row:focus-visible {
   outline: var(--focus-outline-width, 2px) var(--focus-outline-style, solid) var(--focus-outline-color, var(--color-accent));
