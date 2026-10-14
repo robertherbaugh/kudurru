@@ -107,7 +107,25 @@ type Options struct {
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
 	Now func() time.Time
+	// Migration resolves exact private cutover provenance. It never grants
+	// privileges and must use the same captured identity view as the caller.
+	Migration MigrationResolver
+	// LocalUser supplies the current account for a UID-less local migration.
+	// It does no I/O; nil leaves those credentials unusable.
+	LocalUser func(context.Context, string) (*internalv1.LocalUser, bool)
 }
+
+// MigratedIdentity binds one old credential to one current account incarnation.
+// The resolver must verify immutable token UID/spec and private journal proof.
+type MigratedIdentity struct {
+	AccountUID        string
+	TokenUID          string
+	OriginalCreatedAt time.Time
+}
+
+// MigrationResolver reads trusted immutable cutover evidence. Implementations
+// must not infer a binding from names, timestamps or public annotations.
+type MigrationResolver func(context.Context, *internalv1.APIToken, store.Object) (MigratedIdentity, bool)
 
 // DefaultNamespace is the namespace of kudurru's own service accounts.
 const DefaultNamespace = "kudurru-system"
@@ -426,7 +444,7 @@ func remoteHost(r *http.Request) string {
 // failure is the same auth.Unauthenticated error (unknown id, wrong
 // secret, malformed, expired, owner gone or disabled); the cause is only
 // logged.
-func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, error) {
+func (t *Tokens) Verify(ctx context.Context, wire, ip string) (auth.Principal, error) {
 	id, ok := Parse(wire)
 	want := dummyHash
 	tok, known := (*internalv1.APIToken)(nil), false
@@ -457,7 +475,18 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 			p.Provider = "local"
 		}
 		if p.Provider == "local" && p.AccountUID == "" {
-			return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
+			var user *internalv1.LocalUser
+			if t.opts.LocalUser != nil {
+				user, _ = t.opts.LocalUser(ctx, owner.Name)
+			}
+			if user == nil || user.Spec.Disabled || user.Name != owner.Name || user.Namespace != "" {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
+			}
+			binding, ok := t.migratedIdentity(ctx, tok, user)
+			if !ok || !binding.OriginalCreatedAt.Equal(user.CreationTimestamp.Time) {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("local token requires identity migration"))
+			}
+			p.AccountUID = binding.AccountUID
 		}
 		if len(tok.Spec.Grants) > 0 {
 			p.Grants = slices.Clone(tok.Spec.Grants)
@@ -468,13 +497,18 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 		if !ok || sa.Spec.Disabled {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("service account missing or disabled"))
 		}
+		created := sa.CreationTimestamp.Time
 		if owner.UID == "" || owner.UID != string(sa.UID) {
-			return auth.Principal{}, auth.Unauthenticated(errors.New("token service account identity does not match"))
+			binding, ok := t.migratedIdentity(ctx, tok, sa)
+			if !ok {
+				return auth.Principal{}, auth.Unauthenticated(errors.New("token service account identity does not match"))
+			}
+			owner.UID, created = binding.AccountUID, binding.OriginalCreatedAt
 		}
 		p.AccountUID = owner.UID
 		// A token older than the account belongs to a deleted account of
 		// the same name (whole-second timestamps on both sides).
-		if created := sa.CreationTimestamp.Time; !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {
+		if !created.IsZero() && !tok.CreationTimestamp.IsZero() && tok.CreationTimestamp.Unix() < created.Unix() {
 			return auth.Principal{}, auth.Unauthenticated(errors.New("token predates its service account"))
 		}
 		p.Kind, p.ID = auth.KindServiceAccount, ServiceAccountID(owner.Namespace, owner.Name)
@@ -487,6 +521,17 @@ func (t *Tokens) Verify(_ context.Context, wire, ip string) (auth.Principal, err
 	}
 	t.noteUse(id, ip, now)
 	return p, nil
+}
+
+func (t *Tokens) migratedIdentity(ctx context.Context, tok *internalv1.APIToken, account store.Object) (MigratedIdentity, bool) {
+	if t.opts.Migration == nil || tok.UID == "" || account.GetUID() == "" {
+		return MigratedIdentity{}, false
+	}
+	binding, ok := t.opts.Migration(ctx, tok, account)
+	if !ok || binding.AccountUID != string(account.GetUID()) || binding.TokenUID != string(tok.UID) || binding.OriginalCreatedAt.IsZero() || tok.CreationTimestamp.IsZero() || tok.CreationTimestamp.Before(&metav1.Time{Time: binding.OriginalCreatedAt}) {
+		return MigratedIdentity{}, false
+	}
+	return binding, true
 }
 
 func (t *Tokens) noteUse(id, ip string, now time.Time) {

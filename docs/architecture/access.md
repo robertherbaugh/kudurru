@@ -204,6 +204,14 @@ UIDs and therefore needs the offline journal and credential mappings currently
 under implementation; this schema checkpoint alone is not an upgrade-complete
 Kubernetes release.
 
+The token verifier has an optional migration resolver for private cutover proof.
+It verifies the token hash and expiry first, then checks the current account's
+disabled state, exact target UID, original token UID and original account
+creation floor. The resolver cannot supply roles or bootstrap authority. Local
+accounts retain their original UID and creation instant; name reuse, absent
+proof and later replacements fail closed. The Kubernetes journal loader and
+startup gate must be wired before this callback is enabled in production.
+
 ```mermaid
 flowchart LR
     Legacy["Legacy IAM configuration"] --> Convert["Bounded strict conversion"]

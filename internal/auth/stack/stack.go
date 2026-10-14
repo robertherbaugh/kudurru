@@ -74,6 +74,9 @@ type Options struct {
 	Store store.Store
 	// Keys are the encryption keys (keys.Load). Current is required.
 	Keys keys.Keys
+	// TokenMigration resolves completed offline cutover provenance, captured
+	// with current identities. Nil never guesses a legacy credential binding.
+	TokenMigration tokens.MigrationResolver
 	// Kube is the pod's apiserver configuration with the kube driver: it
 	// enables Kubernetes ServiceAccount tokens, SubjectAccessReview and
 	// IdentityProvider clientSecretRef. nil in Docker mode.
@@ -252,7 +255,8 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		return nil, err
 	}
 	if s.tokens, err = tokens.New(tokens.Options{Store: opts.Store, MaxLifetime: cfg.Auth.Tokens.MaxLifetime.Std(), Namespace: opts.Namespace,
-		ClientIP: opts.ClientIP, Logger: log, Now: opts.Now}); err != nil {
+		ClientIP: opts.ClientIP, Logger: log, Now: opts.Now, Migration: opts.TokenMigration,
+		LocalUser: func(_ context.Context, name string) (*internalv1.LocalUser, bool) { return s.users.Get(name) }}); err != nil {
 		return nil, err
 	}
 	s.roleBindings = objcache.New[*internalv1.RoleBinding](opts.Store, internalv1.KindRoleBinding, objcache.Options{Logger: log})
