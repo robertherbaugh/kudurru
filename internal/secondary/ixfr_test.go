@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -374,7 +375,10 @@ func TestIXFRContextClosesConnection(t *testing.T) {
 				}
 				select {
 				case err := <-done:
-					if !errors.Is(err, io.EOF) {
+					// Closing while the transfer response still has unread bytes
+					// can send TCP RST instead of FIN. Both prove cancellation
+					// closed the connection; timeouts and nil do not.
+					if !errors.Is(err, io.EOF) && !errors.Is(err, syscall.ECONNRESET) {
 						t.Fatalf("primary did not observe closed socket: %v", err)
 					}
 				case <-time.After(time.Second):
