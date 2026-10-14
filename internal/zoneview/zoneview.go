@@ -101,8 +101,8 @@ type Source struct {
 
 var _ authoritative.Source = Source{}
 
-// Zones implements authoritative.Source. On the live path it returns the
-// built snapshot itself and does not allocate.
+// Zones implements authoritative.Source. It loads immutable configuration
+// and transferred snapshots once per query, without store or network I/O.
 func (s Source) Zones() zone.Set {
 	snap := s.Cache.Snapshot()
 	if snap == nil {

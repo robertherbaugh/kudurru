@@ -46,6 +46,7 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		next := cur.DeepCopy()
 		next.Status.ObservedGeneration = cur.Generation
 		next.Status.Serial, next.Status.RecordCount, next.Status.ContentHash = 0, 0, ""
+		next.Status.NameserverAddresses = nil
 		meta.SetStatusCondition(&next.Status.Conditions, metav1.Condition{
 			Type: v1alpha1.ConditionReady, Status: metav1.ConditionUnknown,
 			Reason: "PerNodeTransfer", Message: "Each node transfers independently; inspect that node's secondary status for its served serial and expiry.",

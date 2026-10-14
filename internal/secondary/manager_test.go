@@ -570,3 +570,15 @@ func TestManagerCopySurvivesDatabaseReopen(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerInvalidQueryPolicyFailsBeforeNetwork(t *testing.T) {
+	clock := newManagerClock()
+	recv := &managerReceiver{serial: 7}
+	m, _, dz := managerFor(t, clock, recv, managerDB(t))
+	dz.Spec.Policy.QueryAccess = v1alpha1.AccessUseNetworkACL
+	dz.Spec.Policy.QueryACL = []string{"invalid"}
+	r := m.refresh(t.Context(), &entry{dz: dz, id: zone.SecondaryIdentity(dz)})
+	if r.err == nil || !strings.Contains(r.err.Error(), "invalid secondary configuration") || recv.soaCalls != 0 {
+		t.Fatalf("invalid configuration attempted network: %+v", r)
+	}
+}

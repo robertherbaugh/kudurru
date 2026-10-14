@@ -1,8 +1,9 @@
 package validator
 
 import (
-	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"testing"
+
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
 func TestSecondaryConfigurationValidation(t *testing.T) {

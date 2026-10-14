@@ -374,6 +374,10 @@ func (m *Manager) credential(dz *v1alpha1.DNSZone) (string, error) {
 
 func (m *Manager) refresh(ctx context.Context, e *entry) result {
 	r := result{entry: e}
+	if _, err := zone.BuildSecondary(e.dz, nil, time.Time{}); err != nil {
+		r.err = fmt.Errorf("invalid secondary configuration: %w", err)
+		return r
+	}
 	credential, err := m.credential(e.dz)
 	if err != nil {
 		r.err = err

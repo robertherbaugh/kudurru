@@ -482,10 +482,6 @@ func TestSecondaryInvalidConfig(t *testing.T) {
 			z.Spec.Type = v1alpha1.ZoneTypeSecondary
 			z.Spec.Policy.QueryACL = []string{"invalid"}
 		}),
-		"bad-status": dnsZone("example.org.", func(z *v1alpha1.DNSZone) {
-			z.Spec.Type = v1alpha1.ZoneTypeSecondary
-			z.Status.NameserverAddresses = []string{"invalid"}
-		}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if z, err := BuildSecondary(dz, nil, time.Time{}); err == nil || z != nil {
@@ -501,8 +497,7 @@ func TestSecondaryPlaceholderInvalidConfigCoverage(t *testing.T) {
 			z.Spec.Policy.QueryAccess = v1alpha1.AccessUseNetworkACL
 			z.Spec.Policy.QueryACL = []string{"invalid"}
 		},
-		"query-mode":           func(z *v1alpha1.DNSZone) { z.Spec.Policy.QueryAccess = "bad" },
-		"nameserver-addresses": func(z *v1alpha1.DNSZone) { z.Status.NameserverAddresses = []string{"192.0.2.53", "invalid"} },
+		"query-mode": func(z *v1alpha1.DNSZone) { z.Spec.Policy.QueryAccess = "bad" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			config := secondaryConfig()
@@ -533,5 +528,19 @@ func TestSecondaryPlaceholderInvalidConfigCoverage(t *testing.T) {
 		if z, err := BuildSecondaryPlaceholder(config); err == nil || z != nil {
 			t.Fatal("placeholder fabricated invalid apex or type coverage")
 		}
+	}
+}
+
+func TestSecondaryIgnoresSharedNameserverAddresses(t *testing.T) {
+	dz := secondaryConfig()
+	dz.Spec.Policy.QueryAccess = v1alpha1.AccessAllowOnlyZoneNameServers
+	dz.Spec.Policy.ZoneTransfer = v1alpha1.AccessAllowOnlyZoneNameServers
+	dz.Status.NameserverAddresses = []string{"192.0.2.99", "invalid-legacy-status"}
+	z := mustSecondary(t, dz, secondaryData(t), time.Now().Add(time.Hour))
+	if z.QueryAllowed(netip.MustParseAddr("192.0.2.99")) || z.TransferAllowed(netip.MustParseAddr("192.0.2.99"), "") {
+		t.Fatal("legacy shared status expanded secondary authorization")
+	}
+	if !z.QueryAllowed(netip.MustParseAddr("192.0.2.53")) || !z.TransferAllowed(netip.MustParseAddr("192.0.2.53"), "") {
+		t.Fatal("transferred apex nameserver glue did not authorize nameserver")
 	}
 }

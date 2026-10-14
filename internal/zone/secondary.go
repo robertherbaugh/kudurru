@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"reflect"
 	"slices"
 	"strings"
@@ -59,7 +58,7 @@ func (z *Zone) AvailableAt(now time.Time) bool {
 func (z *Zone) HasSignatures() bool { return z.hasSignatures }
 
 // BuildSecondaryPlaceholder retains unavailable secondary authority coverage
-// even when its query ACL or cached nameserver addresses are invalid. Such
+// even when its query ACL is invalid. Such
 // errors deny all queries; they never retain old data or allow forwarding.
 // The original configuration identity is preserved, and dz is not modified.
 // Invalid type or apex still returns an error because coverage cannot be
@@ -70,12 +69,11 @@ func BuildSecondaryPlaceholder(dz *v1alpha1.DNSZone) (*Zone, error) {
 		return z, err
 	}
 	// BuildSecondary already fails closed on transfer/key errors and handles
-	// notify errors independently. Only query policy and nameserver address
+	// notify errors independently. Only query policy
 	// errors need a coverage fallback; type/origin errors remain errors.
 	closed := dz.DeepCopy()
 	closed.Spec.Policy.QueryAccess = v1alpha1.AccessDeny
 	closed.Spec.Policy.QueryACL = nil
-	closed.Status.NameserverAddresses = nil
 	z, err = BuildSecondary(closed, nil, time.Time{})
 	if err == nil {
 		z.secondaryIdentity = SecondaryIdentity(dz)
@@ -120,14 +118,6 @@ func BuildSecondary(dz *v1alpha1.DNSZone, records []dns.RR, expiresAt time.Time)
 		transfer = accessPolicy{mode: v1alpha1.AccessDeny}
 	}
 	notify, targets, _ := compileNotify(dz.Spec.Policy, path)
-	for _, s := range dz.Status.NameserverAddresses {
-		ip, err := netip.ParseAddr(s)
-		if err != nil {
-			return nil, fmt.Errorf("status.nameserverAddresses must contain IP addresses")
-		}
-		access.nsAddrs = append(access.nsAddrs, ip.Unmap())
-		transfer.nsAddrs = append(transfer.nsAddrs, ip.Unmap())
-	}
 	z := &Zone{
 		name: nameFromKey(key), key: key, typ: v1alpha1.ZoneTypeSecondary,
 		access: access, transfer: transfer, transferKeys: keys,

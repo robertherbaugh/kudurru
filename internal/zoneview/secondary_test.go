@@ -55,9 +55,9 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 		_ = st.Close()
 	})
 	config := &v1alpha1.DNSZone{
-		ObjectMeta: metav1.ObjectMeta{Name: "transferred"},
+		ObjectMeta: metav1.ObjectMeta{Name: "copy"},
 		Spec: v1alpha1.DNSZoneSpec{
-			ZoneName: "transferred.example.", Type: v1alpha1.ZoneTypeSecondary,
+			ZoneName: "copy.example.", Type: v1alpha1.ZoneTypeSecondary,
 			Secondary: &v1alpha1.SecondarySpec{Primaries: []string{"192.0.2.53"}, TransferProtocol: "tcp"},
 		},
 		Status: v1alpha1.DNSZoneStatus{Serial: 12, ContentHash: "legacy", RecordCount: 99},
@@ -67,14 +67,14 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	for _, obj := range []store.Object{config, primary, root,
 		&v1alpha1.DNSRecordSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ignored", Namespace: "apps"},
-			Spec:       v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "transferred"}, Endpoints: []v1alpha1.Endpoint{{DNSName: "injected.transferred.example.", RecordType: "A", Targets: []string{"203.0.113.1"}}}},
+			Spec:       v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: "copy"}, Endpoints: []v1alpha1.Endpoint{{DNSName: "injected.copy.example.", RecordType: "A", Targets: []string{"203.0.113.1"}}}},
 		},
 	} {
 		if _, err := st.Apply(ctx, obj, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := st.Get(ctx, store.Key{Kind: "DNSZone", Name: "transferred"}, config); err != nil {
+	if err := st.Get(ctx, store.Key{Kind: "DNSZone", Name: "copy"}, config); err != nil {
 		t.Fatal(err)
 	}
 	cache, err := zonecache.New(st, zonecache.Options{Debounce: time.Millisecond})
@@ -87,9 +87,9 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	now := time.Now()
 	var records []dns.RR
 	for _, text := range []string{
-		"transferred.example. 7200 IN SOA ns.transferred.example. admin.transferred.example. 4294967295 3600 60 7200 90",
-		"transferred.example. 600 IN NS ns.transferred.example.",
-		"www.transferred.example. 42 IN A 192.0.2.80",
+		"copy.example. 7200 IN SOA ns.copy.example. admin.copy.example. 4294967295 3600 60 7200 90",
+		"copy.example. 600 IN NS ns.copy.example.",
+		"www.copy.example. 42 IN A 192.0.2.80",
 	} {
 		r, err := dns.NewRR(text)
 		if err != nil {
@@ -114,22 +114,22 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	transfers := manager.Snapshot()
 	transferred := transfers.Lookup(id)
 	source := Source{Cache: cache, Secondary: manager}
-	if got := source.Zones().Match("www.transferred.example."); got != transferred || got.Serial() != 4294967295 || got.SOA().Serial != 4294967295 {
+	if got := source.Zones().Match("www.copy.example."); got != transferred || got.Serial() != 4294967295 || got.SOA().Serial != 4294967295 {
 		t.Fatal("source lost the external serial or did not select transferred data")
 	}
 	base, ok := zonecache.View[*zone.Snapshot](cache.Snapshot(), ViewName)
 	if !ok {
 		t.Fatal("zone builder did not publish")
 	}
-	placeholder := base.Match("injected.transferred.example.")
+	placeholder := base.Match("injected.copy.example.")
 	if placeholder == nil || placeholder.Type() != v1alpha1.ZoneTypeSecondary || placeholder.AvailableAt(now) || placeholder.RecordCount() != 0 || placeholder.Serial() != 0 || placeholder.SecondaryIdentity() != id {
 		t.Fatal("builder treated object records or legacy status as secondary data")
 	}
 	withoutManager := Source{Cache: cache}
-	if got := withoutManager.Zones().Match("www.transferred.example."); got != placeholder || got.AvailableAt(now) {
+	if got := withoutManager.Zones().Match("www.copy.example."); got != placeholder || got.AvailableAt(now) {
 		t.Fatal("source without runtime data dropped secondary coverage")
 	}
-	if nilCopies := (secondarySet{Set: base}); nilCopies.Match("www.transferred.example.") != placeholder {
+	if nilCopies := (secondarySet{Set: base}); nilCopies.Match("www.copy.example.") != placeholder {
 		t.Fatal("nil transfer snapshot dropped placeholder")
 	}
 	served := Served(cache, manager)
@@ -182,14 +182,14 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := (secondarySet{Set: matchingBase, copies: transfers}).Match("www.transferred.example."); got != transferred {
+	if got := (secondarySet{Set: matchingBase, copies: transfers}).Match("www.copy.example."); got != transferred {
 		t.Fatal("status/generation update discarded current runtime data")
 	}
 	deleted, err := zone.NewSnapshot(4, true, base.Match("outside.test."), base.Match("home.example."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := (secondarySet{Set: deleted, copies: transfers}).Match("www.transferred.example."); got.Type() != v1alpha1.ZoneTypeForward || got.Name() != "." {
+	if got := (secondarySet{Set: deleted, copies: transfers}).Match("www.copy.example."); got.Type() != v1alpha1.ZoneTypeForward || got.Name() != "." {
 		t.Fatal("old transfer revived a deleted configuration")
 	}
 	// Invalid query configuration must publish denied coverage instead of
@@ -219,7 +219,7 @@ func TestSecondarySourceMatchesOnlyCurrentIdentity(t *testing.T) {
 	deadline = time.Now().Add(10 * time.Second)
 	for {
 		set := source.Zones()
-		changedCopy := set.Match("www.transferred.example.")
+		changedCopy := set.Match("www.copy.example.")
 		newCopy := set.Match("www.new.example.")
 		changedPrimary := set.Match("home.example.")
 		if changedCopy != nil && changedCopy != transferred && changedCopy.Type() == v1alpha1.ZoneTypeSecondary &&
