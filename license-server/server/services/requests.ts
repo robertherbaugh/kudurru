@@ -245,7 +245,7 @@ export async function rejectRequest(ctx: ServiceCtx, id: string, note: string, v
   await auditCtx(ctx, { action: 'request.rejected', targetType: 'request', targetId: id, details: { email: req.requester_email, ...viaDetails(via) } });
   if (ctx.mailer.configured) {
     const msg = rejectedMail({ to: req.requester_email, name: req.name, note, publicUrl: ctx.config.publicUrl });
-    ctx.afterCommit(() => ctx.mailer.send(msg));
+    ctx.afterCommit(() => ctx.mailer.send(msg, ctx.log));
   } else {
     ctx.log.warn('mail is not configured: rejection not mailed', { requestId: id });
   }

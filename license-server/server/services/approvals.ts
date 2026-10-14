@@ -179,7 +179,7 @@ export async function notifyApprovers(ctx: ServiceCtx, req: WaitingRequest): Pro
       approveUrl,
       publicUrl: ctx.config.publicUrl,
     });
-    ctx.afterCommit(() => ctx.mailer.send(msg));
+    ctx.afterCommit(() => ctx.mailer.send(msg, ctx.log));
   }
 }
 

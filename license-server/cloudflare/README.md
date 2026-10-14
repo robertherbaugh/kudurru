@@ -308,6 +308,41 @@ proxy sidecar works (on Linux kernel 6.18 it fails,
 cloudflare/containers#231). Develop the portal itself with
 `license-server/compose.yaml`.
 
+### A successful email POST with no email received
+
+`POST /api/v1/licenses/:id/email` waits for SMTP submission before returning
+200. Worker and Durable Object invocation logs can show the same POST
+twice; matching Ray IDs and trace IDs identify one request. These HTTP logs
+do not confirm inbox delivery.
+
+Check the effective sender in the container's `mail configured` startup
+log (`from`) or the portal's System page. The setting is `MAIL_FROM`;
+`EMAIL_FROM` is ignored and leaves the default `licenses@kudurru.io`
+sender in place. To send from a subdomain, use a full address, for example
+`MAIL_FROM=kudurru license portal <licenses@licensing.kudurru.io>`, and
+onboard `licensing.kudurru.io` separately for Cloudflare Email Sending
+under the account used by the SMTP token. Onboarding `kudurru.io` alone
+does not enable its subdomains. Set the GitHub environment variable and
+redeploy as described above. A sender-domain rejection normally causes
+SMTP to fail and the email endpoint to return 503.
+
+In the container's JSON logs, find `mail accepted by SMTP` for the request
+and license. It includes `requestId`, `licenseId`, `keyId`, the recipient
+domain, the local `messageId` and Cloudflare's `providerMessageId`. Search
+the provider ID in **Email Service → Email Sending → Activity log** to
+check delivery, rejection or a bounce. Message bodies, keys, credentials
+and full recipient addresses are not included in the receipt log.
+
+Cloudflare can return `250 2.0.0 Ok` without a Message-ID when **Drop
+suppressed recipients** is enabled and the recipient is suppressed. The
+portal treats that as an unconfirmed submission, logs `mail submission
+not confirmed: Cloudflare returned no Message-ID` and answers 503 for
+"Email key" without an emailed audit event. Check account and domain
+suppression lists and the sending domain's setting; disabling **Drop
+suppressed recipients** makes SMTP reject suppressed sends explicitly.
+Only remove a suppression once its underlying reason has been addressed.
+See [Cloudflare SMTP submission and suppressions](https://developers.cloudflare.com/email-service/api/send-emails/smtp/#suppressed-recipients).
+
 ## Check on the first real deploy
 
 These could not be verified without an account:
