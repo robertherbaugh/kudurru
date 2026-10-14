@@ -227,6 +227,12 @@ func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath str
 	case <-time.After(5 * time.Second):
 		t.Fatal("secondary config cache did not initialize")
 	}
+	// Initialized closes when store watches sync, before the zone builder
+	// publishes its view. Wait for the serving source's gate to open too;
+	// listening sockets alone can still answer SERVFAIL while unsynced.
+	if !kudurrutest.Eventually(5*time.Second, 10*time.Millisecond, stage.Ready) {
+		t.Fatal("secondary authoritative source did not open its gate")
+	}
 	if !kudurrutest.Eventually(5*time.Second, 10*time.Millisecond, func() bool { ready, _ := registry.Ready(); return ready }) {
 		t.Fatal("secondary UDP/TCP listeners did not become ready")
 	}
