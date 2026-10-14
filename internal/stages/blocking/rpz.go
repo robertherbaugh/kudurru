@@ -15,6 +15,12 @@ import (
 type rpzContextKey struct{ stage *Stage }
 type rpzCapture struct{ selection *rpz.Selection }
 
+// SetRPZCapture installs the complete-bundle runtime selector. Configure it
+// before serving, like Stage.Capture; it must never query a live manager.
+func (s *Stage) SetRPZCapture(capture func(*pipeline.Request) (*rpz.Selection, error)) {
+	s.opts.RPZ = capture
+}
+
 func (s *Stage) pinRPZ(req *pipeline.Request) (*rpz.Selection, error) {
 	key := rpzContextKey{s}
 	if req.Ctx != nil {

@@ -631,11 +631,41 @@ iterated. UDP, TCP, DoT, DoH, DoH3, DoQ and the API query caller release cleanup
 The explicit transfer adapter reads the captured zone set; its legacy live-set
 entry point is rejected once capture is installed.
 
-The publisher, store barrier and DNS adapters are tested against real SQLite
-publication, concurrent owner changes, failure, retirement, promotion and native
-listeners. Complete production owner composition, authentication adapters,
-enrollment, activation and three-process partition/rejoin acceptance remain
-integration work. Installed data is never reported as Served
+`internal/servingbuild` now supplies all ten concrete owners. Its local schema
+includes every registered public and private kind. Primary lifecycle and auth
+consume the complete image; the public DNS object projection includes only
+`zonecache.DefaultKinds`. It applies canonical settings against captured host
+settings, compiles exact-digest complete list bodies against the matching catalog,
+and binds acquired zone runtimes to the captured immutable keyring. Inventory has
+an explicit empty owner when no claims exist. A dependency cursor changing during
+preparation rejects the entire candidate and releases its resources exactly once.
+
+```mermaid
+flowchart TD
+    Candidate["One validated complete image"] --> Primary["Committed primary lifecycle and heads"]
+    Candidate --> Auth["Public/private IAM and durable security"]
+    Candidate --> Objects["Public DNS objects and canonical settings"]
+    Local["Pinned keys, catalog, inventory and acquired runtimes"] --> Zones["Credential-bound serving zones"]
+    Primary --> Zones
+    Objects --> Owners["Policy, exact lists, resolver, response and cache"]
+    Local --> Owners
+    Auth --> All["All ten real components"]
+    Zones --> All
+    Owners --> All
+    All --> Publish["Whole-bundle publication barrier"]
+```
+
+`BindDNS` connects every stage to the outer request lease. Prepared primaries are
+never marked published by the builder. Resolver pools and auth resources remain
+alive through held leases. The current implementation allocates new resolver and
+cache incarnations for each candidate; reuse of unchanged semantic owners remains
+a scale optimization.
+
+The publisher, builder, store barrier and DNS/HTTP adapters are tested against real
+SQLite publication, concurrent owner changes, missing list bodies, rollback,
+retirement, restart, replica installation, promotion and native UDP/TCP listeners.
+Command assembly, production mounting, activation and three-process partition/
+rejoin acceptance remain integration work. Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of
 a higher term; this publication mechanism does not provide consensus.
