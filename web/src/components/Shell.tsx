@@ -2,13 +2,13 @@
 // page reachable, a mobile drawer below the md breakpoint), the top bar
 // (node scope, diagnosis badge, appearance, account) and the sidebar
 // status block fed by GET /stats/summary (§10 principle 1).
-import { AppShell } from '@astryxdesign/core/AppShell';
+import { AppShell, useAppShellMobile } from '@astryxdesign/core/AppShell';
 import { Link as BrandLink } from '@astryxdesign/core/Link';
-import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
+import { SideNav, SideNavCollapseButton, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
 import { TopNav } from '@astryxdesign/core/TopNav';
-import { HStack } from '@astryxdesign/core/Stack';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { Suspense, type ReactNode } from 'react';
+import { Suspense, useState, type ReactNode } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { FullPageSpinner } from './Feedback';
 import { ROUTES, SECTIONS, resolveRoute } from '../routes';
@@ -32,12 +32,35 @@ function Brand() {
   );
 }
 
-export function Shell() {
-  const loc = useLocation();
-  const match = resolveRoute(loc.path);
+function Navigation({ navKey }: { navKey?: string }) {
+  const { isMobile } = useAppShellMobile();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [hasFlyoutFocus, setHasFlyoutFocus] = useState(false);
+  const isExpanded = isMobile || !isCollapsed || isHovered || hasFlyoutFocus;
+  // The button controls the pinned state, even while hover reveals the nav.
+  const collapsible = {
+    isCollapsed,
+    onCollapsedChange: (collapsed: boolean) => {
+      setIsCollapsed(collapsed);
+      setIsHovered(false);
+      setHasFlyoutFocus(false);
+    },
+  };
 
   const nav = (
-    <SideNav footer={<SidebarStatus />}>
+    <SideNav
+      aria-label="Main navigation"
+      className="k-navigation-nav"
+      collapsible={isMobile ? false : { isCollapsed: !isExpanded, hasButton: false }}
+      footer={
+        // Keep the controls mounted so leaving the flyout cannot dismiss a dialog.
+        <VStack className="k-navigation-status" hidden={!isExpanded}>
+          <SidebarStatus />
+        </VStack>
+      }
+      footerIcons={<SideNavCollapseButton collapsible={collapsible} aria-expanded={!isCollapsed} />}
+    >
       {SECTIONS.map((section) => (
         <SideNavSection key={section} title={section}>
           {ROUTES.filter((r) => r.section === section && !r.hidden).map((r) => {
@@ -49,7 +72,7 @@ export function Shell() {
                 href={r.path}
                 label={r.label}
                 icon={<Icon size={16} aria-hidden="true" />}
-                isSelected={match?.route.navKey === r.navKey}
+                isSelected={navKey === r.navKey}
                 endContent={r.path === '/messages' ? <MessagesBadge compact /> : r.path === '/requests' ? <UnblockBadge /> : undefined}
               />
             );
@@ -58,6 +81,35 @@ export function Shell() {
       ))}
     </SideNav>
   );
+
+  if (isMobile) return nav;
+
+  return (
+    <VStack
+      className="k-navigation"
+      height="100%"
+      data-collapsed={isCollapsed}
+      data-flyout={isCollapsed && isExpanded}
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse' || event.pointerType === 'pen') setIsHovered(true);
+      }}
+      onPointerLeave={() => setIsHovered(false)}
+      onFocusCapture={() => {
+        // Keep a revealed flyout open while its controls have keyboard focus.
+        if (isHovered) setHasFlyoutFocus(true);
+      }}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setHasFlyoutFocus(false);
+      }}
+    >
+      {nav}
+    </VStack>
+  );
+}
+
+export function Shell() {
+  const loc = useLocation();
+  const match = resolveRoute(loc.path);
 
   const top = (
     <TopNav
@@ -83,7 +135,7 @@ export function Shell() {
   }
 
   return (
-    <AppShell variant="section" sideNav={nav} topNav={top} banner={
+    <AppShell variant="section" sideNav={<Navigation navKey={match?.route.navKey} />} topNav={top} banner={
         <>
           <DefaultCredentialsBanner />
           <LicenseBanner />

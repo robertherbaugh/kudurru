@@ -48,6 +48,30 @@ body {
 }
 
 /*
+ * SideNav owns the icon-only rendering; its collapse prop cannot reveal
+ * the full nav over the page while retaining the rail's layout width.
+ * The desktop wrapper reserves that width and positions the flyout over
+ * the content. AppShell's panel must allow the flyout past its edge.
+ * Mobile uses Astryx's drawer without this wrapper.
+ */
+.astryx-app-shell-sidenav:has(> .k-navigation) { overflow: visible; }
+.k-navigation { position: relative; background: inherit; }
+.k-navigation[data-collapsed='true'] { inline-size: var(--spacing-12); }
+.k-navigation[data-collapsed='true'] > .k-navigation-nav {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 1;
+}
+.k-navigation[data-flyout='true'] > .k-navigation-nav {
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-med);
+  border-inline-end: var(--border-width, 1px) solid var(--color-border);
+}
+/* Stack's display style overrides the browser's default [hidden] rule. */
+.k-navigation-status[hidden] { display: none; }
+
+/*
  * Stat tiles (StatTiles, the long-term page): the coloured start edge
  * names the tile's query class. Card variants are background tints for
  * categories, with no edge colour, and the --q-* query colours are not
