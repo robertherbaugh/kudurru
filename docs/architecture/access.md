@@ -78,7 +78,11 @@ as shared authority. Startup, writer turnover and observed license replacement
 must withdraw old authority with floors before admitting a new activation, even
 when the profile is unchanged. Historical restarted or tainted followers wait
 for a new primary activation. The helper has signed-license and actual replica
-acceptance; production reset and follower recovery orchestration remain open.
+acceptance. The provider host now owns the local continuity state and exact
+license/static/auth-key exclusion. A restarted or tainted follower uses its first
+validated current installed image only to establish a baseline; a later different
+primary activation is required. If observation is delayed past a new activation,
+recovery can conservatively require one additional primary reset.
 
 SQLite startup initializes both owner roots together through an explicit fenced
 command. Followers receive them only in a complete image. The replica feature
@@ -122,7 +126,21 @@ and BSD uses its documented file locations. It does not query the macOS keychain
 or read `SSL_CERT_FILE`/`SSL_CERT_DIR`. Other platforms need explicit CA files
 with system trust disabled. Missing, malformed or oversized requested trust is
 an error, without partial or implicit system-pool fallback. These inputs and the
-loader are prepared for the complete provider-host mount still in progress.
+loader feed the root static preparation adapter, which detaches permissions,
+bindings, sealing/TOTP keys and per-provider credential capabilities before locks.
+An explicitly configured file belongs only to that config provider; it does not
+grant a stored provider filesystem access. A separate auth-key installation owner
+pins the loaded keys through complete transactions and excludes replacement.
+
+`providerhost.PinHostCurrent` supplies a predicate for the original pinned local
+generation, license, static resources and deadline. It is memory/clock-only and
+ends at callback exit. Root still retains the original elected writer and its
+concrete transaction checks separately. Host captures distinguish independent
+local installations even when their serials or configuration bytes are equal;
+their local identities never replace the shared entitlement activation. A bounded
+four-entry memo preserves concurrently prepared old/new resource projections.
+Host reset, follower observation, real JWT/current commands and reference lifetimes
+have actual SQLite/complete-publisher acceptance. Production mounting remains open.
 
 ```mermaid
 flowchart LR

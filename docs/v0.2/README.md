@@ -132,8 +132,11 @@ discovery/JWKS acquisition binds exact source receipts, credential capabilities,
 trust and entitlement policy. Provider, host/license and keyring exclusion now
 compose around the actual SQLite publication barrier; a newer pin cannot repair
 an older prepared candidate. Immutable license cuts preserve replacement and
-original deadline checks through complete commands. Production host/coordinator
-assembly, route adoption, enrollment/recovery UI and wider IAM/session acceptance
+original deadline checks through complete commands. The provider host now retains
+explicit entitlement continuity, local trust/credential/auth-key policy, and
+follower taint baselines. Root static preparation and key exclusion use actual
+loaded capabilities. Production host/coordinator mounting, route adoption,
+enrollment/recovery UI and wider IAM/session acceptance
 remain open.
 
 The integration host and private ledger now fence per-instance execution,
