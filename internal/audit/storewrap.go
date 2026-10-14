@@ -12,6 +12,7 @@ import (
 
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -176,6 +177,11 @@ func (w *recordingStore) record(ctx context.Context, key store.Key, verb, manage
 		ev.Actor, ev.Request = req.actor, req.request
 		if req.authz != nil {
 			ev.Authz = req.authz()
+		}
+		// Forwarded auth routes authorize in the identity handler after the API
+		// middleware. Their decision is on the write's context, not API state.
+		if dec, ok := auth.DecisionFrom(ctx); ok && dec.Allowed {
+			ev.Authz = dec.Path
 		}
 	}
 	if after != nil {
