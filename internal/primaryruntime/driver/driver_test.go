@@ -475,18 +475,47 @@ func TestPendingNotifySendSuccessAckFaultAndCompleteRestartDuplicatesSafely(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Shutdown can interrupt reconciliation after durable commit but before
+	// local installation. Restore the complete durable candidate before retrying
+	// publication; Republish intentionally retries only the installed member.
+	image, token, err := f.s.ReadServingCandidate(f.ctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := f.image
+	opts.Now = time.Now()
+	prepared, err := pr.PrepareImage(f.ctx(), *image, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore, err := f.r.PrepareRestore(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.PublishIfCurrent(f.ctx(), token, sqlite.PublicationOptions{}, func() error {
+		return f.r.InstallRestore(restore)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.r.Republish(f.ctx(), l.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	cut := f.r.Capture(time.Now())
+	member, ok := cut.Member(l.Spec.Zone.Apex)
+	wantVersion := zonestate.Version{Zone: pending.Head.Spec.Zone, CommitSequence: pending.Head.Spec.CommitSequence, RootDigest: pending.Head.Spec.RootDigest}
+	if !ok || !member.Published || member.Version != wantVersion || pending.Head.Spec.NotifySequence == 0 {
+		t.Fatal("recovery did not publish the exact pending durable head")
+	}
+	model := cut.Match("host.example.")
+	if model == nil || model.Lookup("host.example.", dns.TypeA).Kind != zone.Success {
+		t.Fatal("recovery did not install the committed RR change")
+	}
 	db, err := sql.Open("sqlite", f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TRIGGER fail_notify_ack BEFORE UPDATE ON objects WHEN NEW.kind='ZoneState' BEGIN SELECT RAISE(ABORT,'injected-notify-ack'); END`); err != nil {
-		t.Fatal(err)
-	}
-	// Cancellation can interrupt a same-head local reinstall after its durable
-	// no-op admission but before publication. Recovery must explicitly republish
-	// before NOTIFY may send; local pending intent alone does not grant delivery.
-	if err := f.r.Republish(f.ctx(), l.Spec.Zone); err != nil {
 		t.Fatal(err)
 	}
 	before := f.notify.calls.Load()
