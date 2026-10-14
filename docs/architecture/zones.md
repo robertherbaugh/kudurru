@@ -445,9 +445,39 @@ and allocation limits before copying or decoding policy and receipt data.
 Desired reconciliation and primary materialization tests also cover real-driver
 source races, restarts, raw TXT/unknown records, exact-expiry failure coverage,
 initial unavailable authority, bounded waiters and truthful desired receipts.
-Runtime membership and lifecycle barriers, listener wiring, TSIG version
-barriers, API acknowledgment and NOTIFY delivery remain in progress. This
-checkpoint does not yet enable network UPDATE.
+`internal/primaryruntime` now coordinates a private `ZoneLifecycle` ledger with
+the committed heads. Its phases are preparing, fencing, active, retiring and
+retired. Every replacement gets a new incarnation and RR authority, including
+primary-to-forward-to-primary changes that retain the public object's UID.
+Child activation requires durable reservations in each primary ancestor. A
+later ancestor remains unavailable until existing children acquire the new
+obligation; retirement preserves conservative coverage until fences can be
+released. The driver admission adapter must recheck the complete current roster
+and exact source read in the same transaction as each transition.
+
+```mermaid
+flowchart LR
+    L["Private lifecycle CAS"] --> F["Fence ancestor heads"]
+    F --> A["Activate verified membership"]
+    A --> C["Current authorization + head CAS"]
+    C --> P["Complete serving publication"]
+    P --> R["NOERROR"]
+    C --> N["Durable NOTIFY intent"]
+    N --> D["Published head delivery"]
+    D --> K["Exact head acknowledgment CAS"]
+```
+
+The runtime returns SERVFAIL when a durable UPDATE commit has not reached the
+complete local publication boundary. Internal diagnostics distinguish this from
+a failed commit. Receipt replay and rejected requests still cross current
+admission. NOTIFY delivery is bounded and at least once: a crash after delivery
+but before acknowledgment can duplicate a notification. Receipts currently have
+a finite cap (256 by default), with no eviction until safe retention is defined.
+
+Production driver admission, lifecycle scheduling, listener callback wiring,
+coherent serving publication and authenticated HA forwarding remain in progress.
+The Kubernetes test adapter exercises exact-object CAS without claiming a
+multi-object transaction. This checkpoint does not yet enable network UPDATE.
 
 Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
 verification. A successfully verified UPDATE using an immutable static keyring
