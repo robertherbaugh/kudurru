@@ -5,17 +5,24 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -24,6 +31,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
+	"github.com/robertherbaugh/kudurru/internal/store/kube"
 )
 
 func TestAuditSealKeysRotation(t *testing.T) {
@@ -108,7 +116,8 @@ func TestOpenAuditLogStartupDeadline(t *testing.T) {
 	}
 }
 
-func TestOpenAuditLogPreviousKeyRotation(t *testing.T) {
+func auditLogTestAPI(t *testing.T) *rest.Config {
+	t.Helper()
 	assets := os.Getenv("KUBEBUILDER_ASSETS")
 	if assets == "" {
 		dirs, err := filepath.Glob(filepath.Join("..", "..", "bin", "k8s", "*-"+runtime.GOOS+"-"+runtime.GOARCH))
@@ -150,6 +159,128 @@ func TestOpenAuditLogPreviousKeyRotation(t *testing.T) {
 			t.Errorf("envtest stop: %v", err)
 		}
 	})
+	return cfg
+}
+
+func TestOpenAuditLogProbeAuthorizationRecovery(t *testing.T) {
+	realCfg := auditLogTestAPI(t)
+	target, err := url.Parse(realCfg.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := rest.TransportFor(realCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, failure := range []struct {
+		name   string
+		status *apierrors.StatusError
+		is     func(error) bool
+	}{
+		{"unauthorized", apierrors.NewUnauthorized("test credential lag"), apierrors.IsUnauthorized},
+		{"forbidden", apierrors.NewForbidden(schema.GroupResource{Group: auditv1.Group, Resource: "auditlogs"}, "", errors.New("test RBAC lag")), apierrors.IsForbidden},
+	} {
+		for _, stage := range []string{"discovery", "list"} {
+			t.Run(failure.name+"/"+stage, func(t *testing.T) {
+				path := "/apis"
+				if stage == "list" {
+					path += "/" + auditv1.GroupVersion.String() + "/namespaces/" + kube.PodNamespace() + "/auditlogs"
+				}
+				proxy := httputil.NewSingleHostReverseProxy(target)
+				proxy.Transport = transport
+				var allowed atomic.Bool
+				denied := make(chan struct{}, 1)
+				gate := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == path && !allowed.Load() {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(int(failure.status.ErrStatus.Code))
+						_ = json.NewEncoder(w).Encode(failure.status.ErrStatus)
+						select {
+						case denied <- struct{}{}:
+						default:
+						}
+						return
+					}
+					proxy.ServeHTTP(w, r)
+				}))
+				t.Cleanup(gate.Close)
+				sp, err := spool.Open(t.Context(), spool.Options{Path: filepath.Join(t.TempDir(), spool.FileName), Node: "probe-test"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = sp.Close() })
+				var logs bytes.Buffer
+				logger := slog.New(slog.NewTextHandler(&logs, nil))
+				store, err := openAuditLog(t.Context(), &rest.Config{Host: gate.URL}, sp, bytes.Repeat([]byte{1}, 32), nil, logger, 2*time.Second)
+				if err != nil || store == nil {
+					t.Fatalf("probe denial must retain a retryable store: store=%v, err=%v", store, err)
+				}
+				if !strings.Contains(logs.String(), "AuditLog probe failed") {
+					t.Fatal("probe authorization failure was not logged")
+				}
+				if _, err := store.shipper.Target.Cursor(t.Context(), sp); !failure.is(err) {
+					t.Fatalf("target must still enforce authorization: %v", err)
+				}
+				if err := store.reader.Verify(t.Context()); !failure.is(err) {
+					t.Fatalf("audit verification must still report denied access: %v", err)
+				}
+				if err := sp.Record(t.Context(), audit.Event{Action: "dnszone.update", Result: audit.ResultSuccess, Reason: "recorded while audit access denied"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := sp.Verify(t.Context()); err != nil {
+					t.Fatalf("local spool must remain valid while access is denied: %v", err)
+				}
+				// Wait for an actual shipper attempt before restoring access.
+				select {
+				case <-denied:
+				default:
+					t.Fatal("probe did not reach the denied API")
+				}
+				store.shipper.Batch = 1
+				store.shipper.Interval = 10 * time.Millisecond
+				store.shipper.MaxBackoff = 20 * time.Millisecond
+				store.shipper.Logger = slog.New(slog.DiscardHandler)
+				ctx, cancel := context.WithCancel(t.Context())
+				done := make(chan error, 1)
+				go func() { done <- store.shipper.Run(ctx) }()
+				t.Cleanup(func() {
+					cancel()
+					select {
+					case err := <-done:
+						if err != nil {
+							t.Errorf("shipper stopped: %v", err)
+						}
+					case <-time.After(5 * time.Second):
+						t.Error("shipper did not stop")
+					}
+				})
+				select {
+				case <-denied:
+				case <-time.After(3 * time.Second):
+					t.Fatal("shipper did not retry the denied API")
+				}
+				allowed.Store(true)
+				deadline := time.Now().Add(5 * time.Second)
+				for {
+					cursor, err := store.shipper.Target.Cursor(t.Context(), sp)
+					if err == nil && cursor == 1 {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("spooled event did not ship after access recovered: cursor=%d, err=%v", cursor, err)
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+				if err := store.reader.Verify(t.Context()); err != nil {
+					t.Fatalf("recovered sealed batch and spool verification: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestOpenAuditLogPreviousKeyRotation(t *testing.T) {
+	cfg := auditLogTestAPI(t)
 	path := filepath.Join(t.TempDir(), spool.FileName)
 	sp, err := spool.Open(t.Context(), spool.Options{Path: path, Node: "rotation-test"})
 	if err != nil {

@@ -31,9 +31,9 @@ type auditLogStore struct {
 
 // openAuditLog wires the AuditLog store over the node's spool. It returns
 // nil when the AuditLog CRD is not installed (a kudurru-crds chart older
-// than the app): the node then shows its own spool and logs why. An
-// apiserver that cannot be reached at start is not a reason to fall back;
-// the shipper retries.
+// than the app): the node then shows its own spool and logs why.
+// Failed probes (including unavailable or not-yet-authorized API access)
+// retain the store so the shipper can retry without blocking DNS startup.
 func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey, encPrev []byte, logger *slog.Logger, startupTimeout time.Duration) (*auditLogStore, error) {
 	scheme := runtime.NewScheme()
 	if err := auditv1.AddToScheme(scheme); err != nil {
@@ -65,7 +65,8 @@ func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, en
 			"component", "audit", "crd", "auditlogs."+auditv1.Group)
 		return nil, nil
 	} else if err != nil && !kube.IsUnavailable(err) {
-		return nil, err
+		logger.Warn("audit: AuditLog probe failed; continuing, the shipper retries",
+			"component", "audit", "error", err)
 	}
 	sealKeys, err := auditSealKeys(encKey, encPrev)
 	if err != nil {

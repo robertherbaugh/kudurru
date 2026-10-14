@@ -86,6 +86,10 @@ contains the checks and remediation sequence.
   Completed credential bootstrap is not replayed during retries, preserving
   revocations; an unavailable configured OIDC provider keeps its ID reserved
   so stored providers cannot replace its trust configuration.
+- AuditLog probe authorization failures warn and retain the retrying shipper
+  rather than aborting DNS startup during an RBAC upgrade. Reads and writes
+  still require authorization, and locally spooled events ship after access
+  recovers without restarting the node.
 - Duplicate canonical zone apexes no longer stop unrelated zone updates.
   A conflicting apex retains its previously served data; on cold start a
   deterministic metadata-name winner serves until the conflict is removed.

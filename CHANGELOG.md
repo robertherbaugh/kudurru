@@ -327,6 +327,9 @@ pipeline.
   failures defer defaults and identity initialization, then retry after the
   apiserver returns. Fresh, stale and absent snapshot readiness behavior is
   covered through the real DNS listeners; authentication remains required.
+- AuditLog startup probes preserve the shipper's retry behavior on temporary
+  authorization failures. Missing audit RBAC during an upgrade logs a warning
+  instead of preventing DNS startup; audit events remain in the local spool.
 - Duplicate canonical zone apexes no longer freeze unrelated zone updates.
   A conflict retains its last served zone, or selects a deterministic
   metadata-name winner on cold start, until the duplicate is removed.
