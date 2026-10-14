@@ -79,6 +79,11 @@ func transferPrimary(t *testing.T, ring dnsserver.TSIGKeyring, handler dns.Handl
 	if err != nil {
 		t.Fatal(err)
 	}
+	return transferPrimaryListener(t, ring, ln, handler)
+}
+
+func transferPrimaryListener(t *testing.T, ring dnsserver.TSIGKeyring, ln net.Listener, handler dns.HandlerFunc) string {
+	t.Helper()
 	started, done := make(chan struct{}), make(chan error, 1)
 	srv := &dns.Server{
 		Listener: ln, Handler: handler, TsigProvider: dnsserver.TSIGProvider(ring),
@@ -762,7 +767,7 @@ func TestTransferAddressAndConfiguration(t *testing.T) {
 			t.Errorf("accepted primary address %q", input)
 		}
 	}
-	for _, protocol := range []string{"tls", "udp", "https"} {
+	for _, protocol := range []string{"udp", "https"} {
 		dz := transferZone(false)
 		dz.Spec.Secondary.TransferProtocol = protocol
 		_, err := (&TransferClient{}).AXFR(context.Background(), dz, "127.0.0.1:1")

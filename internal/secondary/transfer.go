@@ -2,6 +2,8 @@ package secondary
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -17,7 +20,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
-// TransferClient polls and transfers from one primary over TCP. A zero value
+// TransferClient polls and transfers from one primary over TCP or verified TLS. A zero value
 // uses a 10-second operation deadline, one million records and 64 MiB. Configure
 // it before use; concurrent calls do not share connections or transfer state.
 type TransferClient struct {
@@ -28,6 +31,9 @@ type TransferClient struct {
 	// cumulative expanded DNS message sizes, independently. Compression cannot
 	// bypass the limit. These are serialized sizes, not an exact Go heap budget.
 	MaxBytes int64
+	// RootCAs optionally trusts a private CA for TLS. Nil uses system trust.
+	// The endpoint hostname/IP is always verified. Configure before use.
+	RootCAs *x509.CertPool
 }
 
 // SOA returns an authenticated, authoritative apex SOA when TSIGKeyRef is set.
@@ -61,11 +67,16 @@ func (c *TransferClient) SOA(ctx context.Context, dz *v1alpha1.DNSZone, primary 
 // duplicate. It returns no partial data on failure. The caller builds and
 // publishes an immutable zone only after this method succeeds.
 func (c *TransferClient) AXFR(ctx context.Context, dz *v1alpha1.DNSZone, primary string) ([]dns.RR, error) {
+	return c.axfr(ctx, dz, primary, 0, 0)
+}
+
+func (c *TransferClient) axfr(ctx context.Context, dz *v1alpha1.DNSZone, primary string, wireBytes, decodeBytes int64) ([]dns.RR, error) {
 	s, err := c.open(ctx, dz, primary, dns.TypeAXFR)
 	if err != nil {
 		return nil, err
 	}
 	defer s.close()
+	s.wireBytes, s.decodeBytes = wireBytes, decodeBytes
 	var records []dns.RR
 	var initial *dns.SOA
 	for {
@@ -84,13 +95,8 @@ func (c *TransferClient) AXFR(ctx context.Context, dz *v1alpha1.DNSZone, primary
 			return nil, fmt.Errorf("secondary: AXFR requires answers and an empty authority section")
 		}
 		for i, rr := range m.Answer {
-			h := rr.Header()
-			if h.Class != dns.ClassINET || !dns.IsSubDomain(s.origin, h.Name) {
-				return nil, fmt.Errorf("secondary: AXFR record %q has the wrong class or is out of zone", h.Name)
-			}
-			switch h.Rrtype {
-			case dns.TypeOPT, dns.TypeTSIG, dns.TypeTKEY, dns.TypeAXFR, dns.TypeIXFR, dns.TypeANY, dns.TypeMAILA, dns.TypeMAILB:
-				return nil, fmt.Errorf("secondary: AXFR contains a meta-type record")
+			if err := s.validateRR(rr); err != nil {
+				return nil, err
 			}
 			soa, isSOA := rr.(*dns.SOA)
 			if initial == nil {
@@ -124,6 +130,7 @@ type transferSession struct {
 	conn        net.Conn
 	stop        func() bool
 	closed      chan struct{}
+	closeOnce   sync.Once
 	query       *dns.Msg
 	origin      string
 	key, alg    string
@@ -139,12 +146,16 @@ type transferSession struct {
 }
 
 func (c *TransferClient) open(ctx context.Context, dz *v1alpha1.DNSZone, primary string, qtype uint16) (*transferSession, error) {
+	return c.openQuery(ctx, dz, primary, qtype, nil)
+}
+
+func (c *TransferClient) openQuery(ctx context.Context, dz *v1alpha1.DNSZone, primary string, qtype uint16, base *dns.SOA) (*transferSession, error) {
 	if dz == nil || dz.Spec.Secondary == nil {
 		return nil, fmt.Errorf("secondary: missing secondary configuration")
 	}
 	protocol := dz.Spec.Secondary.TransferProtocol
-	if protocol != "" && protocol != "tcp" {
-		return nil, fmt.Errorf("secondary: unsupported transfer protocol %q (only tcp is supported)", protocol)
+	if protocol != "" && protocol != "tcp" && protocol != "tls" {
+		return nil, fmt.Errorf("secondary: unsupported transfer protocol %q", protocol)
 	}
 	origin := dns.CanonicalName(dz.Spec.ZoneName)
 	if _, ok := dns.IsDomainName(origin); !ok || dz.Spec.ZoneName == "" {
@@ -168,6 +179,9 @@ func (c *TransferClient) open(ctx context.Context, dz *v1alpha1.DNSZone, primary
 	s.query = new(dns.Msg)
 	s.query.SetQuestion(origin, qtype)
 	s.query.RecursionDesired = false
+	if base != nil {
+		s.query.Ns = []dns.RR{dns.Copy(base)}
+	}
 	var wire []byte
 	if ref := dz.Spec.Secondary.TSIGKeyRef; ref != "" {
 		s.key = dnsserver.TSIGKeyName(ref)
@@ -193,7 +207,16 @@ func (c *TransferClient) open(ctx context.Context, dz *v1alpha1.DNSZone, primary
 		return nil, fmt.Errorf("secondary: query exceeds DNS frame size")
 	}
 	s.ctx, s.cancel = context.WithTimeout(ctx, timeout)
-	s.conn, err = (&net.Dialer{}).DialContext(s.ctx, "tcp", address)
+	if protocol == "tls" {
+		host, _, _ := net.SplitHostPort(address)
+		dialer := &tls.Dialer{Config: &tls.Config{
+			MinVersion: tls.VersionTLS12, RootCAs: c.RootCAs,
+			ServerName: strings.TrimSuffix(host, "."), NextProtos: []string{"dot"},
+		}}
+		s.conn, err = dialer.DialContext(s.ctx, "tcp", address)
+	} else {
+		s.conn, err = (&net.Dialer{}).DialContext(s.ctx, "tcp", address)
+	}
 	if err != nil {
 		err = s.ioError(err)
 		s.cancel()
@@ -250,11 +273,13 @@ func transferAddress(primary string) (string, error) {
 }
 
 func (s *transferSession) close() {
-	if !s.stop() {
-		<-s.closed
-	}
-	_ = s.conn.Close()
-	s.cancel()
+	s.closeOnce.Do(func() {
+		if !s.stop() {
+			<-s.closed
+		}
+		_ = s.conn.Close()
+		s.cancel()
+	})
 }
 
 func (s *transferSession) ioError(err error) error {
@@ -385,7 +410,7 @@ func (s *transferSession) authenticate(m *dns.Msg, wire []byte, required bool) e
 		}
 		s.unsignedN++
 		if s.unsignedN >= 100 {
-			return fmt.Errorf("secondary: more than 99 unsigned AXFR intermediate messages")
+			return fmt.Errorf("secondary: more than 99 unsigned transfer intermediate messages")
 		}
 		s.unsigned = append(s.unsigned, wire...)
 		return nil
@@ -452,12 +477,6 @@ func (s *transferSession) validate(m *dns.Msg, first bool) error {
 	if !m.Response || m.Id != s.query.Id || m.Opcode != dns.OpcodeQuery || m.Truncated || m.Zero {
 		return fmt.Errorf("secondary: invalid response header or truncated response")
 	}
-	if m.Rcode != dns.RcodeSuccess {
-		return fmt.Errorf("secondary: primary returned DNS rcode %s (%d)", dns.RcodeToString[m.Rcode], m.Rcode)
-	}
-	if !m.Authoritative {
-		return fmt.Errorf("secondary: non-authoritative response")
-	}
 	if first && len(m.Question) != 1 {
 		return fmt.Errorf("secondary: first response must echo the question")
 	}
@@ -477,10 +496,34 @@ func (s *transferSession) validate(m *dns.Msg, first bool) error {
 			}
 			optSeen = true
 		default:
-			if s.query.Question[0].Qtype == dns.TypeAXFR {
-				return fmt.Errorf("secondary: unexpected AXFR additional record")
+			if s.query.Question[0].Qtype != dns.TypeSOA {
+				return fmt.Errorf("secondary: unexpected transfer additional record")
 			}
 		}
+	}
+	if m.Rcode != dns.RcodeSuccess {
+		return &transferRcodeError{code: m.Rcode}
+	}
+	if !m.Authoritative {
+		return fmt.Errorf("secondary: non-authoritative response")
+	}
+	return nil
+}
+
+type transferRcodeError struct{ code int }
+
+func (e *transferRcodeError) Error() string {
+	return fmt.Sprintf("secondary: primary returned DNS rcode %s (%d)", dns.RcodeToString[e.code], e.code)
+}
+
+func (s *transferSession) validateRR(rr dns.RR) error {
+	h := rr.Header()
+	if h.Class != dns.ClassINET || !dns.IsSubDomain(s.origin, h.Name) {
+		return fmt.Errorf("secondary: transfer record %q has the wrong class or is out of zone", h.Name)
+	}
+	switch h.Rrtype {
+	case 0, dns.TypeOPT, dns.TypeTSIG, dns.TypeTKEY, dns.TypeAXFR, dns.TypeIXFR, dns.TypeANY, dns.TypeMAILA, dns.TypeMAILB:
+		return fmt.Errorf("secondary: transfer contains a meta-type record")
 	}
 	return nil
 }

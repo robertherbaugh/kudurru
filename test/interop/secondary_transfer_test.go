@@ -235,12 +235,12 @@ key %q { algorithm hmac-sha512; secret %q; };
 		}
 	})
 
-	t.Run("TLSUnsupported", func(t *testing.T) {
+	t.Run("TLSCannotUsePlaintextPrimary", func(t *testing.T) {
 		zone := secondaryObject("secondary-signed.test.", key256)
 		zone.Spec.Secondary.TransferProtocol = "tls"
-		_, err := (&secondary.TransferClient{Keyring: ring256}).AXFR(context.Background(), zone, primary.addr)
-		if err == nil || !strings.Contains(err.Error(), "unsupported transfer protocol") {
-			t.Fatalf("TLS must fail explicitly: %v", err)
+		_, err := (&secondary.TransferClient{Keyring: ring256, Timeout: time.Second}).AXFR(context.Background(), zone, primary.addr)
+		if err == nil {
+			t.Fatalf("TLS must not downgrade to plaintext: %v", err)
 		}
 	})
 }
