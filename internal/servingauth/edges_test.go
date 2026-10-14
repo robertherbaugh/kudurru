@@ -11,6 +11,7 @@ import (
 	"time"
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -21,7 +22,21 @@ import (
 func TestCurrentLoginMustChangePasswordAndNoTOTPBypass(t *testing.T) {
 	f := newFixture(t)
 	proof := Credential{Kind: Password, Username: "alice", Value: "correct-password"}
-	err := f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+	keys, err := totp.NewKeyring(f.deps.CurrentKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.deps.TOTPKeys = keys
+	seed, err := totp.Generate(totp.Account{Name: f.user.Name, UID: string(f.user.UID)}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := keys.Seal(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, version, id := seed.Identity()
+	err = f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		user := f.user.DeepCopy()
 		user.Spec.MustChangePassword = true
 		if _, err := tx.Apply(ctx, user, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
@@ -34,11 +49,16 @@ func TestCurrentLoginMustChangePasswordAndNoTOTPBypass(t *testing.T) {
 		if _, _, err = ReauthorizeCurrent(ctx, tx, f.deps, proof, readAttrs(), f.now); !errors.Is(err, ErrDenied) {
 			t.Fatalf("must-change proof granted general rights: %v", err)
 		}
-		user.Spec.TOTPSecret = "captured-encrypted-secret"
+		user.Spec.TOTPSecret = sealed
+		state := f.security
+		state.TOTP = []totp.Record{{FormatVersion: 1, Account: a, SeedVersion: version, SeedID: id, Enabled: true}}
+		if err = stageSecurity(ctx, tx, state); err != nil {
+			return err
+		}
 		if _, err = tx.Apply(ctx, user, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
 			return err
 		}
-		if _, err = AuthenticateCurrent(ctx, tx, f.deps, proof, f.now); !errors.Is(err, ErrUnsupported) {
+		if _, err = AuthenticateCurrent(ctx, tx, f.deps, proof, f.now); !errors.Is(err, ErrCredentials) {
 			t.Fatalf("password bypassed TOTP: %v", err)
 		}
 		user.Spec.Disabled = true

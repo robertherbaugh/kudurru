@@ -40,13 +40,13 @@ func TestSecurityDeterministicExplicitAndStrict(t *testing.T) {
 			case "absent":
 				rows = nil
 			case "null-set":
-				rows[0].Data = []byte(`{"formatVersion":1,"epoch":"1","grantFloors":null,"accountFloors":[],"providerFloors":[],"sessions":[]}`)
+				rows[0].Data = []byte(`{"formatVersion":2,"epoch":"1","grantFloors":null,"accountFloors":[],"providerFloors":[],"sessions":[],"totp":[]}`)
 			case "version":
-				rows[0].Data = []byte(`{"formatVersion":2,"epoch":"1","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[]}`)
+				rows[0].Data = []byte(`{"formatVersion":99,"epoch":"1","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[],"totp":[]}`)
 			case "duplicate-key":
-				rows[0].Data = []byte(`{"formatVersion":1,"formatVersion":1}`)
+				rows[0].Data = []byte(`{"formatVersion":2,"formatVersion":1}`)
 			case "case-alias":
-				rows[0].Data = []byte(`{"formatVersion":1,"FormatVersion":1,"epoch":"1","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[]}`)
+				rows[0].Data = []byte(`{"formatVersion":2,"FormatVersion":1,"epoch":"1","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[],"totp":[]}`)
 			case "duplicate-row":
 				rows = append(rows, rows[0])
 			case "unlisted":
@@ -54,9 +54,9 @@ func TestSecurityDeterministicExplicitAndStrict(t *testing.T) {
 			case "unknown-row":
 				rows = append(rows, replication.Entry{Key: "auth/v2/other", Data: json.RawMessage(`{}`)})
 			case "counter":
-				rows[0].Data = []byte(`{"formatVersion":1,"epoch":"01","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[]}`)
+				rows[0].Data = []byte(`{"formatVersion":2,"epoch":"01","grantFloors":[],"accountFloors":[],"providerFloors":[],"sessions":[],"totp":[]}`)
 			case "missing-row":
-				rows[0].Data = []byte(`{"formatVersion":1,"epoch":"1","grantFloors":["auth/v1/grant/missing"],"accountFloors":[],"providerFloors":[],"sessions":[]}`)
+				rows[0].Data = []byte(`{"formatVersion":2,"epoch":"1","grantFloors":["auth/v1/grant/missing"],"accountFloors":[],"providerFloors":[],"sessions":[],"totp":[]}`)
 			}
 			if _, err := DecodeSecurity(rows); err == nil {
 				t.Fatal("malformed state accepted")

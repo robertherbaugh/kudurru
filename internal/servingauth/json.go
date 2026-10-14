@@ -12,17 +12,18 @@ import (
 
 // Hard caps are checked before typed JSON allocations and compiler maps.
 const (
-	MaxRows          = 4096
-	MaxRowBytes      = 64 << 10
-	MaxRootBytes     = 512 << 10
-	MaxSecurityBytes = 4 << 20
-	MaxObjects       = 100000
-	MaxObjectBytes   = 1536 << 10
-	MaxImageBytes    = 256 << 20
-	MaxGrants        = 128
-	FormatVersion    = 1
-	RootKey          = "auth/v1/root"
-	ownerPrefix      = "auth/"
+	MaxRows           = 4096
+	MaxRowBytes       = 64 << 10
+	MaxRootBytes      = 512 << 10
+	MaxSecurityBytes  = 4 << 20
+	MaxObjects        = 100000
+	MaxObjectBytes    = 1536 << 10
+	MaxImageBytes     = 256 << 20
+	MaxGrants         = 128
+	FormatVersion     = 1
+	RootFormatVersion = 2
+	RootKey           = "auth/v1/root"
+	ownerPrefix       = "auth/"
 )
 
 func hash(v any) string {

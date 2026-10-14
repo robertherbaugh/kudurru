@@ -11,6 +11,7 @@ import (
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
+	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -31,6 +32,7 @@ type View struct {
 	sessions    map[string]SessionRecord
 	sealer      *session.Sealer
 	hasher      PasswordVerifier
+	factors     map[totp.Account]*totp.Seed
 	released    atomic.Bool
 }
 
@@ -128,6 +130,9 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		s.Grants = slices.Clone(s.Grants)
 		v.sessions[s.ID] = s
 	}
+	if err = v.prepareFactors(deps.TOTPKeys); err != nil {
+		return nil, err
+	}
 	// Hash dependencies by their exact copied content as well as host cursor.
 	v.identity = hash(struct {
 		Cursor            string
@@ -135,8 +140,53 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		Permissions       *rbac.Permissions
 		Bindings          []rbac.Binding
 		Current, Previous string
-	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey)})
+		TOTPKeys          string
+	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey), deps.TOTPKeys.Identity()})
 	return v, nil
+}
+
+func (v *View) prepareFactors(keys *totp.Keyring) error {
+	v.factors = map[totp.Account]*totp.Seed{}
+	rows := map[totp.Account]totp.Record{}
+	for _, row := range v.cut.security.TOTP {
+		rows[row.Account] = row
+		obj := v.cut.objects[store.Key{Kind: "LocalUser", Name: row.Account.Name}]
+		current := obj != nil && string(obj.GetUID()) == row.Account.UID
+		if row.Enabled && !current {
+			return ErrInvalid
+		}
+		if !current {
+			continue
+		}
+		user, ok := obj.(*internalv1.LocalUser)
+		if !ok || row.Enabled != (user.Spec.TOTPSecret != "") {
+			return ErrInvalid
+		}
+	}
+	for _, obj := range v.cut.objects {
+		user, ok := obj.(*internalv1.LocalUser)
+		if !ok || user.Spec.TOTPSecret == "" {
+			continue
+		}
+		a := totp.Account{Name: user.Name, UID: string(user.UID)}
+		row, ok := rows[a]
+		if !ok || !row.Enabled {
+			return ErrManifest
+		}
+		if keys == nil {
+			return ErrDependency
+		}
+		seed, err := keys.Open(a, user.Spec.TOTPSecret)
+		if err != nil {
+			return ErrInvalid
+		}
+		_, version, id := seed.Identity()
+		if row.SeedVersion != version || row.SeedID != id {
+			return ErrInvalid
+		}
+		v.factors[a] = seed
+	}
+	return nil
 }
 func compareKey(a, b store.Key) int {
 	if a.String() < b.String() {

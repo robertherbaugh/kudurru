@@ -64,8 +64,8 @@ pass the retained raw proof to the current command verifier separately.
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
 revocation, current-command denial and cleanup on cancellation/panic. Production
-owner composition and mounting, provider capabilities, TOTP replay consumption
-and the public session workflow remain in progress. The
+owner composition and mounting, provider capabilities and the public session
+workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.
 
@@ -78,6 +78,30 @@ local-password issuance resolves the actual account, grants and canonical login
 policy/TTL before staging enrollment in that same command. Cookie sealing requires
 a committed view containing the enrollment. These command APIs are tested; the
 production HTTP stack still needs to adopt them for every relevant writer.
+
+`internal/auth/totp` implements the fixed SHA-1, six-digit, 30-second RFC 6238
+profile with a one-step window. A purpose-separated sealed seed binds the exact
+LocalUser UID, seed version and random seed identity. Replay rows retain the
+greatest consumed step, including step zero, across encryption-key and seed
+rotation. Auth root version 2 requires an explicit inventory of these rows;
+ordinary decoding never substitutes an empty replay history.
+
+Current password authentication verifies both factors and stages replay
+consumption inside the actual command transaction. Session issuance then loads
+that staged state and enrolls the session in the same transaction. A later
+failure rolls both changes back; concurrent use of one code can enroll only
+one session. Immutable auth views cannot consume a code or accept a factor
+password login. Enrollment, recovery, rate limiting and public routes remain
+part of the pending production workflow.
+
+```mermaid
+flowchart LR
+    Proof["Password + TOTP code"] --> Current["Current UID-bound account and seed"]
+    Current --> Replay["Verify and stage increasing replay step"]
+    Replay --> Enroll["Load staged security state and enroll session"]
+    Enroll --> Commit["One fenced commit"]
+    Commit --> Published["Committed auth view seals cookie"]
+```
 
 ## Principals
 

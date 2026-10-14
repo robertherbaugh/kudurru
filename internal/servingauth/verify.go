@@ -33,6 +33,9 @@ func (v *View) Authenticate(ctx context.Context, proof Credential, now time.Time
 		sess, err := v.CookieSession(proof.Value, now)
 		return sess.Principal, err
 	case Password:
+		if proof.TOTPCode != "" {
+			return auth.Principal{}, ErrUnsupported
+		}
 		return v.verifyPassword(ctx, proof.Username, proof.Value, now)
 	default:
 		return auth.Principal{}, ErrUnsupported
@@ -79,11 +82,25 @@ func (v *View) verifyToken(wire string, now time.Time) (auth.Principal, error) {
 	return v.LoadPrincipal(p, now)
 }
 func (v *View) verifyPassword(ctx context.Context, name, password string, now time.Time) (auth.Principal, error) {
-	if v.hasher == nil {
+	user, err := v.passwordAccount(ctx, name, password)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	// A View cannot consume a TOTP step and never grants factor login proof.
+	if user.Spec.TOTPSecret != "" {
 		return auth.Principal{}, ErrUnsupported
 	}
+	return v.passwordPrincipal(user, now)
+}
+func (v *View) passwordPrincipal(user *internalv1.LocalUser, now time.Time) (auth.Principal, error) {
+	return v.LoadPrincipal(auth.Principal{Kind: auth.KindUser, ID: "local:" + user.Name, Name: user.Name, Provider: "local", AccountUID: string(user.UID), AuthMethod: "password", CredentialIssuedAt: now}, now)
+}
+func (v *View) passwordAccount(ctx context.Context, name, password string) (*internalv1.LocalUser, error) {
+	if v.hasher == nil {
+		return nil, ErrUnsupported
+	}
 	if len(name) > 512 || len(password) > users.MaxPasswordLen {
-		return auth.Principal{}, ErrCredentials
+		return nil, ErrCredentials
 	}
 	user, ok := v.cut.objects[store.Key{Kind: "LocalUser", Name: users.NormalizeUsername(name)}].(*internalv1.LocalUser)
 	phc := dummyPasswordHash
@@ -92,14 +109,9 @@ func (v *View) verifyPassword(ctx context.Context, name, password string, now ti
 	}
 	match, err := v.hasher.Verify(ctx, phc, password)
 	if err != nil || !match || !ok || inactive(user) || user.Spec.PasswordHash == "" {
-		return auth.Principal{}, ErrCredentials
+		return nil, ErrCredentials
 	}
-	// TOTP is a separate admitted replay-consumption operation. Never silently
-	// accept a password-only proof for an account requiring that second factor.
-	if user.Spec.TOTPSecret != "" {
-		return auth.Principal{}, ErrUnsupported
-	}
-	return v.LoadPrincipal(auth.Principal{Kind: auth.KindUser, ID: "local:" + user.Name, Name: user.Name, Provider: "local", AccountUID: string(user.UID), AuthMethod: "password", CredentialIssuedAt: now}, now)
+	return user, nil
 }
 
 // A valid fixed-cost PHC burns the same bounded crypto work for unknown users.

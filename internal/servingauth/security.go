@@ -2,12 +2,14 @@ package servingauth
 
 import (
 	"encoding/json"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -19,22 +21,22 @@ var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 // EmptySecurity is an explicit startup migration input. Root must commit its
 // encoded root row transactionally before publisher activation; no read seeds it.
 func EmptySecurity(epoch uint64) Security {
-	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}}
+	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}, TOTP: []totp.Record{}}
 }
 
 // EncodeSecurity returns deterministic owner rows including one mandatory root.
 // All counts are checked before allocations; caller-supplied input is detached.
 func EncodeSecurity(s Security) ([]replication.Entry, error) {
-	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil {
+	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil {
 		return nil, ErrManifest
 	}
-	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions)
+	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions) + len(s.TOTP)
 	if count >= MaxRows {
 		return nil, ErrBounds
 	}
 	entries := make([]replication.Entry, 0, count+1)
 	total := 0
-	root := RootEntry{FormatVersion: FormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}}
+	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}}
 	add := func(key string, value any, keys *[]string) error {
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -91,10 +93,20 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 			return nil, err
 		}
 	}
+	for _, row := range s.TOTP {
+		entry, err := totp.EncodeRecord(row)
+		if err != nil {
+			return nil, err
+		}
+		if err = add(entry.Key, row, &root.TOTP); err != nil {
+			return nil, err
+		}
+	}
 	slices.Sort(root.GrantFloors)
 	slices.Sort(root.AccountFloors)
 	slices.Sort(root.ProviderFloors)
 	slices.Sort(root.Sessions)
+	slices.Sort(root.TOTP)
 	raw, _ := json.Marshal(root)
 	if len(raw) > MaxRootBytes {
 		return nil, ErrBounds
@@ -111,6 +123,34 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 // DecodeSecurity strictly decodes the auth-owned subset. Other owners' rows are
 // left to their validators; absent/null root sets never become empty state.
 func DecodeSecurity(rows []replication.Entry) (Security, error) {
+	return decodeSecurity(rows, false)
+}
+
+// UpgradeSecurityV1 strictly migrates a COMPLETE legacy owner once. Root checks
+// current LocalUsers for legacy active TOTP and stages the result explicitly.
+// Normal decoders never fall back to this migration or seed a missing manifest.
+func UpgradeSecurityV1(rows []replication.Entry) (Security, error) {
+	s, err := decodeSecurity(rows, true)
+	if err != nil {
+		return Security{}, err
+	}
+	if s.Epoch == math.MaxUint64 {
+		return Security{}, ErrBounds
+	}
+	s.Epoch++
+	return s, nil
+}
+
+type legacyRootEntry struct {
+	FormatVersion  int      `json:"formatVersion"`
+	Epoch          uint64   `json:"epoch,string"`
+	GrantFloors    []string `json:"grantFloors"`
+	AccountFloors  []string `json:"accountFloors"`
+	ProviderFloors []string `json:"providerFloors"`
+	Sessions       []string `json:"sessions"`
+}
+
+func decodeSecurity(rows []replication.Entry, legacy bool) (Security, error) {
 	if len(rows) > MaxRows {
 		return Security{}, ErrBounds
 	}
@@ -146,16 +186,24 @@ func DecodeSecurity(rows []replication.Entry) (Security, error) {
 	if !ok {
 		return Security{}, ErrManifest
 	}
-	if !strictOwner(raw, &root, MaxRootBytes) {
+	expectedVersion := RootFormatVersion
+	if legacy {
+		var old legacyRootEntry
+		if !strictOwner(raw, &old, MaxRootBytes) {
+			return Security{}, ErrInvalid
+		}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: []string{}}
+		expectedVersion = 1
+	} else if !strictOwner(raw, &root, MaxRootBytes) {
 		return Security{}, ErrInvalid
 	}
-	if root.FormatVersion != FormatVersion {
+	if root.FormatVersion != expectedVersion {
 		return Security{}, ErrVersion
 	}
-	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil {
+	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil {
 		return Security{}, ErrManifest
 	}
-	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions)
+	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions) + len(root.TOTP)
 	if count >= MaxRows {
 		return Security{}, ErrBounds
 	}
@@ -230,6 +278,21 @@ func DecodeSecurity(rows []replication.Entry) (Security, error) {
 		}
 		s.Sessions = append(s.Sessions, row)
 	}
+	for _, key := range root.TOTP {
+		if seen[key] {
+			return Security{}, ErrInvalid
+		}
+		seen[key] = true
+		raw, ok := own[key]
+		if !ok {
+			return Security{}, ErrManifest
+		}
+		row, err := totp.DecodeRecord(replication.Entry{Key: key, Data: raw})
+		if err != nil {
+			return Security{}, err
+		}
+		s.TOTP = append(s.TOTP, row)
+	}
 	return s, nil
 }
 
@@ -247,16 +310,19 @@ func ValidateEntry(section string, row replication.Entry) error {
 		if !strictOwner(row.Data, &r, MaxRootBytes) {
 			return ErrInvalid
 		}
-		if r.FormatVersion != FormatVersion {
+		if r.FormatVersion != RootFormatVersion {
 			return ErrVersion
 		}
-		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil {
+		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil {
 			return ErrManifest
 		}
 		return nil
 	}
 	if !strings.HasPrefix(row.Key, "auth/v1/") {
 		return ErrVersion
+	}
+	if strings.HasPrefix(row.Key, "auth/v1/totp/") {
+		return totp.ValidateEntry(section, row)
 	}
 	if len(row.Data) > MaxRowBytes {
 		return ErrBounds

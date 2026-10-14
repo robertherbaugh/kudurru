@@ -7,6 +7,7 @@ import (
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -47,6 +48,7 @@ type Dependencies struct {
 	StaticBindings             []rbac.Binding
 	CurrentKey, PreviousKey    []byte
 	Hasher                     PasswordVerifier
+	TOTPKeys                   *totp.Keyring
 }
 
 // PasswordVerifier is a bounded pure crypto seam; users.Hasher implements it.
@@ -59,6 +61,7 @@ type PasswordVerifier interface {
 type Credential struct {
 	Kind            CredentialKind
 	Value, Username string
+	TOTPCode        string
 }
 
 // CredentialKind selects a supported proof format.
@@ -96,6 +99,7 @@ type RootEntry struct {
 	AccountFloors  []string `json:"accountFloors"`
 	ProviderFloors []string `json:"providerFloors"`
 	Sessions       []string `json:"sessions"`
+	TOTP           []string `json:"totp"`
 }
 
 // GrantFloor persists current behavior: issuedAt <= ValidAfter fails.
@@ -144,6 +148,7 @@ type Security struct {
 	AccountFloors  []AccountFloor
 	ProviderFloors []ProviderFloor
 	Sessions       []SessionRecord
+	TOTP           []totp.Record
 }
 
 // CurrentReader is implemented by sqlite.CommandTx. Root must pass only its

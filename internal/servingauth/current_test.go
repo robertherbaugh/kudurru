@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -13,6 +14,52 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+type currentListReader struct {
+	CurrentReader
+	list func(context.Context, store.Kind, store.ListOptions) (store.ObjectList, error)
+}
+
+func (r currentListReader) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	return r.list(ctx, kind, opts)
+}
+
+func TestCaptureCurrentBoundsEachTransactionRead(t *testing.T) {
+	f := newFixture(t)
+	err := f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		var limits []int
+		reader := currentListReader{CurrentReader: tx, list: func(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+			limits = append(limits, opts.Limit)
+			return tx.List(ctx, kind, opts)
+		}}
+		if _, err := captureCurrent(ctx, reader); err != nil {
+			return err
+		}
+		// Actual transaction objects consume the shared budget across kinds:
+		// two tokens, provider, settings, user, no private state, binding, SA.
+		want := []int{MaxObjects + 1, MaxObjects - 1, MaxObjects - 2, MaxObjects - 3, MaxObjects - 4, MaxObjects - 4, MaxObjects - 5}
+		if !slices.Equal(limits, want) {
+			t.Fatalf("unbounded or incorrect transaction limits: got %v, want %v", limits, want)
+		}
+		for _, page := range []store.ObjectList{
+			{Items: make([]store.Object, MaxObjects+1)},
+			{Continue: "more"},
+		} {
+			calls := 0
+			reader.list = func(context.Context, store.Kind, store.ListOptions) (store.ObjectList, error) {
+				calls++
+				return page, nil
+			}
+			if _, err := captureCurrent(ctx, reader); !errors.Is(err, ErrBounds) || calls != 1 {
+				t.Fatalf("overflow/partial cut not rejected before decoding or further reads: %v, calls %d", err, calls)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestCurrentCommandReverificationRejectsOldViewAndStagedRevocation(t *testing.T) {
 	f := newFixture(t)

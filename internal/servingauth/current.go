@@ -3,10 +3,12 @@ package servingauth
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"slices"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -22,7 +24,7 @@ func ReauthorizeCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependen
 		return auth.Principal{}, rbac.Decision{}, err
 	}
 	defer view.Release()
-	p, err := view.Authenticate(ctx, proof, now)
+	p, err := authenticateInCommand(ctx, tx, view, proof, now)
 	if err != nil {
 		return auth.Principal{}, rbac.Decision{}, err
 	}
@@ -46,7 +48,7 @@ func AuthenticateCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Depende
 		return auth.Principal{}, err
 	}
 	defer view.Release()
-	return view.Authenticate(ctx, proof, now)
+	return authenticateInCommand(ctx, tx, view, proof, now)
 }
 
 // ResolveSessionCurrent resolves password login, licensed normalized binding
@@ -63,7 +65,7 @@ func ResolveSessionCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Depen
 		return SessionDecision{}, err
 	}
 	defer view.Release()
-	p, err := view.Authenticate(ctx, proof, now)
+	p, err := authenticateInCommand(ctx, tx, view, proof, now)
 	if err != nil {
 		return SessionDecision{}, err
 	}
@@ -79,6 +81,76 @@ func ResolveSessionCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Depen
 		return SessionDecision{}, err
 	}
 	return SessionDecision{Principal: detachedPrincipal(p), Grants: grants, Settings: settings}, nil
+}
+
+func authenticateInCommand(ctx context.Context, tx *sqlite.CommandTx, view *View, proof Credential, now time.Time) (auth.Principal, error) {
+	if proof.Kind != Password {
+		if proof.TOTPCode != "" {
+			return auth.Principal{}, ErrCredentials
+		}
+		return view.Authenticate(ctx, proof, now)
+	}
+	if err := ctx.Err(); err != nil {
+		return auth.Principal{}, err
+	}
+	if now.IsZero() {
+		return auth.Principal{}, ErrCredentials
+	}
+	user, err := view.passwordAccount(ctx, proof.Username, proof.Value)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	p, err := view.passwordPrincipal(user, now)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	if user.Spec.TOTPSecret == "" {
+		if proof.TOTPCode != "" {
+			return auth.Principal{}, ErrCredentials
+		}
+		return p, nil
+	}
+	if proof.TOTPCode == "" {
+		return auth.Principal{}, ErrCredentials
+	}
+	a := totp.Account{Name: user.Name, UID: string(user.UID)}
+	seed := view.factors[a]
+	step, err := totp.Match(seed, proof.TOTPCode, now)
+	if err != nil {
+		return auth.Principal{}, ErrCredentials
+	}
+	state := view.cut.security
+	state.TOTP = slices.Clone(state.TOTP)
+	if state.Epoch == math.MaxUint64 {
+		return auth.Principal{}, ErrBounds
+	}
+	found := false
+	for i, row := range state.TOTP {
+		if row.Account != a {
+			continue
+		}
+		next, err := totp.Advance(row, seed, step)
+		if err != nil {
+			return auth.Principal{}, ErrCredentials
+		}
+		state.TOTP[i] = next
+		found = true
+		break
+	}
+	if !found {
+		return auth.Principal{}, ErrManifest
+	}
+	state.Epoch++
+	rows, err := EncodeSecurity(state)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	for _, row := range rows {
+		if err = tx.PutSection(ctx, "security", row); err != nil {
+			return auth.Principal{}, err
+		}
+	}
+	return p, nil
 }
 
 func prepareCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies) (*View, error) {
@@ -104,7 +176,9 @@ func captureCurrent(ctx context.Context, reader CurrentReader) (*Cut, error) {
 	count := 0
 	bytes := 0
 	for _, kind := range requiredKinds {
-		list, err := reader.List(ctx, store.Kind(kind), store.ListOptions{})
+		// One extra object detects overflow without an unbounded kind read.
+		// Keep a positive limit even after the shared object budget is spent.
+		list, err := reader.List(ctx, store.Kind(kind), store.ListOptions{Limit: MaxObjects - count + 1})
 		if err != nil {
 			return nil, ErrInvalid
 		}
