@@ -74,23 +74,41 @@ replacement, persisted authority fencing, local follower reads, authenticated
 transport, command transactions and promotion coordination. Complete-bundle
 publication and DNS request capture are implemented, including inherited
 alias/DNS64 views, detached-cache fencing and transfer cleanup across all six
-listeners. Production owner composition, authentication capture, public wiring
-and multi-node partition/rejoin acceptance remain open; this is not consensus.
+listeners. Authentication now has a complete-image owner and a leased HTTP
+adapter; strict list preparation requires exact published body digests.
+Production owner composition, mounting, public wiring and multi-node
+partition/rejoin acceptance remain open; this is not consensus.
 
 RFC 2136 parsing/planning, prerequisite and ownership checks, bounded private
 zone aggregates, SQLite transactions and Kubernetes immutable-chunk/head CAS
 are implemented. Source reconciliation, committed-primary materialization,
-lifecycle/TSIG/HA integration and network UPDATE remain in progress. RPZ has
+parent fences and retirement now have a transactional SQLite lifecycle adapter.
+Complete-image primary preparation validates persisted heads, chunks and parent
+witnesses without compiling desired primary records. Native TSIG proofs retain
+their original deadline through transaction admission. Production scheduling,
+publication acknowledgment, forwarding and network UPDATE wiring remain open. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons; selected-policy stage rendering, production
 publication, reporting and UI are in progress.
 
 Credential identity now binds immutable account UIDs, and service-account
 bootstrap authority resides in private UID-bound PrincipalState objects.
-Stored provider files require exact host grants. Public IAM schemas and
-transactional SQLite conversion are being integrated with the offline
-Kubernetes journal and credential mappings. This checkpoint does not certify
-Kubernetes upgrades or complete the wider IAM/session package.
+Stored provider files require exact host grants. Public IAM schemas,
+transactional SQLite conversion, offline Kubernetes journals and immutable
+credential mappings are implemented. Migration acceptance interrupts every
+discovered durable write and exercises explicit uncertain-UID recovery on a
+real API server. Complete auth images now preserve durable session enrollment
+and account/provider/grant revocation floors; current commands verify original
+proofs against staged transactional state. TOTP replay consumption and local
+session enrollment commit together, with explicit startup migration and
+restart/promotion coverage. Provider/CEL capabilities, production route adoption,
+enrollment/recovery UI and the wider IAM/session acceptance remain open.
+
+The integration host and private ledger now fence per-instance execution,
+preserve operation intent and partial receipts, and enforce durable request
+budgets through retries. Preview and apply share an ownership-aware planner.
+The official Cloudflare SDK provider is in progress; production commit adapters,
+other providers, external-zone controls and the dashboard remain open.
 
 None of these checkpoints closes an entire package prematurely. The remaining
 feature packages and detailed follow-ups below retain their full scope.
