@@ -99,6 +99,33 @@ the process when the first load fails.
 
 ## Inside a compiled list
 
+### Complete serving candidates
+
+`listfetcher.PrepareComplete` supplies strict list preparation for the complete
+serving publisher. It receives all BlockList objects from one captured image
+and the exact pinned service catalog. Every enabled external text source must
+have an explicit published digest, matching cache metadata and matching SHA-256
+body bytes. The file descriptor remains open through verification and parsing.
+Preparation performs no network requests or store reads, and bounds the number
+of lists, sources and bytes it consumes.
+
+A missing body, digest mismatch or compilation failure rejects the whole
+candidate. The publisher retains its previous complete bundle. Disabled and
+empty lists remain explicit; RPZ lists retain their identity while their feed
+data comes from a separately captured runtime owner. This preparer does not
+use the older-body and individual-list fallback behavior of the existing
+resolver described above. Production publisher composition is still pending.
+
+```mermaid
+flowchart LR
+    Image["One captured BlockList object cut"] --> Verify["Verify each exact published body digest"]
+    Cache["Pinned local cache files"] --> Verify
+    Verify --> Compile["Compile all lists with pinned catalog"]
+    Compile --> Candidate["One complete candidate"]
+    Verify -->|failure| Retain["Retain previous whole serving bundle"]
+    Compile -->|failure| Retain
+```
+
 ```mermaid
 flowchart LR
     N(["name, lower-cased,<br/>no trailing dot"]) --> E{"exact set<br/>sorted buckets by length,<br/>bit filter, binary search"}
