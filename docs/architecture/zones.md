@@ -498,7 +498,12 @@ checks, and guards the actual serving pointer swap. Local generation identities
 prevent A → B → A replacement from reviving an old candidate; they do not claim
 a durable fresh-acquisition epoch. Held DNS leases keep their immutable old keys.
 NOTIFY delivery and acknowledgment remain denied until an explicit current policy
-validator and matching immutable sender are installed.
+validator and matching immutable sender are installed. The network adapter now
+provides that pair: a private attempt retains the exact served member, head,
+policy and keyring installation through delivery and acknowledgment. Current
+commands compare the actual desired policy and pending head; the final check
+also rejects ancestor expiry even when no pointer or generation changed. Partial
+delivery, rotation and failed acknowledgment retain the whole durable intent.
 
 `primaryruntime.PrepareImage` reconstructs committed primary routing from one
 complete replication image and the explicit local kind manifest, including
@@ -563,10 +568,19 @@ flowchart LR
 ```
 
 The driver and complete publisher are exercised together on actual SQLite.
-Current keyring/policy guards are tested with that composition. Listener callback
-wiring, production mounting and authenticated HA forwarding remain in progress.
-The Kubernetes test adapter exercises exact-object CAS without claiming a
-multi-object transaction. This checkpoint does not yet enable network UPDATE.
+Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
+exact SOA apex, and return success only after complete publication. A committed
+mutation whose publication fails returns SERVFAIL; retrying the retained original
+proof can recover publication without repeating semantics. New native requests
+receive new retry identities, so this does not claim cross-request deduplication.
+Diagnostics cannot change the wire result even if their callback panics.
+
+The command assembly binds these adapters to the original elected SQLite writer,
+complete leases and the same current keyring/policy guard. Production `serve.go`
+mounting and authenticated HA forwarding remain in progress. The Kubernetes test
+adapter exercises exact-object CAS without claiming a multi-object transaction;
+production Kubernetes UPDATE and durable NOTIFY require their own admission
+barriers. Receipt capacity remains finite with no automatic eviction.
 
 Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
 verification. A successfully verified UPDATE using an immutable static keyring

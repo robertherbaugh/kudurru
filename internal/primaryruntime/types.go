@@ -113,6 +113,14 @@ type NotifyAdapter interface {
 	Send(context.Context, Member, *zone.Zone) error
 }
 
+// NotifyBinder optionally binds a sender's private attempt capability before
+// delivery admission. Its returned context is used for delivery, send and exact
+// acknowledgment. Bind must not perform network I/O or retain transaction pins.
+// Production admission must deny a sender without the required capability.
+type NotifyBinder interface {
+	Bind(context.Context, Member, *zone.Zone) (context.Context, func(), error)
+}
+
 // Member is a value with detached obligations; callers cannot mutate the cut.
 type Member struct {
 	Zone                  zk.ZoneID

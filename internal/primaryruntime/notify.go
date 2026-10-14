@@ -61,6 +61,28 @@ func (r *Runtime) notifyOne(ctx context.Context, apex string, e *entry, m Member
 	if version(v) != m.Version || v.Head.Spec.NotifySequence == 0 {
 		return nil
 	}
+	if binder, ok := r.o.Notify.(NotifyBinder); ok {
+		bound, release, err := binder.Bind(ctx, m, e.model)
+		if release != nil {
+			defer release()
+		}
+		if err != nil {
+			return err
+		}
+		if bound == nil || release == nil {
+			return ErrUnavailable
+		}
+		// Preserve the original caller's cancellation even if an adapter returns
+		// an independently derived context. The proof remains in bound's values.
+		bound, cancel := context.WithCancel(bound)
+		stop := context.AfterFunc(ctx, cancel)
+		defer stop()
+		defer cancel()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ctx = bound
+	}
 	if _, err := r.admit(ctx, Command{Lifecycle: l, Expected: v.Expected, Reason: "notify-delivery"}); err != nil {
 		return err
 	}
