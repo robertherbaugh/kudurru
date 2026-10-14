@@ -298,3 +298,22 @@ func TestStatePreallocationExactBudget(t *testing.T) {
 		})
 	}
 }
+
+func TestStateBoundsRejectScopedAddresses(t *testing.T) {
+	// A zone is not inventory identity and must be rejected before MarshalText
+	// allocates an arbitrary caller-supplied suffix. Check both authority inputs,
+	// including short zones that would fit the serialized address length limit.
+	for name, suffix := range map[string]string{"short": "eth0", "oversized": strings.Repeat("z", 1<<20)} {
+		ip := netip.MustParseAddr("fe80::1").WithZone(suffix)
+		for field, state := range map[string]State{
+			"client":    {FormatVersion: StateFormatVersion, Sources: []SourceState{{ID: "a", Revision: 1, Clients: []Client{{Source: "a", ID: "b", IPs: []netip.Addr{ip}}}}}},
+			"watermark": {FormatVersion: StateFormatVersion, Watermarks: []Watermark{{IP: ip}}},
+		} {
+			t.Run(name+"/"+field, func(t *testing.T) {
+				if err := CheckStateBounds(state, MaxStateBytes); err == nil {
+					t.Fatal("accepted scoped address in bounded inventory evidence")
+				}
+			})
+		}
+	}
+}

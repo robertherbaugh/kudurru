@@ -256,6 +256,9 @@ func CheckStateBounds(s State, maxBytes int) error {
 		}
 		size += 2 + max(0, len(ips)-1)
 		for _, ip := range ips {
+			if ip.Zone() != "" {
+				return errors.New("inventory: zoned state address")
+			}
 			b, err := ip.MarshalText()
 			if err != nil {
 				return err
@@ -345,6 +348,9 @@ func CheckStateBounds(s State, maxBytes int) error {
 	if s.Watermarks != nil {
 		for _, w := range s.Watermarks {
 			size += len(`{"ip":,"observedAt":,"expiresAt":,"live":}`)
+			if w.IP.Zone() != "" {
+				return errors.New("inventory: zoned watermark address")
+			}
 			b, err := w.IP.MarshalText()
 			if err != nil {
 				return err
