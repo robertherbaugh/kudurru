@@ -646,6 +646,73 @@ Flags:
                                                 probe)
 ```
 
+## kudurru iam
+
+Manage identity configuration and upgrades.
+
+### kudurru iam migrate
+
+Inspect or perform the offline Kubernetes IAM upgrade. Stop every old and new kudurru process, IAM writer and previous migrator before begin or resume. Install the new CRDs and back up the release namespace first. The commands use Kubernetes credentials directly; they do not connect to the kudurru API.
+
+Original Secrets and private migration archives remain rollback artifacts. Output contains only state, object identifiers and counts, never credentials. An uncertain Create requires explicit operator recovery; resume never adopts a public object merely because its annotations or contents match.
+
+Flags:
+
+```text
+      --kube-context string        Kubernetes context (default current kubeconfig context)
+      --kubeconfig string          Kubernetes client configuration (default standard
+                                   kubeconfig or in-cluster identity)
+      --release-namespace string   required: namespace containing the original private IAM Secrets
+      --timeout duration           whole operation deadline (maximum 30m) (default 5m0s)
+```
+
+#### kudurru iam migrate begin
+
+Capture, archive and migrate while all IAM processes are stopped.
+
+```text
+kudurru iam migrate begin [flags]
+```
+
+Flags:
+
+```text
+      --offline   acknowledge that all IAM readers/writers and previous migrators are stopped
+```
+
+#### kudurru iam migrate plan
+
+Validate the complete migration without writing.
+
+```text
+kudurru iam migrate plan
+```
+
+#### kudurru iam migrate resume
+
+Resume an interrupted migration at an exact journal version.
+
+```text
+kudurru iam migrate resume [flags]
+```
+
+Flags:
+
+```text
+      --offline                   acknowledge that all IAM readers/writers and previous
+                                  migrators are stopped
+      --resource-version string   exact journal resource version returned by status (never
+                                  inferred)
+```
+
+#### kudurru iam migrate status
+
+Read the admission state and journal resource version.
+
+```text
+kudurru iam migrate status
+```
+
 ## kudurru import
 
 Import data from other DNS servers.

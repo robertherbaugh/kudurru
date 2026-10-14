@@ -77,6 +77,9 @@ type Options struct {
 	// TokenMigration resolves completed offline cutover provenance, captured
 	// with current identities. Nil never guesses a legacy credential binding.
 	TokenMigration tokens.MigrationResolver
+	// DisableBootstrap keeps incomplete Kubernetes migration state untouched.
+	// Admission and current write gates must be supplied by the runtime too.
+	DisableBootstrap bool
 	// Kube is the pod's apiserver configuration with the kube driver: it
 	// enables Kubernetes ServiceAccount tokens, SubjectAccessReview and
 	// IdentityProvider clientSecretRef. nil in Docker mode.
@@ -458,13 +461,13 @@ func (s *Stack) initialize(ctx context.Context) error {
 			return fmt.Errorf("stack: loading identity objects: %w", err)
 		}
 	}
-	if !s.usersBootstrapped {
+	if !s.opts.DisableBootstrap && !s.usersBootstrapped {
 		if _, err := s.users.Bootstrap(ctx, users.BootstrapOptions{Getenv: s.opts.Getenv, PasswordFile: s.cfg.Auth.Bootstrap.AdminPasswordFile, Out: s.opts.Out, Identity: s.cfg.Node.Name}); err != nil {
 			return err
 		}
 		s.usersBootstrapped = true
 	}
-	if !s.tokensBootstrapped {
+	if !s.opts.DisableBootstrap && !s.tokensBootstrapped {
 		if _, err := s.tokens.Bootstrap(ctx, s.opts.Getenv); err != nil {
 			return err
 		}

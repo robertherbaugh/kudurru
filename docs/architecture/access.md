@@ -175,7 +175,7 @@ owner remain unbound and cannot authenticate. Equal creation timestamps require
 audit evidence that the current account was created before the token; without
 that evidence, reissue the token. An invalid stored document rolls back the
 entire upgrade, and older binaries reject the newer database schema.
-Kubernetes legacy token conversion is part of the pending offline IAM migration;
+Kubernetes legacy token conversion uses the explicit offline IAM migration;
 an unbound token is never silently rebound during authentication.
 
 Service-account bootstrap authority lives in private `PrincipalState` objects,
@@ -200,26 +200,47 @@ transaction, preserving UIDs, creation order, ownership, status and token hashes
 It validates public admission and rolls back the entire upgrade if a legacy
 document is malformed, ambiguous or exceeds the migration bounds. Conversion
 does not read a file or grant its path. Kubernetes uses new server-issued CRD
-UIDs and therefore needs the offline journal and credential mappings currently
-under implementation; this schema checkpoint alone is not an upgrade-complete
-Kubernetes release.
+UIDs. The offline `kudurru iam migrate` command preserves original Secrets,
+archives the complete pinned source set and creates targets with private exact
+UID receipts. An uncertain Create cannot be adopted from matching public
+annotations or contents. Resume requires an explicit offline acknowledgment and
+the exact inspected journal resource version; see the
+[upgrade runbook](../deploy/iam-upgrade.md).
 
 The token verifier has an optional migration resolver for private cutover proof.
 It verifies the token hash and expiry first, then checks the current account's
 disabled state, exact target UID, original token UID and original account
 creation floor. The resolver cannot supply roles or bootstrap authority. Local
 accounts retain their original UID and creation instant; name reuse, absent
-proof and later replacements fail closed. The Kubernetes journal loader and
-startup gate must be wired before this callback is enabled in production.
+proof and later replacements fail closed. Kubernetes runtime admission captures
+status and immutable bindings from the same uncached, verified journal cut. It
+rechecks the journal UID and resourceVersion after verification. Native installs
+return no migration bindings; incomplete state and errors close remote admission.
+
+The gate runs before identity bootstrap and outside the HTTP authentication
+stack, including login and OIDC callbacks. It admits at most eight concurrent
+checks, each bounded to five seconds. Closed admission returns a sanitized 503
+with retry advice; IAM mutations independently recheck current admission before
+writing. DNS snapshots exclude management IAM kinds and DNS queries never call
+this gate. These reads do not provide a multi-object Kubernetes transaction:
+migration still requires all readers and writers to remain stopped. Complete
+immutable authentication publication and durable session state remain separate
+v0.2 work. Ordinary object backups do not yet carry raw migration journals and
+archives; protect them with the Kubernetes backup described in the runbook.
 
 ```mermaid
 flowchart LR
-    Legacy["Legacy IAM configuration"] --> Convert["Bounded strict conversion"]
+    Legacy["Legacy IAM configuration"] --> Convert["Offline bounded conversion"]
+    Convert --> Journal["Private archives and exact UID receipts"]
+    Journal --> Complete["Completion CAS"]
     Convert --> Public["Public SA / RoleBinding / IdP"]
     Public --> Ref["Credential reference"]
     Ref --> Host["Host-granted resolver"]
     Private["Private token / user / PrincipalState"] --> UID["Exact account UID binding"]
     UID --> Public
+    Complete --> Gate["Verified journal cut and admission"]
+    Gate --> HTTP["Login, callbacks and authenticated HTTP"]
+    Gate --> Writes["Current IAM write admission"]
 ```
 
 ### The CLI

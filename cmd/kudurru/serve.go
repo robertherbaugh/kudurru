@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/dashboard"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
@@ -32,6 +32,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
+	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
@@ -146,7 +147,7 @@ func newLoggerAt(cfg config.Log, level *slog.LevelVar) *slog.Logger {
 // with the public and internal kudurru.io kinds. The rest config is non-nil
 // only for the kube driver.
 func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, *rest.Config, error) {
-	scheme, err := internalkinds.NewScheme()
+	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -155,7 +156,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 	switch cfg.Store.Driver {
 	case "sqlite":
 		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
-			Validator: v, Scheme: scheme, InternalKinds: stack.InternalKinds(),
+			Validator: v, Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
 		})
 		switch {
@@ -173,7 +174,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 			return nil, nil, nil, fmt.Errorf("store.driver kube: %w", err)
 		}
 		s, err := kube.New(restCfg, kube.Options{
-			Scheme: scheme, InternalKinds: stack.InternalKinds(),
+			Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
 		})
 		if err != nil {
@@ -303,6 +304,24 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
 		}
 	}
+	// An incomplete offline IAM cutover must not seed accounts or admit remote
+	// identities. This gate performs no work on the DNS path. Recheck every IAM
+	// mutation independently of the HTTP request's earlier admission result.
+	var identityGate *iamgate.Gate
+	var disableIdentityBootstrap bool
+	if restCfg != nil {
+		migration, err := newKubeIAMMigrator(restCfg, cfg, releaseNamespace)
+		if err != nil {
+			return err
+		}
+		identityGate = iamgate.New(migration)
+		_, status, err := identityGate.Capture(ctx)
+		disableIdentityBootstrap = err != nil
+		if disableIdentityBootstrap {
+			logger.Warn("remote identity admission disabled; inspect kudurru iam migrate status", "state", status.State, "releaseNamespace", releaseNamespace)
+		}
+		st = &iamgate.Store{Store: st, Gate: identityGate}
+	}
 
 	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
 	// so store writes and API actions are recorded in the node's audit
@@ -318,7 +337,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		defer func() { _ = auditSpool.Close() }()
-		scheme, err := internalkinds.NewScheme()
+		scheme, err := runtimekinds.NewScheme()
 		if err != nil {
 			return err
 		}
@@ -809,6 +828,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
+	stackOpts.DisableBootstrap = disableIdentityBootstrap
+	if identityGate != nil {
+		stackOpts.TokenMigration = iamgate.ResolveToken
+	}
 	stackOpts.Kube = restCfg
 	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
 	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
@@ -826,6 +849,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
+	authenticate := identityAuthentication(ids, identityGate)
 
 	// The optional central database (D158): opened here, connected and
 	// migrated in the background by its runnable; never part of readiness.
@@ -935,7 +959,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		ListBodies: listBodies{cache: lists},
 		Purger:     querylogPurger(qlWriter),
 		Audit:      recorders, AuditReader: auditReader, Central: centralState,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
+		Authenticate: authenticate, Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
 		UIHandler:   dashboard.Handler(dashboard.Options{BasePath: cfg.Listeners.API.PathPrefix}),
@@ -1242,6 +1266,17 @@ func readEncryptionKeys() (key, previous []byte, err error) {
 		return nil, nil, err
 	}
 	return key, previous, nil
+}
+
+// identityAuthentication keeps migration admission outside the entire remote
+// authentication stack, including anonymous login and callback requests.
+func identityAuthentication(ids *stack.Stack, gate *iamgate.Gate) func(http.Handler) http.Handler {
+	if gate == nil {
+		return ids.Middleware()
+	}
+	return func(next http.Handler) http.Handler {
+		return gate.Middleware(ids.Middleware()(next))
+	}
 }
 
 // identityOptions are the stack.Options that do not depend on the
