@@ -115,6 +115,15 @@ explicit command. Preview binds all destinations, and sync rejects a changed
 preview before effects. Unknown or foreign remote outcomes remain pending until
 a complete reread establishes ownership and outcome.
 
+Recovery also accepts a partially applied RRset whose targets have mixed old
+and new TTLs or provider options. Only rows bound to the exact pending operation
+qualify: old provider IDs must retain captured before/after content, and new IDs
+must carry the current Integration UID marker and exact intended content.
+Explicit adoption additionally checks its original IDs, versions and unchanged
+permission. Foreign siblings and CNAME conflicts remain protected. A mixed
+observation cannot establish a complete RRset hash or masquerade as absence;
+ordinary preview and executable planning still require consistent original rows.
+
 Actions validate advertised bounded schemas and redact named credentials from
 responses. Event delivery persists sanitized input and a stable delivery ID
 before callbacks, retries to the original 24-hour deadline, and retains terminal
