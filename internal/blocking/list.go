@@ -33,7 +33,7 @@ const (
 const DefaultRegexHardCap = 1000
 
 // keepUnsupportedPerList bounds the unsupported rules a List retains for
-// the v0.2 slow path and the UI; counting is never bounded.
+// UI diagnostics only; execution and counting are never bounded.
 const keepUnsupportedPerList = 1000
 
 // Errors returned by Compile for a malformed Spec.
@@ -44,7 +44,7 @@ var (
 )
 
 // Source is one input of a list. Open is called up to twice per compile:
-// once for the checksum that decides whether to recompile, once to parse.
+// once for fingerprint/badfilter collection, once to build the matchers.
 type Source struct {
 	Name   string
 	Format parser.Format
@@ -129,7 +129,7 @@ type SourceStats struct {
 	Name   string
 	Format parser.Format // effective (detected when the source said auto)
 	Title  string
-	// CRC32 is the checksum of the normalised rule lines.
+	// CRC32 is the checksum of the normalized rule lines.
 	CRC32       uint32
 	Lines       int
 	Rules       int
@@ -151,7 +151,7 @@ type SourceStats struct {
 	Err error
 }
 
-// Stats summarises a compiled list. Entries, RuleCount and Invalid map to
+// Stats summarizes a compiled list. Entries, RuleCount and Invalid map to
 // BlockList.status.{entries,ruleCount,invalid}.
 type Stats struct {
 	// Entries is the number of unique compiled entries over every matcher
@@ -169,12 +169,12 @@ type Stats struct {
 	// rejected.
 	Invalid int
 	// Unsupported counts valid rules this version does not compile
-	// (modifiers, mid-pattern wildcards, hosts rewrites).
+	// (geolocation, CIDRs, hosts rewrites).
 	Unsupported int
 	// Ignored counts hosts-file boilerplate (localhost and friends).
 	Ignored int
 	// Regexes is the number of compiled regex rules; RegexUnindexed how many
-	// of them have no four-byte literal and run for every lookup;
+	// of them have no indexable required literal and can run for every lookup;
 	// RegexDropped the number cut by the hard cap.
 	Regexes        int
 	RegexUnindexed int
@@ -199,7 +199,11 @@ type List struct {
 	fingerprint uint32
 	// complete is false when a source failed; such a list is never reused
 	// by the checksum skip.
-	complete bool
+	complete    bool
+	slow        []*compiledRule
+	slowIndex   *matcher.PatternIndex
+	hasRewrites bool
+	badfilters  map[string]bool
 }
 
 // Name returns the list name.
@@ -212,12 +216,26 @@ func (l *List) Mode() Mode { return l.mode }
 func (l *List) Stats() Stats { return l.stats }
 
 // Sources returns per-source statistics in Spec order.
-func (l *List) Sources() []SourceStats { return slices.Clone(l.sources) }
+func (l *List) Sources() []SourceStats {
+	out := slices.Clone(l.sources)
+	for i := range out {
+		out[i].StaleExcludes = slices.Clone(out[i].StaleExcludes)
+		out[i].UnsupportedReasons = maps.Clone(out[i].UnsupportedReasons)
+		out[i].InvalidReasons = maps.Clone(out[i].InvalidReasons)
+		out[i].InvalidSamples = slices.Clone(out[i].InvalidSamples)
+	}
+	return out
+}
 
 // Unsupported returns up to 1000 rules this version parsed but did not
-// compile, with their tokenised modifiers, for the UI and the v0.2 slow
-// path.
-func (l *List) Unsupported() []parser.UnsupportedRule { return slices.Clone(l.unsupported) }
+// compile, with their tokenized modifiers, for UI diagnostics only.
+func (l *List) Unsupported() []parser.UnsupportedRule {
+	out := slices.Clone(l.unsupported)
+	for i := range out {
+		out[i].Modifiers = slices.Clone(out[i].Modifiers)
+	}
+	return out
+}
 
 // Warnings returns human-readable compile warnings (regex counts, caps,
 // unsupported rules, failed sources).
@@ -231,16 +249,44 @@ func (l *List) Fingerprint() uint32 { return l.fingerprint }
 // Match reports whether the list's primary entries (deny entries of a block
 // list, allow entries of an allow list) match name.
 func (l *List) Match(name string) (Match, bool) {
-	n := NormalizeName(name)
-	return l.primary.match(n, matcher.Hash(n))
+	return l.MatchContext(Context{Name: name, Type: 1, Class: 1})
+}
+
+// MatchContext reports a primary deny/allow entry using question/client
+// selectors. Rewrites have their own typed Selection.EvaluateContext action.
+func (l *List) MatchContext(ctx Context) (Match, bool) { return l.matchContext(ctx, false) }
+func (l *List) matchContext(ctx Context, except bool) (Match, bool) {
+	ctx.Name = NormalizeName(ctx.Name)
+	ch := &l.primary
+	if except {
+		ch = &l.except
+	}
+	m, ok := ch.match(ctx.Name, matcher.Hash(ctx.Name))
+	if ok {
+		return m, true
+	}
+	best := candidate{rank: -1}
+	l.slowIndex.Visit(ctx.Name, func(id int) {
+		r := l.slow[id]
+		if r.rewrite != nil || !r.matches(ctx) || (r.exception && l.mode == ModeBlock) != except {
+			return
+		}
+		c := candidateFor(l, r, ctx.Name)
+		if better(c, best) {
+			best = c
+		}
+	})
+	return best.decision.Match, best.rank >= 0
 }
 
 // MatchException reports whether one of the list's own @@ rules matches
 // name. It is always false for allow lists.
 func (l *List) MatchException(name string) (Match, bool) {
-	n := NormalizeName(name)
-	return l.except.match(n, matcher.Hash(n))
+	return l.MatchExceptionContext(Context{Name: name, Type: 1, Class: 1})
 }
+
+// MatchExceptionContext checks ordinary @@ entries with question selectors.
+func (l *List) MatchExceptionContext(ctx Context) (Match, bool) { return l.matchContext(ctx, true) }
 
 // MatchIP reports whether an IP entry of the primary chain matches a.
 func (l *List) MatchIP(a netip.Addr) (Match, bool) {
@@ -249,7 +295,7 @@ func (l *List) MatchIP(a netip.Addr) (Match, bool) {
 
 // Compile builds a List from spec. When prev is a complete List whose
 // fingerprint equals the new one (no rule line, option or mode changed),
-// Compile returns prev itself without parsing, so callers detect the skip
+// Compile returns prev itself without rebuilding matchers, so callers detect the skip
 // with l == prev.
 //
 // A source that cannot be read or is not a list (parser.ErrHTML,
@@ -263,12 +309,13 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 	}
 	start := time.Now()
 	regexCap := opts.regexCap()
-	fp, fpErr := fingerprint(&spec, regexCap)
+	fp, badfilters, fpErr := fingerprint(&spec, regexCap)
 	if fpErr == nil && prev != nil && prev.complete && prev.fingerprint == fp {
 		return prev, nil
 	}
 
 	c := newCompiler(spec.Mode, regexCap)
+	c.badfilters = badfilters
 	l := &List{name: spec.Name, mode: spec.Mode, fingerprint: fp}
 	var errs []error
 	ok := 0
@@ -291,29 +338,50 @@ func Compile(spec Spec, prev *List, opts CompileOptions) (*List, error) {
 	return l, errors.Join(errs...)
 }
 
-// fingerprint hashes the inputs that determine a compiled list. Per source
-// it uses parser.Checksum, the CRC-32 of the normalised rule lines, so
-// comment-only changes ("! Last modified:") do not force a rebuild.
-func fingerprint(spec *Spec, regexCap int) (uint32, error) {
+// fingerprint hashes normalized rule lines and collects all badfilter
+// directives before compilation. Comment-only changes do not force a rebuild.
+func fingerprint(spec *Spec, regexCap int) (uint32, map[string]bool, error) {
 	h := crc32.NewIEEE()
-	_, _ = fmt.Fprintf(h, "kudurru-blocking-v1\x00%s\x00%d\x00", spec.Mode, regexCap)
+	_, _ = fmt.Fprintf(h, "kudurru-blocking-v2\x00%s\x00%d\x00", spec.Mode, regexCap)
+	var badfilters map[string]bool
 	for _, src := range spec.Sources {
 		rc, err := src.Open()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
-		crc, err := parser.Checksum(rc)
+		excluded := map[string]bool{}
+		for _, text := range src.Exclude {
+			excluded[text] = true
+		}
+		res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, KeepUnsupported: -1, KeepInvalid: -1, EmitSlow: func(u parser.UnsupportedRule) error {
+			if excluded[u.Text] {
+				return parser.ErrUnsupportedSlow
+			}
+			for _, m := range u.Modifiers {
+				if m.Name == "badfilter" {
+					r, e := compileRule(u)
+					if e == nil && r.badfilter {
+						if badfilters == nil {
+							badfilters = map[string]bool{}
+						}
+						badfilters[r.key] = true
+					}
+					break
+				}
+			}
+			return parser.ErrUnsupportedSlow
+		}}, nil)
 		_ = rc.Close()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		format := src.Format
 		if format == "" {
 			format = parser.FormatAuto
 		}
-		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, crc, ExcludeDigest(src.Exclude))
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%t\x00%08x\x00%s\x00", src.Name, format, src.HostsSubdomains, res.CRC32, ExcludeDigest(src.Exclude))
 	}
-	return h.Sum32(), nil
+	return h.Sum32(), badfilters, nil
 }
 
 type chainBuilder struct {
@@ -350,10 +418,18 @@ type compiler struct {
 	ruleCount, unsupported, invalid, ignored int
 	unsupportedRules                         []parser.UnsupportedRule
 	unsupportedReasons                       map[string]int
+	slow                                     []*compiledRule
+	badfilters                               map[string]bool
+	slowRegex, slowAdded                     int
+	slowSeen                                 map[string]bool
 }
 
 func newCompiler(mode Mode, regexCap int) *compiler {
-	return &compiler{mode: mode, regexCap: regexCap, unsupportedReasons: map[string]int{}}
+	c := &compiler{mode: mode, regexCap: regexCap, unsupportedReasons: map[string]int{}}
+	for _, b := range []*chainBuilder{&c.primary, &c.except} {
+		b.exact.MergeTags, b.suffix.MergeTags = true, true
+	}
+	return c
 }
 
 func (c *compiler) source(src Source) (SourceStats, error) {
@@ -374,7 +450,19 @@ func (c *compiler) source(src Source) (SourceStats, error) {
 			return c.add(r)
 		}
 	}
-	res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains}, emit)
+	res, err := parser.Parse(rc, parser.Options{Format: src.Format, HostsSubdomains: src.HostsSubdomains, EmitSlow: func(u parser.UnsupportedRule) error {
+		if ex != nil {
+			if _, ok := ex.rules[u.Text]; ok {
+				ex.rules[u.Text] = true
+				ex.count++
+				if u.Exception {
+					ex.exceptions++
+				}
+				return nil
+			}
+		}
+		return c.addSlow(u)
+	}}, emit)
 	if err != nil {
 		st.Err = err
 		return st, err
@@ -403,11 +491,14 @@ func (c *compiler) source(src Source) (SourceStats, error) {
 
 // add routes one parsed rule into the right matcher builder.
 func (c *compiler) add(r parser.Rule) error {
+	if r.Syntax != parser.SyntaxHosts && len(c.badfilters) > 0 && c.badfilters[r.String()+"$"] {
+		return nil
+	}
 	b := &c.primary
 	if r.Exception && c.mode == ModeBlock {
 		b = &c.except
 	}
-	tag := uint8(r.Syntax)
+	tag := syntaxMask(r.Syntax)
 	switch r.Kind {
 	case parser.KindExact:
 		if !b.exact.Add(r.Pattern, tag) {
@@ -422,7 +513,7 @@ func (c *compiler) add(r parser.Rule) error {
 			c.rejected++
 		}
 	case parser.KindRegex:
-		if c.regexCap > 0 && c.primary.regex.Len()+c.except.regex.Len() >= c.regexCap {
+		if !b.regex.Has(r.Pattern) && c.regexCap > 0 && c.primary.regex.Len()+c.except.regex.Len()+c.slowRegex >= c.regexCap {
 			c.regexDropped++
 			return nil
 		}
@@ -435,30 +526,81 @@ func (c *compiler) add(r parser.Rule) error {
 	return nil
 }
 
+func (c *compiler) addSlow(u parser.UnsupportedRule) error {
+	r, err := compileRule(u)
+	if err != nil {
+		return err
+	}
+	if r.badfilter || c.badfilters[r.key] {
+		return nil
+	}
+	c.slowAdded++
+	if c.slowSeen[r.key] {
+		return nil
+	}
+	if strings.HasPrefix(u.Pattern, "/") {
+		if c.regexCap > 0 && c.primary.regex.Len()+c.except.regex.Len()+c.slowRegex >= c.regexCap {
+			c.regexDropped++
+			c.slowAdded--
+			return nil
+		}
+		c.slowRegex++
+	}
+	if c.slowSeen == nil {
+		c.slowSeen = map[string]bool{}
+	}
+	c.slowSeen[r.key] = true
+	r.order = len(c.slow)
+	c.slow = append(c.slow, r)
+	return nil
+}
+func (c *compiler) slowRegexes() int {
+	return c.slowRegex
+}
+
 func (c *compiler) build(l *List) {
 	added := c.primary.added() + c.except.added() + c.regexAccepted
 	l.primary = c.primary.build(false)
 	l.except = c.except.build(true)
-	entries := l.primary.entries() + l.except.entries()
+	l.slow, l.badfilters = c.slow, c.badfilters
+	var patterns []*matcher.Pattern
+	slowExceptions, slowUnindexed := 0, 0
+	for _, r := range l.slow {
+		l.hasRewrites = l.hasRewrites || r.rewrite != nil
+		patterns = append(patterns, r.pattern)
+		if r.exception && c.mode == ModeBlock {
+			slowExceptions++
+		}
+		if strings.HasPrefix(strings.TrimPrefix(r.text, "@@"), "/") && len(r.pattern.Literal()) < 5 {
+			slowUnindexed++
+		}
+	}
+	if len(patterns) > 0 {
+		l.slowIndex = matcher.NewPatternIndex(patterns)
+	}
+	entries := l.primary.entries() + l.except.entries() + len(l.slow)
 	l.stats = Stats{
 		Entries:        entries,
 		RuleCount:      c.ruleCount,
-		Exceptions:     l.except.entries(),
-		Duplicates:     added - entries,
+		Exceptions:     l.except.entries() + slowExceptions,
+		Duplicates:     max(added-l.primary.entries()-l.except.entries(), 0) + max(c.slowAdded-len(l.slow), 0),
 		Invalid:        c.invalid + c.regexInvalid + c.rejected,
 		Unsupported:    c.unsupported,
 		Ignored:        c.ignored,
-		Regexes:        l.primary.regex.Len() + l.except.regex.Len(),
-		RegexUnindexed: l.primary.regex.Unindexed() + l.except.regex.Unindexed(),
+		Regexes:        l.primary.regex.Len() + l.except.regex.Len() + c.slowRegexes(),
+		RegexUnindexed: l.primary.regex.Unindexed() + l.except.regex.Unindexed() + slowUnindexed,
 		RegexDropped:   c.regexDropped,
 		Bytes:          l.primary.bytes() + l.except.bytes(),
+	}
+	for _, r := range l.slow {
+		l.stats.Bytes += len(r.text) + len(r.key) + 2048
 	}
 	l.unsupported = c.unsupportedRules
 	if l.stats.Regexes > matcher.RegexWarnThreshold {
 		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules (more than %d); %d of them have no indexable literal", l.stats.Regexes, matcher.RegexWarnThreshold, l.stats.RegexUnindexed))
 	}
 	if l.stats.RegexUnindexed > matcher.RegexUnindexedWarnThreshold {
-		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules have no literal of 4 or more characters and are evaluated for every query the exact and suffix sets do not answer (more than %d slows lookups noticeably)", l.stats.RegexUnindexed, matcher.RegexUnindexedWarnThreshold))
+		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules have no literal suitable for indexing (4 characters for fast rules, 5 for modifier rules) and can run for every query (more than %d slows lookups noticeably)", l.stats.RegexUnindexed, matcher.RegexUnindexedWarnThreshold))
 	}
 	if c.regexDropped > 0 {
 		l.warnings = append(l.warnings, fmt.Sprintf("%d regex rules dropped by the per-list hard cap of %d", c.regexDropped, c.regexCap))

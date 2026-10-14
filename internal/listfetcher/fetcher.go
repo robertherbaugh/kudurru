@@ -538,10 +538,12 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 }
 
 // statsFromStatus reuses the published counts when every source digest in
-// the status equals the current one.
+// the status equals the current one. Counts with unsupported rules need one
+// fresh compile per term: status has no compiler version, and a software
+// upgrade can support previously unsupported rules without changing a digest.
 func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
 	st := &pl.obj.Status
-	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 {
+	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 || st.Unsupported != 0 {
 		return listStats{}, false
 	}
 	check := &fpBuilder{}

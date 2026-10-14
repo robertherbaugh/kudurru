@@ -12,7 +12,7 @@ Regex rules in adblock lists and in Pi-hole style regex lists.
 /^slashed\./
 ^pixel\.;querytype=AAAA
 -- counts r --
-rules=3 exceptions=1 unsupported=1 invalid=1 entries=3
+rules=4 exceptions=1 unsupported=0 invalid=1 entries=4
 -- counts pi --
 rules=2 unsupported=1 invalid=0 entries=2
 -- expect --
@@ -22,7 +22,7 @@ bad.example.com          pass
 mytracker.example        block r /TRACK(er|ing)\.example$/   # upper-case regex compiled case-insensitively
 tracking.example.net     pass
 ads.safe.example         allow r @@/^ads\.safe\./
-banner.example           pass    # $important is unsupported in v0.1
+banner.example           block r /^banner\./$important
 doubleclick.net          block pi /(\.|^)doubleclick\.net$/
 stats.doubleclick.net    block pi /(\.|^)doubleclick\.net$/
 notdoubleclick.net       pass

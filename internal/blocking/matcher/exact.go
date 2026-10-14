@@ -60,8 +60,10 @@ func (e *Exact) Bytes() int {
 // ExactBuilder accumulates names for an Exact set. The zero value is ready
 // to use.
 type ExactBuilder struct {
-	arenas [MaxNameLen + 1]arena
-	added  int
+	// MergeTags ORs tags of duplicate entries instead of keeping the first.
+	MergeTags bool
+	arenas    [MaxNameLen + 1]arena
+	added     int
 }
 
 // Add adds a normalised name with its tag. It returns false, and adds
@@ -92,7 +94,7 @@ func (b *ExactBuilder) Build() *Exact {
 	}
 	e := &Exact{buckets: make([]bucket, maxLen+1)}
 	for w := 1; w <= maxLen; w++ {
-		bk, n := b.arenas[w].build(w)
+		bk, n := b.arenas[w].build(w, b.MergeTags)
 		e.buckets[w] = bk
 		e.n += n
 	}
