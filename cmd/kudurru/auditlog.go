@@ -60,7 +60,7 @@ func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, en
 	sh := &audit.Shipper{Source: sp, Target: tgt, Logger: logger}
 	return &auditLogStore{
 		shipper: sh,
-		reader:  &auditlog.Reader{Client: c, Namespace: ns, Pending: sh.Pending, PendingSource: sp.SourceID()},
+		reader:  &auditlog.Reader{Client: c, Namespace: ns, SealKeys: [][]byte{sealKey}, VerifyPending: sp.Verify, Pending: sh.Pending, PendingSource: sp.SourceID()},
 		client:  c,
 	}, nil
 }

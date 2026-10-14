@@ -1,7 +1,6 @@
-// Access & audit: the signed-in principal, its roles and permissions, its
+// Access: the signed-in principal, its roles and permissions, its
 // own API tokens (the kdr_ secret is shown once), the read-only IAM views
-// (the write API is v0.2; IAM is declared in YAML today) and the audit log,
-// newest first with keyset paging.
+// (the write API is v0.2; IAM is declared in YAML today).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -15,21 +14,20 @@ import { pixel, proportional, Table, TableBody, TableCell, TableHeaderCell, Tabl
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
 import { useFeature } from '../api/hooks';
-import type { ApiToken, AuditEvent, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
+import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { ChangePasswordButton } from '../components/AccountMenu';
-import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
-import { FeatureLocked } from '../components/FeatureLocked';
+import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
 import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatDateTime, formatRelative } from '../lib/format';
-import { useSearchParams } from '../lib/router';
+import { useNavigate, useSearchParams } from '../lib/router';
 
 /** A relative time with the exact instant in its tooltip. */
 function Relative({ at }: { at: string }) {
@@ -470,154 +468,19 @@ function Iam() {
   );
 }
 
-const AUDIT_PAGE = 100;
-
-/** The actor of an audit event as one line. */
-export function actorText(a: AuditEvent['actor']): string {
-  const who = a.name || a.id || 'unknown';
-  return a.kind && a.kind !== 'User' ? `${who} (${a.kind})` : who;
-}
-
-/** The resource of an audit event as "Kind ns/name". */
-export function resourceText(r: AuditEvent['resource']): string {
-  const name = r.name ? `${r.namespace ? `${r.namespace}/` : ''}${r.name}` : '';
-  return name ? `${r.kind} ${name}` : r.kind;
-}
-
-/** Resource kinds the audit log records (objects and runtime actions). */
-const AUDIT_KINDS: EnumOption[] = ['DNSZone', 'DNSRecordSet', 'BlockList', 'ClientGroup', 'Policy', 'settings', 'blocking', 'cache', 'querylog', 'audit'].map((k) => ({
-  value: k,
-  label: k,
-}));
-
-/** An audit event with the row key it is listed under (events may carry no id). */
-type AuditRow = AuditEvent & { rowKey: string } & Record<string, unknown>;
-
-const auditColumns: TableColumn<AuditRow>[] = [
-  { key: 'ts', header: 'Time', width: pixel(210), renderCell: (a) => <Text textWrap="nowrap">{formatDateTime(a.ts)}</Text> },
-  { key: 'actor', header: 'Actor', width: proportional(1.5, { minWidth: 120 }), renderCell: (a) => <Text>{actorText(a.actor)}</Text> },
-  {
-    key: 'action',
-    header: 'Action',
-    width: proportional(1.5, { minWidth: 120 }),
-    renderCell: (a) => (
-      <Text type="code" size="sm">
-        {a.action}
-      </Text>
-    ),
-  },
-  {
-    key: 'resource',
-    header: 'Object',
-    width: proportional(2, { minWidth: 140 }),
-    renderCell: (a) => (
-      <Text type="code" size="sm">
-        {resourceText(a.resource)}
-      </Text>
-    ),
-  },
-  {
-    key: 'result',
-    header: 'Result',
-    width: proportional(1, { minWidth: 100 }),
-    renderCell: (a) => (
-      <VStack gap={0.5} align="start">
-        <Badge variant={a.result === 'success' ? 'success' : a.result === 'denied' ? 'warning' : 'error'} label={a.result} />
-        {a.reason ? <Text type="supporting">{a.reason}</Text> : null}
-      </VStack>
-    ),
-  },
-  {
-    key: 'from',
-    header: 'From',
-    width: proportional(1, { minWidth: 110 }),
-    renderCell: (a) => (
-      <VStack gap={0.5}>
-        <Text size="sm">{a.request?.ip ?? '–'}</Text>
-        {a.authz ? <Text type="supporting">via {a.authz}</Text> : null}
-      </VStack>
-    ),
-  },
-];
-
-/** The audit trail is licensed (feature "audit"); locked, the tab asks for nothing. */
-function Audit() {
-  const f = useFeature('audit');
-  if (!f.ready) return <Loading />;
-  if (!f.allowed) {
-    return (
-      <Panel title="Audit log" headingId="audit-title">
-        <FeatureLocked feature="audit" what="The audit trail" />
-      </Panel>
-    );
-  }
-  return <AuditLog />;
-}
-
-function AuditLog() {
-  const api = useApi();
-  const [actor, setActor] = useState('');
-  const [kind, setKind] = useState('');
-  const q = useInfiniteQuery({
-    queryKey: qk.audit(actor, kind),
-    queryFn: ({ pageParam }) =>
-      api.audit.list({ actor: actor.trim() || undefined, kind: kind.trim() || undefined, limit: AUDIT_PAGE, order: 'desc', ...(pageParam ? { cursor: pageParam } : {}) }),
-    initialPageParam: '',
-    getNextPageParam: (last) => last.continue || last.cursor_next || undefined,
-  });
-  const events = useMemo<AuditRow[]>(() => (q.data?.pages.flatMap((p) => p.items) ?? []).map((a, i) => ({ ...a, rowKey: a.uid ?? (a.id !== undefined ? String(a.id) : `${a.ts}-${i}`) })), [q.data]);
-  return (
-    <Panel
-      title="Audit log"
-      headingId="audit-title"
-      actions={
-        <>
-          <Text type="supporting">Newest first</Text>
-          <Link href={api.audit.exportURL()} download="audit.jsonl" hasUnderline>
-            Export
-          </Link>
-        </>
-      }
-    >
-      <HStack gap={2} wrap="wrap" align="start">
-        <TextField label="Actor" startIcon="search" value={actor} onChange={setActor} hasClear />
-        <EnumSelect label="Kind" value={kind} options={AUDIT_KINDS} onChange={setKind} emptyLabel="Any kind" />
-      </HStack>
-      {q.error ? <ErrorBanner error={q.error} /> : null}
-      {q.isLoading ? <Loading /> : null}
-      {q.data ? (
-        <VStack gap={2}>
-          <Table<AuditRow>
-            aria-label="Audit entries"
-            density="compact"
-            verticalAlign="top"
-            idKey="rowKey"
-            data={events}
-            columns={auditColumns}
-            emptyState={<Text color="secondary">No audit events{actor || kind ? ' match' : ''}.</Text>}
-          />
-          {q.hasNextPage ? (
-            <HStack gap={2}>
-              <Button label="Load older events" variant="secondary" size="sm" isLoading={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()} />
-            </HStack>
-          ) : null}
-        </VStack>
-      ) : null}
-    </Panel>
-  );
-}
-
 export default function AccessPage() {
   const [sp, setParams] = useSearchParams();
   const tab = sp.get('tab') ?? 'me';
-  const can = useCan();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (tab === 'audit') navigate('/audit', { replace: true });
+  }, [tab, navigate]);
   return (
     <Page>
-      <PageHeader title="Access & audit" />
+      <PageHeader title="Access" />
       <TabList value={tab} onChange={(v) => setParams({ tab: v === 'me' ? null : v })} aria-label="Access sections">
         <Tab value="me" label="You & tokens" />
         <Tab value="iam" label="Identity" />
-        {can('audit', 'read') ? <Tab value="audit" label="Audit" /> : null}
       </TabList>
       {tab === 'me' ? (
         <>
@@ -626,7 +489,6 @@ export default function AccessPage() {
         </>
       ) : null}
       {tab === 'iam' ? <Iam /> : null}
-      {tab === 'audit' ? <Audit /> : null}
     </Page>
   );
 }

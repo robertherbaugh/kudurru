@@ -150,6 +150,12 @@ type Reader interface {
 	Read(ctx context.Context, q Query) ([]Event, error)
 }
 
+// Verifier checks the integrity of the complete retained audit trail.
+// Verification must use the store's chain format, not a filtered page.
+type Verifier interface {
+	Verify(context.Context) error
+}
+
 // ErrNotStored is returned by recorders that cannot read events back.
 var ErrNotStored = errors.New("audit: events are not stored on this node")
 

@@ -174,3 +174,25 @@ flowchart LR
 Store writes are audited by the driver. The API adds what no store write
 covers: denied requests, the blocking toggle, cache flushes, query-log
 purges, NOTIFY and list refreshes.
+
+Token creation and revocation are actual `apitoken.create` and
+`apitoken.delete` store writes. Their audit documents keep an allowlist of
+the label, owner, expiry and scopes; the token and its hash are excluded.
+Kubernetes store events also carry the authenticated principal and HTTP
+request context. Admin-socket writes name the admitted local-root peer
+instead of falling back to `system`. The dashboard shows safe token
+details and offers an `APIToken` kind filter. Older events with no token
+document cannot recover that information after the token is revoked.
+
+The dashboard's separate **Audit Log** page supports newest/oldest order,
+cursor pagination and event details. `GET /api/v1/audit/verify` requires
+`audit.read` and the audit license, and checks the complete retained store
+with a 30-second deadline. It verifies the original SQLite chain, the central
+PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
+batches and their available HMAC seals plus the local pending spool. The
+response reports verification success or the reason verification failed;
+storage errors are not classified as proof of tampering. Hash chains provide
+tamper evidence, not protection from an administrator who can rewrite the
+entire database and its chain. External log copies or exports provide an
+independent record. Deleting complete oldest or newest unanchored batches
+cannot be detected from the surviving batches alone.

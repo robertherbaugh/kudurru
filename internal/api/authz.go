@@ -98,7 +98,11 @@ func actorOf(p auth.Principal, ok bool) audit.Actor {
 func (s *Server) actorMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p, ok := auth.PrincipalFrom(r.Context()); ok {
-			r = r.WithContext(store.WithActor(r.Context(), actorOf(p, true).String()))
+			actor := actorOf(p, true)
+			ctx := store.WithActor(r.Context(), actor.String())
+			st := stateFrom(ctx)
+			ctx = audit.WithRequest(ctx, actor, audit.Request{ID: st.id, IP: st.clientIP.String(), Method: st.method, Path: st.path, UA: st.userAgent}, func() string { return st.authz })
+			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})

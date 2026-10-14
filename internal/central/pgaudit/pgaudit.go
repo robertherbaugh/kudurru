@@ -170,6 +170,9 @@ type Reader struct {
 
 var _ audit.Reader = (*Reader)(nil)
 
+// Verify checks the retained central chain and its stored anchor and head.
+func (r *Reader) Verify(ctx context.Context) error { return Verify(ctx, r.DB) }
+
 // Read implements audit.Reader.
 func (r *Reader) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) {
 	if q.Cursor != "" {

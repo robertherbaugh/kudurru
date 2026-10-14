@@ -261,12 +261,44 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 }
 
 func (s *Server) registerAudit() {
+	register(s, operation(http.MethodGet, "/audit/verify", "verifyAudit", "Verify the complete retained audit chain and available batch seals", "audit"),
+		perm{resource: "audit", verb: "read"}, s.verifyAudit)
 	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first; order=desc for newest first)", "audit"),
 		perm{resource: "audit", verb: "read"}, s.listAudit)
 	exportOp := operation(http.MethodGet, "/audit/export", "exportAudit", "Audit events as JSON lines", "audit")
 	exportOp.Responses = map[string]*huma.Response{"200": {Description: "application/x-ndjson, one AuditEvent per line",
 		Content: map[string]*huma.MediaType{"application/x-ndjson": {Schema: &huma.Schema{Type: "string"}}}}}
 	register(s, exportOp, perm{resource: "audit", verb: "export"}, s.exportAudit)
+}
+
+// AuditVerification is the result of checking the retained store, independent
+// of the filters or pagination of GET /audit. Failure is not always tampering:
+// an unavailable storage backend also prevents verification.
+type AuditVerification struct {
+	Verified  bool      `json:"verified"`
+	CheckedAt time.Time `json:"checkedAt"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+type auditVerifyOutput struct{ Body *AuditVerification }
+
+func (s *Server) verifyAudit(ctx context.Context, _ *struct{}) (*auditVerifyOutput, error) {
+	rd, err := s.auditReader()
+	if err != nil {
+		return nil, err
+	}
+	v, ok := rd.(audit.Verifier)
+	if !ok {
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "audit verification is not available for this store", "")
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	err = v.Verify(checkCtx)
+	result := &AuditVerification{Verified: err == nil, CheckedAt: s.opts.Now()}
+	if err != nil {
+		result.Reason = err.Error()
+	}
+	return &auditVerifyOutput{Body: result}, nil
 }
 
 func (s *Server) auditReader() (audit.Reader, error) {

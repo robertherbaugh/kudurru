@@ -1645,6 +1645,13 @@ type AuditPage struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// AuditVerification defines model for AuditVerification.
+type AuditVerification struct {
+	CheckedAt time.Time `json:"checkedAt"`
+	Reason    *string   `json:"reason,omitempty"`
+	Verified  bool      `json:"verified"`
+}
+
 // AuthListIAMUser defines model for AuthListIAMUser.
 type AuthListIAMUser struct {
 	Continue string `json:"continue"`
@@ -4806,6 +4813,11 @@ type ClientInterface interface {
 	// Corresponds with GET /audit/export (the `ExportAudit` operationId).
 	ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyAudit Verify the complete retained audit chain and available batch seals
+	//
+	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+	VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// LoginWithBody Local login (sets the session cookie)
 	//
 	// Brute-force limited per client address and user: 429 with Retry-After.
@@ -5888,6 +5900,21 @@ func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEdit
 // Corresponds with GET /audit/export (the `ExportAudit` operationId).
 func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExportAuditRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyAudit Verify the complete retained audit chain and available batch seals
+//
+// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+func (c *Client) VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyAuditRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -8796,6 +8823,33 @@ func NewExportAuditRequest(server string, params *ExportAuditParams) (*http.Requ
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewVerifyAuditRequest constructs an http.Request for the VerifyAudit method
+func NewVerifyAuditRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/audit/verify")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -14960,6 +15014,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /audit/export (the `ExportAudit` operationId).
 	ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
 
+	// VerifyAuditWithResponse Verify the complete retained audit chain and available batch seals
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+	VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error)
+
 	// LoginWithBodyWithResponse Local login (sets the session cookie)
 	//
 	// Brute-force limited per client address and user: 429 with Retry-After.
@@ -16807,6 +16868,89 @@ func (r ExportAuditResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ExportAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VerifyAuditResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditVerification
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyAuditResponse) GetJSON200() *AuditVerification {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r VerifyAuditResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r VerifyAuditResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r VerifyAuditResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r VerifyAuditResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r VerifyAuditResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r VerifyAuditResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyAuditResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyAuditResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyAuditResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyAuditResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -26914,6 +27058,19 @@ func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, param
 	return ParseExportAuditResponse(rsp)
 }
 
+// VerifyAuditWithResponse Verify the complete retained audit chain and available batch seals
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+func (c *ClientWithResponses) VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error) {
+	rsp, err := c.VerifyAudit(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyAuditResponse(rsp)
+}
+
 // LoginWithBodyWithResponse Local login (sets the session cookie)
 //
 // Brute-force limited per client address and user: 429 with Retry-After.
@@ -29442,6 +29599,74 @@ func ParseExportAuditResponse(rsp *http.Response) (*ExportAuditResponse, error) 
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseVerifyAuditResponse parses an HTTP response from a VerifyAuditWithResponse call
+func ParseVerifyAuditResponse(rsp *http.Response) (*VerifyAuditResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyAuditResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditVerification
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -28,6 +29,38 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
+
+func TestAuditVerificationDetectsDatabaseTampering(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	st, err := sqlite.Open(path, sqlite.Options{Validator: testValidator(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.RecordAudit(context.Background(), sqlite.AuditEntry{Action: "apitoken.create"}); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, func(o *Options) { o.AuditReader = auditstore.SQLite{Store: st} })
+	var result AuditVerification
+	h.do(http.MethodGet, "/api/v1/audit/verify", "auditor", nil).want(http.StatusOK).json(&result)
+	if !result.Verified || result.Reason != "" || result.CheckedAt.IsZero() {
+		t.Fatalf("verification: %+v", result)
+	}
+	h.do(http.MethodGet, "/api/v1/audit/verify", "viewer", nil).want(http.StatusForbidden)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec("UPDATE audit SET action = 'forged' WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	h.do(http.MethodGet, "/api/v1/audit/verify", "admin", nil).want(http.StatusOK).json(&result)
+	if result.Verified || !strings.Contains(result.Reason, "modified") {
+		t.Fatalf("tampering verified: %+v", result)
+	}
+	newHarness(t).do(http.MethodGet, "/api/v1/audit/verify", "admin", nil).want(http.StatusServiceUnavailable)
+}
 
 type staticMembership struct{ peers []cluster.Peer }
 

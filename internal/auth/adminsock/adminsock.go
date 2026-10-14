@@ -35,9 +35,11 @@ import (
 	"time"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // DefaultPath is the socket path of §6.2.
@@ -100,7 +102,10 @@ func (s *Server) Handler() http.Handler {
 			auth.WriteError(w, r, &auth.Error{Status: http.StatusForbidden, Key: "forbidden", Message: "the admin socket needs peer credentials (Linux SO_PEERCRED)"})
 			return
 		}
-		s.mux.ServeHTTP(w, r)
+		ctx := store.WithActor(r.Context(), string(p.Kind)+":"+p.Name)
+		ctx = audit.WithRequest(ctx, audit.Actor{Kind: string(p.Kind), ID: p.ID, Name: p.Name, Auth: p.AuthMethod},
+			audit.Request{Method: r.Method, Path: r.URL.Path, UA: r.UserAgent()}, func() string { return "local" })
+		s.mux.ServeHTTP(w, r.WithContext(ctx))
 	})
 	return auth.Middleware(steps)(inner)
 }
