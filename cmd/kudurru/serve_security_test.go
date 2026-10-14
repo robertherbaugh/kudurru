@@ -12,11 +12,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
@@ -29,6 +31,9 @@ func TestOpenStoreInitializesOwnersOnceAndValidatesRows(t *testing.T) {
 	}
 	cfg.Store.Driver = "sqlite"
 	cfg.Node.DataDir = t.TempDir()
+	cfg.Cache.MaxEntries = 17
+	cfg.EnvLocked = []string{"cache.maxEntries"}
+	cfg.Blocking.Enabled = false
 	v, err := validator.New()
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +68,21 @@ func TestOpenStoreInitializesOwnersOnceAndValidatesRows(t *testing.T) {
 	if _, _, err := st.ReadServingCandidate(t.Context()); err != nil {
 		t.Fatal("initialized owners not eligible for preparation", err)
 	}
+	var settings public.Kudurru
+	if err := st.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
+		t.Fatal("startup did not seed the canonical singleton", err)
+	}
+	if len(settings.Spec.Settings) == 0 || len(settings.Spec.Settings["credentials"].Raw) != 0 {
+		t.Fatal("public settings missing or host credentials exported")
+	}
+	var cacheSettings struct{ MaxEntries int }
+	var blockingSettings struct{ Enabled bool }
+	if err := json.Unmarshal(settings.Spec.Settings["cache"].Raw, &cacheSettings); err != nil || cacheSettings.MaxEntries != 200000 {
+		t.Fatal("environment lock leaked into shared settings", err, cacheSettings.MaxEntries)
+	}
+	if err := json.Unmarshal(settings.Spec.Settings["blocking"].Raw, &blockingSettings); err != nil || blockingSettings.Enabled {
+		t.Fatal("original public cluster policy was not migrated", err)
+	}
 	when := time.Now().UTC()
 	err = st.Command(t.Context(), st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		state, err := security.Load(ctx, tx)
@@ -79,6 +99,7 @@ func TestOpenStoreInitializesOwnersOnceAndValidatesRows(t *testing.T) {
 	}
 	before, _ := st.ReadGeneration(t.Context())
 	closeStore()
+	cfg.Cache.MaxEntries++ // a restart must not reseed from newer host defaults
 	st, _ = open()
 	after, _ := st.ReadGeneration(t.Context())
 	owner, err = servingauth.DecodeSecurity(after.Payload.Security)

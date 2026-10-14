@@ -174,7 +174,10 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		// its complete primary image; missing or malformed history is not reset.
 		if s.Authority().Writable() {
 			if err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-				return runtimeowners.Initialize(ctx, tx, time.Now().UTC())
+				if err := runtimeowners.Initialize(ctx, tx, time.Now().UTC()); err != nil {
+					return err
+				}
+				return initializeServingSettings(ctx, tx, cfg)
 			}); err != nil {
 				_ = s.Close()
 				return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
