@@ -24,8 +24,7 @@ A client that no group claims is in the group `default`. The policy
 `default` applies to this group.
 
 A client can be in one group only. If more than one group matches, the
-most exact matcher wins. An exact address wins over a range. A range wins
-over a client ID.
+most exact matcher wins. An exact address wins over a range.
 
 A group can have more than one policy. When more than one policy is
 active for a client, kudurru uses these rules:
@@ -42,7 +41,9 @@ Open **Filtering** > **Clients**. Figure 1 shows the page.
 
 *Figure 1. The page Clients.*
 
-The page lists each client that sent a query in the last 24 hours. Click a
+The page uses the node selector: **All nodes** includes the cluster's
+clients, and a selected node includes its clients only. It lists clients
+seen in the last 24 hours. Click a
 name to open the page of the client. Click a number to open the query log
 for that client.
 
@@ -97,16 +98,17 @@ A matcher has a kind and a value.
 |---|---|---|
 | **IP address** | `192.168.1.30` | One device |
 | **CIDR range** | `192.168.1.0/24` | Each address in the range |
-| **Client ID** | A name that the device sends | Devices that use DNS over TLS or DNS over HTTPS with a client ID |
+| **Client ID** | A name that the device sends | Reserved: the version 0.1 listeners do not receive client IDs |
 | **MAC address** | `aa:bb:cc:dd:ee:ff` | A device, only when the transport gives the MAC address |
 
 To add a client that you already see, click **Add** next to the client in
 the list **Seen in the last 24 hours**. To add many values, click **Paste
 many**.
 
-CAUTION: A matcher for a MAC address works only when the transport gives
-the MAC address. Version 0.1 has no client inventory for this. Use an IP
-address or a range.
+CAUTION: Version 0.1 does not receive client IDs, MAC addresses or hostnames
+from its DNS listeners. Use an IP address or a range for device groups.
+If queries arrive from the router's address, all devices using that router
+share its group. See [Clients shows only the router or gateway](12-troubleshooting.md#filtering).
 
 NOTE: Give a fixed address to each client that you put in a group.
 Use a DHCP reservation. If the address changes, the client leaves the group.

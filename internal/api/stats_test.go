@@ -392,7 +392,7 @@ func TestCentralQuerylogUnavailable(t *testing.T) {
 	w, _ := querylogFixture(t)
 	away := sqlitelog.NewCentralReader(func() (*sql.DB, error) { return nil, central.ErrUnavailable }, sqlitelog.CentralOptions{})
 	h := newHarness(t, func(o *Options) { o.Querylog, o.CentralQuerylog = w.Reader(), away })
-	for _, p := range []string{"/api/v1/queries?scope=cluster", "/api/v1/stats/summary?scope=cluster"} {
+	for _, p := range []string{"/api/v1/queries?scope=cluster", "/api/v1/stats/summary?scope=cluster", "/api/v1/clients?scope=cluster"} {
 		if r := h.do(http.MethodGet, p, "operator", nil).want(http.StatusServiceUnavailable); r.errKey() != KeyUnavailable {
 			t.Fatalf("%s: key %q", p, r.errKey())
 		}

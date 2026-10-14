@@ -10,14 +10,14 @@ You need access to the host or the deployment files to put a key on a node.
 
 The core DNS server and dashboard use the Kudurru Community License.
 Personal, household, homelab and qualifying nonprofit use is free under its
-terms. Businesses and governments may develop and evaluate it in isolated
-nonproduction environments; production DNS service needs an accepted
+terms. Businesses and governments can develop and evaluate it in isolated
+nonproduction environments. Production DNS service needs an accepted
 commercial agreement and Order Form, including for no-key features.
 A school or research organization must meet the nonprofit eligibility rules.
 
 The enterprise code and documentation have their own notices in
 [ee/LICENSE.md](../../../ee/LICENSE.md) and [site/LICENSE.md](../../../site/LICENSE.md).
-Anyone may read the docs. The website and license-server source have separate
+Anyone can read the docs. The website and license-server source have separate
 source-viewing licenses and are excluded from the community and commercial grants.
 
 NOTE: A key records an entitlement, not a license. Free personal/nonprofit

@@ -1888,7 +1888,7 @@ export interface components {
             key: string;
             /**
              * Format: date-time
-             * @description The newest query from the client on this node (hour precision once its query rows aged out).
+             * @description The newest query from the client in the selected scope (hour precision once its query rows aged out).
              */
             last_seen?: string;
             name?: string;
@@ -1921,6 +1921,20 @@ export interface components {
             took_ms: number;
             /** Format: date-time */
             until: string;
+        };
+        ClientsBody: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["ClientItem"][];
+            nodes: components["schemas"]["NodeResult"][] | null;
+            partial: boolean;
+            scope: string;
+            source?: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         ClusterInfo: {
             clusterID?: string;
@@ -2444,16 +2458,6 @@ export interface components {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
             items: components["schemas"]["CatalogueService"][];
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-        };
-        ListClientItem: {
-            /** @description Opaque keyset token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["ClientItem"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -7806,7 +7810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListClientItem"];
+                    "application/json": components["schemas"]["ClientsBody"];
                 };
             };
             /** @description Bad Request */

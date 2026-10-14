@@ -3,17 +3,24 @@
 // per node. One GET /stats/summary (shared with the dashboard tiles) and
 // GET /nodes feed it.
 import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { useSideNavCollapse } from '@astryxdesign/core/SideNav';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Text } from '@astryxdesign/core/Text';
-import { useNodes, useSummary } from '../api/hooks';
-import { formatQPS } from '../lib/format';
+import { useLicense, useNodes, useSummary } from '../api/hooks';
+import { formatQPS, formatVersion } from '../lib/format';
+import { navPlanLabel } from '../lib/license';
 import { readiness } from '../lib/nodes';
 import { BlockingControl } from './BlockingControl';
 
 export function SidebarStatus() {
   const summary = useSummary();
   const nodes = useNodes();
+  const license = useLicense();
+  const { isCollapsed } = useSideNavCollapse();
   const list = nodes.data?.items ?? [];
+  // Use this server's version, regardless of the selected stats node.
+  const version = formatVersion(list.find((n) => n.self)?.version);
+  const plan = navPlanLabel(license.isError ? undefined : license.data);
   // Peers report no readiness yet; only an explicit false counts as down.
   const down = list.filter((n) => n.ready === false);
   const healthy = !summary.isError && !nodes.isError && down.length === 0;
@@ -53,6 +60,12 @@ export function SidebarStatus() {
               );
             })}
           </HStack>
+        </HStack>
+      ) : null}
+      {!isCollapsed ? (
+        <HStack role="group" aria-label="Running version and license" gap={2} hAlign="between" vAlign="center" wrap="wrap">
+          <Text type="supporting" maxLines={1}>{version}</Text>
+          {plan ? <Text type="supporting" maxLines={1}>{plan}</Text> : null}
         </HStack>
       ) : null}
     </VStack>

@@ -706,6 +706,9 @@ export type ClientItem = S['ClientItem'] & {
   last_seen?: string;
 };
 
+/** Client inventory plus the node/cluster scope that answered it. */
+export interface ClientsResult extends ListEnvelope<ClientItem>, ScopeInfo {}
+
 /** One audit event (internal/audit Event). */
 export type AuditEvent = S['Event'];
 

@@ -7,7 +7,7 @@ package zoneview
 import (
 	"fmt"
 	"log/slog"
-	"sync/atomic"
+	"sync"
 
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/zone"
@@ -22,14 +22,22 @@ const ViewName = "zones"
 // validity, oldest first), the same selection the controller hashes, so
 // status.contentHash is the hash of the zone served here. A zone whose
 // spec does not build is skipped and logged (the controller reports the
-// condition); record-set errors drop only the offending endpoints.
+// condition); record-set errors drop only the offending endpoints. Duplicate
+// apexes retain the last served zone until the conflict is resolved. On cold
+// start the first metadata name wins deterministically. Other zones continue
+// rebuilding, so an accepted conflict cannot poison the entire view.
 func Builder(logger *slog.Logger) zonecache.Builder {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	var generation atomic.Uint64
+	var mu sync.Mutex
+	var generation uint64
+	lastGood := map[string]*zone.Zone{}
 	return zonecache.NewBuilder(ViewName, func(objects zonecache.ObjectSet) (any, error) {
-		var zones []*zone.Zone
+		mu.Lock()
+		defer mu.Unlock()
+		byApex := map[string][]*zone.Zone{}
+		names := map[string][]string{}
 		for _, dz := range objects.Zones() {
 			sets := zone.ServedRecordSets(dz, objects.RecordSetsForZone(dz.Name))
 			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now()})
@@ -40,12 +48,28 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 			if !errs.Empty() {
 				logger.Debug("zone built with record errors", "zone", dz.Name, "recordSets", len(errs.RecordSets))
 			}
-			zones = append(zones, z)
+			byApex[z.Name()] = append(byApex[z.Name()], z)
+			names[z.Name()] = append(names[z.Name()], dz.Name)
 		}
-		snap, err := zone.NewSnapshot(generation.Add(1), true, zones...)
+		var zones []*zone.Zone
+		nextGood := make(map[string]*zone.Zone, len(byApex))
+		for apex, candidates := range byApex {
+			selected := candidates[0]
+			if len(candidates) > 1 {
+				if previous := lastGood[apex]; previous != nil {
+					selected = previous
+				}
+				logger.Warn("duplicate zone apex; retaining selected serving data", "apex", apex, "objects", names[apex], "lastGood", lastGood[apex] != nil)
+			}
+			zones = append(zones, selected)
+			nextGood[apex] = selected
+		}
+		generation++
+		snap, err := zone.NewSnapshot(generation, true, zones...)
 		if err != nil {
 			return nil, fmt.Errorf("zoneview: %w", err)
 		}
+		lastGood = nextGood
 		return snap, nil
 	})
 }

@@ -80,6 +80,9 @@ func TestResolveNamespace(t *testing.T) {
 			if err != nil || ns != tc.want {
 				t.Fatalf("namespace = %q, %v; want %q", ns, err, tc.want)
 			}
+			if cached := NamespaceFromObjects(before, tc.release); cached != tc.want {
+				t.Fatalf("offline namespace = %q, want %q", cached, tc.want)
+			}
 			for _, obj := range before {
 				var after v1alpha1.Policy
 				if err := st.Get(ctx, store.KeyOf(obj), &after); err != nil || !reflect.DeepEqual(obj, &after) {

@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
@@ -33,24 +34,38 @@ type auditLogStore struct {
 // than the app): the node then shows its own spool and logs why. An
 // apiserver that cannot be reached at start is not a reason to fall back;
 // the shipper retries.
-func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey, encPrev []byte, logger *slog.Logger) (*auditLogStore, error) {
+func openAuditLog(ctx context.Context, restCfg *rest.Config, sp *spool.Spool, encKey, encPrev []byte, logger *slog.Logger, startupTimeout time.Duration) (*auditLogStore, error) {
 	scheme := runtime.NewScheme()
 	if err := auditv1.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
-	c, err := client.New(restCfg, client.Options{Scheme: scheme})
+	// The mapper performs discovery without the List context. Bound its
+	// transport separately from the audit client's ordinary requests.
+	discoveryCfg := rest.CopyConfig(restCfg)
+	discoveryCfg.Timeout = startupTimeout
+	hc, err := rest.HTTPClientFor(discoveryCfg)
+	if err != nil {
+		return nil, err
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(discoveryCfg, hc)
+	if err != nil {
+		return nil, err
+	}
+	c, err := client.New(restCfg, client.Options{Scheme: scheme, Mapper: mapper})
 	if err != nil {
 		return nil, err
 	}
 	ns := kube.PodNamespace()
 	probe := &metav1.PartialObjectMetadataList{}
 	probe.SetGroupVersionKind(auditv1.GroupVersion.WithKind("AuditLogList"))
-	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	pctx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
 	if err := c.List(pctx, probe, client.InNamespace(ns), client.Limit(1)); meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
 		logger.Warn("audit: the AuditLog CRD is not installed; each replica shows only the audit events it recorded. Upgrade the kudurru-crds chart.",
 			"component", "audit", "crd", "auditlogs."+auditv1.Group)
 		return nil, nil
+	} else if err != nil && !kube.IsUnavailable(err) {
+		return nil, err
 	}
 	sealKeys, err := auditSealKeys(encKey, encPrev)
 	if err != nil {

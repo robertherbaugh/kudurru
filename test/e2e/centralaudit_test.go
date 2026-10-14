@@ -25,16 +25,17 @@ import (
 func TestCentralAuditTwoNodes(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	dsn := centraltest.DSN(t)
+	auditBin, env := licensedAuditFixture(t)
 	dir := t.TempDir()
-	env := []string{"KUDURRU_DATABASE__DSN=" + dsn}
+	env = append(env, "KUDURRU_DATABASE__DSN="+dsn)
 	var nodes []*kudurrutest.Node
 	tokens := map[string]string{}
 	for _, name := range []string{"node-a", "node-b"} {
 		spec, cfg := kudurrutest.NewNodeSpec(t, dir, name)
 		kudurrutest.WriteConfig(t, spec.Config, cfg)
-		n := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
+		n := kudurrutest.StartReady(t, auditBin, spec, kudurrutest.Options{Env: env})
 		nodes = append(nodes, n)
-		out, err := exec.Command(kudurruBin, "admin", "create-token", "--socket", filepath.Join(spec.DataDir, "admin.sock")).Output() //nolint:gosec // the test's binary
+		out, err := exec.Command(auditBin, "admin", "create-token", "--socket", filepath.Join(spec.DataDir, "admin.sock")).Output() //nolint:gosec // the test's binary
 		if err != nil {
 			t.Fatalf("create-token on %s: %v", name, err)
 		}
@@ -59,8 +60,12 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 		return resp.StatusCode, b
 	}
 	seen := func(n *kudurrutest.Node, action, node string) bool {
+		t.Helper()
 		code, b := call(n, http.MethodGet, "/audit?order=desc&limit=200&kind=blocking", nil)
 		if code != http.StatusOK {
+			if code < http.StatusInternalServerError {
+				t.Fatalf("GET /audit on %s: %d %s", n.Name, code, b)
+			}
 			return false
 		}
 		var page struct {
@@ -70,7 +75,9 @@ func TestCentralAuditTwoNodes(t *testing.T) {
 				Reason string `json:"reason"`
 			} `json:"items"`
 		}
-		_ = json.Unmarshal(b, &page)
+		if err := json.Unmarshal(b, &page); err != nil {
+			t.Fatalf("decode GET /audit on %s: %v", n.Name, err)
+		}
 		for _, it := range page.Items {
 			if it.Action == action && it.Node == node {
 				return true

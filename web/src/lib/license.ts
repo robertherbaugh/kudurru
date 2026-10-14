@@ -55,6 +55,22 @@ export function planLabel(plan: string | undefined): string {
   }
 }
 
+/** The effective nav plan; unavailable license data never implies a plan. */
+export function navPlanLabel(license: LicenseInfo | undefined): string | undefined {
+  if (!license) return undefined;
+  switch (license.state) {
+    case 'community':
+    case 'expired':
+    case 'invalid':
+      return 'Community';
+    case 'active':
+    case 'grace':
+      return license.plan === 'personal' ? 'Personal' : planLabel(license.plan) || undefined;
+    default:
+      return undefined;
+  }
+}
+
 /** How a state reads in a badge or a sentence. */
 export function stateLabel(state: string): string {
   switch (state) {

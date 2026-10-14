@@ -1156,9 +1156,11 @@ export const handlers = [
   http.get(`${B}/clients`, ({ request }) => {
     const g = guard(request, 'clients', 'read');
     if (g) return g;
+    const url = new URL(request.url);
+    const queries = filterQueries(url);
     // The top-clients ranking of the window; clients without queries are absent.
     const items: ClientItem[] = CLIENTS.flatMap((c) => {
-      const rows = db.queries.filter((q) => q.client.ip === c.ip);
+      const rows = queries.filter((q) => q.client.ip === c.ip);
       if (!rows.length) return [];
       return [
         {
@@ -1171,7 +1173,7 @@ export const handlers = [
         },
       ];
     }).sort((a, b) => b.count - a.count);
-    return ok({ items });
+    return ok({ ...scopeInfo(url), items });
   }),
 
   // runtime ---------------------------------------------------------------
@@ -1326,7 +1328,7 @@ export const handlers = [
       from: db.series[0]?.ts ?? '',
       until: db.series[db.series.length - 1]?.ts ?? '',
       step: 300,
-      clients: top.map((x) => ({ key: x.key, ...(x.name ? { name: x.name } : {}) })),
+      clients: [...top.map((x) => ({ key: x.key, ...(x.name ? { name: x.name } : {}) })), { key: 'other' }],
       points: db.series.map((p, i) => ({ ts: p.ts, counts: [...weights.map((w, j) => Math.round(p.total * w * 0.85 * (0.85 + ((i * (j + 3)) % 7) / 20))), Math.round(p.total * rest)] })),
       approximate: false,
     });

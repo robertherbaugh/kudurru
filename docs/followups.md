@@ -50,7 +50,7 @@ docs/release-checklist.md; Docker and kind run on GitHub's runners.
 | Item | Source | Target |
 |---|---|---|
 | `PATCH /node/config` changes stay in memory (log.level applies at once; nothing persists them, the node file is the operator's): persist node-scope API changes somewhere (a `node.d/` overlay?) or drop the route's write half | docs/m5/burndown-server.md | v0.2 |
-| Scatter-gather over the internal listener for `scope=cluster` stats/log calls, `GET /nodes` peer readiness and `GET /nodes/{name}/health` of other nodes (501 today) | api report | v0.2 (moved from M4: the routes answer 501 explicitly) |
+| `GET /nodes/{name}/health` for other nodes (501 today); cluster stats/log reads and peer readiness shipped in v0.1 | api report | v0.2 |
 | `GET /auth/me` permissions are evaluated at cluster scope; zone-scoped grants show only in `roles` | api report | v0.2 |
 | external-dns: read `DNSEndpoint` CRs directly (§5.6) and a `kudurru externaldns-webhook` sidecar subcommand; the webhook has no authentication (loopback or NetworkPolicy) | api report | v0.2 (moved from M4: the webhook provider covers external-dns in v0.1) |
 | Object list routes read the store (an apiserver round trip in kube mode); serve them from the zonecache snapshot when it is live | api report | v0.2 (moved from M4: performance only) |
@@ -137,16 +137,17 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | Item | Source | Target |
 |---|---|---|
 | E2E-2: sqlite nodes cannot form a cluster. serve.go hard-codes `cluster.Self` membership for the sqlite driver, so node B cannot be pointed at node A's internal listener for list bodies, and every sqlite node reports itself as leader. The two-node test drives `/internal/status` and `/internal/lists/{digest}` with the derived credentials instead. Needs a `cluster.static` setting (peers, leader) feeding `cluster.Static` | docs/m5/e2e.md | v0.2 (compose HA) |
-| e2e still missing from §13.1: the apiserver-outage test (kill the control plane, restart a pod, answers from local.db; envtest can stop the apiserver, spike 3 did), the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). kind + Helm with MetalLB is the kind workflow (hack/kind-e2e.sh) | docs/m5/e2e.md | v0.2 (moved from M5: apiserver-outage on envtest, AdGuard Home and Knot on a Docker runner); the 2-VM failover stays a GA gate (docs/release-checklist.md §3) |
+| e2e still missing from §13.1: the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). Actual outage startup and envtest recovery are covered by cmd/kudurru/serve_offline_test.go and serve_recovery_test.go; kind + Helm with MetalLB runs in hack/kind-e2e.sh | docs/m5/e2e.md, docs/m5/features-v0.1.md | v0.2 (AdGuard Home and Knot); the 2-VM failover stays a GA gate (docs/release-checklist.md §3) |
 
 ## Central database and cluster-wide audit (D155-D161)
 
 | Item | Source | Target |
 |---|---|---|
-| `scope=node&node=<other>` still answers 501; with a central database it could be answered from the database filtered by node (every reader query needs a node condition) | D161 | v0.2 |
+| Read a retired node's data with `scope=node&node=<other>` from the central database (each reader query needs a node condition); live peers are routed over the internal listener in v0.1 | D161 | v0.2 |
 | Central dictionaries are never pruned (the nodes prune theirs by last_seen); prune entries no rollup or fact row references | D160 | v0.2 |
 | Statistics of a node that stops for good inside an hour it has not summarised lose that part hour (its facts are kept); the leader could summarise the facts of sources gone for two hours | D160 | v0.2 |
 | A missing AuditLog CRD is a log line and a runbook entry; also report it on the Diagnosis page and in `kudurru doctor` (object count against the 50 000 recommendation) | D157 | v0.2 |
+| Decouple AuditLog verification keys from session-key rotation or retain a verification key ring; today current/previous keys must cover all retained sealed batches before another rotation | docs/deploy/runbooks.md, PR #55 | v0.2 |
 | Grafana panels for `kudurru_central_up`, `kudurru_central_ship_lag_seconds` and `kudurru_audit_spool_dropped_total` (the alerts ship) | D158 | v0.2 |
 | `GET /audit/verify` and `kudurru audit verify` for `pgaudit.Verify` and `auditlog.Verify` (the functions and their tests exist) | D157, D159 | v0.2 |
 

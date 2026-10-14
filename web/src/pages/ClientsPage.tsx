@@ -23,6 +23,7 @@ import { TextField } from '../components/fields/TextField';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader } from '../components/layout/Page';
+import { ScopeNote } from '../components/ScopeSelector';
 import { formatExact, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
 import { clientHref, objectHref } from '../lib/policies';
@@ -49,7 +50,7 @@ export default function ClientsPage() {
   const [group, setGroup] = useState('');
   const [comment, setComment] = useState('');
 
-  const inv = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000 });
+  const inv = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list(scope, { window: '24h' }), refetchInterval: 60_000 });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups') });
   const writable = (groups.data?.items ?? []).filter((g) => objectOwnership(g).editable);
 
@@ -173,15 +174,18 @@ export default function ClientsPage() {
         title="Clients"
         description="Every client seen in the last 24 hours, the client group it resolved to, and its query counts."
         actions={
-          <Button
-            label={`Add ${selected.size || ''} to group`.replace('  ', ' ')}
-            variant="primary"
-            isDisabled={selected.size === 0 || !can('clientgroups', 'write')}
-            onClick={() => {
-              setGroup(writable[0]?.metadata.name ?? '');
-              setAssigning(true);
-            }}
-          />
+          <>
+            {inv.data?.scope ? <ScopeNote scope={inv.data} /> : null}
+            <Button
+              label={`Add ${selected.size || ''} to group`.replace('  ', ' ')}
+              variant="primary"
+              isDisabled={selected.size === 0 || !can('clientgroups', 'write')}
+              onClick={() => {
+                setGroup(writable[0]?.metadata.name ?? '');
+                setAssigning(true);
+              }}
+            />
+          </>
         }
       />
       <TextField label="Search clients" isLabelHidden startIcon="search" placeholder="Search by address, name or group" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />

@@ -53,7 +53,7 @@ function GroupWizard({ onClose }: GroupWizardProps) {
   const namespace = sp.get('namespace') || DEFAULT_NAMESPACE;
   const groups = useGroups();
   const pols = usePolicies();
-  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), enabled: can('clients', 'read') });
+  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list(scope, { window: '24h' }), enabled: can('clients', 'read') });
   const [name, setName] = useState('');
   const [comment, setComment] = useState('');
   const [matchers, setMatchers] = useState<ClientMatcher[]>([]);

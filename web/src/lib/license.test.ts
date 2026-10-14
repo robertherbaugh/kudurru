@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LicenseInfo } from '../api/types';
 import { communityLicense } from '../mocks/fixtures';
-import { daysUntil, FEATURES, featureLabel, licenseNotice, planLabel, policyLimitLabel, policyLimitNotice, stateLabel, stateTone } from './license';
+import { daysUntil, FEATURES, featureLabel, licenseNotice, navPlanLabel, planLabel, policyLimitLabel, policyLimitNotice, stateLabel, stateTone } from './license';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
 const day = (n: number) => new Date(NOW + n * 86_400_000).toISOString();
@@ -49,6 +49,19 @@ describe('licenseNotice', () => {
 });
 
 describe('license wording', () => {
+  it('uses the effective plan in navigation without inferring an entitlement', () => {
+    expect(navPlanLabel(undefined)).toBeUndefined();
+    expect(navPlanLabel(communityLicense())).toBe('Community');
+    expect(navPlanLabel(active())).toBe('Personal');
+    expect(navPlanLabel(active({ plan: 'enterprise' }))).toBe('Enterprise');
+    expect(navPlanLabel(active({ plan: 'business' }))).toBe('Business');
+    expect(navPlanLabel(active({ plan: 'trial' }))).toBe('Trial');
+    expect(navPlanLabel(active({ state: 'grace', plan: 'enterprise' }))).toBe('Enterprise');
+    expect(navPlanLabel(active({ state: 'expired', plan: 'enterprise' }))).toBe('Community');
+    expect(navPlanLabel(active({ state: 'invalid', plan: 'personal' }))).toBe('Community');
+    expect(navPlanLabel(active({ plan: undefined }))).toBeUndefined();
+  });
+
   it('names every feature the server knows, with a sentence each', () => {
     // internal/license Features(): keep in step when a feature is added.
     expect(FEATURES.map((f) => f.key).sort()).toEqual(['audit', 'edge', 'integrations', 'longterm', 'oidc', 'rbac', 'requests']);

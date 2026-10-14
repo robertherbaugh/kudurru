@@ -5,7 +5,7 @@ All notable changes to kudurru are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Until v1.0 the API group is
 `kudurru.io/v1alpha1` and may change between minor releases.
 
-## [0.1.0] - unreleased (release candidate 0.1.0-rc.1, not tagged yet)
+## [0.1.0] - unreleased
 
 ### License
 
@@ -309,10 +309,37 @@ pipeline.
   by uid 65532; the ko images build on `kudurru-base` (images/base, D154)
   and `make volume-check` checks each image.
 
+### Final feature review
+
+- The Clients inventory, client details and group member suggestions now
+  follow the selected node or cluster scope, including the central
+  database. Previously they always read the serving node's local log,
+  even when the dashboard showed All nodes.
+- The per-client chart labels the API's aggregate bucket as Other clients.
+- The navigation footer shows the serving node's version, including any
+  release candidate suffix, and its effective license plan below Nodes.
+- SQLite and local spool audit integrity scans now use one read snapshot
+  across pages, avoiding false tamper reports when retention runs during a
+  scan. The key-rotation runbook also retains keys needed by stored
+  Kubernetes audit batch seals.
+- Kubernetes outage startup no longer exits during synchronous bootstrap
+  or hangs on discovery before the saved snapshot can serve DNS. Availability
+  failures defer defaults and identity initialization, then retry after the
+  apiserver returns. Fresh, stale and absent snapshot readiness behavior is
+  covered through the real DNS listeners; authentication remains required.
+- Duplicate canonical zone apexes no longer freeze unrelated zone updates.
+  A conflict retains its last served zone, or selects a deterministic
+  metadata-name winner on cold start, until the duplicate is removed.
+- The release checklist now requires UDP and TCP queries from two real
+  devices to retain their distinct addresses through the published DNS
+  path. The client-address runbook explains how to distinguish gateway
+  forwarding or source NAT from a Service or PROXYv2 configuration issue.
+
 ### DNS serving
 
-- One binary, `kudurru serve`, with a fixed stage pipeline: ingress,
-  identify, control, local, authoritative, blocking, cache, upstream, log.
+- One binary, `kudurru serve`, with seven fixed pipeline stages: ingress,
+  identify, control, authoritative, blocking, cache and upstream, plus
+  the query-log observer.
 - All five transports: Do53 (UDP/TCP), DoT, DoH (HTTP/1.1 and HTTP/2), DoQ
   and DoH3, with one certificate reloader per pair.
 - `SO_REUSEPORT` multi-socket UDP/TCP listeners (`listeners.sockets`, default
@@ -345,8 +372,8 @@ pipeline.
 - Clean-room adblock/hosts/domains parser and a compiled matcher chain;
   allow-wins, `@@` exceptions, response-side CNAME inspection, block
   responses `zeroIP`/`nxdomain`/`customIP`/`refused` with EDE 15/17.
-- `ClientGroup` and `Policy` objects: identification by IP, CIDR and DoT/DoH
-  client ID, merged per-group policies, temporary disable (`POST
+- `ClientGroup` and `Policy` objects: identification by IP and CIDR,
+  merged per-group policies, temporary disable (`POST
   /dns/blocking`).
 - Leader-fetched blocklists pulled by replicas over the HKDF-derived TLS
   internal listener; an embedded MIT-licensed starter list.
@@ -506,7 +533,8 @@ pipeline.
 
 See [docs/followups.md](docs/followups.md) for the full list. Notably: no
 DNSSEC signing or validation (v1.0), no follower/raft replication (v0.2),
-cluster-scope stats are per node, the blocking toggle is per node (v0.2), the
+DoT/DoH client IDs and MAC/hostname inventory are not populated by the
+listeners, the blocking toggle is per node (v0.2), the
 dnsdist console diff-apply is v0.2, and the two-node VRRP
-behaviour still needs runs on real hardware
+behavior still needs runs on real hardware
 ([docs/release-checklist.md](docs/release-checklist.md)).
