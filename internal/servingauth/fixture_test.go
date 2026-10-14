@@ -94,7 +94,18 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.deps = Dependencies{Identity: "host-v1", ExpectedIdentity: "host-v1", License: LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: []byte("01234567890123456789012345678901"), Hasher: hasher}
+	f.deps = Dependencies{Identity: "host-v1", ExpectedIdentity: "host-v1", License: LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: []byte("01234567890123456789012345678901"), Hasher: hasher, ConfigProviders: []ProviderSource{}, ProviderResources: []ProviderResource{}}
+	cut, err := CaptureImage(t.Context(), image, f.registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := ProviderSources(t.Context(), cut, f.deps.ConfigProviders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range sources {
+		f.deps.ProviderResources = append(f.deps.ProviderResources, ProviderResource{Ref: source.Ref, SpecIdentity: source.SpecIdentity, PolicyIdentity: source.PolicyIdentity, Availability: ProviderUnavailable, TrustIdentity: "test-unavailable", UnavailableReason: "discovery"})
+	}
 	return f
 }
 func apply(t *testing.T, s *sqlite.Store, obj store.Object) store.Object {

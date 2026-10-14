@@ -36,17 +36,46 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 		return err
 	}
 	initial := servingauth.EmptySecurity(1)
+	legacyFactors := true
 	if len(owned(rows)) != 0 {
-		_, decodeErr := servingauth.DecodeSecurity(rows)
-		if decodeErr == nil {
-			return nil
+		version, err := servingauth.SecurityRootVersion(rows)
+		if err != nil {
+			return err
 		}
-		upgraded, upgradeErr := servingauth.UpgradeSecurityV1(rows)
-		if upgradeErr != nil {
-			return decodeErr
+		switch version {
+		case servingauth.RootFormatVersion:
+			_, err := servingauth.DecodeSecurity(rows)
+			return err
+		case 2:
+			initial, err = servingauth.UpgradeSecurityV2(rows)
+			legacyFactors = false // v2 already owns explicit durable replay rows.
+		case 1:
+			initial, err = servingauth.UpgradeSecurityV1(rows)
+		default:
+			return servingauth.ErrVersion
 		}
-		initial = upgraded
+		if err != nil {
+			return err
+		}
 	}
+	if legacyFactors {
+		if err := rejectLegacyFactors(ctx, tx); err != nil {
+			return err
+		}
+	}
+	encoded, err := servingauth.EncodeSecurity(initial)
+	if err != nil {
+		return err
+	}
+	for _, row := range encoded {
+		if err := tx.PutSection(ctx, "security", row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectLegacyFactors(ctx context.Context, tx *sqlite.CommandTx) error {
 	// Old seeds have no durable replay authority. Never adopt one or silently
 	// clear it while installing an empty inventory, even for disabled accounts.
 	accounts, err := tx.List(ctx, "LocalUser", store.ListOptions{Limit: servingauth.MaxObjects + 1})
@@ -63,15 +92,6 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 		}
 		if user.Spec.TOTPSecret != "" {
 			return servingauth.ErrUnsupported
-		}
-	}
-	encoded, err := servingauth.EncodeSecurity(initial)
-	if err != nil {
-		return err
-	}
-	for _, row := range encoded {
-		if err := tx.PutSection(ctx, "security", row); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -122,7 +142,7 @@ func (s *State) valid() error {
 }
 
 func (s *State) capacity() error {
-	if len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP) >= servingauth.MaxRows-1 {
+	if len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions) >= servingauth.MaxRows-1 {
 		return servingauth.ErrBounds
 	}
 	return nil
@@ -260,6 +280,12 @@ func (s *State) Revoke(id string) error {
 			s.changed = true
 		}
 	}
+	for i, row := range s.value.ExternalSessions {
+		if row.ID == id && !row.Revoked {
+			s.value.ExternalSessions[i].Revoked = true
+			s.changed = true
+		}
+	}
 	return nil
 }
 
@@ -275,6 +301,9 @@ func (s *State) CollectExpired(now time.Time) error {
 	n := len(s.value.Sessions)
 	s.value.Sessions = slices.DeleteFunc(s.value.Sessions, func(r servingauth.SessionRecord) bool { return !now.Before(r.ExpiresAt) })
 	s.changed = s.changed || len(s.value.Sessions) != n
+	n = len(s.value.ExternalSessions)
+	s.value.ExternalSessions = slices.DeleteFunc(s.value.ExternalSessions, func(r servingauth.ExternalSessionRecord) bool { return !now.Before(r.ExpiresAt) })
+	s.changed = s.changed || len(s.value.ExternalSessions) != n
 	return nil
 }
 

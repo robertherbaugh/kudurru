@@ -39,7 +39,7 @@ func loginDependencies(t *testing.T, f *sessionFixture) servingauth.Dependencies
 	if err != nil {
 		t.Fatal(err)
 	}
-	return servingauth.Dependencies{Identity: "test", ExpectedIdentity: "test", License: servingauth.LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: bytes.Repeat([]byte{5}, 32), Hasher: hasher}
+	return servingauth.Dependencies{ConfigProviders: []servingauth.ProviderSource{}, ProviderResources: []servingauth.ProviderResource{}, Identity: "test", ExpectedIdentity: "test", License: servingauth.LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: bytes.Repeat([]byte{5}, 32), Hasher: hasher}
 }
 
 func TestCurrentLocalLoginEnrollsBeforeCookieAndUsesCanonicalPolicy(t *testing.T) {

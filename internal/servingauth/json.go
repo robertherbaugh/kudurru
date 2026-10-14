@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 )
 
 // Hard caps are checked before typed JSON allocations and compiler maps.
@@ -21,7 +22,7 @@ const (
 	MaxImageBytes     = 256 << 20
 	MaxGrants         = 128
 	FormatVersion     = 1
-	RootFormatVersion = 2
+	RootFormatVersion = 3
 	RootKey           = "auth/v1/root"
 	ownerPrefix       = "auth/"
 )
@@ -64,7 +65,7 @@ func ownerFields(raw []byte, typ reflect.Type) bool {
 				continue
 			}
 			found = true
-			if field.Type == reflect.TypeFor[AccountRef]() && !ownerFields(value, field.Type) {
+			if (field.Type == reflect.TypeFor[AccountRef]() || field.Type == reflect.TypeFor[ProviderRef]()) && !ownerFields(value, field.Type) {
 				return false
 			}
 			break
@@ -76,7 +77,7 @@ func ownerFields(raw []byte, typ reflect.Type) bool {
 	return true
 }
 func boundedJSON(raw []byte, capBytes int) bool {
-	if len(raw) == 0 || len(raw) > capBytes {
+	if len(raw) == 0 || len(raw) > capBytes || !utf8.Valid(raw) {
 		return false
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

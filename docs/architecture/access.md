@@ -64,7 +64,7 @@ pass the retained raw proof to the current command verifier separately.
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
 revocation, current-command denial and cleanup on cancellation/panic. Production
-owner composition and mounting, provider capabilities and the public session
+production mounting, network provider resources and the public session
 workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.
@@ -72,11 +72,13 @@ is installed. Kubernetes migration admission is a separate verified journal gate
 SQLite startup initializes the explicit empty security manifest under its writer
 fence and validates owner rows on later writes/replica installation. Existing
 history is preserved; an absent root beside other auth rows is an error.
-Startup explicitly upgrades a complete version 1 manifest to version 2 while
-preserving every session and revocation floor and advancing the security epoch.
-Any legacy account seed without replay authority rejects initialization or
-upgrade, including seeds on disabled accounts; startup never silently adopts
-or clears one. Other security owners' rows remain intact.
+Startup explicitly upgrades complete version 1 or 2 manifests to version 3,
+preserving every session, replay row and revocation floor and advancing the
+security epoch once. Version 3 explicitly inventories external identities and
+sessions. Version 1 or empty-state initialization rejects legacy account seeds
+without replay authority, including disabled accounts; the version 2 upgrade
+preserves supported active factors. Startup never silently adopts or clears a
+seed. Other security owners' rows remain intact.
 `internal/auth/security` supplies transaction-bound object changes and monotonic
 revocation floors, session enrollment/revocation, and expiry collection. Current
 local-password issuance resolves the actual account, grants and canonical login
@@ -88,7 +90,7 @@ production HTTP stack still needs to adopt them for every relevant writer.
 profile with a one-step window. A purpose-separated sealed seed binds the exact
 LocalUser UID, seed version and random seed identity. Replay rows retain the
 greatest consumed step, including step zero, across encryption-key and seed
-rotation. Auth root version 2 requires an explicit inventory of these rows;
+rotation. Auth roots from version 2 require an explicit inventory of these rows;
 ordinary decoding never substitutes an empty replay history.
 
 Current password authentication verifies both factors and stages replay
@@ -147,12 +149,27 @@ flowchart LR
     Evaluate --> Identity["External identity; no granted rights"]
 ```
 
-The host must bind verifier and policy identities to the exact provider UID,
-origin and spec, then apply current durable revocation and authorization policy.
-This pure package is tested with actual signed JWTs for all ten supported
-asymmetric algorithms. Captured provider integration, durable external sessions
-and browser/CLI flows remain separate work; the existing production OIDC adapter
-rejects expression policies until it adopts the captured compiler.
+`servingauth` binds each selected provider's ID, actual UID, origin, spec and
+compiled policy to exactly one immutable verifier resource or explicit unavailable
+resource. Config providers retain precedence even when unavailable; no fallback
+to an object or live discovery can bypass that decision. Unknown or mismatched
+resources reject preparation. Unavailable providers deny external proofs while
+local authentication remains available. Management licensing remains explicit.
+
+External identities have independently generated durable UIDs. External cookie
+version 3 requires an exact enrolled session, CSRF, expiry and revocation state.
+Purpose-separated encrypted evidence binds the original verified claims to the
+provider incarnation, identity UID and session. Enrolled sessions may outlive the
+original ID token, but current claim policy and durable authority are reevaluated.
+Request evidence retains strict JWT expiry and exact resource identity. Session
+and personal-token grants intersect frozen grants with current subject authority;
+scopes and persistent floors still apply. Missing identity rows with retained
+floors cannot silently reprovision a new UID.
+
+These owners are tested with real signed JWTs, concrete command transactions,
+restart, replica installation and promotion. Network discovery/exchange, durable
+issuance commands and browser/CLI mounting remain separate work; the existing
+production OIDC adapter rejects expression policies until it adopts this owner.
 
 ## Principals
 

@@ -10,6 +10,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
@@ -20,20 +21,26 @@ import (
 // View owns only immutable canonical/dependency policy and pure crypto. Root
 // captures it through the whole publisher lease, never an independent pointer.
 type View struct {
-	cut         *Cut
-	identity    string
-	license     LicensePolicy
-	permissions *rbac.Permissions
-	bindings    []rbac.Binding
-	grants      map[string]bool
-	floors      map[string]time.Time
-	accounts    map[AccountRef]time.Time
-	providers   map[string]time.Time
-	sessions    map[string]SessionRecord
-	sealer      *session.Sealer
-	hasher      PasswordVerifier
-	factors     map[totp.Account]*totp.Seed
-	released    atomic.Bool
+	cut                *Cut
+	identity           string
+	license            LicensePolicy
+	permissions        *rbac.Permissions
+	bindings           []rbac.Binding
+	grants             map[string]bool
+	floors             map[string]time.Time
+	accounts           map[AccountRef]time.Time
+	providers          map[string]time.Time
+	sessions           map[string]SessionRecord
+	sealer             *session.Sealer
+	hasher             PasswordVerifier
+	factors            map[totp.Account]*totp.Seed
+	providerViews      map[string]compiledProvider
+	providerIdentity   string
+	evidenceKeys       *oidccore.EvidenceKeyring
+	externalIdentities map[AccountRef]ExternalIdentity
+	externalSessions   map[string]ExternalSessionRecord
+	tokenSealer        *session.Sealer
+	released           atomic.Bool
 }
 
 // String redacts private owner data in diagnostics.
@@ -133,15 +140,37 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 	if err = v.prepareFactors(deps.TOTPKeys); err != nil {
 		return nil, err
 	}
+	if err = v.prepareProviders(ctx, deps); err != nil {
+		return nil, err
+	}
+	v.evidenceKeys, err = oidccore.NewEvidenceKeyring(deps.CurrentKey, deps.PreviousKey)
+	if err != nil {
+		return nil, ErrDependency
+	}
+	v.tokenSealer, err = session.NewSealer("external-api-token", deps.CurrentKey, deps.PreviousKey)
+	if err != nil {
+		return nil, ErrDependency
+	}
+	v.externalIdentities = map[AccountRef]ExternalIdentity{}
+	for _, i := range cut.security.ExternalIdentities {
+		a, _ := ExternalAccount(i)
+		v.externalIdentities[a] = detachedExternal(i)
+	}
+	v.externalSessions = map[string]ExternalSessionRecord{}
+	for _, record := range cut.security.ExternalSessions {
+		record.Grants = slices.Clone(record.Grants)
+		v.externalSessions[record.ID] = record
+	}
 	// Hash dependencies by their exact copied content as well as host cursor.
 	v.identity = hash(struct {
-		Cursor            string
-		License           LicensePolicy
-		Permissions       *rbac.Permissions
-		Bindings          []rbac.Binding
-		Current, Previous string
-		TOTPKeys          string
-	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey), deps.TOTPKeys.Identity()})
+		Cursor              string
+		License             LicensePolicy
+		Permissions         *rbac.Permissions
+		Bindings            []rbac.Binding
+		Current, Previous   string
+		TOTPKeys            string
+		Providers, Evidence string
+	}{deps.Identity, deps.License, v.permissions, v.bindings, hash(deps.CurrentKey), hash(deps.PreviousKey), deps.TOTPKeys.Identity(), v.providerIdentity, v.evidenceKeys.Identity()})
 	return v, nil
 }
 
@@ -228,6 +257,9 @@ func (v *View) knownGrant(wire string) bool {
 // LoadPrincipal refreshes ONLY captured accounts/private admin. It cannot prove
 // credential possession or authorize a current command on its own.
 func (v *View) LoadPrincipal(p auth.Principal, now time.Time) (auth.Principal, error) {
+	if v != nil && !v.released.Load() && p.External != nil {
+		return v.loadExternal(p, now)
+	}
 	if v == nil || v.released.Load() || p.AccountUID == "" || p.CredentialIssuedAt.IsZero() || p.CredentialIssuedAt.After(now) {
 		return auth.Principal{}, ErrCredentials
 	}
@@ -309,6 +341,12 @@ func (v *View) Authorize(p auth.Principal, a rbac.Attributes, now time.Time) (rb
 	}
 	if !v.license.RBAC {
 		return denied("management entitlement unavailable")
+	}
+	if live.External != nil {
+		if allow(r.Grants) {
+			return rbac.Decision{Allowed: true, Path: rbac.PathBinding, Reason: "captured external grant intersection"}, nil
+		}
+		return denied("external grant unavailable")
 	}
 	for _, b := range v.bindings {
 		if b.Scope.Covers(a.Scope) && rbac.SubjectsMatch(b.Subjects, r) && v.permissions.Grants(b.Role, a.Resource, a.Verb) {

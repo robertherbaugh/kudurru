@@ -26,7 +26,12 @@ func (v *View) Authenticate(ctx context.Context, proof Credential, now time.Time
 	if v == nil || v.released.Load() || now.IsZero() {
 		return auth.Principal{}, ErrCredentials
 	}
+	if proof.Kind != OIDCJWT && proof.ProviderID != "" || proof.Kind != Password && proof.TOTPCode != "" {
+		return auth.Principal{}, ErrCredentials
+	}
 	switch proof.Kind {
+	case OIDCJWT:
+		return v.verifyJWT(ctx, proof, now)
 	case APIToken:
 		return v.verifyToken(proof.Value, now)
 	case Cookie:
@@ -69,6 +74,9 @@ func (v *View) verifyToken(wire string, now time.Time) (auth.Principal, error) {
 		p.Provider = "kudurru"
 		p.ServiceAccount = owner.Namespace + "/" + owner.Name
 	case internalv1.OwnerUser:
+		if owner.Provider != "" && owner.Provider != "local" {
+			return v.verifyExternalToken(token, now)
+		}
 		if owner.ID != "local:"+owner.Name || owner.Namespace != "" || owner.Provider != "" && owner.Provider != "local" {
 			return auth.Principal{}, ErrUnsupported
 		}
@@ -144,6 +152,11 @@ func (v *View) SealSession(id, csrf string) (string, error) {
 		return "", ErrCredentials
 	}
 	record, ok := v.sessions[id]
+	if !ok {
+		if external, exists := v.externalSessions[id]; exists {
+			return v.sealExternalSession(external, csrf)
+		}
+	}
 	if !ok || record.Revoked || len(csrf) < 32 || len(csrf) > 256 || !csrfMatches(csrf, record.CSRFHash) {
 		return "", ErrCredentials
 	}
@@ -170,6 +183,15 @@ func (v *View) CookieSession(cookie string, now time.Time) (auth.Session, error)
 	raw, _, err := v.sealer.Open(cookie)
 	if err != nil {
 		return auth.Session{}, ErrCredentials
+	}
+	var header struct {
+		FormatVersion int `json:"formatVersion"`
+	}
+	if len(raw) > session.MaxCookieBytes || json.Unmarshal(raw, &header) != nil {
+		return auth.Session{}, ErrCredentials
+	}
+	if header.FormatVersion == ExternalCookieFormatVersion {
+		return v.externalCookie(raw, now)
 	}
 	var payload CookiePayload
 	if !strictOwner(raw, &payload, session.MaxCookieBytes) || payload.FormatVersion != CookieFormatVersion || !canonicalEpoch(raw) || len(payload.CSRF) < 32 || len(payload.CSRF) > 256 {

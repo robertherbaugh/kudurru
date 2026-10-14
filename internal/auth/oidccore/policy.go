@@ -222,6 +222,12 @@ func (p *Policy) Evaluate(ctx context.Context, token *VerifiedToken, mode ProofM
 	if err := token.ValidAt(now); err != nil {
 		return Identity{}, err
 	}
+	return p.evaluateClaims(ctx, token, mode)
+}
+
+// evaluateClaims is shared only with authenticated evidence; raw Evaluate always
+// performs the strict verification marker and current time checks above.
+func (p *Policy) evaluateClaims(ctx context.Context, token *VerifiedToken, mode ProofMode) (Identity, error) {
 	accepted := p.audiences
 	switch mode {
 	case BearerIDToken:

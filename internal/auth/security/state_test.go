@@ -163,7 +163,7 @@ func (f *sessionFixture) view(t *testing.T) *servingauth.View {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := servingauth.Prepare(t.Context(), cut, servingauth.Dependencies{Identity: "test", ExpectedIdentity: "test", License: servingauth.LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: bytes.Repeat([]byte{5}, 32)})
+	v, err := servingauth.Prepare(t.Context(), cut, servingauth.Dependencies{ConfigProviders: []servingauth.ProviderSource{}, ProviderResources: []servingauth.ProviderResource{}, Identity: "test", ExpectedIdentity: "test", License: servingauth.LicensePolicy{RBAC: true}, Permissions: permissions, CurrentKey: bytes.Repeat([]byte{5}, 32)})
 	if err != nil {
 		t.Fatal(err)
 	}

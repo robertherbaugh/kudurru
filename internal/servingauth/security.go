@@ -21,22 +21,22 @@ var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 // EmptySecurity is an explicit startup migration input. Root must commit its
 // encoded root row transactionally before publisher activation; no read seeds it.
 func EmptySecurity(epoch uint64) Security {
-	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}, TOTP: []totp.Record{}}
+	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}, TOTP: []totp.Record{}, ExternalIdentities: []ExternalIdentity{}, ExternalSessions: []ExternalSessionRecord{}}
 }
 
 // EncodeSecurity returns deterministic owner rows including one mandatory root.
 // All counts are checked before allocations; caller-supplied input is detached.
 func EncodeSecurity(s Security) ([]replication.Entry, error) {
-	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil {
+	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil || s.ExternalIdentities == nil || s.ExternalSessions == nil {
 		return nil, ErrManifest
 	}
-	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions) + len(s.TOTP)
+	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions) + len(s.TOTP) + len(s.ExternalIdentities) + len(s.ExternalSessions)
 	if count >= MaxRows {
 		return nil, ErrBounds
 	}
 	entries := make([]replication.Entry, 0, count+1)
 	total := 0
-	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}}
+	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}}
 	add := func(key string, value any, keys *[]string) error {
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -102,6 +102,38 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 			return nil, err
 		}
 	}
+	for _, row := range s.ExternalIdentities {
+		if !validExternalIdentity(row) {
+			return nil, ErrInvalid
+		}
+		row.CreatedAt = row.CreatedAt.UTC()
+		row.Groups = slices.Clone(row.Groups)
+		slices.Sort(row.Groups)
+		if row.GroupsVerifiedAt != nil {
+			t := row.GroupsVerifiedAt.UTC()
+			row.GroupsVerifiedAt = &t
+		}
+		key, _ := ExternalIdentityKey(row.Provider, row.Issuer, row.Subject)
+		if err := add(key, row, &root.ExternalIdentities); err != nil {
+			return nil, err
+		}
+	}
+	for _, row := range s.ExternalSessions {
+		if !validExternalSession(row, s.Epoch) {
+			return nil, ErrInvalid
+		}
+		row.Grants = slices.Clone(row.Grants)
+		slices.Sort(row.Grants)
+		row.IssuedAt = row.IssuedAt.UTC()
+		row.ExpiresAt = row.ExpiresAt.UTC()
+		row.IdleExpiresAt = row.IdleExpiresAt.UTC()
+		if err := add(ExternalSessionKey(row.ID), row, &root.ExternalSessions); err != nil {
+			return nil, err
+		}
+	}
+	slices.Sort(root.ExternalIdentities)
+	slices.Sort(root.ExternalSessions)
+
 	slices.Sort(root.GrantFloors)
 	slices.Sort(root.AccountFloors)
 	slices.Sort(root.ProviderFloors)
@@ -123,14 +155,14 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 // DecodeSecurity strictly decodes the auth-owned subset. Other owners' rows are
 // left to their validators; absent/null root sets never become empty state.
 func DecodeSecurity(rows []replication.Entry) (Security, error) {
-	return decodeSecurity(rows, false)
+	return decodeSecurity(rows, RootFormatVersion)
 }
 
 // UpgradeSecurityV1 strictly migrates a COMPLETE legacy owner once. Root checks
 // current LocalUsers for legacy active TOTP and stages the result explicitly.
 // Normal decoders never fall back to this migration or seed a missing manifest.
 func UpgradeSecurityV1(rows []replication.Entry) (Security, error) {
-	s, err := decodeSecurity(rows, true)
+	s, err := decodeSecurity(rows, 1)
 	if err != nil {
 		return Security{}, err
 	}
@@ -150,7 +182,7 @@ type legacyRootEntry struct {
 	Sessions       []string `json:"sessions"`
 }
 
-func decodeSecurity(rows []replication.Entry, legacy bool) (Security, error) {
+func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 	if len(rows) > MaxRows {
 		return Security{}, ErrBounds
 	}
@@ -186,24 +218,30 @@ func decodeSecurity(rows []replication.Entry, legacy bool) (Security, error) {
 	if !ok {
 		return Security{}, ErrManifest
 	}
-	expectedVersion := RootFormatVersion
-	if legacy {
+	expectedVersion := version
+	if version == 1 {
 		var old legacyRootEntry
 		if !strictOwner(raw, &old, MaxRootBytes) {
 			return Security{}, ErrInvalid
 		}
-		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: []string{}}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}}
 		expectedVersion = 1
+	} else if version == 2 {
+		var old rootV2Entry
+		if !strictOwner(raw, &old, MaxRootBytes) {
+			return Security{}, ErrInvalid
+		}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: []string{}, ExternalSessions: []string{}}
 	} else if !strictOwner(raw, &root, MaxRootBytes) {
 		return Security{}, ErrInvalid
 	}
 	if root.FormatVersion != expectedVersion {
 		return Security{}, ErrVersion
 	}
-	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil {
+	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil || root.ExternalIdentities == nil || root.ExternalSessions == nil {
 		return Security{}, ErrManifest
 	}
-	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions) + len(root.TOTP)
+	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions) + len(root.TOTP) + len(root.ExternalIdentities) + len(root.ExternalSessions)
 	if count >= MaxRows {
 		return Security{}, ErrBounds
 	}
@@ -247,7 +285,7 @@ func decodeSecurity(rows []replication.Entry, legacy bool) (Security, error) {
 		if row.FormatVersion != FormatVersion {
 			return Security{}, ErrVersion
 		}
-		if !validAccountFloor(row) || key != accountKey(row.Account) {
+		if !validAccountFloor(row) || version < 3 && !validLegacyAccount(row.Account) || key != accountKey(row.Account) {
 			return Security{}, ErrInvalid
 		}
 		s.AccountFloors = append(s.AccountFloors, row)
@@ -293,6 +331,30 @@ func decodeSecurity(rows []replication.Entry, legacy bool) (Security, error) {
 		}
 		s.TOTP = append(s.TOTP, row)
 	}
+	for _, key := range root.ExternalIdentities {
+		var row ExternalIdentity
+		if err := read(key, &row); err != nil {
+			return Security{}, err
+		}
+		expected, err := ExternalIdentityKey(row.Provider, row.Issuer, row.Subject)
+		if err != nil || expected != key || !requiredFields(own[key], "disabled", "groups", "groupsVerifiedAt") || !validExternalIdentity(row) {
+			return Security{}, ErrInvalid
+		}
+		s.ExternalIdentities = append(s.ExternalIdentities, row)
+	}
+	for _, key := range root.ExternalSessions {
+		var row ExternalSessionRecord
+		if err := read(key, &row); err != nil {
+			return Security{}, err
+		}
+		if key != ExternalSessionKey(row.ID) || !canonicalEpoch(own[key]) || !requiredFields(own[key], "revoked") || !validExternalSession(row, s.Epoch) {
+			return Security{}, ErrInvalid
+		}
+		s.ExternalSessions = append(s.ExternalSessions, row)
+	}
+	if err := validateExternalRelations(s); err != nil {
+		return Security{}, err
+	}
 	return s, nil
 }
 
@@ -313,7 +375,7 @@ func ValidateEntry(section string, row replication.Entry) error {
 		if r.FormatVersion != RootFormatVersion {
 			return ErrVersion
 		}
-		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil {
+		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil || r.ExternalIdentities == nil || r.ExternalSessions == nil {
 			return ErrManifest
 		}
 		return nil
@@ -337,6 +399,8 @@ func ValidateEntry(section string, row replication.Entry) error {
 		return ErrVersion
 	}
 	switch {
+	case strings.HasPrefix(row.Key, "auth/v1/external-"):
+		return validateExternalEntry(row)
 	case strings.HasPrefix(row.Key, "auth/v1/grant/"):
 		var r GrantFloor
 		if strictOwner(row.Data, &r, MaxRowBytes) && validGrantFloor(r) && row.Key == grantKey(r.Grant) {
@@ -373,6 +437,9 @@ func canonicalEpoch(raw []byte) bool {
 	return e == nil && strconv.FormatUint(n, 10) == s
 }
 func validAccount(a AccountRef) bool {
+	return validLegacyAccount(a) || a.Kind == "ExternalIdentity" && a.Namespace == "" && hashPattern.MatchString(a.Name) && externalUIDPattern.MatchString(a.UID)
+}
+func validLegacyAccount(a AccountRef) bool {
 	return (a.Kind == "LocalUser" && a.Namespace == "" || a.Kind == "ServiceAccount" && len(validation.IsDNS1123Label(a.Namespace)) == 0) && len(validation.IsDNS1123Subdomain(a.Name)) == 0 && a.UID != "" && len(a.UID) <= 512 && !strings.ContainsRune(a.UID, 0)
 }
 func validGrant(s string) bool {
@@ -393,7 +460,7 @@ func validProviderFloor(r ProviderFloor) bool {
 }
 func validTime(t time.Time) bool { return !t.IsZero() && t.Year() >= 1970 && t.Year() <= 9999 }
 func validSession(r SessionRecord, epoch uint64) bool {
-	if r.FormatVersion != FormatVersion || !sessionIDPattern.MatchString(r.ID) || !validAccount(r.Account) || r.Epoch == 0 || r.Epoch > epoch || r.Grants == nil || len(r.Grants) > MaxGrants || !hashPattern.MatchString(r.CSRFHash) || !validTime(r.IssuedAt) || !validTime(r.ExpiresAt) || !validTime(r.IdleExpiresAt) || !r.ExpiresAt.After(r.IssuedAt) || !r.IdleExpiresAt.After(r.IssuedAt) || r.IdleExpiresAt.After(r.ExpiresAt) {
+	if r.FormatVersion != FormatVersion || !sessionIDPattern.MatchString(r.ID) || !validLegacyAccount(r.Account) || r.Epoch == 0 || r.Epoch > epoch || r.Grants == nil || len(r.Grants) > MaxGrants || !hashPattern.MatchString(r.CSRFHash) || !validTime(r.IssuedAt) || !validTime(r.ExpiresAt) || !validTime(r.IdleExpiresAt) || !r.ExpiresAt.After(r.IssuedAt) || !r.IdleExpiresAt.After(r.IssuedAt) || r.IdleExpiresAt.After(r.ExpiresAt) {
 		return false
 	}
 	if r.Account.Kind == "LocalUser" && (r.Provider != "local" || r.ProviderUID != "") || r.Account.Kind == "ServiceAccount" && (r.Provider != "kudurru" || r.ProviderUID != "") {

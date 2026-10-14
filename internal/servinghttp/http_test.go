@@ -93,7 +93,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.deps = servingauth.Dependencies{Identity: "http-test", ExpectedIdentity: "http-test", Permissions: permissions, License: servingauth.LicensePolicy{RBAC: true}, CurrentKey: bytes.Repeat([]byte{4}, 32)}
+	f.deps = servingauth.Dependencies{ConfigProviders: []servingauth.ProviderSource{}, ProviderResources: []servingauth.ProviderResource{}, Identity: "http-test", ExpectedIdentity: "http-test", Permissions: permissions, License: servingauth.LicensePolicy{RBAC: true}, CurrentKey: bytes.Repeat([]byte{4}, 32)}
 	initial, err := f.store.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)

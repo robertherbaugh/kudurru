@@ -7,6 +7,7 @@ import (
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -49,6 +50,8 @@ type Dependencies struct {
 	CurrentKey, PreviousKey    []byte
 	Hasher                     PasswordVerifier
 	TOTPKeys                   *totp.Keyring
+	ConfigProviders            []ProviderSource
+	ProviderResources          []ProviderResource
 }
 
 // PasswordVerifier is a bounded pure crypto seam; users.Hasher implements it.
@@ -62,6 +65,7 @@ type Credential struct {
 	Kind            CredentialKind
 	Value, Username string
 	TOTPCode        string
+	ProviderID      string
 }
 
 // CredentialKind selects a supported proof format.
@@ -72,6 +76,7 @@ const (
 	APIToken CredentialKind = "api-token"
 	Cookie   CredentialKind = "cookie"
 	Password CredentialKind = "password"
+	OIDCJWT  CredentialKind = "oidc-jwt"
 )
 
 // SessionDecision is a detached current login result. BuiltinAdmin stays on
@@ -93,13 +98,15 @@ type AccountRef struct {
 
 // RootEntry is the required explicit owner manifest. Every set must be non-nil.
 type RootEntry struct {
-	FormatVersion  int      `json:"formatVersion"`
-	Epoch          uint64   `json:"epoch,string"`
-	GrantFloors    []string `json:"grantFloors"`
-	AccountFloors  []string `json:"accountFloors"`
-	ProviderFloors []string `json:"providerFloors"`
-	Sessions       []string `json:"sessions"`
-	TOTP           []string `json:"totp"`
+	FormatVersion      int      `json:"formatVersion"`
+	Epoch              uint64   `json:"epoch,string"`
+	GrantFloors        []string `json:"grantFloors"`
+	AccountFloors      []string `json:"accountFloors"`
+	ProviderFloors     []string `json:"providerFloors"`
+	Sessions           []string `json:"sessions"`
+	TOTP               []string `json:"totp"`
+	ExternalIdentities []string `json:"externalIdentities"`
+	ExternalSessions   []string `json:"externalSessions"`
 }
 
 // GrantFloor persists current behavior: issuedAt <= ValidAfter fails.
@@ -143,12 +150,14 @@ type SessionRecord struct {
 
 // Security is a detached writable command input; it is never a View's live map.
 type Security struct {
-	Epoch          uint64
-	GrantFloors    []GrantFloor
-	AccountFloors  []AccountFloor
-	ProviderFloors []ProviderFloor
-	Sessions       []SessionRecord
-	TOTP           []totp.Record
+	Epoch              uint64
+	GrantFloors        []GrantFloor
+	AccountFloors      []AccountFloor
+	ProviderFloors     []ProviderFloor
+	Sessions           []SessionRecord
+	TOTP               []totp.Record
+	ExternalIdentities []ExternalIdentity
+	ExternalSessions   []ExternalSessionRecord
 }
 
 // CurrentReader is implemented by sqlite.CommandTx. Root must pass only its
@@ -163,9 +172,98 @@ var requiredKinds = []string{"APIToken", "IdentityProvider", "Kudurru", "LocalUs
 
 // DetachedPrincipal documents the return boundary used by View helpers.
 func detachedPrincipal(p auth.Principal) auth.Principal {
+	if p.External != nil {
+		e := *p.External
+		p.External = &e
+	}
 	p.Groups = append([]string(nil), p.Groups...)
 	p.Grants = append([]string(nil), p.Grants...)
 	p.Scopes = append([]string(nil), p.Scopes...)
 	p.Implicit = append([]string(nil), p.Implicit...)
 	return p
+}
+
+// ProviderOrigin identifies the immutable authority for a provider incarnation.
+type ProviderOrigin string
+
+const (
+	// ProviderObject derives from the actual captured object UID.
+	ProviderObject ProviderOrigin = "object"
+	// ProviderConfig derives from a durable host source incarnation.
+	ProviderConfig ProviderOrigin = "config"
+)
+
+// ProviderRef never identifies an authority by display name alone.
+type ProviderRef struct {
+	ID     string         `json:"id"`
+	UID    string         `json:"uid"`
+	Origin ProviderOrigin `json:"origin"`
+}
+
+// ProviderSource is host config input; object inputs are derived only from Cut.
+type ProviderSource struct {
+	Ref       ProviderRef
+	CreatedAt time.Time
+	Spec      publicv1.IdentityProviderSpec
+}
+
+// ProviderDescriptor is detached compiled source policy and exact provenance.
+type ProviderDescriptor struct {
+	Ref                                  ProviderRef
+	CreatedAt                            time.Time
+	Issuer, SpecIdentity, PolicyIdentity string
+	Spec                                 publicv1.IdentityProviderSpec
+}
+
+// ProviderAvailability makes a denying unavailable capability explicit.
+type ProviderAvailability string
+
+const (
+	// ProviderReady carries an exact immutable offline verifier.
+	ProviderReady ProviderAvailability = "ready"
+	// ProviderUnavailable owns its ID without falling back to another source.
+	ProviderUnavailable ProviderAvailability = "unavailable"
+)
+
+// ProviderResource pins a detached offline verifier or explicit unavailability.
+type ProviderResource struct {
+	Ref                                                ProviderRef
+	SpecIdentity, PolicyIdentity                       string
+	Availability                                       ProviderAvailability
+	Verifier                                           *oidccore.Verifier
+	VerifierIdentity, TrustIdentity, UnavailableReason string
+}
+
+// ExternalIdentity is a durable account independent of LocalUser and IdP UIDs.
+type ExternalIdentity struct {
+	FormatVersion    int         `json:"formatVersion"`
+	Provider         ProviderRef `json:"provider"`
+	Issuer           string      `json:"issuer"`
+	Subject          string      `json:"subject"`
+	UID              string      `json:"uid"`
+	CreatedAt        time.Time   `json:"createdAt"`
+	Disabled         bool        `json:"disabled"`
+	Username         string      `json:"username"`
+	DisplayName      string      `json:"displayName"`
+	Email            string      `json:"email"`
+	Groups           []string    `json:"groups"`
+	GroupsVerifiedAt *time.Time  `json:"groupsVerifiedAt"`
+}
+
+// ExternalSessionRecord has immutable, purpose-bound verified login evidence.
+type ExternalSessionRecord struct {
+	FormatVersion int         `json:"formatVersion"`
+	ID            string      `json:"id"`
+	Account       AccountRef  `json:"account"`
+	Provider      ProviderRef `json:"provider"`
+	Issuer        string      `json:"issuer"`
+	Subject       string      `json:"subject"`
+	Epoch         uint64      `json:"epoch,string"`
+	IssuedAt      time.Time   `json:"issuedAt"`
+	ExpiresAt     time.Time   `json:"expiresAt"`
+	IdleExpiresAt time.Time   `json:"idleExpiresAt"`
+	Grants        []string    `json:"grants"`
+	CSRFHash      string      `json:"csrfHash"`
+	Revoked       bool        `json:"revoked"`
+	Evidence      string      `json:"evidence"`
 }

@@ -51,6 +51,7 @@ type fixture struct {
 	chain              *pipeline.Chain
 	token              string
 	epoch              atomic.Uint64
+	blocked            atomic.Bool
 	captured, released atomic.Int64
 	deps               Dependencies
 	now                time.Time
@@ -94,7 +95,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.deps = Dependencies{Identity: "test-host-v1", Host: host, Catalog: CatalogResource{Catalogue: catalogue.Embedded(), Source: host.Blocking.Catalogue}, Keys: keys, Auth: servingauth.Dependencies{Identity: "test-auth-v1", ExpectedIdentity: "test-auth-v1", Permissions: permissions, License: servingauth.LicensePolicy{RBAC: true}, CurrentKey: bytes.Repeat([]byte{3}, 32)}}
+	f.deps = Dependencies{Identity: "test-host-v1", Host: host, Catalog: CatalogResource{Catalogue: catalogue.Embedded(), Source: host.Blocking.Catalogue}, Keys: keys, Auth: servingauth.Dependencies{ConfigProviders: []servingauth.ProviderSource{}, ProviderResources: []servingauth.ProviderResource{}, Identity: "test-auth-v1", ExpectedIdentity: "test-auth-v1", Permissions: permissions, License: servingauth.LicensePolicy{RBAC: true}, CurrentKey: bytes.Repeat([]byte{3}, 32)}}
 	lists, err := listfetcher.OpenDiskCache(t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +103,7 @@ func newFixture(t *testing.T) *fixture {
 	f.builder, err = New(Options{Schema: schema, Lists: lists, Authority: f.store.ServingAuthority, Now: func() time.Time { return f.now }, Capture: func(context.Context, *replication.Image) (Dependencies, error) {
 		d := f.deps
 		epoch := f.epoch.Load()
-		d.Current = func() bool { return f.epoch.Load() == epoch }
+		d.Current = func() bool { return f.epoch.Load() == epoch && !f.blocked.Load() }
 		f.captured.Add(1)
 		d.Release = func() { f.released.Add(1) }
 		return d, nil
