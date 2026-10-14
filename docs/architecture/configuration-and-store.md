@@ -492,3 +492,51 @@ read-only mode for compose twins, the health of other nodes (the node
 list, the stats and the query log are already gathered), and a
 `roles:` setting. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
+
+## SQLite replication foundation
+
+Schema 2 adds durable member/authority metadata, owned extension sections and
+private recovery images. `internal/store/replication` defines a versioned
+complete logical image; it is separate from the YAML backup/apply format.
+`internal/store/follower` supplies a local-read facade and a bounded pull loop.
+The server transport, startup selection and coherent serving/authentication
+publication are being integrated; these packages alone do not enable HA.
+
+```mermaid
+flowchart LR
+    P["Primary transaction"] --> I["Complete image<br/>term + revision + digest<br/>exact kind manifest"]
+    I --> V["Authenticate peer<br/>observe authority<br/>validate bounded image"]
+    V --> T["One SQLite replacement transaction<br/>objects + status + owned sections<br/>absence removes old objects"]
+    T --> G["Generation notification<br/>subscribers read a complete image"]
+    O["Old writer token"] --> F["Commit-time fence<br/>including no-op writes"]
+    T --> Q["Private local quarantine<br/>when replacing another term"]
+```
+
+Images preserve source object resource versions, UIDs, ownership, statuses
+and private documents. The receiver requires the complete registered-kind
+manifest and all owned sections, verifies the digest and bounded strict JSON,
+and validates copies without defaulting the source data. Node-local audit,
+secondary/stub copies, query logs and response caches remain local. Cluster
+settings have one designated future owner, `Kudurru/default`; the image carries
+an owner reference, not a second settings map.
+
+Every mutation checks its captured member/term/incarnation token inside the
+writer transaction. Observing an authenticated higher epoch durably fences
+the old primary; equal-epoch conflicting promotions stop writes until an
+explicit branch resolution. Failed fence persistence also blocks writes in
+memory. SQLite uses `synchronous=FULL` for all writer connections, including
+reconnections and standalone databases. Restoring a public backup remains an
+apply operation subject to the same writer fence.
+
+An accepted replacement rotates the local watch lineage and closes old
+watches; object resource versions remain those of the source. Consumers that
+need a coherent generation must subscribe before `ReadGeneration` and publish
+one prepared bundle, rather than combine independent kind watches. Manual
+promotion requires coordinator checks in addition to the store's atomic CAS.
+This is epoch fencing after reconnection: two partitioned primaries can both
+accept writes after a manual promotion. It is not a consensus protocol.
+
+A schema-2 database cannot be opened by a schema-1 binary. Preserve a backup
+from the earlier binary before testing an upgrade; rollback uses that backup.
+Recovery images can contain credentials and are neither public backups nor
+ordinary object exports.
