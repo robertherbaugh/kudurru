@@ -365,7 +365,7 @@ describe('SMTP mailer', () => {
     expect(status).toBe(503);
   });
 
-  test('sends plain text with the license.key attachment; a refused recipient is logged without secrets and rejected', async () => {
+  test('sends HTML, plain text, an inline logo and license.key; a refused recipient is logged without secrets and rejected', async () => {
     const smtp = fakeSmtp();
     const log = new MemoryLogger();
     try {
@@ -384,6 +384,11 @@ describe('SMTP mailer', () => {
       expect(data).toContain('From: kudurru license portal <licenses@kudurru.io>');
       expect(data).toContain('Reply-To: hello@kudurru.io');
       expect(data).toContain('filename=license.key');
+      expect(data).toContain('Content-Type: multipart/alternative;');
+      expect(data).toContain('Content-Type: text/plain; charset=utf-8');
+      expect(data).toContain('Content-Type: text/html; charset=utf-8');
+      expect(data).toContain('Content-ID: <kudurru-logo@kudurru.io>');
+      expect(data).toContain('Content-Disposition: inline; filename=kudurru-logo.png');
       // The attachment, decoded, is the token and a newline.
       const part = data.split('filename=license.key')[1]!;
       const body = part.split('\r\n\r\n')[1]!.split('\r\n----')[0]!.replace(/\r\n/g, '');
