@@ -296,3 +296,34 @@ func TestMaterializerInitialCoverageAndPinnedMembershipVersion(t *testing.T) {
 		t.Fatal("desired coverage overwrote committed data")
 	}
 }
+
+func TestMaterializerRejectsZeroPrebuildAndNonprimaryCoverage(t *testing.T) {
+	z := desiredZone()
+	base := blank(z)
+	m, err := zonestate.NewMaterializer(zonestate.MaterializerOptions{Build: BuildCommitted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondaryCoverage, err := zone.BuildUnavailable(z.Spec.ZoneName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Cover(base.Expected.Zone, secondaryCoverage); !errors.Is(err, zonestate.ErrInvalid) {
+		t.Fatalf("nonprimary coverage accepted: %v", err)
+	}
+	if m.Capture(fixedNow).Match("host.example.") != nil {
+		t.Fatal("rejected coverage changed membership")
+	}
+	v := compile(t, NewCompiler(CompilerOptions{}), base, &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{desiredSet("source", endpoint("host", "192.0.2.1"))}, Complete: true}, fixedNow)
+	if err := m.Load(context.Background(), v); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := zonestate.CapturedVersion(m.Capture(fixedNow), z.Spec.ZoneName)
+	if err := m.Install(context.Background(), v, &zonestate.BuiltPrimary{}); !errors.Is(err, zonestate.ErrInvalid) {
+		t.Fatalf("zero prebuild accepted: %v", err)
+	}
+	after, _ := zonestate.CapturedVersion(m.Capture(fixedNow), z.Spec.ZoneName)
+	if before != after || m.Capture(fixedNow).Match("host.example.").Lookup("host.example.", dns.TypeA).Answer[0].(*dns.A).A.String() != "192.0.2.1" {
+		t.Fatal("rejected prebuild changed data/version")
+	}
+}

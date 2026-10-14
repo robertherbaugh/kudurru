@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 )
@@ -110,7 +111,7 @@ func (m *Materializer) Install(ctx context.Context, v *View, b *BuiltPrimary) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if v == nil || v.Head == nil || b == nil || v.Head.ResourceVersion == "" || v.Head.Validate() != nil || v.Head.Spec != b.view.Head.Spec || v.Head.Spec.Lifecycle != zonekinds.LifecycleActive {
+	if v == nil || v.Head == nil || b == nil || b.view == nil || b.view.Head == nil || v.Head.ResourceVersion == "" || v.Head.Validate() != nil || v.Head.Spec != b.view.Head.Spec || v.Head.Spec.Lifecycle != zonekinds.LifecycleActive {
 		return ErrInvalid
 	}
 	m.mu.Lock()
@@ -156,7 +157,7 @@ func (m *Materializer) rebuild() {
 // Root supplies its trusted lifecycle ZoneID and a no-data coverage model, built
 // outside the query path. Existing data is never replaced by a desired watcher.
 func (m *Materializer) Cover(id zonekinds.ZoneID, coverage *zone.Zone) error {
-	if validateZone(id) != nil || coverage == nil || coverage.Name() != id.Apex || coverage.SOA() != nil || coverage.AvailableAt(m.options.Now()) {
+	if validateZone(id) != nil || coverage == nil || coverage.Type() != public.ZoneTypePrimary || coverage.Name() != id.Apex || coverage.SOA() != nil || coverage.AvailableAt(m.options.Now()) {
 		return ErrInvalid
 	}
 	m.mu.Lock()
