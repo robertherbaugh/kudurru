@@ -267,12 +267,14 @@ type PublicationStatus struct {
 type DNSZoneStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// Serial is stamped by the leader as max(prev+1, unix_now) whenever
-	// ContentHash changes for primary zones. Secondary serials and counts
-	// belong to each replica's transferred data, not this shared status.
+	// Serial describes committed primary data when the committed-status adapter
+	// is installed. Legacy controllers stamp max(prev+1, unix_now) when content
+	// changes. Secondary serials and counts belong to each replica's transferred
+	// data, not this shared status.
 	// +optional
 	Serial uint32 `json:"serial,omitempty"`
-	// ContentHash is the sha256 of the canonical RRsets.
+	// ContentHash is the sha256 of the canonical served RRsets. With committed
+	// primary status, it includes dynamic records from the exact durable head.
 	// +optional
 	ContentHash string `json:"contentHash,omitempty"`
 	// +optional

@@ -546,7 +546,9 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               contentHash:
-                description: ContentHash is the sha256 of the canonical RRsets.
+                description: |-
+                  ContentHash is the sha256 of the canonical served RRsets. With committed
+                  primary status, it includes dynamic records from the exact durable head.
                 type: string
               nameserverAddresses:
                 items:
@@ -579,9 +581,10 @@ spec:
                 type: integer
               serial:
                 description: |-
-                  Serial is stamped by the leader as max(prev+1, unix_now) whenever
-                  ContentHash changes for primary zones. Secondary serials and counts
-                  belong to each replica's transferred data, not this shared status.
+                  Serial describes committed primary data when the committed-status adapter
+                  is installed. Legacy controllers stamp max(prev+1, unix_now) when content
+                  changes. Secondary serials and counts belong to each replica's transferred
+                  data, not this shared status.
                 format: int32
                 type: integer
             type: object
