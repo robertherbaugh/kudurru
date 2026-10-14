@@ -2,21 +2,24 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deploy, prepareDeployment } from '../scripts/deploy';
+import { deploy, prepareDeployment, runtimeVariables } from '../scripts/deploy';
 
 const template = {
   name: 'kudurru-license-portal',
   main: 'src/index.ts',
   routes: [{ pattern: 'licenses.kudurru.io', custom_domain: true }],
-  vars: { PUBLIC_URL: 'https://licenses.kudurru.io', OIDC_ISSUER: 'https://idp.kudurru.io' },
   containers: [{ class_name: 'LicensePortal', image: 'placeholder', instance_type: 'basic' }],
 };
 const env = {
   CLOUDFLARE_ACCOUNT_ID: 'a'.repeat(32),
   CLOUDFLARE_API_TOKEN: 'cloudflare-token',
   DATABASE_URL: 'postgres://postgres:bootstrap-password@db:5432/licenses?sslmode=verify-full',
+  PUBLIC_URL: 'https://licenses.kudurru.io',
+  OIDC_ISSUER: 'https://idp.kudurru.io',
+  OIDC_CLIENT_ID: 'kudurru-license-portal',
   OIDC_CLIENT_SECRET: 'oidc-secret',
   LICENSE_SIGNING_KEY: 'signing-seed',
+  LICENSE_SIGNING_KID: 'kudurru-2026-1',
   SMTP_URL: 'smtps://api_token:mail-token@smtp.mx.cloudflare.net:465',
 };
 const commit = 'b'.repeat(40);
@@ -52,10 +55,75 @@ test('missing secrets and unfinished configuration stop before any deployment co
     .toThrow('LICENSE_SIGNING_KEY is required');
   expect(() => prepareDeployment({ ...template, routes: [] }, env, commit, '123.1'))
     .toThrow('Enable a custom domain route');
-  expect(() => prepareDeployment({ ...template, vars: { ...template.vars, OIDC_ISSUER: 'https://idp.example.org' } }, env, commit, '123.1'))
+  expect(() => prepareDeployment(template, { ...env, OIDC_ISSUER: 'https://idp.example.org' }, commit, '123.1'))
     .toThrow('Replace the example.org placeholders');
-  expect(() => prepareDeployment({ ...template, vars: { ...template.vars, DATABASE_URL: env.DATABASE_URL } }, env, commit, '123.1'))
+  expect(() => prepareDeployment({ ...template, vars: { DATABASE_URL: env.DATABASE_URL } }, env, commit, '123.1'))
     .toThrow('Store credentials as secrets');
+});
+
+test('required public settings must come from deployment variables, even with old template values', () => {
+  const old = { ...template, vars: { ...env } };
+  for (const name of ['PUBLIC_URL', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'LICENSE_SIGNING_KID']) {
+    for (const value of [undefined, '', ' \n']) {
+      expect(() => prepareDeployment(old, { ...env, [name]: value }, commit, '123.1'))
+        .toThrow(`${name} is required`);
+    }
+  }
+});
+
+test('deployment variables replace template OIDC settings without modifying it or becoming secrets', () => {
+  const old = { ...template, vars: { OIDC_ISSUER: 'https://idp.example.org', OIDC_CLIENT_ID: 'old-client' } };
+  const result = prepareDeployment(old, { ...env, ADMIN_NOTIFY_EMAIL: ' approvals@kudurru.io\n' }, commit, '123.1');
+  expect(result.config.vars.OIDC_ISSUER).toBe(env.OIDC_ISSUER);
+  expect(result.config.vars.OIDC_CLIENT_ID).toBe(env.OIDC_CLIENT_ID);
+  expect(result.config.vars.ADMIN_NOTIFY_EMAIL).toBe('approvals@kudurru.io');
+  expect(old.vars.OIDC_ISSUER).toBe('https://idp.example.org');
+  for (const name of ['OIDC_ISSUER', 'OIDC_CLIENT_ID', 'ADMIN_NOTIFY_EMAIL']) {
+    expect(result.secrets).not.toHaveProperty(name);
+  }
+  expect(prepareDeployment(template, { ...env, ADMIN_NOTIFY_EMAIL: ' \n' }, commit, '123.1').config.vars)
+    .not.toHaveProperty('ADMIN_NOTIFY_EMAIL');
+  expect(() => prepareDeployment(template, { ...env, ADMIN_NOTIFY_EMAIL: 'approvers@example.org' }, commit, '123.1'))
+    .toThrow('Replace the example.org placeholders');
+});
+
+test('GitHub variables supply all public settings while secrets and unrelated variables are excluded', () => {
+  const variables = Object.fromEntries(runtimeVariables.map((name) => [name, ` value-for-${name} \n`]));
+  Object.assign(variables, {
+    PUBLIC_URL: env.PUBLIC_URL,
+    OIDC_ISSUER: env.OIDC_ISSUER,
+    OIDC_CLIENT_ID: env.OIDC_CLIENT_ID,
+    LICENSE_SIGNING_KID: env.LICENSE_SIGNING_KID,
+    MIGRATE_ON_START: 'false',
+    DATABASE_URL: 'must-not-be-a-public-var',
+    DATABASE_MIGRATE_URL: 'must-not-reach-the-worker',
+    OIDC_CLIENT_SECRET: 'must-not-be-a-public-var',
+    LICENSE_SIGNING_KEY: 'must-not-be-a-public-var',
+    SMTP_URL: 'must-not-be-a-public-var',
+    UNRELATED: 'ignore-this',
+  });
+  const { PUBLIC_URL, OIDC_ISSUER, OIDC_CLIENT_ID, LICENSE_SIGNING_KID, ...credentials } = env;
+  const result = prepareDeployment(template, { ...credentials, LICENSE_PORTAL_VARIABLES: JSON.stringify(variables) }, commit, '123.1');
+  for (const name of runtimeVariables) expect(result.config.vars[name]).toBe(variables[name]!.trim());
+  for (const name of ['DATABASE_URL', 'DATABASE_MIGRATE_URL', 'OIDC_CLIENT_SECRET', 'LICENSE_SIGNING_KEY', 'SMTP_URL', 'UNRELATED']) {
+    expect(result.config.vars).not.toHaveProperty(name);
+  }
+  expect(result.secrets.OIDC_CLIENT_SECRET).toBe(env.OIDC_CLIENT_SECRET);
+  expect(result.secrets.DATABASE_URL).toBe(env.DATABASE_URL);
+  expect(prepareDeployment(template, { ...credentials, LICENSE_PORTAL_VARIABLES: JSON.stringify(variables), OIDC_CLIENT_ID: 'local-override' }, commit, '123.1').config.vars.OIDC_CLIENT_ID)
+    .toBe('local-override');
+});
+
+test('invalid GitHub variable input reports only the setting name, not its contents', () => {
+  for (const input of ['invalid-sensitive-content', 'null', '[]', '{"LOG_LEVEL":1}']) {
+    expect(() => prepareDeployment(template, { ...env, LICENSE_PORTAL_VARIABLES: input }, commit, '123.1'))
+      .toThrow('LICENSE_PORTAL_VARIABLES must be a JSON object of string values');
+  }
+});
+
+test('deployment keeps migrations out of the serving container', () => {
+  expect(() => prepareDeployment(template, { ...env, MIGRATE_ON_START: 'true' }, commit, '123.1'))
+    .toThrow('MIGRATE_ON_START must be false');
 });
 
 test('pasted credentials are trimmed consistently for Cloudflare and migrations', () => {
@@ -72,6 +140,8 @@ test('pasted credentials are trimmed consistently for Cloudflare and migrations'
     CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN,
   });
   expect(result.migrationUrl).toBe(env.DATABASE_URL);
+  expect(result.config.vars.OIDC_ISSUER).toBe(env.OIDC_ISSUER);
+  expect(result.config.vars.OIDC_CLIENT_ID).toBe(env.OIDC_CLIENT_ID);
   expect(prepareDeployment(template, { ...pasted, DATABASE_MIGRATE_URL: ' owner-url\n' }, commit, '123.1').migrationUrl)
     .toBe('owner-url');
   expect(prepareDeployment(template, { ...pasted, DATABASE_MIGRATE_URL: '\n ' }, commit, '123.1').migrationUrl)
@@ -84,6 +154,7 @@ function releaseFixture() {
   let tempDir = '';
   let secretsMode = 0;
   let uploadedSecrets: Record<string, string> = {};
+  let uploadedConfig: { vars: Record<string, string>; observability?: { enabled: boolean }; containers: { observability?: { logs: { enabled: boolean } } }[] };
   const delays: number[] = [];
   const options: NonNullable<Parameters<typeof deploy>[0]> = {
     template,
@@ -101,6 +172,7 @@ function releaseFixture() {
       const secretsFile = join(tempDir, 'secrets.json');
       secretsMode = statSync(secretsFile).mode & 0o777;
       uploadedSecrets = JSON.parse(readFileSync(secretsFile, 'utf8'));
+      uploadedConfig = JSON.parse(readFileSync(join(tempDir, 'wrangler.json'), 'utf8'));
     },
     fetch: async () => Response.json({ ok: true, db: 'ok', migrations: 'ok', signing: 'ready' }),
     sleep: async (ms) => { delays.push(ms); },
@@ -111,9 +183,31 @@ function releaseFixture() {
     tempDir: () => tempDir,
     secretsMode: () => secretsMode,
     uploadedSecrets: () => uploadedSecrets,
+    uploadedConfig: () => uploadedConfig,
     cleanup: () => rmSync(stateDir, { recursive: true, force: true }),
   };
 }
+
+test('the checked-in config deploys with GitHub public variables and observability enabled', async () => {
+  const fixture = releaseFixture();
+  delete fixture.options.template;
+  const { PUBLIC_URL, OIDC_ISSUER, OIDC_CLIENT_ID, LICENSE_SIGNING_KID, ...credentials } = fixture.options.env!;
+  fixture.options.env = {
+    ...credentials,
+    LICENSE_PORTAL_VARIABLES: JSON.stringify({ PUBLIC_URL, OIDC_ISSUER, OIDC_CLIENT_ID, LICENSE_SIGNING_KID, CLIENT_IP_HEADER: 'X-Client-IP' }),
+  };
+  try {
+    await deploy(fixture.options);
+    expect(fixture.uploadedConfig().vars.PUBLIC_URL).toBe(env.PUBLIC_URL);
+    expect(fixture.uploadedConfig().vars.OIDC_ISSUER).toBe(env.OIDC_ISSUER);
+    expect(fixture.uploadedConfig().vars.CLIENT_IP_HEADER).toBe('X-Client-IP');
+    expect(fixture.uploadedConfig().observability?.enabled).toBe(true);
+    expect(fixture.uploadedConfig().containers[0]?.observability?.logs.enabled).toBe(true);
+    for (const call of fixture.calls) expect(call.env).not.toHaveProperty('LICENSE_PORTAL_VARIABLES');
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 test('migration failure prevents Worker deployment and removes the restricted secrets file', async () => {
   const fixture = releaseFixture();

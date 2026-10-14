@@ -4,7 +4,7 @@
 // (design spec §3, server/config.ts CONFIG_VARS). A Cloudflare container
 // gets environment variables only from the Durable Object that starts it,
 // and no files at all, so the Durable Object copies these names from the
-// Worker's env (vars in wrangler.jsonc, secrets from `wrangler secret put`)
+// Worker's env (vars and secrets supplied by the deployment script)
 // at every start. Names that are unset or empty are left out, so the
 // server's own defaults apply to them. test/env.test.ts checks this list
 // against CONFIG_VARS, so a new server setting cannot be missed here.

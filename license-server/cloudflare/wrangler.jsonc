@@ -16,7 +16,8 @@
 // The deploy script migrates automatically using DATABASE_MIGRATE_URL
 // when supplied, otherwise DATABASE_URL (the simple single-role setup).
 // With separate roles, only CI holds the owner's credentials:
-// MIGRATE_ON_START is false below and DATABASE_MIGRATE_URL is not set here.
+// the deploy script enforces MIGRATE_ON_START=false; DATABASE_MIGRATE_URL
+// is never uploaded to the Worker.
 // A changed var or secret reaches the running container at the next cron
 // tick (within 5 minutes): the Durable Object restarts it (README.md,
 // "Changing configuration").
@@ -25,56 +26,33 @@
   "name": "kudurru-license-portal",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-12",
-  // Worker, Durable Object and container logs in the dashboard (7 days).
-  "observability": { "enabled": true },
+  // Persist Worker/Durable Object logs and traces in the dashboard.
+  // Approval and invitation tokens in URL queries must not be recorded.
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": true },
+    "traces": { "enabled": true }
+  },
 
   // The only way in is PUBLIC_URL: no *.workers.dev or preview URL, whose
   // origin would fail the server's CSRF check and the OIDC redirect URI.
   "workers_dev": false,
   "preview_urls": false,
-  // Going live: uncomment the route. The kudurru.io zone must be in the
-  // same Cloudflare account; the next successful deploy creates the DNS
-  // record and the certificate for licenses.kudurru.io. Until then the
-  // Worker has no URL at all. Turn on "Always Use HTTPS" for the zone (the
+  // The kudurru.io zone must be in the same Cloudflare account; the first
+  // successful deploy creates the DNS record and certificate for
+  // licenses.kudurru.io. Turn on "Always Use HTTPS" for the zone (the
   // Worker also redirects http to https).
-  // "routes": [{ "pattern": "licenses.kudurru.io", "custom_domain": true }],
+  "routes": [{ "pattern": "licenses.kudurru.io", "custom_domain": true }],
 
   "secrets": {
     "required": ["DATABASE_URL", "OIDC_CLIENT_SECRET", "LICENSE_SIGNING_KEY", "SMTP_URL"]
   },
 
-  // The server's non-secret settings (license-server/README.md,
-  // "Configuration"). Every server variable set here or as a secret is
-  // passed to the container (src/env.ts); unset ones keep the server's
-  // defaults. Replace the placeholders before the first deploy.
-  "vars": {
-    "PUBLIC_URL": "https://licenses.kudurru.io",
-    "OIDC_ISSUER": "https://idp.example.org",
-    "OIDC_CLIENT_ID": "kudurru-license-portal",
-    "LICENSE_SIGNING_KID": "kudurru-2026-1",
-    "DATABASE_TLS": "verify-full",
-    "MIGRATE_ON_START": "false",
-    "PUBLIC_FORM_ORIGINS": "https://kudurru.io",
-    // The client address: the Worker writes X-Client-IP from
-    // CF-Connecting-IP, after deleting any copy the client sent. Safe
-    // because the container has no way in except through this Worker.
-    "CLIENT_IP_HEADER": "X-Client-IP",
-    "MAIL_FROM": "kudurru license portal <licenses@kudurru.io>",
-    // Who is mailed each request for a free personal key (README.md,
-    // "One-time setup", step 5). By default no personal key is signed until
-    // a license admin approves it, and every request mails each address of
-    // this comma list the details and a one-click approve link. Whoever
-    // reads the mailbox can approve, so name only mailboxes that license
-    // admins alone read. A placeholder, like OIDC_ISSUER: replace it before
-    // the first deploy, or remove it to mail every enabled license admin
-    // and superadmin with a verified email.
-    "ADMIN_NOTIFY_EMAIL": "approvers@example.org"
-    // Often set as well (see the server README for the full list):
-    // "OIDC_SCOPES": "openid profile email groups",
-    // "ROLE_SUPERADMIN_GROUPS": "license-superadmins",
-    // "OIDC_ADMIN_CLAIM_RULES": "hd=kudurru.io",
-    // "LICENSE_SIGNING_TRUSTED_SINCE": "v0.1.0"
-  },
+  // All non-secret server settings come from GitHub variables in the
+  // license-portal-production environment (README.md). `bun run deploy`
+  // adds them to a temporary config; unset optional settings use the
+  // server's defaults. No runtime vars are stored in this file.
 
   // Every 5 minutes the Worker asks the container's /readyz: it keeps the
   // container running (sleepAfter is 15 minutes, src/index.ts), so nobody
@@ -86,6 +64,8 @@
   "containers": [
     {
       "class_name": "LicensePortal",
+      // Container stdout/stderr (the server's JSON logs) in the dashboard.
+      "observability": { "enabled": true, "logs": { "enabled": true } },
       // Placeholder for offline checks. `bun run deploy` builds, pushes and
       // replaces this in a temporary config using the account ID, commit
       // and deployment attempt. Never edit it for individual releases. Not

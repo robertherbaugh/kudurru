@@ -18,9 +18,10 @@ job is skipped. Subsequent releases need no local Docker commands, manual
 migrations or image-tag edits.
 
 **No secret values belong in the repository.** `wrangler.jsonc` contains
-public settings and secret **names**. Database passwords, the OIDC secret,
-the mail token and the private signing seed belong in GitHub environment
-secrets, which the deployment uploads to Cloudflare. Public signing keys
+infrastructure settings and secret **names**. All non-secret runtime
+settings come from GitHub environment variables; credentials come from
+GitHub environment secrets. The deploy script supplies both to Cloudflare
+without changing the tracked config. Public signing keys
 (`internal/license/keys/*.pub`) are safe to commit and must ship with the
 image; the corresponding private `.key` stays in your secret manager.
 
@@ -40,7 +41,7 @@ flowchart LR
 
 | Path | What it is |
 |---|---|
-| `wrangler.jsonc` | The Worker, container settings, Durable Object, public vars, cron trigger and required secret names; the image reference is a placeholder for offline checks |
+| `wrangler.jsonc` | The Worker, container settings, Durable Object, observability, cron trigger and required secret names; the image reference is a placeholder for offline checks |
 | `scripts/deploy.ts` | Builds and pushes the image, migrates, generates a temporary image reference and deploys with runtime secrets |
 | `../../.github/workflows/license-server.yml` | Checks pull requests and deploys changes on `main`; version tags also publish the signed GHCR image |
 | `src/index.ts` | The Worker and the `LicensePortal` Durable Object (a `@cloudflare/containers` `Container`) |
@@ -80,43 +81,68 @@ your machine to deploy.
    Email Sending. Create an account-owned API token with **Email Sending:
    Edit** permission. Put
    `smtps://api_token:<token>@smtp.mx.cloudflare.net:465` in the GitHub
-   secret `SMTP_URL`. `MAIL_FROM` in `wrangler.jsonc` must use an address
-   on the onboarded domain. Another SMTP provider works too.
+   secret `SMTP_URL`. The `MAIL_FROM` GitHub variable (or its server
+   default) must use an address on the onboarded domain. Another SMTP provider works too.
 
 3. **Identity provider.** Register a confidential client with redirect URI
    `https://licenses.kudurru.io/api/v1/auth/callback`. Customers and staff
    sign in at the same issuer, so it must let customers register (or be
    invited) and verify email addresses itself (`license-server/README.md`,
-   "Who signs in"). Put its client secret in `OIDC_CLIENT_SECRET`.
+   "Who signs in"). Set `OIDC_ISSUER` and `OIDC_CLIENT_ID` as GitHub
+   environment variables (step 5), and its client secret as
+   `OIDC_CLIENT_SECRET`.
 
-4. **Public configuration.** Edit and commit `wrangler.jsonc`:
-   `OIDC_ISSUER`, `OIDC_CLIENT_ID`, any role mappings,
+4. **Public configuration.** Set runtime settings as GitHub variables
+   in step 5. This includes role mappings and
    `LICENSE_SIGNING_TRUSTED_SINCE` (the first kudurru release that embeds
-   the signing kid) and `ADMIN_NOTIFY_EMAIL` (below). Uncomment the
-   `routes` entry for `licenses.kudurru.io`. Leave the placeholder `image`
-   alone: the deploy script fills it in without modifying the tracked file.
-   The script refuses to deploy while the route is disabled or an
-   `example.org` placeholder remains.
+   the signing kid). The custom-domain route for `licenses.kudurru.io` is
+   enabled in `wrangler.jsonc`. Leave the placeholder `image` alone: the
+   deploy script fills it in without modifying the tracked file.
+   The script refuses to deploy while the route does not match
+   `PUBLIC_URL`, a required setting is missing, or an `example.org`
+   placeholder remains in the resolved deployment variables.
 
    `ADMIN_NOTIFY_EMAIL` decides who receives each personal-key request
-   and its one-click approval link. Replace its placeholder with a comma
-   list of mailboxes only license admins read, or remove the var to mail
-   every enabled license admin and superadmin with a verified email. Any
-   signed-in license admin can also decide requests on the Requests page.
-   `PERSONAL_AUTO_APPROVE=false` remains the default. See
-   `license-server/README.md`, "Approving personal keys", for attribution
-   and quotas when approving by mail.
+   and its one-click approval link. It is unset by default, so mail goes to
+   every enabled license admin and superadmin with a verified email. Set
+   the GitHub variable to a comma list of mailboxes only license admins
+   read to override those recipients. Any signed-in license admin can
+   also decide requests on the Requests page. `PERSONAL_AUTO_APPROVE=false`
+   remains the default. See `license-server/README.md`, "Approving personal
+   keys", for attribution and quotas when approving by mail.
 
 5. **GitHub environment.** In the repository's Settings → Environments,
    create `license-portal-production`. Allow deployments from `main`.
    Leave required reviewers unset for automatic deployment; add a reviewer
    only if you want an approval gate.
 
-   Add this **environment variable**:
+   Add these **environment variables**:
 
    | Name | Value |
    |---|---|
-   | `CLOUDFLARE_ACCOUNT_ID` | The account ID from the Cloudflare dashboard (not a zone ID) |
+   | `CLOUDFLARE_ACCOUNT_ID` | Required: the account ID from the Cloudflare dashboard (not a zone ID) |
+   | `PUBLIC_URL` | Required: `https://licenses.kudurru.io`, matching the custom-domain route |
+   | `OIDC_ISSUER` | Required: the production OIDC issuer URL, exactly as the identity provider writes it (https) |
+   | `OIDC_CLIENT_ID` | Required: the confidential OIDC client's ID registered in step 3 |
+   | `LICENSE_SIGNING_KID` | Required: `kudurru-2026-1`, or the kid of the committed public key matching `LICENSE_SIGNING_KEY` |
+   | `CLIENT_IP_HEADER` | Set to `X-Client-IP`, the header the Worker sets from `CF-Connecting-IP` |
+   | `DATABASE_TLS` | Optional: `verify-full` (the server default) |
+   | `MIGRATE_ON_START` | Optional: `false` (the deploy script's default and only supported value; CI migrates separately) |
+   | `PUBLIC_FORM_ORIGINS` | Optional: `https://kudurru.io` (the server default) |
+   | `MAIL_FROM` | Optional: `kudurru license portal <licenses@kudurru.io>` (the server default); must use an onboarded domain |
+   | `ADMIN_NOTIFY_EMAIL` | Optional: comma-separated approval mailboxes; leave unset to email verified license admins and superadmins |
+
+   Every other non-secret setting forwarded by `src/env.ts` can also be a
+   GitHub variable with its server setting name, including `LOG_LEVEL`,
+   `OIDC_SCOPES`, role mappings, signing metadata, session limits and
+   quotas. See `license-server/README.md`, "Configuration", for the full
+   list and defaults. Empty optional values are omitted so the server's
+   defaults apply. Secrets and unrelated GitHub variables are excluded
+   from the generated Worker `vars`.
+
+   The workflow passes `${{ toJSON(vars) }}` as `LICENSE_PORTAL_VARIABLES`;
+   the deploy script copies only known non-secret portal settings into a
+   temporary config. It does not modify `wrangler.jsonc`.
 
    Add these **environment secrets**, never to `wrangler.jsonc`:
 
@@ -242,7 +268,9 @@ fails, the pushed image remains in the registry and CI reports failure;
 rerun the workflow after fixing the cause.
 
 For a local release, install the pinned Bun version and Docker, export the
-same variables/secrets into your shell, then run:
+same variables/secrets into your shell (including `PUBLIC_URL`,
+`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `LICENSE_SIGNING_KID` and
+`CLIENT_IP_HEADER`), then run:
 
 ```sh
 cd license-server/cloudflare
@@ -252,10 +280,11 @@ bun run deploy
 
 ## Changing configuration
 
-Commit changes to public `vars` in `wrangler.jsonc`; the normal `main`
-workflow deploys them. Change a secret in the GitHub environment, then run
+Change a runtime variable or secret in the GitHub environment, then run
 **Actions → license-server → Run workflow** on `main`. Changing a GitHub
-secret alone does not trigger a workflow.
+variable or secret alone does not trigger a workflow. Commit changes to
+infrastructure settings in `wrangler.jsonc`; the normal `main` workflow
+deploys them.
 
 A running process keeps its startup environment. After the Worker deploys,
 the next cron tick (within 5 minutes) notices changed vars or secrets and
@@ -264,9 +293,11 @@ are replaced by the values from GitHub on the next CI deployment.
 
 ## Logs and checks
 
-`observability` is on: Worker, Durable Object and container logs (the
-server's JSON lines) are in the dashboard for 7 days, and `bunx wrangler
-tail` follows the Worker. `GET /readyz` reports the database, migrations
+`observability` explicitly enables Worker/Durable Object logs, invocation
+logs and traces, plus container stdout/stderr (the server's JSON lines)
+in the Cloudflare dashboard. Request URL query strings are redacted so
+approval and invitation tokens are not recorded. `bunx wrangler tail`
+follows the Worker. `GET /readyz` reports the database, migrations
 and signing (`"signing":"ready"` once the key loaded).
 
 `bun run check` type-checks the Worker, runs the tests and does `wrangler
