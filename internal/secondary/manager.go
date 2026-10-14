@@ -498,9 +498,6 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 						ConfirmedAt: confirmed, ExpiresAt: confirmed.Add(time.Duration(first.Expire) * time.Second), Primary: primary}
 					var built *zone.Zone
 					built, err = zone.BuildSecondary(e.dz, records, data.ExpiresAt)
-					if err == nil && built.HasSignatures() {
-						err = errors.New("signed secondary zones are not supported yet; the previous unexpired copy is retained")
-					}
 					if err == nil {
 						for _, rr := range records {
 							data.Records = append(data.Records, rr.String())
@@ -592,11 +589,6 @@ func (m *Manager) restore(ctx context.Context, e *entry) (*envelope, *zone.Zone,
 	soa, ok := rrs[0].(*dns.SOA)
 	if !ok || !data.ExpiresAt.Equal(data.ConfirmedAt.Add(time.Duration(soa.Expire)*time.Second)) {
 		return nil, nil, errors.New("invalid secondary expiry")
-	}
-	for _, rr := range rrs {
-		if rr.Header().Rrtype == dns.TypeRRSIG || rr.Header().Rrtype == dns.TypeSIG {
-			return nil, nil, errors.New("signed secondary zones are not supported yet")
-		}
 	}
 	z, err := zone.BuildSecondary(e.dz, rrs, data.ExpiresAt)
 	if err != nil {

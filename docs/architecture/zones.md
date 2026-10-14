@@ -37,7 +37,7 @@ erDiagram
     }
 ```
 
-Primary, forward, unsigned secondary, and stub zones are served. The other
+Primary, forward, secondary, and stub zones are served. The other
 types in the schema (`external`, `catalog`) are accepted but get
 `Ready=False, reason Unsupported`.
 
@@ -286,9 +286,24 @@ serial regression, missing/invalid configured TSIG and size limits reject the
 whole candidate. TCP and verified TLS support both SOA polling and transfers.
 TLS verifies the configured endpoint hostname/IP against the node trust store;
 there is no plaintext fallback. Both default to port 53; use an explicit :853
-for the standard TLS port. The data model preserves DNSSEC and unknown RRs,
-but the runtime rejects signed zones until signature/proof response assembly
-is implemented.
+for the standard TLS port. The data model preserves DNSSEC and unknown RRs.
+Signed copies are preflighted before persistence/publication: one coherent NSEC
+or NSEC3 SHA-1 chain, matching type bitmaps, and applicable stored signatures.
+NSEC3 permits opt-out with at most 150 iterations and 32 decoded salt bytes;
+mixed denial chains and malformed/incomplete proofs reject the new copy.
+
+With DO set, authoritative replies assemble the signatures and denial proofs
+for positive, wildcard, alias, negative and delegation answers. This includes
+parent-side DS and opt-out denial. No local trust validation is claimed and AD
+is always clear. Ordinary DO answers require live applicable signatures;
+expired proof material yields SERVFAIL. DO-clear answers remain available until
+SOA expiry, and explicit DNSSEC-record questions expose stored diagnostic data,
+including expired RRSIGs. SOA confirmation and restart never renew signatures.
+Response TTLs are capped by zone expiry and attached signature lifetime; the
+original transferred bytes and content hash remain unchanged. Each answer is
+bounded to 64 RRsets, 1 MiB expanded data and 4096 NSEC3 hash rounds, with at
+most 16 signatures per RRset. The immutable proof index is built off the query
+path and published together with its zone.
 
 IXFR applies authenticated deltas to a private copy, checking old/new SOA
 continuity, serial wrap, matching deletes, duplicate additions and final
@@ -382,7 +397,6 @@ coverage and answer SERVFAIL without making unrelated zones unavailable.
 
 ## Not built yet
 
-Signed secondary serving, dynamic UPDATE
-(RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
+Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
 UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
 the atomic update handler is installed. Unknown opcodes remain NOTIMP.

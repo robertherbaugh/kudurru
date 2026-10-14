@@ -55,8 +55,8 @@ The full 11-package release is being implemented in a single
 commits and periodic rebases on main. AXFR/IXFR, verified TLS, inbound NOTIFY
 and stub discovery/routing are implemented with API/CLI/dashboard diagnostics.
 Stub acceptance covers native BIND UDP/TCP discovery, restart, expiry and the
-browser create/edit flow. Signed-secondary response assembly is in acceptance
-and remains guarded in the runtime manager until that integration completes.
+browser create/edit flow. Signed-secondary response assembly supports NSEC/NSEC3 and opt-out, with
+native BIND listener acceptance and durable manager acquire/restart coverage.
 
 Local DNSSEC validation, explicit trust/negative-trust anchors, raw cache
 provenance and isolation, and final AD/CD/DO handling are implemented. Real

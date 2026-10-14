@@ -203,9 +203,14 @@ to plaintext.
 Initial copies use AXFR. Later serial changes use IXFR with automatic AXFR
 fallback when the primary lacks incremental history. Expired copies and
 credential changes require a fresh AXFR. Invalid deltas retain the last-good
-copy until its existing expiry. Signed zones are diagnosed as unsupported;
-they are not served without their required DNSSEC proofs. Local secondary
-export is not available yet.
+copy until its existing expiry. Signed secondaries preserve and serve their
+transferred signatures with NSEC or NSEC3 proofs (including opt-out). Malformed
+or incomplete signed copies are rejected. Ordinary queries requesting DNSSEC
+material fail with SERVFAIL if a required signature has expired, even when
+SOA expiry has not elapsed. Queries without DO can still use the copy until
+SOA expiry. Explicit RRSIG queries retain the original signature bytes for
+diagnostics. The secondary does not sign locally or assert validation through
+AD. Local secondary export is not available yet.
 
 ### Create a stub zone
 
