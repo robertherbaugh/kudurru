@@ -23,7 +23,7 @@ Kubernetes with CRDs as the configuration store.
   TTL cache with prefetch, serve-stale and in-flight request coalescing.
 - Hosts, domain, adblock and regex lists, allow/deny entries, per-source
   switches and exceptions, CNAME inspection and an embedded starter list.
-- IP/CIDR client groups with merged policies and schedules. A catalogue of
+- IP/CIDR client groups with merged policies and schedules. A catalog of
   150 services in 14 categories supports category blocking and exceptions;
   safe search is available for supported search engines and video sites.
 - An optional block page with access requests and administrator approvals.
@@ -106,7 +106,7 @@ Fixes incorporated during release-candidate testing:
 
 ### Security
 
-- Hardened list and catalogue fetching against unsafe URLs and redirects;
+- Hardened list and catalog fetching against unsafe URLs and redirects;
   bounded query-log memory and list-body parsing; corrected unblock-request
   privacy, approval races and managed-list write handling.
 - Fixed authentication-cache revocation races and enforced required
