@@ -622,6 +622,13 @@ is pending. Explicit fenced DNS-only publication cannot open authentication,
 readiness, or promotion. Promotion pins the actual serving bundle through its
 commit, then releases the pin before waiting for new-term publication.
 
+Background recovery uses `WithWriterGate` with an exact writable term and local
+incarnation. It holds the same publication/promotion exclusion even when no
+bundle exists or a newer image is pending; it grants no HTTP read eligibility.
+The callback next pins current dependency replacement and retains both gates
+through the actual fenced command. It releases them before waiting for serving
+acknowledgment, so startup recovery cannot deadlock on its own publication.
+
 ```mermaid
 flowchart LR
     Image["Installed complete SQLite image + token"] --> Prepare["Prepare every owner and exact dependency"]
