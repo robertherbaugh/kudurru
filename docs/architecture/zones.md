@@ -449,6 +449,16 @@ Runtime membership and lifecycle barriers, listener wiring, TSIG version
 barriers, API acknowledgment and NOTIFY delivery remain in progress. This
 checkpoint does not yet enable network UPDATE.
 
+Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
+verification. A successfully verified UPDATE using an immutable static keyring
+carries a private context proof of its parsed message, client, transport,
+signature deadline and exact key/provider version. Modifying the request or
+reusing it on another transport invalidates that proof. Generic mutable keyrings
+and DoH/DoQ/DoH3 do not issue it. This proof is local ingress evidence; it is not
+an original-wire proof for authenticated forwarding and does not replace current
+credential, zone or HA authorization at commit. Ordinary queries and transfers
+retain their existing TSIG behavior.
+
 ## Not built yet
 
 Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.

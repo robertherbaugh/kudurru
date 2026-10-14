@@ -83,8 +83,9 @@ func (l *dnsListener) Bind() error {
 		WriteTimeout: lim.WriteTimeout,
 		// miekg's default UDP read buffer is 512 bytes, which truncates
 		// EDNS queries (and a PROXYv2 header plus query) silently.
-		UDPSize:      dns.DefaultMsgSize,
-		TsigProvider: l.env.tsigProvider(),
+		UDPSize:       dns.DefaultMsgSize,
+		TsigProvider:  l.env.tsigProvider(),
+		MsgAcceptFunc: acceptDNSMessage,
 	}
 	proxied := l.env.proxy.Enabled()
 	switch l.spec.Protocol {
@@ -300,7 +301,11 @@ func serveMiekg(h *Handler, e *env, proto pipeline.Proto, w dns.ResponseWriter, 
 	if !ok {
 		return
 	}
-	m, stream, cleanup := h.resolve(context.Background(), r, client)
+	ctx := context.Background()
+	if sig.proof != nil {
+		ctx = context.WithValue(ctx, verifiedTSIGKey{}, sig.proof)
+	}
+	m, stream, cleanup := h.resolve(ctx, r, client)
 	defer cleanup()
 	if m == nil {
 		if proto != pipeline.ProtoUDP {
