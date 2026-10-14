@@ -88,11 +88,16 @@ Complete-image primary preparation validates persisted heads, chunks and parent
 witnesses without compiling desired primary records. Native TSIG proofs retain
 their original deadline through final transaction admission. A bounded durable
 lifecycle driver and exact complete-bundle publication acknowledgment are tested
-together with real current keyring/policy exclusion. Production mounting,
-forwarding, NOTIFY sender binding and network UPDATE wiring remain in progress.
+together with real current keyring/policy exclusion. Native UPDATE and a bounded
+durable NOTIFY sender now have signed transport and actual SQLite acceptance,
+including ancestor expiry and recovery after a committed but unpublished update.
+The root runtime assembly is tested with the complete publisher; production
+mounting, Kubernetes barriers and forwarding remain in progress.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
-notification admission. RPZ has
+notification admission. Captured secondary NOTIFY accepts authorized refresh
+hints for unavailable copies while rejecting primary coverage, stale source
+identities and stale listener proofs. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons; selected-policy stage rendering, production
 publication, reporting and UI are in progress.
@@ -111,9 +116,14 @@ restart/promotion coverage. Offline signed OIDC/CEL verification, captured provi
 matching, independent external identity/session enrollment and leased HTTP JWT
 authentication are implemented. Durable config-provider identities, retained tombstones and complete accepted
 authority inventories now compose with auth revocation floors in one transaction.
-Complete owner validation gates replica installation and serving; acquired
-resource assembly is in progress; production route adoption, enrollment/recovery
-UI and the wider IAM/session acceptance remain open.
+Complete owner validation gates replica installation and serving. Bounded TLS
+discovery/JWKS acquisition binds exact source receipts, credential capabilities,
+trust and entitlement policy. Provider, host/license and keyring exclusion now
+compose around the actual SQLite publication barrier; a newer pin cannot repair
+an older prepared candidate. Immutable license cuts preserve replacement and
+original deadline checks through complete commands. Production host/coordinator
+assembly, route adoption, enrollment/recovery UI and wider IAM/session acceptance
+remain open.
 
 The integration host and private ledger now fence per-instance execution,
 preserve operation intent and partial receipts, and enforce durable request
