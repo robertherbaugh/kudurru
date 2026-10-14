@@ -3,6 +3,7 @@ package primaryruntime
 import (
 	"context"
 	"encoding/json"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func statusImage(t *testing.T, h *harness) *PreparedImage {
@@ -57,8 +59,9 @@ func TestImageStatusCommittedUpdateAndEquivalentSource(t *testing.T) {
 	if _, err := h.r.Reconcile(ctx, l.Spec.Zone); err != nil {
 		t.Fatal(err)
 	}
-	equivalent, ok := statusImage(t, h).CommittedPrimaryStatus(z.Name)
-	if !ok || !equivalent.ConfigMatchesDesired || equivalent.CommittedSource != o.CommittedSource || equivalent.Source.ResourceVersion == o.Source.ResourceVersion || equivalent.Member.Version != o.Member.Version || equivalent.Serial != o.Serial || equivalent.ContentHash != o.ContentHash {
+	equivalentPart := statusImage(t, h)
+	equivalent, ok := equivalentPart.CommittedPrimaryStatus(z.Name)
+	if !ok || !equivalentPart.Admitted(z.Spec.ZoneName, time.Now()) || !equivalent.ConfigMatchesDesired || equivalent.CommittedSource != o.CommittedSource || equivalent.Source.ResourceVersion == o.Source.ResourceVersion || equivalent.Member.Version != o.Member.Version || equivalent.Serial != o.Serial || equivalent.ContentHash != o.ContentHash {
 		t.Fatalf("status RV echo restamped evidence/head: %+v", equivalent)
 	}
 	if _, ok := p.CommittedPrimaryStatus("/primary"); ok {
@@ -202,48 +205,80 @@ func (c statusHoldCompiler) Project(ctx context.Context, v *zonestate.View, in *
 }
 
 func TestImageStatusActualSourceAdvancedOldHeadAdmissionWindow(t *testing.T) {
-	h := newHarness(t, "sqlite")
-	ctx := context.Background()
-	z := h.zone("primary", "example.")
-	l := h.begin(z)
-	old, err := h.r.Reconcile(ctx, l.Spec.Zone)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
-		t.Fatal(err)
-	}
-	z.Spec.Nameservers = []string{"new-ns.example."}
-	saved, err := h.st.Apply(ctx, z, store.ApplyOptions{Manager: "api"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	token, _ := primaryzone.SourceToken(saved)
-	entered, resume := make(chan struct{}), make(chan struct{})
-	h.r.o.Compiler = statusHoldCompiler{h.r.o.Compiler, entered, resume}
-	done := make(chan error, 1)
-	go func() { _, err := h.r.Reconcile(ctx, l.Spec.Zone); done <- err }()
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("compiler did not pause")
-	}
-	p := statusImage(t, h)
-	o, ok := p.CommittedPrimaryStatus(z.Name)
-	// This is an explicit reproduction of EXISTING serving admission, not a
-	// status-slice correction. Root owns the separate serving readiness decision.
-	admitted := p.Admitted(l.Spec.Zone.Apex, time.Now())
-	t.Logf("source-advanced gap: admitted=%t configMatches=%t lifecycleRV=%s committedSourceRV=%s headRV=%s headSequence=%d", admitted, o.ConfigMatchesDesired, o.Source.ResourceVersion, o.CommittedSource.ResourceVersion, o.HeadResourceVersion, o.Member.Version.CommitSequence)
-	close(resume)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if !ok || !admitted || o.ConfigMatchesDesired || o.Source.ResourceVersion != token.ResourceVersion || o.Source.IntentDigest != token.IntentDigest || o.Member.Version != version(old) || o.CommittedSource.IntentDigest == token.IntentDigest {
-		t.Fatal("did not expose exact lifecycle-new/head-old window", o, admitted)
-	}
-	aligned, _ := statusImage(t, h).CommittedPrimaryStatus(z.Name)
-	if !aligned.ConfigMatchesDesired || aligned.CommittedSource.IntentDigest != token.IntentDigest || aligned.Member.Version == o.Member.Version {
-		t.Fatal("new source never aligned", aligned)
+	for _, tc := range []struct {
+		name       string
+		statusOnly bool
+		mutate     func(*public.DNSZone)
+	}{
+		{"nameservers", false, func(z *public.DNSZone) { z.Spec.Nameservers = []string{"new-ns.example."} }},
+		{"query-policy", false, func(z *public.DNSZone) {
+			z.Spec.Policy.QueryAccess = public.AccessUseNetworkACL
+			z.Spec.Policy.QueryACL = []string{"192.0.2.0/24"}
+		}},
+		{"selector", false, func(z *public.DNSZone) {
+			z.Spec.RecordSetSelector = &public.RecordSetSelector{LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"selected": "new"}}}
+		}},
+		{"nameserver-address-status", true, func(z *public.DNSZone) { z.Status.NameserverAddresses = []string{"192.0.2.53"} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, "sqlite")
+			ctx := context.Background()
+			z := h.zone("primary", "example.")
+			l := h.begin(z)
+			old, err := h.r.Reconcile(ctx, l.Spec.Zone)
+			if err != nil {
+				t.Fatal(err)
+			}
+			held := statusImage(t, h)
+			if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(z)
+			if tc.statusOnly {
+				if err := h.st.UpdateStatus(ctx, z); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := h.st.Apply(ctx, z, store.ApplyOptions{Manager: "api"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+				t.Fatal(err)
+			}
+			token, err := primaryzone.SourceToken(z)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, finish := imageHoldReconcile(t, h, l.Spec.Zone)
+			o, ok := p.CommittedPrimaryStatus(z.Name)
+			now := time.Now()
+			admitted := p.Admitted(l.Spec.Zone.Apex, now)
+			coverage := p.Cut(now).Match("x.example.")
+			t.Logf("source-advanced gap: admitted=%t configMatches=%t lifecycleRV=%s committedSourceRV=%s headRV=%s headSequence=%d", admitted, o.ConfigMatchesDesired, o.Source.ResourceVersion, o.CommittedSource.ResourceVersion, o.HeadResourceVersion, o.Member.Version.CommitSequence)
+			finish()
+			if !ok || admitted || o.ConfigMatchesDesired || o.Source.ResourceVersion != token.ResourceVersion || o.Source.IntentDigest != token.IntentDigest || o.Member.Version != version(old) || o.HeadResourceVersion != old.Head.ResourceVersion || p.Versions()[l.Spec.Zone.Apex] != version(old) {
+				t.Fatal("source-new/head-old gap invented serving or changed durable evidence", o, admitted)
+			}
+			if coverage == nil || coverage.Name() != "example." || coverage.AvailableAt(now) || coverage.SOA() != nil {
+				t.Fatal("old head leaked through config gap coverage")
+			}
+			if tc.name == "query-policy" && (coverage.QueryAllowed(netip.MustParseAddr("198.51.100.1")) || !coverage.QueryAllowed(netip.MustParseAddr("192.0.2.1"))) {
+				t.Fatal("coverage used stale desired ACL")
+			}
+			if (o.CommittedSource.IntentDigest == token.IntentDigest) != tc.statusOnly || o.CommittedSource.ResourceVersion == token.ResourceVersion {
+				t.Fatal("old receipt was relabeled", o.CommittedSource, token)
+			}
+			if m, exists := p.DurableMember(l.Spec.Zone); !exists || !reflect.DeepEqual(m, o.Member) {
+				t.Fatal("gap lost durable member", m, o.Member)
+			}
+			alignedPart := statusImage(t, h)
+			aligned, _ := alignedPart.CommittedPrimaryStatus(z.Name)
+			if !aligned.ConfigMatchesDesired || !alignedPart.Admitted("example.", time.Now()) || aligned.CommittedSource.IntentDigest != token.IntentDigest || aligned.Member.Version == o.Member.Version {
+				t.Fatal("background repair never restored current config/head readiness", aligned)
+			}
+			if !held.Admitted("example.", now) || !held.Cut(now).Match("x.example.").AvailableAt(now) {
+				t.Fatal("new desired mutation changed held immutable image")
+			}
+		})
 	}
 }
 
@@ -263,7 +298,7 @@ func TestImageStatusFrozenNSAndMalformedReceiptFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	o, _ := statusImage(t, h).CommittedPrimaryStatus(z.Name)
-	if o.ConfigMatchesDesired {
+	if o.ConfigMatchesDesired || statusImage(t, h).Admitted("example.", time.Now()) {
 		t.Fatal("NS address status treated as intent-equivalent config")
 	}
 	if _, err := h.r.Reconcile(ctx, l.Spec.Zone); err != nil {
@@ -316,7 +351,7 @@ func TestImageStatusFrozenNSAndMalformedReceiptFailClosed(t *testing.T) {
 				t.Fatal(err)
 			}
 			observed, _ := statusImage(t, h).CommittedPrimaryStatus(z.Name)
-			if observed.ConfigMatchesDesired {
+			if observed.ConfigMatchesDesired || statusImage(t, h).Admitted("example.", time.Now()) {
 				t.Fatal("malformed source receipt supplied current config")
 			}
 		})

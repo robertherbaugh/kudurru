@@ -180,6 +180,9 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		if l.Spec.Type != public.ZoneTypePrimary {
 			continue // Other owners supply nonprimary data, never this builder.
 		}
+		// Lifecycle source CAS precedes head compilation. Only a head with the
+		// current frozen zone config/receipt can grant serving readiness.
+		current[l.Spec.Zone.Apex] = current[l.Spec.Zone.Apex] && status[l.Spec.Zone.ObjectName].ConfigMatchesDesired
 		if !current[l.Spec.Zone.Apex] {
 			e.model = e.coverage
 			if z != nil && z.Spec.Type == public.ZoneTypePrimary && canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex {

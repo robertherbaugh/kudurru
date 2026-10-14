@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"reflect"
 	"slices"
 	"strings"
@@ -511,5 +512,350 @@ func TestImageActualRetirementReplacementAndDeletion(t *testing.T) {
 	}
 	if !held.Match("x.example.").AvailableAt(opts.Now) {
 		t.Fatal("held old image changed after real retirement/replacement/deletion")
+	}
+}
+
+// imageHoldReconcile pauses the real compiler after any lifecycle source CAS.
+// Cleanup releases and joins the operation even if an image assertion fails.
+func imageHoldReconcile(t *testing.T, h *harness, id zk.ZoneID) (*PreparedImage, func()) {
+	t.Helper()
+	compiler := h.r.o.Compiler
+	entered, resume := make(chan struct{}), make(chan struct{})
+	h.r.o.Compiler = statusHoldCompiler{compiler, entered, resume}
+	done := make(chan error, 1)
+	go func() { _, err := h.r.Reconcile(context.Background(), id); done <- err }()
+	finished := false
+	finish := func() {
+		if finished {
+			return
+		}
+		finished = true
+		close(resume)
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("held source reconcile: %v", err)
+			}
+		case <-time.After(15 * time.Second):
+			t.Error("held reconcile did not join")
+		}
+		h.r.o.Compiler = compiler
+	}
+	t.Cleanup(finish)
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("source reconcile did not enter compiler")
+	}
+	return statusImage(t, h), finish
+}
+
+func TestImageReadinessActualParentConfigGapClosesPrimaryAndNonprimaryChildren(t *testing.T) {
+	h := newHarness(t, "sqlite")
+	ctx := context.Background()
+	z := h.zone("parent", "example.")
+	parent := h.begin(z)
+	if _, err := h.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := h.r.ReadLifecycle(ctx, parent.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := h.begin(h.zone("child", "child.example."), parent)
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	forwarded := h.zone("forward", "forward.example.")
+	forwarded.Spec.Type = public.ZoneTypeForward
+	object, err := h.st.Apply(ctx, forwarded, store.ApplyOptions{Manager: "api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonprimary := h.begin(object.(*public.DNSZone), parent)
+	if _, err := h.r.FenceParents(ctx, nonprimary.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.r.Activate(ctx, nonprimary.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	parentView, err := h.repo.Read(ctx, parent.Spec.HeadZone())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := *parentView.Aggregate
+	expiry := time.Now().Add(time.Hour)
+	a.Expiry = expiry
+	prepared, err := zonestate.Prepare(&a, parentView.Head, zonestate.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentView, err = h.repo.Commit(ctx, parentView.Expected, prepared, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := statusImage(t, h)
+	original := map[string]PrimaryStatusObservation{}
+	for _, name := range []string{"parent", "child", "forward"} {
+		o, ok := held.CommittedPrimaryStatus(name)
+		if !ok || !held.Admitted(o.Member.Zone.Apex, time.Now()) || !o.ExpiresAt.Equal(expiry) {
+			t.Fatal("baseline member/witness/deadline missing", o)
+		}
+		original[name] = o
+	}
+	if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+		t.Fatal(err)
+	}
+	z.Spec.Policy.QueryAccess = public.AccessDeny
+	if _, err := h.st.Apply(ctx, z, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	gap, finish := imageHoldReconcile(t, h, parent.Spec.Zone)
+	for _, name := range []string{"parent", "child", "forward"} {
+		o, _ := gap.CommittedPrimaryStatus(name)
+		if gap.Admitted(o.Member.Zone.Apex, time.Now()) || o.Member.Version != original[name].Member.Version || !reflect.DeepEqual(o.Member.Parents, original[name].Member.Parents) || !o.ExpiresAt.Equal(expiry) {
+			t.Fatal("config gap lost evidence or admitted descendant", o)
+		}
+	}
+	assertImageCoverage(t, gap, "example.", time.Now())
+	assertImageCoverage(t, gap, "child.example.", time.Now())
+	if gap.Cut(time.Now()).Match("x.example.").QueryAllowed(netip.MustParseAddr("192.0.2.1")) {
+		t.Fatal("parent gap retained old query ACL")
+	}
+	if !hasFence(parentView, child.Spec.Zone.Apex) || !hasFence(parentView, nonprimary.Spec.Zone.Apex) {
+		t.Fatal("missing durable parent boundaries")
+	}
+	finish()
+	aligned := statusImage(t, h)
+	repaired, err := h.repo.Read(ctx, parent.Spec.HeadZone())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFence(repaired, child.Spec.Zone.Apex) || !hasFence(repaired, nonprimary.Spec.Zone.Apex) {
+		t.Fatal("background config repair erased boundaries")
+	}
+	for _, name := range []string{"parent", "child", "forward"} {
+		o, _ := aligned.CommittedPrimaryStatus(name)
+		if !aligned.Admitted(o.Member.Zone.Apex, time.Now()) || !reflect.DeepEqual(o.Member.Parents, original[name].Member.Parents) {
+			t.Fatal("repair did not restore exact child witnesses", o)
+		}
+	}
+	// Recompilation uses current RR expiry, not the fixture's independent older
+	// deadline. The held gap still retains its exact original ancestor deadline.
+	if gap.Admitted("forward.example.", expiry) || held.Admitted("child.example.", expiry) {
+		t.Fatal("held absolute deadline was weakened")
+	}
+	if !held.Admitted("example.", time.Now()) || !held.Cut(time.Now()).Match("x.child.example.").AvailableAt(time.Now()) {
+		t.Fatal("held image changed after repair")
+	}
+}
+
+func TestImageReadinessStatusOnlySourceAlignmentAdmitsEquivalentHead(t *testing.T) {
+	h := newHarness(t, "sqlite")
+	ctx := context.Background()
+	z := h.zone("primary", "example.")
+	l := h.begin(z)
+	old, err := h.r.Reconcile(ctx, l.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := statusImage(t, h).CommittedPrimaryStatus(z.Name)
+	if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+		t.Fatal(err)
+	}
+	z.Status.Serial, z.Status.ContentHash, z.Status.RecordCount = before.Serial, before.ContentHash, before.RecordCount
+	if err := h.st.UpdateStatus(ctx, z); err != nil {
+		t.Fatal(err)
+	}
+	unaligned := statusImage(t, h)
+	if unaligned.Admitted("example.", time.Now()) {
+		t.Fatal("source RV mismatch was bypassed")
+	}
+	gap, finish := imageHoldReconcile(t, h, l.Spec.Zone)
+	o, _ := gap.CommittedPrimaryStatus(z.Name)
+	if !gap.Admitted("example.", time.Now()) || !o.ConfigMatchesDesired || o.Member.Version != version(old) || o.CommittedSource != before.CommittedSource || o.Source.ResourceVersion == o.CommittedSource.ResourceVersion {
+		t.Fatal("equivalent old receipt incorrectly blocked current head", o)
+	}
+	finish()
+	after, _ := statusImage(t, h).CommittedPrimaryStatus(z.Name)
+	if after.Member.Version != before.Member.Version || after.Serial != before.Serial || after.ContentHash != before.ContentHash || after.CommittedSource != before.CommittedSource {
+		t.Fatal("status-only alignment manufactured head/serial/fresh observed RV", after)
+	}
+}
+
+func TestImageReadinessRecordSetPendingCreateEditDeleteKeepsCommittedAuthority(t *testing.T) {
+	h := newHarness(t, "sqlite")
+	ctx := context.Background()
+	z := h.zone("primary", "example.")
+	// An inactive static source reserves ownership even while it contributes no RR.
+	inactive := &public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "inactive", Namespace: "apps"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: z.Name}, Endpoints: []public.Endpoint{{DNSName: "inactive.example.", RecordType: "A", Targets: []string{"192.0.2.99"}, Kudurru: &public.EndpointExt{ExpiresAt: &metav1.Time{Time: time.Now().Add(-time.Hour)}}}}}}
+	if _, err := h.st.Apply(ctx, inactive, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	l := h.begin(z)
+	if _, err := h.r.Reconcile(ctx, l.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := h.r.ReadLifecycle(ctx, l.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := h.begin(h.zone("child", "child.example."), parent)
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	h.r.o.Proofs = testIssuer{}
+	if out := h.r.Apply(ctx, h.request(l, "pending-recordsets", "dynamic.example. 60 IN A 192.0.2.17", false)); out.Rcode != dns.RcodeSuccess {
+		t.Fatal(out)
+	}
+	observer, err := zonestate.NewMaterializer(zonestate.MaterializerOptions{Build: primaryzone.BuildCommitted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.r.o.Reader = primaryzone.NewReader(h.st, primaryzone.ReaderOptions{PageSize: 1, Targets: observer.PendingTargets, Policy: func(context.Context, *public.DNSZone) (*zonestate.Policy, error) { return &h.policy, nil }})
+	var desired *public.DNSRecordSet
+	previousIP := ""
+	assertRecord := func(t *testing.T, model *zone.Zone, name, want string) {
+		t.Helper()
+		answer := model.Lookup(name, dns.TypeA)
+		if want == "" {
+			if answer.Kind != zone.NXDomain {
+				t.Fatal("uncommitted/removed record leaked", name, answer)
+			}
+			return
+		}
+		if answer.Kind != zone.Success || len(answer.Answer) != 1 || answer.Answer[0].(*dns.A).A.String() != want {
+			t.Fatal("wrong committed RR", name, answer, want)
+		}
+	}
+	for _, operation := range []string{"create", "edit", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			old, err := h.repo.Read(ctx, l.Spec.HeadZone())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := observer.Load(ctx, old); err != nil {
+				t.Fatal(err)
+			}
+			var nextIP string
+			action := "apply"
+			if operation == "delete" {
+				if err := h.st.Delete(ctx, store.KeyOf(desired), store.DeleteOptions{Manager: "api"}); err != nil {
+					t.Fatal(err)
+				}
+				nextIP, action = "", "delete"
+			} else {
+				if operation == "create" {
+					desired = &public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "desired", Namespace: "apps"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: z.Name}, Endpoints: []public.Endpoint{{DNSName: "desired.example.", RecordType: "A", Targets: []string{"192.0.2.1"}}}}}
+					nextIP = "192.0.2.1"
+				} else {
+					desired = desired.DeepCopy()
+					desired.Spec.Endpoints[0].Targets = []string{"192.0.2.2"}
+					nextIP = "192.0.2.2"
+				}
+				saved, err := h.st.Apply(ctx, desired, store.ApplyOptions{Manager: "api"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				desired = saved.(*public.DNSRecordSet)
+			}
+			token, err := primaryzone.SourceToken(desired)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := zonestate.DesiredTarget{Zone: l.Spec.HeadZone(), Source: token, Operation: action}
+			if err := observer.RegisterDesired(target); err != nil {
+				t.Fatal(err)
+			}
+			// This local observer is used only for pending durable source evidence;
+			// its local publication flag is never a whole-publisher acknowledgment.
+			if evidence := observer.Desired(target); evidence.Outcome != "pending" || evidence.Published {
+				t.Fatal("old data claimed pending desired receipt published", evidence)
+			}
+			pending := statusImage(t, h)
+			o, _ := pending.CommittedPrimaryStatus(z.Name)
+			now := time.Now()
+			model := pending.Cut(now).Match("desired.example.")
+			if !pending.Admitted("example.", now) || !o.ConfigMatchesDesired || model == nil || !model.AvailableAt(now) || o.Member.Version != version(old) || o.Serial != old.Head.Spec.Serial {
+				t.Fatal("recordset-only pending operation suspended or rewrote committed head", o)
+			}
+			assertRecord(t, model, "desired.example.", previousIP)
+			assertRecord(t, model, "dynamic.example.", "192.0.2.17")
+			fresh, err := h.r.Reconcile(ctx, l.Spec.Zone)
+			if err != nil {
+				t.Fatal(err)
+			}
+			committed := statusImage(t, h)
+			model = committed.Cut(time.Now()).Match("desired.example.")
+			if !committed.Admitted("example.", time.Now()) || fresh.Head.Spec.Serial == old.Head.Spec.Serial || fresh.Head.Spec.ContentHash == old.Head.Spec.ContentHash || !hasFence(fresh, child.Spec.Zone.Apex) {
+				t.Fatal("reconcile did not commit new static data with boundary retained")
+			}
+			assertRecord(t, model, "desired.example.", nextIP)
+			assertRecord(t, model, "dynamic.example.", "192.0.2.17")
+			protected := false
+			for _, reservation := range fresh.Aggregate.Reservations {
+				if reservation.Name == "inactive.example." && reservation.Type == dns.TypeA {
+					protected = true
+				}
+			}
+			if !protected || !reflect.DeepEqual(fresh.Aggregate.Receipts, old.Aggregate.Receipts) {
+				t.Fatal("source repair lost inactive reservation or dynamic UPDATE receipt")
+			}
+			acknowledged := false
+			for _, s := range fresh.Aggregate.Sources {
+				if s.ID != token.ID {
+					continue
+				}
+				envelope, err := zonestate.DecodeSourceEnvelope(s.Desired)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectedState := "present"
+				if operation == "delete" {
+					expectedState = "removed"
+				}
+				if envelope.State != expectedState || s.UID != token.UID || s.ResourceVersion != token.ResourceVersion || envelope.IntentDigest != token.IntentDigest {
+					t.Fatal("source reconciliation receipt mismatched actual desired operation", s)
+				}
+				for _, ack := range envelope.Acknowledged {
+					if ack.Source == token && ack.Operation == action && ack.Outcome == "committed" {
+						acknowledged = true
+					}
+				}
+			}
+			if !acknowledged {
+				t.Fatal("current target not acknowledged durably")
+			}
+			observer.ForgetDesired(target)
+			// After create, a record-set status RV update alone must not suspend DNS
+			// or force another durable head/serial merely to relabel observed receipt.
+			if operation == "create" {
+				originalToken := token
+				desired.Status.ObservedGeneration = desired.Generation
+				if err := h.st.UpdateStatus(ctx, desired); err != nil {
+					t.Fatal(err)
+				}
+				beforeStatus := statusImage(t, h)
+				if !beforeStatus.Admitted("example.", time.Now()) {
+					t.Fatal("record-set status echo closed committed primary")
+				}
+				equivalent, err := h.r.Reconcile(ctx, l.Spec.Zone)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if version(equivalent) != version(fresh) || equivalent.Head.Spec.Serial != fresh.Head.Spec.Serial {
+					t.Fatal("record-set status echo generated a head/serial")
+				}
+				for _, s := range equivalent.Aggregate.Sources {
+					if s.ID == originalToken.ID && s.ResourceVersion != originalToken.ResourceVersion {
+						t.Fatal("record-set observed RV was restamped")
+					}
+				}
+			}
+			// A previously prepared pending candidate continues to hold the exact old
+			// committed data even after the source was reconciled into a later head.
+			assertRecord(t, pending.Cut(now).Match("desired.example."), "desired.example.", previousIP)
+			previousIP = nextIP
+		})
 	}
 }
