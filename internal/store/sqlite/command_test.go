@@ -18,6 +18,9 @@ func TestCommandTransactionReadsWritesStatusSectionsAndOneRevision(t *testing.T)
 	var retained *CommandTx
 	err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
 		retained = tx
+		if tx.Incarnation() == 0 || tx.Incarnation() != s.Authority().Incarnation || !tx.Authority().Same(s.Authority().Term) {
+			t.Fatal("command lost admitted writer identity")
+		}
 		out, err := tx.Apply(ctx, zone("home", "home.example."), store.ApplyOptions{Manager: store.ManagerAPI})
 		if err != nil {
 			return err

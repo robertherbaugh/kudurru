@@ -149,6 +149,11 @@ func (t *CommandTx) poison(err error) error {
 // Authority returns the immutable term checked at transaction entry.
 func (t *CommandTx) Authority() replication.Term { return t.authority.Term }
 
+// Incarnation returns the local writer incarnation admitted at transaction
+// entry. Domain proofs must bind it as well as Authority: a term alone cannot
+// distinguish a writer that was fenced and subsequently admitted again.
+func (t *CommandTx) Incarnation() uint64 { return t.authority.Incarnation }
+
 // Get reads current transaction state, including earlier staged mutations.
 func (t *CommandTx) Get(ctx context.Context, key store.Key, into store.Object) error {
 	if err := t.valid(ctx); err != nil {
