@@ -18,9 +18,17 @@ free personal keys without an account. By default
 one waits until a license admin approves it, usually with one click from a
 mail ("Approving personal keys" below).
 
-The portal only issues and delivers keys. No kudurru node ever contacts
-it: keys are verified offline on each node against the public keys built
-into the binary (D163), and licensing never touches DNS.
+The portal issues and delivers keys and has a Downloads page for every
+signed-in user. Downloads links to public GitHub Releases and GHCR packages
+(Helm charts, container images, Compose bundles, binaries, Linux packages
+and Kubernetes manifests), with pull commands and deployment guides. The
+links assume the repository and packages are public; versioned archives
+are selected on GitHub's release page. Files are downloaded directly from
+GitHub, and the portal needs no GitHub credentials or release API calls.
+
+No kudurru node ever contacts it: keys are verified offline on each node
+against the public keys built into the binary (D163), and licensing never
+touches DNS.
 
 It is Bun, TypeScript and Postgres in one container, with a React and
 Astryx UI that uses the same design system and Kudurru theme as the
