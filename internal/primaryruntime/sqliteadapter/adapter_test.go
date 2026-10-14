@@ -90,7 +90,7 @@ func setup(t *testing.T) *fixture {
 	t.Cleanup(func() { _ = s.Close() })
 	f := &fixture{t: t, path: path, s: s, keys: &currentKeys{current: CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v1"}, ProviderVersion: "provider-v1", Algorithm: dns.HmacSHA256}}, policy: zonestate.Policy{Enabled: true, AuthEpoch: 1, Credentials: []dynamicupdate.Credential{{Key: "key.", Version: "v1"}}, Grants: []dynamicupdate.Grant{{Key: "key.", Owner: "*.example."}}}}
 	f.fence = pr.PublicationFence{Term: s.Authority().Term, Incarnation: s.Authority().Incarnation}
-	f.a, err = New(Options{Store: s, Background: testBackground{}, Credentials: f.keys, Policy: func(_ context.Context, _ *sqlite.CommandTx, z *public.DNSZone, p zonestate.Policy) error {
+	testPolicy := func(_ context.Context, _ *sqlite.CommandTx, z *public.DNSZone, p zonestate.Policy) error {
 		if z == nil || z.Spec.Policy.Update != public.AccessAllow {
 			return pr.ErrUnavailable
 		}
@@ -100,7 +100,9 @@ func setup(t *testing.T) *fixture {
 			return pr.ErrUnavailable
 		}
 		return nil
-	}})
+	}
+	f.keys.current.Policy = testPolicy
+	f.a, err = New(Options{Store: s, Background: testBackground{}, Credentials: f.keys, Policy: testPolicy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +210,7 @@ func TestActualTransactionsUpdateReplayAndCurrentCredential(t *testing.T) {
 	if out.Rcode != dns.RcodeSuccess || !out.Deduplicated || f.keys.calls.Load() <= calls || !bytes.Equal(before, snapshot(t, f.s)) {
 		t.Fatal("dedup was not fenced/noop", out)
 	}
-	f.keys.rotate(CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v2"}, ProviderVersion: "provider-v2", Algorithm: dns.HmacSHA256})
+	f.keys.rotate(CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v2"}, ProviderVersion: "provider-v2", Algorithm: dns.HmacSHA256, Policy: f.a.o.Policy})
 	for _, r := range []pr.VerifiedUpdate{req, f.request(l, "noop", "dynamic.example. 60 IN A 192.0.2.1"), f.request(l, "retry", "other.example. 60 IN A 192.0.2.2")} {
 		if got := f.r.Apply(ctx, r); got.Rcode == dns.RcodeSuccess || got.Published {
 			t.Fatal("revoked version admitted", got)
@@ -355,7 +357,7 @@ func TestCredentialRotationPinsTheWholeCommand(t *testing.T) {
 	rotated := make(chan struct{})
 	go func() {
 		close(rotating)
-		f.keys.rotate(CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v2"}, ProviderVersion: "provider-v2", Algorithm: dns.HmacSHA256})
+		f.keys.rotate(CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v2"}, ProviderVersion: "provider-v2", Algorithm: dns.HmacSHA256, Policy: original})
 		close(rotated)
 	}()
 	<-rotating
@@ -602,18 +604,18 @@ func TestUnavailableGuardsAndMalformedPreparedFailClosed(t *testing.T) {
 		t.Fatal("nil current credential guard admitted UPDATE", out)
 	}
 	f.a.o.Credentials = guard
-	policy := f.a.o.Policy
-	f.a.o.Policy = nil
+	policy := f.keys.current.Policy
+	f.keys.current.Policy = nil
 	if out := f.r.Apply(ctx, request); out.Rcode != dns.RcodeServerFailure || out.Committed {
-		t.Fatal("nil current policy guard admitted UPDATE", out)
+		t.Fatal("optional policy replaced missing same-pin validator", out)
 	}
+	f.keys.current.Policy = policy
 	background := f.a.o.Background
 	f.a.o.Background = nil
 	if _, err := f.r.Reconcile(ctx, l.Spec.Zone); !errors.Is(err, pr.ErrUnavailable) {
 		t.Fatal("enabled source policy admitted without pinned background guard", err)
 	}
 	f.a.o.Background = background
-	f.a.o.Policy = policy
 	if !bytes.Equal(before, snapshot(t, f.s)) {
 		t.Fatal("malformed/unavailable guard paths mutated durable state")
 	}

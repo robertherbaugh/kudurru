@@ -19,10 +19,12 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 )
 
-// CurrentCredential contains only immutable public identity metadata.
+// CurrentCredential binds public identity metadata and a policy validator to
+// the SAME immutable generation held by CredentialGuard through the command.
 type CurrentCredential struct {
 	Principal                  dynamicupdate.Principal
 	ProviderVersion, Algorithm string
+	Policy                     PolicyGuard
 }
 
 // CredentialGuard pins root's current immutable provider publication throughout
@@ -34,9 +36,10 @@ type CredentialGuard interface {
 }
 
 // PolicyGuard validates the complete current desired UPDATE policy/credential
-// versions in the same transaction. Root must use only tx reads and its pinned
-// immutable publication; nil makes UPDATE unavailable. Background commands
-// instead require the pinned BackgroundGuard validator.
+// versions in the same transaction. It must use only tx reads and the immutable
+// generation pinned by CredentialGuard. CurrentCredential.Policy is mandatory;
+// Options.Policy can only add another conjunct. Background commands instead
+// require the pinned BackgroundGuard validator.
 type PolicyGuard func(context.Context, *sqlite.CommandTx, *public.DNSZone, zonestate.Policy) error
 
 // BackgroundCheck describes the exact transaction's lifecycle/source and policy.
@@ -69,7 +72,7 @@ type Options struct {
 	MaxReadBytes         int64
 	Credentials          CredentialGuard
 	Background           BackgroundGuard
-	Policy               PolicyGuard
+	Policy               PolicyGuard // optional additional check, never a replacement
 }
 
 // Adapter supplies the core's exact lifecycle/head callbacks.
@@ -211,7 +214,7 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 		}
 	}
 	update := strings.HasPrefix(c.Reason, "update")
-	if update && (c.Proof == nil || a.o.Credentials == nil || a.o.Policy == nil) {
+	if update && (c.Proof == nil || a.o.Credentials == nil) {
 		return nil, pr.ErrUnavailable
 	}
 	if update {
@@ -330,8 +333,13 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 				if err != nil {
 					return err
 				}
-				if err := a.o.Policy(ctx, tx, z, v.Aggregate.Policy); err != nil {
+				if err := credential.Policy(ctx, tx, z, v.Aggregate.Policy); err != nil {
 					return err
+				}
+				if a.o.Policy != nil {
+					if err := a.o.Policy(ctx, tx, z, v.Aggregate.Policy); err != nil {
+						return err
+					}
 				}
 				state, err := v.UpdateState()
 				if err != nil {
@@ -376,7 +384,12 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 	}
 	var err error
 	if update {
-		err = a.o.Credentials.WithCurrent(ctx, *c.Proof, func(current CurrentCredential) error { return run(&current, nil) })
+		err = a.o.Credentials.WithCurrent(ctx, *c.Proof, func(current CurrentCredential) error {
+			if current.Policy == nil {
+				return pr.ErrUnavailable
+			}
+			return run(&current, nil)
+		})
 	} else {
 		err = a.o.Background.WithCurrent(ctx, f, func(check BackgroundPolicy) error {
 			if check == nil {
