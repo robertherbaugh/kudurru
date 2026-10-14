@@ -49,17 +49,19 @@ describe('Shell navigation', () => {
     expect(within(nav).getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('keeps the flyout open while a control inside has focus', async () => {
+  it('lets keyboard users pin the icon rail open', async () => {
     const user = userEvent.setup();
     const nav = await renderShell();
     fireEvent.click(within(nav).getByRole('button', { name: 'Collapse sidebar' }));
-    await user.hover(nav);
     const expand = within(nav).getByRole('button', { name: 'Expand sidebar' });
-    fireEvent.focusIn(expand);
-    await user.unhover(nav);
+    // Tab to the footer arrow without using pointer hover.
+    do {
+      await user.tab();
+    } while (document.activeElement !== expand);
+    await user.keyboard('{Enter}');
     expect(within(nav).getByRole('link', { name: 'Tools' })).toHaveTextContent('Tools');
-
-    fireEvent.focusOut(expand, { relatedTarget: screen.getByRole('main') });
+    expect(within(nav).getByRole('button', { name: 'Collapse sidebar' })).toHaveFocus();
+    await user.keyboard('{Enter}');
     expect(within(nav).getByRole('link', { name: 'Tools' })).toHaveTextContent('');
   });
 });

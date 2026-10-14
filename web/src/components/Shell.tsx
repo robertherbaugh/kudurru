@@ -93,9 +93,9 @@ function Navigation({ navKey }: { navKey?: string }) {
         if (event.pointerType === 'mouse' || event.pointerType === 'pen') setIsHovered(true);
       }}
       onPointerLeave={() => setIsHovered(false)}
-      onFocusCapture={() => {
+      onFocusCapture={(event) => {
         // Keep a revealed flyout open while its controls have keyboard focus.
-        if (isHovered) setHasFlyoutFocus(true);
+        if (isHovered && event.target.matches(':focus-visible')) setHasFlyoutFocus(true);
       }}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setHasFlyoutFocus(false);
