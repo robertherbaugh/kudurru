@@ -4,6 +4,8 @@
 // failure instead of failing the request where the spec says so (the key
 // stays in the portal and an admin can email it again).
 
+import type { Logger } from '../log';
+
 export interface MailAttachment {
   /** e.g. license.key */
   filename: string;
@@ -27,8 +29,8 @@ export interface MailMessage {
 export interface Mailer {
   /** False when SMTP_URL is unset: send() throws MailNotConfiguredError. */
   readonly configured: boolean;
-  /** Sends one message; rejects on any delivery failure. */
-  send(msg: MailMessage): Promise<void>;
+  /** Submits one message to the mail server; acceptance does not guarantee inbox delivery. */
+  send(msg: MailMessage, log?: Logger): Promise<void>;
 }
 
 /** send() on a mailer without SMTP_URL. */
