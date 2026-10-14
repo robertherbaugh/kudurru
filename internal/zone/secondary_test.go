@@ -102,7 +102,10 @@ func TestSecondaryRawPreservation(t *testing.T) {
 		headers[i] = *r.Header()
 	}
 	expires := testNow.Add(time.Hour)
-	z := mustSecondary(t, dz, data, expires)
+	z, err := buildSecondaryRaw(dz, data, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := secondaryWires(t, secondaryRecords(z)); !slices.Equal(got, before) {
 		t.Fatal("raw wire records changed during build")
 	}

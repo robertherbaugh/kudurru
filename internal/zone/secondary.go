@@ -52,9 +52,8 @@ func (z *Zone) AvailableAt(now time.Time) bool {
 }
 
 // HasSignatures reports transferred RRSIG or legacy SIG records. It does
-// not assert signature validity or DNSSEC response support: Lookup does not
-// attach signatures to ordinary answers or construct authenticated denial
-// or wildcard proofs. Runtimes may use this to diagnose signed secondaries.
+// not assert cryptographic validity. LookupSignedWithin assembles transferred
+// signatures and proofs; ordinary Lookup remains the raw-data lookup.
 func (z *Zone) HasSignatures() bool { return z.hasSignatures }
 
 // BuildSecondaryPlaceholder retains unavailable secondary authority coverage
@@ -99,6 +98,22 @@ type secondaryRecord struct {
 // expiry; already expired data can be built for recovery and diagnostics.
 // Transport configuration and cryptographic validation belong to the caller.
 func BuildSecondary(dz *v1alpha1.DNSZone, records []dns.RR, expiresAt time.Time) (*Zone, error) {
+	z, err := buildSecondaryRaw(dz, records, expiresAt)
+	if err != nil || records == nil {
+		return z, err
+	}
+	// BuildStub uses this raw tree builder on a copied secondary config;
+	// discovery records do not establish a signed authoritative serving zone.
+	if dz.Spec.Stub == nil {
+		z.secondaryProofs, err = BuildSecondaryProofs(z)
+		if err != nil {
+			return nil, fmt.Errorf("signed secondary structure: %w", err)
+		}
+	}
+	return z, nil
+}
+
+func buildSecondaryRaw(dz *v1alpha1.DNSZone, records []dns.RR, expiresAt time.Time) (*Zone, error) {
 	if dz == nil || dz.Spec.Type != v1alpha1.ZoneTypeSecondary {
 		return nil, fmt.Errorf("secondary zone configuration is required")
 	}

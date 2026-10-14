@@ -68,6 +68,7 @@ type Zone struct {
 	// secondaryIdentity binds transferred data to its configuration object.
 	secondaryIdentity string
 	hasSignatures     bool
+	secondaryProofs   *SecondaryProofs
 	stub              *stubRoute
 }
 

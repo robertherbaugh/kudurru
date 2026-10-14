@@ -205,7 +205,10 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return s.unsynced(req, gate), nil
 	}
 
-	res := lookupWithin(set, z, q.Name, q.Qtype, 0)
+	res, err := s.signedLookup(req, set, z, q.Name, q.Qtype, 0)
+	if err != nil {
+		return s.signedFailure(req, z), nil
+	}
 	if gate == zone.GateUnsynced && !res.Positive() {
 		return s.unsynced(req, gate), nil
 	}
@@ -217,7 +220,7 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	}
 	answer := res.Answer
 	if q.Qtype == dns.TypeANY && req.Client.Proto == pipeline.ProtoUDP {
-		answer = minimalANY(answer)
+		answer = minimalSignedANY(answer)
 	}
 	return s.reply(req, z, &res, answer), nil
 }
@@ -271,6 +274,7 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 	q := req.Msg.Question[0]
 	client := clientAddr(req)
 	answer := append([]dns.RR(nil), res.Answer...)
+	authority := append([]dns.RR(nil), res.Ns...)
 	last := &res
 	for {
 		target := last.Target
@@ -279,7 +283,13 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 			return s.secondaryUnavailable(req, z2), nil
 		}
 		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary) && z2.QueryAllowed(client) {
-			r2 := lookupWithin(set, z2, target, q.Qtype, last.Hops)
+			r2, err := s.signedLookup(req, set, z2, target, q.Qtype, last.Hops)
+			if err != nil {
+				return s.signedFailure(req, z2), nil
+			}
+			r2.Ns = appendSignedAuthority(authority, r2.Ns)
+			r2.Wildcard = r2.Wildcard || res.Wildcard
+			authority = r2.Ns
 			switch r2.Kind {
 			case zone.CNAME:
 				answer = append(answer, r2.Answer...)
@@ -310,12 +320,14 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 				out.Msg.RecursionDesired, out.Msg.CheckingDisabled = req.Msg.RecursionDesired, req.Msg.CheckingDisabled
 				return &out, nil
 			}
-			return s.splice(req, z, answer, resp, err), nil
+			return s.signedSplice(req, z, answer, authority, resp, err), nil
 		}
 		if !req.Msg.RecursionDesired || (z2 != nil && !z2.QueryAllowed(client)) {
 			// No recursion requested (or the target zone refuses this
 			// client): the partial chain is the answer.
-			return s.reply(req, z, last, answer), nil
+			partial := *last
+			partial.Ns = authority
+			return s.reply(req, z, &partial, answer), nil
 		}
 		sub := subRequest(req, target, q.Qtype, q.Qclass)
 		if z2 != nil && z2.Type() == v1alpha1.ZoneTypeForward {
@@ -323,12 +335,8 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 			sub.DNSSECValidation = z2.DNSSECValidation()
 		}
 		resp, err := next(sub)
-		return s.splice(req, z, answer, resp, err), nil
+		return s.signedSplice(req, z, answer, authority, resp, err), nil
 	}
-}
-
-func lookupWithin(set zone.Set, z *zone.Zone, name string, qtype uint16, hops int) zone.Result {
-	return z.LookupWithin(name, qtype, hops, func(target string) bool { return set.Match(target) == z })
 }
 
 func (s *Stage) now() time.Time {
@@ -412,12 +420,17 @@ func (s *Stage) splice(req *pipeline.Request, z *zone.Zone, chain []dns.RR, resp
 func (s *Stage) reply(req *pipeline.Request, z *zone.Zone, res *zone.Result, answer []dns.RR) *pipeline.Response {
 	m := new(dns.Msg)
 	m.SetRcode(req.Msg, res.Rcode())
+	m.AuthenticatedData = false
+	m.CheckingDisabled = req.Msg.CheckingDisabled
 	m.Authoritative = res.Authoritative()
 	m.RecursionAvailable = s.RecursionAvailable
 	if res.Kind != zone.Loop {
 		m.Answer = answer
 		m.Ns = res.Ns
 		m.Extra = res.Extra
+	}
+	if signedResponseOverBudget(m) {
+		return s.signedFailure(req, z)
 	}
 	s.finish(req, m)
 	modified := res.Wildcard || len(answer) != len(res.Answer)
