@@ -709,7 +709,10 @@ writer entry retains the original elector token, resets provider floors, reconci
 the startup config-provider manifest and joins old work before replacement.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined
-shutdown are tested through this assembly. Production `serve.go` mounting and
+shutdown are tested through this assembly. A newly enrolled follower remains
+running but unavailable while awaiting its first replica. The same runtime
+publishes after a valid installation without initializing local owner roots;
+malformed installed owner inventories still fail startup. Production `serve.go` mounting and
 three-process partition/rejoin acceptance remain integration work.
 Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary

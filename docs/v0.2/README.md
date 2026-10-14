@@ -96,14 +96,18 @@ and manager exclusion through final admission, with mandatory original-cut and
 deadline checks. Committed primary status uses exact head/configuration evidence
 and protected publication, preserves dynamic UPDATE data, and avoids competing
 serial writes and status-RV feedback. Native UPDATE/status and real SQLite
-transaction acceptance pass; the separate source-new/head-old serving-readiness
-window remains under correction before production mounting.
+transaction acceptance pass. Primary serving now requires the committed head's
+configuration and source receipt to match the current DNSZone; advancing only
+the lifecycle source cannot expose old configuration. Pending DNSRecordSet-only
+edits retain the last committed records until reconciliation.
 The root runtime assembly is tested with the complete publisher; production
 mounting, Kubernetes barriers and forwarding remain in progress.
 The combined root assembly now runs provider acquisition/publication on every
 role and resets provider floors under the original elected writer before primary
 work. Actual elector, native UPDATE, license replacement, restart/promotion and
-joined shutdown checks pass. SQLite startup initializes canonical public settings
+joined shutdown checks pass. Fresh enrolled followers stay unavailable until the
+first valid replica arrives, then recover within the same running assembly.
+SQLite startup initializes canonical public settings
 once, retaining existing values and excluding local environment overrides.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
@@ -156,7 +160,10 @@ through bounded SQLite transactions, restart, follower installation and promotio
 The complete builder reads its original expiry and ownership watermarks from the
 same image as DNS and auth, and startup rejects missing history beside existing
 source authority. Strict pure source codecs and stable allocation planning are
-implemented. Production source transactions, durable allocation storage,
+implemented.
+The host retains original observation identity, lease and deadline through the
+current command and preserves committed-but-unpublished receipts as pending.
+Production source transactions, durable allocation storage,
 remaining providers, optional writes, external-zone controls
 and the dashboard remain open.
 

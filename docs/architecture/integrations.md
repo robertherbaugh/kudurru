@@ -215,6 +215,16 @@ These functions confer no write authority: the production source command must
 admit and save desired objects, allocations and global inventory together, then
 acknowledge the exact primary publication.
 
+The host's preferred source callbacks now retain one original observation
+capability from acquisition through commit and acknowledgment. Its request ID,
+execution lease, source identity and deadline cannot be replaced during a retry.
+Bounds and pure validation precede copying. The root can hold host replacement
+exclusion through the actual SQLite command and register a memory-only final
+check, including for deduplication. A committed observation whose publication
+fails retains its receipt and pending state. Actual SQLite rollback, cancellation
+and final-check tests cover this seam; the durable source mutation adapter and
+production mount remain separate work.
+
 ## UniFi inventory adapter
 
 `ee/integration/unifi` polls the official UniFi Network API over verified HTTPS.

@@ -649,9 +649,19 @@ The controller retains desired-record conflict diagnostics, but delegates primar
 status when the capability is installed. Kubernetes and unconfigured controllers
 retain their existing behavior. The adapter and controller have actual SQLite,
 native signed UPDATE and Kubernetes race acceptance; production mounting remains
-open. A separately reproduced lifecycle-source/new-config versus old-head window
-still needs a serving-readiness correction before that mount. Status already
-rejects the mismatched head rather than reporting the new desired generation ready.
+open.
+
+Primary serving also requires the committed head's source receipt and frozen
+configuration to match the current DNSZone. Advancing a lifecycle source before
+head compilation therefore keeps the zone and its coordinated descendants
+unavailable, using the current desired query ACL. Durable versions and status
+remain inspectable, and background reconciliation can repair the head. Equivalent
+status-only changes do not require a new head or relabel an old receipt.
+
+A DNSRecordSet-only create, edit or deletion leaves the last committed records
+available until reconciliation. It neither mixes desired records into the old
+head nor acknowledges their publication. Dynamic records, ownership reservations
+and child boundaries survive the static replacement.
 
 ## Not built yet
 
