@@ -51,7 +51,7 @@ type Zone struct {
 	// ~17-level pointer chase through a 100k-name tree (dev-docs/milestones/m1/zone.md).
 	index  map[string]*node
 	apex   *node
-	soa    *dns.SOA // served SOA (status.serial)
+	soa    *dns.SOA // served SOA (external primary's serial for secondaries)
 	negSOA *dns.SOA // SOA for negative answers: TTL = min(TTL, minimum)
 	negNs  []dns.RR // authority section of negative answers: {negSOA}
 
@@ -64,15 +64,19 @@ type Zone struct {
 	records    int
 	nextExpiry time.Time
 	generation int64
+	// secondaryIdentity binds transferred data to its configuration object.
+	secondaryIdentity string
+	hasSignatures     bool
 }
 
 // Name returns the lowercased absolute zone name.
 func (z *Zone) Name() string { return z.name }
 
-// Type returns the zone type (primary or forward in v0.1).
+// Type returns the zone type.
 func (z *Zone) Type() v1alpha1.ZoneType { return z.typ }
 
-// Serial returns the SOA serial served for the zone (status.serial).
+// Serial returns the served SOA serial: status.serial for primary zones,
+// the external primary's serial for secondary zones.
 func (z *Zone) Serial() uint32 { return z.serial }
 
 // Generation returns metadata.generation of the DNSZone the zone was built
@@ -92,8 +96,9 @@ func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
 
 // ContentHash returns the canonical content hash ("sha256:<hex>") the
 // controller compares with status.contentHash to decide on a serial bump.
-// It covers every served RR including the SOA fields, except the serial,
-// and the fallback routing settings.
+// Primary hashes cover served RRs except the SOA serial and include fallback
+// routing settings. Secondary hashes cover raw uncompressed RRs,
+// including the external serial.
 func (z *Zone) ContentHash() string { return z.hash }
 
 // RecordCount returns the number of served RRs excluding the SOA.
@@ -105,10 +110,12 @@ func (z *Zone) Names() int { return z.tree.count }
 
 // NextExpiry returns the earliest expiresAt among the records that were
 // still live at build time, or the zero time. The zone cache rebuilds the
-// zone at that instant so expired records leave service on time.
+// zone at that instant so expired records leave service on time. For a
+// secondary with data it returns the transferred zone's expiry.
 func (z *Zone) NextExpiry() time.Time { return z.nextExpiry }
 
-// SOA returns a copy of the zone's SOA record, or nil for forward zones.
+// SOA returns a copy of the zone's SOA record, or nil for forward zones and
+// secondary placeholders.
 func (z *Zone) SOA() *dns.SOA {
 	if z.soa == nil {
 		return nil
@@ -132,9 +139,11 @@ func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(cl
 // mode is deny); when transferTSIGKeyRefs is non-empty the request must
 // also have been signed with one of those keys. tsigKey is the verified
 // key name ("" for an unsigned request), compared case-insensitively.
-// Forward zones and primary zones with fallback are never transferable.
+// Available secondary zones are transferable; forward zones, primary zones
+// with fallback, and secondary placeholders or expired data are not.
 func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
-	if z.typ != v1alpha1.ZoneTypePrimary || z.fallback || !z.transfer.allowed(client) {
+	if (z.typ != v1alpha1.ZoneTypePrimary && z.typ != v1alpha1.ZoneTypeSecondary) ||
+		z.fallback || !z.AvailableAt(time.Now()) || !z.transfer.allowed(client) {
 		return false
 	}
 	if len(z.transferKeys) == 0 {
