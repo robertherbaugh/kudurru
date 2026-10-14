@@ -9,22 +9,34 @@ import AuditPage from './AuditPage';
 
 describe('AuditPage', () => {
   it('sorts oldest first on the server and pages toward newer events', async () => {
-    for (let i = 0; i < 150; i++) mockDB().audit.unshift({ ...mockDB().audit[0]!, id: 2000 + i, action: `zone.update-${i}` });
+    const base = mockDB().audit[0]!;
+    const oldest = { ...base, id: 1, action: 'blocklist.create' };
+    const middle = { ...base, id: 2, action: 'zone.update-1' };
+    const newest = { ...base, id: 3, action: 'zone.update-2' };
     const seen: URLSearchParams[] = [];
-    server.events.on('request:start', ({ request }) => {
-      const url = new URL(request.url);
-      if (url.pathname === '/api/v1/audit') seen.push(url.searchParams);
-    });
+    // Small pages exercise the cursor contract without using hundreds of
+    // JSDOM rows as a rendering benchmark. AccessPage.test covers the 100-row page.
+    server.use(
+      http.get('*/api/v1/audit', ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        seen.push(params);
+        if (params.get('order') === 'desc') return HttpResponse.json({ items: [newest] });
+        if (params.get('cursor')) return HttpResponse.json({ items: [newest] });
+        return HttpResponse.json({ items: [oldest, middle], continue: 'older-page-cursor' });
+      }),
+    );
     renderWithApp(<AuditPage />, { route: '/audit' });
     await screen.findByRole('table', { name: 'Audit entries' });
     pick(getSelector('Time order'), 'Oldest first');
     const table = await screen.findByRole('table', { name: 'Audit entries' });
     await within(table).findByText('blocklist.create');
     expect(seen.at(-1)?.get('order')).toBe('asc');
+    expect(seen.at(-1)?.get('limit')).toBe('100');
     expect(seen.at(-1)?.has('cursor')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Load newer events' }));
-    await within(table).findByText('zone.update-149');
-    expect(seen.at(-1)?.get('cursor')).toBeTruthy();
+    await within(table).findByText('zone.update-2');
+    expect(seen.at(-1)?.get('cursor')).toBe('older-page-cursor');
+    expect(seen.at(-1)?.get('order')).toBe('asc');
     expect(await screen.findByText(/End of retained events/)).toBeInTheDocument();
   });
 
