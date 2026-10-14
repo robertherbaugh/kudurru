@@ -16,6 +16,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/snapshotowner"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -65,7 +66,7 @@ func (s *Snapshot) Lookup(identity string) *zone.Zone {
 // Manager runs bounded discovery workers and persists before publication.
 type Manager struct {
 	opts    Options
-	current atomic.Pointer[Snapshot]
+	current snapshotowner.Owner[Snapshot]
 	wake    chan struct{}
 	running atomic.Bool
 }
@@ -91,7 +92,9 @@ func New(opts Options) (*Manager, error) {
 		return nil, errors.New("stub concurrency exceeds 32 workers")
 	}
 	m := &Manager{opts: opts, wake: make(chan struct{}, 1)}
-	m.current.Store(&Snapshot{zones: map[string]*zone.Zone{}})
+	if err := m.current.Publish(context.Background(), &Snapshot{zones: map[string]*zone.Zone{}}, sameSnapshot); err != nil {
+		return nil, err
+	}
 	opts.Cache.OnPublish(func(*zonecache.Snapshot) { m.Wake() })
 	return m, nil
 }
@@ -105,7 +108,7 @@ func (m *Manager) Wake() {
 }
 
 // Snapshot returns the current immutable routes.
-func (m *Manager) Snapshot() *Snapshot { return m.current.Load() }
+func (m *Manager) Snapshot() *Snapshot { return m.Capture().Snapshot() }
 
 // Statuses returns private copies for currently configured objects only.
 func (m *Manager) Statuses() []Status {
@@ -258,7 +261,12 @@ func (m *Manager) Run(ctx context.Context) error {
 				}(e)
 			}
 		}
-		m.publish(entries)
+		if err := m.publish(ctx, entries); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
 	}
 }
 
@@ -323,13 +331,14 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry) {
 	}
 }
 
-func (m *Manager) publish(entries map[string]*entry) {
+func (m *Manager) publish(ctx context.Context, entries map[string]*entry) error {
 	s := &Snapshot{zones: map[string]*zone.Zone{}}
 	for id, e := range entries {
 		if e.z != nil {
 			s.zones[id] = e.z
 		}
 		st := e.status
+		st.Servers = slices.Clone(st.Servers)
 		st.NextRefresh = e.next
 		s.status = append(s.status, st)
 	}
@@ -340,9 +349,15 @@ func (m *Manager) publish(entries map[string]*entry) {
 		if a.Zone > b.Zone {
 			return 1
 		}
+		if a.Identity < b.Identity {
+			return -1
+		}
+		if a.Identity > b.Identity {
+			return 1
+		}
 		return 0
 	})
-	m.current.Store(s)
+	return m.current.Publish(ctx, s, sameSnapshot)
 }
 
 type envelope struct {

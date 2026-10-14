@@ -357,7 +357,9 @@ func TestRuntimeAcceptanceRaceInvalidatesWithoutDeletion(t *testing.T) {
 	if _, _, err := fx.m.restore(t.Context(), job.entry); err == nil {
 		t.Fatal("raced acceptance restored with failed deletion")
 	}
-	fx.m.publish(entries)
+	if err := fx.m.publish(t.Context(), entries); err != nil {
+		t.Fatal(err)
+	}
 	if s, _ := fx.m.StatusFor(fx.list, 0); s.Available {
 		t.Fatal("absent runtime data claimed available")
 	}

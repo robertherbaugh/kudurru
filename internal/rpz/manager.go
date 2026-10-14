@@ -15,6 +15,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/snapshotowner"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -120,7 +121,7 @@ func (s *Snapshot) Select(lists []*v1alpha1.BlockList, configurationAvailable bo
 // Manager schedules bounded independent transfers and commits before publish.
 type Manager struct {
 	opts    Options
-	current atomic.Pointer[Snapshot]
+	current snapshotowner.Owner[Snapshot]
 	wake    chan struct{}
 	running atomic.Bool
 }
@@ -149,13 +150,15 @@ func New(opts Options) (*Manager, error) {
 		return nil, errors.New("rpz: concurrency exceeds 32 workers")
 	}
 	m := &Manager{opts: opts, wake: make(chan struct{}, 1)}
-	m.current.Store(&Snapshot{zones: map[string]*Zone{}, status: map[string]Status{}})
+	if err := m.current.Publish(context.Background(), &Snapshot{zones: map[string]*Zone{}, status: map[string]Status{}}, sameSnapshot); err != nil {
+		return nil, err
+	}
 	opts.Cache.OnPublish(func(*zonecache.Snapshot) { m.Wake() })
 	return m, nil
 }
 
 // Snapshot returns the current immutable node-local feed set.
-func (m *Manager) Snapshot() *Snapshot { return m.current.Load() }
+func (m *Manager) Snapshot() *Snapshot { return m.Capture().Snapshot() }
 
 // Wake coalesces scheduler hints without blocking configuration publishers.
 func (m *Manager) Wake() {
@@ -323,7 +326,12 @@ func (m *Manager) Run(ctx context.Context) error {
 				})
 			}
 		}
-		m.publish(entries)
+		if err := m.publish(ctx, entries); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
 		select {
 		case <-ctx.Done():
 			return nil
@@ -460,7 +468,7 @@ func (e *entry) setDataStatus() {
 	e.status.Primary, e.status.ConfirmedAt, e.status.ExpiresAt = e.data.Primary, e.data.ConfirmedAt, e.data.ExpiresAt
 }
 
-func (m *Manager) publish(entries map[string]*entry) {
+func (m *Manager) publish(ctx context.Context, entries map[string]*entry) error {
 	snap := &Snapshot{zones: map[string]*Zone{}, status: map[string]Status{}, credentials: map[string]string{}}
 	for id, e := range entries {
 		if e.z != nil && e.status.ConfigurationError == "" {
@@ -475,7 +483,7 @@ func (m *Manager) publish(entries map[string]*entry) {
 			snap.credentials[id] = e.data.Credential
 		}
 	}
-	m.current.Store(snap)
+	return m.current.Publish(ctx, snap, sameSnapshot)
 }
 
 func (m *Manager) credential(dz *v1alpha1.DNSZone) (string, error) {

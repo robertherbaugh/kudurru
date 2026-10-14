@@ -80,7 +80,9 @@ func TestSnapshotBindNativeAcquisitionRotationAndRestore(t *testing.T) {
 	rotated := snapshotRing(t, dns.HmacSHA256, []byte("rotated-rpz-test-secret"))
 	newFingerprint, _ := boundCredential("rpz-key.", rotated)
 	e := &entry{spec: spec, dz: config, data: r.data, z: r.z, credential: newFingerprint}
-	m.publish(map[string]*entry{spec.Identity: e})
+	if err := m.publish(t.Context(), map[string]*entry{spec.Identity: e}); err != nil {
+		t.Fatal(err)
+	}
 	s := m.Snapshot()
 	bound, err := s.Bind([]*public.BlockList{list}, ring)
 	if err != nil || bound.Select([]*public.BlockList{list}, true).Evaluate(Context{Name: "bad.test."}, time.Now()).Action != ActionNXDOMAIN {
@@ -107,7 +109,9 @@ func TestSnapshotBindNativeAcquisitionRotationAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.publish(map[string]*entry{spec.Identity: restore})
+	if err := m.publish(t.Context(), map[string]*entry{spec.Identity: restore}); err != nil {
+		t.Fatal(err)
+	}
 	if b, err := m.Snapshot().Bind([]*public.BlockList{list}, rotated); err != nil || !b.Select([]*public.BlockList{list}, true).Evaluate(Context{Name: "bad.test."}, time.Now()).Unavailable {
 		t.Fatal("restored A accepted by current B", err)
 	}

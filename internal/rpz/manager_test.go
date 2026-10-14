@@ -332,6 +332,10 @@ func TestRuntimeABACancelsOldWorker(t *testing.T) {
 	eventually(t, func() bool {
 		return fx.cache.Snapshot().Objects.BlockLists()[0].Spec.Sources[0].RPZ.Primaries[0] == "127.0.0.2:5300"
 	})
+	// The cache observing B does not prove that the scheduler has processed B.
+	// Await an actual B acquisition before returning to A; otherwise coalescing
+	// both cache updates can legitimately omit the third transfer this test needs.
+	eventually(t, func() bool { return fx.m.Capture().Snapshot().Lookup(SourceIdentity(change, 0)) != nil })
 	rx.set(7, nil)
 	obj, err := fx.store.Apply(t.Context(), fx.list, store.ApplyOptions{Manager: store.ManagerAPI})
 	if err != nil {

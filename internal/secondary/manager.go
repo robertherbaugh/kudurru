@@ -13,13 +13,13 @@ import (
 	"maps"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/snapshotowner"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -89,7 +89,7 @@ func (s *Snapshot) Lookup(identity string) *zone.Zone {
 // Manager runs one scheduler per replica, with bounded concurrent transfers.
 type Manager struct {
 	opts      Options
-	current   atomic.Pointer[Snapshot]
+	current   snapshotowner.Owner[Snapshot]
 	wake      chan struct{}
 	triggerMu sync.Mutex
 	triggers  map[string]bool
@@ -113,7 +113,9 @@ func New(opts Options) (*Manager, error) {
 		opts.MaxConcurrent = 4
 	}
 	m := &Manager{opts: opts, wake: make(chan struct{}, 1), triggers: make(map[string]bool)}
-	m.current.Store(&Snapshot{zones: map[string]*zone.Zone{}})
+	if err := m.current.Publish(context.Background(), &Snapshot{zones: map[string]*zone.Zone{}}, sameSnapshot); err != nil {
+		return nil, err
+	}
 	opts.Cache.OnPublish(func(*zonecache.Snapshot) { m.Wake() })
 	return m, nil
 }
@@ -165,7 +167,7 @@ func (m *Manager) takeTriggers() map[string]bool {
 }
 
 // Snapshot returns the current immutable transferred data.
-func (m *Manager) Snapshot() *Snapshot { return m.current.Load() }
+func (m *Manager) Snapshot() *Snapshot { return m.Capture().Snapshot() }
 
 // Statuses reports availability at the current clock, including expiry
 // between scheduler ticks. Returned data can be safely modified by callers.
@@ -339,7 +341,12 @@ func (m *Manager) Run(ctx context.Context) error {
 				}
 			}(e)
 		}
-		m.publish(entries)
+		if err := m.publish(ctx, entries); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
 	}
 }
 
@@ -392,7 +399,7 @@ func (m *Manager) reconcile(ctx context.Context, entries map[string]*entry) {
 	}
 }
 
-func (m *Manager) publish(entries map[string]*entry) {
+func (m *Manager) publish(ctx context.Context, entries map[string]*entry) error {
 	snap := &Snapshot{zones: make(map[string]*zone.Zone, len(entries)), credentials: make(map[string]string, len(entries))}
 	for id, e := range entries {
 		if e.z != nil {
@@ -414,9 +421,15 @@ func (m *Manager) publish(entries map[string]*entry) {
 		if a.Zone > b.Zone {
 			return 1
 		}
+		if a.Identity < b.Identity {
+			return -1
+		}
+		if a.Identity > b.Identity {
+			return 1
+		}
 		return 0
 	})
-	m.current.Store(snap)
+	return m.current.Publish(ctx, snap, sameSnapshot)
 }
 
 func timer(seconds uint32) time.Duration {

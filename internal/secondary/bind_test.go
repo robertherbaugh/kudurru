@@ -45,7 +45,9 @@ func TestSnapshotBindAcquiredNativeCredentialsAndDurableRestore(t *testing.T) {
 	rotated := transferRing(t, transferKey, dns.HmacSHA256, []byte("rotated-secondary-test-secret"))
 	expected, _ := boundCredential(dz.Spec.Secondary.TSIGKeyRef, rotated)
 	e.credential = expected // A later job's key must never relabel acquired A.
-	m.publish(map[string]*entry{e.id: e})
+	if err := m.publish(t.Context(), map[string]*entry{e.id: e}); err != nil {
+		t.Fatal(err)
+	}
 	held := m.Snapshot()
 	bound, err := held.Bind([]*public.DNSZone{dz}, ring)
 	if err != nil || bound.Lookup(e.id) == nil {
@@ -74,7 +76,9 @@ func TestSnapshotBindAcquiredNativeCredentialsAndDurableRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.publish(map[string]*entry{restore.id: restore})
+	if err := m.publish(t.Context(), map[string]*entry{restore.id: restore}); err != nil {
+		t.Fatal(err)
+	}
 	b, err := m.Snapshot().Bind([]*public.DNSZone{dz}, ring)
 	if err != nil || b.Lookup(e.id) == nil || b.Lookup(e.id).AvailableAt(r.data.ExpiresAt) || !bound.Lookup(e.id).AvailableAt(r.data.ExpiresAt.Add(-time.Nanosecond)) {
 		t.Fatal("restore/binding renewed absolute expiry", err)
