@@ -48,7 +48,7 @@ func newBroadcaster() *broadcaster {
 func (b *broadcaster) subscribe(w *watcher) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.closed || w.ctx.Err()!=nil {
+	if b.closed || w.ctx.Err() != nil {
 		return false
 	}
 	w.lagged.Store(false)

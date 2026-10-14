@@ -67,6 +67,7 @@ func (s *Store) replicaObject(raw json.RawMessage) (store.Object, error) {
 	return obj, nil
 }
 
+// ValidateImage checks a complete image against the local registry and owners.
 func (s *Store) ValidateImage(ctx context.Context, image replication.Image) (*replication.Validated, error) {
 	return replication.Validate(image, s.replicationValidation(ctx))
 }
@@ -503,7 +504,7 @@ func (s *Store) ApplyCluster(ctx context.Context, objects []store.Object, opts s
 	var compactTo uint64
 	if len(rvs) > 0 && s.sinceCompacted+len(ms) >= s.compactEvery {
 		rv := rvs[len(rvs)-1]
-		retention := uint64(s.opts.FeedRetention)
+		retention := uint64(s.opts.FeedRetention) // #nosec G115 -- Open replaces nonpositive retention with its positive default.
 		if rv > retention && rv-retention > s.compacted.Load() {
 			compactTo = rv - retention
 			if err := compactFeed(ctx, q, compactTo); err != nil {

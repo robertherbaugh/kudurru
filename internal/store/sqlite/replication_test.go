@@ -60,7 +60,7 @@ func TestReplicaCompleteReplacementPreservesPrivateStatusAndMetadata(t *testing.
 	if err := p.UpdateStatus(ctx, z); err != nil {
 		t.Fatal(err)
 	}
-	u := &internals.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice"}, Spec: internals.LocalUserSpec{PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA", TOTPSecret: "sealed-owner-ciphertext"}}
+	u := &internals.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice"}, Spec: internals.LocalUserSpec{PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA", TOTPSecret: "sealed-owner-ciphertext"}} // #nosec G101 -- Synthetic hash/ciphertext fixtures verify private image preservation; no real credentials.
 	mustApply(t, p, u, store.ManagerSystem)
 	_, err := p.ApplyCluster(ctx, nil, store.ApplyOptions{}, []SectionChange{{Section: "runtime", Key: "blocking", Data: json.RawMessage(`{"mode":"disabled"}`)}, {Section: "security", Key: "revocation", Data: json.RawMessage(`{"sealed":"opaque"}`)}})
 	if err != nil {

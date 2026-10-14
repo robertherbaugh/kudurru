@@ -160,6 +160,10 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
+	return s.list(ctx, s.rq, kind, opts)
+}
+
+func (s *Store) list(ctx context.Context, q queryer, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
 	ki, err := s.kinds.get(kind)
 	if err != nil {
 		return store.ObjectList{}, err
@@ -193,7 +197,7 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 		b.WriteString(` LIMIT ?`)
 		args = append(args, opts.Limit+1)
 	}
-	rows, err := s.rq.QueryContext(ctx, b.String(), args...)
+	rows, err := q.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return store.ObjectList{}, fmt.Errorf("store/sqlite: list %s: %w", kind, err)
 	}
@@ -751,30 +755,35 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) (err error) 
 		if err != nil {
 			return nil, err
 		}
-		if prev == nil {
-			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		}
-		if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
-			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
-		}
-		in := obj.DeepCopyObject().(store.Object)
-		in.GetObjectKind().SetGroupVersionKind(ki.gvk)
-		if err := s.validateStatus(ctx, in, prev.obj); err != nil {
-			return nil, err
-		}
-		next := prev.obj.DeepCopyObject().(store.Object)
-		if err := copyStatus(next, in); err != nil {
-			return nil, err
-		}
-		m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
-		if same, err := identical(next, prev); err != nil {
-			return nil, err
-		} else if same {
-			m.noop = true
-		}
-		return m, nil
+		return s.planStatus(ctx, ki, key, obj, prev)
 	})
 	return err
+}
+
+func (s *Store) planStatus(ctx context.Context, ki *kindInfo, key store.Key, obj store.Object, prev *stored) (*mutation, error) {
+	callerRV := obj.GetResourceVersion()
+	if prev == nil {
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	}
+	if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
+		return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
+	}
+	in := obj.DeepCopyObject().(store.Object)
+	in.GetObjectKind().SetGroupVersionKind(ki.gvk)
+	if err := s.validateStatus(ctx, in, prev.obj); err != nil {
+		return nil, err
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	if err := copyStatus(next, in); err != nil {
+		return nil, err
+	}
+	m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
+	if same, err := identical(next, prev); err != nil {
+		return nil, err
+	} else if same {
+		m.noop = true
+	}
+	return m, nil
 }
 
 // storedTime is t as a stored document decodes it: metav1.Time encodes

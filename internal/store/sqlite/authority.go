@@ -194,6 +194,7 @@ type WriterToken struct {
 }
 type writerTokenKey struct{}
 
+// WithWriterToken binds a mutation context to the captured authority incarnation.
 func WithWriterToken(ctx context.Context, t WriterToken) context.Context {
 	return context.WithValue(ctx, writerTokenKey{}, t)
 }
@@ -205,6 +206,7 @@ func HasWriterToken(ctx context.Context) bool {
 	return ok
 }
 
+// WriterToken captures current writable authority for later fenced commit checks.
 func (s *Store) WriterToken() (WriterToken, error) {
 	if s.isClosed() {
 		return WriterToken{}, store.ErrClosed
@@ -220,6 +222,9 @@ func (s *Store) WriterToken() (WriterToken, error) {
 }
 
 func (s *Store) writeContext(ctx context.Context) (context.Context, error) {
+	if tx, ok := ctx.Value(commandTxKey{}).(*CommandTx); ok {
+		return nil, tx.poison(ErrTransactionReentry)
+	}
 	if _, ok := ctx.Value(writerTokenKey{}).(WriterToken); ok {
 		return ctx, nil
 	}
@@ -323,14 +328,15 @@ func (s *Store) ObserveAuthority(ctx context.Context, term replication.Term) (re
 	if a.Incarnation < math.MaxUint64 {
 		a.Incarnation++
 	}
-	if same {
-		// Retry a failed durable observation without inventing a conflict.
-	} else if term.Epoch == a.Term.Epoch {
-		a.Mode, a.Conflict = replication.Conflict, &term
-		result = replication.ErrPromotionConflict
-	} else {
-		a.Term, a.Mode, a.Conflict, a.Divergence = term, replication.Fenced, nil, nil
-		result = nil
+	// A retry of the same failed durable observation preserves its authority.
+	if !same {
+		if term.Epoch == a.Term.Epoch {
+			a.Mode, a.Conflict = replication.Conflict, &term
+			result = replication.ErrPromotionConflict
+		} else {
+			a.Term, a.Mode, a.Conflict, a.Divergence = term, replication.Fenced, nil, nil
+			result = nil
+		}
 	}
 	a.MaxObservedEpoch = max(a.MaxObservedEpoch, term.Epoch)
 	if _, err := s.w.ExecContext(ctx, `PRAGMA synchronous=FULL`); err != nil {

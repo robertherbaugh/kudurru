@@ -27,7 +27,7 @@ func TestMigration2PreservesLegacyObjectsAndStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	z := zone("home", "home.example.")
-	z.TypeMeta.APIVersion, z.TypeMeta.Kind = "kudurru.io/v1alpha1", "DNSZone"
+	z.APIVersion, z.Kind = "kudurru.io/v1alpha1", "DNSZone"
 	z.ResourceVersion, z.UID, z.Generation = "7", "legacy-stable-uid", 12
 	z.SetCreationTimestamp(storedTime(time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)))
 	z.Annotations = map[string]string{v1alpha1.ManagedByAnnotation: "file:legacy.yaml", "operator": "preserved"}
