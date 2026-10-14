@@ -31,6 +31,13 @@ type Receiver interface {
 	AXFR(context.Context, *v1alpha1.DNSZone, string) ([]dns.RR, error)
 }
 
+// incrementalReceiver returns a complete candidate after applying a bounded
+// IXFR stream, including protocol-level AXFR fallback. The manager only supplies
+// an unexpired base received under the same credentials.
+type incrementalReceiver interface {
+	IXFR(context.Context, *v1alpha1.DNSZone, string, []dns.RR) ([]dns.RR, error)
+}
+
 // Options supplies node-local persistence and configuration snapshots.
 type Options struct {
 	Cache *zonecache.Cache
@@ -465,6 +472,12 @@ func (m *Manager) refresh(ctx context.Context, e *entry) result {
 		} else if err == nil {
 			if baseline && soa.Serial != e.z.Serial() && soa.Serial-e.z.Serial() >= 1<<31 {
 				err = errors.New("primary SOA serial is older or ambiguous")
+			} else if receiver, ok := m.opts.Receiver.(incrementalReceiver); ok && baseline && credential == e.credential {
+				var base []dns.RR
+				base, err = e.data.records()
+				if err == nil {
+					records, err = receiver.IXFR(ctx, e.dz, primary, base)
+				}
 			} else {
 				records, err = m.opts.Receiver.AXFR(ctx, e.dz, primary)
 			}
