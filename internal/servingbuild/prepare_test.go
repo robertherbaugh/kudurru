@@ -45,6 +45,7 @@ import (
 )
 
 type fixture struct {
+	keyrings           *KeyringOwner
 	store              *sqlite.Store
 	builder            *Builder
 	pub                *serving.Publisher
@@ -60,7 +61,12 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{now: time.Now().UTC()}
+	return newFixtureWithKeyrings(t, nil)
+}
+
+func newFixtureWithKeyrings(t *testing.T, keyrings *KeyringOwner) *fixture {
+	t.Helper()
+	f := &fixture{now: time.Now().UTC(), keyrings: keyrings}
 	f.epoch.Store(1)
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
@@ -104,6 +110,12 @@ func newFixture(t *testing.T) *fixture {
 		d := f.deps
 		epoch := f.epoch.Load()
 		d.Current = func() bool { return f.epoch.Load() == epoch && !f.blocked.Load() }
+		if keyrings != nil {
+			cut := keyrings.Capture()
+			d.Keys = cut.Keys()
+			d.Identity += "/" + cut.Identity()
+			d.Current = func() bool { return f.epoch.Load() == epoch && !f.blocked.Load() && cut.Current() }
+		}
 		f.captured.Add(1)
 		d.Release = func() { f.released.Add(1) }
 		return d, nil
@@ -135,7 +147,15 @@ func newFixture(t *testing.T) *fixture {
 		}
 		return nil
 	})
-	f.pub, err = serving.New(serving.Options{Source: f.store, Required: serving.CompleteManifest(), Prepare: f.builder.Prepare, RetryInterval: time.Millisecond})
+	options := serving.Options{Source: f.store, Required: serving.CompleteManifest(), Prepare: f.builder.Prepare, RetryInterval: time.Millisecond}
+	if keyrings != nil {
+		options.Source, err = keyrings.GuardSource(f.store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		options.DependencyChanges = keyrings.Changes
+	}
+	f.pub, err = serving.New(options)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/sqliteadapter"
 	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -33,7 +34,17 @@ func primaryFixture(t *testing.T, f *fixture) (*pr.Runtime, *PrimaryPublication,
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := sqliteadapter.New(sqliteadapter.Options{Store: f.store, Background: publicationTestGuard{}})
+	options := sqliteadapter.Options{Store: f.store, Background: publicationTestGuard{}}
+	readerOptions := primaryzone.ReaderOptions{}
+	if f.keyrings != nil {
+		guard, err := currentguard.New(currentguard.Options{Pin: f.keyrings.PrimaryPin(f.pub)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		options.Background, options.Credentials = guard.Background(), guard.Credentials()
+		readerOptions.Policy = guard.CapturePolicy
+	}
+	a, err := sqliteadapter.New(options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +52,7 @@ func primaryFixture(t *testing.T, f *fixture) (*pr.Runtime, *PrimaryPublication,
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := pr.New(pr.Options{Store: f.store, Repository: zonestate.NewRepository(backend, zonestate.Limits{}), Reader: primaryzone.NewReader(f.store, primaryzone.ReaderOptions{}), LifecycleCAS: a.LifecycleCAS, Admit: a.Admission, Publish: p.Publish})
+	r, err := pr.New(pr.Options{Store: f.store, Repository: zonestate.NewRepository(backend, zonestate.Limits{}), Reader: primaryzone.NewReader(f.store, readerOptions), LifecycleCAS: a.LifecycleCAS, Admit: a.Admission, Publish: p.Publish})
 	if err != nil {
 		t.Fatal(err)
 	}

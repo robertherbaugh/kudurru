@@ -7,6 +7,7 @@ import (
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/driver"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -15,7 +16,15 @@ import (
 )
 
 func TestDriverPublishesRealWholeBundleAcrossReplacementAndLateParent(t *testing.T) {
-	f := newFixture(t)
+	keys, err := dnsserver.NewStaticKeyring()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyrings, err := NewKeyringOwner(keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFixtureWithKeyrings(t, keyrings)
 	r, publication, ctx := primaryFixture(t, f)
 	var desired public.DNSZone
 	if err := f.store.Get(ctx, store.Key{Kind: "DNSZone", Name: "uncommitted"}, &desired); err != nil {

@@ -483,6 +483,23 @@ including a rejected or deduplicated request, crosses this admission. A child
 stalled by conflicting dynamic parent data retries its unfinished fences after
 an explicit authorized cleanup; it cannot activate without durable witnesses.
 
+`primaryruntime/currentguard` uses the same immutable current keyring to compile
+reader policy and validate the transaction's actual desired source. UPDATE needs
+the issuer's policy validator from that same pin; an optional additional validator
+cannot replace it. Key removal withholds grants and credentials so reconciliation
+can revoke them. Default/deny and explicit allow policies are supported; client
+ACL, private-network and nameserver modes remain unavailable until their required
+client-policy capability is bound. Final command checks recheck cancellation and
+the original TSIG deadline without acquiring locks or rereading the store.
+
+`servingbuild.KeyringOwner` orders exclusion as publication, key replacement, then
+SQLite. It retains current keys through the complete command, including its final
+checks, and guards the actual serving pointer swap. Local generation identities
+prevent A → B → A replacement from reviving an old candidate; they do not claim
+a durable fresh-acquisition epoch. Held DNS leases keep their immutable old keys.
+NOTIFY delivery and acknowledgment remain denied until an explicit current policy
+validator and matching immutable sender are installed.
+
 `primaryruntime.PrepareImage` reconstructs committed primary routing from one
 complete replication image and the explicit local kind manifest, including
 zero-count kinds. It validates every head and chunk, including historical heads
@@ -546,8 +563,8 @@ flowchart LR
 ```
 
 The driver and complete publisher are exercised together on actual SQLite.
-Production keyring/policy guards, listener callback wiring, production mounting
-and authenticated HA forwarding remain in progress.
+Current keyring/policy guards are tested with that composition. Listener callback
+wiring, production mounting and authenticated HA forwarding remain in progress.
 The Kubernetes test adapter exercises exact-object CAS without claiming a
 multi-object transaction. This checkpoint does not yet enable network UPDATE.
 
