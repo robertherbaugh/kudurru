@@ -9,9 +9,11 @@ import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table'
 import { Text } from '@astryxdesign/core/Text';
 import { Page, PageHeader, Panel } from '../ui/components/layout/Page';
 
-const REPOSITORY = 'https://github.com/robertherbaugh/kudurru';
+const OWNER = 'robertherbaugh';
+const REGISTRY = `ghcr.io/${OWNER}`;
+const REPOSITORY = `https://github.com/${OWNER}/kudurru`;
 const LATEST_RELEASE = `${REPOSITORY}/releases/latest`;
-const PACKAGES = 'https://github.com/users/robertherbaugh/packages/container/package';
+const PACKAGES = `https://github.com/users/${OWNER}/packages/container/package`;
 const DEPLOY_GUIDES = 'https://docs.kudurru.io/deploy';
 
 interface DownloadLink {
@@ -119,12 +121,12 @@ export default function DownloadsPage() {
         <Table<PackageRow> data={packages} columns={columns} idKey="id" verticalAlign="top" />
       </Panel>
       <Panel title="Pull a container image">
-        <CodeBlock code="docker pull ghcr.io/robertherbaugh/kudurru:latest" language="bash" isWrapped width="100%" size="sm" />
+        <CodeBlock code={`docker pull ${REGISTRY}/kudurru:latest`} language="bash" isWrapped width="100%" size="sm" />
         <Text type="supporting" as="p">For a specific release, replace <Text type="code">latest</Text> with its version, without the leading <Text type="code">v</Text>.</Text>
       </Panel>
       <Panel title="Download Helm charts">
         <CodeBlock
-          code={'helm pull oci://ghcr.io/robertherbaugh/charts/kudurru-crds\nhelm pull oci://ghcr.io/robertherbaugh/charts/kudurru'}
+          code={`helm pull oci://${REGISTRY}/charts/kudurru-crds\nhelm pull oci://${REGISTRY}/charts/kudurru`}
           language="bash"
           isWrapped
           width="100%"
