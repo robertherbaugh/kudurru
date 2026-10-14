@@ -29,6 +29,7 @@ type primaryRuntimeOptions struct {
 	Publisher    *serving.Publisher
 	Schema       *servingbuild.Schema
 	Keyrings     *servingbuild.KeyringOwner
+	Transferred  *servingbuild.TransferredRuntime
 	NotifySource netip.Addr
 	Resolver     network.Resolver
 	Limits       zonestate.Limits
@@ -50,7 +51,7 @@ type primaryRuntime struct {
 }
 
 func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRuntime, error) {
-	if ctx == nil || o.Store == nil || o.Publisher == nil || o.Schema == nil || o.Keyrings == nil {
+	if ctx == nil || o.Store == nil || o.Publisher == nil || o.Schema == nil || o.Keyrings == nil || o.Transferred == nil {
 		return nil, pr.ErrInvalid
 	}
 	p := &primaryRuntime{writer: primaryWriter{store: o.Store}, publisher: o.Publisher, ingress: &primaryUpdateIngress{authority: o.Store.Authority}}
@@ -63,7 +64,7 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 	if err != nil {
 		return nil, err
 	}
-	pin := o.Keyrings.PrimaryPin(o.Publisher)
+	pin := o.Transferred.PrimaryPin(o.Keyrings.PrimaryPin(o.Publisher))
 	guard, err := currentguard.New(currentguard.Options{Limits: o.Limits, Pin: func(ctx context.Context, f pr.PublicationFence, fn func(currentguard.Pinned) error) error {
 		return pin(ctx, f, func(current currentguard.Pinned) error {
 			current.Notify = sender.Validator(current.Identity, current.Keys)

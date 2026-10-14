@@ -122,7 +122,7 @@ func newPrimaryNetworkFixture(t *testing.T) *primaryNetworkFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Keyrings: f.keyrings, Observe: func(out pr.UpdateOutcome) { t.Logf("UPDATE outcome: %+v", out) }})
+	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Keyrings: f.keyrings, Transferred: servingbuild.NewTransferredRuntime(nil, nil, nil), Observe: func(out pr.UpdateOutcome) { t.Logf("UPDATE outcome: %+v", out) }})
 	if err != nil {
 		t.Fatal(err)
 	}
