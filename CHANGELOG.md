@@ -30,8 +30,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - CNAME/DNAME chasing rechecks the most specific local zone before following
   a target, so parent wildcard data cannot bypass a child zone's data or expiry.
 
-TLS/IXFR ingestion, inbound NOTIFY, stub zones and signed secondary serving
-remain subsequent v0.2 work; this entry describes the first secondary slice.
+TLS/IXFR ingestion, stub zones and signed secondary serving
+remain subsequent v0.2 work. Inbound NOTIFY now verifies the primary source
+and configured TSIG, schedules bounded local refreshes, and fans authenticated
+hints to peers so every replica transfers independently.
 
 ## [0.1.0] - 2026-10-18
 

@@ -184,8 +184,16 @@ to retain copies across restarts; an ephemeral replacement needs a new transfer.
 Changes to the secondary configuration or its credentials also require a fresh
 transfer. Other zones can continue to answer while this secondary is unavailable.
 
-This first secondary implementation uses AXFR over TCP. TLS, IXFR and inbound
-NOTIFY follow in later v0.2 work. Signed zones are diagnosed as unsupported;
+Primaries may send NOTIFY to any replica's UDP, TCP, or DoT listener. The source
+address must match a configured primary, and the configured TSIG key is required
+when present. For primary hostnames, address authorization is refreshed every
+30 seconds and expires after two minutes if resolution fails. The receiving
+replica sends a refresh hint to peers over the authenticated internal listener;
+every replica then checks and transfers independently. Lost hints recover at
+the next SOA refresh. NOTIFY never extends expiry by itself.
+
+This secondary implementation uses AXFR over TCP. TLS and IXFR follow in later
+v0.2 work. Signed zones are diagnosed as unsupported;
 they are not served without their required DNSSEC proofs. Local secondary
 export is not available yet.
 

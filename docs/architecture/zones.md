@@ -226,8 +226,15 @@ sequenceDiagram
     participant P as external primary
     participant D as node local.db
     participant Q as authoritative queries
+    participant N as peer replicas
     C->>R: publish secondary configuration
     R->>D: load identity-bound copy and absolute expiry
+    opt primary sends NOTIFY
+        P->>R: NOTIFY through UDP/TCP/DoT listener
+        R->>R: verify primary source and configured TSIG
+        R->>N: bounded authenticated refresh hint
+        N->>P: independent SOA check and transfer
+    end
     R->>P: TCP SOA (TSIG when configured)
     alt initial copy or newer serial
         R->>P: TCP AXFR
@@ -244,8 +251,8 @@ sequenceDiagram
 The primary's SOA controls refresh, retry and expire. Failed or incomplete
 transfers retain the previous copy until its original deadline. For an
 unexpired copy, same-serial SOA confirmation renews expiry; loading from disk,
-restarting or failing a refresh never does. At expiry the configured zone remains in suffix matching
-and answers SERVFAIL. Recovery after expiry always requires a new AXFR, even
+restarting or failing a refresh never does. At expiry the configured zone remains
+in suffix matching and answers SERVFAIL. Recovery after expiry always requires a new AXFR, even
 if the serial is unchanged. The obsolete local serial no longer prevents
 recovery from a primary restored to an older serial; the new transfer must
 still be at least as current as its authenticated SOA poll. Configuration older
@@ -267,7 +274,22 @@ serial regression, missing/invalid configured TSIG and size limits reject the
 whole candidate. TCP is currently supported; configured TLS is diagnosed and
 never silently downgraded. The data model preserves DNSSEC and unknown RRs,
 but the runtime rejects signed zones until signature/proof response assembly
-is implemented. IXFR and inbound NOTIFY remain subsequent slices.
+is implemented. IXFR remains a subsequent slice.
+
+Inbound NOTIFY reaches the authoritative opcode handler through ingress. It
+requires an exact secondary apex, an address belonging to a configured primary,
+and the configured transfer TSIG key when present. Numeric primaries match
+directly; hostname addresses refresh off the request path every 30 seconds and
+expire after two minutes even during lookup failures. Key and source checks
+are conjunctive. DoH/DoQ/DoH3 and synthetic API requests cannot submit hints.
+
+Accepted hints coalesce in a bounded queue and cause at most one SOA check per
+second per zone. A hint received during a transfer schedules another check.
+An authenticated `/internal/events` POST fans the configuration identity to
+peer replicas; those replicas only trigger their local manager and never
+rebroadcast. Four bounded workers handle fan-out. Failed/dropped hints are
+counted, and ordinary refresh/retry timers remain the recovery path. Neither
+a hint nor its advertised serial changes data, confirmation, or expiry.
 
 Shared secondary status has `Ready=Unknown`, reason `PerNodeTransfer`; the
 controller clears legacy primary serial/hash/count fields. Zone API responses
@@ -281,6 +303,7 @@ an old routing view; unrelated zones continue to receive configuration updates.
 
 ## Not built yet
 
-Stub zones, IXFR in, verified TLS transfers, signed secondary serving, NOTIFY in, dynamic UPDATE
+Stub zones, IXFR in, verified TLS transfers, signed secondary serving, dynamic UPDATE
 (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
-Today any opcode other than QUERY is answered NOTIMP at ingress.
+UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
+the atomic update handler is installed. Unknown opcodes remain NOTIMP.

@@ -145,12 +145,13 @@ zone %q {
 
 type secondaryServingRuntime struct {
 	manager      *secondary.Manager
+	notify       *secondary.NotifyReceiver
 	addrs        map[string]string
 	startManager func()
 	stop         func()
 }
 
-func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath string, ring dnsserver.TSIGKeyring, clock *secondaryServingClock, root string) *secondaryServingRuntime {
+func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath string, ring dnsserver.TSIGKeyring, clock *secondaryServingClock, root string, accepted ...func(string)) *secondaryServingRuntime {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	logger := slog.New(slog.DiscardHandler)
@@ -202,6 +203,11 @@ func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath str
 	}
 	stage := authoritative.New(zoneview.Source{Cache: cache, Secondary: manager})
 	stage.Now = clock.now
+	notify := secondary.NewNotifyReceiver(manager, nil)
+	if len(accepted) != 0 {
+		notify.Accepted = accepted[0]
+	}
+	stage.Notify = notify.Handle
 	forward, err := upstreamstage.New("default", []string{root}, time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -221,6 +227,7 @@ func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath str
 		t.Fatal(err)
 	}
 	launch(cache.Start)
+	launch(notify.Run)
 	launch(registry.Run)
 	select {
 	case <-cache.Initialized():
@@ -238,7 +245,7 @@ func startSecondaryServingRuntime(t *testing.T, config *memory.Store, dbPath str
 	}
 	var startOnce sync.Once
 	return &secondaryServingRuntime{
-		manager: manager, stop: stop,
+		manager: manager, notify: notify, stop: stop,
 		addrs:        map[string]string{"udp": registry.Addr(dnsserver.ProtoUDP).String(), "tcp": registry.Addr(dnsserver.ProtoTCP).String()},
 		startManager: func() { startOnce.Do(func() { launch(manager.Run) }) },
 	}
