@@ -1,0 +1,9 @@
+// The Bun server, the code it shares with the UI and the build scripts: Bun's types, no DOM.
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": ["bun"]
+  },
+  "include": ["server", "shared", "scripts"]
+}

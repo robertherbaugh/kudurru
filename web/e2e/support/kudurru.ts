@@ -2,10 +2,11 @@
 // builds) the binary, writes a node configuration with free loopback
 // ports under a temporary directory (sqlite store, own data directory,
 // admin socket, encryption key and admin password files, objects.d with a
-// primary zone, a block list and a policy), starts the process, waits for
-// GET /healthz/ready on the ops listener and stops it again (the server
-// log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps the temporary
-// directory). The Go side of the same idea is internal/testutil/kudurrutest.
+// primary zone, a block list and, on a node with a key, a policy), starts
+// the process, waits for GET /healthz/ready on the ops listener and stops
+// it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
+// the temporary directory). The Go side of the same idea is
+// internal/testutil/kudurrutest.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -23,6 +24,8 @@ export const ZONE = { object: 'lan.example', apex: 'lan.example.', host: 'nas.la
 /** The block list of the run and one name on it. */
 export const BLOCKLIST = { name: 'e2e-ads', blocked: 'ads.example.net', alsoBlocked: 'tracker.example.org' };
 export const ADMIN_USER = 'admin';
+/** The signed key of the e2e node: all features, 10 nodes, no expiry in sight. */
+export const E2E_LICENSE_KEY = path.join(REPO_DIR, 'internal', 'license', 'testdata', 'e2e-license.key');
 
 const OBJECTS = `apiVersion: kudurru.io/v1alpha1
 kind: DNSZone
@@ -51,7 +54,10 @@ spec:
   sources:
     - inline: ["||${BLOCKLIST.blocked}^", "${BLOCKLIST.alsoBlocked}"]
       format: adblock
----
+`;
+
+/** The policy of the run, beside the seeded default (not on a node without a key). */
+const POLICY = `---
 apiVersion: kudurru.io/v1alpha1
 kind: Policy
 metadata: { name: e2e-blocking, namespace: default }
@@ -75,7 +81,7 @@ export function locateBinary(): string {
       throw new Error('no bin/kudurru and no built dashboard in web/dist: run `make web-e2e` (or `make web-build build`) first');
     }
     console.log(`e2e: building ${p}`);
-    const r = spawnSync('go', ['build', '-trimpath', '-o', p, './cmd/kudurru'], {
+    const r = spawnSync('go', ['build', '-trimpath', '-tags', 'licensetest', '-o', p, './cmd/kudurru'], {
       cwd: REPO_DIR,
       env: { ...process.env, CGO_ENABLED: '0' },
       stdio: 'inherit',
@@ -84,6 +90,10 @@ export function locateBinary(): string {
   }
   return p;
 }
+
+// Ports this process has handed out: the OS may return a just-closed port
+// again, which would give two listeners of one node the same address.
+const handedOut = new Set<number>();
 
 /** A loopback port free for both TCP and UDP right now. */
 export async function freePort(): Promise<number> {
@@ -101,7 +111,10 @@ export async function freePort(): Promise<number> {
       s.once('error', () => resolve(false));
       s.bind(port, '127.0.0.1', () => s.close(() => resolve(true)));
     });
-    if (port && udpFree) return port;
+    if (port && udpFree && !handedOut.has(port)) {
+      handedOut.add(port);
+      return port;
+    }
   }
   throw new Error('no loopback port free for tcp and udp');
 }
@@ -113,6 +126,12 @@ export interface ServerOptions {
   adminPassword?: string;
   /** Node name. */
   node?: string;
+  /**
+   * Run without a license key (the community license). The node starts like
+   * a fresh install: the seeded default is its only policy, so it is at the
+   * free limit of one policy.
+   */
+  community?: boolean;
 }
 
 export interface Server {
@@ -130,15 +149,29 @@ export interface Server {
   stop: () => Promise<void>;
 }
 
-/** Writes the configuration and starts `kudurru serve`; resolves once it is ready. */
+/**
+ * Writes the configuration and starts `kudurru serve`; resolves once it is ready.
+ * A port picked by freePort can be taken by another worker before the node binds
+ * it, so a start that dies on "address already in use" is retried with new ports.
+ */
 export async function startServer(bin: string, opts: ServerOptions): Promise<Server> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startServerOnce(bin, opts);
+    } catch (err) {
+      if (attempt >= 3 || !/address already in use/.test((err as Error).message)) throw err;
+    }
+  }
+}
+
+async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server> {
   const node = opts.node ?? 'e2e';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kudurru-e2e-${node}-`));
   const dataDir = path.join(dir, 'data');
   const objectsDir = path.join(dir, 'objects.d');
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o750 });
   fs.mkdirSync(objectsDir, { recursive: true });
-  fs.writeFileSync(path.join(objectsDir, 'e2e.yaml'), OBJECTS);
+  fs.writeFileSync(path.join(objectsDir, 'e2e.yaml'), opts.community ? OBJECTS : OBJECTS + POLICY);
 
   const keyFile = path.join(dir, 'encryption.key');
   fs.writeFileSync(keyFile, randomBytes(32).toString('base64'), { mode: 0o600 });
@@ -148,6 +181,10 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
     if (v !== undefined && !k.startsWith('KUDURRU_')) env[k] = v;
   }
   env.KUDURRU_ENCRYPTION_KEY_FILE = keyFile;
+  // Every licensed feature is on, with a throwaway test key that only a binary
+  // built with -tags licensetest trusts (make web-e2e; internal/license/testkey.go).
+  // ServerOptions.community runs a node without a key instead.
+  if (!opts.community) env.KUDURRU_LICENSE_KEY_FILE = E2E_LICENSE_KEY;
   if (opts.adminPassword !== undefined) {
     const pwFile = path.join(dir, 'admin.password');
     fs.writeFileSync(pwFile, opts.adminPassword, { mode: 0o600 });
@@ -214,7 +251,10 @@ export async function startServer(bin: string, opts: ServerOptions): Promise<Ser
   const deadline = Date.now() + 60_000;
   let last: string;
   for (;;) {
-    if (exited !== null) throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
+    if (exited !== null) {
+      if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
+      throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
+    }
     try {
       const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(2000) });
       if (r.ok) break;

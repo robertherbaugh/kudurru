@@ -5,6 +5,7 @@
 // objects, the same rules the server applies), its groups, lists and
 // service logos; a name opens the policy's page, "New policy" the wizard.
 import { Badge } from '@astryxdesign/core/Badge';
+import { Banner } from '@astryxdesign/core/Banner';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMemo } from 'react';
@@ -15,7 +16,7 @@ import { LogoStack, useCatalogueServices } from '../components/ServiceGrid';
 import { SCHEMAS } from '../lib/objectSchemas';
 import { derivePolicyState, objectHref, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
 import { Link } from '@astryxdesign/core/Link';
-import { useDeriveContext } from '../lib/usePolicyData';
+import { useDeriveContext, usePolicyLimit } from '../lib/usePolicyData';
 
 const SHOWN_SERVICES = 5;
 
@@ -46,9 +47,12 @@ export default function PoliciesPage() {
   const byId = useMemo(() => new Map((services.data?.items ?? []).map((s) => [s.id, s])), [services.data]);
   const badges = useMemo(() => new Map(ctx.policies.map((p) => [refOfObject(p), policyBadge(derivePolicyState(p, ctx))])), [ctx]);
 
+  const notice = usePolicyLimit(ctx.policies);
+
   return (
     <ObjectsPage<Policy>
       title="Policies"
+      createBlocked={notice?.title}
       description="Which lists and services apply to which client groups, highest priority first. When several active policies match a client, the highest priority decides the settings and their lists are merged."
       schema={SCHEMAS.policies}
       detailPath={(p) => objectHref('policies', refOfObject(p))}
@@ -97,6 +101,16 @@ export default function PoliciesPage() {
         },
         { header: 'Schedule', cell: (p) => (p.spec.schedule ? <Text size="sm">{scheduleSummary(p.spec.schedule)}</Text> : <Text color="secondary">always</Text>) },
       ]}
-    />
+    >
+      {notice ? (
+        <Banner
+          data-testid="policy-limit"
+          status="info"
+          title={notice.title}
+          description={notice.description}
+          endContent={<Link href="/license">View license</Link>}
+        />
+      ) : null}
+    </ObjectsPage>
   );
 }

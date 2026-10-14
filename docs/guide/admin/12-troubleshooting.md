@@ -28,6 +28,8 @@ Use these tools in this order:
 | The dashboard signs you out. | The session had no activity for 30 minutes, or it lasted 12 hours. | Sign in again. An administrator can change the times. |
 | The sign-in page has no button for single sign-on. | The provider has an error. | Open **Diagnosis**. A message names the provider. Check `auth.identityProviders`. |
 | A person signs in with single sign-on and gets no access. | No role binding matches the person. | Add a role binding (Chapter 9). |
+| **Diagnosis** says that single sign-on needs a license key. The sign-in page has no button for it. | The node has no key that includes single sign-on. | Put a key on the node (Chapter 13). Local sign-in keeps working. |
+| A person has a role binding but gets no access. **Diagnosis** says that roles need a license key. | The node has no key that includes roles. Only the first administrator has access. | Put a key on the node (Chapter 13). |
 | A page shows **Not permitted**. | Your role does not have the permission that the message names. | Ask an administrator for a role with the permission. |
 
 ## Filtering
@@ -94,7 +96,7 @@ Use these tools in this order:
 | The test shows `0.0.0.0` and not the block page address. | The block response is not **Block page**. | Set `blocking.defaultResponse` to `blockPage`, or set the block response of the policy. |
 | A site that uses HTTPS shows a certificate warning. | The block page cannot have a valid certificate for the site. | This is normal. See Chapter 6. |
 | The page shows no reason. | `blockPage.showDetails` is false, or the query log privacy hides the name or the client. | Change the setting. |
-| The block page has no form. | `unblockRequests.enabled` is false. | Turn it on. |
+| The block page has no form. | `unblockRequests.enabled` is false, or the node has no license key that includes requests. | Turn the setting on. Open **License** and check the feature. |
 | The page says that requests are paused. | The number of pending requests reached `unblockRequests.maxPending`. | Answer or delete requests. |
 | A user does not see a request in the list. | The user asked on a different node, or the privacy mode hides the data. | Check **Requests** with the filter **State** set to **All**. |
 | An approval does not work. | The group of the requester has no policy that kudurru can change. | Read the answer of the approval. Add the allow list to the policy in the file or the resource. |
@@ -106,6 +108,10 @@ Use these tools in this order:
 | A setting changed back after a restart. | The node has no settings file. | Set `KUDURRU_SETTINGS_FILE`. Look for the banner **Kept in memory only** on the page **Settings**. |
 | A setting does not take effect. | The setting needs a restart. | Look for the label `restart`. Restart the node. |
 | A setting cannot be changed in the dashboard. | The setting is `host only`, or an environment variable sets it. | Change it in `kudurru.yaml` or in the environment of the host. |
+| A page says that a feature needs a license key. | The node has no key, or the key does not include the feature. | Open **License**. Put a key on the node (Chapter 13). |
+| A change gives the error `license_required`. | The cluster has more nodes than the key allows, or you made a second policy without a key. | Open **License**. Remove nodes, or put a key on the node (Chapter 13). Without a key, change the policy `default` and do not make a new policy. DNS is not affected. |
+| The button **New policy** is not available. | The node has no key. Without a key, a node has one policy: the policy `default`. | Change the policy `default`, or put a key on the node (Chapter 13). |
+| The dnsdist or the keepalived container does not start for the first time. The log says that the edge needs a license key. | The container has no key that includes the edge. | Set `KUDURRU_LICENSE_KEY` in the container (Chapter 13). |
 | A statistics page says that the result is partial. | A node did not answer. | Open **Nodes** and find the node. Check its health. |
 | The node shows **readiness unknown**. | The node is not reachable from the node that you use. | Check the network between the nodes (port 8082). |
 | A node starts with an error about the data. | A newer version wrote the data. | Use the newer version. You cannot go back to an older one. |

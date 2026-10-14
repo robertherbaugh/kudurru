@@ -346,6 +346,9 @@ api        the API server answers (the CLI context, --server, or the local
            listeners.api.address)
 token      the CLI token is accepted (GET /auth/me)
 diagnoses  configuration diagnoses reported by the server (GET /info/messages)
+database   with database.dsn set: the central database answers, runs
+           PostgreSQL 16 or newer and has a schema this binary can use;
+           warns about sslmode=disable to another host
 vrrp       warns when `kudurru vip run --legacy` renders keepalived without
            auth_hmac (unauthenticated VRRP adverts); silent on nodes
            without keepalived
@@ -687,6 +690,35 @@ Flags:
       --timeout duration     request timeout (default 3s)
 ```
 
+## kudurru license
+
+kudurru is source-available under the Kudurru Community License (LICENSE). Running it for eligible personal or nonprofit use is free; business and government production needs an agreement. Enterprise materials have their own notice; commercial features depend on the Order Form. A key unlocks more than one node, more than one policy and the features under ee/ (OIDC single sign-on, the dnsdist and keepalived edge, the integrations). A free personal key covers 3 nodes. See https://kudurru.io/license.
+
+The key is read from --license-key, KUDURRU\_LICENSE\_KEY, the file KUDURRU\_LICENSE\_KEY\_FILE names, or &lt;node.dataDir&gt;/license.key, in that order. Licensing never affects DNS answering: without a key the node serves DNS as usual and only the node limit, the policy limit and the licensed features apply.
+
+### kudurru license status
+
+Show the license this node would run with.
+
+```text
+kudurru license status [flags]
+```
+
+Flags:
+
+```text
+      --json                 print as JSON
+      --license-key string   check this key instead of the configured sources
+```
+
+### kudurru license verify
+
+Verify a key and print what it grants (- reads the key from stdin).
+
+```text
+kudurru license verify KEY|-
+```
+
 ## kudurru lists
 
 Inspect and refresh block and allow lists.
@@ -944,7 +976,15 @@ Flags:
 Run the kudurru node: the store (sqlite or kube), first-boot bootstrap, file-managed objects, zonecache, the query pipeline (ingress, authoritative, cache, upstream) on every configured transport, the Lease-elected controller, the ops and metrics listeners. The API and UI land in milestone M3.
 
 ```text
-kudurru serve
+kudurru serve [flags]
+```
+
+Flags:
+
+```text
+      --license-key string   license key (or KUDURRU_LICENSE_KEY, KUDURRU_LICENSE_KEY_FILE,
+                             <node.dataDir>/license.key); without one kudurru runs with the
+                             community license
 ```
 
 ## kudurru settings

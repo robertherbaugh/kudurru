@@ -1,12 +1,26 @@
 kudurru
-Copyright 2026 Robert Herbaugh and the kudurru contributors
+Required Notice: Copyright 2026 Robert Herbaugh and the kudurru contributors (https://kudurru.io)
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this software except in compliance with the License. You may obtain a copy of
-the License at http://www.apache.org/licenses/LICENSE-2.0.
+The core DNS server and dashboard are source-available under the Kudurru
+Community License (LICENSE, https://kudurru.io/license/text/). Eligible
+personal, homelab, nonprofit and community-development uses are permitted.
+Business and government production use requires an accepted commercial
+agreement and Order Form, including for no-key features. See LICENSING.md.
 
-This product will include software developed by third parties under permissive
-licences. Attributions are added to this file as the dependencies land:
+The ee/ and site/ directories have their own notices in ee/LICENSE.md and
+site/LICENSE.md. The www/ marketing website and license-server/ issuance
+service are excluded from the Community License and commercial grant;
+they have separate source-viewing licenses in those folders. The website's
+project-controlled source is copyright 2026 kudurru project maintainers
+(the applicable copyright holders defined in www/LICENSE.md); the issuance
+service's project-controlled source is copyright 2026 Robert Herbaugh. The
+blocked-services catalog under internal/listdata/catalogue is separately
+Apache-2.0 licensed.
+Historical license grants and third-party licenses remain in effect.
+
+This product includes software developed by third parties under their own
+(permissive) licenses, which are not changed by the license above.
+Attributions are added to this file as the dependencies land:
 
 - blocky (https://github.com/0xERR0R/blocky), Apache-2.0: matcher and list
   pipeline designs (string caches, suffix sets, list fetch/refresh strategy).
@@ -60,7 +74,7 @@ licences. Attributions are added to this file as the dependencies land:
   transport for the DoQ and DoH3 listeners.
 - external-dns (https://github.com/kubernetes-sigs/external-dns), Apache-2.0:
   Endpoint record shape and the webhook provider contract.
-  internal/integration/externaldns re-implements the webhook server side
+  ee/integration/externaldns re-implements the webhook server side
   studied in provider/webhook/api/httpapi.go (v0.23.0): the four routes,
   the versioned media type checked byte for byte by the client, 204 on
   apply, 413 for oversized bodies, and the JSON forms of plan.Changes and
@@ -73,6 +87,12 @@ licences. Attributions are added to this file as the dependencies land:
   (c) 2023-present Scalar: the browser bundle of @scalar/api-reference
   1.44.20 is embedded unmodified (gzipped) in internal/api/scalar and served
   as the /api/v1/docs page; licence and provenance in that directory.
+- Mermaid (https://github.com/mermaid-js/mermaid), MIT, Copyright (c) 2014 -
+  2022 Knut Sveidqvist: the browser bundle of mermaid 11.17.2 (with its
+  permissively licensed dependencies, licence comments kept) is stored
+  unmodified (gzipped) in site/vendor/mermaid and served by the docs site to
+  render the diagrams of docs/architecture; licence and provenance in that
+  directory. It is not part of the kudurru binary or images.
 - oapi-codegen (https://github.com/oapi-codegen/oapi-codegen), Apache-2.0:
   generates internal/apiclient/openapi from api/openapi-3.0.json at
   development time (not linked); the generated client links
@@ -201,3 +221,8 @@ They are distributed unmodified as separate programs in their own container
 images under images/, each carrying the GPL licence text and a source offer.
 No code from GPL or EUPL projects (Gravity, Technitium, AdGuard Home,
 urlfilter, Pi-hole) is included in kudurru.
+
+The license portal (license-server/) is the licensor's service that issues
+license keys. It is not part of kudurru and is not shipped with it: its
+container image carries its own notice (license-server/NOTICE) and the
+license texts of what it bundles.

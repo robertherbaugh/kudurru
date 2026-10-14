@@ -22,6 +22,8 @@ var reservedEnv = map[string]string{ //nolint:gosec // variable names, not crede
 	"KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE": "cmd/kudurru/serve.go readEncryptionKeys",
 	"KUDURRU_ADMIN_PASSWORD_FILE":          "§8.7 first-start admin (reserved in internal/config)",
 	"KUDURRU_BOOTSTRAP_TOKEN_FILE":         "§8.7 bootstrap service-account token",
+	"KUDURRU_LICENSE_KEY":                  "internal/license: the license key (docs/architecture/licensing.md)",
+	"KUDURRU_LICENSE_KEY_FILE":             "internal/license: file that holds the license key",
 }
 
 // pendingKeys are settings keys the deployment assets already render whose

@@ -21,6 +21,11 @@ by default.
 
 ## Roles
 
+NOTE: Roles other than the built-in administrator need a license key.
+Without a key, only the first-boot administrator has access, and role
+bindings give none. The audit log and single sign-on also need a key. See
+[Chapter 13](13-license.md).
+
 | Role | Purpose | Can do |
 |---|---|---|
 | Viewer | Look at the setup and the statistics | Read zones, records, lists, policies, groups, clients, settings and statistics |
@@ -194,8 +199,15 @@ If you cannot sign in, you can make a token on the host. See
 
 ## Read the audit log
 
+NOTE: The audit log needs a license key. Without a key, the page asks for one.
+See [Chapter 13](13-license.md).
+
 kudurru writes an entry to the audit log for each change that comes
 through the API. The role Auditor or Admin can read it.
+
+NOTE: In Kubernetes, kudurru keeps the entries in AuditLog objects. All
+replicas show the same entries. An entry can take up to 30 seconds to show
+on the other replicas.
 
 1. Open **System** > **Access & audit**.
 2. Click the tab **Audit**. Figure 4 shows it.

@@ -14,9 +14,11 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { qk, useApi, useScopeParams } from '../api/context';
+import { useFeature } from '../api/hooks';
 import type { TopDim } from '../api/types';
 import { StackedBars } from '../charts/StackedBars';
 import { ErrorBanner, Loading } from '../components/Feedback';
+import { FeatureLocked } from '../components/FeatureLocked';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ScopeNote } from '../components/ScopeSelector';
 import { TopList } from '../components/TopList';
@@ -61,7 +63,29 @@ function TopFor({ dim, title, blocked, from, to }: { dim: TopDim; title: string;
   return <TopList title={title} dim={dim} blocked={blocked} data={q.data} isLoading={q.isLoading} error={q.error} extra={{ since: from, until: to }} />;
 }
 
+/** Long-term views are licensed (feature "longterm"); locked, the page asks for nothing. */
 export default function LongTermPage() {
+  const lt = useFeature('longterm');
+  if (!lt.ready) {
+    return (
+      <Page>
+        <PageHeader title="Long-term" />
+        <Loading />
+      </Page>
+    );
+  }
+  if (!lt.allowed) {
+    return (
+      <Page>
+        <PageHeader title="Long-term" description="Statistics for periods older than 24 hours." />
+        <FeatureLocked feature="longterm" what="Long-term statistics" />
+      </Page>
+    );
+  }
+  return <LongTermView />;
+}
+
+function LongTermView() {
   const api = useApi();
   const scope = useScopeParams();
   const navigate = useNavigate();

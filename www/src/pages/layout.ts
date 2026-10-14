@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE } from "../content.ts";
+import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE, docs } from "../content.ts";
 
 // The hashed files of one build, as URL paths.
 export interface Assets {
@@ -43,7 +43,7 @@ function header(assets: Assets, home: boolean): Html {
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">${icon.menu}<span>Menu</span></button>
     <nav id="site-nav" class="nav" aria-label="Primary">
       <ul class="nav-anchors">
-        ${NAV.map((l) => html`<li><a href="${prefix}${l.href}">${l.label}</a></li>`)}
+        ${NAV.map((l) => html`<li><a href="${l.href.startsWith("/") ? l.href : prefix + l.href}">${l.label}</a></li>`)}
       </ul>
       <ul class="nav-out">
         <li>${external(DOCS_URL, html`Docs ${icon.out}`)}</li>
@@ -69,7 +69,7 @@ function footer(assets: Assets, version: string): Html {
     )}
   </div>
   <div class="wrap foot-legal">
-    <p>kudurru is licensed under Apache-2.0. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
+    <p>The kudurru core uses the <a href="/license/text/">Kudurru Community License</a> for eligible personal, nonprofit and community-development uses. Business and government production use needs an agreement. This marketing website is copyright 2026 kudurru project maintainers, with a separate ${external(docs("/project/website-license/"), "source-viewing license")}. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
   </div>
 </footer>`;

@@ -69,7 +69,7 @@ func run() error {
 	certFile := flag.String("cert", "", "PEM certificate (generated for localhost/127.0.0.1 when empty)")
 	keyFile := flag.String("key", "", "PEM key")
 	up := flag.String("upstream", "", "forward to this resolver instead of answering A 192.0.2.1")
-	proxyFrom := flag.String("proxy-from", "", "comma-separated PROXYv2 peers (exact hosts)")
+	proxyFrom := flag.String("proxy-from", "", "comma-separated PROXYv2 peers (addresses or CIDRs; ranges require -proxy-secret-file)")
 	proxySecret := flag.String("proxy-secret-file", "", "PROXYv2 TLV 0xE0 secret file")
 	check := flag.Bool("selfcheck", false, "query every listener through dnsproxy/upstream and exit (needs -tags dnsproxy)")
 	flag.Parse()

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - internal/edge/**
+      - ee/edge/**
       - cmd/kudurru/edge.go
       - cmd/kudurru/vip.go
       - images/**
@@ -21,22 +21,23 @@ on:
       - hack/hostnetwork-check.sh
       - hack/volume-check.sh
       - hack/edge-root-check.sh
+      - internal/license/**
       - .github/workflows/edge.yml
   push:
     branches: [main]
     paths:
-      - internal/edge/**
+      - ee/edge/**
       - images/**
       - Dockerfile
 permissions:
   contents: read
 jobs:
   edge-check:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Validate golden configurations in the pinned dnsdist and keepalived images

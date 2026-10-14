@@ -1,3 +1,17 @@
+# Runners (every workflow): Ubicloud, billed per minute and linearly in
+# vCPUs, so a larger runner only pays off when the job speeds up about as
+# much as the core count grows. Measured on the same topology (2 vCPU = 1
+# physical core): the `go` job's steps take 1318 s on 2 vCPU, 675 s on 4 and
+# 551 s on 8; vitest 263 s, 92 s and 57 s (it runs cores-1 workers). Jobs
+# that compile Go or run parallel test workers (go, web, web-e2e, e2e,
+# dev-image, edge, publish's test and release) use standard-4: half the wall
+# time for about the same cost, and the `go` job is the critical path of
+# this workflow. Short, network-bound or wait-bound jobs, and the fuzz matrix
+# (60 s of fuzzing a job whatever the size), stay on standard-2; the
+# supervisor images build natively on standard-2 x64 and arm64 runners
+# instead of under QEMU. 8 vCPU doubles the price per minute for 18 % less
+# time on the `go` job, about 1.6x the cost per run.
+# Pinned to Ubuntu 24.04, the image ubuntu-latest was.
 name: ci
 on:
   push:
@@ -6,11 +20,54 @@ on:
 permissions:
   contents: read
 jobs:
-  go:
-    runs-on: ubuntu-latest
+  # Changes confined to docs/, site/, www/ and license-server/ skip the
+  # jobs below; docs.yml, www.yml and license-server.yml still check them.
+  # Jobs are skipped rather than filtering the workflow with paths-ignore,
+  # because a skipped job satisfies a
+  # required status check and a workflow that never runs does not.
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Run everything unless git can list the changes and every one is
+          # under docs/, site/, www/ or license-server/ (a new branch or an
+          # unreachable force-pushed base runs everything).
+          code=true
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|license-server)/' <<<"$files"; then
+              code=false
+            fi
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+  go:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
+    # PostgreSQL for the central-database tests (internal/central, D158):
+    # with KUDURRU_REQUIRE_POSTGRES they fail instead of skipping.
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Verify generated files are current
@@ -21,7 +78,7 @@ jobs:
       # Makefile, which pins ENVTEST_K8S_VERSION and the setup-envtest version.
       - name: Cache envtest control-plane binaries
         id: envtest-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/k8s
           key: envtest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
@@ -36,16 +93,52 @@ jobs:
         run: make size
       - name: Smoke test the binary
         run: ./bin/kudurru version
+  # The central-database tests on the oldest and newest supported
+  # PostgreSQL (16 and 18); the go job runs 17, the preferred version.
+  # Only the packages that reach the server: the SQLite query-log
+  # throughput tests do not belong on this 2-core runner.
+  postgres:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          - postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Central-database tests
+        run: |
+          go test -count=1 ./internal/central/...
+          go test -count=1 -run '^TestDoctorDatabase$' ./cmd/kudurru
   # The dashboard SPA (web/, D69): lint, typecheck, unit tests with MSW,
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.
   web:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
     defaults:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
@@ -59,13 +152,13 @@ jobs:
         run: bun run test
       - name: Build (fails over the initial-load budget)
         run: bun run build
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Embed the built bundle
         working-directory: .
         run: go test -count=1 ./web/...
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-dist
           path: web/dist
@@ -75,17 +168,19 @@ jobs:
   # page in Chromium. The HTML report and the traces of failed tests are
   # uploaded when it fails.
   web-e2e:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Install (frozen lockfile)
@@ -94,7 +189,7 @@ jobs:
       # Keyed on bun.lock, which pins the Playwright version.
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
@@ -108,7 +203,7 @@ jobs:
           fi
       - name: Build the bundle and the binary, run the suite
         run: make web-e2e
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: playwright-report
@@ -120,11 +215,13 @@ jobs:
   # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
   # secondary and as a forwarding target, and the OIDC login against dex.
   e2e:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-4-ubuntu-2404
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Install BIND 9
@@ -138,7 +235,7 @@ jobs:
           sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.named || true
           /usr/sbin/named -v
       - name: Cache dex
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/dex-*
           key: dex-${{ runner.os }}-${{ hashFiles('Makefile') }}
@@ -150,16 +247,18 @@ jobs:
         run: make test-auth-e2e
   # Fuzzing: every target of hack/fuzz.sh for 60 s, one matrix job each.
   fuzz-targets:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
     outputs:
       targets: ${{ steps.list.outputs.targets }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: list
         run: echo "targets=$(hack/fuzz.sh --list | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
   fuzz:
     needs: fuzz-targets
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -167,8 +266,8 @@ jobs:
         target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     name: fuzz ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Fuzz for 60 s
@@ -178,7 +277,7 @@ jobs:
         run: hack/fuzz.sh --one ${{ matrix.target }}
       - name: Upload the crasher
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-crasher-${{ strategy.job-index }}
           path: |
@@ -186,13 +285,15 @@ jobs:
             bin/fuzz/
           retention-days: 14
   lint:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8.0.0
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
   # Chart, kustomize, compose, dashboard and alert-rule checks
@@ -200,17 +301,19 @@ jobs:
   # rendered kudurru.yaml loaded through config.Load, the kustomize overlays,
   # and kubeconform against the Kubernetes 1.30 schemas and the CRDs.
   helm:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.3.0
       - name: Cache kubeconform schemas and tools
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             bin/kubeconform-cache
@@ -223,16 +326,18 @@ jobs:
           make deploy-assets
           git diff --exit-code -- charts config deploy
       - name: goreleaser configuration
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: v2.18.3
           args: check
   licenses:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Deny copyleft modules

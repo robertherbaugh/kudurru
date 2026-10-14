@@ -1,0 +1,38 @@
+// `bun run dev` only (wrangler dev -c local/wrangler.jsonc): the same
+// Worker and Durable Object as ../wrangler.jsonc, with the local build of
+// the portal image and the server in dev mode. It checks the Worker to
+// container path on your machine; compose (license-server/compose.yaml)
+// stays the way to develop the portal itself. Never deploy this file.
+// Secrets come from local/.dev.vars (see .dev.vars.example).
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "kudurru-license-portal-local",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "workers_dev": false,
+  "preview_urls": false,
+  "secrets": { "required": ["DATABASE_URL", "OIDC_CLIENT_SECRET"] },
+  "vars": {
+    "PUBLIC_URL": "http://localhost:8787",
+    "LICENSE_SERVER_DEV": "true",
+    "OIDC_ISSUER": "http://localhost:5556/dex",
+    "OIDC_CLIENT_ID": "kudurru-license-portal",
+    "DATABASE_TLS": "disable",
+    "PUBLIC_FORM_ORIGINS": "http://localhost:8792",
+    "CLIENT_IP_HEADER": "X-Client-IP"
+  },
+  "containers": [
+    {
+      "class_name": "LicensePortal",
+      // ./Dockerfile renames the image `make license-server-image` built.
+      "image": "./Dockerfile",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "PORTAL", "class_name": "LicensePortal" }]
+  },
+  "exports": {
+    "LicensePortal": { "type": "durable-object", "storage": "sqlite" }
+  }
+}

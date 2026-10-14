@@ -10,6 +10,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-logr/logr v1.4.3
 	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/knadh/koanf/parsers/yaml v1.1.1
 	github.com/knadh/koanf/providers/confmap v1.0.1
 	github.com/knadh/koanf/providers/file v1.2.1
@@ -81,6 +82,9 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -129,4 +133,6 @@ require (
 
 // Bun installs the dashboard dependencies into web/node_modules; some npm
 // packages ship .go files that must not join ./... (see web/README.md).
+// The same holds for the license portal's license-server/node_modules.
 ignore ./web/node_modules
+ignore ./license-server/node_modules

@@ -8,11 +8,16 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
@@ -61,7 +66,7 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	ids.Register(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), AuthHandler: authMux, Roles: ids.Roles,
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,
 		Logger: logger, NodeName: "node-a",
 	})
 	if err != nil {
@@ -70,6 +75,212 @@ func authAPI(t *testing.T, mod func(*config.Config)) (*httptest.Server, store.St
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return ts, st
+}
+
+func TestAPICookieSessionCSRFFailure(t *testing.T) {
+	ts, _ := authAPI(t, nil)
+	client := ts.Client()
+	var err error
+	client.Jar, err = cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginBody := `{"username":"admin","password":"admin-password-1"}`
+	login, err := client.Post(ts.URL+"/api/v1/auth/login", "application/json", strings.NewReader(loginBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = login.Body.Close() }()
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login: %d, want 200", login.StatusCode)
+	}
+	var me struct{ CSRF string }
+	if err := json.NewDecoder(login.Body).Decode(&me); err != nil {
+		t.Fatal(err)
+	}
+	if me.CSRF == "" {
+		t.Fatal("login must return a CSRF token")
+	}
+
+	for _, tc := range []struct {
+		name, method, path, body, csrf string
+		anonymous                      bool
+		status                         int
+		key                            string
+	}{
+		{"missing header", "POST", "/dns/blocking", `{"blocking":true}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"invalid header", "POST", "/dns/blocking", `{"blocking":true}`, "wrong-token", false, http.StatusForbidden, api.KeyCSRF},
+		{"patch", "PATCH", "/settings", `{}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"delete", "DELETE", "/querylog", "", "wrong-token", false, http.StatusForbidden, api.KeyCSRF},
+		{"forwarded auth route", "POST", "/auth/tokens", `{"description":"csrf regression"}`, "", false, http.StatusForbidden, api.KeyCSRF},
+		{"valid header", "POST", "/auth/tokens", `{"description":"csrf regression"}`, me.CSRF, false, http.StatusCreated, ""},
+		{"safe method", "GET", "/auth/me", "", "", false, http.StatusOK, ""},
+		{"anonymous", "POST", "/dns/blocking", `{"blocking":true}`, "", true, http.StatusUnauthorized, api.KeyUnauthenticated},
+		{"public re-login", "POST", "/auth/login", loginBody, "", false, http.StatusOK, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, ts.URL+"/api/v1"+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Kudurru-CSRF", tc.csrf)
+			caller := client
+			if tc.anonymous {
+				caller = &http.Client{Transport: client.Transport}
+			}
+			res, err := caller.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			var envelope api.Error
+			if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
+				t.Fatal(err)
+			}
+			if res.StatusCode != tc.status || envelope.Body.Key != tc.key {
+				t.Fatalf("%s %s: %d %s, want %d %s", tc.method, tc.path, res.StatusCode, envelope.Body.Key, tc.status, tc.key)
+			}
+			if tc.key == api.KeyCSRF {
+				if hint, ok := envelope.Body.Hint.(string); !ok || !strings.Contains(hint, "X-Kudurru-CSRF") {
+					t.Fatalf("CSRF failure must explain the required header: %+v", envelope.Body)
+				}
+				if res.Header.Get("WWW-Authenticate") != "" {
+					t.Fatal("CSRF failure must not request new bearer credentials")
+				}
+			}
+		})
+	}
+}
+
+func TestAuthRoutesWithPathPrefix(t *testing.T) {
+	for _, prefix := range []string{"", "/kudurru", "/kudurru/"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			ts, _ := authAPI(t, func(cfg *config.Config) {
+				cfg.Listeners.API.PathPrefix = prefix
+			})
+			base := strings.TrimSuffix(prefix, "/") + "/api/v1"
+			client := ts.Client()
+			var err error
+			client.Jar, err = cookiejar.New(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var csrf string
+			do := func(method, path, body string, want int, out any) *http.Response {
+				t.Helper()
+				req, err := http.NewRequest(method, ts.URL+base+path, strings.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Kudurru-CSRF", csrf)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = res.Body.Close() }()
+				if res.StatusCode != want {
+					raw, _ := io.ReadAll(res.Body)
+					t.Fatalf("%s %s: %d, want %d: %s", method, path, res.StatusCode, want, raw)
+				}
+				if out != nil {
+					if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return res
+			}
+			do(http.MethodGet, "/version", "", http.StatusOK, nil)
+			var status struct{ LocalLogin bool }
+			do(http.MethodGet, "/auth/status", "", http.StatusOK, &status)
+			if !status.LocalLogin {
+				t.Fatal("local login should be enabled")
+			}
+			var me struct{ CSRF string }
+			res := do(http.MethodPost, "/auth/login", `{"username":"admin","password":"admin-password-1"}`, http.StatusOK, &me)
+			csrf = me.CSRF
+			if csrf == "" || len(res.Cookies()) != 1 || res.Cookies()[0].Path != "/" {
+				t.Fatal("login must return CSRF and a session cookie covering the API")
+			}
+			for _, path := range []string{"/auth/me", "/auth/tokens", "/iam/users", "/iam/serviceaccounts", "/iam/rolebindings", "/iam/identityproviders"} {
+				do(http.MethodGet, path, "", http.StatusOK, nil)
+			}
+			var tok struct{ ID, Token string }
+			do(http.MethodPost, "/auth/tokens", `{"description":"path-prefix regression"}`, http.StatusCreated, &tok)
+			if tok.ID == "" || tok.Token == "" {
+				t.Fatal("create token must return its ID and secret")
+			}
+			do(http.MethodGet, "/auth/tokens/"+tok.ID, "", http.StatusOK, nil)
+			do(http.MethodDelete, "/auth/tokens/"+tok.ID, "", http.StatusNoContent, nil)
+			do(http.MethodPost, "/auth/password", `{"currentPassword":"admin-password-1","newPassword":"new-admin-password-1"}`, http.StatusOK, &me)
+			csrf = me.CSRF
+			do(http.MethodPost, "/auth/logout", "", http.StatusNoContent, nil)
+			do(http.MethodGet, "/auth/me", "", http.StatusUnauthorized, nil)
+		})
+	}
+}
+
+func TestOIDCRoutesWithPathPrefix(t *testing.T) {
+	// Only discovery is needed to check the authorization redirect; callback
+	// without a pre-auth cookie exercises routing without exchanging a code.
+	mux := http.NewServeMux()
+	op := httptest.NewServer(mux)
+	t.Cleanup(op.Close)
+	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": op.URL, "authorization_endpoint": op.URL + "/authorize",
+			"token_endpoint": op.URL + "/token", "jwks_uri": op.URL + "/keys",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		})
+	})
+	secretFile := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secretFile, []byte("test-client-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"", "/kudurru", "/kudurru/"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			base := strings.TrimSuffix(prefix, "/") + "/api/v1"
+			redirectURL := "https://dns.example" + base + "/auth/oidc/corp/callback"
+			ts, _ := authAPI(t, func(cfg *config.Config) {
+				cfg.Listeners.API.PathPrefix = prefix
+				cfg.Auth.IdentityProviders = []map[string]any{{
+					"id": "corp", "issuer": op.URL, "clientID": "kudurru",
+					"clientSecretFile": secretFile, "redirectURL": redirectURL,
+				}}
+			})
+			client := ts.Client()
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			res, err := client.Get(ts.URL + base + "/auth/oidc/corp/start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			if res.StatusCode != http.StatusFound {
+				t.Fatalf("OIDC start: %d, want 302", res.StatusCode)
+			}
+			location, err := res.Location()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := location.Query().Get("redirect_uri"); got != redirectURL {
+				t.Fatalf("redirect_uri = %q, want %q", got, redirectURL)
+			}
+			cookies := res.Cookies()
+			if len(cookies) != 1 || cookies[0].Path != base+"/auth/oidc/corp/" {
+				t.Fatalf("pre-auth cookie must cover the external callback path: %+v", cookies)
+			}
+			callback, err := client.Get(ts.URL + base + "/auth/oidc/corp/callback")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = callback.Body.Close() }()
+			if callback.StatusCode != http.StatusBadRequest {
+				t.Fatalf("OIDC callback without cookie: %d, want 400", callback.StatusCode)
+			}
+		})
+	}
 }
 
 // TestLoginLockoutCountsClientsBehindTrustedProxy is the regression test of

@@ -28,7 +28,7 @@ import { formatExact, formatRelative } from '../lib/format';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { clientHref, DEFAULT_GROUP, derivePolicyState, identifyClient, objectHref, policiesOfGroup, policyBadge, refOfObject, scheduleSummary } from '../lib/policies';
 import { useNavigate } from '../lib/router';
-import { useDeriveContext } from '../lib/usePolicyData';
+import { useDeriveContext, usePolicyLimit } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
 
 const BACK = { href: '/groups', label: 'Groups' };
@@ -53,6 +53,7 @@ export default function GroupDetailPage({ params }: PageProps) {
   const q = useQuery({ queryKey: [...qk.objects('clientgroups'), ns, name], queryFn: () => api.objects.get<ClientGroup>('clientgroups', name, ns) });
   const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000, enabled: can('clients', 'read') });
   const { ctx, ready } = useDeriveContext();
+  const policyLimit = usePolicyLimit(ctx.policies);
   const group = q.data;
 
   const put = async (next: ClientGroup) => {
@@ -177,8 +178,8 @@ export default function GroupDetailPage({ params }: PageProps) {
             label="New policy"
             size="sm"
             variant="secondary"
-            isDisabled={!can('policies', 'write')}
-            tooltip={can('policies', 'write') ? 'A policy for this group' : 'Needs policies.write'}
+            isDisabled={!can('policies', 'write') || !!policyLimit}
+            tooltip={can('policies', 'write') ? (policyLimit?.title ?? 'A policy for this group') : 'Needs policies.write'}
             onClick={() => setNewPolicy(true)}
           />
         }

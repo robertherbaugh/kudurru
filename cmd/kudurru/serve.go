@@ -22,8 +22,13 @@ import (
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/spool"
+	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
@@ -32,6 +37,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
+	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/central/pgaudit"
+	"github.com/robertherbaugh/kudurru/internal/central/pgquerylog"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -39,9 +47,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/health"
-	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/metrics"
@@ -74,7 +81,8 @@ import (
 )
 
 func newServeCmd(configPath *string) *cobra.Command {
-	return &cobra.Command{
+	var licenseKey string
+	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the DNS server",
 		Long: `Run the kudurru node: the store (sqlite or kube), first-boot bootstrap,
@@ -88,9 +96,11 @@ the ops and metrics listeners. The API and UI land in milestone M3.`,
 			}
 			ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return runServe(ctx, cfg)
+			return runServe(ctx, cfg, licenseKey)
 		},
 	}
+	cmd.Flags().StringVar(&licenseKey, "license-key", "", "license key (or KUDURRU_LICENSE_KEY, KUDURRU_LICENSE_KEY_FILE, <node.dataDir>/license.key); without one kudurru runs with the community license")
+	return cmd
 }
 
 // logLevel is the level of the serve logger; log.level reloads set it.
@@ -162,7 +172,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 	return st, db, restCfg, nil
 }
 
-func runServe(ctx context.Context, cfg *config.Config) error {
+func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
 	logger := newLoggerAt(cfg.Log, logLevel)
 	slog.SetDefault(logger)
 	// Settings hot reload (D25): every consumer of a cluster-scope key that
@@ -183,6 +193,19 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	reg.MustRegister(build)
 	dnsMetrics := metrics.NewDNS(reg)
 
+	// License (docs/architecture/licensing.md): verified offline, reloaded
+	// from its sources every minute. It only ever narrows the management
+	// plane (node limit, ee/ features); DNS answering never depends on it.
+	lic, err := newLicenseManager()
+	if err != nil {
+		return err
+	}
+	licSources := license.DefaultSources(licenseKey, cfg.Node.DataDir, os.Getenv)
+	if err := lic.Load(licSources); err != nil {
+		logger.Warn("license key", "error", err)
+	}
+	reg.MustRegister(license.NewCollector(lic))
+
 	checker := health.New(map[string]any{"version": info.Version, "node": cfg.Node.Name})
 
 	// Store: one validator per process, shared by the driver and the loaders.
@@ -196,8 +219,45 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	defer func() { _ = st.Close() }()
 
+	// Use the release namespace for seeds, policy fallback and API writes.
+	// Preserve the namespace of a legacy default policy on upgrades.
+	releaseNamespace := bootstrap.DefaultNamespace
+	namespace := bootstrap.DefaultNamespace
+	if cfg.Store.Driver == "kube" {
+		releaseNamespace = kube.PodNamespace()
+		namespace, err = bootstrap.ResolveNamespace(ctx, st, releaseNamespace)
+		if err != nil {
+			return err
+		}
+		if namespace != releaseNamespace {
+			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
+		}
+	}
+
+	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
+	// so store writes and API actions are recorded in the node's audit
+	// spool (audit-spool.db) and as "log":"audit" lines. The wrapper goes
+	// on before the first writer (bootstrap) takes the store.
+	var auditSpool *spool.Spool
+	if cfg.Store.Driver == "kube" {
+		auditSpool, err = spool.Open(ctx, spool.Options{Path: filepath.Join(cfg.Node.DataDir, spool.FileName), Node: cfg.Node.Name, Registerer: reg})
+		if err != nil {
+			if errors.Is(err, spool.ErrSchemaTooNew) {
+				return fmt.Errorf("audit-spool.db was written by a newer kudurru: %w", err)
+			}
+			return err
+		}
+		defer func() { _ = auditSpool.Close() }()
+		scheme, err := internalkinds.NewScheme()
+		if err != nil {
+			return err
+		}
+		st = audit.WrapStore(st, audit.Multi{audit.Log{Logger: logger}, auditSpool},
+			audit.WrapOptions{Node: cfg.Node.Name, Scheme: scheme, Logger: logger})
+	}
+
 	// First boot: root forward zone, default client group and policy (§6.4).
-	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
+	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Namespace: namespace, Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
@@ -239,11 +299,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	if err := zc.Register(zoneview.Builder(logger)); err != nil {
 		return err
 	}
-	// Blocked-services and safe-search catalogue (D60): embedded, replaced
+	// Blocked services and safe-search catalog (D60): embedded, replaced
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
 	// services import (blocking.catalogue.adguardServicesURL).
-	catalogues := catalogue.NewHolder(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: bootstrap.DefaultNamespace, Services: catalogues}, logger)); err != nil {
+	catalogs := catalogue.NewHolder(nil)
+	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs}, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -282,7 +342,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			}
 			return net.JoinHostPort(host, port), nil
 		}
-		resolve, err := leaderResolver(restCfg, headless, port, byName)
+		resolve, source, err := leaderResolver(restCfg, headless, port, byName)
 		if err != nil {
 			return err
 		}
@@ -290,6 +350,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 			SelfName: cfg.Node.Name,
 			Elector:  st.Elector(cluster.ElectionController),
 			Resolve:  resolve,
+			Source:   source,
 			CacheTTL: 30 * time.Second,
 		}
 	}
@@ -306,6 +367,9 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalSrv    *internalapi.Server
 		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
+		qlTail         *querylog.Tail
+		qlReader       *sqlitelog.Reader
+		queryUpstreams func() []upstream.ServerStatus
 	)
 	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
 		creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{
@@ -320,14 +384,26 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
-			Address: cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogues), CatalogueImport: catalogueImportBody(catalogues),
+			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
+				out, err := internalapi.ReadLocalQuerylog(ctx, qlReader, q)
+				if err == nil && q.Kind == "upstreams" && queryUpstreams != nil {
+					out.Servers = queryUpstreams()
+				}
+				return out, err
+			},
+			QueryTail: func() *querylog.Tail { return qlTail },
+			Address:   cfg.Listeners.Internal.Address, Credentials: creds, Lists: lists, Catalogue: catalogueBody(catalogs), CatalogueImport: catalogueImportBody(catalogs),
 			Status: func(ctx context.Context) internalapi.Status {
 				leader, _ := membership.Leader(ctx)
 				var ls []internalapi.ListStatus
 				if listResolver != nil {
 					ls = listResolver.Lists()
 				}
-				return internalapi.Status{Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls}
+				ready, unready := checker.Ready()
+				return internalapi.Status{
+					Node: cfg.Node.Name, Version: info.Version, Leader: leader.Name, State: zc.State().String(), Lists: ls, Ready: &ready, Unready: unready,
+					Snapshot: zc.Snapshot().SnapshotAge(time.Now()),
+				}
 			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
 			Zones: func(context.Context) internalapi.ZoneList {
@@ -354,14 +430,14 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	listResolver, err = listfetcher.NewResolver(listfetcher.ResolverOptions{
 		Objects: listObjs, Cache: lists, Sink: flushingListSink{next: zc, flush: edgeFlush}, Membership: membership, Client: internalClient,
 		Downloader: downloader, RefreshInterval: cfg.Blocking.RefreshInterval.Std(),
-		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded, Extra: catalogues,
+		InitStrategy: initStrategy, AllowDegraded: cfg.Blocking.AllowDegraded, Extra: catalogs,
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {
 		return err
 	}
 	checker.Register("blocklists", listResolver.Ready)
-	catRefreshers, err := newCatalogueRefreshers(cfg, catalogues, membership, internalClient, logger)
+	catRefreshers, err := newCatalogueRefreshers(cfg, catalogs, membership, internalClient, logger)
 	if err != nil {
 		return err
 	}
@@ -371,9 +447,13 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		collector querylog.Collector // nil interface when disabled
 		qlAsync   *querylog.Async
 		qlWriter  *sqlitelog.Writer
-		qlTail    *querylog.Tail
-		qlReader  *sqlitelog.Reader
 	)
+	listedDomains := func() int64 {
+		if sn := zc.Snapshot(); sn != nil {
+			return domainsOnLists(sn.Objects.Lists())
+		}
+		return 0
+	}
 	if cfg.Querylog.Enabled {
 		qlMetrics := querylog.NewMetrics(reg)
 		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
@@ -391,12 +471,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 				return err
 			}
 			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
-			opts.DomainsOnLists = func() int64 {
-				if sn := zc.Snapshot(); sn != nil {
-					return domainsOnLists(sn.Objects.Lists())
-				}
-				return 0
-			}
+			opts.DomainsOnLists = listedDomains
 			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
 				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
 					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
@@ -423,6 +498,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	fwd := upstreamstage.NewStage(upSet)
+	queryUpstreams = func() []upstream.ServerStatus { return fwd.Set().Status() }
 	hostname, _ := os.Hostname()
 
 	// Ingress rate limiting (§7.1 step 2).
@@ -448,7 +524,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
 	bopts := blockingstage.OptionsFromConfig(cfg)
-	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogues
+	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogs
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
 		return err
@@ -460,11 +536,11 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// for the API preview; its listener runs when blockPage.enabled.
 	// Unblock requests (the block page's form, /unblockrequests): the book
 	// indexes them on every node; the leader expires and prunes them.
-	unblockBook, err := newUnblockBook(st, reload, cfg.Node.Name, encKey, logger)
+	unblockBook, err := newUnblockBook(st, reload, namespace, cfg.Node.Name, encKey, logger)
 	if err != nil {
 		return err
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, reg, logger)
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger)
 	if err != nil {
 		return err
 	}
@@ -562,8 +638,10 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
 	stackOpts.Kube = restCfg
+	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
+	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {
-		stackOpts.Namespace = kube.PodNamespace()
+		stackOpts.Namespace = releaseNamespace
 	}
 	if internalCreds != nil {
 		stackOpts.InternalToken = internalCreds.ValidToken
@@ -575,32 +653,108 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
 
+	// The optional central database (D158): opened here, connected and
+	// migrated in the background by its runnable; never part of readiness.
+	var centralDB *central.DB
+	var centralState api.CentralState
+	if cfg.Database.Enabled() {
+		if centralDB, err = central.Open(central.Options{DSN: cfg.Database.DSN, MaxConns: int32(cfg.Database.MaxConns), // #nosec G115 -- bounded 1-32 by the schema
+			Node: cfg.Node.Name, Version: info.Version, Registerer: reg, Logger: logger}); err != nil {
+			return err
+		}
+		defer centralDB.Close()
+		centralState = centralDB
+	}
+
 	// REST API, dashboard and the external-dns webhook (§10, §5.6).
+	// The sqlite store keeps audit events in state.db; the kube driver's
+	// are in this node's audit spool, so /audit shows the events recorded
+	// by the replica that answers.
 	recorders := audit.Multi{audit.Log{Logger: logger}}
+	var auditReader audit.Reader
 	if ss, ok := st.(*sqlite.Store); ok {
-		recorders = audit.Multi{audit.SQLite{Store: ss}, audit.Log{Logger: logger}}
+		auditReader = auditstore.SQLite{Store: ss}
+		recorders = audit.Multi{
+			audit.Gated{Inner: auditstore.SQLite{Store: ss}, Allowed: func() bool { return lic.Allows(license.FeatureAudit) }},
+			audit.Log{Logger: logger},
+		}
+	}
+	var auditLogs *auditLogStore
+	if auditSpool != nil {
+		auditReader = auditSpool
+		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
+		// audit.store auditlog: every replica reads every node's events.
+		if cfg.AuditStore() == config.AuditStoreAuditLog {
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, logger); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+			if auditLogs != nil {
+				auditReader = auditLogs.reader
+			}
+		}
+	}
+	// audit.store database (D159): every node ships its own audit (the
+	// spool, or state.db) into the central chain; every replica reads it.
+	var auditShipper *audit.Shipper
+	var centralJobs []central.Job
+	if centralDB != nil && cfg.AuditStore() == config.AuditStoreDatabase {
+		var src audit.Source
+		if auditSpool != nil {
+			src = auditSpool
+		} else if ss, ok := st.(*sqlite.Store); ok {
+			if src, err = audit.NewStateSource(ctx, ss, cfg.Node.Name); err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+		}
+		if src != nil {
+			auditShipper = &audit.Shipper{Source: src, Target: &pgaudit.Target{DB: centralDB, Version: info.Version},
+				Delay: time.Second, MinGap: -1, Logger: logger}
+			auditReader = &pgaudit.Reader{DB: centralDB}
+			centralJobs = append(centralJobs, pgaudit.PruneJob(cfg.Audit.Retention.Std()))
+		}
+	}
+	if auditLogs != nil {
+		auditShipper = auditLogs.shipper
+	}
+	// The query log in the central database (D160): this node copies its
+	// querylog.db rows and rollups; the leader keeps the partitions.
+	var qlShipper *pgquerylog.Shipper
+	var centralQuerylog *sqlitelog.Reader
+	var centralPurger api.QuerylogPurger
+	if centralDB != nil && cfg.Database.Querylog.Ship {
+		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
+			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains})
+		centralPurger = pgquerylog.Purger{DB: centralDB}
+		if qlWriter == nil {
+			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
+		} else {
+			qlShipper = &pgquerylog.Shipper{DB: centralDB, Local: qlWriter, Node: cfg.Node.Name, Version: info.Version,
+				Facts: cfg.Database.Querylog.Facts, Retention: cfg.Database.Querylog.Retention.Raw.Std(), Registerer: reg, Logger: logger}
+		}
+		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
 	}
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
 	apiSrv, err := api.New(api.Options{
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		Querylog: qlReader, Tail: qlTail,
+		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), Objects: loader, Health: checker, Membership: membership,
+		InternalClient: internalClient, License: lic,
 		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
-		Refresher:    listRefresher(membership, fetcher),
-		ListBodies:   listBodies{cache: lists},
-		Purger:       querylogPurger(qlWriter),
-		Audit:        recorders,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(),
+		Refresher:  listRefresher(membership, fetcher),
+		ListBodies: listBodies{cache: lists},
+		Purger:     querylogPurger(qlWriter),
+		Audit:      recorders, AuditReader: auditReader, Central: centralState,
+		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
 		AuthHandler: authMux,
 		Roles:       ids.Roles,
 		UIHandler:   web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
-		DefaultNamespace: bootstrap.DefaultNamespace,
-		Catalogue:        catalogueAPI(catalogues, catRefreshers),
+		DefaultNamespace: namespace,
+		Catalogue:        catalogueAPI(catalogs, catRefreshers),
 		BlockPage:        blockPage,
 		Unblock:          unblockBook,
 	})
@@ -609,6 +763,12 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	var edns *externaldns.Server
 	if cfg.ExternalDNS.Webhook.Enabled {
+		if err := lic.Require(license.FeatureIntegrations); err != nil {
+			// The webhook is an optional add-on: leave it off, keep serving.
+			logger.Warn("externalDNS.webhook.enabled is set but the webhook is not started", "error", err)
+		}
+	}
+	if cfg.ExternalDNS.Webhook.Enabled && lic.Allows(license.FeatureIntegrations) {
 		eo := externaldns.OptionsFrom(cfg.ExternalDNS.Webhook)
 		eo.Store, eo.Validator, eo.Cache, eo.Registerer, eo.Logger = st, v, zc, reg, logger
 		if edns, err = externaldns.New(eo); err != nil {
@@ -617,7 +777,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogues.HasService, KnownCategory: catalogues.HasCategory, ServicesChanged: catalogues.Subscribe()})
+	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()})
 	if err != nil {
 		return err
 	}
@@ -641,6 +801,7 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 		leaderOnly bool
 		fn         func(context.Context) error
 	}{
+		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
 		{"settings", false, func(ctx context.Context) error {
 			return config.WatchSettings(ctx, reload, config.WatchOptions{Environ: os.Environ(), Logger: logger})
@@ -750,8 +911,41 @@ func runServe(ctx context.Context, cfg *config.Config) error {
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
+	if centralDB != nil {
+		if err := add("central", false, centralDB.Run); err != nil {
+			return err
+		}
+		if len(centralJobs) > 0 {
+			if err := add("central-janitor", true, (&central.Janitor{DB: centralDB, Jobs: centralJobs, Logger: logger}).Run); err != nil {
+				return err
+			}
+		}
+	}
+	if auditShipper != nil {
+		if err := add("audit-ship", false, auditShipper.Run); err != nil {
+			return err
+		}
+	}
+	if qlShipper != nil {
+		if err := add("querylog-ship", false, qlShipper.Run); err != nil {
+			return err
+		}
+	}
+	auditRetention := cfg.Audit.Retention.Std()
 	if ss, ok := st.(*sqlite.Store); ok {
-		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Logger: logger}).Run); err != nil {
+		if err := add("audit-prune", true, (&sqlite.AuditPruner{Store: ss, Retention: auditRetention, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	// Every node prunes its own audit spool; the leader prunes the
+	// AuditLog batches, which every node ships its spool into.
+	if auditSpool != nil {
+		if err := add("audit-spool-prune", false, (&audit.Pruner{Name: "spool", Prune: auditSpool.Prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
+			return err
+		}
+	}
+	if auditLogs != nil {
+		if err := add("auditlog-prune", true, (&audit.Pruner{Name: "auditlog", Prune: auditLogs.prune, Retention: auditRetention, Logger: logger}).Run); err != nil {
 			return err
 		}
 	}
@@ -833,6 +1027,7 @@ func identityOptions(cfg *config.Config, st store.Store, k keys.Keys, logger *sl
 		Config: cfg, Store: st, Keys: k,
 		TrustForwardedProto: len(cfg.Listeners.API.TrustedProxies) > 0,
 		APIPrefix:           strings.TrimSuffix(cfg.Listeners.API.PathPrefix, "/") + "/api/v1",
+		RoutePrefix:         stack.DefaultAPIPrefix,
 		ClientIP:            apiClientIP,
 		Logger:              logger,
 	}

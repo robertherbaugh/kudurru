@@ -3,7 +3,14 @@ package cluster
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/utils/ptr"
 )
 
 type stubElector struct {
@@ -99,5 +106,56 @@ func TestElectorMembership(t *testing.T) {
 	el.leader = "pod-a"
 	if peers, _ := m.Peers(ctx); len(peers) != 2 {
 		t.Errorf("peers = %+v", peers)
+	}
+}
+
+func TestElectorMembershipEndpointSlices(t *testing.T) {
+	ctx := context.Background()
+	cs := fake.NewClientset(slice("kudurru-dns-a", 5353,
+		pod("pod-a", "10.1.0.10", ptr.To(true), nil, nil),
+		pod("pod-b", "10.1.0.11", ptr.To(true), nil, nil),
+		pod("pod-c", "10.1.0.12", ptr.To(true), nil, nil),
+	))
+	src := &EndpointSliceSource{Client: cs.DiscoveryV1(), Namespace: "kudurru", Service: "kudurru-dns", InternalPort: 9000}
+	for _, self := range []string{"pod-a", "pod-b", "pod-c"} {
+		t.Run(self, func(t *testing.T) {
+			m := &ElectorMembership{SelfName: self, Elector: &stubElector{leading: self == "pod-a", leader: "pod-a"}, Source: src}
+			got, err := m.Peers(ctx)
+			want := []Peer{
+				{Name: "pod-a", Address: "10.1.0.10:9000", Self: self == "pod-a"},
+				{Name: "pod-b", Address: "10.1.0.11:9000", Self: self == "pod-b"},
+				{Name: "pod-c", Address: "10.1.0.12:9000", Self: self == "pod-c"},
+			}
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("Peers = %+v, %v; want %+v", got, err, want)
+			}
+		})
+	}
+	// Discovery retains unready peers and collapses multiple addresses of a pod.
+	sl, err := cs.DiscoveryV1().EndpointSlices("kudurru").Get(ctx, "kudurru-dns-a", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl.Endpoints = append(sl.Endpoints, pod("pod-b", "10.1.0.20", ptr.To(false), nil, nil))
+	sl.Endpoints[2].Conditions.Ready = ptr.To(false)
+	if _, err := cs.DiscoveryV1().EndpointSlices("kudurru").Update(ctx, sl, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	m := &ElectorMembership{SelfName: "pod-d", Source: src}
+	if peers, err := m.Peers(ctx); err != nil || len(peers) != 4 || !peers[3].Self || peers[2].Name != "pod-c" {
+		t.Fatalf("unready, duplicate and missing self: %+v, %v", peers, err)
+	}
+	if err := cs.DiscoveryV1().EndpointSlices("kudurru").Delete(ctx, sl.Name, metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if peers, err := m.Peers(ctx); err != nil || len(peers) != 1 || !peers[0].Self {
+		t.Fatalf("empty discovery: %+v, %v", peers, err)
+	}
+	// A discovery error must not silently return an incomplete cluster.
+	cs.PrependReactor("list", "endpointslices", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("discovery unavailable")
+	})
+	if _, err := m.Peers(ctx); err == nil {
+		t.Fatal("discovery error swallowed")
 	}
 }

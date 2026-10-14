@@ -91,6 +91,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- include "kudurru.licenseEnv" . | nindent 12 }}
           ports:
             # Supervisor /healthz/*, /status, /metrics (kudurru_vip_*).
             - name: vip-health
@@ -134,6 +135,16 @@ spec:
           secret:
             secretName: {{ include "kudurru.proxySecret" . }}
             defaultMode: 0440
+        - name: encryption-key
+          secret:
+            secretName: {{ include "kudurru.encryptionKeySecret" . }}
+            defaultMode: 0440
+        {{- if .Values.auth.encryptionKeyPreviousSecret }}
+        - name: encryption-key-previous
+          secret:
+            secretName: {{ .Values.auth.encryptionKeyPreviousSecret }}
+            defaultMode: 0440
+        {{- end }}
         {{- if $e.tlsSecretName }}
         - name: edge-tls
           secret:

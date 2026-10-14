@@ -138,3 +138,28 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 |---|---|---|
 | E2E-2: sqlite nodes cannot form a cluster. serve.go hard-codes `cluster.Self` membership for the sqlite driver, so node B cannot be pointed at node A's internal listener for list bodies, and every sqlite node reports itself as leader. The two-node test drives `/internal/status` and `/internal/lists/{digest}` with the derived credentials instead. Needs a `cluster.static` setting (peers, leader) feeding `cluster.Static` | docs/m5/e2e.md | v0.2 (compose HA) |
 | e2e still missing from §13.1: the apiserver-outage test (kill the control plane, restart a pod, answers from local.db; envtest can stop the apiserver, spike 3 did), the 2-VM keepalived failover, the AdGuard Home black-box corpus and the Knot catalog consumer (both need only a Docker runner). kind + Helm with MetalLB is the kind workflow (hack/kind-e2e.sh) | docs/m5/e2e.md | v0.2 (moved from M5: apiserver-outage on envtest, AdGuard Home and Knot on a Docker runner); the 2-VM failover stays a GA gate (docs/release-checklist.md §3) |
+
+## Central database and cluster-wide audit (D155-D161)
+
+| Item | Source | Target |
+|---|---|---|
+| `scope=node&node=<other>` still answers 501; with a central database it could be answered from the database filtered by node (every reader query needs a node condition) | D161 | v0.2 |
+| The live tail follows the serving node only; a cluster tail could poll the central database or multiplex the nodes' SSE streams (#8 membership) | D161 | v0.2 |
+| Central dictionaries are never pruned (the nodes prune theirs by last_seen); prune entries no rollup or fact row references | D160 | v0.2 |
+| Statistics of a node that stops for good inside an hour it has not summarised lose that part hour (its facts are kept); the leader could summarise the facts of sources gone for two hours | D160 | v0.2 |
+| A missing AuditLog CRD is a log line and a runbook entry; also report it on the Diagnosis page and in `kudurru doctor` (object count against the 50 000 recommendation) | D157 | v0.2 |
+| Grafana panels for `kudurru_central_up`, `kudurru_central_ship_lag_seconds` and `kudurru_audit_spool_dropped_total` (the alerts ship) | D158 | v0.2 |
+| `GET /audit/verify` and `kudurru audit verify` for `pgaudit.Verify` and `auditlog.Verify` (the functions and their tests exist) | D157, D159 | v0.2 |
+
+## License portal (license-server/)
+
+| Item | Source | Target |
+|---|---|---|
+| Step-up re-authentication (a sign-in within minutes, `max_age`) for granting roles and other superadmin actions | design critique, security | after go-live |
+| Signing-key lifecycle in the portal: several keys, "trusted since" from release tags, a compromised flag and bulk re-issue under a new kid | design critique, completeness | when a second kid exists |
+| A signer outside the portal's process (Vault transit or a separate container) behind the `Signer` interface | design critique, security | when the portal grows beyond one operator |
+| Expiry reminders by mail (45, 30 and 7 days) and mail to the requester when a request is decided in bulk | product research | after go-live |
+| RP-initiated logout, several identity providers, a metrics endpoint, audit export | design spec | later |
+| Dashboard `LicensePage` dates in UTC, and the "no restart" wording in LicensePage, www, licensing.md and helm.md: the flag and `KUDURRU_LICENSE_KEY` are read once at startup | design critique, product | next licensing round |
+| `license.Manager` logs "license key replaced" when a key with the same jti but other claims or expiry arrives (today it logs only state, id or source changes) | design critique, compatibility | next licensing round |
+

@@ -16,6 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 )
@@ -165,6 +166,9 @@ func (s *Server) registerUnblock() {
 	register(s, list, perm{resource: "unblockrequests", verb: "read"}, s.listUnblock)
 	register(s, operation(http.MethodGet, "/unblockrequests/{namespace}/{name}", "getUnblockRequest", "Get an unblock request", "unblockrequests"),
 		perm{resource: "unblockrequests", verb: "read"}, func(ctx context.Context, in *nsObjectInput) (*unblockOutput, error) {
+			if err := s.requireRequests(); err != nil {
+				return nil, err
+			}
 			r := &v1alpha1.UnblockRequest{}
 			if err := s.opts.Store.Get(ctx, store.Key{Kind: unblock.Kind, Namespace: in.Namespace, Name: in.Name}, r); err != nil {
 				return nil, unblockError(err, in.Namespace, in.Name)
@@ -183,6 +187,13 @@ func (s *Server) registerUnblock() {
 	del := operation(http.MethodDelete, "/unblockrequests/{namespace}/{name}", "deleteUnblockRequest", "Delete an unblock request", "unblockrequests")
 	del.Description = "A permanent approval's entry stays on its list. A time-limited approval in force answers 409: deny it first, which removes its entry."
 	register(s, withStatus(del, http.StatusNoContent), perm{resource: "unblockrequests", verb: "delete"}, s.deleteUnblock)
+}
+
+// requireRequests is the license gate of the unblock request workflow
+// (license.FeatureRequests): the block page itself stays free, asking for an
+// unblock and deciding on it do not.
+func (s *Server) requireRequests() error {
+	return s.requireFeature(license.FeatureRequests, "unblock requests")
 }
 
 // unblockService is Options.Unblock, or a store-only service when the
@@ -217,6 +228,9 @@ func (s *Server) allUnblock(ctx context.Context) ([]*v1alpha1.UnblockRequest, er
 }
 
 func (s *Server) listUnblock(ctx context.Context, in *unblockListInput) (*unblockListOutput, error) {
+	if err := s.requireRequests(); err != nil {
+		return nil, err
+	}
 	all, err := s.allUnblock(ctx)
 	if err != nil {
 		return nil, err
@@ -265,6 +279,9 @@ func (s *Server) actor(ctx context.Context) string {
 }
 
 func (s *Server) approveUnblock(ctx context.Context, in *unblockApproveInput) (*unblockDecisionOutput, error) {
+	if err := s.requireRequests(); err != nil {
+		return nil, err
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -294,6 +311,9 @@ func (s *Server) approveUnblock(ctx context.Context, in *unblockApproveInput) (*
 }
 
 func (s *Server) denyUnblock(ctx context.Context, in *unblockDenyInput) (*unblockDecisionOutput, error) {
+	if err := s.requireRequests(); err != nil {
+		return nil, err
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}
@@ -310,6 +330,9 @@ func (s *Server) denyUnblock(ctx context.Context, in *unblockDenyInput) (*unbloc
 }
 
 func (s *Server) deleteUnblock(ctx context.Context, in *nsObjectInput) (*emptyOutput, error) {
+	if err := s.requireRequests(); err != nil {
+		return nil, err
+	}
 	if err := s.readOnly(); err != nil {
 		return nil, err
 	}

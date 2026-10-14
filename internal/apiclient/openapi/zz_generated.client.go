@@ -1433,6 +1433,27 @@ func (e QuerySuggestionsParamsField) Valid() bool {
 	}
 }
 
+// Defines values for QueryActionParamsScope.
+const (
+	QueryActionParamsScopeCluster QueryActionParamsScope = "cluster"
+	QueryActionParamsScopeEmpty   QueryActionParamsScope = ""
+	QueryActionParamsScopeNode    QueryActionParamsScope = "node"
+)
+
+// Valid indicates whether the value is a known member of the QueryActionParamsScope enum.
+func (e QueryActionParamsScope) Valid() bool {
+	switch e {
+	case QueryActionParamsScopeCluster:
+		return true
+	case QueryActionParamsScopeEmpty:
+		return true
+	case QueryActionParamsScopeNode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StatsClientTimeseriesParamsScope.
 const (
 	StatsClientTimeseriesParamsScopeCluster StatsClientTimeseriesParamsScope = "cluster"
@@ -1710,8 +1731,10 @@ type AuthStatusLocalLoginMode string
 
 // BatchDeleteInputBody defines model for BatchDeleteInputBody.
 type BatchDeleteInputBody struct {
-	Names     *[]string `json:"names"`
-	Namespace *string   `json:"namespace,omitempty"`
+	Names *[]string `json:"names"`
+
+	// Namespace Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // BindingScope defines model for BindingScope.
@@ -1736,6 +1759,7 @@ type BlockedItem struct {
 	Domain     string    `json:"domain"`
 	Id         int64     `json:"id"`
 	List       *string   `json:"list,omitempty"`
+	Node       string    `json:"node"`
 	Status     string    `json:"status"`
 	Ts         time.Time `json:"ts"`
 }
@@ -1934,6 +1958,7 @@ type ClientTimeseriesBody struct {
 	Partial     bool           `json:"partial"`
 	Points      *[]ClientPoint `json:"points"`
 	Scope       string         `json:"scope"`
+	Source      *string        `json:"source,omitempty"`
 	Step        int64          `json:"step"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -2285,9 +2310,11 @@ type DomainWriteResult struct {
 
 // DomainsRequest defines model for DomainsRequest.
 type DomainsRequest struct {
-	Domains   *[]string `json:"domains"`
-	List      *string   `json:"list,omitempty"`
-	Namespace *string   `json:"namespace,omitempty"`
+	Domains *[]string `json:"domains"`
+	List    *string   `json:"list,omitempty"`
+
+	// Namespace Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // EdgeBackend defines model for EdgeBackend.
@@ -2352,21 +2379,23 @@ type ErrorBody struct {
 
 // Event defines model for Event.
 type Event struct {
-	Action   string      `json:"action"`
-	Actor    Actor       `json:"actor"`
-	After    interface{} `json:"after,omitempty"`
-	Authz    *string     `json:"authz,omitempty"`
-	Before   interface{} `json:"before,omitempty"`
-	Hash     *string     `json:"hash,omitempty"`
-	Id       *int64      `json:"id,omitempty"`
-	Manager  *string     `json:"manager,omitempty"`
-	Node     *string     `json:"node,omitempty"`
-	PrevHash *string     `json:"prev_hash,omitempty"`
-	Reason   *string     `json:"reason,omitempty"`
-	Request  Request     `json:"request"`
-	Resource Resource    `json:"resource"`
-	Result   string      `json:"result"`
-	Ts       time.Time   `json:"ts"`
+	Action          string      `json:"action"`
+	Actor           Actor       `json:"actor"`
+	After           interface{} `json:"after,omitempty"`
+	Authz           *string     `json:"authz,omitempty"`
+	Before          interface{} `json:"before,omitempty"`
+	Hash            *string     `json:"hash,omitempty"`
+	Id              *int64      `json:"id,omitempty"`
+	Manager         *string     `json:"manager,omitempty"`
+	Node            *string     `json:"node,omitempty"`
+	PrevHash        *string     `json:"prev_hash,omitempty"`
+	Reason          *string     `json:"reason,omitempty"`
+	Request         Request     `json:"request"`
+	Resource        Resource    `json:"resource"`
+	ResourceVersion *string     `json:"resource_version,omitempty"`
+	Result          string      `json:"result"`
+	Ts              time.Time   `json:"ts"`
+	Uid             *string     `json:"uid,omitempty"`
 }
 
 // Flags defines model for Flags.
@@ -2446,6 +2475,30 @@ type LatencySummary struct {
 	P50Ms float64 `json:"p50_ms"`
 	P95Ms float64 `json:"p95_ms"`
 	P99Ms float64 `json:"p99_ms"`
+}
+
+// LicenseInfo defines model for LicenseInfo.
+type LicenseInfo struct {
+	// DefaultNamespace Namespace of the seeded defaults; without a key the only Policy that can be created is default in it.
+	DefaultNamespace string     `json:"defaultNamespace"`
+	Error            *string    `json:"error,omitempty"`
+	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
+	Features         []string   `json:"features"`
+	GraceEndsAt      *time.Time `json:"graceEndsAt,omitempty"`
+	Id               *string    `json:"id,omitempty"`
+	Licensee         *string    `json:"licensee,omitempty"`
+	Nodes            int64      `json:"nodes"`
+	NodesInUse       int64      `json:"nodesInUse"`
+	OverLimit        bool       `json:"overLimit"`
+	Plan             *string    `json:"plan,omitempty"`
+
+	// PolicyLimit How many Policy objects may exist; 0 means no limit.
+	PolicyLimit int64   `json:"policyLimit"`
+	Source      *string `json:"source,omitempty"`
+	State       string  `json:"state"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
 }
 
 // ListApplyResult defines model for ListApplyResult.
@@ -2626,10 +2679,13 @@ type NodeHealth struct {
 // NodeInfo defines model for NodeInfo.
 type NodeInfo struct {
 	Address *string `json:"address,omitempty"`
-	Leader  bool    `json:"leader"`
-	Name    string  `json:"name"`
-	Ready   *bool   `json:"ready,omitempty"`
-	Self    bool    `json:"self"`
+
+	// Error Error fetching this node's status; readiness is unknown.
+	Error  *string `json:"error,omitempty"`
+	Leader bool    `json:"leader"`
+	Name   string  `json:"name"`
+	Ready  *bool   `json:"ready,omitempty"`
+	Self   bool    `json:"self"`
 
 	// SnapshotAge Age of the served local.db snapshot (fromSnapshot only).
 	SnapshotAge *string `json:"snapshotAge,omitempty"`
@@ -2929,8 +2985,9 @@ type ProviderSpecific struct {
 
 // PurgeResult defines model for PurgeResult.
 type PurgeResult struct {
-	Deleted int64  `json:"deleted"`
-	Node    string `json:"node"`
+	CentralDeleted *int64 `json:"central_deleted,omitempty"`
+	Deleted        int64  `json:"deleted"`
+	Node           string `json:"node"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -2944,9 +3001,11 @@ type QueriesBody struct {
 	Nodes            *[]NodeResult `json:"nodes"`
 	Partial          bool          `json:"partial"`
 	Queries          *[]QueryRow   `json:"queries"`
+	RecordsCapped    *bool         `json:"records_capped,omitempty"`
 	RecordsFiltered  int64         `json:"records_filtered"`
 	RecordsTotal     int64         `json:"records_total"`
 	Scope            string        `json:"scope"`
+	Source           *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -2954,8 +3013,10 @@ type QueriesBody struct {
 
 // QueryActionInputBody defines model for QueryActionInputBody.
 type QueryActionInputBody struct {
-	Action    QueryActionInputBodyAction `json:"action"`
-	Namespace *string                    `json:"namespace,omitempty"`
+	Action QueryActionInputBodyAction `json:"action"`
+
+	// Namespace Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // QueryActionInputBodyAction defines model for QueryActionInputBody.Action.
@@ -3012,6 +3073,7 @@ type QuerylogStatusBody struct {
 	Retention   Retention     `json:"retention"`
 	Rows        int64         `json:"rows"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 	Subscribers int64         `json:"subscribers"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -3026,6 +3088,7 @@ type RecentBlockedBody struct {
 	Nodes   *[]NodeResult  `json:"nodes"`
 	Partial bool           `json:"partial"`
 	Scope   string         `json:"scope"`
+	Source  *string        `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -3388,6 +3451,7 @@ type SuggestionsBody struct {
 	Nodes   *[]NodeResult `json:"nodes"`
 	Partial bool          `json:"partial"`
 	Scope   string        `json:"scope"`
+	Source  *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64   `json:"took_ms"`
@@ -3407,6 +3471,7 @@ type SummaryBody struct {
 	Queries        SummaryQueries   `json:"queries"`
 	Rcodes         map[string]int64 `json:"rcodes"`
 	Scope          string           `json:"scope"`
+	Source         *string          `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64          `json:"took_ms"`
@@ -3443,6 +3508,7 @@ type TimeseriesBody struct {
 	Partial     bool          `json:"partial"`
 	Points      *[]Point      `json:"points"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 	Step        int64         `json:"step"`
 
 	// TookMs Server-side duration of the request in milliseconds.
@@ -3492,6 +3558,7 @@ type TopBody struct {
 	Nodes       *[]NodeResult `json:"nodes"`
 	Partial     bool          `json:"partial"`
 	Scope       string        `json:"scope"`
+	Source      *string       `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs        float64         `json:"took_ms"`
@@ -3703,6 +3770,7 @@ type UpstreamServer struct {
 	ConsecutiveFailures int64      `json:"consecutive_failures"`
 	Group               string     `json:"group"`
 	Healthy             bool       `json:"healthy"`
+	Node                *string    `json:"node,omitempty"`
 	RttMs               float64    `json:"rtt_ms"`
 	Server              string     `json:"server"`
 }
@@ -3715,6 +3783,7 @@ type UpstreamsBody struct {
 	Partial     bool             `json:"partial"`
 	Scope       string           `json:"scope"`
 	Servers     []UpstreamServer `json:"servers"`
+	Source      *string          `json:"source,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs    float64         `json:"took_ms"`
@@ -4020,10 +4089,10 @@ type ListClientsParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *ListClientsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -4255,6 +4324,15 @@ type QuerySuggestionsParams struct {
 // QuerySuggestionsParamsField defines parameters for QuerySuggestions.
 type QuerySuggestionsParamsField string
 
+// QueryActionParams defines parameters for QueryAction.
+type QueryActionParams struct {
+	// Scope cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).
+	Scope *QueryActionParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
+// QueryActionParamsScope defines parameters for QueryAction.
+type QueryActionParamsScope string
+
 // PurgeQuerylogParams defines parameters for PurgeQuerylog.
 type PurgeQuerylogParams struct {
 	// Before Delete rows older than this instant (RFC 3339); absent deletes every row.
@@ -4275,10 +4353,10 @@ type StatsClientTimeseriesParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsClientTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 	Step *string `form:"step,omitempty" json:"step,omitempty"`
 	N    *int64  `form:"n,omitempty" json:"n,omitempty"`
@@ -4305,10 +4383,10 @@ type StatsSummaryParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsSummaryParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -4326,10 +4404,10 @@ type StatsTimeseriesParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTimeseriesParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 
 	// Step Bucket width (Go duration) or auto (default).
@@ -4350,10 +4428,10 @@ type StatsTopParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsTopParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node    *string           `form:"node,omitempty" json:"node,omitempty"`
 	Dim     StatsTopParamsDim `form:"dim" json:"dim"`
 	N       *int64            `form:"n,omitempty" json:"n,omitempty"`
@@ -4377,10 +4455,10 @@ type StatsUpstreamsParams struct {
 	// To Window end (RFC 3339); default now.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 
-	// Scope node (default) or cluster; cluster is answered by this node until scatter-gather lands.
+	// Scope node (default) or cluster; cluster merges the known nodes and reports partial results on failure.
 	Scope *StatsUpstreamsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
 
-	// Node Node to answer for (scope=node); only this node is served today.
+	// Node Node to answer for (scope=node); requests for another known node are routed over the internal listener.
 	Node *string `form:"node,omitempty" json:"node,omitempty"`
 }
 
@@ -4421,7 +4499,7 @@ type UpsertZoneRecordParams struct {
 	// RecordSet DNSRecordSet to write; default api-<zone>.
 	RecordSet *string `form:"recordSet,omitempty" json:"recordSet,omitempty"`
 
-	// Namespace Namespace of the record set; default "default".
+	// Namespace Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes).
 	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
 }
 
@@ -5196,6 +5274,11 @@ type ClientInterface interface {
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLicense License state, node limit and licensed features of this node
+	//
+	// Corresponds with GET /license (the `GetLicense` operationId).
+	GetLicense(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetNodeConfig This node's host-local settings (redacted)
 	//
 	// Corresponds with GET /node/config (the `GetNodeConfig` operationId).
@@ -5380,14 +5463,14 @@ type ClientInterface interface {
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithBody(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	QueryActionWithBody(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// QueryAction Allow or deny the domain of a logged query
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryAction(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	QueryAction(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PurgeQuerylog Delete query-log rows
 	//
@@ -7043,6 +7126,21 @@ func (c *Client) InfoMessages(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// GetLicense License state, node limit and licensed features of this node
+//
+// Corresponds with GET /license (the `GetLicense` operationId).
+func (c *Client) GetLicense(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLicenseRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetNodeConfig This node's host-local settings (redacted)
 //
 // Corresponds with GET /node/config (the `GetNodeConfig` operationId).
@@ -7517,8 +7615,8 @@ func (c *Client) QuerySuggestions(ctx context.Context, params *QuerySuggestionsP
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *Client) QueryActionWithBody(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewQueryActionRequestWithBody(c.Server, id, contentType, body)
+func (c *Client) QueryActionWithBody(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryActionRequestWithBody(c.Server, id, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7534,8 +7632,8 @@ func (c *Client) QueryActionWithBody(ctx context.Context, id int64, contentType 
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *Client) QueryAction(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewQueryActionRequest(c.Server, id, body)
+func (c *Client) QueryAction(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryActionRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -11430,6 +11528,33 @@ func NewInfoMessagesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetLicenseRequest constructs an http.Request for the GetLicense method
+func NewGetLicenseRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/license")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetNodeConfigRequest constructs an http.Request for the GetNodeConfig method
 func NewGetNodeConfigRequest(server string) (*http.Request, error) {
 	var err error
@@ -12978,18 +13103,18 @@ func NewQuerySuggestionsRequest(server string, params *QuerySuggestionsParams) (
 }
 
 // NewQueryActionRequest calls the generic QueryAction builder with application/json body
-func NewQueryActionRequest(server string, id int64, body QueryActionJSONRequestBody) (*http.Request, error) {
+func NewQueryActionRequest(server string, id int64, params *QueryActionParams, body QueryActionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewQueryActionRequestWithBody(server, id, "application/json", bodyReader)
+	return NewQueryActionRequestWithBody(server, id, params, "application/json", bodyReader)
 }
 
 // NewQueryActionRequestWithBody constructs an http.Request for the QueryAction method, with any body, and a specified content type
-func NewQueryActionRequestWithBody(server string, id int64, contentType string, body io.Reader) (*http.Request, error) {
+func NewQueryActionRequestWithBody(server string, id int64, params *QueryActionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -13012,6 +13137,33 @@ func NewQueryActionRequestWithBody(server string, id int64, contentType string, 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Scope != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "scope", *params.Scope, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
@@ -15352,6 +15504,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /info/messages (the `InfoMessages` operationId).
 	InfoMessagesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*InfoMessagesResponse, error)
 
+	// GetLicenseWithResponse License state, node limit and licensed features of this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /license (the `GetLicense` operationId).
+	GetLicenseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLicenseResponse, error)
+
 	// GetNodeConfigWithResponse This node's host-local settings (redacted)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -15566,14 +15725,14 @@ type ClientWithResponsesInterface interface {
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithBodyWithResponse(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
+	QueryActionWithBodyWithResponse(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
 
 	// QueryActionWithResponse Allow or deny the domain of a logged query
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-	QueryActionWithResponse(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
+	QueryActionWithResponse(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error)
 
 	// PurgeQuerylogWithResponse Delete query-log rows
 	//
@@ -21821,6 +21980,89 @@ func (r InfoMessagesResponse) ContentType() string {
 	return ""
 }
 
+type GetLicenseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LicenseInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLicenseResponse) GetJSON200() *LicenseInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetLicenseResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetLicenseResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetLicenseResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetLicenseResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetLicenseResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetLicenseResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLicenseResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLicenseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLicenseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLicenseResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetNodeConfigResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -27672,6 +27914,19 @@ func (c *ClientWithResponses) InfoMessagesWithResponse(ctx context.Context, reqE
 	return ParseInfoMessagesResponse(rsp)
 }
 
+// GetLicenseWithResponse License state, node limit and licensed features of this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /license (the `GetLicense` operationId).
+func (c *ClientWithResponses) GetLicenseWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLicenseResponse, error) {
+	rsp, err := c.GetLicense(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLicenseResponse(rsp)
+}
+
 // GetNodeConfigWithResponse This node's host-local settings (redacted)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -28060,8 +28315,8 @@ func (c *ClientWithResponses) QuerySuggestionsWithResponse(ctx context.Context, 
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Context, id int64, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
-	rsp, err := c.QueryActionWithBody(ctx, id, contentType, body, reqEditors...)
+func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Context, id int64, params *QueryActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
+	rsp, err := c.QueryActionWithBody(ctx, id, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -28073,8 +28328,8 @@ func (c *ClientWithResponses) QueryActionWithBodyWithResponse(ctx context.Contex
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /queries/{id}/actions (the `QueryAction` operationId).
-func (c *ClientWithResponses) QueryActionWithResponse(ctx context.Context, id int64, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
-	rsp, err := c.QueryAction(ctx, id, body, reqEditors...)
+func (c *ClientWithResponses) QueryActionWithResponse(ctx context.Context, id int64, params *QueryActionParams, body QueryActionJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryActionResponse, error) {
+	rsp, err := c.QueryAction(ctx, id, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -33647,6 +33902,74 @@ func ParseInfoMessagesResponse(rsp *http.Response) (*InfoMessagesResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ListDiagnosisMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLicenseResponse parses an HTTP response from a GetLicenseWithResponse call
+func ParseGetLicenseResponse(rsp *http.Response) (*GetLicenseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLicenseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LicenseInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

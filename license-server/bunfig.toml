@@ -1,0 +1,5 @@
+# Bun settings for the license portal. `bun test` only looks under server/
+# (the UI's vitest files under ui/ are not bun tests); see package.json
+# test:server and test:ui.
+[test]
+root = "server"

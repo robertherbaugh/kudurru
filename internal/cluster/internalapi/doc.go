@@ -25,6 +25,12 @@
 //	GET /internal/status          {node, version, leader, state, lists:[{name, digests}]}
 //	GET /internal/lists/{digest}  the cached list body whose sha256 is digest
 //
+// GET /internal/querylog?q=<JSON> reads local query-log/stats shards, including
+// bounded distinct sketches and additive latency histograms. It never fans
+// out to other nodes. GET /internal/querylog/stream?after=<id> streams events
+// after the ingest privacy transform. Both require the same TLS and cluster
+// bearer token; the public API authorizes the user before contacting peers.
+//
 // Requests are rate-limited per client address, carry no body, and list
 // downloads are bounded in number and size. The client verifies the sha256
 // of every list body while it streams.

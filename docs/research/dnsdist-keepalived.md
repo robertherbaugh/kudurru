@@ -32,7 +32,7 @@ Decisions this research supports:
    keepalived DaemonSet option only for clusters where a VRRP VIP must coexist with non-k8s
    VRRP peers or where the operator already standardises on VRRP.
 4. GPL boundary: both are invoked as **separate executables over the network/CLI**, never linked
-   into the Apache-2.0 kudurru binary. Shipping them as sidecar images (or even re-packaging
+   into the kudurru binary (now under the Kudurru Community License; Apache-2.0 when this note was written). Shipping them as sidecar images (or even re-packaging
    upstream binaries in a kudurru-published image with the GPL text) is fine; dynamic or static
    linking is not.
 
@@ -988,7 +988,7 @@ and stores them in its data dir.
 ## 4. Licensing boundary
 
 - dnsdist: GPL-2.0 (pdns `COPYING`); keepalived: GPL-2.0-or-later (`COPYING`, README badge).
-  kudurru: Apache-2.0. GPL-2.0 and Apache-2.0 are incompatible for **linking/combining into one
+  kudurru: Kudurru Community License (Apache-2.0 when this note was written). GPL code must not be **linked or combined into the Kudurru
   program**; running them as separate processes that communicate over sockets, files and CLI
   arguments is the classic "mere aggregation" case. Therefore:
   - Never embed dnsdist/keepalived code or headers in the kudurru binary; no cgo bindings; no Lua
@@ -1046,7 +1046,7 @@ and stores them in its data dir.
 
 ## 6. What kudurru should avoid
 
-1. **Do not link or vendor** dnsdist/keepalived code (GPL-2.0 vs Apache-2.0); do not copy
+1. **Do not link or vendor** dnsdist/keepalived code (GPL-2.0 vs Kudurru Community License); do not copy
    `dnsdist-resolver.lua` verbatim; always separate processes/containers.
 2. **Do not treat the dnsdist REST API as a configuration API** — it cannot add/remove backends,
    pools or rules; only `allow-from` and cache flush are writable. Plan around the console/Lua.

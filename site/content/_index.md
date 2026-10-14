@@ -11,7 +11,7 @@ links:
   - {page: /reference/api, label: REST API reference, text: "The OpenAPI document, the endpoint index with permissions, and an API explorer."}
   - {page: /reference/cli, text: "Every `kudurru` command and flag."}
   - {page: /migrate, label: Migration guides, text: "How Pi-hole and AdGuard Home concepts map onto kudurru objects."}
-  - {page: /design/architecture, label: Architecture, text: "The complete design and the decision log."}
+  - {page: /architecture, label: Architecture, text: "How kudurru works inside, with a diagram for every flow: queries, policies, upstreams, the store, deployment shapes."}
 ---
 
 ## Status
@@ -22,6 +22,16 @@ the v0.1.0 release publishes (`ghcr.io/robertherbaugh/kudurru:0.1.0`,
 `oci://ghcr.io/robertherbaugh/charts/kudurru`); until that tag exists, build
 from source: `make web-build build` writes `bin/kudurru` with the dashboard
 embedded, and `make docker` builds the image ([Contributing](/project/contributing/)).
+
+## Source-available, free at home
+
+kudurru's core uses the Kudurru Community License for personal, homelab,
+qualifying nonprofit and isolated community-development uses. Business and
+government production use needs an accepted commercial agreement and Order
+Form. Other folders have their own notices. A license key (free for eligible
+community use, up to 3 nodes) unlocks more than one node, more than one
+policy and some features; DNS answering never depends on a key. See
+[Licensing](/project/licensing/).
 
 ## One object model, every shape
 

@@ -7,9 +7,9 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/robertherbaugh/kudurru/internal/edge"
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
-	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/ee/edge"
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 )
 
 // keepalivedUnsafe can end a token, a block or a line in keepalived.conf

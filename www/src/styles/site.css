@@ -1151,7 +1151,8 @@ main,
   font-size: 13px;
   color: var(--fg-3);
 }
-.reg-body h3 {
+.reg-body h3,
+.sec.lic-sec h2 {
   font-size: clamp(1.625rem, 2.6vw, 2.25rem);
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -1656,6 +1657,189 @@ main,
   color: var(--fg-2);
 }
 
+/* The license page (/license/). The intro keeps the narrow column; the
+   sections below it span the wrap, as the table does. Their headings take
+   the register heading step (.reg-body h3), below the page title: the home
+   page's display size would dwarf it. Below the table each row has its
+   heading in the first column and its text or form in the second, which
+   reaches the table's right edge; paragraphs keep a reading measure and the
+   form's box is 760px. On narrow screens the columns stack. */
+.lic-sec h2 + .shapes {
+  margin-top: 20px;
+}
+.lic-table {
+  overflow-x: auto;
+}
+.lic-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 9fr);
+  gap: 24px;
+  align-items: baseline;
+  padding-block: 48px;
+  border-top: 1px solid var(--line);
+}
+/* The first row has the section's rule above it; without script that is
+   "Get a key", because the form is hidden. */
+.lic-row:first-child,
+html:not(.js) .licform + .lic-row {
+  padding-top: 0;
+  border-top: 0;
+}
+.lic-row:last-child {
+  padding-bottom: 0;
+}
+.lic-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  color: var(--fg-2);
+}
+.lic-body p {
+  max-width: 68ch;
+}
+.lic-body code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+}
+.js .nojs-note {
+  display: none;
+}
+
+/* The "Request a key" form of /license/ (needs script: hidden without it) */
+html:not(.js) .licform {
+  display: none;
+}
+.licform.lic-row {
+  align-items: start;
+}
+.licform-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  max-width: 760px;
+  padding: 28px;
+  border: 1px solid var(--line-2);
+  background: var(--ink-2);
+}
+.licform-box .fine {
+  margin-top: 0;
+  color: var(--fg-2);
+}
+.licform fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.licform legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--fg-2);
+}
+.licform-choice,
+.licform-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.licform-check a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.licform-choice input,
+.licform-check input {
+  margin-top: 4px;
+  accent-color: var(--clay);
+}
+.licform-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.licform-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 0;
+}
+.licform-field > span {
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--fg-2);
+}
+.licform input[type="text"],
+.licform input[type="email"],
+.licform input[type="number"],
+.licform textarea {
+  width: 100%;
+  padding: 11px 12px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+}
+.licform textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+.licform input:hover,
+.licform textarea:hover {
+  border-color: var(--fg-3);
+}
+.license-text h2 {
+  margin-top: 40px;
+  font-size: 1.5rem;
+}
+.license-text blockquote {
+  margin: 16px 0 0;
+  padding: 4px 0 4px 20px;
+  border-left: 2px solid var(--clay-hi);
+}
+.license-text p {
+  max-width: 68ch;
+}
+.licform-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.licform-problems {
+  padding: 12px 16px;
+  border-left: 2px solid var(--st-blocked);
+  background: var(--ink-3);
+}
+.licform-problems ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.licform-status {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--fg);
+}
+.licform-mail {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.licform-mail pre {
+  width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.licform [hidden] {
+  display: none;
+}
+
 /* Motion */
 @keyframes pulse {
   0%,
@@ -1813,6 +1997,11 @@ main,
   .sec-lead {
     margin-left: 0;
   }
+  .lic-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding-block: 40px;
+  }
   .reg-side {
     position: static;
   }
@@ -1900,5 +2089,13 @@ main,
   .shapes th:nth-child(3),
   .shapes td:nth-child(3) {
     display: none;
+  }
+  /* The license table keeps its four columns: the third is the free key. */
+  .lic-table th:nth-child(3),
+  .lic-table td:nth-child(3) {
+    display: table-cell;
+  }
+  .licform-box {
+    padding: 20px;
   }
 }

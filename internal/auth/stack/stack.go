@@ -33,12 +33,13 @@ import (
 	"k8s.io/client-go/rest"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/oidc"
+	eerbac "github.com/robertherbaugh/kudurru/ee/rbac"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/k8s"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/objcache"
-	"github.com/robertherbaugh/kudurru/internal/auth/oidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
@@ -88,8 +89,12 @@ type Options struct {
 	// X-Forwarded-Proto from a trusted proxy (only when the API server's
 	// RealIP step guarantees the header's origin).
 	TrustForwardedProto bool
-	// APIPrefix is the API base path; default /api/v1.
+	// APIPrefix is the external API base path, including the deployment's
+	// path prefix, for OIDC redirect validation; default /api/v1.
 	APIPrefix string
+	// RoutePrefix is the base path seen by the route mux; default APIPrefix.
+	// Set /api/v1 when the API server strips the deployment's path prefix.
+	RoutePrefix string
 	// ClientIP returns the client address of a request after the
 	// RealIP(trustedProxies) step (login lockouts, token lastUsedIP);
 	// default the RemoteAddr host.
@@ -101,6 +106,18 @@ type Options struct {
 	// Out receives the generated first-boot admin password; default
 	// os.Stderr.
 	Out io.Writer
+	// RBACAllowed reports whether role bindings, scoped roles and Kubernetes
+	// RBAC delegation are licensed (ee/rbac, license.FeatureRBAC). While it
+	// is false the built-in administrator is the only role: bindings stay
+	// configured but grant nothing, and no principal gets roles from them.
+	// nil allows RBAC (tests).
+	RBACAllowed func() bool
+	// OIDCAllowed reports whether OIDC single sign-on is licensed
+	// (ee/oidc, license.FeatureOIDC). While it is false the identity
+	// providers are configured but disabled: no OIDC login and no bearer
+	// ID tokens; local users, tokens and the admin socket are unaffected.
+	// nil allows OIDC (tests).
+	OIDCAllowed func() bool
 	// Logger; default slog.Default().
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
@@ -113,7 +130,7 @@ type Stack struct {
 	cfg      *config.Config
 	log      *slog.Logger
 	perms    *rbac.Permissions
-	bindings *rbac.BindingSource
+	bindings *eerbac.BindingSource
 	engine   *rbac.Engine
 	users    *users.Users
 	tokens   *tokens.Tokens
@@ -150,6 +167,9 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	if opts.APIPrefix == "" {
 		opts.APIPrefix = DefaultAPIPrefix
 	}
+	if opts.RoutePrefix == "" {
+		opts.RoutePrefix = opts.APIPrefix
+	}
 	if opts.Namespace == "" {
 		opts.Namespace = tokens.DefaultNamespace
 	}
@@ -183,7 +203,7 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.bindings, err = rbac.NewBindingSource(s.perms, static, rbac.SourceOptions{Logger: log, Now: opts.Now}); err != nil {
+	if s.bindings, err = eerbac.NewBindingSource(s.perms, static, eerbac.SourceOptions{Logger: log, Now: opts.Now}); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +221,7 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		if err != nil {
 			return nil, err
 		}
-		if sar, err = rbac.NewSARAuthorizer(rbac.SAROptions{Client: az, Logger: log, Now: opts.Now}); err != nil {
+		if sar, err = eerbac.NewSARAuthorizer(eerbac.SAROptions{Client: az, Logger: log, Now: opts.Now}); err != nil {
 			return nil, err
 		}
 		core, err := corev1client.NewForConfigAndClient(opts.Kube, hc)
@@ -210,7 +230,7 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 		}
 		s.secrets = k8s.SecretResolver(core, opts.Namespace)
 	}
-	if s.engine, err = rbac.NewEngine(rbac.EngineOptions{Bindings: s.bindings, SAR: sar}); err != nil {
+	if s.engine, err = rbac.NewEngine(rbac.EngineOptions{Permissions: s.perms, Bindings: s.bindings, SAR: sar, Licensed: opts.RBACAllowed}); err != nil {
 		return nil, err
 	}
 
@@ -328,7 +348,7 @@ func (s *Stack) Authorizer() rbac.Authorizer { return s.engine }
 func (s *Stack) Permissions() *rbac.Permissions { return s.perms }
 
 // Bindings returns the live binding source.
-func (s *Stack) Bindings() *rbac.BindingSource { return s.bindings }
+func (s *Stack) Bindings() *eerbac.BindingSource { return s.bindings }
 
 // Users returns the local user store.
 func (s *Stack) Users() *users.Users { return s.users }
@@ -346,8 +366,35 @@ func (s *Stack) Cookie() session.CookieConfig { return s.cookie }
 // ListenAndServe on auth.adminSocket.path).
 func (s *Stack) AdminSocket() *adminsock.Server { return s.admin }
 
-// Registry returns the current OIDC provider registry.
-func (s *Stack) Registry() *oidc.Registry { return s.registry.Load() }
+// grantsFor resolves the grants of p from the bindings, none while RBAC is
+// not licensed.
+func (s *Stack) grantsFor(p rbac.Principal) []rbac.Grant {
+	if !s.engine.Licensed() {
+		return nil
+	}
+	return s.bindings.GrantsFor(p)
+}
+
+// validGrants filters a session's frozen grants, none while RBAC is not
+// licensed.
+func (s *Stack) validGrants(grants []rbac.Grant, issuedAt time.Time) []rbac.Grant {
+	if !s.engine.Licensed() {
+		return nil
+	}
+	return s.bindings.ValidGrants(grants, issuedAt)
+}
+
+// Registry returns the OIDC provider registry in force: nil while OIDC is
+// not licensed (the providers stay configured and come back with a key).
+func (s *Stack) Registry() *oidc.Registry { return s.activeRegistry() }
+
+// activeRegistry is the registry the routes and the bearer verifier use.
+func (s *Stack) activeRegistry() *oidc.Registry {
+	if s.opts.OIDCAllowed != nil && !s.opts.OIDCAllowed() {
+		return nil
+	}
+	return s.registry.Load()
+}
 
 // Run keeps the identity caches current until ctx is done.
 func (s *Stack) Run(ctx context.Context) error {
@@ -367,6 +414,12 @@ func (s *Stack) Diagnoses() []string {
 	s.regMu.Lock()
 	out = append(out, s.regDiag...)
 	s.regMu.Unlock()
+	if !s.engine.Licensed() && len(s.bindings.Bindings()) > 0 {
+		out = append(out, "role bindings: roles other than the built-in administrator need a license key; the bindings are configured but grant nothing")
+	}
+	if s.opts.OIDCAllowed != nil && !s.opts.OIDCAllowed() && len(s.configIDPs)+len(s.idps.List()) > 0 {
+		out = append(out, "identity providers: OIDC single sign-on needs a license key; the providers are configured but disabled (local login still works)")
+	}
 	sort.Strings(out)
 	return out
 }
@@ -467,7 +520,7 @@ func (s *Stack) buildProvider(ctx context.Context, idp *internalv1.IdentityProvi
 type registryVerifier struct{ s *Stack }
 
 func (v registryVerifier) provider(iss string) *oidc.Provider {
-	reg := v.s.registry.Load()
+	reg := v.s.activeRegistry()
 	if reg == nil {
 		return nil
 	}

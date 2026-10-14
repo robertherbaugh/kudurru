@@ -1,7 +1,11 @@
 # kudurru docs site (site/README.md). Content is mounted from docs/ and the
 # repository root, so every page stays plain markdown that GitHub renders;
 # only site/content holds pages of its own (landing pages, role pages,
-# migration guides and the generated references).
+# migration guides and the generated references). The architecture tour
+# (docs/architecture) is published with its diagrams; the design record and
+# the engineering notes (docs/architecture.md, docs/m*, docs/spikes,
+# docs/research ...) are not: they live in the repository, where links to
+# them resolve to GitHub.
 title: kudurru
 # The Pages workflow passes the real --baseURL; every template link goes
 # through relURL/RelPermalink so the site also works below a sub-path.
@@ -60,8 +64,7 @@ menus:
     - {name: Deploy, pageRef: /deploy, weight: 20}
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
-    - {name: Design, pageRef: /design, weight: 50}
-    - {name: Engineering notes, pageRef: /notes, weight: 60}
+    - {name: Architecture, pageRef: /architecture, weight: 50}
     - {name: Project, pageRef: /project, weight: 70}
 
 # Order of the mounted pages that carry no front matter of their own.
@@ -86,19 +89,25 @@ cascade:
   - {weight: 3, target: {path: /deploy/helm}}
   - {weight: 4, target: {path: /deploy/kustomize}}
   - {weight: 5, target: {path: /deploy/runbooks}}
-  - {weight: 1, target: {path: /design/architecture}}
-  - {weight: 2, target: {path: /design/open-questions}}
-  - {weight: 1, target: {path: /notes/m1}}
-  - {weight: 2, target: {path: /notes/m2}}
-  - {weight: 3, target: {path: /notes/m3}}
-  - {weight: 5, target: {path: /notes/m5}}
-  - {weight: 10, target: {path: /notes/spikes}}
-  - {weight: 11, target: {path: /notes/research}}
-  - {weight: 20, target: {path: /notes/followups}}
-  - {weight: 21, target: {path: /notes/release-checklist}}
+  - {weight: 1, target: {path: /architecture/query-path}}
+  - {weight: 2, target: {path: /architecture/policies-and-blocking}}
+  - {weight: 3, target: {path: /architecture/block-lists}}
+  - {weight: 4, target: {path: /architecture/upstreams-and-cache}}
+  - {weight: 5, target: {path: /architecture/zones}}
+  - {weight: 6, target: {path: /architecture/configuration-and-store}}
+  - {weight: 7, target: {path: /architecture/deployment}}
+  - {weight: 8, target: {path: /architecture/access}}
+  - {weight: 9, target: {path: /architecture/observability}}
   - {weight: 1, target: {path: /project/changelog}}
   - {weight: 2, target: {path: /project/security}}
   - {weight: 3, target: {path: /project/contributing}}
+  - {weight: 4, target: {path: /project/licensing}}
+  - {weight: 5, target: {path: /project/license}}
+  - {weight: 6, target: {path: /project/commercial-license}}
+  - {weight: 7, target: {path: /project/enterprise-license}}
+  - {weight: 8, target: {path: /project/documentation-license}}
+  - {weight: 9, target: {path: /project/website-license}}
+  - {weight: 10, target: {path: /project/license-server-license}}
 
 module:
   mounts:
@@ -124,30 +133,29 @@ module:
     - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}
     - {source: ../docs/deploy, target: content/deploy, files: ['! README.md']}
 
-    # Design.
-    - {source: ../docs/architecture.md, target: content/design/architecture.md}
-    - {source: ../docs/open-questions.md, target: content/design/open-questions.md}
-
-    # Engineering notes: milestone reports, spikes, research, follow-ups.
-    - {source: ../docs/m1/README.md, target: content/notes/m1/_index.md}
-    - {source: ../docs/m1, target: content/notes/m1, files: ['! README.md']}
-    - {source: ../docs/m2/README.md, target: content/notes/m2/_index.md}
-    - {source: ../docs/m2, target: content/notes/m2, files: ['! README.md']}
-    - {source: ../docs/m3/README.md, target: content/notes/m3/_index.md}
-    - {source: ../docs/m3, target: content/notes/m3, files: ['! README.md']}
-    - {source: ../docs/m5/README.md, target: content/notes/m5/_index.md}
-    - {source: ../docs/m5, target: content/notes/m5, files: ['! README.md']}
-    - {source: ../docs/spikes/README.md, target: content/notes/spikes/_index.md}
-    - {source: ../docs/spikes, target: content/notes/spikes, files: ['! README.md']}
-    - {source: ../docs/research/README.md, target: content/notes/research/_index.md}
-    - {source: ../docs/research, target: content/notes/research, files: ['! README.md']}
-    - {source: ../docs/followups.md, target: content/notes/followups.md}
-    - {source: ../docs/release-checklist.md, target: content/notes/release-checklist.md}
+    # The architecture tour (docs/architecture). Its hand-drawn diagrams are
+    # files of the site (render-image.html), like the guide's screenshots;
+    # its Mermaid diagrams are drawn in the browser by the vendored bundle
+    # (site/vendor/mermaid, render-codeblock-mermaid.html).
+    - {source: ../docs/architecture/README.md, target: content/architecture/_index.md}
+    - source: ../docs/architecture
+      target: content/architecture
+      files: ['! README.md', '! diagrams/**']
+    - {source: ../docs/architecture/diagrams, target: static/architecture/diagrams}
 
     # Project files from the repository root.
     - {source: ../CHANGELOG.md, target: content/project/changelog.md}
     - {source: ../SECURITY.md, target: content/project/security.md}
     - {source: ../CONTRIBUTING.md, target: content/project/contributing.md}
+    # License summaries, the core Community License, the commercial agreement
+    # and folder-specific notices, each published from its repository source.
+    - {source: ../LICENSING.md, target: content/project/licensing.md}
+    - {source: ../LICENSE, target: content/project/license.md}
+    - {source: ../COMMERCIAL_LICENSE_AGREEMENT.md, target: content/project/commercial-license.md}
+    - {source: ../ee/LICENSE.md, target: content/project/enterprise-license.md}
+    - {source: LICENSE.md, target: content/project/documentation-license.md}
+    - {source: ../www/LICENSE.md, target: content/project/website-license.md}
+    - {source: ../license-server/LICENSE.md, target: content/project/license-server-license.md}
 
     # Brand (docs/brand): palette and the artwork the templates use.
     - {source: ../docs/brand/tokens.css, target: assets/css/tokens.css}
@@ -169,3 +177,7 @@ module:
     - {source: ../api/openapi.json, target: static/reference/api/openapi.json}
     - {source: ../internal/api/scalar/LICENSE, target: static/reference/api/scalar-LICENSE.txt}
     - {source: .generated/scalar, target: assets/scalar}
+
+    # Mermaid (MIT): `make docs-assets` decompresses site/vendor/mermaid.
+    - {source: .generated/mermaid, target: assets/mermaid}
+    - {source: vendor/mermaid/LICENSE, target: static/architecture/mermaid-LICENSE.txt}

@@ -8,9 +8,51 @@ export const REPO_URL = "https://github.com/robertherbaugh/kudurru";
 export const IMAGE = "ghcr.io/robertherbaugh/kudurru";
 export const CHARTS = "oci://ghcr.io/robertherbaugh/charts";
 
+// The license page (/license/): follows LICENSING.md and internal/license.
+export const LICENSE_CONTACT = "hello@kudurru.io";
+// The license server that issues free personal keys: its origin, no path. The
+// form posts to /api/v1/public/key-requests below it. Override at build time
+// with WWW_LICENSE_API; the CSP (src/headers.ts) allows exactly this origin,
+// and the server's PUBLIC_FORM_ORIGINS must list https://kudurru.io.
+export const DEFAULT_LICENSE_API = "https://licenses.kudurru.io";
+// A business request is not sent to the server: it opens this subject in the
+// visitor's mail program with every field filled in.
+export const BUSINESS_SUBJECT = "Business License";
+export const LICENSE_FREE_NODES = 3;
+// The license text: our own copy, rendered from the repository's LICENSE
+// (/license/text/), the docs' copy, and the repository source.
+export const LICENSE_TEXT_PATH = "/license/text/";
+export const LICENSE_TEXT_FILE = "/license/text/Kudurru-Community-License.txt";
+export const LICENSE_SOURCE_URL = `${REPO_URL}/blob/main/LICENSE`;
+export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert Herbaugh (https://kudurru.io)";
+// Without a key one Policy can exist: the Policy "default" that the bootstrap
+// seeds (internal/license CommunityPolicies). A key lifts the limit.
+export const LICENSE_FREE_POLICIES = 1;
+
+export interface LicenseRow {
+  what: string;
+  community: string;
+  personal: string;
+  business: string;
+}
+
+export const LICENSE_ROWS: LicenseRow[] = [
+  { what: "DNS answering, blocking, zones, the block page, the dashboard, short-term statistics", community: "Yes", personal: "Yes", business: "Yes" },
+  { what: "Nodes in one cluster", community: "1", personal: `Up to ${LICENSE_FREE_NODES}`, business: "As agreed" },
+  { what: "Policies", community: `${LICENSE_FREE_POLICIES}, the default policy`, personal: "Unlimited", business: "Unlimited" },
+  { what: "Roles beyond the built-in administrator, zone-scoped roles, Kubernetes RBAC", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "OIDC single sign-on", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "The audit trail and its export", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "Long-term statistics (anything older than 24 hours)", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "Unblock requests from the block page", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "The dnsdist and keepalived edge", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "Integrations, such as the external-dns webhook", community: "No", personal: "Yes", business: "Yes*" },
+  { what: "Business or government production use", community: "No", personal: "No", business: "As granted by the agreement" },
+];
+
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
-  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer, OIDC and RBAC.";
+  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Core software under the Kudurru Community License: free for eligible personal and nonprofit use; business and government production needs an agreement.";
 
 export function docs(path = "/"): string {
   return DOCS_URL + path;
@@ -27,6 +69,8 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
+  // A page of its own: not prefixed with the home page path like the anchors.
+  { label: "License", href: "/license/" },
 ];
 
 // The README's lineage table: what each reference project contributed.
@@ -79,7 +123,7 @@ export const TOGETHER: { title: string; body: string; release?: string }[] = [
   },
   {
     title: "OIDC login with real RBAC",
-    body: "viewer, auditor, operator, zone-admin and admin, scoped per zone. A login with no role binding is refused, never silently admin.",
+    body: "viewer, auditor, operator, zone-admin and admin, scoped per zone. A login with no role binding is refused, never silently admin. Needs a license key (free for personal use).",
   },
   {
     title: "A simple integration model",
@@ -353,7 +397,7 @@ export const REGISTERS: Register[] = [
     title: "Lists, groups, schedules. No allocations.",
     lead: "A clean-room parser compiles hosts, domain, adblock and regex lists into one matcher chain. Allow wins, @@ exceptions apply, and answers are checked through their CNAME chain.",
     points: [
-      "Client groups by IP, CIDR or DoT/DoH client ID, each with merged policies and weekday schedules",
+      "Client groups by IP, CIDR or DoT/DoH client ID, each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)",
       "150 blocked services in 14 categories, and safe search for the search engines and video sites that document it",
       "A block page that says which list blocked a site, with a request-access form that reaches an admin",
       "Answers with zeroIP, NXDOMAIN, a custom IP or REFUSED, tagged with EDE 15 or 17",
@@ -371,6 +415,7 @@ export const REGISTERS: Register[] = [
       "Roles viewer, auditor, operator, zone-admin and admin, scoped per zone",
       "API tokens, service accounts, and Kubernetes ServiceAccount tokens checked with SubjectAccessReview",
       "The chart's aggregated ClusterRoles are generated from the same permission file",
+      "Roles, OIDC and the audit trail need a license key; a free personal key covers up to 3 nodes",
     ],
     figure: { value: "0", caption: "OIDC logins that become admin without a role binding" },
     link: { label: "People, roles and tokens", href: docs("/guide/admin/09-people-and-tokens/") },
@@ -383,7 +428,7 @@ export const REGISTERS: Register[] = [
     points: [
       "Helm charts kudurru and kudurru-crds, rendered and checked across 42 value combinations",
       "Each object records who manages it: the API, a file, an integration or Kubernetes. Two sources of truth cannot happen",
-      "An external-dns webhook provider, and a read-only watch of DNSEndpoint",
+      "An external-dns webhook provider (needs a license key, free for personal use), and a read-only watch of DNSEndpoint",
       "The same YAML works in Docker: kudurru apply -f zone.yaml",
     ],
     figure: { value: "42", caption: "chart value combinations rendered and checked with kubeconform on every change" },
@@ -393,7 +438,7 @@ export const REGISTERS: Register[] = [
     id: "edge",
     label: "Edge and VIP",
     title: "dnsdist in front. A VIP that follows health.",
-    lead: "kudurru supervises the programs that do this best instead of rewriting them. dnsdist and keepalived stay unmodified, in their own containers, and kudurru renders, checks and runs them.",
+    lead: "kudurru supervises the programs that do this best instead of rewriting them. dnsdist and keepalived stay unmodified, in their own containers, and kudurru renders, checks and runs them. The supervisors need a license key; a free personal key covers up to 3 nodes.",
     points: [
       "kudurru edge run renders dnsdist's configuration, runs --check-config before every swap and tracks backends by health",
       "PROXYv2 with an authenticated TLV keeps the real client IP for groups and the query log",
@@ -408,7 +453,7 @@ export const REGISTERS: Register[] = [
 export const SHOTS: { id: string; label: string; file: string; caption: string }[] = [
   { id: "dashboard", label: "Dashboard", file: "dashboard.png", caption: "Two nodes, 24 hours: queries by answer type and by client." },
   { id: "query-log", label: "Query log", file: "query-detail.png", caption: "Every row opens to the list, rule, cache state and node behind the answer." },
-  { id: "long-term", label: "Long-term", file: "long-term.png", caption: "Rollups for weeks and months without keeping every query." },
+  { id: "long-term", label: "Long-term", file: "long-term.png", caption: "Rollups for weeks and months without keeping every query (a license key unlocks periods over 24 hours)." },
   { id: "zones", label: "Zones", file: "zone-detail.png", caption: "A primary zone with its serial, records, BIND import and export, and NOTIFY." },
   { id: "upstreams", label: "Upstreams", file: "upstreams.png", caption: "Upstream groups with their strategy, servers, health and round-trip times." },
   { id: "nodes", label: "Nodes", file: "nodes.png", caption: "Every node with its readiness, version and role, and the state of dnsdist and the VIP." },
@@ -513,7 +558,7 @@ export const ROADMAP: Release[] = [
       "Resolver with DoT, DoH, DoQ and DoH3",
       "Primary and forward zones, AXFR and IXFR out",
       "Blocking with client groups, services and safe search",
-      "Dashboard with long-term views, OIDC and RBAC",
+      "Dashboard with long-term views, OIDC and RBAC (a free personal key unlocks them)",
       "CRDs and Helm, compose HA with dnsdist and keepalived",
     ],
   },
@@ -551,7 +596,7 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
       { label: "Guide", href: docs("/guide/") },
       { label: "Deploy", href: docs("/deploy/") },
       { label: "Reference", href: docs("/reference/") },
-      { label: "Architecture", href: docs("/design/architecture/") },
+      { label: "Architecture", href: docs("/architecture/") },
     ],
   },
   {
@@ -565,6 +610,7 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     title: "Project",
     links: [
       { label: "Source on GitHub", href: REPO_URL },
+      { label: "License and keys", href: "/license/" },
       { label: "Releases", href: `${REPO_URL}/releases` },
       { label: "Changelog", href: docs("/project/changelog/") },
       { label: "Security", href: docs("/project/security/") },

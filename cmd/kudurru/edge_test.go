@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/robertherbaugh/kudurru/internal/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
 )
 
 func runErr(args ...string) (string, error) {

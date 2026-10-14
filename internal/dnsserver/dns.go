@@ -128,7 +128,7 @@ func (l *dnsListener) Bind() error {
 				lis = writeDeadlineListener{Listener: lis, timeout: lim.StreamWriteTimeout}
 			}
 			if proxied {
-				lis = &proxyproto.Listener{Listener: ln, Policy: l.env.proxy, HeaderTimeout: lim.ProxyHeaderTimeout}
+				lis = &proxyproto.Listener{Listener: lis, Policy: l.env.proxy, HeaderTimeout: lim.ProxyHeaderTimeout}
 			}
 			if l.spec.Protocol == ProtoDoT {
 				lis = tls.NewListener(lis, l.tls)

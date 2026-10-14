@@ -80,6 +80,7 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) |
 | GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) |
 | GET | `/api/v1/info/messages` | Diagnosis messages (objects, policies, lists, readiness) | `settings.read` (cluster) |
+| GET | `/api/v1/license` | License state, node limit and licensed features of this node | `settings.read` (cluster) |
 | GET | `/api/v1/nodes` | Nodes of the cluster | `cluster.read` (cluster) |
 | GET | `/api/v1/nodes/{name}/health` | Readiness detail of one node | `cluster.read` (cluster) |
 

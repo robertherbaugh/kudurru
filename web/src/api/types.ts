@@ -46,6 +46,8 @@ export interface ScopeInfo {
   scope: 'node' | 'cluster';
   nodes: { name: string; ok: boolean; took_ms: number; error?: string }[];
   partial: boolean;
+  /** "central" when the central database answered (D161). */
+  source?: 'central';
 }
 
 // ---------------------------------------------------------------------------
@@ -525,6 +527,7 @@ export interface ClientTimeseries extends ScopeInfo, Window {
 
 export interface BlockedItem {
   id: number;
+  node: string;
   ts: string;
   domain: string;
   client: string;
@@ -684,6 +687,9 @@ export type NodeHealth = Omit<S['NodeHealth'], 'health'> & { health: HealthDoc }
 
 /** GET /cluster: store driver, leader, epoch and shape. */
 export type ClusterInfo = S['ClusterInfo'];
+
+/** GET /license: the effective license of the node (state, limits, licensed features). */
+export type LicenseInfo = S['LicenseInfo'];
 
 /** GET /edge: the dnsdist and keepalived supervisors and the dnsdist backends. */
 export type EdgeInfo = S['EdgeInfo'];

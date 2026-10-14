@@ -35,14 +35,22 @@ The REST API server under `/api/v1` and the external-dns webhook
   X-Forwarded-For) → SecurityHeaders (CSP `default-src 'self'`,
   X-Frame-Options DENY, nosniff, Referrer-Policy, HSTS when TLS terminates
   here or a trusted proxy says https) → AccessLog + metrics → Go 1.25
-  `http.CrossOriginProtection` → RateLimit (`Options.RateLimit`, applied to
-  `/api/v1/auth/login` only) → Authenticate (`Options.Authenticate`) → actor
+  `http.CrossOriginProtection` → Authenticate (`Options.Authenticate`) → actor
   (`sqlite.WithActor` so the sqlite driver's audit rows name the principal)
   → per-operation Authorize (CSRF check for cookie sessions on unsafe
   methods, then the route's declared permission; 401/403) → handler →
   audit. Metrics: `kudurru_api_requests_total{method,route,code}`,
   `kudurru_api_request_duration_seconds{route}`; `route` is the operation
   pattern (bounded), `other` for the SPA and unknown paths.
+  `Options.RateLimit` is an optional hook before authentication for
+  `/api/v1/auth/login`; `kudurru serve` leaves it unset. Login throttling
+  comes from `internal/auth/users`: five failures per client address lock
+  it out for five minutes, and ten per account lock it out for fifteen
+  minutes, with 429 and `Retry-After`. These checks run before password
+  verification; a global semaphore bounds concurrent Argon2id work. There
+  is no additional request-rate limiter. The cookie authenticator records
+  CSRF failures; protected API routes return 403 `csrf` with its header
+  hint, while public routes such as login continue anonymously.
 - **Permissions (D31).** Every operation is registered through one helper
   that takes a `perm` declaration: `public`, `authenticated`, a fixed
   `{resource, verb}` with cluster or `zone:{zone}` scope, or by-kind for
@@ -191,7 +199,7 @@ because the CLI agent's hand-written transport already occupies
 `internal/apiclient` with a `Client` type; both coexist until the CLI
 switches (follow-up). `TestGeneratedClient` drives the server through it.
 
-### `internal/integration/externaldns` (new)
+### `ee/integration/externaldns` (new)
 
 `externaldns.New(Options{Store, Validator, Cache, Namespace, ZoneSelector,
 Address, Registerer, Logger})` is an `http.Handler` with `Run(ctx)`/`Serve`:
@@ -249,7 +257,8 @@ local inside `if cfg.Querylog.Enabled`) and keep `qlWriter`.
 import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
-	"github.com/robertherbaugh/kudurru/internal/integration/externaldns"
+	authn "github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/web"
 )
 
@@ -275,9 +284,10 @@ apiSrv, err := api.New(api.Options{
 	// Refresher: api.RefreshFunc(...) once listfetcher has an on-demand refresh
 	Audit: recorders,
 	// From the auth package (M3 auth): authenticator middleware, authorizer,
-	// CSRF check, login limiter, the /auth/* handler and bearer roles.
-	Authenticate: authn.Middleware, Authorizer: authz, CSRF: authn.CheckCSRF,
-	RateLimit: authn.LoginLimiter, AuthHandler: authn.Handler(), Roles: authn.Roles,
+	// CSRF check, the /auth/* handler and bearer roles. Login lockouts
+	// are enforced by the stack's users store; no RateLimit hook is set.
+	Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
+	AuthHandler: authMux, Roles: ids.Roles, // authMux is registered with ids.Register
 	UIHandler: web.Handler(web.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 	Logger: logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 })
@@ -344,7 +354,7 @@ Notes:
 | OpenAPI document | 64 paths, 84 operations, 87 schemas; 349 KB (3.1), 349 KB (3.0) |
 | Generated client | 26,001 lines (`zz_generated.client.go`) |
 | Binary size, `api.New` and `externaldns.New` referenced from cmd/kudurru (stripped, CGO_ENABLED=0) | 47,816,864 → 47,947,936 bytes (+131 KB); the integrator's `make size` is authoritative |
-| Code | ~9,900 lines in internal/api, internal/integration/externaldns, internal/audit (tests included) |
+| Code | ~9,900 lines in internal/api, ee/integration/externaldns, internal/audit (tests included) |
 
 ## Surprises
 
@@ -377,3 +387,44 @@ the zone cache, CLI switch to the generated client, audit columns. Closed or
 narrowed: the API side of `WithActor`, the 1.5 MiB cap, `CheckAPIWrite`,
 validate-unstructured-then-typed, `POST /dns/blocking`, REST exposure of
 `Set.Status()` and cache flush.
+
+### Query-log and stats scope (#9)
+
+`GET /queries`, `/queries/stream` and `/stats/*` honor
+`scope=cluster` and `scope=node&node=<name>`. Cluster reads contact the known
+members over the authenticated TLS internal listener, with a two-second
+timeout for remote reads. Local reads use the request's deadline. Responses
+list every requested node and set `partial: true`
+when any node fails. A selected node is served by that node; unknown nodes are
+404, and an unavailable selected node or a cluster with no readable nodes is
+503. A coordinator without a local query log can still read its peers.
+
+Cluster query pages sort by timestamp, then node name and row ID. Their opaque
+cursors retain the per-node positions, original membership and an upper time
+bound, so later inserts do not displace a traversal. Keep the filters when
+following a cursor; the page size may change. Historical cursor maps are limited
+to 64 nodes, including departed nodes retained as partial results; cluster query
+pagination returns 503 when initial membership exceeds this limit. Row identity
+is `(node, id)`.
+When a page is partial, restarting the search after recovery is necessary to
+obtain the missing node's complete history. Query-log storage and retention
+remain per node; aggregation cannot recover a replaced pod's lost emptyDir.
+
+Additive rollups are summed in common UTC buckets. Summary distinct counts
+are exact unions up to 10,000 hashes and use bounded HyperLogLog sketches above
+that threshold (`approximate: true`). Latency percentiles come from merged
+histograms. Top lists and client series merge up to four times the requested
+number of candidates per node and are marked approximate; top lists expose
+`cutoff_rank`. Domains-on-lists uses the largest reported compiled count,
+since the list configuration is replicated rather than additive. Upstream
+server health includes its node.
+
+Live tails multiplex privacy-transformed peer streams. Cluster SSE IDs are
+opaque per-node resume maps; node SSE IDs remain decimal. `event: scope`
+reports the initial contributing nodes and updates when a peer's availability
+changes. The dashboard displays these updates. Failed peers are retried with
+jittered exponential backoff up to 30 seconds, resuming from their last received
+ID; the backoff resets after a successful connection. Membership changes
+end the connection so EventSource reconnects against the current pods. Replay is bounded
+by each node's in-memory ring, as for a single-node stream. Subscribers and
+writes are bounded so slow dashboard clients cannot block DNS ingestion.

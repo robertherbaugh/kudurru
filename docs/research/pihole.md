@@ -22,7 +22,7 @@ Milestones (primary: pi-hole.net blog + discourse):
 
 Embedded components (verified in source tree): dnsmasq fork `pi-hole-v2.93` (`CMakeLists.txt: set(DNSMASQ_VERSION pi-hole-v2.93)`), SQLite3 amalgamation (`src/database/sqlite3.c`), CivetWeb (`src/webserver/civetweb/`), cJSON, Lua 5.4 (`src/lua/`), tomlc17 (`src/config/tomlc17/`), TRE regex, miniz (teleporter zip), nettle (balloon hash, HMAC-SHA1, base64).
 
-**Licence constraint for kudurru:** EUPL-1.2 is a copyleft licence. Its compatibility appendix lets EUPL code be *relicensed into* GPL/AGPL/MPL/etc., but **Apache-2.0 is not on the list**, and EUPL-1.2 derivative works must remain EUPL (or a compatible licence). kudurru (Apache-2.0) must **not copy Pi-hole source, templates, CSS or OpenAPI YAML**. API *shapes*, data-model ideas and UX patterns are not copyrightable expression; re-derive them.
+**License constraint for kudurru:** EUPL-1.2 is a copyleft license. Its compatibility appendix lets EUPL code be *relicensed into* GPL/AGPL/MPL/etc., but **Apache-2.0 is not on the list**, and EUPL-1.2 derivative works must remain EUPL (or a compatible license). kudurru (Kudurru Community License; Apache-2.0 when this note was written) must **not copy Pi-hole source, templates, CSS or OpenAPI YAML**. API *shapes*, data-model ideas and UX patterns are not copyrightable expression; re-derive them.
 
 ---
 

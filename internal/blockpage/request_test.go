@@ -25,8 +25,11 @@ type requestFixture struct {
 	h    http.Handler
 	book *unblock.Service
 	set  config.UnblockRequests
-	reg  *prometheus.Registry
-	now  time.Time
+	// unlicensed switches the request workflow off like a node without
+	// license.FeatureRequests.
+	unlicensed bool
+	reg        *prometheus.Registry
+	now        time.Time
 }
 
 func newRequestFixture(t *testing.T) *requestFixture {
@@ -37,8 +40,9 @@ func newRequestFixture(t *testing.T) *requestFixture {
 	finder := &fixedFinder{r: Reason{Kind: KindList, List: "default/ads", Rule: "||ads.example^"}, ok: true}
 	srv, err := New(Options{
 		Node: "node-a", Finder: finder, Requests: f.book, Registerer: f.reg, Now: clock,
-		Settings: Settings{ShowDetails: true, Requests: true, RequestRate: 5, BlockTTL: 10 * time.Minute},
-		Policy:   func(netip.Addr, time.Time) string { return "default/kids" },
+		RequestsAllowed: func() bool { return !f.unlicensed },
+		Settings:        Settings{ShowDetails: true, Requests: true, RequestRate: 5, BlockTTL: 10 * time.Minute},
+		Policy:          func(netip.Addr, time.Time) string { return "default/kids" },
 		Membership: func(netip.Addr, time.Time) ([]string, []string) {
 			return []string{"default/kids"}, []string{"default/kids"}
 		},
@@ -230,5 +234,31 @@ func TestFormText(t *testing.T) {
 	}
 	if _, ok := formText(strings.Repeat("é", 5), 5, false); !ok {
 		t.Error("the limit counts characters, not bytes")
+	}
+}
+
+// The block page is free; asking for an unblock is a licensed feature
+// (license.FeatureRequests): without it the page still explains the block but
+// has no form and refuses the post.
+func TestRequestFormNeedsALicense(t *testing.T) {
+	f := newRequestFixture(t)
+	f.unlicensed = true
+	page := f.page("/", "10.0.20.5:4000")
+	if strings.Contains(page, "<form") || strings.Contains(page, "Request access") {
+		t.Errorf("the request form is shown without a license:\n%s", page)
+	}
+	if !strings.Contains(page, "ads.example") && !strings.Contains(page, "blocked") && !strings.Contains(page, "Blocked") {
+		t.Errorf("the block page itself is gone:\n%s", page)
+	}
+	w := f.post(url.Values{"reason": {"homework"}}, "10.0.20.5:4000")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("post without a license: %d, want 404", w.Code)
+	}
+	if r := f.book.Lookup(netip.MustParseAddr("10.0.20.5"), "games.example"); r != nil {
+		t.Errorf("a request was stored: %+v", r)
+	}
+	f.unlicensed = false
+	if !strings.Contains(f.page("/", "10.0.20.5:4000"), "<form") {
+		t.Error("the form did not come back with the license")
 	}
 }

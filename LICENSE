@@ -1,201 +1,189 @@
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+# Kudurru Community License
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+**Version 1.0 — October 12, 2026**
 
-   1. Definitions.
+Copyright (c) 2026 Robert Herbaugh and other applicable copyright holders.
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
+**This is a source-available license, not an open-source license.** It permits personal, homelab, qualifying nonprofit, and community-development uses on the conditions below. Business and government production use requires a separate commercial agreement, even when no license key is technically required.
 
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
+## 1. Parties, software, and acceptance
 
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
+“Licensor” means Robert Herbaugh and, for portions they own and license under these terms, other copyright holders of Kudurru contributions. “You” means the individual or legal entity exercising rights under this License. “Covered Software” means the Kudurru DNS server, its source code, binaries, dashboard, and components expressly distributed under this License, including code in the `ee/` directory, but excluding separately licensed materials identified in Section 12. Documentation source under `site/` is covered only as specified in `site/LICENSE.md`. The marketing website under `www/` and the license-issuance service under `license-server/` are excluded and have separate source-viewing licenses.
 
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
+By copying, modifying, distributing, or operating Covered Software in reliance on this License, You accept its terms. If You do not accept these terms, this License grants You no rights. Rights available independently under applicable law are unaffected.
 
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
+## 2. Permitted use categories
 
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
+Subject to the other sections, the following uses are permitted without paying a commercial license fee:
 
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
+**2.1 Personal and household use.** An individual may operate Covered Software for private, family, educational, experimental, hobby, or homelab purposes, including at home or on personally controlled hosted infrastructure. The deployment must not be operated for an employer, business, client, government entity, or other organization. Incidental DNS queries from a work device connected to an otherwise personal household network do not alone make the household deployment commercial.
 
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
+**2.2 Qualifying nonprofit use.** A legally established nonprofit organization may operate Covered Software for its own internal operations or charitable, educational, scientific, or public-benefit mission, provided it:
 
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
+- Operates on a not-for-profit basis without distributing net earnings for private benefit;
+- Is not a government entity or government-controlled instrumentality; and
+- Does not use Kudurru to provide managed DNS, infrastructure, or similar services to a for-profit organization or government entity.
 
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
+A private nonprofit school or research organization may qualify; public status, education, or research activity alone does not confer eligibility.
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
+**2.3 Community development and evaluation.** Any individual or organization, including a business or government entity, may read, copy, build, modify, test, perform security research on, and share Covered Software solely to study it, evaluate a prospective license, or develop and contribute improvements.
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
+This exception covers isolated, non-production tests and demonstrations, but does not authorize an operational DNS service for an organization, its personnel, customers, clients, or the public. Paid employment or a paid contribution bounty does not by itself prohibit otherwise qualifying development activity.
 
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
+## 3. Commercial and government use requires separate authorization
 
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
+No permission is granted under this License to use Covered Software to operate DNS services or supporting production infrastructure for:
 
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
+- A for-profit enterprise, professional practice, sole proprietorship, employer, or client;
+- A managed service provider, hosting provider, or other third-party service provider serving organizations;
+- A national, regional, state, local, military, or other government entity, agency, department, instrumentality, or government-controlled organization; or
+- A contractor or subcontractor operating it to fulfill a government or commercial contract.
 
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+These restrictions apply equally to internal-only deployments, deployments that do not generate direct revenue, and installations using only the no-key features.
 
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
+Government funding of an independent qualifying nonprofit does not by itself disqualify that nonprofit, but operating a government-owned or government-controlled deployment, or providing contractual DNS services to a government entity, is not covered by the nonprofit grant.
 
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
+Such use requires a separately executed commercial license agreement with the Licensor.
 
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
+A signed license key, payment, purchase order, or possession of source code does not by itself create commercial-use rights unless an applicable agreement expressly grants them.
 
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
+The commercial agreement controls to the extent of any conflict for the licensed customer and scope.
 
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
+## 4. Copyright and modification rights
 
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
+For the permitted uses in Section 2 only, each applicable Licensor grants You a worldwide, non-exclusive, royalty-free, non-transferable copyright license to use, reproduce, compile, execute, inspect, modify, prepare derivative works of, and distribute Covered Software and permitted modifications.
 
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
+You may maintain private modifications. Distribution is subject to Section 5. No rights to use Covered Software outside Sections 2 and 3 are implied.
 
-   END OF TERMS AND CONDITIONS
+The license is granted for copies released under this version of these terms and continues unless terminated under Section 11. Later releases may be offered under different terms without altering the license applicable to copies already received.
 
-   APPENDIX: How to apply the Apache License to your work.
+## 5. Redistribution, forks, and notices
 
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
+You may publish forks, patches, and copies of Covered Software for uses permitted by Section 2, including through public source repositories, if You:
 
-   Copyright [yyyy] [name of copyright owner]
+1. Retain existing copyright, patent, attribution, and license notices.
+2. Provide recipients a copy of this License and identify material changes You made.
+3. Distribute Covered Software and modifications of Covered Software under this same License, without granting recipients any broader commercial rights.
+4. When distributing a compiled or executable version containing Your changes, make the corresponding source for those changes available to recipients under this License, with the information reasonably needed to rebuild them.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+Recipients obtain their rights directly under this License from the relevant copyright holders, not by a sublicense from You.
 
-       http://www.apache.org/licenses/LICENSE-2.0
+You may license Your own independent work separately, but cannot grant commercial rights to Kudurru code You do not own or have separate authority to license.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Public availability of a fork does not itself authorize business or government production use.
+
+## 6. License keys and feature entitlements
+
+A license key records a technical entitlement; it is not a substitute for a copyright license or commercial agreement.
+
+Subject to eligibility under Section 2, the following entitlements apply to the current Kudurru licensing model:
+
+| Capability | No key | Free Personal/Nonprofit Key | Business Key |
+|---|---|---|---|
+| DNS answering, blocking, authoritative zones, block page, dashboard, short-term statistics, API tokens, and built-in administrator | Yes | Yes | Yes |
+| Kudurru nodes in one cluster | 1 | Up to 3 | As specified in commercial agreement |
+| DNS policies | One seeded default policy | Unlimited | Unlimited |
+| Additional role bindings, scoped RBAC, Kubernetes RBAC (`ee/rbac`) | No | Yes | Yes |
+| OIDC single sign-on (`ee/oidc`) | No | Yes | Yes |
+| Stored audit events and export (`ee/auditstore`) | No | Yes | Yes |
+| Statistics older than 24 hours (`ee/longterm`) | No | Yes | Yes |
+| Unblock requests and review workflow | No | Yes | Yes |
+| dnsdist/keepalived edge and VIP integration (`ee/edge`) | No | Yes | Yes |
+| Integrations such as external-dns (`ee/integration`) | No | Yes | Yes |
+| Business or government production-use rights | No | No | Only as granted by commercial agreement |
+
+Business-key capabilities are limited to the plan, modules, quantities, and term authorized by the accepted commercial agreement and Order Form. A Commercial Core purchase does not automatically authorize `ee/` modules; the Order Form must include the Enterprise plan or named modules.
+
+A “Node” is an independently running Kudurru server instance participating in a deployment or cluster. Separately licensed edge programs that do not run Kudurru itself are not Kudurru Nodes.
+
+A free key does not authorize more than three Kudurru Nodes in one cluster unless the Licensor expressly authorizes an exception in writing.
+
+A nonprofit may receive the same free technical entitlements as a personal user. Keys may contain additional identifying, validity, or deployment-scope limitations communicated at issuance.
+
+Possessing source code or changing the license-checking code does not expand the rights or entitlements granted here. Modifications for legitimate development, interoperability testing, and security research remain permitted under Section 2.3; using them to exceed deployment entitlements is not.
+
+## 7. Safety of DNS operations and key expiration
+
+Kudurru's license enforcement is designed not to interrupt DNS answering.
+
+Missing, invalid, or expired keys may limit management-plane capabilities, cluster configuration writes, and initiation of gated features; they do not intentionally disable existing DNS responses.
+
+The documented implementation provides a 30-day technical grace period for an expired key and does not stop an already running dnsdist/keepalived edge process solely because its key later expires.
+
+License-key verification is performed locally without a required online license check.
+
+These technical safety behaviors do not extend an expired commercial agreement, increase a node entitlement, or grant otherwise prohibited commercial or government use.
+
+A commercial customer's contractual renewal, expiration, and remedy provisions are governed by its commercial agreement.
+
+## 8. Community contributions
+
+The project welcomes issue reports, documentation, pull requests, and forks.
+
+Submission of a contribution does not transfer ownership of its copyright.
+
+To enable both community releases and separately licensed commercial releases, the project may require contributors to accept a separate Contributor License Agreement granting the project owner sufficient rights to use, modify, distribute, and sublicense accepted contributions under community and commercial terms.
+
+A Developer Certificate of Origin sign-off may additionally be required by the contribution process, but does not automatically replace the separate Contributor License Agreement.
+
+Contributors retain their own copyright subject to the rights they have expressly granted. The Licensor is not required to accept or merge a contribution.
+
+This Section alone does not grant the project owner new sublicensing rights in third-party contributions.
+
+## 9. Patent permissions and patent disputes
+
+Each Licensor grants You, solely for permitted use of Covered Software under this License, a worldwide, non-exclusive, royalty-free patent license to make, use, and distribute the Covered Software under patent claims that the Licensor owns or can license and that are necessarily infringed by its contribution as provided.
+
+This permission does not extend to unrelated combinations or modifications outside such claims.
+
+If You initiate a patent-infringement claim alleging that Covered Software itself infringes a patent, the patent license granted to You under this Section ends when that claim is filed, to the extent allowed by applicable law.
+
+## 10. Ownership and trademarks
+
+Covered Software is licensed, not sold.
+
+Each contributor retains ownership of its contributions, and all rights not expressly granted are reserved.
+
+This License grants no right to use the names “Kudurru,” the Kudurru logos, domain names, or other project marks to suggest affiliation, sponsorship, or endorsement.
+
+Accurate, non-misleading identification of a fork's origin is permitted to the extent allowed by law.
+
+## 11. Breach, termination, and cure
+
+Rights under this License terminate automatically if You materially violate its conditions.
+
+If the violation was unintentional and You cease the violation and remedy its effects within 30 days after receiving written notice from the Licensor, Your rights under this License are reinstated unless the Licensor has already obtained a final court order to the contrary.
+
+No cure provision grants interim permission for unlicensed commercial or government production use.
+
+Termination does not cancel licenses properly received by downstream recipients who remain compliant, and it does not affect separate third-party licenses.
+
+## 12. Third-party components and separate licenses
+
+This License covers only material expressly offered under it. The folder notices in `ee/LICENSE.md` and `site/LICENSE.md` define the grants for enterprise materials and documentation source. The separate source-viewing notices in `www/LICENSE.md` and `license-server/LICENSE.md` govern those excluded materials; this License grants no right to modify, deploy, host, or redistribute them.
+
+Third-party packages, fonts, data sets, independent software, and other separately licensed materials retain their own license terms, as identified by their notices and associated files.
+
+In particular, separately distributed dnsdist and keepalived programs remain under their respective GPL licenses, and the Kudurru blocked-services and safe-search catalogue identified as Apache-2.0 retains that license.
+
+This License does not supersede those terms or revoke permissions granted for historical Kudurru versions under Apache-2.0, PolyForm Noncommercial, or other licenses.
+
+## 13. Disclaimer of warranties and limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, COVERED SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE,” WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, SECURITY, AVAILABILITY, OR FITNESS FOR CRITICAL INFRASTRUCTURE.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSORS AND CONTRIBUTORS SHALL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, LOSS OF DATA, LOSS OF REVENUE, INTERRUPTION OF SERVICES, OR OTHER DAMAGES ARISING FROM OR RELATED TO COVERED SOFTWARE OR THIS LICENSE, REGARDLESS OF LEGAL THEORY, EVEN IF ADVISED OF THE POSSIBILITY.
+
+## 14. General terms
+
+This License grants no rights to other software or to services, support, warranties, service-level commitments, or commercial features beyond the entitlements expressly stated.
+
+If any provision is unenforceable, the remainder remains in effect to the extent permitted by law.
+
+Nothing in this License restricts rights arising independently under applicable copyright exceptions or other mandatory law.
+
+The Licensor may offer Covered Software under separate licenses, including commercial terms.
+
+**Commercial licensing and permission requests:** hello@kudurru.io
+
+**Project documentation:** https://docs.kudurru.io/project/licensing/

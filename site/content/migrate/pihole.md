@@ -20,7 +20,7 @@ The mapping below is the whole job for most installations.
 
 | Pi-hole | kudurru | Notes |
 |---|---|---|
-| Group | a [`ClientGroup`](/reference/crds/clientgroup/) (who) plus a [`Policy`](/reference/crds/policy/) (what applies to them) | The Policy names the group in `clientGroupRefs` and the lists in `blockListRefs` and `allowListRefs` |
+| Group | a [`ClientGroup`](/reference/crds/clientgroup/) (who) plus a [`Policy`](/reference/crds/policy/) (what applies to them) | The Policy names the group in `clientGroupRefs` and the lists in `blockListRefs` and `allowListRefs`. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
 | Default group | `ClientGroup/default` and `Policy/default` | Created at the first start; they apply to clients in no other group |
 | Client (IP, subnet, hostname) | an entry of `ClientGroup.spec.clients`: `ip`, `cidr`, `hostname`, `nameGlob` or `clientID` (DoT/DoH client ID) | MAC entries are accepted but match only once the v0.2 client inventory supplies addresses |
 | List (adlist, allow list) | a [`BlockList`](/reference/crds/blocklist/) with `mode: block` or `mode: allow` and `url` sources | `format: auto` recognises hosts, domains and adblock lists |
@@ -36,8 +36,8 @@ The mapping below is the whole job for most installations.
 | Upstream DNS servers | [`upstreams.groups`](/reference/configuration/#upstreams.groups) | Several named groups with a strategy each; a Policy can pick one per client group |
 | Rate limiting | [`ratelimit.*`](/reference/configuration/#ratelimit.enabled): queries per minute per IPv4 /32 and /24 (and IPv6 prefixes) | UDP only; TCP and the encrypted transports are not limited |
 | Privacy level | [`querylog.privacy`](/reference/configuration/#querylog.privacy): `full`, `anonymize_client`, `hide_domains`, `hide_domains_clients`, `nothing` | Applied once, when a query is logged |
-| Long-term data | rollups kept 35 days per minute, 400 days per hour and daily forever; raw rows for [`querylog.retention.raw`](/reference/configuration/#querylog.retention.raw) | The dashboard marks merged top lists as approximate |
-| Web interface password | the local `admin` user (reset on the host with `kudurru admin reset-password admin`), other local users, or OIDC login | Roles: viewer, auditor, operator, zone-admin, admin |
+| Long-term data | rollups kept 35 days per minute, 400 days per hour and daily forever; raw rows for [`querylog.retention.raw`](/reference/configuration/#querylog.retention.raw) | The dashboard marks merged top lists as approximate. Statistics older than 24 hours need a [license key](/project/licensing/) |
+| Web interface password | the local `admin` user (reset on the host with `kudurru admin reset-password admin`), other local users, or OIDC login | Roles: viewer, auditor, operator, zone-admin, admin. Roles other than the built-in administrator, and OIDC, need a [license key](/project/licensing/) |
 | Pi-hole API | `/api/v1`, see the [REST API reference](/reference/api/) | A Pi-hole v6 compatible API is planned for v1.0 |
 | Teleporter | `kudurru backup --out file.yaml` and `kudurru restore -f file.yaml` | kudurru's own format, not a Teleporter archive |
 | `pihole.toml` | `kudurru.yaml` and the settings file, see the [settings reference](/reference/configuration/) | |
@@ -47,7 +47,10 @@ The mapping below is the whole job for most installations.
 ## A Pi-hole setup as kudurru objects
 
 A household with the default group, a "Kids" group on its own VLAN, one
-extra list and a local name:
+extra list and a local name. The `kids` Policy needs a
+[license key](/project/licensing/): without one, kudurru keeps
+`Policy/default` as the only policy and refuses `kids` with
+`license_required`. A free personal key covers a home network.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1

@@ -87,6 +87,12 @@ function fail(status: number, key: string, message: string, hint?: unknown, head
   );
 }
 
+/** The 402 a feature without a key answers (internal/api requireFeature), or null when the license has it. */
+function needsLicense(feature: string, what: string) {
+  if (db.license.features.includes(feature)) return null;
+  return fail(402, 'license_required', `${what} needs a license key`, 'add a license key (a free personal key covers 3 nodes; see https://kudurru.io/license); DNS keeps working meanwhile');
+}
+
 /** internal/rbac/permissions.yaml: resource -> verbs. */
 export const RESOURCE_VERBS: Record<string, string[]> = {
   zones: ['read', 'write', 'delete', 'transfer', 'sign', 'share'],
@@ -1333,7 +1339,7 @@ export const handlers = [
     const items = db.queries
       .filter((q) => q.status_class === 'blocked')
       .slice(0, n)
-      .map((q) => ({ id: q.id, ts: q.ts, domain: q.domain, client: q.client.ip, ...(q.client.name ? { client_name: q.client.name } : {}), ...(q.list ? { list: q.list } : {}), status: q.status }));
+      .map((q) => ({ id: q.id, node: q.node, ts: q.ts, domain: q.domain, client: q.client.ip, ...(q.client.name ? { client_name: q.client.name } : {}), ...(q.list ? { list: q.list } : {}), status: q.status }));
     return ok({ ...scopeInfo(url), items });
   }),
 
@@ -1534,8 +1540,11 @@ export const handlers = [
     };
     return items[what] ? ok({ items: items[what] }) : fail(404, 'not_found', `no IAM collection ${what}`);
   }),
+  http.get(`${B}/license`, ({ request }) =>
+    guard(request, 'settings', 'read') ?? ok({ ...db.license, nodesInUse: db.nodes.length, overLimit: db.nodes.length > db.license.nodes }),
+  ),
   http.get(`${B}/audit`, ({ request }) => {
-    const g = guard(request, 'audit', 'read');
+    const g = guard(request, 'audit', 'read') ?? needsLicense('audit', 'the audit trail');
     if (g) return g;
     const url = new URL(request.url);
     const p = url.searchParams;
@@ -2001,7 +2010,7 @@ function unblockHandlers() {
   const missing = (params: Record<string, unknown>) => fail(404, 'not_found', `unblock request ${String(params.ns)}/${String(params.name)} not found`);
   return [
     http.get(`${B}/unblockrequests`, ({ request }) => {
-      const g = guard(request, 'unblockrequests', 'read');
+      const g = guard(request, 'unblockrequests', 'read') ?? needsLicense('requests', 'unblock requests');
       if (g) return g;
       const url = new URL(request.url);
       const state = url.searchParams.get('state');

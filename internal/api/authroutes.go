@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/license"
 )
 
 // Me is GET /auth/me.
@@ -268,10 +270,31 @@ func (s *Server) registerAudit() {
 }
 
 func (s *Server) auditReader() (audit.Reader, error) {
-	if rd, ok := s.opts.Audit.(audit.Reader); ok {
+	if err := s.requireFeature(license.FeatureAudit, "the audit trail"); err != nil {
+		return nil, err
+	}
+	if s.opts.AuditReader != nil {
+		return s.opts.AuditReader, nil
+	}
+	if rd, ok := audit.ReaderOf(s.opts.Audit); ok {
 		return rd, nil
 	}
-	return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "audit events are not stored on this node",
+	return nil, errAuditNotStored()
+}
+
+// auditError maps audit reader failures: a cursor another store issued is
+// a 400.
+func auditError(err error) error {
+	if errors.Is(err, audit.ErrBadCursor) {
+		return errInvalid("cursor: not a cursor returned by this API")
+	}
+	return storeError(err)
+}
+
+// errAuditNotStored is the 503 of the audit routes when no recorder
+// stores events (audit.ErrNotStored).
+func errAuditNotStored() *Error {
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, "audit events are not stored on this node",
 		"the sqlite store keeps them in state.db; in Kubernetes they are the \"log\":\"audit\" lines")
 }
 
@@ -289,22 +312,19 @@ func auditQuery(in *auditInput) (audit.Query, error) {
 		cursor = in.Continue
 	}
 	if cursor != "" {
+		// A decimal cursor is an event id; anything else is the opaque
+		// cursor of a cluster-wide store, which checks it itself.
 		id, err := strconv.ParseInt(cursor, 10, 64)
-		if err != nil || id < 0 || q.Desc && id == 0 {
+		switch {
+		case err != nil:
+			q.Cursor = cursor
+		case id < 0 || q.Desc && id == 0:
 			return q, errInvalid("cursor: not a cursor returned by this API")
+		default:
+			q.After(audit.Event{ID: id})
 		}
-		advance(&q, id)
 	}
 	return q, nil
-}
-
-// advance moves q past the event id last (the last one of a page).
-func advance(q *audit.Query, last int64) {
-	if q.Desc {
-		q.BeforeID = last
-	} else {
-		q.AfterID = last
-	}
 }
 
 func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, error) {
@@ -320,14 +340,14 @@ func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, e
 	q.Limit = limit
 	evs, err := rd.Read(ctx, q)
 	if err != nil {
-		return nil, storeError(err)
+		return nil, auditError(err)
 	}
 	out := &AuditPage{Items: evs, Node: s.opts.NodeName}
 	if out.Items == nil {
 		out.Items = []AuditEvent{}
 	}
 	if len(evs) == limit {
-		out.CursorNext = strconv.FormatInt(evs[len(evs)-1].ID, 10)
+		out.CursorNext = evs[len(evs)-1].Position()
 		out.Continue = out.CursorNext
 	}
 	return &auditOutput{Body: out}, nil
@@ -364,7 +384,7 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 			if len(evs) < q.Limit {
 				return
 			}
-			advance(&q, evs[len(evs)-1].ID)
+			q.After(evs[len(evs)-1])
 		}
 	}}, nil
 }

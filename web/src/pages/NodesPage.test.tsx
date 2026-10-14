@@ -1,10 +1,25 @@
 import { fireEvent, screen, within } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { renderWithApp } from '../test/utils';
+import { server } from '../test/setup';
+import { API, renderWithApp } from '../test/utils';
 import MessagesPage, { messageKeys, objectLink, parseObjectRef } from './MessagesPage';
 import NodesPage from './NodesPage';
 
 describe('NodesPage', () => {
+  it('keeps a failed peer visible with unknown readiness and its status error', async () => {
+    server.use(http.get(`${API}/nodes`, () => HttpResponse.json({ items: [
+      { name: 'node-a', self: true, leader: true, ready: true, state: 'live', version: 'v0.1.0' },
+      { name: 'node-b', self: false, leader: false, error: 'peer status: connection refused' },
+    ] })));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    const table = await screen.findByRole('table', { name: 'Nodes' });
+    const peer = within(table).getByText('node-b').closest('tr')!;
+    expect(within(peer).getAllByText('readiness unknown').length).toBeGreaterThan(0);
+    expect(within(peer).getByText('peer status: connection refused')).toBeInTheDocument();
+    expect(within(peer).queryByText('not ready')).toBeNull();
+  });
+
   it('renders /nodes, /cluster and /edge as the server sends them', async () => {
     renderWithApp(<NodesPage />, { route: '/nodes' });
     const table = await screen.findByRole('table', { name: 'Nodes' });

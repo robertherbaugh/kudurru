@@ -1,0 +1,24 @@
+{
+  "name": "@kudurru/license-portal-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../LICENSE.md",
+  "type": "module",
+  "description": "Runs the kudurru license portal (license-server/) on Cloudflare Containers: a Worker and a Durable Object in front of the portal's container.",
+  "scripts": {
+    "dev": "wrangler dev -c local/wrangler.jsonc",
+    "deploy": "bun scripts/deploy.ts",
+    "types": "wrangler types",
+    "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p test",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test && wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.3",
+    "typescript": "6.0.3",
+    "wrangler": "4.149.0"
+  }
+}

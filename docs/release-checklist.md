@@ -13,6 +13,19 @@ release; goreleaser, the images, the Helm charts and `kudurru version` use
 the version without the `v`. A release candidate publishes a GitHub
 pre-release and does not move the `latest` image tags (`prerelease: auto`).
 
+## Licensing gates (before anything is public)
+
+- [ ] The signing key in `internal/license/keys/` is the production key: its
+      private half is in Infisical (not on a laptop, not in the
+      repository), and a test key (`kudurru license verify`) issued with it
+      is accepted by the release binary. See
+      [docs/architecture/licensing.md](architecture/licensing.md#for-the-licensor).
+- [ ] The contact address in `LICENSING.md` is monitored, and a way to request
+      a free personal key exists.
+- [ ] No release candidate image, chart or release made before the license
+      change is still published (the history keeps its Apache-2.0 commits; the
+      tags, releases and images must all carry the new license).
+
 ## Release pipeline
 
 ```
@@ -149,7 +162,7 @@ Dry runs for v0.1.0-rc.1 (not tagged yet):
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
-Two former items here run on GitHub's ubuntu-latest runners now:
+Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
       fix round): `make edge-check` builds the kudurru image and both
@@ -159,14 +172,26 @@ Two former items here run on GitHub's ubuntu-latest runners now:
       golden keepalived files. It passed locally from a clean clone with no
       build cache at a57eb73. Make the `edge` workflow a required check on
       `main` once it is green there.
-- [ ] **kind** (spike f, `kind` workflow, `make kind-e2e`): kind cluster,
-      MetalLB L2, `helm install kudurru-crds` and `kudurru` with
-      `vip.provider=metallb` and `service.dns.splitProtocols` both ways;
-      `dig` an authoritative and a forwarded name through the LoadBalancer
-      over UDP and TCP; `kubectl get dnszones`; a rolling restart with no
-      unanswered query. Not yet run anywhere (the fix-round sandbox cannot
-      start kind); make it required after green runs. Still manual: the
-      edge Deployment with EndpointSlice membership.
+- [ ] **kind** (spike f, `kind` workflow, `make kind-e2e`): a kind cluster
+      of a control-plane node and three workers, MetalLB L2, `helm install
+      kudurru-crds` and `kudurru` with three replicas and
+      `vip.provider=metallb`. Without a database: the replicas on different
+      nodes; every replica's API lists all replicas and the objects made
+      through another; `service.dns.splitProtocols` both ways with `dig` of
+      an authoritative and a forwarded name through the LoadBalancer over
+      UDP and TCP; the query log of all nodes on every replica (#9); the
+      audit log on every replica, also after the replica that made the
+      change was replaced (#10); a rolling restart with no unanswered
+      query. With the PostgreSQL database (docs/deploy/postgres.md): the
+      query log and audit log read from it, including the rows of replicas
+      that no longer exist; the database stopped for over a minute (DNS and
+      readiness unaffected, changes still work, `CentralUnreachable`
+      reported) and started again with nothing recorded meanwhile missing.
+      Green on GitHub's runners since the v0.1 fix round for the single-node
+      DNS part; the multi-node and database parts are new. Make it a
+      required check once it has a record of green runs (it skips docs-only
+      changes the way `ci` does, so a required check is satisfied). Still
+      manual: the edge Deployment with EndpointSlice membership.
 
 On the owner's hardware:
 
@@ -220,9 +245,12 @@ On the owner's hardware:
       `ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k<version>` from
       `images/dnsdist` and `images/keepalived` with
       `KUDURRU_IMAGE=ghcr.io/robertherbaugh/kudurru:<version>` for
-      linux/amd64 and linux/arm64 and cosign-signs each digest (the program
-      versions come from the Dockerfile ARGs). Check both jobs succeeded;
-      the image READMEs carry the GPL notices and source offer.
+      linux/amd64 and linux/arm64, each natively on an x64 or arm64 runner
+      and pushed by digest; `supervisor-manifests` joins the two platforms
+      into the tagged index and cosign-signs its digest (the program
+      versions come from the Dockerfile ARGs). Check all four builds and
+      both manifest jobs succeeded; the image READMEs carry the GPL notices
+      and source offer.
 - [ ] The `hostnetwork-image` job (after `release`) builds and pushes
       `ghcr.io/robertherbaugh/kudurru:<version>-hostnetwork` (and
       `latest-hostnetwork` for a release) from `images/hostnetwork` with

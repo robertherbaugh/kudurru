@@ -11,7 +11,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/robertherbaugh/kudurru/internal/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 )
 
 // VRRPProbe is the keepalived track_script check (docs/architecture.md

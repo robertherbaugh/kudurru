@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/robertherbaugh/kudurru/internal/audit"
 )
 
 // HeaderRequestID carries the request id; an incoming value from a
@@ -185,12 +187,8 @@ func requestIDMW(trusted *trustedProxies) func(http.Handler) http.Handler {
 	}
 }
 
-func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
-}
+// truncate cuts s to at most n bytes on a UTF-8 boundary.
+func truncate(s string, n int) string { return audit.Truncate(s, n) }
 
 func newRequestID() string {
 	var b [12]byte

@@ -26,13 +26,22 @@ export function ScopeSelector() {
   );
 }
 
-/** "Showing 2 nodes" / "node kudurru-0" with partial-result warning. */
-export function ScopeNote({ scope }: { scope?: { scope: string; nodes: { name: string; ok: boolean; error?: string }[]; partial: boolean } }) {
+export interface ResponseScope {
+  scope: string;
+  nodes: { name: string; ok: boolean; error?: string }[];
+  partial: boolean;
+  /** "central" when the central database answered (D161). */
+  source?: string;
+}
+
+/** "All nodes: a, b" / "Node kudurru-0" with partial-result warning; "(central database)" when it answered. */
+export function ScopeNote({ scope }: { scope?: ResponseScope }) {
   if (!scope) return null;
   const failed = scope.nodes.filter((n) => !n.ok);
   return (
     <Text type="supporting" data-testid="scope-note">
       {scope.scope === 'node' ? `Node ${scope.nodes.map((n) => n.name).join(', ')}` : `All nodes: ${scope.nodes.map((n) => n.name).join(', ')}`}
+      {scope.source === 'central' ? ' (central database)' : ''}
       {scope.partial ? ` (partial: ${failed.map((n) => n.name).join(', ')} did not answer)` : ''}
     </Text>
   );

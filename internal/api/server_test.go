@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
@@ -96,7 +97,7 @@ func TestAuditWithSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	rec := audit.Multi{audit.SQLite{Store: st}, audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	rec := audit.Multi{auditstore.SQLite{Store: st}, audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 	h := newHarness(t, func(o *Options) { o.Store = st; o.Audit = rec })
 	// A store write: audited by the driver with the API principal as actor.
 	h.do(http.MethodPut, "/api/v1/objects/dnszones/example", "admin", zoneDoc("example", "example.com.")).want(http.StatusCreated)
@@ -425,5 +426,77 @@ func TestRequestIDAndRealIP(t *testing.T) {
 	r = h2.do(http.MethodDelete, "/api/v1/objects/dnszones/x", "viewer", nil, "X-Forwarded-For", "203.0.113.7", "X-Request-Id", "req-123")
 	if r.Header().Get("X-Request-Id") == "req-123" || h2.audit.Events()[0].Request.IP != "192.0.2.10" {
 		t.Fatalf("untrusted headers believed: %+v", h2.audit.Events()[0].Request)
+	}
+}
+
+// TestAuditNotStoredMulti is the kube driver's wiring (#10): a Multi with
+// only the log recorder stores nothing, so both routes answer 503 before
+// any byte of the export stream is written.
+func TestAuditNotStoredMulti(t *testing.T) {
+	logOnly := audit.Multi{audit.Log{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	h := newHarness(t, func(o *Options) { o.Audit = logOnly })
+	for _, p := range []string{"/api/v1/audit", "/api/v1/audit/export"} {
+		if r := h.do(http.MethodGet, p, "admin", nil).want(http.StatusServiceUnavailable); r.errKey() != KeyUnavailable {
+			t.Fatalf("%s: key %q", p, r.errKey())
+		}
+	}
+	// An explicit AuditReader wins over the recorder.
+	mem := &audit.Memory{}
+	if err := mem.Record(context.Background(), audit.Event{Action: "blocking.toggle", Resource: audit.Resource{Kind: "blocking"}, Result: audit.ResultSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	h = newHarness(t, func(o *Options) { o.Audit = logOnly; o.AuditReader = mem })
+	var page AuditPage
+	h.do(http.MethodGet, "/api/v1/audit", "admin", nil).want(http.StatusOK).json(&page)
+	if len(page.Items) != 1 || page.Items[0].Action != "blocking.toggle" {
+		t.Fatalf("page %+v", page)
+	}
+}
+
+// TestStoreErrorNotStored: a reader returning audit.ErrNotStored is a 503,
+// not a 500.
+func TestStoreErrorNotStored(t *testing.T) {
+	var e *Error
+	if !errors.As(storeError(audit.ErrNotStored), &e) || e.GetStatus() != http.StatusServiceUnavailable {
+		t.Fatalf("storeError(ErrNotStored) = %v", storeError(audit.ErrNotStored))
+	}
+}
+
+// cursorReader is a cluster-wide audit store: opaque cursors, ids that
+// repeat across nodes.
+type cursorReader struct{ got []audit.Query }
+
+func (c *cursorReader) Read(_ context.Context, q audit.Query) ([]audit.Event, error) {
+	c.got = append(c.got, q)
+	switch {
+	case q.AfterID != 0 || q.BeforeID != 0 || q.Cursor != "" && q.Cursor != "c1.next":
+		return nil, audit.ErrBadCursor
+	case q.Cursor == "":
+		return []audit.Event{{ID: 7, UID: "aaaa-7", Cursor: "c1.next", Action: "a.b"}, {ID: 7, UID: "bbbb-7", Cursor: "c1.next", Action: "a.c"}}, nil
+	}
+	return []audit.Event{{ID: 8, UID: "aaaa-8", Cursor: "c1.end", Action: "a.d"}}, nil
+}
+
+func TestAuditOpaqueCursor(t *testing.T) {
+	rd := &cursorReader{}
+	h := newHarness(t, func(o *Options) { o.AuditReader = rd })
+	var page AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?limit=2", "admin", nil).want(http.StatusOK).json(&page)
+	if page.CursorNext != "c1.next" || len(page.Items) != 2 || page.Items[1].UID != "bbbb-7" {
+		t.Fatalf("page %+v", page)
+	}
+	var second AuditPage
+	h.do(http.MethodGet, "/api/v1/audit?limit=2&cursor=c1.next", "admin", nil).want(http.StatusOK).json(&second)
+	if second.CursorNext != "" || len(second.Items) != 1 || rd.got[1].Cursor != "c1.next" {
+		t.Fatalf("second page %+v, query %+v", second, rd.got[1])
+	}
+	// A cursor of another store (an event id) is a 400, not a 500.
+	h.do(http.MethodGet, "/api/v1/audit?cursor=12", "admin", nil).want(http.StatusBadRequest)
+	h.do(http.MethodGet, "/api/v1/audit?cursor=garbage", "admin", nil).want(http.StatusBadRequest)
+	// The export pages with the opaque cursor.
+	rd.got = nil
+	r := h.do(http.MethodGet, "/api/v1/audit/export", "admin", nil).want(http.StatusOK)
+	if n := strings.Count(r.Body.String(), "\n"); n != 2 || len(rd.got) != 1 {
+		t.Fatalf("export %d lines, %d reads: %s", n, len(rd.got), r.Body.String())
 	}
 }

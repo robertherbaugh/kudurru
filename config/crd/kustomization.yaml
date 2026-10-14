@@ -7,3 +7,4 @@ resources:
   - bases/kudurru.io_clientgroups.yaml
   - bases/kudurru.io_policies.yaml
   - bases/kudurru.io_unblockrequests.yaml
+  - audit/audit.kudurru.io_auditlogs.yaml

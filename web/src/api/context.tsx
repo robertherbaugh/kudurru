@@ -75,6 +75,7 @@ export const qk = {
   messages: ['messages'] as const,
   version: ['version'] as const,
   cluster: ['cluster'] as const,
+  license: ['license'] as const,
   audit: (...rest: unknown[]) => ['audit', ...rest] as const,
   unblock: (...rest: unknown[]) => ['unblockrequests', ...rest] as const,
   /** Allowlist, Denylist and /domains pages. */

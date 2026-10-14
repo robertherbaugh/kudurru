@@ -147,6 +147,7 @@ export default function NodesPage() {
           <VStack gap={0.5}>
             <DotLabel variant={r.variant} label={r.label} />
             {n.unready?.length ? <Text type="supporting">waiting for {n.unready.join(', ')}</Text> : null}
+            {n.error ? <Text type="supporting">{n.error}</Text> : null}
           </VStack>
         );
       },

@@ -16,15 +16,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/robertherbaugh/kudurru/ee/longterm"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
 // Response bodies of the stats and log routes: the sqlitelog read-model
 // structs (docs/m2/querylog.md) plus took_ms. Every one carries
-// scope:{scope:"node", nodes:[...], partial:false}.
+// scope:{scope:"node"|"cluster", nodes:[...], partial:<node failures>}.
 type (
 	// SummaryBody is GET /stats/summary.
 	SummaryBody struct {
@@ -79,6 +82,7 @@ type (
 
 // UpstreamServer is the live state of one configured upstream server.
 type UpstreamServer struct {
+	Node                string     `json:"node,omitempty"`
 	Group               string     `json:"group"`
 	Server              string     `json:"server"`
 	Healthy             bool       `json:"healthy"`
@@ -93,8 +97,8 @@ type WindowParams struct {
 	Window string `query:"window" doc:"Window ending now, as a Go duration (24h, 7d is 168h); default 24h."`
 	From   string `query:"from" doc:"Window start (RFC 3339); overrides window."`
 	To     string `query:"to" doc:"Window end (RFC 3339); default now."`
-	Scope  string `query:"scope" enum:"node,cluster," doc:"node (default) or cluster; cluster is answered by this node until scatter-gather lands."`
-	Node   string `query:"node" doc:"Node to answer for (scope=node); only this node is served today."`
+	Scope  string `query:"scope" enum:"node,cluster," doc:"node (default) or cluster; cluster merges the known nodes and reports partial results on failure."`
+	Node   string `query:"node" doc:"Node to answer for (scope=node); requests for another known node are routed over the internal listener."`
 }
 
 type summaryOutput struct{ Body *SummaryBody }
@@ -165,11 +169,11 @@ type suggestionsInput struct {
 }
 
 type queryActionInput struct {
-	ID   uint64 `path:"id"`
-	Body struct {
-		Action string `json:"action" enum:"allow,deny"`
-		// Namespace of the UI list (default "default").
-		Namespace string `json:"namespace,omitempty"`
+	ID    uint64 `path:"id"`
+	Scope string `query:"scope" enum:"node,cluster," doc:"cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database)."`
+	Body  struct {
+		Action    string `json:"action" enum:"allow,deny"`
+		Namespace string `json:"namespace,omitempty" doc:"Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes)."`
 	}
 }
 
@@ -181,6 +185,10 @@ type purgeInput struct {
 type PurgeResult struct {
 	Deleted int64  `json:"deleted"`
 	Node    string `json:"node"`
+	// CentralDeleted counts the rows of every node deleted from the
+	// central database; absent without one. Other nodes' own query logs
+	// are not purged.
+	CentralDeleted *int64 `json:"central_deleted,omitempty"`
 	Took
 }
 
@@ -264,6 +272,11 @@ func (s *Server) window(in WindowParams) (sqlitelog.Window, error) {
 	if !w.From.Before(w.Until) {
 		return w, errInvalid("from: must be before to")
 	}
+	if longterm.Needed(w.From, now) {
+		if err := s.requireFeature(license.FeatureLongTerm, "statistics older than 24 hours (long-term views)"); err != nil {
+			return w, err
+		}
+	}
 	return w, nil
 }
 
@@ -303,7 +316,7 @@ func readerError(err error) error {
 }
 
 func (s *Server) statsSummary(ctx context.Context, in *WindowParams) (*summaryOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +332,7 @@ func (s *Server) statsSummary(ctx context.Context, in *WindowParams) (*summaryOu
 }
 
 func (s *Server) statsTimeseries(ctx context.Context, in *timeseriesInput) (*timeseriesOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +352,7 @@ func (s *Server) statsTimeseries(ctx context.Context, in *timeseriesInput) (*tim
 }
 
 func (s *Server) statsTop(ctx context.Context, in *topInput) (*topOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -363,8 +376,12 @@ func (s *Server) statsTop(ctx context.Context, in *topInput) (*topOutput, error)
 		if uerr != nil {
 			return nil, readerError(uerr)
 		}
+		cutoff := 0
+		if in.Scope == "cluster" {
+			cutoff = limitN(in.N) * 4
+		}
 		return &topOutput{Body: &TopBody{
-			TopList:   sqlitelog.TopList{Scope: up.Scope, Window: up.Window, Dimension: "upstreams", Items: []sqlitelog.TopItem{}, Approximate: up.Approximate},
+			TopList:   sqlitelog.TopList{Scope: up.Scope, Window: up.Window, Dimension: "upstreams", Items: []sqlitelog.TopItem{}, Approximate: up.Approximate, CutoffRank: cutoff},
 			Upstreams: up.Items,
 		}}, nil
 	default:
@@ -382,37 +399,41 @@ func (s *Server) upstreamServers() []UpstreamServer {
 		return out
 	}
 	for _, st := range s.opts.Upstreams.Status() {
-		u := UpstreamServer{Group: st.Group, Server: st.Server, Healthy: st.Healthy, ConsecutiveFailures: st.ConsecutiveFailures,
-			RTTMS: float64(st.RTT.Microseconds()) / 1000}
-		if !st.BackoffUntil.IsZero() {
-			b := st.BackoffUntil.UTC()
-			u.BackoffUntil = &b
-		}
+		u := upstreamServer(s.opts.NodeName, st)
 		out = append(out, u)
 	}
 	return out
 }
 
-func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstreamsOutput, error) {
-	body := &UpstreamsBody{Servers: s.upstreamServers()}
-	body.Scope = sqlitelog.Scope{Scope: sqlitelog.ScopeNode, Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}
-	body.Items = []sqlitelog.UpstreamItem{}
-	if r, err := s.reader(); err == nil {
-		w, err := s.window(*in)
-		if err != nil {
-			return nil, err
-		}
-		up, err := r.TopUpstreams(ctx, sqlitelog.TopQuery{Window: w, N: sqlitelog.MaxTopN})
-		if err != nil {
-			return nil, readerError(err)
-		}
-		body.UpstreamTop = *up
+func upstreamServer(node string, st upstream.ServerStatus) UpstreamServer {
+	u := UpstreamServer{Node: node, Group: st.Group, Server: st.Server, Healthy: st.Healthy, ConsecutiveFailures: st.ConsecutiveFailures, RTTMS: float64(st.RTT.Microseconds()) / 1000}
+	if !st.BackoffUntil.IsZero() {
+		b := st.BackoffUntil.UTC()
+		u.BackoffUntil = &b
 	}
-	return &upstreamsOutput{Body: body}, nil
+	return u
+}
+func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstreamsOutput, error) {
+	w, err := s.window(*in)
+	if err != nil {
+		return nil, err
+	}
+	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.opts.Querylog == nil {
+		return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: sqlitelog.UpstreamTop{Scope: sqlitelog.Scope{Scope: "node", Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}, Window: w, Items: []sqlitelog.UpstreamItem{}}, Servers: s.upstreamServers()}}, nil
+	}
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
+	if err != nil {
+		return nil, err
+	}
+	up, servers, err := r.upstreams(ctx, sqlitelog.TopQuery{Window: w, N: sqlitelog.MaxTopN})
+	if err != nil {
+		return nil, readerError(err)
+	}
+	return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: *up, Servers: servers}}, nil
 }
 
 func (s *Server) statsClientTimeseries(ctx context.Context, in *clientTimeseriesInput) (*clientTimeseriesOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +453,7 @@ func (s *Server) statsClientTimeseries(ctx context.Context, in *clientTimeseries
 }
 
 func (s *Server) statsRecentBlocked(ctx context.Context, in *recentBlockedInput) (*recentBlockedOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -521,22 +542,23 @@ func queryFilter(in QueryParams) (sqlitelog.QueryFilter, error) {
 		}
 		*tc.into = t
 	}
-	if f.Cursor != "" {
-		if c, err := strconv.ParseUint(f.Cursor, 10, 64); err != nil || c == 0 {
-			return f, errInvalid("cursor: not a cursor returned by this API")
-		}
-	}
+
 	return f, nil
 }
 
 func (s *Server) listQueries(ctx context.Context, in *QueryParams) (*queriesOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
 	f, err := queryFilter(*in)
 	if err != nil {
 		return nil, err
+	}
+	if in.Scope != "cluster" && f.Cursor != "" {
+		if id, err := strconv.ParseInt(f.Cursor, 10, 64); err != nil || id <= 0 {
+			return nil, errInvalid("invalid cursor")
+		}
 	}
 	res, err := r.Queries(ctx, f)
 	if err != nil {
@@ -582,17 +604,28 @@ func (s *Server) purgeQuerylog(ctx context.Context, in *purgeInput) (*purgeOutpu
 		before = t
 	}
 	n, err := s.opts.Purger.Purge(ctx, before)
-	s.recordAction(ctx, "querylog.purge", audit.Resource{Kind: "querylog"}, err, nil, map[string]any{"before": in.Before, "deleted": n})
+	out := &PurgeResult{Deleted: n, Node: s.opts.NodeName}
+	after := map[string]any{"before": in.Before, "deleted": n}
+	if err == nil && s.opts.CentralPurger != nil {
+		var c int64
+		c, err = s.opts.CentralPurger.Purge(ctx, before)
+		out.CentralDeleted, after["central_deleted"] = &c, c
+	}
+	s.recordAction(ctx, "querylog.purge", audit.Resource{Kind: "querylog"}, err, nil, after)
 	if err != nil {
 		return nil, storeError(err)
 	}
-	return &purgeOutput{Body: &PurgeResult{Deleted: n, Node: s.opts.NodeName}}, nil
+	return &purgeOutput{Body: out}, nil
 }
 
 func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*processedOutput, error) {
-	r, err := s.reader()
-	if err != nil {
-		return nil, err
+	// A row of the central database's log has the database's id (D161).
+	r := s.opts.CentralQuerylog
+	if in.Scope != sqlitelog.ScopeCluster || r == nil {
+		var err error
+		if r, err = s.reader(); err != nil {
+			return nil, err
+		}
 	}
 	page, err := r.Queries(ctx, sqlitelog.QueryFilter{Cursor: strconv.FormatUint(in.ID+1, 10), Limit: 1})
 	if err != nil {
@@ -718,7 +751,14 @@ var maxQueryStreams = 64
 // holding its goroutine forever.
 const sseWriteTimeout = 30 * time.Second
 
-func (s *Server) queryStream(_ context.Context, in *streamInput) (*huma.StreamResponse, error) {
+func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.StreamResponse, error) {
+	peers, err := s.queryPeers(ctx, in.Scope, in.Node)
+	if err != nil {
+		return nil, err
+	}
+	if in.Scope == "cluster" || !peers[0].Self {
+		return s.scopedQueryStream(ctx, in, peers)
+	}
 	if s.opts.Tail == nil && s.opts.Querylog == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
 	}

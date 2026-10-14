@@ -2,7 +2,7 @@
 // (docs/architecture.md §8): the Principal and Session types, the
 // Middleware that runs the Authenticate and LoadPrincipal steps of §8.8
 // over pluggable Authenticator steps (implemented by internal/auth/tokens,
-// internal/auth/oidc, internal/auth/k8s, internal/auth/session and the
+// ee/oidc, internal/auth/k8s, internal/auth/session and the
 // unix-peer and internal-token steps here), CSRF, the contract's error
 // body, the Authorize helper and the mapping to rbac.Principal.
 package auth

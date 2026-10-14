@@ -147,11 +147,11 @@ func (s *Stack) requireAnyScope(resource, verb string, next http.Handler) http.H
 	})
 }
 
-// Register mounts every route on mux under the API prefix, guarded by
+// Register mounts every route on mux under RoutePrefix, guarded by
 // Guard. The mux must sit behind Middleware.
 func (s *Stack) Register(mux *http.ServeMux) {
 	for _, rt := range s.Routes() {
-		mux.Handle(rt.Method+" "+s.opts.APIPrefix+rt.Path, s.Guard(rt))
+		mux.Handle(rt.Method+" "+s.opts.RoutePrefix+rt.Path, s.Guard(rt))
 	}
 }
 
@@ -190,7 +190,7 @@ func (s *Stack) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		Session:               &statusSessionLimit{IdleTimeout: s.sealed.IdleTimeout().String(), Lifetime: s.sealed.Lifetime().String()},
 	}
 	resp.LocalLogin = resp.LocalLoginMode != "disabled"
-	if reg := s.registry.Load(); reg != nil {
+	if reg := s.activeRegistry(); reg != nil {
 		for _, p := range reg.Providers() {
 			resp.Providers = append(resp.Providers, oidcProviderInfo{ID: p.ID, DisplayName: p.DisplayName})
 		}
@@ -260,7 +260,7 @@ func (s *Stack) isAdmin(p auth.Principal) bool {
 	if p.BuiltinAdmin {
 		return true
 	}
-	for _, g := range s.bindings.GrantsFor(auth.RBACPrincipal(p)) {
+	for _, g := range s.grantsFor(auth.RBACPrincipal(p)) {
 		if g.Role == "admin" && (g.Scope.Kind == "" || g.Scope.Kind == rbac.ScopeCluster) {
 			return true
 		}
@@ -352,10 +352,10 @@ func (s *Stack) effectiveGrants(p auth.Principal) []rbac.Grant {
 	for _, g := range rp.Implicit {
 		add(g)
 	}
-	for _, g := range s.bindings.GrantsFor(rp) {
+	for _, g := range s.grantsFor(rp) {
 		add(g)
 	}
-	for _, g := range s.bindings.ValidGrants(rp.Grants, rp.GrantsIssuedAt) {
+	for _, g := range s.validGrants(rp.Grants, rp.GrantsIssuedAt) {
 		add(g)
 	}
 	return out
@@ -504,7 +504,7 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Stack) handleOIDC(w http.ResponseWriter, r *http.Request) {
-	if reg := s.registry.Load(); reg != nil {
+	if reg := s.activeRegistry(); reg != nil {
 		if p, ok := reg.Provider(r.PathValue("idp")); ok {
 			if strings.HasSuffix(r.URL.Path, "/callback") {
 				p.Callback(w, r)

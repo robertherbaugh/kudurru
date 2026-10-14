@@ -20,7 +20,7 @@ Sources: cloned `TechnitiumSoftware/DnsServer` and `TechnitiumSoftware/Technitiu
 | App Store | 27 official apps, manifest at `https://download.technitium.com/dns/apps/apps2.json` (redirect from `go.technitium.com/?id=44`) | `DnsApplicationManager.APP_STORE_URI`, fetched manifest |
 | Key deps | `BouncyCastle.Cryptography 2.7.0` (Ed25519/Ed448), `Microsoft.AspNetCore.Authentication.OpenIdConnect 10.0.12`, `QRCoder 1.8.0` (TOTP), `System.DirectoryServices.Protocols 10.0.12` (LDAP) | `DnsServerCore.csproj` |
 
-**Licensing caveat.** Technitium DNS Server and its library are GPL-3.0. kudurru is Apache-2.0. **No code, config-file formats-by-copy, UI markup, or app source may be ported.** Only ideas, protocol behaviours, data-model shapes and UX patterns described here are usable. Even the proprietary record type numbers (65280–65284, 65357) are "private use" ranges; kudurru can use the same private-use space but should pick its own numbers and names.
+**Licensing caveat.** Technitium DNS Server and its library are GPL-3.0. kudurru is source-available (Kudurru Community License; Apache-2.0 when this note was written). **No code, config-file formats-by-copy, UI markup, or app source may be ported.** Only ideas, protocol behaviors, data-model shapes and UX patterns described here are usable. Even the proprietary record type numbers (65280–65284, 65357) are "private use" ranges; kudurru can use the same private-use space but should pick its own numbers and names.
 
 ---
 

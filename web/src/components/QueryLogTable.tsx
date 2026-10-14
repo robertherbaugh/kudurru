@@ -24,6 +24,7 @@ import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type SVGProps } from 'react';
 import type { QueryRow, StatusClass } from '../api/types';
+import { queryIdentity } from '../lib/queryIdentity';
 import { edeText } from '../lib/ede';
 import { formatDateTime, formatMS, formatTime } from '../lib/format';
 import { objectHref } from '../lib/policies';
@@ -39,7 +40,7 @@ export interface UnblockLink {
 export interface QueryLogTableProps {
   rows: QueryRow[];
   /** Ids that arrived over the live tail and get a short highlight. */
-  fresh?: ReadonlySet<number>;
+  fresh?: ReadonlySet<string>;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -168,14 +169,14 @@ const PLUGINS = { wideRegion };
 
 export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, onAction, canAct, unblockLink, initialRect }: QueryLogTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 12,
-    getItemKey: (i) => rows[i]?.id ?? i,
+    getItemKey: (i) => rows[i] ? queryIdentity(rows[i]) : i,
     ...(initialRect ? { initialRect } : {}),
   });
   const items = virtualizer.getVirtualItems();
@@ -186,7 +187,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
     if (last && last.index >= rows.length - 20 && hasMore && !loadingMore) onLoadMore();
   }, [last, rows.length, hasMore, loadingMore, onLoadMore]);
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -195,7 +196,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
     });
   }, []);
 
-  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, id: number, index: number) => {
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, id: string, index: number) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -243,10 +244,10 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
           {items.map((vi) => {
             const r = rows[vi.index];
             if (!r) return null;
-            const open = expanded.has(r.id);
+            const open = expanded.has(queryIdentity(r));
             return (
               <TableBody key={vi.key} data-index={vi.index} ref={virtualizer.measureElement}>
-                <LogRow r={r} index={vi.index} open={open} isNew={!!fresh?.has(r.id)} onToggle={toggle} onKeyDown={onRowKey}>
+                <LogRow r={r} index={vi.index} open={open} isNew={!!fresh?.has(queryIdentity(r))} onToggle={toggle} onKeyDown={onRowKey}>
                   {COLUMNS.map((c) => (
                     <TableCell key={c.id}>{c.cell(r)}</TableCell>
                   ))}
@@ -275,7 +276,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
                   </TableCell>
                 </LogRow>
                 {open ? (
-                  <TableRow id={`why-${r.id}`}>
+                  <TableRow id={`why-${queryIdentity(r)}`}>
                     <TableCell colSpan={NCOLS} style={{ whiteSpace: 'normal', background: 'var(--color-overlay-hover)' }}>
                       <WhyDetails row={r} unblock={r.status_class === 'blocked' ? (unblockLink?.(r) ?? null) : null} />
                     </TableCell>
@@ -327,8 +328,8 @@ interface LogRowProps {
   open: boolean;
   /** Arrived over the live tail: flashes once. */
   isNew: boolean;
-  onToggle: (id: number) => void;
-  onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>, id: number, index: number) => void;
+  onToggle: (id: string) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>, id: string, index: number) => void;
   children: ReactNode;
 }
 
@@ -353,13 +354,13 @@ function LogRow({ r, index, open, isNew, onToggle, onKeyDown, children }: LogRow
       data-row-index={index}
       aria-rowindex={index + 1}
       aria-expanded={open}
-      aria-controls={open ? `why-${r.id}` : undefined}
+      aria-controls={open ? `why-${queryIdentity(r)}` : undefined}
       style={{ cursor: 'pointer', ...(open ? { background: 'var(--color-overlay-pressed)' } : {}) }}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('button, a')) return;
-        onToggle(r.id);
+        onToggle(queryIdentity(r));
       }}
-      onKeyDown={(e) => onKeyDown(e, r.id, index)}
+      onKeyDown={(e) => onKeyDown(e, queryIdentity(r), index)}
     >
       {children}
     </TableRow>

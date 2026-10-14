@@ -39,7 +39,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/health"
@@ -137,6 +139,11 @@ type UpstreamStatusFunc func() []upstream.ServerStatus
 // Status implements UpstreamStatus.
 func (f UpstreamStatusFunc) Status() []upstream.ServerStatus { return f() }
 
+// CentralState reports the central database's state (*central.DB).
+type CentralState interface {
+	State() central.State
+}
+
 // Options configures a Server. Only Store and Validator are required;
 // every other dependency switches its routes to 501/503 when absent, so
 // tests and partial wirings work.
@@ -157,6 +164,11 @@ type Options struct {
 	Querylog *sqlitelog.Reader
 	Tail     *querylog.Tail
 	Purger   QuerylogPurger
+	// CentralQuerylog answers scope=cluster from the central database
+	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
+	// this node's rows; nil without a central database.
+	CentralQuerylog *sqlitelog.Reader
+	CentralPurger   QuerylogPurger
 	// Upstreams and ResponseCache back upstream status and /cache/flush.
 	// Upstreams is an *upstream.Set, or UpstreamStatusFunc over the
 	// upstream stage when the set is swapped on settings reloads.
@@ -178,6 +190,8 @@ type Options struct {
 	// Health is the node's readiness checker; Membership lists nodes.
 	Health     *health.Checker
 	Membership cluster.Membership
+	// InternalClient fetches peer status over the authenticated internal listener.
+	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional
 	// leader-side triggers.
 	Lists     ListStatusSource
@@ -186,9 +200,20 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
-	// Audit records denied attempts and non-store mutations; a Reader
-	// implementation also backs GET /audit.
-	Audit audit.Recorder
+	// Central is the optional central database (internal/central); its
+	// state is reported by /info/messages. nil: none configured.
+	Central CentralState
+	// Audit records denied attempts and non-store mutations. AuditReader
+	// backs GET /audit and /audit/export; when nil, the reader behind
+	// Audit is used (audit.ReaderOf), and the routes answer 503 when no
+	// recorder stores events. Reading the audit trail is a licensed
+	// feature (license.FeatureAudit), answered 402 without it.
+	Audit       audit.Recorder
+	AuditReader audit.Reader
+	// License is the node's license (*license.Manager). It backs GET
+	// /license and the 402 for configuration writes while the cluster is
+	// larger than the license allows; nil turns both gates off.
+	License LicenseSource
 	// Authenticate puts the principal in the request context or answers
 	// 401 for bad credentials (anonymous requests pass through and are
 	// refused by Authorize on non-public routes).
@@ -200,7 +225,8 @@ type Options struct {
 	// X-Kudurru-CSRF header); nil skips the check here (the session
 	// authenticator enforces it too).
 	CSRF func(*http.Request) error
-	// RateLimit wraps the auth routes (login brute-force limiter hook).
+	// RateLimit optionally wraps /api/v1/auth/login before authentication.
+	// serve leaves it nil; the users store enforces login lockouts.
 	RateLimit func(http.Handler) http.Handler
 	// AuthHandler serves /api/v1/auth/{status,login,logout,password,
 	// oidc/...,tokens...} and the read-only /api/v1/iam/* lists (the auth
@@ -232,7 +258,9 @@ type Options struct {
 	// Version is the build information; NodeName is node.name.
 	Version  version.Info
 	NodeName string
-	// DefaultNamespace for namespaced objects without one ("default").
+	// DefaultNamespace for namespaced objects without one. The server supplies
+	// the release namespace in Kubernetes (or "default" for legacy installs).
+	// An empty option falls back to "default".
 	DefaultNamespace string
 	// Now is the clock (tests).
 	Now func() time.Time
@@ -267,6 +295,10 @@ type Server struct {
 	// unblockFallback serves /unblockrequests without Options.Unblock.
 	unblockOnce     sync.Once
 	unblockFallback *unblock.Service
+	// nodes caches the cluster size for the license gate.
+	nodes nodeCounter
+	// policyMu serializes the policy limit check with the create it guards.
+	policyMu sync.Mutex
 	// domainSvc is the Allowlist and Denylist over the store.
 	domainOnce sync.Once
 	domainSvc  *domainlist.Service
@@ -348,6 +380,7 @@ func New(opts Options) (*Server, error) {
 		onPrefix(BasePath+"/auth/login", opts.RateLimit),
 		onPrefix(BasePath+"/", opts.Authenticate),
 		s.actorMW,
+		s.licenseMW,
 	)
 	h := chain(inner,
 		recoverMW(s.log),
@@ -377,7 +410,7 @@ func newHumaAPI(mux *http.ServeMux, prefix string) huma.API {
 	cfg.DocsPath = ""
 	cfg.Info.Description = "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; " +
 		"lists are {items, continue, took_ms} with opaque keyset continue tokens."
-	cfg.Info.License = &huma.License{Name: "Apache-2.0", URL: "https://www.apache.org/licenses/LICENSE-2.0"}
+	cfg.Info.License = &huma.License{Name: "LicenseRef-Kudurru-Community", URL: "https://kudurru.io/license/text/"}
 	cfg.Servers = []*huma.Server{{URL: prefix + BasePath}}
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearer": {Type: "http", Scheme: "bearer", Description: "kdr_<id>_<secret> API token, OIDC ID token or Kubernetes ServiceAccount token"},

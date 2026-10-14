@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/cache"
@@ -291,7 +292,7 @@ func TestDeleteZoneSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	rec := audit.Multi{audit.SQLite{Store: st}}
+	rec := audit.Multi{auditstore.SQLite{Store: st}}
 	h := newHarness(t, func(o *Options) { o.Store = st; o.Audit = rec })
 	h.do(http.MethodPut, "/api/v1/objects/dnszones/example", "admin", zoneDoc("example", "example.com.")).want(http.StatusCreated)
 	h.do(http.MethodPost, "/api/v1/zones/example/records", "admin", ep("www", "A", "192.0.2.1")).want(http.StatusCreated)

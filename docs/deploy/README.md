@@ -10,6 +10,7 @@
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
@@ -73,6 +74,7 @@ from the config file:
 | `KUDURRU_ENCRYPTION_KEY_PREVIOUS_FILE` | The previous key during a rotation ([runbooks.md](runbooks.md#rotating-the-encryption-key)). |
 | `KUDURRU_ADMIN_PASSWORD_FILE` | Password of the first-start `admin` user; read only while no user exists. |
 | `KUDURRU_BOOTSTRAP_TOKEN_FILE` | Optional `kdr_<id>_<secret>` token created at first start for automation. |
+| `KUDURRU_LICENSE_KEY_FILE` | Optional file with the license key (`KUDURRU_LICENSE_KEY` holds the key itself). Without a key kudurru runs one node and no `ee/` features; DNS is never affected. [LICENSING.md](../../LICENSING.md), [how it works](../architecture/licensing.md). Helm: `license.existingSecret` or `license.key`. |
 
 Every settings key can also be set as `KUDURRU_<SECTION>__<KEY>` (for example
 `KUDURRU_LOG__LEVEL=debug`) or `KUDURRU_<SECTION>__<KEY>_FILE`; list and map

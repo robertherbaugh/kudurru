@@ -1,4 +1,5 @@
 import { initTabs, runVisiblePanels } from "./tabs.ts";
+import { initLicenseForm } from "./license.ts";
 import { initTrace } from "./trace.ts";
 
 function initMenu(): void {
@@ -41,3 +42,4 @@ initCopy();
 initTabs();
 runVisiblePanels();
 initTrace();
+initLicenseForm();

@@ -68,6 +68,13 @@ COPY --from=build /out/usr/share/keepalived/COPYING /usr/share/doc/kudurru-keepa
 # root mirrors that layout).
 COPY --from=kudurru /ko-app/kudurru /usr/local/bin/kudurru
 COPY README.md /usr/share/doc/kudurru-keepalived/README.md
+# The licenses of the programs this image ships: the kudurru supervisor
+# (Kudurru Community License, plus the ee/ terms) and keepalived
+# (GPL-2.0-or-later, compiled unmodified from the upstream tarball). Two
+# separate programs, not one combined work (README.md). Alpine's packages
+# (iproute2, tini, musl ...) keep their own licenses
+# (apk info -L <package>). `make edge-check` asserts this label.
+LABEL org.opencontainers.image.licenses="LicenseRef-Kudurru-Community AND GPL-2.0-or-later"
 VOLUME ["/run/kudurru"]
 EXPOSE 8085/tcp
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \

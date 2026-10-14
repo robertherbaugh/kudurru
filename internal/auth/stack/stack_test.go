@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -526,5 +527,83 @@ func TestInvalidConfigurations(t *testing.T) {
 				t.Fatal("New accepted an invalid configuration")
 			}
 		})
+	}
+}
+
+// OIDC single sign-on is a licensed feature (ee/oidc): without it the
+// providers stay configured but disabled and local login keeps working.
+func TestOIDCNeedsALicense(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secret, []byte("s3cret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "auth:\n  identityProviders:\n  - { id: corp, issuer: https://sso.example, clientID: k, clientSecretFile: " + secret +
+		", redirectURL: https://dns.example/api/v1/auth/oidc/corp/callback }\n"
+	var licensed atomic.Bool
+	e := newEnv(t, authtest.Memory(t), yaml, func(o *Options) { o.OIDCAllowed = licensed.Load })
+
+	providers := func() int {
+		r := e.do(http.MethodGet, "/api/v1/auth/status", nil)
+		if r.code != http.StatusOK {
+			t.Fatalf("status: %d %s", r.code, r.raw)
+		}
+		list, _ := r.body["providers"].([]any)
+		return len(list)
+	}
+	if n := providers(); n != 0 {
+		t.Fatalf("unlicensed: %d providers offered, want 0", n)
+	}
+	if e.s.Registry() != nil {
+		t.Error("unlicensed: Registry() is not nil")
+	}
+	if d := strings.Join(e.s.Diagnoses(), "\n"); !strings.Contains(d, "needs a license key") {
+		t.Errorf("unlicensed: no diagnosis, got %q", d)
+	}
+	if r := e.do(http.MethodGet, "/api/v1/auth/oidc/corp/start", nil); r.code == http.StatusFound {
+		t.Errorf("unlicensed: the OIDC start redirected to the provider")
+	}
+	if cookie, _ := e.login("admin", "admin-password-1"); cookie == nil {
+		t.Error("unlicensed: local login stopped working")
+	}
+
+	licensed.Store(true)
+	if n := providers(); n != 1 {
+		t.Fatalf("licensed: %d providers offered, want 1", n)
+	}
+	if e.s.Registry() == nil {
+		t.Error("licensed: Registry() is nil")
+	}
+	if d := strings.Join(e.s.Diagnoses(), "\n"); strings.Contains(d, "needs a license key") {
+		t.Errorf("licensed: stale diagnosis %q", d)
+	}
+}
+
+// Role bindings are a licensed feature (ee/rbac): without it they are
+// configured but grant nothing and no principal resolves roles from them,
+// while the first-boot administrator keeps full access.
+func TestRBACNeedsALicense(t *testing.T) {
+	var licensed atomic.Bool
+	e := newEnv(t, authtest.Memory(t), testConfig, func(o *Options) { o.RBACAllowed = licensed.Load })
+	staff := rbac.Principal{Name: "sam", Groups: []string{"staff"}}
+
+	if g := e.s.grantsFor(staff); len(g) != 0 {
+		t.Errorf("unlicensed: staff resolved grants %v", g)
+	}
+	if e.s.engine.Licensed() {
+		t.Error("unlicensed: the engine claims RBAC is licensed")
+	}
+	if d := strings.Join(e.s.Diagnoses(), "\n"); !strings.Contains(d, "need a license key") {
+		t.Errorf("unlicensed: no diagnosis, got %q", d)
+	}
+	if cookie, _ := e.login("admin", "admin-password-1"); cookie == nil {
+		t.Error("unlicensed: the built-in administrator cannot sign in")
+	}
+
+	licensed.Store(true)
+	if g := e.s.grantsFor(staff); len(g) != 1 || g[0].Role != "viewer" {
+		t.Errorf("licensed: staff grants %v, want viewer", g)
+	}
+	if d := strings.Join(e.s.Diagnoses(), "\n"); strings.Contains(d, "need a license key") {
+		t.Errorf("licensed: stale diagnosis %q", d)
 	}
 }

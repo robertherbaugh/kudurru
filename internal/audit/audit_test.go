@@ -6,12 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 func TestActorString(t *testing.T) {
@@ -120,55 +117,26 @@ func TestMultiAndLog(t *testing.T) {
 	}
 }
 
-func TestSQLiteRecorder(t *testing.T) {
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = st.Close() }()
-	r := SQLite{Store: st}
+func TestGated(t *testing.T) {
+	mem := &Memory{}
+	allowed := false
+	g := Gated{Inner: mem, Allowed: func() bool { return allowed }}
 	ctx := context.Background()
-	ev := Event{
-		Time: time.Now(), Actor: Actor{Kind: "User", Name: "alice"}, Action: "blocking.toggle",
-		Resource: Resource{Kind: "blocking"}, Result: ResultSuccess, Authz: "binding",
-		Before: Diff(map[string]bool{"blocking": true}), After: Diff(map[string]bool{"blocking": false}),
-		Request: Request{ID: "req-1", IP: "192.0.2.1"},
+	if err := g.Record(ctx, Event{Action: "a"}); err != nil || len(mem.Events()) != 0 {
+		t.Fatalf("recorded while not allowed: %v %d", err, len(mem.Events()))
 	}
-	if err := r.Record(ctx, ev); err != nil {
-		t.Fatal(err)
+	if _, err := g.Read(ctx, Query{}); !errors.Is(err, ErrNotStored) {
+		t.Fatalf("read while not allowed: %v", err)
 	}
-	if err := r.Record(ctx, Event{Time: time.Now(), Actor: Actor{Kind: "User", Name: "bob"}, Action: "zones.delete", Resource: Resource{Kind: "DNSZone", Name: "x"}, Result: ResultDenied}); err != nil {
-		t.Fatal(err)
+	allowed = true
+	if err := g.Record(ctx, Event{Action: "b"}); err != nil || len(mem.Events()) != 1 {
+		t.Fatalf("not recorded while allowed: %v %d", err, len(mem.Events()))
 	}
-	evs, err := r.Read(ctx, Query{})
-	if err != nil || len(evs) != 2 {
-		t.Fatalf("read %v %d", err, len(evs))
+	if evs, err := g.Read(ctx, Query{}); err != nil || len(evs) != 1 {
+		t.Fatalf("read while allowed: %v %d", err, len(evs))
 	}
-	got := evs[0]
-	if got.Actor.Kind != "User" || got.Actor.Name != "alice" || got.Manager != "api" || got.Hash == "" ||
-		!strings.Contains(got.Reason, "authz=binding") || !strings.Contains(got.Reason, "request=req-1") || string(got.After) != `{"blocking":false}` {
-		t.Fatalf("row %+v", got)
-	}
-	if evs[1].PrevHash != got.Hash {
-		t.Fatal("rows not chained")
-	}
-	evs, _ = r.Read(ctx, Query{Actor: "bob"})
-	if len(evs) != 1 || evs[0].Result != ResultDenied {
-		t.Fatalf("actor filter %+v", evs)
-	}
-	newest, _ := r.Read(ctx, Query{Desc: true})
-	if len(newest) != 2 || newest[0].Actor.Name != "bob" || newest[1].ID != got.ID {
-		t.Fatalf("desc %+v", newest)
-	}
-	// The actor filter pages through the table: one row per round here.
-	evs, _ = r.Read(ctx, Query{Desc: true, Actor: "alice", Limit: 1})
-	if len(evs) != 1 || evs[0].ID != got.ID {
-		t.Fatalf("desc actor filter %+v", evs)
-	}
-	if evs, _ = r.Read(ctx, Query{Desc: true, BeforeID: got.ID}); len(evs) != 0 {
-		t.Fatalf("desc cursor %+v", evs)
-	}
-	if err := st.VerifyAudit(ctx); err != nil {
-		t.Fatal(err)
+	// A recorder that cannot read back never claims to.
+	if _, err := (Gated{Inner: Log{}}).Read(ctx, Query{}); !errors.Is(err, ErrNotStored) {
+		t.Fatalf("write-only inner: %v", err)
 	}
 }

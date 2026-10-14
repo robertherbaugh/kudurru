@@ -7,7 +7,7 @@
 
 > Babylonian boundary stones that recorded land grants and who held which territory. That’s a DNS zone: a record of authority over a defined space. The original kudurru stone was kept in a temple, and the landholder got a clay copy to prove ownership. That’s an authoritative primary with distributed secondaries, which is how DNS zone transfers work. Pronunciation is koo-DOO-roo. As a CLI it’s seven letters (kudurru).
 
-**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. It takes the best idea from each of the servers we admire and puts them in one Apache-2.0 Go binary:
+**kudurru** is a Kubernetes-native DNS server that also runs as a single Docker container. It takes the best idea from each of the servers we admire and puts them in one source-available Go binary:
 
 | We took | From | What it means in kudurru |
 |---|---|---|
@@ -24,28 +24,14 @@ And the things none of them had together: **Kubernetes CRDs as the source of tru
 
 ## How it fits together
 
-```
-                      clients (Do53 / DoT / DoH / DoQ / DoH3)
-                                   │
-            ┌──────────────────────▼───────────────────────┐   optional edge tier (GPL, separate container)
-            │ dnsdist  :53/:853/:443   packet cache         │   PID 1 = `kudurru edge run` (render → check → exec)
-            └──────────────────────┬───────────────────────┘
-                     PROXYv2 (client IP preserved)  → :5353 (or :53 when no edge)
-┌───────────────────────────────────▼─────────────────────────────────────────────────┐
-│ kudurru node (every replica)                                                         │
-│  dnsserver ─▶ PIPELINE  ingress ▸ identify ▸ control ▸ local ▸ authoritative ▸ blocking │
-│                      ▸ rewrite ▸ cache ▸ dnssec-validate ▸ upstream ▸ postprocess ▸ log │
-│       ▲ reads lock-free snapshots of zone trees, policies, compiled blocklists, upstreams │
-│  zonecache ◀── Store.Watch ──────────────────┐  ──▶ local.db (last-good snapshot)        │
-│  api (REST + UI + SSE)  querylog (ring→SQLite→rollups→sinks)  ops/metrics  internal     │
-│  controller / listfetcher / notifier / signer / integrations  [leader-only]  ─┼─┐       │
-└──────────────────────────────────────────────────────────────────────────────┼─┼───────┘
-   STORE (config)   kube driver: CRDs via the apiserver (replicated by k8s etcd) ◀┘ │
-                    sqlite driver: /var/lib/kudurru/state.db (docker)            ◀──┘
-   VIP (bare metal) keepalived (VRRPv3) with PID 1 = `kudurru vip run`; in k8s: kube-vip / MetalLB / cloud LB
-```
+![kudurru at a glance: clients, the optional dnsdist edge, one kudurru node with its seven-stage pipeline, the in-memory snapshot, its listeners and leader-only loops, the store below and the internet on the right](docs/architecture/diagrams/overview.excalidraw.svg)
 
-Principles that shaped it (the full list is in the [architecture](docs/architecture.md)):
+The [architecture tour](docs/architecture/README.md) walks through it with a
+diagram per topic: a query's journey, policies and blocking, block lists,
+upstreams and the cache, zones, the store, deployment shapes, access and
+observability.
+
+Principles that shaped it (the full list is in the [design record](docs/architecture.md#1-vision--principles)):
 
 - **One object model, one `Store` interface, zero consensus code in v0.1.** In Kubernetes the apiserver is the replicated store; in Docker it is embedded SQLite. Follower mode (v0.2) and raft (v1.0) arrive behind the same interface.
 - **Exactly one writer per object.** Every object records who manages it (API, a file, an integration, Kubernetes), so two sources of truth are structurally impossible.
@@ -80,7 +66,7 @@ Kubernetes:
 
 ```sh
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --set replicaCount=2 --set license.existingSecret=kudurru-license   # two replicas need a license key (free for personal use); see LICENSING.md
 kubectl apply -f config/samples/   # DNSZone, DNSRecordSet, BlockList, ClientGroup, Policy
 kubectl get zones
 ```
@@ -101,10 +87,12 @@ Full milestones with exit criteria are in [docs/architecture.md §13](docs/archi
 
 - [kudurru.io](https://kudurru.io): the project website ([source](www/README.md)); the documentation site is [docs.kudurru.io](https://docs.kudurru.io).
 - [User and administrator guide](docs/guide/README.md): how to use and run kudurru, in Simplified Technical English with screenshots.
-- [Architecture](docs/architecture.md): the complete design, decision log and glossary.
+- [Architecture tour](docs/architecture/README.md): how kudurru works, with diagrams for every flow (also at [docs.kudurru.io/architecture](https://docs.kudurru.io/architecture/)).
+- [Design record](docs/architecture.md): the v0.1 design, the decision log and the glossary.
 - [Open questions](docs/open-questions.md): the project owner's decisions and the remaining spikes.
 - [Deployment guides](docs/deploy/README.md): Docker, Helm, packages, runbooks.
-- [Research notes](docs/research/): point-in-time studies of the reference projects that the architecture cites.
+- [Research notes](docs/research/): point-in-time studies of the reference projects that the design record cites.
+- Engineering notes: milestone reports ([M1](docs/m1/README.md), [M2](docs/m2/README.md), [M3/M4](docs/m3/README.md), [M5](docs/m5/README.md)), [spikes](docs/spikes/README.md) and [follow-ups](docs/followups.md).
 - [Contributing](CONTRIBUTING.md): licensing rules (no GPL or EUPL code is ever ported), layout, and how to build.
 - [Branding kit](docs/brand/README.md): logos, icons, color tokens, usage rules, and original artwork.
 
@@ -119,12 +107,57 @@ charts/             Helm charts: kudurru and kudurru-crds
 config/             kustomize tree, CRD bases, samples
 deploy/             docker compose profiles, Grafana dashboard, Prometheus rules
 images/             dnsdist and keepalived supervisor images (GPL binaries, digest-pinned)
-docs/               architecture, research, open questions
+docs/               guide, deploy docs and the architecture tour (published); design record, research, engineering notes (repo only)
 web/                the React dashboard (Bun + React 19 + Astryx), embedded in the binary
 site/               the documentation site (Hugo), built from docs/
 www/                the kudurru.io website (Bun + TypeScript)
+license-server/     the license portal that issues license keys (Bun + TypeScript + Postgres; not part of the binary)
 ```
+
+## AI Assisted Development
+
+kudurru was built with substantial help from AI coding assistants: **Claude** (Anthropic) and **OpenAI** models. To be transparent about what that means:
+
+**Created with AI assistance**
+
+- most of the source code (the resolver and control plane, the dashboard, the CLI and the supervisors)
+- the Helm charts, compose profiles, Dockerfiles and GitHub Actions workflows
+- the tests and benchmarks
+- the documentation, including the architecture, the user guide and this README
+
+**Done by the maintainer**
+
+- defining the requirements and deciding on features, design and licensing rules
+- reviewing, running and testing the result, and reporting problems that were then fixed
+- publishing, versioning and operating the project
+
+**What this means for you**
+
+- The test suite and the CI workflows run on every change, and releases are published only through the pipeline described in the [release checklist](docs/release-checklist.md). Tests are not a substitute for validating your own environment.
+- Some checks need real hardware and are still open for v0.1, such as 2-VM keepalived failover and dnsdist through the edge. Provider-specific setups (OIDC providers, Cloudflare, UniFi) have not been tested in every combination.
+- AI-generated code can contain mistakes, including security-relevant ones. Review the code, and validate authentication, RBAC and network exposure yourself, before you run kudurru in production or on an untrusted network.
+- Issues and pull requests are reviewed and handled by the maintainer. The rules for AI agents that work in this repository are in [CLAUDE.md](CLAUDE.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). dnsdist and keepalived are GPL-2.0 and are distributed only as separate, unmodified programs in their own images.
+The core DNS server and dashboard are **source-available** under the
+[Kudurru Community License](LICENSE). Personal, homelab, qualifying nonprofit
+and isolated community-development uses are permitted under its terms.
+Business and government production use needs an accepted
+[Commercial Software License Agreement](COMMERCIAL_LICENSE_AGREEMENT.md)
+and Order Form, including for no-key features. A free eligible key covers
+up to 3 nodes; commercial enterprise features require the Enterprise plan or
+named modules in the Order Form. DNS answering never depends on a key.
+
+The [`ee/`](ee/LICENSE.md) enterprise materials and [`site/`](site/LICENSE.md)
+documentation have their own notices. Anyone may read the published docs.
+The [`www/`](www/LICENSE.md) marketing website and
+[`license-server/`](license-server/LICENSE.md) issuance service are separately
+licensed for source inspection; the Community License and commercial
+agreement do not grant rights to modify, redistribute or host them.
+
+See [LICENSING.md](LICENSING.md) for the scope and key behavior,
+[kudurru.io/license](https://kudurru.io/license) to request a key, and
+[NOTICE](NOTICE) for third-party notices. dnsdist and keepalived retain their
+GPL licenses and ship as separate, unmodified programs in their own images.
+Historical license grants remain in effect.

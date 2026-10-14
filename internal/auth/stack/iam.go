@@ -291,7 +291,7 @@ func (s *Stack) handleIAMIdentityProviders(w http.ResponseWriter, r *http.Reques
 	for _, c := range s.configIDPs {
 		fromConfig[c.Name] = true
 	}
-	if reg := s.registry.Load(); reg != nil {
+	if reg := s.activeRegistry(); reg != nil {
 		for _, pi := range reg.Providers() {
 			p, _ := reg.Provider(pi.ID)
 			c := p.Config()

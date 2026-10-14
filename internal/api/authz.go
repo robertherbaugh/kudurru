@@ -12,7 +12,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
-	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // perm is the permission a route declares (decision D31). Exactly one of
@@ -98,7 +98,7 @@ func actorOf(p auth.Principal, ok bool) audit.Actor {
 func (s *Server) actorMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p, ok := auth.PrincipalFrom(r.Context()); ok {
-			r = r.WithContext(sqlite.WithActor(r.Context(), actorOf(p, true).String()))
+			r = r.WithContext(store.WithActor(r.Context(), actorOf(p, true).String()))
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -190,7 +190,7 @@ func (s *Server) record(ctx context.Context, ev audit.Event) {
 		ev.Authz = st.authz
 	}
 	ev.Request = audit.Request{ID: st.id, IP: st.clientIP.String(), Method: st.method, Path: st.path, UA: st.userAgent}
-	if err := s.opts.Audit.Record(context.WithoutCancel(ctx), ev); err != nil {
+	if err := s.opts.Audit.Record(context.WithoutCancel(ctx), audit.Sanitize(ev)); err != nil {
 		s.log.Warn("audit record failed", "action", ev.Action, "err", err)
 	}
 }
@@ -213,8 +213,9 @@ func unsafeMethod(m string) bool {
 }
 
 // authorizeMW is the Authorize step of §8.8 for one operation: 401 without
-// a principal, the CSRF check for cookie sessions, then the declared
-// permission at the route's scope (403 with missing{} otherwise).
+// a principal (403 for a dropped session's CSRF failure), the CSRF check
+// for cookie sessions, then the route's declared permission (403 with
+// missing{} otherwise).
 func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		op := ctx.Operation()
@@ -226,7 +227,11 @@ func (s *Server) authorizeMW(p perm) func(huma.Context, func(huma.Context)) {
 		}
 		pr, ok := auth.PrincipalFrom(ctx.Context())
 		if !ok {
-			s.writeHumaError(ctx, errUnauthenticated())
+			if e := auth.CSRFFailure(ctx.Context()); e != nil {
+				s.writeHumaError(ctx, &Error{Status: e.Status, Body: ErrorBody{Key: e.Key, Message: e.Message, Hint: e.Hint}})
+			} else {
+				s.writeHumaError(ctx, errUnauthenticated())
+			}
 			return
 		}
 		if s.opts.CSRF != nil && pr.AuthMethod == "cookie" && unsafeMethod(ctx.Method()) {

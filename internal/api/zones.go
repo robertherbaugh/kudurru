@@ -122,7 +122,7 @@ type upsertRecordInput struct {
 	Zone string `path:"zone"`
 	// RecordSet names the DNSRecordSet to write (default api-<zone>).
 	RecordSet string `query:"recordSet" doc:"DNSRecordSet to write; default api-<zone>."`
-	Namespace string `query:"namespace" doc:"Namespace of the record set; default \"default\"."`
+	Namespace string `query:"namespace" doc:"Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes)."`
 	Body      v1alpha1.Endpoint
 }
 

@@ -27,6 +27,7 @@ import (
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	eerbac "github.com/robertherbaugh/kudurru/ee/rbac"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/auth/k8s"
@@ -242,7 +243,7 @@ func TestSubjectAccessReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sar, err := rbac.NewSARAuthorizer(rbac.SAROptions{Client: az})
+	sar, err := eerbac.NewSARAuthorizer(eerbac.SAROptions{Client: az})
 	if err != nil {
 		t.Fatal(err)
 	}

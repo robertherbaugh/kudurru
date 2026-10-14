@@ -1,5 +1,11 @@
 # kudurru.io
 
+Copyright 2026 kudurru project maintainers. The project-controlled source is
+available for inspection under the [Kudurru Website Source-Viewing License](LICENSE.md).
+Modification, redistribution and hosting require prior written authorization.
+A Kudurru community or commercial license does not grant those website rights.
+The build and deployment instructions below are for authorized maintainers.
+
 The project website: one page that shows what kudurru does and sends
 readers on to the documentation at [docs.kudurru.io](https://docs.kudurru.io)
 (the Hugo site in [`site/`](../site/README.md)) and to the repository. It is
@@ -20,10 +26,10 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 |---|---|
 | `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, the README and `bench/baseline.txt`; change them here when a feature ships or moves |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
-| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu. The page is complete without it |
+| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
 | `src/styles/site.css` | The stylesheet. It imports `docs/brand/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
-| `build.ts` | Renders the pages, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
+| `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
 | `wrangler.jsonc` | The Cloudflare Workers configuration: static assets from `dist/`, the 404 page, the `kudurru.io` custom domain |
 | `test/` | `bun test`: escaping, `_headers`, and the built pages (no inline script or style, links, anchors, ARIA references, image attributes) |
 
@@ -40,6 +46,30 @@ RFC 3849 are documentation placeholders.
 
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
+
+## The "Request a key" form
+
+`/license/` has a form with two kinds of request. A **personal** request is
+sent from the visitor's browser to the license server
+(`POST <origin>/api/v1/public/key-requests` with `name`, `email`, `use` and an
+empty honeypot `website`; the server emails a confirmation link; after the
+visitor confirms, an administrator approves the request and the server emails
+the key; a `202` is the answer to any valid request). A **business or other**
+request is never sent to a server: the browser opens a mail to
+`hello@kudurru.io` with the subject `Business License` and the name, business,
+email, number of nodes and details in the body, and shows the same text to
+copy if no mail program opens.
+
+The license server's origin is `https://licenses.kudurru.io` unless
+`WWW_LICENSE_API` names another one at build time (set it in the Cloudflare
+build variables). Three things must agree with it:
+
+- the site's CSP allows exactly that origin in `connect-src` (`src/headers.ts`
+  writes it into `_headers`; the build fails on a malformed URL);
+- the server's CORS list (`PUBLIC_FORM_ORIGINS`) contains `https://kudurru.io`
+  and exposes `Retry-After`;
+- the server's limits are the form's (name 200, email 254, use 1000
+  characters), kept in `src/client/license.ts`.
 
 ## How Cloudflare serves it
 
@@ -70,12 +100,23 @@ Cloudflare dashboard:
    | Root directory | `www` |
    | Build command | `bun install --frozen-lockfile && bun run build` |
    | Deploy command | `bunx wrangler deploy` |
-   | Non-production branch deploy command | `bunx wrangler versions upload` (a preview URL per branch and pull request) |
-   | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION` |
+   | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
+   | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` |
    | Build variables | `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    The build reads `../VERSION`, `../docs/brand` and `../docs/guide/images`
    outside the root directory; Workers Builds clones the whole repository.
+   Each build uses the commit from the branch that triggered it. With
+   `release` as production, `main` and feature branches run the Preview
+   command; the command does not choose which branch to clone.
+
+   **Existing projects:** if Settings → Builds shows **Set up Worker
+   Previews**, complete that setup before using the Preview command. This
+   is a one-way switch from the older version URL preview system; follow
+   [Cloudflare's migration steps](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#existing-workers-connected-to-builds).
+   `wrangler.jsonc` includes the required `previews` block. This static site
+   needs no separate preview bindings; assets and compatibility settings
+   stay at the top level.
 
 2. **Main domain.** `kudurru.io` must be a zone on the same Cloudflare
    account. The first deploy attaches it as the Worker's custom domain
@@ -110,11 +151,16 @@ Cloudflare dashboard:
    above does not cover it. Do not add a DNS record for `docs` by hand:
    the first deploy of that Worker creates it.
 
-Version URLs (`preview_urls`) are served on `workers.dev`. `wrangler.jsonc`
-keeps the Worker's own `workers.dev` address off; if Cloudflare does not
-create version URLs with it off, set `"workers_dev": true` (every page
-carries a canonical link to kudurru.io, so the second address is not
-indexed as a duplicate).
+Worker Previews have their own URLs on `workers.dev`; production stays on
+`kudurru.io`. The Worker's production `workers.dev` address stays disabled.
+`preview_urls` also leaves version URLs available, but branch builds use
+`wrangler preview` rather than `wrangler versions upload`.
+
+If GitHub reports **Preview creation failed** and Cloudflare has no build
+log, preview provisioning may have failed before the build command started.
+Changing the GitHub Actions runner or adding flags to the deploy command
+cannot repair that stage. Contact Cloudflare with the Worker name, failing
+build ID and GitHub check URL so they can inspect its preview build state.
 
 [`www.yml`](../.github/workflows/www.yml) runs `make www-check` on every
 pull request that touches the site, the brand kit or the screenshots. It

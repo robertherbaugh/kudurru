@@ -42,7 +42,10 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - NOTICE
+      - ee/LICENSE.md
       - README.md
       - deploy/systemd/kudurru.service
       - deploy/systemd/kudurru.yaml
@@ -102,7 +105,7 @@ kos:
       - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
     labels:
       org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
-      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.title: kudurru
@@ -133,7 +136,7 @@ kos:
       - -X github.com/robertherbaugh/kudurru/internal/version.Date={{ .CommitDate }}
     labels:
       org.opencontainers.image.source: https://github.com/robertherbaugh/kudurru
-      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.licenses: LicenseRef-Kudurru-Community
       org.opencontainers.image.version: "{{ .Version }}-debug"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
 
@@ -147,7 +150,7 @@ nfpms:
     homepage: https://github.com/robertherbaugh/kudurru
     maintainer: Robert Herbaugh <robertherbaugh@users.noreply.github.com>
     description: Kubernetes-native DNS server (authoritative, forwarding, blocking) that also runs standalone.
-    license: Apache-2.0
+    license: LicenseRef-Kudurru-Community
     section: net
     priority: optional
     bindir: /usr/bin
@@ -173,8 +176,14 @@ nfpms:
           mode: 0750
       - src: LICENSE
         dst: /usr/share/doc/kudurru/LICENSE
+      - src: LICENSING.md
+        dst: /usr/share/doc/kudurru/LICENSING.md
+      - src: COMMERCIAL_LICENSE_AGREEMENT.md
+        dst: /usr/share/doc/kudurru/COMMERCIAL_LICENSE_AGREEMENT.md
       - src: NOTICE
         dst: /usr/share/doc/kudurru/NOTICE
+      - src: ee/LICENSE.md
+        dst: /usr/share/doc/kudurru/ee-LICENSE.md
     scripts:
       preinstall: deploy/systemd/preinstall.sh
       postinstall: deploy/systemd/postinstall.sh

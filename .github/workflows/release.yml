@@ -20,14 +20,14 @@ jobs:
   tag:
     # Creating the branch is a push too; only merges publish.
     if: ${{ !github.event.created }}
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     permissions:
       contents: write        # push the tag
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       previous: ${{ steps.tag.outputs.previous }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: v<VERSION>, checked against the latest release candidate

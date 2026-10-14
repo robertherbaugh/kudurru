@@ -144,3 +144,64 @@ VIP holder last.
 **Packages:** `apt upgrade kudurru` / `dnf upgrade kudurru` / `apk upgrade
 kudurru` replace the binary and keep `/etc/kudurru`; the post-install script
 restarts the service only if it was running.
+
+## Central database unavailable
+
+Symptoms: the `KudurruCentralDatabaseDown` alert, `CentralUnreachable` on the
+Diagnosis page, the Audit tab and **All nodes** answer "unavailable".
+
+DNS is not affected, and nothing is lost while the nodes keep their own
+copies: each node writes its audit events and query log locally first and
+sends them when the database answers again (`kudurru_central_ship_lag_seconds`
+falls back to a few seconds). A node keeps the queries it has not sent past
+`querylog.retention.raw`; only `querylog.retention.maxDBBytes` deletes them
+earlier, and its audit spool keeps 50 000 events (`KudurruAuditSpoolDropping`
+when it overflows).
+
+1. `kudurru doctor` on a node checks the connection, the server version and
+   the schema.
+2. Fix the database or the network; the nodes reconnect within a minute.
+3. Meanwhile **This node** in the scope selector still reads the node's own
+   query log.
+
+`CentralIncompatible` means a newer kudurru migrated the database past what
+this node can use (during a rolling upgrade): upgrade the node. It keeps its
+data locally until then.
+
+## AuditLog CRD missing
+
+Symptom: the log line "the AuditLog CRD is not installed" and each replica's
+Audit tab showing only its own events. The `kudurru-crds` chart is older than
+the app: upgrade it (`helm upgrade kudurru-crds …`) and restart the
+kudurru pods. The events recorded meanwhile are in each pod's
+`audit-spool.db` and are shipped after the restart, unless the pod was
+replaced (its emptyDir is gone); the `"log":"audit"` lines keep them all.
+
+## License key expired or invalid
+
+Symptoms: a banner on every dashboard page (**The license key has expired**,
+**The license key is invalid**), `kudurru_license_info{state="grace"}`,
+`"expired"` or `"invalid"`, a licensed feature that answers
+`402 license_required`, the dnsdist or keepalived container that stops at the
+start with "needs a kudurru license key" (a first start only) or the warning
+"the license key expired ... keeps running because it was licensed". DNS
+answering is not affected in any of these cases.
+
+1. `kudurru license status` on the node (or `GET /api/v1/license`) shows the
+   state and, for an invalid key, the reason.
+2. An **expired** key works for 30 days after its date (state `grace`), then
+   the limits for running without a key apply: one node, one policy (the seeded default),
+   no licensed feature. Alert on
+   `kudurru_license_expires_timestamp_seconds - time()` before that.
+3. Put the renewed key where the node reads it (`KUDURRU_LICENSE_KEY`,
+   `KUDURRU_LICENSE_KEY_FILE`, `<node.dataDir>/license.key`, the Helm Secret
+   `license.existingSecret`). A running node reads it within a minute; no
+   restart. A supervisor (`kudurru edge run`, `kudurru vip run`) sits in the data
+   path, so an expired key never stops it, not even at a restart: it starts with
+   the warning above until you renew. It refuses only a start with no key at all.
+4. An **invalid** key is one that cannot be verified (a typo, a cut line, a
+   key from another build). `kudurru license verify <key>` says why. Request a
+   new one ([kudurru.io/license](https://kudurru.io/license)).
+5. A cluster over its node limit (`overLimit` in `GET /api/v1/license`) refuses
+   configuration changes through the API with `402`; remove nodes or add a key
+   with a higher limit.

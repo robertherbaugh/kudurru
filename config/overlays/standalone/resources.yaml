@@ -220,6 +220,12 @@ spec:
               value: /etc/kudurru/secrets/encryption/key
             - name: KUDURRU_ADMIN_PASSWORD_FILE
               value: /etc/kudurru/secrets/admin/password
+            - name: KUDURRU_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: license.key
+                  name: kudurru-license
+                  optional: true
             - name: GOMEMLIMIT
               valueFrom:
                 resourceFieldRef:

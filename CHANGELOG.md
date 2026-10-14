@@ -7,6 +7,59 @@ All notable changes to kudurru are listed here. The format follows
 
 ## [0.1.0] - unreleased (release candidate 0.1.0-rc.1, not tagged yet)
 
+### License
+
+- The core DNS server and dashboard use the **Kudurru Community License**:
+  personal, homelab, qualifying nonprofit and community-development uses are
+  permitted; business and government production requires an accepted
+  commercial agreement and Order Form. Enterprise materials and documentation
+  have folder-specific notices; `www/` and `license-server/` have separate
+  source-viewing licenses: the website is copyright kudurru project
+  maintainers and the license server is copyright Robert Herbaugh. Historical
+  Apache-2.0 and PolyForm grants and third-party licenses remain in effect
+  ([LICENSING.md](LICENSING.md)).
+- The marketing website's copyright notices credit **kudurru project
+  maintainers**, defined in `www/LICENSE.md` as the applicable copyright
+  holders. Website license and repository summaries use the same attribution;
+  this collective credit does not transfer ownership.
+- **License keys** (D163): a free personal/nonprofit key (3 nodes) or a
+  commercial key with the agreed node and feature entitlements
+  unlocks more than one node, more than one policy and the features that
+  moved to [`ee/`](ee/): OIDC sign-in, the dnsdist and keepalived edge, and
+  the integrations. Keys are verified offline; with no key kudurru runs one
+  node, and DNS answering never depends on a key. New:
+  `kudurru license status|verify`, `--license-key`,
+  `KUDURRU_LICENSE_KEY(_FILE)`, `GET /api/v1/license`, `402 license_required`
+  for configuration writes over the node limit, `kudurru_license_*` metrics,
+  Helm `license.*` values and the Compose `KUDURRU_LICENSE_KEY` variable.
+- Also behind a key: roles beyond the one built-in administrator (role
+  bindings, scoped roles, Kubernetes RBAC), the audit trail (storage, API and
+  export; the audit log lines stay), statistics older than 24 hours (the
+  rollups are still collected), and unblock requests (the block page stays
+  free). Without a key a node has one policy, the seeded default: the API
+  creates no policy but `default` (`402 license_required`), so a deleted
+  default can be made again under its name and nothing else; policies that
+  exist are never removed.
+- Code moved: `internal/edge` to `ee/edge`, `internal/auth/oidc` to
+  `ee/oidc`, `internal/integration` to `ee/integration`, the binding source,
+  SubjectAccessReview authorizer and ClusterRole generator to `ee/rbac`, and
+  the sqlite audit recorder to `ee/auditstore`.
+- Contributions need a DCO sign-off and a relicensing grant (CONTRIBUTING.md).
+- **License portal** (D165): [`license-server/`](license-server/README.md) is
+  the licensor's service that issues keys: license admins issue, renew,
+  change and withdraw licenses after an OIDC sign-in, customers download
+  their keys through invite links, and the kudurru.io form (after an email
+  confirmation) and the portal ask for a free personal key. A personal key
+  is signed and mailed only after a license admin approves it: the admins
+  get a mail with the request's details and a one-click approve link
+  (`PERSONAL_AUTO_APPROVE=true` signs them at once instead). Bun,
+  TypeScript and Postgres in one container with the dashboard's Astryx UI;
+  roles `customer`, `license_admin` and `superadmin`; keys byte-identical
+  to `hack/licensegen`'s. It is not part of kudurru and no node contacts
+  it: keys are still verified offline. Runs on Cloudflare Containers
+  (`license-server/cloudflare`); `make license-server-check` and
+  `make license-server-e2e` test it.
+
 The first release, "stone": a daily-driver DNS server that runs as one
 container or as a Kubernetes Deployment with CRDs. It covers milestones M1 to
 M5 of [docs/architecture.md §13.1](docs/architecture.md), with the gaps that
@@ -14,6 +67,40 @@ section lists. The milestone reports in [docs/m1](docs/m1/README.md),
 [docs/m2](docs/m2/README.md), [docs/m3](docs/m3/README.md) (M3 and M4, D122)
 and [docs/m5](docs/m5/README.md) hold the measurements, and decisions D79 to
 D126 record what changed on the way.
+
+### Multi-node data (after 0.1.0-rc.3)
+
+- Kubernetes defaults ([#22](https://github.com/robertherbaugh/kudurru/issues/22)):
+  fresh installs seed blocking objects in the release namespace, which
+  also holds the policy fallback, API defaults, UI lists and unblock
+  requests. Existing installs keep `default` until a default policy exists
+  in the release namespace; their objects are not moved or overwritten.
+- Audit in mode=kubernetes ([#10](https://github.com/robertherbaugh/kudurru/issues/10)):
+  the Audit tab no longer fails with "events are not stored on this node".
+  Every replica records the kube driver's writes and its API actions in an
+  audit spool (`audit-spool.db`, D156) and ships them into immutable
+  `AuditLog` objects (`audit.kudurru.io`, new in the `kudurru-crds` chart,
+  D157), so every replica shows the same events and they survive pod
+  restarts. New hostOnly keys `audit.store` and `audit.retention`.
+- Optional central PostgreSQL database (`database.dsn`, D158,
+  [postgres.md](docs/deploy/postgres.md)) for the runtime data of every
+  node. With it, the audit log of every node, Docker and compose included,
+  is kept in one hash chain there (`audit.store: database`, D159); each
+  node keeps its own copy and sends it when the database is reachable.
+- With a central database every node also sends its query log and
+  statistics there (`database.querylog.*`, D160), and **All nodes** reads
+  them instead of asking every replica: every node's queries, charts and
+  top lists, including those of replicas that are down or gone (D161).
+- Chart: `auth.bootstrapToken.enabled` with a generated token made every
+  replica fail at start (`KUDURRU_BOOTSTRAP_TOKEN_FILE is not a kudurru
+  token`): the token id must be lower case and the chart generated mixed
+  case. Found by the multi-node `kind` workflow, which now runs three
+  replicas on a four-node cluster and checks the API, the query log, the
+  audit log and the central database.
+- Chart: `database.clusterDNS` runs the pods with `dnsPolicy: ClusterFirst`
+  so the connection string can name an in-cluster Service, such as the `uri`
+  of a CloudNativePG `<cluster>-app` Secret. The default `dnsPolicy: Default`
+  cannot resolve cluster names.
 
 ### Dashboard and API fixes (v0.1 fix round)
 

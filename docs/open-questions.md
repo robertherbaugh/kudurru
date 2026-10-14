@@ -2,7 +2,13 @@
 
 These were the decisions the architecture left to the project owner. Answers are recorded as decisions in [architecture.md §16](architecture.md#16-decision-log). Numbers match §15 of the architecture. New questions go in a fresh open table above the Decided table.
 
-**All 21 questions were answered by the project owner on 2026-10-10 and 2026-10-11.** The Decided table below is the record; the architecture decision log holds the rationale.
+**The first 21 questions were answered by the project owner on 2026-10-10 and 2026-10-11.** The Decided table below is the record; the architecture decision log holds the rationale.
+
+## Open
+
+| # | Question | Raised | Context |
+|---|---|---|---|
+| 22 | **License portal go-live.** (a) The production OIDC issuer: customers and staff sign in at the same one, so it must allow customer sign-up (or invites) and verify email addresses. (b) A standby signing key: commit `internal/license/keys/kudurru-2026-2.pub` before v0.1.0, its seed unused in Infisical, so the first rotation (even after a leak) needs no node upgrade. (c) Whether the issue wizard offers the Enterprise and Trial plans to admins (they are behind "More plans"; the public copy names only personal and business keys). | 2026-10-12 | D165, `license-server/README.md` |
 
 ## Decided
 
@@ -32,7 +38,7 @@ These were the decisions the architecture left to the project owner. Answers are
 
 ## Week-1 spikes before the schedule is committed
 
-Independent of the answers above, these must be measured before v0.1 milestones are dated. **Status 2026-10-11 (v0.1 fix round):** the schedule went ahead without all of them. Items 3, 4, 5 and 7 are done, as is the transports spike (i) (reports in [spikes/](spikes/)). Item 6 no longer needs the owner's hardware: GitHub's ubuntu-latest runners have Docker, and the `kind` workflow (`hack/kind-e2e.sh`, `make kind-e2e`) installs MetalLB and both charts on kind and digs through the LoadBalancer over UDP and TCP with split and mixed Services; it has not run yet (this sandbox cannot start kind), and the cloud half stays open. Items 1 and 2 need a real dnsdist driven with `kdig`; the pinned dnsdist image already runs in the `edge` workflow (`make edge-check`, a gate since the fix round), so they could become a CI job too, but none is written. Item 8 needs two VMs exchanging VRRP and stays on the owner's hardware (a GA gate in [release-checklist.md](release-checklist.md) §3).
+Independent of the answers above, these must be measured before v0.1 milestones are dated. **Status 2026-10-11 (v0.1 fix round):** the schedule went ahead without all of them. Items 3, 4, 5 and 7 are done, as is the transports spike (i) (reports in [spikes/](spikes/)). Item 6 no longer needs the owner's hardware: the CI runners (Ubicloud, Ubuntu 24.04) have Docker, and the `kind` workflow (`hack/kind-e2e.sh`, `make kind-e2e`) installs MetalLB and both charts on kind and digs through the LoadBalancer over UDP and TCP with split and mixed Services; it has not run yet (this sandbox cannot start kind), and the cloud half stays open. Items 1 and 2 need a real dnsdist driven with `kdig`; the pinned dnsdist image already runs in the `edge` workflow (`make edge-check`, a gate since the fix round), so they could become a CI job too, but none is written. Item 8 needs two VMs exchanging VRRP and stays on the owner's hardware (a GA gate in [release-checklist.md](release-checklist.md) §3).
 
 1. dnsdist 2.1 started from YAML plus console `newServer` and `reloadAllCertificates()`: does the console work under YAML config?
 2. PROXYv2 with the shared-secret TLV plus `chashed` backend selection plus health-check validation function smoke test.

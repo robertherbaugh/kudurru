@@ -16,8 +16,10 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { qk, useApi, useCan } from '../api/context';
+import { useFeature } from '../api/hooks';
 import type { UnblockCounts, UnblockRequest, UnblockState } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
+import { FeatureLocked } from '../components/FeatureLocked';
 import { EnumSelect } from '../components/fields/EnumSelect';
 import { Page, PageHeader } from '../components/layout/Page';
 import { ApproveDialog, DenyDialog } from '../components/unblock/UnblockDialogs';
@@ -51,7 +53,29 @@ const rowAttrs: TablePlugin<Row> = {
   }),
 };
 
+/** Unblock requests are licensed (feature "requests"); locked, the page asks for nothing. */
 export default function RequestsPage() {
+  const f = useFeature('requests');
+  if (!f.ready) {
+    return (
+      <Page>
+        <PageHeader title="Requests" />
+        <Loading />
+      </Page>
+    );
+  }
+  if (!f.allowed) {
+    return (
+      <Page>
+        <PageHeader title="Requests" description="What users asked for on the block page." />
+        <FeatureLocked feature="requests" what="Unblock requests" />
+      </Page>
+    );
+  }
+  return <RequestsView />;
+}
+
+function RequestsView() {
   const api = useApi();
   const can = useCan();
   const [sp, setParams] = useSearchParams();

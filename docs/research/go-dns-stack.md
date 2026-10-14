@@ -686,7 +686,7 @@ Recommendation: React stack above; keep the UI a pure SPA (no SSR) so `go:embed`
    NXDOMAIN becomes NODATA, no NSEC3) — fine as an online option, not the default for primaries.
 6. **cgo dependencies in the core binary** (mattn sqlite, DuckDB) — they break distroless/ko/cross builds.
 7. **logrus/zap/OpenTracing** (blocky/Gravity/CoreDNS legacies) — use slog + OTel.
-8. **Copying Technitium code** (GPL-3.0 vs Apache-2.0) — borrow features and UX only. AdGuard Home is
+8. **Copying Technitium code** (GPL-3.0 vs Kudurru Community License; Kudurru used Apache-2.0 when this note was written) — borrow features and UX only. AdGuard Home is
    GPL-3.0 too (**UNVERIFIED**); dnsproxy is Apache-2.0 and safe.
 9. **Fixed DNS ID / port reuse when bridging DoQ→UDP** (CVE-2026-47703 class).
 10. **Starting on miekg v2 for the whole codebase today** unless you accept API churn and Go 1.27 and

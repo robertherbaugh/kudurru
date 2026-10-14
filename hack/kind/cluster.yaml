@@ -1,0 +1,11 @@
+# The cluster of hack/kind-e2e.sh: one control-plane node (tainted, so it
+# runs no kudurru pod) and three workers, so the replicas land on different
+# nodes and MetalLB, externalTrafficPolicy: Local and the traffic between
+# replicas cross real node boundaries.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

@@ -918,6 +918,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** License state, node limit and licensed features of this node */
+        get: operations["getLicense"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/node/config": {
         parameters: {
             query?: never;
@@ -1663,6 +1680,7 @@ export interface components {
         };
         BatchDeleteInputBody: {
             names: string[] | null;
+            /** @description Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         BindingScope: {
@@ -1683,6 +1701,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             list?: string;
+            node: string;
             status: string;
             /** Format: date-time */
             ts: string;
@@ -1869,6 +1888,7 @@ export interface components {
             partial: boolean;
             points: components["schemas"]["ClientPoint"][] | null;
             scope: string;
+            source?: string;
             /** Format: int64 */
             step: number;
             /**
@@ -2167,6 +2187,7 @@ export interface components {
         DomainsRequest: {
             domains: string[] | null;
             list?: string;
+            /** @description Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         EdgeBackend: {
@@ -2237,9 +2258,11 @@ export interface components {
             reason?: string;
             request: components["schemas"]["Request"];
             resource: components["schemas"]["Resource"];
+            resource_version?: string;
             result: string;
             /** Format: date-time */
             ts: string;
+            uid?: string;
         };
         Flags: {
             AD: boolean;
@@ -2316,6 +2339,36 @@ export interface components {
             p95_ms: number;
             /** Format: double */
             p99_ms: number;
+        };
+        LicenseInfo: {
+            /** @description Namespace of the seeded defaults; without a key the only Policy that can be created is default in it. */
+            defaultNamespace: string;
+            error?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            features: string[];
+            /** Format: date-time */
+            graceEndsAt?: string;
+            id?: string;
+            licensee?: string;
+            /** Format: int64 */
+            nodes: number;
+            /** Format: int64 */
+            nodesInUse: number;
+            overLimit: boolean;
+            plan?: string;
+            /**
+             * Format: int64
+             * @description How many Policy objects may exist; 0 means no limit.
+             */
+            policyLimit: number;
+            source?: string;
+            state: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         ListApplyResult: {
             /** @description Opaque keyset token for the next page; empty on the last page. */
@@ -2488,6 +2541,8 @@ export interface components {
         };
         NodeInfo: {
             address?: string;
+            /** @description Error fetching this node's status; readiness is unknown. */
+            error?: string;
             leader: boolean;
             name: string;
             ready?: boolean;
@@ -2754,6 +2809,8 @@ export interface components {
         };
         PurgeResult: {
             /** Format: int64 */
+            central_deleted?: number;
+            /** Format: int64 */
             deleted: number;
             node: string;
             /**
@@ -2771,11 +2828,13 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             queries: components["schemas"]["QueryRow"][] | null;
+            records_capped?: boolean;
             /** Format: int64 */
             records_filtered: number;
             /** Format: int64 */
             records_total: number;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -2785,6 +2844,7 @@ export interface components {
         QueryActionInputBody: {
             /** @enum {string} */
             action: "allow" | "deny";
+            /** @description Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
             namespace?: string;
         };
         QueryClient: {
@@ -2839,6 +2899,7 @@ export interface components {
             /** Format: int64 */
             rows: number;
             scope: string;
+            source?: string;
             /** Format: int64 */
             subscribers: number;
             /**
@@ -2855,6 +2916,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3188,6 +3250,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3213,6 +3276,7 @@ export interface components {
                 [key: string]: number;
             };
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3262,6 +3326,7 @@ export interface components {
             partial: boolean;
             points: components["schemas"]["Point"][] | null;
             scope: string;
+            source?: string;
             /** Format: int64 */
             step: number;
             /**
@@ -3311,6 +3376,7 @@ export interface components {
             nodes: components["schemas"]["NodeResult"][] | null;
             partial: boolean;
             scope: string;
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -3511,6 +3577,7 @@ export interface components {
             consecutive_failures: number;
             group: string;
             healthy: boolean;
+            node?: string;
             /** Format: double */
             rtt_ms: number;
             server: string;
@@ -3523,6 +3590,7 @@ export interface components {
             partial: boolean;
             scope: string;
             servers: components["schemas"]["UpstreamServer"][];
+            source?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -7607,9 +7675,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
@@ -9455,6 +9523,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListDiagnosisMessage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getLicense: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseInfo"];
                 };
             };
             /** @description Bad Request */
@@ -11692,7 +11834,10 @@ export interface operations {
     };
     queryAction: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database). */
+                scope?: "node" | "cluster" | "";
+            };
             header?: never;
             path: {
                 id: number;
@@ -12221,9 +12366,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 step?: string;
                 n?: number;
@@ -12404,9 +12549,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
@@ -12498,9 +12643,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 /** @description Bucket width (Go duration) or auto (default). */
                 step?: string;
@@ -12594,9 +12739,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
                 dim: "domains" | "clients" | "upstreams" | "lists" | "zones";
                 n?: number;
@@ -12691,9 +12836,9 @@ export interface operations {
                 from?: string;
                 /** @description Window end (RFC 3339); default now. */
                 to?: string;
-                /** @description node (default) or cluster; cluster is answered by this node until scatter-gather lands. */
+                /** @description node (default) or cluster; cluster merges the known nodes and reports partial results on failure. */
                 scope?: "node" | "cluster" | "";
-                /** @description Node to answer for (scope=node); only this node is served today. */
+                /** @description Node to answer for (scope=node); requests for another known node are routed over the internal listener. */
                 node?: string;
             };
             header?: never;
@@ -13954,7 +14099,7 @@ export interface operations {
             query?: {
                 /** @description DNSRecordSet to write; default api-<zone>. */
                 recordSet?: string;
-                /** @description Namespace of the record set; default "default". */
+                /** @description Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or "default" for legacy installs and other modes). */
                 namespace?: string;
             };
             header?: never;

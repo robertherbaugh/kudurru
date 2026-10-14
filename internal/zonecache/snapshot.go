@@ -95,6 +95,16 @@ type Snapshot struct {
 	degraded []Condition
 }
 
+// SnapshotAge reports the age of the served local.db snapshot, rounded to
+// the nearest second. It is empty unless a snapshot with a known write time
+// is being served. now lets callers use their own clock.
+func (s *Snapshot) SnapshotAge(now time.Time) string {
+	if s == nil || s.State != FromSnapshot || s.SnapshotWrittenAt.IsZero() {
+		return ""
+	}
+	return now.Sub(s.SnapshotWrittenAt).Round(time.Second).String()
+}
+
 // View returns the value builder name produced for this snapshot (or the
 // last value it produced successfully), and whether there is one.
 func (s *Snapshot) View(name string) (any, bool) {

@@ -28,7 +28,13 @@ type Scope struct {
 	Nodes []NodeResult `json:"nodes"`
 	// Partial is true when at least one node failed or timed out.
 	Partial bool `json:"partial"`
+	// Source is "central" when the central database answered (D161);
+	// empty for a node's own querylog.db.
+	Source string `json:"source,omitempty"`
 }
+
+// SourceCentral is Scope.Source of answers from the central database.
+const SourceCentral = "central"
 
 // NodeResult is one node's part in a response.
 type NodeResult struct {
@@ -137,6 +143,8 @@ type TopQuery struct {
 	N int `json:"n"`
 	// Blocked ranks by blocked queries; false ranks by permitted ones.
 	Blocked bool `json:"blocked"`
+	// Candidates permits the internal scatter-gather to request up to 4*N.
+	Candidates bool `json:"-"`
 }
 
 // TopList is a ranked dimension (§10 item 3).
@@ -193,7 +201,8 @@ type ClientTimeseriesQuery struct {
 	Window
 	Step time.Duration `json:"step"`
 	// N is the number of named clients (default 10); the rest are "other".
-	N int `json:"n"`
+	N          int  `json:"n"`
+	Candidates bool `json:"-"`
 }
 
 // ClientTimeseries is the per-client stacked chart with "other clients".
@@ -228,6 +237,7 @@ type RecentBlocked struct {
 // BlockedItem is one recently blocked query.
 type BlockedItem struct {
 	ID         uint64    `json:"id"`
+	Node       string    `json:"node"`
 	TS         time.Time `json:"ts"`
 	Domain     string    `json:"domain"`
 	Client     string    `json:"client"`
@@ -238,6 +248,8 @@ type BlockedItem struct {
 
 // QueryFilter parameterises Queries (GET /queries).
 type QueryFilter struct {
+	// TimeOrder uses (timestamp, id) pagination for cluster merging.
+	TimeOrder bool `json:"time_order,omitempty"`
 	// Client matches an IP, a CIDR prefix, or a client name (with *
 	// wildcards).
 	Client string `json:"client,omitempty"`
@@ -275,6 +287,9 @@ type QueryPage struct {
 	// filter (ignoring the cursor).
 	RecordsTotal    int64 `json:"records_total"`
 	RecordsFiltered int64 `json:"records_filtered"`
+	// RecordsCapped is set when the counts stopped at 100 001 (the central
+	// database does not count every row of a large log).
+	RecordsCapped bool `json:"records_capped,omitempty"`
 	// EarliestTSDisk is the oldest row in querylog.db, EarliestTSMemory
 	// the oldest event in the hot ring (date-picker bounds).
 	EarliestTSDisk   *time.Time `json:"earliest_ts_disk,omitempty"`

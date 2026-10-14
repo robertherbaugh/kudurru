@@ -358,6 +358,7 @@
             ]
           },
           "namespace": {
+            "description": "Namespace of the objects (namespaced kinds); defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -422,6 +423,9 @@
           "list": {
             "type": "string"
           },
+          "node": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -432,6 +436,7 @@
         },
         "required": [
           "id",
+          "node",
           "ts",
           "domain",
           "client",
@@ -898,6 +903,9 @@
             ]
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "step": {
@@ -1846,6 +1854,7 @@
             "type": "string"
           },
           "namespace": {
+            "description": "Namespace of the list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -2086,11 +2095,17 @@
           "resource": {
             "$ref": "#/components/schemas/Resource"
           },
+          "resource_version": {
+            "type": "string"
+          },
           "result": {
             "type": "string"
           },
           "ts": {
             "format": "date-time",
+            "type": "string"
+          },
+          "uid": {
             "type": "string"
           }
         },
@@ -2360,6 +2375,79 @@
           "p50_ms",
           "p95_ms",
           "p99_ms"
+        ],
+        "type": "object"
+      },
+      "LicenseInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultNamespace": {
+            "description": "Namespace of the seeded defaults; without a key the only Policy that can be created is default in it.",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "graceEndsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "licensee": {
+            "type": "string"
+          },
+          "nodes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nodesInUse": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "overLimit": {
+            "type": "boolean"
+          },
+          "plan": {
+            "type": "string"
+          },
+          "policyLimit": {
+            "description": "How many Policy objects may exist; 0 means no limit.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "nodesInUse",
+          "defaultNamespace",
+          "overLimit",
+          "state",
+          "nodes",
+          "features",
+          "policyLimit",
+          "took_ms"
         ],
         "type": "object"
       },
@@ -2826,6 +2914,10 @@
         "additionalProperties": false,
         "properties": {
           "address": {
+            "type": "string"
+          },
+          "error": {
+            "description": "Error fetching this node's status; readiness is unknown.",
             "type": "string"
           },
           "leader": {
@@ -3605,6 +3697,10 @@
       "PurgeResult": {
         "additionalProperties": false,
         "properties": {
+          "central_deleted": {
+            "format": "int64",
+            "type": "integer"
+          },
           "deleted": {
             "format": "int64",
             "type": "integer"
@@ -3660,6 +3756,9 @@
               "null"
             ]
           },
+          "records_capped": {
+            "type": "boolean"
+          },
           "records_filtered": {
             "format": "int64",
             "type": "integer"
@@ -3669,6 +3768,9 @@
             "type": "integer"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -3699,6 +3801,7 @@
             "type": "string"
           },
           "namespace": {
+            "description": "Namespace of the UI list; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "type": "string"
           }
         },
@@ -3876,6 +3979,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "subscribers": {
             "format": "int64",
             "type": "integer"
@@ -3933,6 +4039,9 @@
             "type": "boolean"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -4999,6 +5108,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -5074,6 +5186,9 @@
             "type": "object"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -5226,6 +5341,9 @@
           "scope": {
             "type": "string"
           },
+          "source": {
+            "type": "string"
+          },
           "step": {
             "format": "int64",
             "type": "integer"
@@ -5376,6 +5494,9 @@
             "type": "boolean"
           },
           "scope": {
+            "type": "string"
+          },
+          "source": {
             "type": "string"
           },
           "took_ms": {
@@ -5901,6 +6022,9 @@
           "healthy": {
             "type": "boolean"
           },
+          "node": {
+            "type": "string"
+          },
           "rtt_ms": {
             "format": "double",
             "type": "number"
@@ -5948,6 +6072,9 @@
               "$ref": "#/components/schemas/UpstreamServer"
             },
             "type": "array"
+          },
+          "source": {
+            "type": "string"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -6278,8 +6405,8 @@
   "info": {
     "description": "The kudurru REST API (docs/architecture.md §10). Errors are {error:{key,message,hint}, took_ms}; lists are {items, continue, took_ms} with opaque keyset continue tokens.",
     "license": {
-      "name": "Apache-2.0",
-      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+      "name": "LicenseRef-Kudurru-Community",
+      "url": "https://kudurru.io/license/text/"
     },
     "title": "kudurru API",
     "version": "v1"
@@ -11616,12 +11743,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -11631,12 +11758,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }
@@ -14075,6 +14202,92 @@
           }
         },
         "summary": "Diagnosis messages (objects, policies, lists, readiness)",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "settings",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/license": {
+      "get": {
+        "operationId": "getLicense",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "License state, node limit and licensed features of this node",
         "tags": [
           "cluster"
         ],
@@ -17327,6 +17540,21 @@
               "minimum": 0,
               "type": "integer"
             }
+          },
+          {
+            "description": "cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database).",
+              "enum": [
+                "node",
+                "cluster",
+                ""
+              ],
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -17978,12 +18206,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -17993,12 +18221,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18275,12 +18503,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18290,12 +18518,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }
@@ -18428,12 +18656,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18443,12 +18671,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18591,12 +18819,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18606,12 +18834,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           },
@@ -18779,12 +19007,12 @@
             }
           },
           {
-            "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+            "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
             "explode": false,
             "in": "query",
             "name": "scope",
             "schema": {
-              "description": "node (default) or cluster; cluster is answered by this node until scatter-gather lands.",
+              "description": "node (default) or cluster; cluster merges the known nodes and reports partial results on failure.",
               "enum": [
                 "node",
                 "cluster",
@@ -18794,12 +19022,12 @@
             }
           },
           {
-            "description": "Node to answer for (scope=node); only this node is served today.",
+            "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
             "explode": false,
             "in": "query",
             "name": "node",
             "schema": {
-              "description": "Node to answer for (scope=node); only this node is served today.",
+              "description": "Node to answer for (scope=node); requests for another known node are routed over the internal listener.",
               "type": "string"
             }
           }
@@ -20465,12 +20693,12 @@
             }
           },
           {
-            "description": "Namespace of the record set; default \"default\".",
+            "description": "Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
             "explode": false,
             "in": "query",
             "name": "namespace",
             "schema": {
-              "description": "Namespace of the record set; default \"default\".",
+              "description": "Namespace of the record set; defaults to the server's default namespace (the release namespace in Kubernetes, or \"default\" for legacy installs and other modes).",
               "type": "string"
             }
           }

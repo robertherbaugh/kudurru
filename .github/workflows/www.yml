@@ -12,6 +12,9 @@ on:
       - docs/brand/**
       - docs/guide/images/**
       - VERSION
+      - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - .github/workflows/www.yml
   pull_request:
     paths:
@@ -19,15 +22,18 @@ on:
       - docs/brand/**
       - docs/guide/images/**
       - VERSION
+      - LICENSE
+      - LICENSING.md
+      - COMMERCIAL_LICENSE_AGREEMENT.md
       - .github/workflows/www.yml
 permissions:
   contents: read
 jobs:
   site:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -37,7 +43,7 @@ jobs:
         env:
           WRANGLER_SEND_METRICS: "false"
         run: make www-check
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: www-site
           path: www/dist

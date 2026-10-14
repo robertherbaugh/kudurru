@@ -931,12 +931,12 @@ conformance <url>` (like running an in-tree provider with `--webhook-server`) so
 ### 5.7 Package layout (proposal)
 
 ```
-internal/integration/            registry, manifest, lifecycle, leader-scoped runner, plan engine, ledger, status, secret resolver
-internal/integration/webhook/    Tier-B client (consume) + server (serve external-dns contract)
-internal/integration/cloudflare/ sink: cloudflare-go v7, batch, rate budget, comment/tag ownership, adopt external-dns TXT
-internal/integration/unifi/      clientsource: unpoller/unifi (official v1 + legacy), name synthesis, groups; optional push via fork of go-unifi or raw HTTP
-internal/integration/libdns/     generic sink adapter over libdns providers (opt-in build tags per provider)
-internal/integration/{tailscale,proxmox,homeassistant,mqtt,webhookhook}/
+ee/integration/            registry, manifest, lifecycle, leader-scoped runner, plan engine, ledger, status, secret resolver
+ee/integration/webhook/    Tier-B client (consume) + server (serve external-dns contract)
+ee/integration/cloudflare/ sink: cloudflare-go v7, batch, rate budget, comment/tag ownership, adopt external-dns TXT
+ee/integration/unifi/      clientsource: unpoller/unifi (official v1 + legacy), name synthesis, groups; optional push via fork of go-unifi or raw HTTP
+ee/integration/libdns/     generic sink adapter over libdns providers (opt-in build tags per provider)
+ee/integration/{tailscale,proxmox,homeassistant,mqtt,webhookhook}/
 api/v1alpha1/                    Integration CRD types (+ Zone/Record), generated from manifests
 cmd/kudurru/integrations.go      `kudurru integrations list|check|sync|preview|webhook conformance`
 ```

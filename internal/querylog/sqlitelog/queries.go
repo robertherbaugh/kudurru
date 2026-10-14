@@ -34,7 +34,7 @@ func statusesOf(c pipeline.Class) []pipeline.Status {
 }
 
 // filterSQL builds the WHERE clause of Queries (without the cursor).
-func (r *Reader) filterSQL(ctx context.Context, tx *sql.Tx, f QueryFilter) ([]string, []any, error) {
+func (r *Reader) filterSQL(ctx context.Context, tx *rtx, f QueryFilter) ([]string, []any, error) {
 	var where []string
 	var args []any
 	if c := strings.TrimSpace(f.Client); c != "" {
@@ -43,8 +43,8 @@ func (r *Reader) filterSQL(ctx context.Context, tx *sql.Tx, f QueryFilter) ([]st
 			if err != nil {
 				return nil, nil, err
 			}
-			where = append(where, `q.client IN (SELECT value FROM json_each(?))`)
-			args = append(args, idsJSON(ids))
+			where = append(where, r.d.inIDs("q.client"))
+			args = append(args, r.d.idsArg(ids))
 		} else if a, err := netip.ParseAddr(c); err == nil {
 			where = append(where, `q.client IN (SELECT id FROM dict_client WHERE ip=?)`)
 			args = append(args, a.Unmap().String())
@@ -108,7 +108,7 @@ func (r *Reader) filterSQL(ctx context.Context, tx *sql.Tx, f QueryFilter) ([]st
 }
 
 // clientsIn returns the dict_client ids whose address lies in pfx.
-func (r *Reader) clientsIn(ctx context.Context, tx *sql.Tx, pfx netip.Prefix) ([]int64, error) {
+func (r *Reader) clientsIn(ctx context.Context, tx *rtx, pfx netip.Prefix) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id, ip FROM dict_client WHERE ip <> ''`)
 	if err != nil {
 		return nil, err
@@ -138,35 +138,71 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		limit = DefaultLimit
 	}
 	limit = min(limit, MaxLimit)
-	var cursor int64
+	var cursor, cursorTS int64
+	order := "q.id DESC"
+	if f.TimeOrder {
+		order = "q.ts DESC, q.id DESC"
+	}
 	if f.Cursor != "" {
-		c, err := strconv.ParseInt(f.Cursor, 10, 64)
+		v := f.Cursor
+		if f.TimeOrder {
+			parts := strings.Split(v, ":")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("sqlitelog: invalid cursor")
+			}
+			var err error
+			cursorTS, err = strconv.ParseInt(parts[0], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("sqlitelog: invalid cursor")
+			}
+			v = parts[1]
+		}
+		c, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || c <= 0 {
 			return nil, fmt.Errorf("sqlitelog: invalid cursor %q", f.Cursor)
 		}
 		cursor = c
 	}
 	var out *QueryPage
-	err := r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
+	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
 		where, args, err := r.filterSQL(ctx, tx, f)
 		if err != nil {
 			return err
 		}
-		res := &QueryPage{Queries: []QueryRow{}, RecordsTotal: r.w.rows.Load()}
+		res := &QueryPage{Queries: []QueryRow{}}
 		cond := ""
 		if len(where) > 0 {
 			cond = " WHERE " + strings.Join(where, " AND ")
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM query q`+cond, args...).Scan(&res.RecordsFiltered); err != nil {
-				return fmt.Errorf("sqlitelog: count filtered: %w", err)
+		}
+		if r.w != nil {
+			res.RecordsTotal = r.w.rows.Load()
+			if cond != "" {
+				if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM query q`+cond, args...).Scan(&res.RecordsFiltered); err != nil {
+					return fmt.Errorf("sqlitelog: count filtered: %w", err)
+				}
+			} else {
+				res.RecordsFiltered = res.RecordsTotal
 			}
 		} else {
-			res.RecordsFiltered = res.RecordsTotal
+			// The central log can be large: count up to centralCap + 1.
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query LIMIT ?) AS t`, centralCap+1).Scan(&res.RecordsTotal); err != nil {
+				return fmt.Errorf("sqlitelog: count: %w", err)
+			}
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM query q`+cond+` LIMIT ?) AS t`, append(append([]any{}, args...), centralCap+1)...).Scan(&res.RecordsFiltered); err != nil {
+				return fmt.Errorf("sqlitelog: count filtered: %w", err)
+			}
+			res.RecordsCapped = res.RecordsTotal > centralCap || res.RecordsFiltered > centralCap
 		}
 		pageWhere := append([]string{}, where...)
 		pageArgs := append([]any{}, args...)
 		if cursor > 0 {
-			pageWhere = append(pageWhere, `q.id<?`)
-			pageArgs = append(pageArgs, cursor)
+			if f.TimeOrder {
+				pageWhere = append(pageWhere, `(q.ts, q.id)<(?, ?)`)
+				pageArgs = append(pageArgs, cursorTS, cursor)
+			} else {
+				pageWhere = append(pageWhere, `q.id<?`)
+				pageArgs = append(pageArgs, cursor)
+			}
 		}
 		pcond := ""
 		if len(pageWhere) > 0 {
@@ -177,12 +213,12 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		rows, err := tx.QueryContext(ctx, `SELECT q.id, q.ts, q.latency_us, coalesce(n.name,''), q.proto, coalesce(c.ip,''), coalesce(c.name,''), coalesce(c.grp,''),
 			coalesce(d.name,''), coalesce(cn.name,''), q.qtype, q.qclass, q.status, q.rcode, q.reply_type, coalesce(u.addr,''), coalesce(z.name,''),
 			coalesce(l.name,''), coalesce(q.rule,''), q.dnssec, q.ede, q.flags, coalesce(q.ecs,''), q.trace_id, coalesce(q.answer,''), coalesce(p.name,'')
-			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY q.id DESC LIMIT ?) page JOIN query q ON q.id=page.id
+			FROM (SELECT q.id FROM query q`+pcond+` ORDER BY `+order+` LIMIT ?) page JOIN query q ON q.id=page.id
 			LEFT JOIN dict_node n ON n.id=q.node LEFT JOIN dict_client c ON c.id=q.client
 			LEFT JOIN dict_domain d ON d.id=q.domain LEFT JOIN dict_domain cn ON cn.id=q.cname
 			LEFT JOIN dict_upstream u ON u.id=q.upstream LEFT JOIN dict_zone z ON z.id=q.zone LEFT JOIN dict_list l ON l.id=q.list
 			LEFT JOIN dict_policy p ON p.id=q.policy
-			ORDER BY q.id DESC`, append(pageArgs, limit+1)...)
+			ORDER BY `+order, append(pageArgs, limit+1)...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: queries: %w", err)
 		}
@@ -199,7 +235,7 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		}
 		if len(res.Queries) > limit {
 			res.Queries = res.Queries[:limit]
-			res.CursorNext = strconv.FormatUint(res.Queries[limit-1].ID, 10)
+			res.CursorNext = RowCursor(res.Queries[limit-1], f.TimeOrder)
 		}
 		var oldest sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {
@@ -214,6 +250,10 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 	})
 	if err != nil {
 		return nil, err
+	}
+	if r.w == nil {
+		out.Scope = r.scope(start)
+		return out, nil
 	}
 	if tail := r.w.opts.Tail; tail != nil {
 		if ev := tail.Recent(0, 0); len(ev) > 0 {
@@ -271,29 +311,33 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 	if n <= 0 || n > maxSuggestion {
 		n = maxSuggestion
 	}
+	// Ranges and order are bytewise, as SQLite's BINARY collation.
+	c := r.d.bytewise
+	one := func(table, col string) string {
+		return `SELECT ` + col + ` FROM ` + table + ` WHERE ` + c(col) + `>=?1 AND ` + c(col) + `<?2 ORDER BY ` + c(col) + ` LIMIT ?3`
+	}
 	var q string
 	switch field {
 	case FieldDomain:
 		prefix = strings.ToLower(prefix)
-		q = `SELECT name FROM dict_domain WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
+		q = one("dict_domain", "name")
 	case FieldClient:
-		q = `SELECT v FROM (SELECT ip AS v FROM dict_client WHERE ip>=?1 AND ip<?2 UNION SELECT name FROM dict_client WHERE name>=?1 AND name<?2) ORDER BY v LIMIT ?3`
+		q = `SELECT v FROM (SELECT ip AS v FROM dict_client WHERE ` + c("ip") + `>=?1 AND ` + c("ip") + `<?2 UNION SELECT name FROM dict_client WHERE ` +
+			c("name") + `>=?1 AND ` + c("name") + `<?2) AS u ORDER BY ` + c("v") + ` LIMIT ?3`
 	case FieldUpstream:
-		q = `SELECT addr FROM dict_upstream WHERE addr>=?1 AND addr<?2 ORDER BY addr LIMIT ?3`
+		q = one("dict_upstream", "addr")
 	case FieldList:
-		q = `SELECT name FROM dict_list WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
+		q = one("dict_list", "name")
 	case FieldZone:
-		q = `SELECT name FROM dict_zone WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
+		q = one("dict_zone", "name")
 	case FieldPolicy:
-		q = `SELECT name FROM dict_policy WHERE name>=?1 AND name<?2 ORDER BY name LIMIT ?3`
+		q = one("dict_policy", "name")
 	default:
 		return nil, fmt.Errorf("sqlitelog: unknown suggestion field %q", field)
 	}
 	var out *Suggestions
-	err := r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
-		// "\xff" never occurs in UTF-8, so prefix+"\xff" bounds every
-		// string that starts with prefix under the BINARY collation.
-		rows, err := tx.QueryContext(ctx, q, prefix, prefix+"\xff", n)
+	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+		rows, err := tx.QueryContext(ctx, q, prefix, r.d.prefixEnd(prefix), n)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: suggestions: %w", err)
 		}
@@ -323,7 +367,7 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 // ctx ends; a subscriber that falls behind by more than the tail buffer
 // loses events (counted in kudurru_querylog_dropped_total{stage="tail"}).
 func (r *Reader) Subscribe(ctx context.Context) <-chan *querylog.Event {
-	if r.w.opts.Tail == nil {
+	if r.w == nil || r.w.opts.Tail == nil {
 		ch := make(chan *querylog.Event)
 		close(ch)
 		return ch
@@ -333,6 +377,9 @@ func (r *Reader) Subscribe(ctx context.Context) <-chan *querylog.Event {
 
 // Status answers GET /querylog/status.
 func (r *Reader) Status(ctx context.Context) (*Status, error) {
+	if r.c != nil {
+		return r.c.status(ctx, r)
+	}
 	start := time.Now()
 	w := r.w
 	dbBytes, err := w.DBBytes(ctx)
@@ -350,7 +397,7 @@ func (r *Reader) Status(ctx context.Context) (*Status, error) {
 	if w.opts.Tail != nil {
 		res.Subscribers = w.opts.Tail.Subscribers()
 	}
-	err = r.read(ctx, false, func(tx *sql.Tx, _ *snapshot) error {
+	err = r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
 		var oldest sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT min(ts) FROM query`).Scan(&oldest); err != nil {
 			return err

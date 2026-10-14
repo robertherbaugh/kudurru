@@ -3,12 +3,18 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -19,13 +25,13 @@ type NodeInfo struct {
 	Address string `json:"address,omitempty"`
 	Self    bool   `json:"self"`
 	Leader  bool   `json:"leader"`
-	// Ready is this node's readiness; nil for peers until scatter-gather
-	// over the internal listener lands.
+	// Ready is nil when the node's readiness is unknown.
 	Ready    *bool    `json:"ready,omitempty"`
 	Unready  []string `json:"unready,omitempty"`
 	Version  string   `json:"version,omitempty"`
 	State    string   `json:"state,omitempty" doc:"zonecache state: unsynced, fromSnapshot, live."`
 	Snapshot string   `json:"snapshotAge,omitempty" doc:"Age of the served local.db snapshot (fromSnapshot only)."`
+	Error    string   `json:"error,omitempty" doc:"Error fetching this node's status; readiness is unknown."`
 }
 
 type nodesOutput struct{ Body *List[NodeInfo] }
@@ -117,12 +123,7 @@ func (s *Server) zoneState() (string, string) {
 	if s.opts.Cache == nil {
 		return "", ""
 	}
-	snap := s.opts.Cache.Snapshot()
-	state := s.opts.Cache.State().String()
-	if snap != nil && snap.State == zonecache.FromSnapshot && !snap.SnapshotWrittenAt.IsZero() {
-		return state, s.opts.Now().Sub(snap.SnapshotWrittenAt).Round(time.Second).String()
-	}
-	return state, ""
+	return s.opts.Cache.State().String(), s.opts.Cache.Snapshot().SnapshotAge(s.opts.Now())
 }
 
 func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, error) {
@@ -131,8 +132,9 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 		return nil, errUnavailable("membership: %v", err)
 	}
 	leader, _ := s.opts.Membership.Leader(ctx)
-	items := make([]NodeInfo, 0, len(peers))
-	for _, p := range peers {
+	items := make([]NodeInfo, len(peers))
+	var wg sync.WaitGroup
+	for i, p := range peers {
 		n := NodeInfo{Name: p.Name, Address: p.Address, Self: p.Self || p.Name == s.opts.NodeName, Leader: leader.Name == p.Name && leader.Name != ""}
 		if n.Self {
 			ready, unready := s.ready()
@@ -140,10 +142,39 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 			n.Version = s.opts.Version.Version
 			n.State, n.Snapshot = s.zoneState()
 		}
-		items = append(items, n)
+		items[i] = n
+		if !n.Self && s.opts.InternalClient != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				status, err := s.opts.InternalClient.Status(peerCtx, p.Address)
+				if err != nil {
+					items[i].Error = peerStatusError(err)
+					s.log.WarnContext(ctx, "peer status unavailable", "node", p.Name, "address", p.Address, "error", err)
+					return
+				}
+				items[i].Ready, items[i].Unready = status.Ready, status.Unready
+				items[i].Version, items[i].State, items[i].Snapshot = status.Version, status.State, status.Snapshot
+			}()
+		}
 	}
+	wg.Wait()
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return &nodesOutput{Body: newList(items, "")}, nil
+}
+
+func peerStatusError(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout():
+		return "peer status: timeout"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "peer status: connection refused"
+	default:
+		return "peer status: unavailable"
+	}
 }
 
 func (s *Server) ready() (bool, []string) {
@@ -176,7 +207,7 @@ func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealth
 
 func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, error) {
 	info := s.opts.Store.Info()
-	out := &ClusterInfo{ClusterID: info.ClusterID, Driver: info.Driver, Epoch: info.Epoch, Leader: info.Leader, Node: s.opts.NodeName}
+	out := &ClusterInfo{ClusterID: info.ClusterID, Driver: info.Driver, Epoch: info.Epoch, Leader: info.Leader, Node: s.opts.NodeName, Nodes: 1}
 	if l, err := s.opts.Membership.Leader(ctx); err == nil && l.Name != "" {
 		out.Leader = l.Name
 	}
@@ -248,10 +279,37 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})
 	}
+	if s.opts.Central != nil {
+		if m, ok := centralMessage(s.opts.Central.State(), s.opts.Now()); ok {
+			add(m)
+		}
+	}
 	if ok, unready := s.ready(); !ok {
 		for _, u := range unready {
 			add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: u})
 		}
 	}
 	return &messagesOutput{Body: newList(out, "")}, nil
+}
+
+// centralUnreachableAfter is how long the central database may be away
+// before /info/messages says so (a restart of the database is not news).
+const centralUnreachableAfter = time.Minute
+
+// centralMessage is the diagnosis of the central database: an error when a
+// newer kudurru migrated it past what this binary can use, a warning when
+// it has been unreachable for a minute. DNS never depends on it, so it is
+// never a readiness failure.
+func centralMessage(st central.State, now time.Time) (DiagnosisMessage, bool) {
+	switch {
+	case st.Incompatible:
+		return DiagnosisMessage{Severity: "error", Source: "central", Reason: "CentralIncompatible",
+			Message: fmt.Sprintf("the central database was migrated by a newer kudurru (schema %d, needs schema %d or newer); this node does not use it", st.SchemaVersion, st.CompatVersion),
+			Hint:    "upgrade this node; it keeps its audit events and query log locally until then"}, true
+	case !st.Ready && now.Sub(st.Since) >= centralUnreachableAfter:
+		return DiagnosisMessage{Severity: "warning", Source: "central", Reason: "CentralUnreachable",
+			Message: "the central database is unreachable: " + st.LastError,
+			Hint:    "this node keeps its audit events and query log locally and sends them when the database is back; cluster-wide views are out of date until then"}, true
+	}
+	return DiagnosisMessage{}, false
 }

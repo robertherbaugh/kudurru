@@ -93,10 +93,15 @@ func flashText(v string) string {
 	return ""
 }
 
+// requestsAllowed reports whether the request workflow is licensed.
+func (s *Server) requestsAllowed() bool {
+	return s.opts.RequestsAllowed == nil || s.opts.RequestsAllowed()
+}
+
 // requestView builds the section for client and domain, nil when
 // requests are off or the page names no domain.
 func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash string, now time.Time, preview bool) *RequestView {
-	if !st.Requests || domain == "" || (s.opts.Requests == nil && !preview) {
+	if !st.Requests || !s.requestsAllowed() || domain == "" || (s.opts.Requests == nil && !preview) {
 		return nil
 	}
 	v := &RequestView{Action: RequestPath, Disabled: preview, Flash: flashText(flash), Form: true}
@@ -214,7 +219,7 @@ func sameOrigin(r *http.Request) bool {
 // the outcome (POST-redirect-GET).
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Load()
-	if s.opts.Requests == nil || !st.Requests {
+	if s.opts.Requests == nil || !st.Requests || !s.requestsAllowed() {
 		http.Error(w, "unblock requests are off on this server", http.StatusNotFound)
 		return
 	}

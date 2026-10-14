@@ -19,6 +19,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -78,9 +79,17 @@ type Request struct {
 
 // Event is one audit record.
 type Event struct {
-	// ID is assigned by recorders that store events; 0 otherwise.
-	ID   int64     `json:"id,omitempty"`
-	Time time.Time `json:"ts"`
+	// ID is assigned by recorders that store events; 0 otherwise. It is
+	// unique per store, or per node in a cluster-wide store (see UID).
+	ID int64 `json:"id,omitempty"`
+	// UID is unique across the nodes of a cluster-wide store
+	// ("<source>-<id>"); empty for a node's own store, where ID is.
+	UID string `json:"uid,omitempty"`
+	// Cursor, when set, is the keyset position of the event for
+	// Query.Cursor (stores whose order is not ID's); otherwise the
+	// position is ID.
+	Cursor string    `json:"-"`
+	Time   time.Time `json:"ts"`
 	// Node is the node that handled the action.
 	Node  string `json:"node,omitempty"`
 	Actor Actor  `json:"actor"`
@@ -97,9 +106,12 @@ type Event struct {
 	Before json.RawMessage `json:"before,omitempty"`
 	After  json.RawMessage `json:"after,omitempty"`
 	// Manager is the store manager of a store write ("api", "file:...").
-	Manager string  `json:"manager,omitempty"`
-	Request Request `json:"request"`
-	// Hash and PrevHash chain stored events (sqlite recorder only).
+	Manager string `json:"manager,omitempty"`
+	// ResourceVersion is the object's resourceVersion after a store write.
+	ResourceVersion string  `json:"resource_version,omitempty"`
+	Request         Request `json:"request"`
+	// Hash and PrevHash chain stored events (recorders that store them;
+	// ChainHash).
 	Hash     string `json:"hash,omitempty"`
 	PrevHash string `json:"prev_hash,omitempty"`
 }
@@ -121,6 +133,11 @@ type Query struct {
 	// BeforeID, when positive, is the keyset cursor of a Desc page:
 	// events with ID < BeforeID.
 	BeforeID int64
+	// Cursor is the keyset cursor of stores that set Event.Cursor: the
+	// events after it in the read order. Stores ordered by ID refuse it
+	// (ErrBadCursor), and those that set Event.Cursor refuse AfterID and
+	// BeforeID.
+	Cursor string
 	// Limit bounds the page; default 100, maximum 1000.
 	Limit int
 	// Desc reads newest first.
@@ -135,6 +152,30 @@ type Reader interface {
 
 // ErrNotStored is returned by recorders that cannot read events back.
 var ErrNotStored = errors.New("audit: events are not stored on this node")
+
+// ErrBadCursor is returned by readers for a cursor they did not issue.
+var ErrBadCursor = errors.New("audit: not a cursor of this audit store")
+
+// Position is the keyset position of ev: Cursor when the store sets it,
+// else ID in decimal.
+func (ev Event) Position() string {
+	if ev.Cursor != "" {
+		return ev.Cursor
+	}
+	return strconv.FormatInt(ev.ID, 10)
+}
+
+// After moves q past ev, the last event of a page read with q.
+func (q *Query) After(ev Event) {
+	switch {
+	case ev.Cursor != "":
+		q.Cursor = ev.Cursor
+	case q.Desc:
+		q.BeforeID = ev.ID
+	default:
+		q.AfterID = ev.ID
+	}
+}
 
 // MaxDiff is the largest Before/After document kept (4 KiB, §11.4).
 const MaxDiff = 4096
@@ -175,12 +216,63 @@ func (m Multi) Record(ctx context.Context, ev Event) error {
 
 // Read implements Reader with the first member that stores events.
 func (m Multi) Read(ctx context.Context, q Query) ([]Event, error) {
-	for _, r := range m {
-		if rd, ok := r.(Reader); ok {
-			return rd.Read(ctx, q)
-		}
+	if rd, ok := m.Reader(); ok {
+		return rd.Read(ctx, q)
 	}
 	return nil, ErrNotStored
+}
+
+// Reader returns the first member that stores events; ok is false when
+// none does (Read would return ErrNotStored).
+func (m Multi) Reader() (rd Reader, ok bool) {
+	for _, r := range m {
+		if sub, isMulti := r.(Multi); isMulti {
+			if rd, ok = sub.Reader(); ok {
+				return rd, true
+			}
+			continue
+		}
+		if rd, ok = r.(Reader); ok {
+			return rd, true
+		}
+	}
+	return nil, false
+}
+
+// ReaderOf returns the Reader behind a Recorder: r itself, or for a Multi
+// its first storing member; ok is false when r cannot read events back.
+func ReaderOf(r Recorder) (Reader, bool) {
+	if m, isMulti := r.(Multi); isMulti {
+		return m.Reader()
+	}
+	rd, ok := r.(Reader)
+	return rd, ok
+}
+
+// Gated records to Inner only while Allowed reports true, and reads from it
+// only then too. The persisted audit trail is a licensed feature
+// (license.FeatureAudit); the log lines of the Log recorder are not, so a
+// node without the license still writes every event to its log.
+type Gated struct {
+	Inner   Recorder
+	Allowed func() bool
+}
+
+// Record implements Recorder.
+func (g Gated) Record(ctx context.Context, ev Event) error {
+	if g.Allowed != nil && !g.Allowed() {
+		return nil
+	}
+	return g.Inner.Record(ctx, ev)
+}
+
+// Read implements Reader.
+func (g Gated) Read(ctx context.Context, q Query) ([]Event, error) {
+	rd, ok := g.Inner.(Reader)
+	if !ok || (g.Allowed != nil && !g.Allowed()) {
+		return nil, ErrNotStored
+	}
+	return rd.Read(ctx, q)
 }
 
 // Log writes every event as one JSON log line with "log":"audit" (§11.4:
@@ -241,9 +333,12 @@ func (m *Memory) Record(_ context.Context, ev Event) error {
 
 // Read implements Reader.
 func (m *Memory) Read(_ context.Context, q Query) ([]Event, error) {
+	if q.Cursor != "" {
+		return nil, ErrBadCursor
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	limit := clampLimit(q.Limit)
+	limit := ClampLimit(q.Limit)
 	out := []Event{}
 	for i := range m.events {
 		ev := m.events[i]
@@ -286,7 +381,8 @@ func (q Query) match(ev Event) bool {
 	return true
 }
 
-func clampLimit(n int) int {
+// ClampLimit applies the default and the maximum page size of a Query.
+func ClampLimit(n int) int {
 	switch {
 	case n <= 0:
 		return 100

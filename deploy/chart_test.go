@@ -2,6 +2,7 @@ package deploy_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 )
 
 // chartCase is one values permutation of charts/kudurru.
@@ -96,6 +100,7 @@ var chartCases = []chartCase{
 			t.Errorf("edge args lack the endpointslice backends: %v", args)
 		}
 	}},
+	{name: "edge-deployment-pod-cidr", values: "edge: {enabled: true, mode: deployment, existingSecret: my-proxy, proxyProtocolFrom: ['172.16.0.0/16', 'fd00::/64']}", wantKind: "Deployment"},
 	{name: "edge-sidecar", values: "edge: {enabled: true, mode: sidecar}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		r.wantNoObject(t, "Deployment", "kudurru-edge")
 		cfg := r.config(t)
@@ -149,6 +154,22 @@ var chartCases = []chartCase{
 	{name: "edge-sidecar-standalone", values: "mode: standalone\nedge: {enabled: true, mode: sidecar}", wantKind: "StatefulSet"},
 	{name: "edge-daemonset-standalone", values: "mode: standalone\nedge: {enabled: true, mode: daemonset}", wantKind: "StatefulSet", check: func(t *testing.T, r *rendered) {
 		r.wantEdge(t, "DaemonSet")
+	}},
+	{name: "central-database", values: "database: {existingSecret: pg-app}\nconfig: {settings: {database: {querylog: {facts: false}}}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		r.wantVolume(t, "database", "secret")
+		if !slices.Contains(r.envNames(t), "KUDURRU_DATABASE__DSN_FILE") {
+			t.Errorf("no KUDURRU_DATABASE__DSN_FILE with database.existingSecret")
+		}
+	}},
+	{name: "central-database-cluster-dns", values: "database: {existingSecret: pg-app, clusterDNS: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if got := dig(r.pod(t), "spec", "dnsPolicy"); got != "ClusterFirst" {
+			t.Errorf("dnsPolicy = %v, want ClusterFirst with database.clusterDNS", got)
+		}
+	}},
+	{name: "cluster-dns-without-database", values: "database: {clusterDNS: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		if got := dig(r.pod(t), "spec", "dnsPolicy"); got != "Default" {
+			t.Errorf("dnsPolicy = %v, want Default: clusterDNS only applies with a database", got)
+		}
 	}},
 	{name: "vip-none", values: "vip: {provider: none}", wantKind: "Deployment"},
 	{name: "vip-kube-vip", values: "vip: {provider: kube-vip, address: 10.0.0.53}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
@@ -331,7 +352,17 @@ var chartCases = []chartCase{
 		}
 	}},
 	{name: "bootstrap-token", values: "auth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
-		r.wantObject(t, "Secret", "kudurru-bootstrap-token")
+		secret := r.object(t, "Secret", "kudurru-bootstrap-token")
+		enc, _ := dig(secret, "data", "token").(string)
+		raw, err := base64.StdEncoding.DecodeString(enc)
+		if err != nil {
+			t.Fatalf("token is not base64: %v", err)
+		}
+		// The generated value must be a wire token kudurru accepts: its id
+		// is lower case, which randAlphaNum alone does not give.
+		if _, ok := tokens.Parse(string(raw)); !ok {
+			t.Errorf("generated bootstrap token %q is not a kudurru token", raw)
+		}
 	}},
 	{name: "seed-objects", values: seedObjects, wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
 		z := r.object(t, "DNSZone", "home")
@@ -483,7 +514,22 @@ func TestChartRenderMatrix(t *testing.T) {
 			if k := r.workloadKind(t); k != tc.wantKind {
 				t.Errorf("kudurru workload is a %s, want %s", k, tc.wantKind)
 			}
-			r.config(t) // loads through config.Load
+			listeners := r.config(t).Listeners
+			if listeners.ProxyProtocolSecretFile != "" {
+				// Stand in for the Secret mounted in the pod, then run
+				// the same policy construction as kudurru serve.
+				listeners.ProxyProtocolSecretFile = filepath.Join(t.TempDir(), "proxy-secret")
+				if err := os.WriteFile(listeners.ProxyProtocolSecretFile, []byte(strings.Repeat("0123456789abcdef", 4)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			policy, err := dnsserver.PolicyFromConfig(listeners)
+			if err != nil {
+				t.Fatalf("DNS policy rejects rendered listeners: %v", err)
+			}
+			if policy.Enabled() != (len(listeners.ProxyProtocolFrom) > 0) {
+				t.Fatal("DNS policy enabled state does not match proxyProtocolFrom")
+			}
 			if tc.check != nil {
 				tc.check(t, r)
 			}

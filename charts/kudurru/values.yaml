@@ -334,11 +334,45 @@ config:
           strategy: parallel_best
           timeout: 2s
 
+database:
+  # -- Optional central PostgreSQL 16+ database for the audit log, query log
+  # and statistics of every replica (docs/deploy/postgres.md): an existing
+  # Secret in the release namespace whose key dsnKey holds the connection
+  # string, mounted as KUDURRU_DATABASE__DSN_FILE. CloudNativePG's
+  # <cluster>-app Secret has it under "uri", with a cluster Service name that
+  # the pods cannot resolve while dnsPolicy is Default: see clusterDNS.
+  # Empty: no database; the audit log is kept in AuditLog objects. Tune it
+  # with config.settings.database (querylog.ship, querylog.facts,
+  # querylog.retention.raw) and config.node.database.maxConns.
+  existingSecret: ""
+  dsnKey: uri
+  # -- Resolve the database host through the cluster DNS (dnsPolicy
+  # ClusterFirst for the kudurru pods), so the connection string can name an
+  # in-cluster Service such as CloudNativePG's <cluster>-rw. Needs
+  # existingSecret. Leave it false when kudurru is what resolves the
+  # cluster's names (the pods would resolve through themselves); then name
+  # the Service by its ClusterIP or use an external name. hostNetwork already
+  # resolves cluster names (ClusterFirstWithHostNet).
+  clusterDNS: false
+
 # -- kudurru.io objects seeded once. mode=kubernetes: post-install hook
 # resources (Helm creates them once and never owns them; kubectl and the UI
 # do afterwards). mode=standalone: inline objects of the node file
 # (file-managed, re-applied on start).
 objects: []
+
+license:
+  # -- License key (docs/architecture/licensing.md, LICENSING.md). Empty runs
+  # the community license: one node and no ee/ features (OIDC, the dnsdist and
+  # keepalived edge, integrations); DNS answering never depends on a key. A
+  # free personal key covers 3 nodes. Prefer existingSecret.
+  key: ""
+  # -- Existing Secret that holds the key under secretKey; overrides key.
+  # Every kudurru container reads it as KUDURRU_LICENSE_KEY (optional: pods
+  # start when the Secret is missing).
+  existingSecret: ""
+  # -- Key inside the Secret.
+  secretKey: license.key
 
 auth:
   # -- Existing Secret (key "key": 32 random bytes, base64 or 64 hex digits)

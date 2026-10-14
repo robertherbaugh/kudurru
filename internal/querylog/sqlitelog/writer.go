@@ -144,6 +144,9 @@ type Writer struct {
 	dayDone  int64 // _1d derived for days < dayDone
 	firstTS  int64
 	maxID    int64
+	// shippedThrough, when set, bounds age-based retention to rows a
+	// shipper delivered (SetShippedThrough).
+	shippedThrough func() int64
 
 	deleteBatch int // DeleteBatch; smaller in tests
 

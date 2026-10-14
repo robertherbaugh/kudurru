@@ -13,7 +13,8 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useScopeParams } from '../api/context';
-import type { QueryFilter, QueryRow, StatusClass, UnblockRequest } from '../api/types';
+import { useFeature } from '../api/hooks';
+import type { QueryFilter, QueryRow, ScopeInfo, StatusClass, UnblockRequest } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { SelectField } from '../components/fields/SelectField';
 import { Page, PageHeader } from '../components/layout/Page';
@@ -25,6 +26,7 @@ import { domainKey } from '../components/unblock/UnblockParts';
 import { formatDateTime, formatExact } from '../lib/format';
 import { useSearchParams } from '../lib/router';
 import { writeSummary } from '../components/domains/DomainEntryDialogs';
+import { queryIdentity } from '../lib/queryIdentity';
 import { useLiveTail } from '../lib/useLiveTail';
 
 /** The filter keys the page reads from and writes to the URL. */
@@ -78,7 +80,8 @@ export default function QueryLogPage() {
   const filterKey = JSON.stringify(filters);
   const [live, setLive] = useState(false);
   const [liveRows, setLiveRows] = useState<QueryRow[]>([]);
-  const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set());
+  const [tailScope, setTailScope] = useState<ScopeInfo | undefined>();
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
 
   const q = useInfiniteQuery({
     queryKey: qk.queries('log', scope, filters),
@@ -92,24 +95,29 @@ export default function QueryLogPage() {
   useEffect(() => {
     setLiveRows([]);
     setFresh(new Set());
+    setTailScope(undefined);
   }, [filterKey, scope]);
 
   const onRows = useCallback((batch: QueryRow[]) => {
     setLiveRows((prev) => [...batch.slice().reverse(), ...prev].slice(0, LIVE_MAX));
-    setFresh(new Set(batch.map((r) => r.id)));
+    setFresh(new Set(batch.map(queryIdentity)));
   }, []);
-  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live, onRows });
+  // The central database's log (All nodes, D161) numbers rows its own way;
+  // the live tail streams the nodes' rows with the nodes' ids, so it is
+  // neither run nor merged into it.
+  const central = q.data?.pages[0]?.source === 'central';
+  const tail = useLiveTail({ url: api.queries.streamURL(scope, filters), enabled: live && !central, onRows, onScope: setTailScope });
 
   const rows = useMemo(() => {
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     const out: QueryRow[] = [];
-    for (const r of [...liveRows, ...(q.data?.pages.flatMap((p) => p.queries) ?? [])]) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id);
+    for (const r of [...(central ? [] : liveRows), ...(q.data?.pages.flatMap((p) => p.queries) ?? [])]) {
+      if (seen.has(queryIdentity(r))) continue;
+      seen.add(queryIdentity(r));
       out.push(r);
     }
     return out;
-  }, [liveRows, q.data]);
+  }, [central, liveRows, q.data]);
 
   const first = q.data?.pages[0];
   const action = useMutation({
@@ -134,7 +142,8 @@ export default function QueryLogPage() {
   // Blocked rows link to the unblock requests for their name, or to the
   // Allowlist's Add dialog: one list call (newest requests, every state),
   // matched by name, instead of one call per row.
-  const canRequests = can('unblockrequests', 'read');
+  const requestsFeature = useFeature('requests');
+  const canRequests = can('unblockrequests', 'read') && requestsFeature.ready && requestsFeature.allowed;
   const requests = useQuery({
     queryKey: qk.unblock('by-domain'),
     queryFn: () => api.unblock.list({ limit: REQUESTS_LIMIT }),
@@ -153,12 +162,22 @@ export default function QueryLogPage() {
         title="Query log"
         actions={
           <>
-            <ScopeNote scope={first} />
+            <ScopeNote scope={live ? tailScope ?? first : first} />
             <Switch
               label="Live tail"
-              description={tail === 'unsupported' ? 'This browser has no EventSource' : tail === 'retrying' ? 'Reconnecting…' : tail === 'live' ? 'Streaming new queries' : undefined}
-              value={live}
-              isDisabled={tail === 'unsupported'}
+              description={
+                central
+                  ? 'Choose a node to follow it live'
+                  : tail === 'unsupported'
+                    ? 'This browser has no EventSource'
+                    : tail === 'retrying'
+                      ? 'Reconnecting…'
+                      : tail === 'live'
+                        ? 'Streaming new queries'
+                        : undefined
+              }
+              value={live && !central}
+              isDisabled={tail === 'unsupported' || central}
               onChange={setLive}
             />
             <PurgeQueryLog

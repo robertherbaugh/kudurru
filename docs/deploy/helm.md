@@ -29,6 +29,13 @@ Standard (uid 65532, read-only root, all capabilities dropped except
 `NET_BIND_SERVICE`, `net.ipv4.ip_unprivileged_port_start=0` so the
 non-root process binds :53).
 
+**Two replicas need a license key.** Without one kudurru runs as one node, so
+a default install (two replicas) is over the node limit: DNS answers as usual,
+but changes through the API and the dashboard answer `402 license_required`
+until you add a key (a free personal key covers 3 nodes) or set
+`replicaCount=1`. Changes with `kubectl` are not affected. See
+[License key](#license-key).
+
 ### First login
 
 The chart generates three Secrets once and keeps them on uninstall
@@ -46,6 +53,30 @@ The admin Secret is read only while no user exists; the UI asks for a new
 password at the first login. Point `auth.bootstrapAdminSecret` and
 `auth.encryptionKeySecret` at your own Secrets (for example from
 external-secrets) to keep secret material out of Helm entirely.
+
+### License key
+
+kudurru is source-available under the Kudurru Community License
+(see [LICENSING.md](../../LICENSING.md)). Without a key one node runs with
+the community limits: DNS, blocking, zones and the dashboard work, but
+OIDC sign-in, the dnsdist and keepalived edge and the
+integrations (the `ee/` features) are off, and a cluster of more than one
+node cannot change its configuration through the API. Without a key the API
+allows one policy, the seeded default. A free personal key (3 nodes,
+eligible community use) or a business key lifts these limits. Put the key in a Secret
+and name it, so the key stays out of values files:
+
+```sh
+kubectl -n kudurru-system create secret generic kudurru-license --from-file=license.key=./license.key
+helm upgrade kudurru ... --set license.existingSecret=kudurru-license
+```
+
+`license.key` takes the key as a string and creates the Secret for you. Every
+kudurru container (the server, the dnsdist supervisor and the keepalived
+supervisor) reads it as `KUDURRU_LICENSE_KEY`; the Secret is optional, so pods
+start without it. **With `edge.enabled` the supervisors refuse a first start without
+a key that covers the `edge` feature.** `kudurru license status` and
+`GET /api/v1/license` show the state; the Secret is reread every minute.
 
 ## Shapes
 
@@ -80,6 +111,67 @@ switch the Deployment to a StatefulSet so every replica gets its own claim
 DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
 
+### Audit log
+
+Events are always recorded and shipped; reading them (the Audit tab,
+`GET /api/v1/audit`, `kudurru audit`) needs a license key that includes the
+audit trail, and answers `402 license_required` without one.
+
+In mode=kubernetes every replica records the changes it makes in its own
+audit spool (`audit-spool.db`) and copies them into `AuditLog` objects
+(`audit.kudurru.io`) in the release namespace. Every replica reads all of
+them, so the Audit tab, `GET /api/v1/audit` and `kudurru audit` give the
+same answer whichever replica serves them, and the events survive pod
+replacement. Install or upgrade the `kudurru-crds` chart first: without the
+AuditLog CRD each replica shows only its own events and logs a warning.
+The leader deletes batches older than `audit.retention` (400 days). The
+ServiceAccount may create and delete AuditLogs but not update them; every
+batch is hash-chained and sealed with the encryption key, and every event
+is also a `"log":"audit"` line for your log pipeline. `audit.store: local`
+keeps the events on each replica only. With a central database
+(`database.dsn`, [postgres.md](postgres.md)) the events go there instead.
+
+### Central database
+
+`database.existingSecret` names a Secret in the release namespace whose key
+`database.dsnKey` (default `uri`, what a CloudNativePG `<cluster>-app`
+Secret holds) is a PostgreSQL 16+ connection string. Every replica then
+keeps the audit log, query log and statistics of all replicas there, and
+the dashboard's **All nodes** view reads them ([postgres.md](postgres.md)).
+The chart does not install PostgreSQL. A CloudNativePG cluster is enough:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: kudurru-db, namespace: kudurru-system}
+spec:
+  instances: 2
+  storage: {size: 20Gi}
+  bootstrap: {initdb: {database: kudurru, owner: kudurru}}
+```
+
+```sh
+helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru \
+  --set database.existingSecret=kudurru-db-app \
+  --set database.clusterDNS=true \
+  --set-json 'config.settings.database={"querylog":{"retention":{"raw":"168h"}}}'
+```
+
+The pods use `dnsPolicy: Default`, the node's resolver, because kudurru can
+be the cluster's own resolver. A cluster Service name such as the
+`kudurru-db-rw.kudurru-system` of a CloudNativePG `uri` therefore does not
+resolve from them ("hostname resolving error" in the logs). Put the
+Service's ClusterIP or an external name that the node resolves in the
+connection string (a Secret of your own with the key `uri`), or set
+`database.clusterDNS=true`: the pods then use `dnsPolicy: ClusterFirst`, and
+the `kudurru-db-app` Secret works as it is. Do not set it when kudurru is
+what resolves the cluster's names (the pods would resolve through
+themselves). With `hostNetwork.enabled` cluster names already resolve.
+
+DNS never waits for the database. When it is unreachable, each replica
+keeps its data and sends it later, and the `KudurruCentralDatabaseDown`
+alert fires.
+
 ### hostNetwork
 
 `hostNetwork.enabled` runs a DaemonSet in the host network namespace, where
@@ -100,6 +192,10 @@ outside the Baseline level; label the namespace
 or set `net.ipv4.ip_unprivileged_port_start=53` on the hosts.
 
 ### Edge (dnsdist)
+
+The dnsdist and keepalived supervisors need a license key that includes the
+edge; without one a first start is refused, and an expired key never stops a
+restart (see [License key](#license-key)).
 
 With `edge.enabled` the dns Service selects the edge pods; kudurru listens
 on `edge.backendPort` (5353) and accepts PROXYv2 only from
@@ -169,6 +265,36 @@ restart.
 Seed objects with `objects:` (post-install hook resources in
 mode=kubernetes: created once, then owned by kubectl and the UI).
 
+### Default object namespace and upgrades
+
+On a fresh `mode=kubernetes` install, the bootstrap creates `ClientGroup
+default`, `Policy default` and `BlockList starter` in the release namespace.
+The policy fallback, API writes without a namespace, dashboard allow/deny
+lists and block-page unblock requests use that namespace too. The root
+`DNSZone` is cluster-scoped. `mode=standalone` and Docker keep `default`.
+
+The CLI has its own namespace setting for commands that name resources:
+use `-n <release-namespace>` or set
+`--default-namespace <release-namespace>` when logging in. Namespace fields
+in dashboard object creation forms are explicit choices; set them to the
+release namespace.
+
+Earlier Kubernetes installs created these objects in `default`. At startup,
+if `Policy default` exists in `default` and no `Policy default` exists in the
+release namespace, kudurru keeps `default` for those defaults and logs a
+warning. It does not move, recreate or overwrite existing objects; operator
+edits and policy/list references stay intact. Identity Secrets, Leases and
+audit batches continue to use the release namespace.
+
+To move an existing install, copy the desired ClientGroups, BlockLists and
+Policies into the release namespace, preserving their names and references
+and including `Policy default`. Remove server-assigned metadata such as
+`uid`, `resourceVersion`, `creationTimestamp` and `managedFields` from the
+copies. Restart all replicas after the copies exist: a `Policy default` in
+the release namespace takes precedence. Verify blocking and API writes
+before removing the old resources. Default selection is made at startup,
+so keep both sets during the rollout.
+
 ## Monitoring
 
 | Value | Renders |
@@ -229,7 +355,7 @@ the chart added beyond §5.2: `tls.secretName`, `edge.backendPort`,
 `edge.proxyProtocolFrom`, `edge.tlsSecretName`, `edge.existingSecret`,
 `edge.dnsdistVersion`, `vip.metallbPool`, `vip.keepalived.existingSecret`,
 `vip.keepalived.keepalivedVersion`, `auth.encryptionKeyPreviousSecret`,
-`auth.bootstrapToken`, `podMonitor`, `probes`, `lameduckSeconds`,
+`auth.bootstrapToken`, `license.key`, `license.existingSecret`, `license.secretKey`, `podMonitor`, `probes`, `lameduckSeconds`,
 `clusterDomain` (default `cluster.local`), `persistence.standalone.enabled`,
 `extraEnv`, `extraVolumes`, `extraVolumeMounts`, `blockPage`. `auth.oidc.providers` is
 a list of OpenID Providers rendered into the settings key
