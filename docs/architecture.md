@@ -1645,6 +1645,8 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 
 ---
 
+| D167 | Separate VIP-link tracking and address uniqueness | With `--vrrp-interface` (`vip.keepalived.vrrpInterface`), track each separate VIP interface so either link failure faults the instance. Reject duplicate VIP addresses, including differing prefix lengths, in the renderer and the chart's `vip.keepalived.vips` list. Single-interface and single-VIP behavior stays the same | An unnumbered DMZ interface cannot supply the node InternalIP used by Kubernetes peer discovery, and its link failure must still withdraw its VIPs. Independent instances must not manage the same address | Tracking only the VRRP link; allowing multiple instances to own the same address |
+
 ## 17. Glossary
 
 | Term | Meaning in this document |

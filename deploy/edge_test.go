@@ -47,12 +47,14 @@ vip:
 		t.Fatal("server lacks supervisor discovery source")
 	}
 	for name, bad := range map[string]string{
-		"duplicate name":    strings.Replace(values, "name: dns-b", "name: dns-a", 1),
-		"duplicate VRID":    strings.Replace(values, "vrid: 54", "vrid: 53", 1),
-		"VRID out of range": strings.Replace(values, "vrid: 54", "vrid: 256", 1),
-		"missing VRID":      strings.Replace(values, ", vrid: 54", "", 1),
-		"invalid delay":     strings.Replace(values, "preemptDelay: 30", "preemptDelay: -1", 1),
-		"invalid interface": strings.Replace(values, "vrrpInterface: eth0", "vrrpInterface: 'eth0 bad'", 1),
+		"duplicate name":                          strings.Replace(values, "name: dns-b", "name: dns-a", 1),
+		"duplicate VRID":                          strings.Replace(values, "vrid: 54", "vrid: 53", 1),
+		"duplicate address":                       strings.Replace(values, "10.35.10.54/24", "10.35.10.53/24", 1),
+		"duplicate address with different prefix": strings.Replace(values, "10.35.10.54/24", "10.35.10.53/32", 1),
+		"VRID out of range":                       strings.Replace(values, "vrid: 54", "vrid: 256", 1),
+		"missing VRID":                            strings.Replace(values, ", vrid: 54", "", 1),
+		"invalid delay":                           strings.Replace(values, "preemptDelay: 30", "preemptDelay: -1", 1),
+		"invalid interface":                       strings.Replace(values, "vrrpInterface: eth0", "vrrpInterface: 'eth0 bad'", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := renderChart(t, bad); err == nil {

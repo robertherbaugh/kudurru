@@ -291,6 +291,7 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if eq $v.edge.mode "sidecar" }}{{ fail "vip.provider=keepalived cannot be combined with edge.mode=sidecar" }}{{ end -}}
 {{- $names := dict -}}
 {{- $vrids := dict -}}
+{{- $addresses := dict -}}
 {{- range (include "kudurru.keepalived.vips" . | fromYamlArray) -}}
 {{- if not (regexMatch "^[a-z0-9][a-z0-9_-]{0,30}$" .name) }}{{ fail "keepalived VIP name must be 1-31 lowercase letters, digits, underscores or hyphens" }}{{ end -}}
 {{- if not .address }}{{ fail "vip.address or vip.keepalived.vips[].address (CIDR form) is required with vip.provider=keepalived" }}{{ end -}}
@@ -301,8 +302,11 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if or (not (regexMatch "^[0-9]+$" (toString .preemptDelay))) (gt (int .preemptDelay) 1000) }}{{ fail "keepalived VIP preemptDelay must be an integer in 0-1000" }}{{ end -}}
 {{- if hasKey $names .name }}{{ fail "keepalived VIP names must be unique" }}{{ end -}}
 {{- if hasKey $vrids (toString .vrid) }}{{ fail "keepalived VIP VRIDs must be unique" }}{{ end -}}
+{{- $address := first (splitList "/" .address) -}}
+{{- if hasKey $addresses $address }}{{ fail "keepalived VIP addresses must be unique" }}{{ end -}}
 {{- $_ := set $names .name true -}}
 {{- $_ := set $vrids (toString .vrid) true -}}
+{{- $_ := set $addresses $address true -}}
 {{- end -}}
 {{- if and $v.vip.keepalived.vrrpInterface (not (regexMatch "^[A-Za-z0-9_.:-]+$" $v.vip.keepalived.vrrpInterface)) }}{{ fail "vip.keepalived.vrrpInterface is invalid" }}{{ end -}}
 {{- end -}}

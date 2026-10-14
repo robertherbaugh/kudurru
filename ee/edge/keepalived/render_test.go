@@ -104,6 +104,28 @@ func TestRenderInvariants(t *testing.T) {
 	}
 }
 
+func TestRenderSeparateVRRPInterface(t *testing.T) {
+	c := goldenConfig(t, 0, false)
+	c.VRRPInterface = "ens18"
+	c.VIPs = []VIP{mustVIP(t, "dns=10.200.200.25/32@ens19#53"), mustVIP(t, "dns2=10.200.200.26/32@ens19#54")}
+	b, err := Render(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	if strings.Count(text, "    interface ens18\n") != 2 || strings.Contains(text, "    interface ens19\n") {
+		t.Fatalf("VRRP must use the control interface for both instances:\n%s", text)
+	}
+	for _, want := range []string{"10.200.200.25/32 dev ens19", "10.200.200.26/32 dev ens19", "unicast_src_ip 10.0.0.11"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("render lacks %q", want)
+		}
+	}
+	if strings.Count(text, "    track_interface {\n        ens19\n    }") != 2 {
+		t.Fatal("both VIP instances must track the DMZ link")
+	}
+}
+
 func TestPriority(t *testing.T) {
 	c := Config{NodeCount: 3}
 	for idx, want := range [][2]int{{200, 180}, {190, 190}, {180, 200}} {
@@ -133,17 +155,19 @@ func TestParseVIP(t *testing.T) {
 func TestValidate(t *testing.T) {
 	base := goldenConfig(t, 0, false)
 	mut := map[string]func(*Config){
-		"no peers":         func(c *Config) { c.Peers = nil },
-		"self peer":        func(c *Config) { c.Peers = []string{"10.0.0.11"} },
-		"family mismatch":  func(c *Config) { c.Peers = []string{"2001:db8::1"} },
-		"duplicate vrid":   func(c *Config) { c.VIPs[1].VRID = 53 },
-		"duplicate name":   func(c *Config) { c.VIPs[1].Name = "dns" },
-		"bad index":        func(c *Config) { c.PriorityIndex = 3 },
-		"bad router id":    func(c *Config) { c.RouterID = "node a" },
-		"quote in path":    func(c *Config) { c.HMACKeyFile = `/x"y` },
-		"no vips":          func(c *Config) { c.VIPs = nil },
-		"bad unicast src":  func(c *Config) { c.UnicastSrc = "eth0" },
-		"injected command": func(c *Config) { c.Probe.Command = []string{"/bin/sh", "-c", "rm -rf /"} },
+		"no peers":           func(c *Config) { c.Peers = nil },
+		"self peer":          func(c *Config) { c.Peers = []string{"10.0.0.11"} },
+		"family mismatch":    func(c *Config) { c.Peers = []string{"2001:db8::1"} },
+		"duplicate vrid":     func(c *Config) { c.VIPs[1].VRID = 53 },
+		"duplicate name":     func(c *Config) { c.VIPs[1].Name = "dns" },
+		"duplicate address":  func(c *Config) { c.VIPs[1].Prefix = netip.MustParsePrefix("10.0.0.53/32") },
+		"bad index":          func(c *Config) { c.PriorityIndex = 3 },
+		"bad router id":      func(c *Config) { c.RouterID = "node a" },
+		"bad vrrp interface": func(c *Config) { c.VRRPInterface = "ens18\n    priority 255" },
+		"quote in path":      func(c *Config) { c.HMACKeyFile = `/x"y` },
+		"no vips":            func(c *Config) { c.VIPs = nil },
+		"bad unicast src":    func(c *Config) { c.UnicastSrc = "eth0" },
+		"injected command":   func(c *Config) { c.Probe.Command = []string{"/bin/sh", "-c", "rm -rf /"} },
 	}
 	for name, m := range mut {
 		c := base

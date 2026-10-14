@@ -298,7 +298,7 @@ vip:
 
 The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
 override `interface` and set `preemptDelay` (0-1000 seconds). Names and
-VRIDs must be unique. VIPs and unicast peers must use the same address
+VRIDs and addresses must be unique, even when prefix lengths differ. VIPs and unicast peers must use the same address
 family. The first VIP prefers the first node by name; the second reverses
 priorities, allowing active/active ownership. By default `nopreempt` keeps
 ownership stable after recovery; use `kudurru vip rebalance` or an entry's
@@ -306,6 +306,14 @@ ownership stable after recovery; use `kudurru vip rebalance` or an entry's
 empty preserves the existing behavior: VRRP uses each VIP's interface.
 Peer discovery still uses Kubernetes Node InternalIPs, which must be
 reachable through the VRRP interface.
+
+For an unnumbered VIP interface, select a numbered VRRP interface carrying
+the Node InternalIP. Allow IP protocol 112 between the selected nodes on
+that interface. Keepalived tracks each VIP interface as well as the VRRP
+interface, so loss of either link puts its instance into FAULT and
+withdraws the address. Gratuitous ARP stays on the VIP's interface.
+Before migration, withdraw each address from MetalLB or kube-vip; only one
+provider may advertise an address at a time.
 
 The Nodes page's Edge panel polls supervisor readiness, backend health,
 and each node's VIP states every ten seconds. Separate edge workloads
