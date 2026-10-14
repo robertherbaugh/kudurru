@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -37,6 +39,23 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	cur, ok := c.cache.get(key).(*v1alpha1.DNSZone)
 	if !ok || cur == nil {
 		return false, nil // deleted
+	}
+	if cur.Spec.Type == v1alpha1.ZoneTypeSecondary {
+		// A shared status cannot attest to every node's independent copy.
+		// In particular, never run the primary serial stamper for this type.
+		next := cur.DeepCopy()
+		next.Status.ObservedGeneration = cur.Generation
+		next.Status.Serial, next.Status.RecordCount, next.Status.ContentHash = 0, 0, ""
+		meta.SetStatusCondition(&next.Status.Conditions, metav1.Condition{
+			Type: v1alpha1.ConditionReady, Status: metav1.ConditionUnknown,
+			Reason: "PerNodeTransfer", Message: "Each node transfers independently; inspect that node's secondary status for its served serial and expiry.",
+			ObservedGeneration: cur.Generation, LastTransitionTime: metav1.NewTime(c.opts.Now().Truncate(time.Second)),
+		})
+		meta.RemoveStatusCondition(&next.Status.Conditions, v1alpha1.ConditionDegraded)
+		if equality.Semantic.DeepEqual(cur.Status, next.Status) {
+			return false, nil
+		}
+		return true, c.writeStatus(ctx, next)
 	}
 	view := c.cache.view(key.Name, c.opts.Validate)
 	build, prev := c.cache.build(key.Name)

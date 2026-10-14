@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -39,6 +41,15 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 		byApex := map[string][]*zone.Zone{}
 		names := map[string][]string{}
 		for _, dz := range objects.Zones() {
+			if dz.Spec.Type == v1alpha1.ZoneTypeSecondary {
+				z, err := zone.BuildSecondaryPlaceholder(dz)
+				if err != nil {
+					logger.Warn("secondary zone skipped", "zone", dz.Name, "error", err)
+					continue
+				}
+				zones = append(zones, z)
+				continue
+			}
 			sets := zone.ServedRecordSets(dz, objects.RecordSetsForZone(dz.Name))
 			z, errs := zone.Build(dz, sets, zone.BuildOptions{Now: objects.Now()})
 			if z == nil {
@@ -80,10 +91,12 @@ func Builder(logger *slog.Logger) zonecache.Builder {
 //   - Unsynced (nothing loaded, no usable local.db): zone.GateUnsynced, every
 //     query SERVFAIL;
 //   - FromSnapshot older than MaxAge: zone.GateStale, SERVFAIL for names in
-//     primary zones while forward zones and other names are forwarded;
+//     primary and secondary zones while forward zones and other names are
+//     forwarded; fresh transferred data does not override stale configuration;
 //   - Live, or FromSnapshot within MaxAge: zone.GateOpen.
 type Source struct {
-	Cache *zonecache.Cache
+	Cache     *zonecache.Cache
+	Secondary *secondary.Manager
 }
 
 var _ authoritative.Source = Source{}
@@ -99,7 +112,28 @@ func (s Source) Zones() zone.Set {
 	if !ok || zs == nil {
 		return unsynced{}
 	}
-	return zs.WithGate(Gate(snap))
+	base := zs.WithGate(Gate(snap))
+	if s.Secondary != nil {
+		return secondarySet{Set: base, copies: s.Secondary.Snapshot()}
+	}
+	return base
+}
+
+// secondarySet resolves only configured placeholders. Old transfers can
+// never revive a deleted zone or a replaced configuration.
+type secondarySet struct {
+	zone.Set
+	copies *secondary.Snapshot
+}
+
+func (s secondarySet) Match(name string) *zone.Zone {
+	z := s.Set.Match(name)
+	if z != nil && z.Type() == v1alpha1.ZoneTypeSecondary {
+		if transferred := s.copies.Lookup(z.SecondaryIdentity()); transferred != nil {
+			return transferred
+		}
+	}
+	return z
 }
 
 // Gate maps a zonecache snapshot's state onto the authoritative gate.
