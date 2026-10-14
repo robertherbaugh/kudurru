@@ -193,26 +193,8 @@ func (a *Adapter) desired(ctx context.Context, tx *sqlite.CommandTx, c pr.Comman
 	if len(seen) != len(captured) {
 		return pr.ErrConflict
 	}
-	var policy zonestate.Policy
-	if c.Prepared != nil {
-		candidate, err := zonestate.VerifyPrepared(c.Prepared, a.o.Limits)
-		if err != nil {
-			return err
-		}
-		policy = candidate.Policy
-	} else {
-		head, err := a.readHead(ctx, tx, l.Spec.HeadZone())
-		if err != nil {
-			return err
-		}
-		policy = head.Aggregate.Policy
-	}
-	if a.o.Policy != nil {
-		return a.o.Policy(ctx, tx, actual, policy)
-	}
-	if policy.Enabled || len(policy.Credentials) > 0 || len(policy.Grants) > 0 {
-		return pr.ErrUnavailable
-	}
+	// Candidate/no-op policy is checked by the pinned BackgroundGuard in
+	// Admission, through the full command boundary.
 	return nil
 }
 func sameSource(a, b store.Object) bool {

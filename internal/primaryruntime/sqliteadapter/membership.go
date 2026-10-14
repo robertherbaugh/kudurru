@@ -2,6 +2,7 @@ package sqliteadapter
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 
 	"github.com/miekg/dns"
@@ -111,18 +112,33 @@ func (a *Adapter) membership(ctx context.Context, tx *sqlite.CommandTx, all rost
 func (a *Adapter) witnesses(ctx context.Context, tx *sqlite.CommandTx, all roster, l *zk.ZoneLifecycle) error {
 	for _, p := range l.Spec.Parents {
 		if p.CommitSequence == 0 {
-			if l.Spec.Phase == zk.PhaseActive {
+			if l.Spec.Phase == zk.PhaseActive || p.Released {
 				return pr.ErrConflict
 			}
 			continue
 		}
 		parent := all.ledgers[zk.LifecycleName(p.Zone.ClusterID, p.Zone.ObjectName)]
-		if parent == nil || parent.Spec.HeadZone() != p.Zone || parent.Spec.Incarnation != p.Incarnation || pr.ParentObligation(parent, l).BoundaryID != p.BoundaryID {
+		if parent == nil || boundaryID(p, l) != p.BoundaryID {
 			return pr.ErrConflict
 		}
 		v, err := a.readHead(ctx, tx, p.Zone)
 		if err != nil {
 			return err
+		}
+		if p.Released && v.Head.Spec.Lifecycle == zk.LifecycleTombstoned {
+			terminalParent := (parent.Spec.Incarnation == p.Incarnation && parent.Spec.HeadZone() == p.Zone && parent.Spec.Phase == zk.PhaseRetired) || parent.Spec.Incarnation > p.Incarnation
+			if l.Spec.Phase != zk.PhaseRetired || v.Head.Spec.CommitSequence != p.CommitSequence || v.Head.Spec.RootDigest != p.RootDigest || !terminalParent {
+				return pr.ErrConflict
+			}
+			for _, serving := range all.ledgers {
+				if serving.Spec.HeadZone() == p.Zone && serving.Spec.Phase != zk.PhaseRetired {
+					return pr.ErrConflict
+				}
+			}
+			continue
+		}
+		if parent.Spec.HeadZone() != p.Zone || parent.Spec.Incarnation != p.Incarnation {
+			return pr.ErrConflict
 		}
 		if v.Head.Spec.CommitSequence < p.CommitSequence || (v.Head.Spec.CommitSequence == p.CommitSequence && v.Head.Spec.RootDigest != p.RootDigest) {
 			return pr.ErrConflict
@@ -300,4 +316,12 @@ type dynamicReservation struct {
 	Type    uint16
 	Subtree bool
 	Source  string
+}
+
+func boundaryID(p zk.ParentFence, child *zk.ZoneLifecycle) string {
+	b, _ := json.Marshal(struct {
+		Parent, Child                       zk.ZoneID
+		ParentIncarnation, ChildIncarnation uint64
+	}{p.Zone, child.Spec.Zone, p.Incarnation, child.Spec.Incarnation})
+	return zk.Digest(b)
 }

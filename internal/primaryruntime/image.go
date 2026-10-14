@@ -41,6 +41,7 @@ type PreparedImage struct {
 	desired            []string
 	admissionDeadlines map[string]time.Time
 	coordinated        map[string]bool
+	durable            map[zk.ZoneID]*entry
 }
 
 // Base identifies the complete image from which all members and heads came.
@@ -79,6 +80,23 @@ func (p *PreparedImage) Admitted(apex string, now time.Time) bool {
 // than falling back to uncoordinated legacy membership.
 func (p *PreparedImage) Coordinated(objectName string) bool {
 	return p != nil && p.coordinated[objectName]
+}
+
+// DurableMember returns the actual persisted lifecycle/head before desired
+// coverage overlays. It proves durable identity, not readiness/publication.
+// id is the exact lifecycle source ZoneID, not the effective RR HeadZone UID.
+func (p *PreparedImage) DurableMember(id zk.ZoneID) (Member, bool) {
+	if p == nil {
+		return Member{}, false
+	}
+	e := p.durable[id]
+	if e == nil {
+		return Member{}, false
+	}
+	m := e.member
+	m.Parents = slices.Clone(m.Parents)
+	m.Published = false
+	return m, true
 }
 
 // Versions returns detached durable primary heads, including unavailable or
@@ -130,6 +148,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	versions := make(map[string]zonestate.Version)
 	current := make(map[string]bool)
 	coordinated := make(map[string]bool, len(roster.ledgers))
+	durable := make(map[zk.ZoneID]*entry, len(roster.ledgers))
 	for _, l := range roster.ledgers {
 		coordinated[l.Spec.Zone.ObjectName] = true
 		if err := ctx.Err(); err != nil {
@@ -152,6 +171,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 			return nil, fmt.Errorf("%w: duplicate lifecycle apex", ErrInvalid)
 		}
 		entries[l.Spec.Zone.Apex] = e
+		durable[l.Spec.Zone] = e
 		current[l.Spec.Zone.Apex] = imageCurrentSource(l, z)
 		if l.Spec.Type != public.ZoneTypePrimary {
 			continue // Other owners supply nonprimary data, never this builder.
@@ -264,7 +284,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated}, nil
+	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable}, nil
 }
 
 func imageAncestors(apex string) []string {

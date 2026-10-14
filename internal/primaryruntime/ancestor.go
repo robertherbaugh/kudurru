@@ -221,22 +221,39 @@ func (r *Runtime) Activate(ctx context.Context, id zk.ZoneID) (*zk.ZoneLifecycle
 	if err != nil {
 		return nil, err
 	}
-	if l.Spec.Phase != zk.PhaseFencing {
+	nonprimaryActive := l.Spec.Phase == zk.PhaseActive && l.Spec.Type != public.ZoneTypePrimary
+	if l.Spec.Phase != zk.PhaseFencing && !nonprimaryActive {
 		return nil, ErrInvalid
 	}
-	next, err := nextPhase(l, zk.PhaseActive)
-	if err != nil {
-		return nil, err
+	active := l
+	if l.Spec.Phase == zk.PhaseFencing {
+		next, err := nextPhase(l, zk.PhaseActive)
+		if err != nil {
+			return nil, err
+		}
+		active, err = r.Transition(ctx, l, next)
+		if err != nil {
+			return nil, err
+		}
 	}
-	active, err := r.Transition(ctx, l, next)
-	if err != nil {
-		return nil, err
+	var v *zonestate.View
+	var config *public.DNSZone
+	if active.Spec.Type == public.ZoneTypePrimary {
+		v, err = r.o.Repository.Read(ctx, active.Spec.HeadZone())
+	} else {
+		config = new(public.DNSZone)
+		err = r.o.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: active.Spec.Zone.ObjectName}, config)
+		if err == nil && !imageCurrentSource(active, config) {
+			err = ErrConflict
+		}
+		if err == nil {
+			_, err = r.admit(ctx, Command{Lifecycle: active, Reason: "replacement-membership"})
+		}
 	}
-	v, err := r.o.Repository.Read(ctx, active.Spec.HeadZone())
 	if err != nil {
 		return active, err
 	}
-	e, err := r.build(ctx, active, v, nil)
+	e, err := r.build(ctx, active, v, config)
 	if err != nil {
 		return active, err
 	}

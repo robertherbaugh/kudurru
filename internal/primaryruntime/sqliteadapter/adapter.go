@@ -35,8 +35,31 @@ type CredentialGuard interface {
 
 // PolicyGuard validates the complete current desired UPDATE policy/credential
 // versions in the same transaction. Root must use only tx reads and its pinned
-// immutable publication; nil makes enabled UPDATE policy unavailable.
+// immutable publication; nil makes UPDATE unavailable. Background commands
+// instead require the pinned BackgroundGuard validator.
 type PolicyGuard func(context.Context, *sqlite.CommandTx, *public.DNSZone, zonestate.Policy) error
+
+// BackgroundCheck describes the exact transaction's lifecycle/source and policy.
+// Source is nil only for an admitted removed/former-UID source. Policy is nil
+// for lifecycle-only membership, otherwise the candidate (or no-op head) policy.
+type BackgroundCheck struct {
+	Lifecycle *zk.ZoneLifecycle
+	Source    *public.DNSZone
+	Policy    *zonestate.Policy
+	Reason    string
+}
+
+// BackgroundPolicy uses only tx reads and the guard's pinned immutable provider.
+// It must validate the current source domain and captured policy identity.
+type BackgroundPolicy func(context.Context, *sqlite.CommandTx, BackgroundCheck) error
+
+// BackgroundGuard pins root's immutable credentials/policy through the FULL
+// command, including writer lock wait and final commit/no-op check. It invokes
+// fn synchronously exactly once with a nonnil current policy validator. No
+// Store reentry or network inside fn. Nil guard disables ALL background writes.
+type BackgroundGuard interface {
+	WithCurrent(context.Context, pr.PublicationFence, func(BackgroundPolicy) error) error
+}
 
 // Options bounds complete membership/source scans and supplies current guards.
 type Options struct {
@@ -45,6 +68,7 @@ type Options struct {
 	MaxZones, MaxSources int
 	MaxReadBytes         int64
 	Credentials          CredentialGuard
+	Background           BackgroundGuard
 	Policy               PolicyGuard
 }
 
@@ -83,69 +107,84 @@ func (a *Adapter) LifecycleCAS(ctx context.Context, current, next *zk.ZoneLifecy
 	}
 	next = next.DeepCopy()
 	current = current.DeepCopy()
-	term := a.o.Store.Authority().Term
+	f, ok := pr.PublicationFenceFrom(ctx)
+	if !ok || a.o.Background == nil {
+		return nil, pr.ErrUnavailable
+	}
 	var saved *zk.ZoneLifecycle
-	err := a.o.Store.Command(ctx, term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-		if next.Spec.Zone.ClusterID != tx.Authority().ClusterID {
-			return pr.ErrInvalid
+	err := a.o.Background.WithCurrent(ctx, f, func(check BackgroundPolicy) error {
+		if check == nil {
+			return pr.ErrUnavailable
 		}
-		actual, err := readLifecycle(ctx, tx, next.Name)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		rv := ""
-		if current != nil {
-			rv = current.ResourceVersion
-			if actual == nil || !sameLifecycle(actual, current) {
-				return pr.ErrConflict
+		return a.o.Store.Command(ctx, f.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			if !f.Term.Same(tx.Authority()) || f.Incarnation != tx.Incarnation() {
+				return pr.ErrUnavailable
 			}
-		} else if actual != nil {
-			return pr.ErrConflict
-		}
-		if err := zk.ValidateLifecycleTransition(actual, rv, next); err != nil {
-			return pr.ErrConflict
-		}
-		if _, err := source(ctx, tx, next); err != nil {
-			return err
-		}
-		roster, err := a.roster(ctx, tx)
-		if err != nil {
-			return err
-		}
-		if actual == nil && len(roster.ledgers) >= a.o.MaxZones {
-			return pr.ErrCapacity
-		}
-		roster.ledgers[next.Name] = next
-		if next.Spec.Phase == zk.PhaseRetired {
-			v, err := a.readHead(ctx, tx, next.Spec.HeadZone())
+			if next.Spec.Zone.ClusterID != tx.Authority().ClusterID {
+				return pr.ErrInvalid
+			}
+			actual, err := readLifecycle(ctx, tx, next.Name)
 			if err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
-			if v.Head != nil && v.Head.Spec.Lifecycle != zk.LifecycleTombstoned {
+			rv := ""
+			if current != nil {
+				rv = current.ResourceVersion
+				if actual == nil || !sameLifecycle(actual, current) {
+					return pr.ErrConflict
+				}
+			} else if actual != nil {
 				return pr.ErrConflict
 			}
-		} else if next.Spec.Phase != zk.PhaseRetiring {
-			if err := a.membership(ctx, tx, roster, next, nil, next.Spec.Phase == zk.PhaseActive); err != nil {
-				return err
+			if err := zk.ValidateLifecycleTransition(actual, rv, next); err != nil {
+				return pr.ErrConflict
 			}
-		}
-		if next.Spec.Phase == zk.PhaseActive && next.Spec.Type == public.ZoneTypePrimary {
-			v, err := a.readHead(ctx, tx, next.Spec.HeadZone())
+			z, err := source(ctx, tx, next)
 			if err != nil {
 				return err
 			}
-			if v.Head.Spec.Lifecycle != zk.LifecycleActive {
-				return pr.ErrConflict
+			if err := check(ctx, tx, BackgroundCheck{Lifecycle: next.DeepCopy(), Source: z, Reason: "lifecycle"}); err != nil {
+				return err
 			}
-		}
-		if err := a.witnesses(ctx, tx, roster, next); err != nil {
+			roster, err := a.roster(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if actual == nil && len(roster.ledgers) >= a.o.MaxZones {
+				return pr.ErrCapacity
+			}
+			roster.ledgers[next.Name] = next
+			if next.Spec.Phase == zk.PhaseRetired {
+				v, err := a.readHead(ctx, tx, next.Spec.HeadZone())
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				if v.Head != nil && v.Head.Spec.Lifecycle != zk.LifecycleTombstoned {
+					return pr.ErrConflict
+				}
+			} else if next.Spec.Phase != zk.PhaseRetiring {
+				if err := a.membership(ctx, tx, roster, next, nil, next.Spec.Phase == zk.PhaseActive); err != nil {
+					return err
+				}
+			}
+			if next.Spec.Phase == zk.PhaseActive && next.Spec.Type == public.ZoneTypePrimary {
+				v, err := a.readHead(ctx, tx, next.Spec.HeadZone())
+				if err != nil {
+					return err
+				}
+				if v.Head.Spec.Lifecycle != zk.LifecycleActive {
+					return pr.ErrConflict
+				}
+			}
+			if err := a.witnesses(ctx, tx, roster, next); err != nil {
+				return err
+			}
+			object, err := tx.Apply(ctx, next, store.ApplyOptions{Manager: "primaryruntime", ExpectedResourceVersion: rv, CreateOnly: current == nil})
+			if err == nil {
+				saved = object.(*zk.ZoneLifecycle)
+			}
 			return err
-		}
-		object, err := tx.Apply(ctx, next, store.ApplyOptions{Manager: "primaryruntime", ExpectedResourceVersion: rv, CreateOnly: current == nil})
-		if err == nil {
-			saved = object.(*zk.ZoneLifecycle)
-		}
-		return err
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -187,15 +226,22 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 		return nil, pr.ErrInvalid
 	}
 	var out *zonestate.View
-	run := func(credential *CurrentCredential) error {
-		term := a.o.Store.Authority().Term
-		if c.Expected.Zone.ClusterID != "" {
-			term = c.Expected.Term
+	f, hasFence := pr.PublicationFenceFrom(ctx)
+	if !update && (!hasFence || a.o.Background == nil) {
+		return nil, pr.ErrUnavailable
+	}
+	run := func(credential *CurrentCredential, check BackgroundPolicy) error {
+		term := f.Term
+		if !update && c.Expected.Zone.ClusterID != "" && !c.Expected.Term.Same(f.Term) {
+			return pr.ErrUnavailable
 		}
 		if c.Proof != nil {
 			term = c.Proof.Term
 		}
 		return a.o.Store.Command(ctx, term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			if !update && (!f.Term.Same(tx.Authority()) || f.Incarnation != tx.Incarnation()) {
+				return pr.ErrUnavailable
+			}
 			for _, l := range []*zk.ZoneLifecycle{c.Lifecycle, c.Parent} {
 				if l == nil {
 					continue
@@ -231,6 +277,29 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 			}
 			if target.Spec.Phase != zk.PhaseRetiring && target.Spec.Phase != zk.PhaseRetired {
 				if err := a.membership(ctx, tx, roster, target, except, target.Spec.Phase == zk.PhaseActive); err != nil {
+					return err
+				}
+			}
+			if !update {
+				z, err := source(ctx, tx, target)
+				if err != nil {
+					return err
+				}
+				var policy *zonestate.Policy
+				if c.Prepared != nil {
+					aggregate, err := zonestate.VerifyPrepared(c.Prepared, a.o.Limits)
+					if err != nil {
+						return err
+					}
+					policy = &aggregate.Policy
+				} else if c.Expected.Zone.ClusterID != "" {
+					v, err := a.readHead(ctx, tx, c.Expected.Zone)
+					if err != nil {
+						return err
+					}
+					policy = &v.Aggregate.Policy
+				}
+				if err := check(ctx, tx, BackgroundCheck{Lifecycle: target.DeepCopy(), Source: z, Policy: policy, Reason: c.Reason}); err != nil {
 					return err
 				}
 			}
@@ -307,9 +376,14 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 	}
 	var err error
 	if update {
-		err = a.o.Credentials.WithCurrent(ctx, *c.Proof, func(current CurrentCredential) error { return run(&current) })
+		err = a.o.Credentials.WithCurrent(ctx, *c.Proof, func(current CurrentCredential) error { return run(&current, nil) })
 	} else {
-		err = run(nil)
+		err = a.o.Background.WithCurrent(ctx, f, func(check BackgroundPolicy) error {
+			if check == nil {
+				return pr.ErrUnavailable
+			}
+			return run(nil, check)
+		})
 	}
 	if err != nil {
 		return nil, err

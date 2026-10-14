@@ -88,6 +88,7 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 	if err := validateProof(proof, digest); err != nil {
 		return outcome(err)
 	}
+	ctx = WithPublicationFence(ctx, PublicationFence{Term: proof.Term, Incarnation: proof.AuthorityIncarnation})
 	ctx, signatureCancel := context.WithDeadline(ctx, proof.NotAfter)
 	defer signatureCancel()
 	if err := ctx.Err(); err != nil {

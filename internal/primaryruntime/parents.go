@@ -3,6 +3,7 @@ package primaryruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/miekg/dns"
@@ -170,9 +171,20 @@ func (r *Runtime) ReleaseParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLif
 			if p.Released {
 				continue
 			}
-			parent, v, err := r.readParent(ctx, p)
+			parent, v, terminal, err := r.releaseParent(ctx, p)
 			if err != nil {
 				return nil, err
+			}
+			if imageBoundaryID(p, l) != p.BoundaryID {
+				return nil, ErrInvalid
+			}
+			if terminal {
+				// Admission rechecks the exact terminal head and complete roster in the
+				// child lifecycle CAS. Historical reservations/data remain untouched.
+				next.Spec.Parents[i].Released = true
+				next.Spec.Parents[i].CommitSequence = v.Head.Spec.CommitSequence
+				next.Spec.Parents[i].RootDigest = v.Head.Spec.RootDigest
+				continue
 			}
 			// Root admission also checks that no other lifecycle obligation still
 			// needs this identical boundary before allowing its release.
@@ -205,9 +217,10 @@ func (r *Runtime) ReleaseParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLif
 			if err := r.install(e); err != nil {
 				return nil, err
 			}
-			if err := r.publish(ctx, e); err != nil {
-				return nil, err
-			}
+			// An active parent may be unavailable while a desired surviving child
+			// is retired/replacing. Releasing its retired boundary cannot wait for
+			// active routing acknowledgment: that would prevent the replacement.
+			// Install unpublished; the final exact retired-child witness is published.
 			next.Spec.Parents[i].Released = true
 			next.Spec.Parents[i].CommitSequence = committed.Head.Spec.CommitSequence
 			next.Spec.Parents[i].RootDigest = committed.Head.Spec.RootDigest
@@ -220,7 +233,52 @@ func (r *Runtime) ReleaseParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLif
 		if conflicts(err) {
 			continue
 		}
-		return out, err
+		if err != nil {
+			return out, err
+		}
+		v, readErr := r.o.Repository.Read(ctx, out.Spec.HeadZone())
+		if readErr != nil && !errors.Is(readErr, store.ErrNotFound) {
+			return out, readErr
+		}
+		var e *entry
+		if v != nil && v.Head != nil {
+			e, err = r.build(ctx, out, v, nil)
+		} else {
+			e, err = r.retirementCoverage(ctx, out)
+		}
+		if err != nil {
+			return out, err
+		}
+		if err := r.install(e); err != nil {
+			return out, err
+		}
+		return out, r.publish(ctx, e)
 	}
 	return nil, ErrConflict
+}
+
+// releaseParent distinguishes an active boundary from explicit terminal proof.
+// Missing heads are never proof; the adapter validates the roster in the CAS.
+func (r *Runtime) releaseParent(ctx context.Context, p zk.ParentFence) (*zk.ZoneLifecycle, *zonestate.View, bool, error) {
+	var parent zk.ZoneLifecycle
+	if err := r.o.Store.Get(ctx, store.Key{Kind: zk.KindZoneLifecycle, Name: zk.LifecycleName(p.Zone.ClusterID, p.Zone.ObjectName)}, &parent); err != nil {
+		return nil, nil, false, err
+	}
+	if parent.Validate() != nil || parent.ResourceVersion == "" {
+		return nil, nil, false, ErrInvalid
+	}
+	v, err := r.o.Repository.Read(ctx, p.Zone)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if v == nil || v.Head == nil {
+		return nil, nil, false, ErrInvalid
+	}
+	if v.Head.Spec.Lifecycle == zk.LifecycleTombstoned && ((parent.Spec.Incarnation == p.Incarnation && parent.Spec.HeadZone() == p.Zone && parent.Spec.Phase == zk.PhaseRetired) || parent.Spec.Incarnation > p.Incarnation) {
+		return parent.DeepCopy(), v, true, nil
+	}
+	if parent.Spec.HeadZone() != p.Zone || parent.Spec.Incarnation != p.Incarnation || parent.Spec.Phase != zk.PhaseActive || v.Head.Spec.Lifecycle != zk.LifecycleActive {
+		return nil, nil, false, ErrConflict
+	}
+	return parent.DeepCopy(), v, false, nil
 }

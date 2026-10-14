@@ -70,6 +70,7 @@ type fixture struct {
 	repo   *zonestate.Repository
 	keys   *currentKeys
 	policy zonestate.Policy
+	fence  pr.PublicationFence
 }
 
 func setup(t *testing.T) *fixture {
@@ -88,7 +89,8 @@ func setup(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	f := &fixture{t: t, path: path, s: s, keys: &currentKeys{current: CurrentCredential{Principal: dynamicupdate.Principal{Key: "key.", Version: "v1"}, ProviderVersion: "provider-v1", Algorithm: dns.HmacSHA256}}, policy: zonestate.Policy{Enabled: true, AuthEpoch: 1, Credentials: []dynamicupdate.Credential{{Key: "key.", Version: "v1"}}, Grants: []dynamicupdate.Grant{{Key: "key.", Owner: "*.example."}}}}
-	f.a, err = New(Options{Store: s, Credentials: f.keys, Policy: func(_ context.Context, _ *sqlite.CommandTx, z *public.DNSZone, p zonestate.Policy) error {
+	f.fence = pr.PublicationFence{Term: s.Authority().Term, Incarnation: s.Authority().Incarnation}
+	f.a, err = New(Options{Store: s, Background: testBackground{}, Credentials: f.keys, Policy: func(_ context.Context, _ *sqlite.CommandTx, z *public.DNSZone, p zonestate.Policy) error {
 		if z == nil || z.Spec.Policy.Update != public.AccessAllow {
 			return pr.ErrUnavailable
 		}
@@ -113,10 +115,20 @@ func setup(t *testing.T) *fixture {
 	}
 	return f
 }
+
+// testBackground is deliberately test-only; production has no permissive guard.
+type testBackground struct{}
+
+func (testBackground) WithCurrent(_ context.Context, _ pr.PublicationFence, fn func(BackgroundPolicy) error) error {
+	return fn(func(context.Context, *sqlite.CommandTx, BackgroundCheck) error { return nil })
+}
+func (f *fixture) ctx() context.Context {
+	return pr.WithPublicationFence(context.Background(), f.fence)
+}
 func (f *fixture) zone(name, apex string) *public.DNSZone {
 	f.t.Helper()
 	z := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: public.DNSZoneSpec{ZoneName: apex, Type: public.ZoneTypePrimary, Nameservers: []string{"ns." + apex}, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow, Update: public.AccessAllow}}}
-	saved, err := f.s.Apply(context.Background(), z, store.ApplyOptions{Manager: "api"})
+	saved, err := f.s.Apply(f.ctx(), z, store.ApplyOptions{Manager: "api"})
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -135,7 +147,7 @@ func (f *fixture) intent(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.Zo
 }
 func (f *fixture) begin(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.ZoneLifecycle {
 	f.t.Helper()
-	l, err := f.r.Transition(context.Background(), nil, f.intent(z, parents...))
+	l, err := f.r.Transition(f.ctx(), nil, f.intent(z, parents...))
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -144,10 +156,10 @@ func (f *fixture) begin(z *public.DNSZone, parents ...*zk.ZoneLifecycle) *zk.Zon
 func (f *fixture) active(name, apex string) *zk.ZoneLifecycle {
 	f.t.Helper()
 	l := f.begin(f.zone(name, apex))
-	if _, err := f.r.Reconcile(context.Background(), l.Spec.Zone); err != nil {
+	if _, err := f.r.Reconcile(f.ctx(), l.Spec.Zone); err != nil {
 		f.t.Fatal(err)
 	}
-	l, err := f.r.ReadLifecycle(context.Background(), l.Spec.Zone)
+	l, err := f.r.ReadLifecycle(f.ctx(), l.Spec.Zone)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -183,7 +195,7 @@ func snapshot(t *testing.T, s *sqlite.Store) []byte {
 }
 func TestActualTransactionsUpdateReplayAndCurrentCredential(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	req := f.request(l, "retry", "dynamic.example. 60 IN A 192.0.2.1")
 	out := f.r.Apply(ctx, req)
@@ -208,7 +220,7 @@ func TestActualTransactionsUpdateReplayAndCurrentCredential(t *testing.T) {
 }
 func TestExactSourceLifecycleCASAndCompleteReconcile(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	in, err := primaryzone.NewReader(f.s, primaryzone.ReaderOptions{}).ReadDesired(ctx, l.Spec.Zone)
 	if err != nil {
@@ -244,7 +256,7 @@ func TestExactSourceLifecycleCASAndCompleteReconcile(t *testing.T) {
 }
 func TestLateParentAndConcurrentCreationCannotEscapeRoster(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	child := f.active("child", "child.example.")
 	parent := f.begin(f.zone("parent", "example."))
 	if _, err := f.r.Prepare(ctx, parent.Spec.Zone); err != nil {
@@ -298,7 +310,7 @@ func TestLateParentAndConcurrentCreationCannotEscapeRoster(t *testing.T) {
 }
 func TestSQLiteStatementFailureRollsBackHeadChunksReceiptAndNotify(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	before := snapshot(t, f.s)
 	authority := f.s.Authority()
@@ -325,7 +337,7 @@ func TestSQLiteStatementFailureRollsBackHeadChunksReceiptAndNotify(t *testing.T)
 }
 func TestCredentialRotationPinsTheWholeCommand(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -366,7 +378,7 @@ func TestCredentialRotationPinsTheWholeCommand(t *testing.T) {
 
 func TestConcurrentParentActivationAndChildCreationUseSameRosterTransaction(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	parent := f.begin(f.zone("parent", "example."))
 	if _, err := f.r.Prepare(ctx, parent.Spec.Zone); err != nil {
 		t.Fatal(err)
@@ -408,7 +420,7 @@ func TestConcurrentParentActivationAndChildCreationUseSameRosterTransaction(t *t
 }
 func TestCapturedDomainTermAndIncarnationDenyEveryResponse(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	req := f.request(l, "retry", "dynamic.example. 60 IN A 192.0.2.1")
 	if out := f.r.Apply(ctx, req); out.Rcode != dns.RcodeSuccess {
@@ -446,7 +458,7 @@ func TestCapturedDomainTermAndIncarnationDenyEveryResponse(t *testing.T) {
 
 func TestProofDeadlineExpiresWhileWaitingForActualWriterTransaction(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	before := snapshot(t, f.s)
 	req := f.request(l, "deadline", "dynamic.example. 60 IN A 192.0.2.1")
@@ -498,7 +510,7 @@ func TestProofDeadlineExpiresWhileWaitingForActualWriterTransaction(t *testing.T
 
 func TestActualRetirementUsesCurrentDeleteObservationAndReleasesBoundary(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	parent := f.active("parent", "example.")
 	childSource := f.zone("child", "child.example.")
 	child := f.begin(childSource, parent)
@@ -573,7 +585,7 @@ func TestActualRetirementUsesCurrentDeleteObservationAndReleasesBoundary(t *test
 
 func TestUnavailableGuardsAndMalformedPreparedFailClosed(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	l := f.active("primary", "example.")
 	before := snapshot(t, f.s)
 	v, err := f.repo.Read(ctx, l.Spec.HeadZone())
@@ -595,9 +607,12 @@ func TestUnavailableGuardsAndMalformedPreparedFailClosed(t *testing.T) {
 	if out := f.r.Apply(ctx, request); out.Rcode != dns.RcodeServerFailure || out.Committed {
 		t.Fatal("nil current policy guard admitted UPDATE", out)
 	}
+	background := f.a.o.Background
+	f.a.o.Background = nil
 	if _, err := f.r.Reconcile(ctx, l.Spec.Zone); !errors.Is(err, pr.ErrUnavailable) {
-		t.Fatal("enabled source policy admitted without guard", err)
+		t.Fatal("enabled source policy admitted without pinned background guard", err)
 	}
+	f.a.o.Background = background
 	f.a.o.Policy = policy
 	if !bytes.Equal(before, snapshot(t, f.s)) {
 		t.Fatal("malformed/unavailable guard paths mutated durable state")
@@ -606,7 +621,7 @@ func TestUnavailableGuardsAndMalformedPreparedFailClosed(t *testing.T) {
 
 func TestReconcileFencingConflictRecoversAfterExplicitRootCleanup(t *testing.T) {
 	f := setup(t)
-	ctx := context.Background()
+	ctx := f.ctx()
 	parent := f.active("parent", "example.")
 	if out := f.r.Apply(ctx, f.request(parent, "existing", "below.child.example. 60 IN A 192.0.2.1")); out.Rcode != dns.RcodeSuccess {
 		t.Fatal(out)
