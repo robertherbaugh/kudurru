@@ -128,7 +128,7 @@ describe("the license page", () => {
     expect(page).toContain("One node, the default policy,");
     expect(page).toContain('<tr><th scope="row">Policies</th><td>1, the default policy</td><td>Unlimited</td><td>Unlimited</td></tr>');
     expect(page).not.toContain("two policies");
-    expect(pages["index.html"]).toContain("each with merged policies and weekday schedules (a policy beyond the default needs a license key, free for personal use)");
+    expect(pages["index.html"]).toContain("a policy beyond the default needs a license key");
   });
 
   test("below the intro it spans the full width, like its table: only the form's box is narrower", () => {

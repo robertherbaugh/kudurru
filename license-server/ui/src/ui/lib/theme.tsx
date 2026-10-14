@@ -4,7 +4,7 @@
 // (kudurru-license-portal.appearance) so the portal and a dashboard on the
 // same origin do not share settings.
 //
-// Appearance: the kudurru theme (Astryx Neutral with the docs/brand
+// Appearance: the kudurru theme (Astryx Neutral with the branding
 // palette, ui/src/themes/kudurru) with auto/light/dark modes and a
 // high-contrast setting. The theme is a built theme wired through the
 // generated ui/src/astryx-themes.ts, so no theme injects <style> at runtime

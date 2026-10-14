@@ -24,16 +24,16 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 
 | Path | What it is |
 |---|---|
-| `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, the README and `bench/baseline.txt`; change them here when a feature ships or moves |
+| `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, `docs/architecture`, `docs/deploy` and `bench/baseline.txt`; change them here when a feature ships or moves |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
 | `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
-| `src/styles/site.css` | The stylesheet. It imports `docs/brand/tokens.css` |
+| `src/styles/site.css` | The stylesheet. It imports `branding/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
 | `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
 | `wrangler.jsonc` | The Cloudflare Workers configuration: static assets from `dist/`, the 404 page, the `kudurru.io` custom domain |
 | `test/` | `bun test`: escaping, `_headers`, and the built pages (no inline script or style, links, anchors, ARIA references, image attributes) |
 
-The page uses the brand kit in [`docs/brand`](../docs/brand/README.md): the
+The page uses the brand kit in [`branding`](../branding/README.md): the
 Ink, Clay, Paper and Stone tokens, the supplied logo and mark PNGs unchanged,
 Inter and JetBrains Mono (self-hosted from `@fontsource-variable`, OFL-1.1,
 licenses served at `/licenses/`). Query-status colors in the sample log are
@@ -96,15 +96,15 @@ Cloudflare dashboard:
    | Setting | Value |
    |---|---|
    | Project name | `kudurru-www` (must match `name` in `wrangler.jsonc`) |
-   | Production branch | `release`, so the site always shows the released version. On `main`, `VERSION` already names the next, unpublished release |
+   | Production branch | `release`, so the site shows the released version. After each release, bump `VERSION` on `main` for the next development cycle |
    | Root directory | `www` |
    | Build command | `bun install --frozen-lockfile && bun run build` |
    | Deploy command | `bunx wrangler deploy` |
    | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
-   | Build watch paths, include | `www/*`, `docs/brand/*`, `docs/guide/images/*`, `VERSION`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` |
+   | Build watch paths, include | `www/*`, `branding/*`, `docs/guide/images/*`, `VERSION`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` |
    | Build variables | `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
-   The build reads `../VERSION`, `../docs/brand` and `../docs/guide/images`
+   The build reads `../VERSION`, `../branding` and `../docs/guide/images`
    outside the root directory; Workers Builds clones the whole repository.
    Each build uses the commit from the branch that triggered it. With
    `release` as production, `main` and feature branches run the Preview

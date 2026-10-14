@@ -19,8 +19,10 @@ Nodes: node-a 10.0.0.11 (priority 200), node-b 10.0.0.12 (190), node-c
 10.0.0.13 (180). VIP: 10.0.0.53/24 on eth0, VRID 53. Replace the addresses
 and the interface in all three directories.
 
-The `kudurru-dnsdist` and `kudurru-keepalived` images and the `edge run` /
-`vip run` supervisors are milestone M4 deliverables, and the read-only API of
-`cluster.role: static` lands with the API package; until then this directory
-documents the target shape. The guide is
+v0.1.0 includes the `kudurru-dnsdist` and `kudurru-keepalived` images and the
+`edge run` / `vip run` supervisors. They need a license key with the edge
+entitlement; eligible personal users can request a free key. Each node is
+an independent SQLite instance: distribute file-managed objects to every
+node to keep configuration consistent. A cluster-wide read-only API mode
+and follower replication are future work. The guide is
 [docs/deploy/compose-ha.md](../../../docs/deploy/compose-ha.md).

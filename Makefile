@@ -478,7 +478,7 @@ clean:
 ## www-*: the kudurru.io website in www/ (Bun + TypeScript, served by
 ## Cloudflare Workers static assets; www/README.md). The pages are rendered
 ## at build time from www/src; the brand artwork and the dashboard
-## screenshots come from docs/brand and docs/guide/images. Cloudflare
+## screenshots come from branding and docs/guide/images. Cloudflare
 ## Workers Builds deploys it from GitHub; nothing here deploys.
 ##   www-check: typecheck, tests (pages, links, CSP, _headers), a build and
 ##              `wrangler deploy --dry-run` (no Cloudflare account needed)

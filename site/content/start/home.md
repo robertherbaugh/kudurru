@@ -67,8 +67,9 @@ pause that ends by itself.
 
 ## 5. Rules per device
 
-A `ClientGroup` names devices by address, CIDR, hostname pattern or DoT/DoH
-client ID; a `Policy` gives a group its lists, a schedule, a block response
+A `ClientGroup` matches devices by IP address or CIDR in v0.1.0. Hostname,
+MAC and DoT/DoH client-ID fields are reserved for future inventory and
+transport support. A `Policy` gives a group its lists, a schedule, a block response
 and its own upstreams. Devices in no group get `Policy/default`. A policy
 other than `Policy/default` needs a [license key](/project/licensing/):
 without one, kudurru creates the group below but refuses the policy with
@@ -82,7 +83,8 @@ spec:
   clients:
     - cidr: 10.0.20.0/24
       name: Kids VLAN
-    - hostname: "ps5*"
+    - ip: 192.168.1.50
+      name: Game console
 ---
 apiVersion: kudurru.io/v1alpha1
 kind: Policy

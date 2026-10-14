@@ -1,5 +1,10 @@
 # Final v0.1 feature review
 
+This is the pre-publication review record. Its acceptance items describe
+the state at review time; the v0.1.0 release is dated 16 October 2026 in the
+[changelog](../../CHANGELOG.md). This report does not establish the outcome
+of later deployment checks.
+
 Reviewed on 2026-10-14 from `700f2a1`, against the shipping claims in the
 CHANGELOG, architecture tour, administrator guide and release checklist.
 The branch was periodically rebased onto `origin/main`, most recently at
@@ -140,7 +145,7 @@ timing budget under shared VM load; this review does not establish a product
 performance regression. No production traffic-path change or real VIP
 failover is certified by these local checks.
 
-## Remaining GA gates
+## Acceptance items recorded at review time
 
 1. Correct the gateway path and verify two distinct device addresses in
    the cluster query log, Clients inventory and per-client chart for both
@@ -160,5 +165,6 @@ failover is certified by these local checks.
    refusing `v*` names was returned. These are owner-controlled settings;
    this review made no GitHub settings changes.
 
-The review does not certify GA until the deployment and owner-controlled
-gates pass. See [the release checklist](../release-checklist.md).
+At review time, these deployment and owner-controlled checks had not been
+certified by this review. The [release checklist](../release-checklist.md)
+describes the required checks; record their outcomes with each release.

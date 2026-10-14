@@ -1,8 +1,8 @@
-/* kudurru.io. Palette and type follow docs/brand (tokens.css is imported
+/* kudurru.io. Palette and type follow branding (tokens.css is imported
    at build time); status colors stay separate from brand colors. The
    /fonts/ URLs are placeholders: build.ts copies the files from
    @fontsource-variable with hashed names and rewrites them. */
-@import "../../../docs/brand/tokens.css";
+@import "../../../branding/tokens.css";
 
 @font-face {
   font-family: "Inter";
