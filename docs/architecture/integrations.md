@@ -8,9 +8,10 @@ Deletion defaults to `Retain`, and every optional UniFi write defaults to off.
 The [sample](../../config/samples/kudurru.io_v1alpha1_integration.yaml) starts
 suspended so applying an example cannot publish records.
 
-The schema, credential resolver, pure publication planner and durable ownership
-ledger are implemented. Provider execution, election and API/dashboard controls
-are subsequent parts of the full [v0.2 implementation](../v0.2/README.md).
+The schema, credential resolver, publication planner, durable ownership ledger
+and background host are implemented. Provider modules, production commit
+adapters and API/dashboard controls remain parts of the full
+[v0.2 implementation](../v0.2/README.md).
 
 ```mermaid
 flowchart LR
@@ -81,6 +82,47 @@ are bounded private runtime kinds. The shared runtime registry includes them in
 both store drivers, full backups and complete replication manifests, including
 empty kinds. Safe configuration exports omit them. Real SQLite tests cover
 fenced receipt recovery across restart; carrier tests cover native Kubernetes
-Secrets, validation, exact creation semantics and safe export. Host-side current
-lease/configuration/credential checks, provider execution and multi-node failover
-acceptance remain open. External side effects are not atomic with database commits.
+Secrets, validation, exact creation semantics and safe export. External side
+effects are not atomic with database commits.
+
+## Background execution
+
+`ee/integration/host` captures complete original sources and exact named
+credentials, then elects and serializes each Integration UID. Replacement waits
+for the old provider to stop. Missing credentials or incomplete input cancel
+execution; failed inventory polls retain observations only until their original
+absolute expiry. Source changes schedule a new reconciliation, while the host's
+own receipt/status writes do not invalidate its desired-source identity.
+
+```mermaid
+flowchart TD
+    Cut["Complete source/configuration/credential cut"] --> Lease["Per-instance election and incarnation"]
+    Lease --> Work["Serial preview, sync, actions and event delivery"]
+    Work --> Budget["Durable shared request budget"]
+    Budget --> Fence["Current lease and source authority"]
+    Fence --> Request["One bounded provider HTTP attempt"]
+    Work --> Write["Host lease barrier through root commit callback"]
+    Write --> Commit["Exact object CAS, current UID/configuration/credentials/HA"]
+    Request --> Facts["Fresh observations and durable receipts"]
+    Facts --> Inventory["Absolute-expiry inventory and owned desired records"]
+```
+
+Every actual provider request, including a retry or batch fallback, must enter
+the host's request adapter with its original operation context. A cluster-wide
+Cloudflare budget survives token/instance replacement. Rate limits and temporary
+failures use bounded backoff; permanent failures wait for changed input or an
+explicit command. Preview binds all destinations, and sync rejects a changed
+preview before effects. Unknown or foreign remote outcomes remain pending until
+a complete reread establishes ownership and outcome.
+
+Actions validate advertised bounded schemas and redact named credentials from
+responses. Event delivery persists sanitized input and a stable delivery ID
+before callbacks, retries to the original 24-hour deadline, and retains terminal
+records for deduplication and audit. Delivery is at least once. Guarded retention
+cleanup remains necessary before sustained production feeds.
+
+The host's `WithLease` holds instance admission through the root writer callback;
+the production adapter must still check current configuration, credentials and
+HA authority inside the actual transaction or carrier CAS. The host does not
+replace that commit check with a preliminary leader check. Real production
+adapters, provider modules and multi-node failover acceptance remain open.

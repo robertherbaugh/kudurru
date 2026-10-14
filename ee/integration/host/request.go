@@ -1,0 +1,68 @@
+package host
+
+import (
+	"context"
+	"fmt"
+
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
+)
+
+type scopeKey struct{}
+type requestScope struct {
+	j *job
+	g ExecutionGuard
+}
+
+func scoped(ctx context.Context, j *job, g ExecutionGuard) context.Context {
+	return context.WithValue(ctx, scopeKey{}, requestScope{j, g})
+}
+func (p providerHost) guard(ctx context.Context) (ExecutionGuard, error) {
+	s, ok := ctx.Value(scopeKey{}).(requestScope)
+	if !ok || s.j != p.j {
+		return ExecutionGuard{}, ErrFenced
+	}
+	if err := p.h.fence(ctx, p.j, s.g); err != nil {
+		return ExecutionGuard{}, err
+	}
+	return s.g, nil
+}
+
+func (p providerHost) Request(ctx context.Context, provider, account string, mutating bool, fn func(context.Context) error) error {
+	if fn == nil || provider == "" || account == "" {
+		return ErrInvalid
+	}
+	g, err := p.guard(ctx)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, p.h.opts.OperationTimeout)
+	defer cancel()
+	p.h.mu.RLock()
+	leaseCtx := p.j.leaseCtx
+	p.h.mu.RUnlock()
+	stopLease := context.AfterFunc(leaseCtx, cancel)
+	stopJob := context.AfterFunc(p.j.ctx, cancel)
+	defer stopLease()
+	defer stopJob()
+	if err := p.h.fence(ctx, p.j, g); err != nil {
+		return err
+	}
+	// Until provider user identity is verified, one conservative cluster bucket
+	// covers all Cloudflare accounts/tokens and survives credential rotation.
+	if provider == "cloudflare" {
+		account = "all"
+	}
+	id := kinds.Digest([]byte(fmt.Sprintf("%s/%s/%s/%d", g.Ledger.Owner.UID, g.Ledger.LeaseID, provider, p.h.requestSequence.Add(1))))
+	if _, err := p.h.opts.Ledger.ReserveBudget(ctx, g.Ledger, ledger.BudgetCharge{Provider: provider, Account: account, ID: id, Cost: 1, Capacity: 1000, WindowSeconds: 300}); err != nil {
+		return err
+	}
+	if mutating {
+		if err := p.h.fence(ctx, p.j, g); err != nil {
+			return err
+		}
+	}
+	// Providers return sanitized typed errors. The caller maps arbitrary error
+	// text to safe host errors before exposing it to status/API consumers.
+	return fn(ctx)
+}
