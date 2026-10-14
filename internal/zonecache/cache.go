@@ -128,11 +128,10 @@ func (o *Options) setDefaults() {
 
 // DefaultKinds returns every kind registered in the kudurru.io/v1alpha1
 // scheme that has a matching list type, sorted: a kind added to
-// api/v1alpha1 is watched without touching zonecache. UnblockRequest is
-// left out: it never affects serving, and a block page request must not
-// rebuild the serving snapshot (internal/unblock watches it). DHCPScope is
-// left out too: the DHCP runtime (internal/dhcpkube) watches it, and lease
-// DNS answers come from its own snapshots.
+// api/v1alpha1 is watched without touching zonecache. UnblockRequest and
+// management IAM configuration are left out: they do not affect DNS data.
+// Their own owners watch them, without rebuilding or gating DNS snapshots.
+// DHCPScope is also excluded: internal/dhcpkube owns its watch and lease DNS snapshots.
 func DefaultKinds() []store.Kind {
 	s := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(s); err != nil {
@@ -155,7 +154,8 @@ func DefaultKinds() []store.Kind {
 		if _, ok := reflect.New(listTyp).Interface().(metav1.ListInterface); !ok {
 			continue
 		}
-		if name == v1alpha1.KindUnblockRequest || name == v1alpha1.KindDHCPScope {
+		switch name {
+		case v1alpha1.KindDHCPScope, v1alpha1.KindUnblockRequest, v1alpha1.KindIdentityProvider, v1alpha1.KindRoleBinding, v1alpha1.KindServiceAccount:
 			continue
 		}
 		kinds = append(kinds, store.Kind(name))
