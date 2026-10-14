@@ -15,3 +15,19 @@ kube-vip, keepalived) and the monitoring values are in
 [values.yaml](values.yaml). `files/` holds generated copies of
 `deploy/prometheus/rules.yaml` and `deploy/grafana/kudurru-overview.json`
 (`make deploy-assets`).
+
+Keepalived supports multiple addresses through `vip.keepalived.vips`
+(entries with `name`, CIDR `address`, `vrid`, and optional `interface` and
+`preemptDelay`). `vip.keepalived.vrrpInterface` separates VRRP traffic
+from the VIP interfaces. The existing `vip.address`, `interface`, and
+`vrid` values still configure one VIP when the list is empty. The Edge
+panel reports live readiness, backend health, and VIP states from every
+supervisor.
+
+For Traefik, `ingress.enabled=true` and `ingress.kind=IngressRoute` create
+an HTTPS route with `nativeLB: false` and the `kudurru_instance` sticky
+cookie by default. Configure the host, `ingress.traefik.entryPoints`, and
+TLS settings; override or disable affinity under `ingress.traefik.sticky`.
+Standard Ingress resources with `ingress.className=traefik` get the same
+cookie settings through Service annotations. Direct Service clients can
+opt into `service.api.sessionAffinity=ClientIP`.

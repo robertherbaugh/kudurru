@@ -24,7 +24,7 @@ metadata:
     {{- end }}
 spec:
   serviceAccountName: {{ include "kudurru.serviceAccountName" . }}
-  automountServiceAccountToken: {{ not (include "kudurru.standalone" .) }}
+  automountServiceAccountToken: {{ or (not (include "kudurru.standalone" .)) (ne (include "kudurru.edge.separate" .) "") }}
   enableServiceLinks: false
   {{- if eq $kind "Deployment" }}
   # <pod>.<headless> resolves for the leader lookup of serve.go.
@@ -68,6 +68,15 @@ spec:
               fieldPath: metadata.name
         - name: KUDURRU_HEADLESS_SERVICE
           value: {{ include "kudurru.headlessFQDN" . | quote }}
+        {{- if eq $edgeMode "sidecar" }}
+        - name: KUDURRU_EDGE_STATUS_URL
+          value: http://127.0.0.1:8084
+        {{- else if include "kudurru.edge.separate" . }}
+        - name: KUDURRU_EDGE_SUPERVISORS
+          value: {{ printf "endpointslice:%s/%s-edge-status" .Release.Namespace (include "kudurru.fullname" .) | quote }}
+        - name: KUDURRU_VIP_SUPERVISED
+          value: {{ eq .Values.vip.provider "keepalived" | quote }}
+        {{- end }}
         - name: KUDURRU_SETTINGS_FILE
           value: /etc/kudurru/settings/settings.yaml
         - name: KUDURRU_ENCRYPTION_KEY_FILE

@@ -2193,22 +2193,39 @@ export interface components {
         EdgeBackend: {
             address: string;
             name: string;
+            node?: string;
             up: boolean;
         };
         EdgeComponent: {
             enabled: boolean;
+            message?: string;
             state?: string;
         };
         EdgeInfo: {
             backends: components["schemas"]["EdgeBackend"][];
             edge: components["schemas"]["EdgeComponent"];
             node: string;
+            supervisors: components["schemas"]["EdgeSupervisorStatus"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
             vip: components["schemas"]["EdgeComponent"];
+            vips: components["schemas"]["EdgeVIP"][];
+        };
+        EdgeSupervisorStatus: {
+            edge: components["schemas"]["EdgeComponent"];
+            node: string;
+            vip: components["schemas"]["EdgeComponent"];
+        };
+        EdgeVIP: {
+            address?: string;
+            name: string;
+            node: string;
+            /** Format: int64 */
+            priority: number;
+            state: string;
         };
         Endpoint: {
             dnsName: string;

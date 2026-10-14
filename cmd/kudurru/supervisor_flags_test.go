@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,7 @@ func TestChartSupervisorArgs(t *testing.T) {
 		"vip run": {"vip", "run", "--vip=dns=10.0.0.53/24@eth0#53", "--node-name=worker-1",
 			"--peers-from=nodes:kudurru.io/vip=true", "--hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp-hmac",
 			"--track-dnsdist-api=http://127.0.0.1:8083", "--dnsdist-api-key-file=/run/kudurru/dnsdist-api.key", "--require-backends=1"},
+		"vip run (separate interface)": {"vip", "run", "--vip=dns-a=10.0.0.53/24@eth1#53", "--vip=dns-b=10.0.0.54/24@eth1#54", "--vrrp-interface=eth0", "--preempt-delay=dns-b=30"},
 	} {
 		root := newRoot()
 		cmd, rest, err := root.Find(args)
@@ -45,6 +47,39 @@ func TestChartSupervisorArgs(t *testing.T) {
 		if err := cmd.ParseFlags(rest); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+func TestVIPSeparateVRRPInterface(t *testing.T) {
+	out := run(t, "vip", "render", "--vip", "dns-a=10.0.0.53/24@eth1#53", "--vip", "dns-b=10.0.0.54/24@eth2#54", "--vrrp-interface", "eth0", "--unicast-src", "10.30.50.11", "--peers", "10.30.50.12", "--node-count", "2")
+	for _, want := range []string{"interface eth0", "10.0.0.53/24 dev eth1", "10.0.0.54/24 dev eth2", "priority 200", "priority 190"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q", want)
+		}
+	}
+	if _, err := runErr("vip", "render", "--vip", "dns=10.0.0.53/24@eth1#53", "--vrrp-interface", "eth0\n}", "--unicast-src", "10.30.50.11", "--peers", "10.30.50.12"); err == nil {
+		t.Fatal("unsafe VRRP interface accepted")
+	}
+	// Source discovery uses the VRRP interface even when the VIP device
+	// does not exist locally (e.g. an address-only interface at startup).
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loopback string
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			loopback = iface.Name
+			break
+		}
+	}
+	if loopback == "" {
+		t.Fatal("no loopback interface")
+	}
+	f := vipFlags{vips: []string{"dns=10.0.0.53/24@missing-device#53"}, vrrpInterface: loopback}
+	c, err := f.config()
+	if err != nil || c.UnicastSrc != "127.0.0.1" {
+		t.Fatalf("source = %q err=%v", c.UnicastSrc, err)
 	}
 }
 

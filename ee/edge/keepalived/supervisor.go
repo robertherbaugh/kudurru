@@ -481,8 +481,13 @@ func (s *Supervisor) Handler() http.Handler {
 		_, _ = w.Write([]byte(msg + "\n"))
 	})
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
+		ready, message := s.Ready()
 		s.mu.Lock()
-		body := map[string]any{"config": s.cfg.ConfigPath, "state": s.state, "peers": s.current.Peers}
+		addresses := map[string]string{}
+		for _, v := range s.current.VIPs {
+			addresses[v.Name] = v.Prefix.String()
+		}
+		body := map[string]any{"ready": ready, "message": message, "node": s.cfg.Config.RouterID, "addresses": addresses, "config": s.cfg.ConfigPath, "state": s.state, "peers": s.current.Peers}
 		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(body)

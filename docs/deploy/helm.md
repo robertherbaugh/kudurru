@@ -93,6 +93,60 @@ a key that covers the `edge` feature.** `kudurru license status` and
 | Bare-metal VIP with keepalived | `edge.enabled=true`, `vip.provider=keepalived`, `vip.address=10.0.0.53/24`, `vip.keepalived.interface=eth0` |
 | DNS before the control plane | `priorityClassName=system-cluster-critical`, `persistence.local.enabled=true` |
 
+### Dashboard sticky sessions with Traefik
+
+The chart can create a Traefik `IngressRoute` with cookie affinity:
+
+```yaml
+ingress:
+  enabled: true
+  kind: IngressRoute
+  host: kudurru.example.com
+  traefik:
+    entryPoints: [websecure, dmz-websecure]
+    tls: {}                   # Traefik's default certificate
+```
+
+Traefik and its `traefik.io` CRDs must already be installed. The generated
+route targets the API Service's port and sets `nativeLB: false` so Traefik
+chooses a pod directly. Cookie affinity is enabled by default and emits:
+
+```yaml
+sticky:
+  cookie:
+    name: kudurru_instance
+    secure: true
+    httpOnly: true
+    sameSite: lax
+```
+
+Override these settings under `ingress.traefik.sticky.cookie`, or set
+`ingress.traefik.sticky.enabled: false` to disable affinity. The cookie
+keeps dashboard requests on one replica while it is available, making
+node-local views such as query logs consistent between requests. Session
+authentication still works across replicas through the shared encryption
+key. Traefik can select another replica when the current one is unavailable.
+
+`ingress.traefik.tls` accepts Traefik's TLS settings, for example
+`{secretName: dns-tls}`. `ingress.tls` remains the list used by standard
+Kubernetes Ingress resources. `ingress.className`, when set for an
+IngressRoute, becomes its `kubernetes.io/ingress.class` annotation. When
+migrating a separately managed IngressRoute into the chart, remove its
+previous definition or adopt it into Helm before upgrading; Helm cannot
+claim a resource owned by another manager automatically.
+
+For a standard HTTPS Ingress with `ingress.className: traefik`, the chart
+automatically puts the same sticky-cookie settings on the API Service as
+Traefik annotations. Explicit `service.api.annotations` override the
+generated defaults. Other ingress controllers can still use the existing
+annotation values to configure their own affinity.
+
+For clients reaching the Kubernetes API/UI Service directly, set
+`service.api.sessionAffinity: ClientIP` and optionally
+`service.api.sessionAffinityConfig.clientIP.timeoutSeconds` (1-86400;
+default 10800). Service affinity defaults to `None`. Traefik's direct pod
+routing uses the cookie settings above and bypasses Service affinity.
+
 ### mode=standalone
 
 `store.driver: sqlite`, a StatefulSet with one replica and a
@@ -226,6 +280,42 @@ networking are outside Baseline).
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
 `NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root: label the namespace
 `pod-security.kubernetes.io/enforce=privileged`.
+
+For two VIPs with separate VRRP and address interfaces:
+
+```yaml
+edge:
+  enabled: true
+vip:
+  provider: keepalived
+  keepalived:
+    interface: eth1          # virtual addresses
+    vrrpInterface: eth0      # advertisements and unicast source discovery
+    vips:
+      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
+      - {name: dns-b, address: 10.35.10.54/24, vrid: 54}
+```
+
+The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
+override `interface` and set `preemptDelay` (0-1000 seconds). Names and
+VRIDs must be unique. VIPs and unicast peers must use the same address
+family. The first VIP prefers the first node by name; the second reverses
+priorities, allowing active/active ownership. By default `nopreempt` keeps
+ownership stable after recovery; use `kudurru vip rebalance` or an entry's
+`preemptDelay` to restore the preferred owner. Leaving `vrrpInterface`
+empty preserves the existing behavior: VRRP uses each VIP's interface.
+Peer discovery still uses Kubernetes Node InternalIPs, which must be
+reachable through the VRRP interface.
+
+The Nodes page's Edge panel polls supervisor readiness, backend health,
+and each node's VIP states every ten seconds. Separate edge workloads
+publish a headless `<release>-edge-status` Service; the API discovers all
+its EndpointSlices, including unready pods, and polls their health
+listeners on 8084/8085. Failures remain visible as unavailable or degraded.
+The sidecar uses its local listener. With standalone mode and a separate
+edge, the chart grants the server read access to EndpointSlices in the
+release namespace and mounts its ServiceAccount token. If `rbac.create`
+is false, supply that permission yourself.
 
 ### Encrypted transports
 

@@ -67,13 +67,14 @@ type ClusterInfo struct {
 
 type clusterOutput struct{ Body *ClusterInfo }
 
-// EdgeInfo is GET /edge (dnsdist backends and VIP owners; the edge and
-// VIP supervisors are not wired into the API yet).
+// EdgeInfo is GET /edge: live supervisor readiness, backends and VIP states.
 type EdgeInfo struct {
-	Edge     EdgeComponent `json:"edge"`
-	VIP      EdgeComponent `json:"vip"`
-	Backends []EdgeBackend `json:"backends" nullable:"false"`
-	Node     string        `json:"node"`
+	Edge        EdgeComponent          `json:"edge"`
+	VIP         EdgeComponent          `json:"vip"`
+	Backends    []EdgeBackend          `json:"backends" nullable:"false"`
+	VIPs        []EdgeVIP              `json:"vips" nullable:"false"`
+	Supervisors []EdgeSupervisorStatus `json:"supervisors" nullable:"false"`
+	Node        string                 `json:"node"`
 	Took
 }
 
@@ -81,6 +82,7 @@ type EdgeInfo struct {
 type EdgeComponent struct {
 	Enabled bool   `json:"enabled"`
 	State   string `json:"state,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // EdgeBackend is one dnsdist backend.
@@ -88,6 +90,7 @@ type EdgeBackend struct {
 	Name    string `json:"name"`
 	Address string `json:"address"`
 	Up      bool   `json:"up"`
+	Node    string `json:"node,omitempty"`
 }
 
 type edgeOutput struct{ Body *EdgeInfo }
@@ -218,10 +221,6 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 		out.ReadOnly = s.opts.Objects.APIReadOnly()
 	}
 	return &clusterOutput{Body: out}, nil
-}
-
-func (s *Server) getEdge(context.Context, *struct{}) (*edgeOutput, error) {
-	return &edgeOutput{Body: &EdgeInfo{Backends: []EdgeBackend{}, Node: s.opts.NodeName}}, nil
 }
 
 func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, error) {

@@ -103,7 +103,9 @@ function EdgeRow({ label, c, off }: { label: string; c: EdgeComponentState | und
   return (
     <MetadataListItem label={label}>
       {c.enabled ? (
-        <DotLabel variant={c.state && /fail|error|down|fault/i.test(c.state) ? 'error' : 'success'} label={c.state ?? 'enabled'} />
+        <DotLabel variant={c.state === 'degraded' ? 'warning' : c.state && /fail|error|down|fault|unavailable/i.test(c.state) ? 'error' : c.state === 'unknown' ? 'neutral' : 'success'} label={c.state ?? 'enabled'}>
+          {c.message ? <Text type="supporting">{c.message}</Text> : null}
+        </DotLabel>
       ) : (
         <Text color="secondary">{off}</Text>
       )}
@@ -115,7 +117,7 @@ export default function NodesPage() {
   const api = useApi();
   const nodes = useNodes();
   const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info() });
-  const edge = useQuery({ queryKey: ['edge'], queryFn: () => api.cluster.edge() });
+  const edge = useQuery({ queryKey: ['edge'], queryFn: () => api.cluster.edge(), refetchInterval: 10_000 });
   const [open, setOpen] = useState<string | null>(null);
   const c = cluster.data;
   const columns: TableColumn<NodeRow>[] = [
@@ -241,15 +243,31 @@ export default function NodesPage() {
           {edge.data ? (
             <>
               <MetadataList columns="multi">
-                <EdgeRow label="dnsdist" c={edge.data.edge} off="not running on this node" />
-                <EdgeRow label="VIP (keepalived)" c={edge.data.vip} off="not running on this node" />
+                <EdgeRow label="dnsdist" c={edge.data.edge} off="not configured" />
+                <EdgeRow label="VIP (keepalived)" c={edge.data.vip} off="not configured" />
               </MetadataList>
+              {edge.data.supervisors?.length ? (
+                <List density="compact" aria-label="Edge supervisors">
+                  {edge.data.supervisors.map((s) => (
+                    <ListItem key={s.node} label={s.node} description={`dnsdist: ${s.edge.state ?? 'not configured'}${s.vip.enabled ? `; keepalived: ${s.vip.state ?? 'unknown'}` : ''}`} />
+                  ))}
+                </List>
+              ) : null}
+              {edge.data.vips?.length ? (
+                <List density="compact" aria-label="VIP states">
+                  {edge.data.vips.map((v) => (
+                    <ListItem key={`${v.name}:${v.node}`} label={`${v.name} on ${v.node}`} description={v.address}
+                      endContent={<DotLabel variant={v.state === 'MASTER' ? 'success' : v.state === 'BACKUP' ? 'neutral' : v.state === 'unknown' ? 'warning' : 'error'} label={v.state} />} />
+                  ))}
+                </List>
+              ) : null}
               {edge.data.backends.length ? (
                 <List density="compact" aria-label="dnsdist backends">
                   {edge.data.backends.map((b) => (
                     <ListItem
-                      key={b.name}
+                      key={`${b.node ?? ''}:${b.name}:${b.address}`}
                       label={b.name}
+                      description={b.node ? `via ${b.node}` : undefined}
                       startContent={<StatusDot variant={b.up ? 'success' : 'error'} label={b.up ? 'up' : 'down'} />}
                       endContent={
                         <Text type="code" size="sm" color="secondary">

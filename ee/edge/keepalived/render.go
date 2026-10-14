@@ -103,6 +103,9 @@ type Config struct {
 	// VIPs in priority order: VIP i gets reversed priorities for odd i so
 	// two VIPs run active/active.
 	VIPs []VIP
+	// VRRPInterface carries unicast advertisements. Empty uses each VIP's
+	// interface; the virtual address is always added to VIP.Interface.
+	VRRPInterface string
 	// PriorityIndex is this node's index (0 = preferred owner of the first
 	// VIP); NodeCount the number of nodes (len(Peers)+1 by default).
 	PriorityIndex int
@@ -224,6 +227,9 @@ func (c *Config) Validate() error {
 	}
 	if len(c.VIPs) == 0 {
 		add("no VIPs")
+	}
+	if c.VRRPInterface != "" && !vipSpec.MatchString("dns=x@"+c.VRRPInterface+"#1") {
+		add("VRRP interface %q is invalid", c.VRRPInterface)
 	}
 	names, vrids := map[string]bool{}, map[int]string{}
 	for _, v := range c.VIPs {
@@ -387,7 +393,11 @@ func Render(c Config) ([]byte, error) {
 		w("")
 		w("vrrp_instance VI_%s {", v.Name)
 		w("    state BACKUP")
-		w("    interface %s", v.Interface)
+		iface := c.VRRPInterface
+		if iface == "" {
+			iface = v.Interface
+		}
+		w("    interface %s", iface)
 		w("    virtual_router_id %d", v.VRID)
 		w("    priority %d", c.Priority(i))
 		w("    advert_int 1")
