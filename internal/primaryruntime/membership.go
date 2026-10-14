@@ -315,12 +315,26 @@ func (r *Runtime) publish(ctx context.Context, e *entry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	live := r.entries[m.Zone.Apex]
-	if live != e {
+	if live != e && !equivalentPublishedEntry(live, e) {
 		return ErrConflict
 	}
-	cp := *e
+	cp := *live
 	cp.member.Published = true
 	r.entries[m.Zone.Apex] = &cp
 	r.rebuild()
 	return nil
+}
+
+// A no-op reconcile can rebuild the exact committed entry while root waits for
+// complete publication. Pointer identity is not durable identity. Only accept
+// the same current committed lifecycle/head/inputs; root's exact acknowledgment
+// remains mandatory. Entries without a committed head cannot prove equivalence.
+func equivalentPublishedEntry(a, b *entry) bool {
+	if a == nil || b == nil || a.view == nil || b.view == nil {
+		return false
+	}
+	am, bm := a.member, b.member
+	am.Published, bm.Published = false, false
+	return reflect.DeepEqual(am, bm) && reflect.DeepEqual(a.lifecycle, b.lifecycle) &&
+		reflect.DeepEqual(a.view, b.view) && a.expiry.Equal(b.expiry)
 }
