@@ -233,3 +233,31 @@ sequenceDiagram
 
 Next: [Block lists](block-lists.md) shows how the lists behind all of this
 are fetched and compiled.
+
+## Captured client identity
+
+The identify stage captures one immutable inventory snapshot before matching.
+It supplies normalized MACs, hostnames and tags to the policy and modifier
+engines. Group IDs are policy membership, not inventory tags. The fixed order
+is exact IP, MAC, longest nonzero CIDR, exact hostname, hostname glob, ClientID,
+catch-all CIDR, then default group. All matches within a tier join; in
+particular, multiple MAC addresses cannot make group selection depend on order.
+A known-empty inventory result stays empty for that query and its dependencies.
+
+Inventory producers replace complete bounded batches off the DNS query path.
+Observed and expiry timestamps describe the device observation, not a repeated
+poll. The newest IP claim wins; equal-time conflicting claims are ambiguous.
+Expired or removed claims do not expose an older device at a reassigned IP.
+Failures retain the previous batch only until its existing expiry. The holder
+is shared by integrations; queries never call a provider or perform PTR lookups.
+
+```mermaid
+flowchart LR
+    provider["Inventory producer"] --> batch["Validate complete source batch"]
+    batch --> snapshot["Immutable IP ownership snapshot"]
+    transport["Address and optional client ID"] --> identify["Capture inventory once"]
+    snapshot --> identify
+    identify --> tiers["D86 matching tiers"]
+    tiers --> policy["Client policy"]
+    identify --> modifiers["Client names and tags"]
+```
