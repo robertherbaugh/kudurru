@@ -195,8 +195,12 @@ as BlockList URLs: loopback, link-local and metadata addresses need
 `blocking.allowLocalListURLs`. Replicas pull the leader's copy over the
 internal listener (`GET /internal/catalogue`, sha256-verified) every 5
 minutes and download the URL themselves only after the leader has been
-unreachable for 10 minutes. The last good download is kept in
-`<node.dataDir>/catalogue/` and served at the next start.
+unavailable for 10 minutes. A leader copy from a different configured URL is
+rejected, including when its content matches the current copy. The last good
+download is kept in `<node.dataDir>/catalogue/catalogue.receipt.json` and served
+at the next start. This bounded receipt atomically binds the original content,
+digest, source URL and format. Older separate document/source cache files are
+ignored; the node fetches a new copy and uses the embedded catalog meanwhile.
 
 A document is put in service only after it parses and validates. A
 `schemaVersion` this build does not read, a malformed document, an HTTP
@@ -343,10 +347,12 @@ What the opt-in does:
   link-local URLs need `blocking.allowLocalListURLs`). Replicas pull the
   leader's copy over the internal listener
   (`GET /internal/catalogue/adguard`, sha256-verified) and download it
-  themselves only after the leader has been unreachable for 10 minutes.
+  themselves only after the leader has been unavailable for 10 minutes.
   The last good download is kept in
-  `<node.dataDir>/catalogue/adguard-services.json` and served at the next
-  start; a failed or empty download keeps the previous one. The setting
+  `<node.dataDir>/catalogue/adguard-services.receipt.json` with its original
+  source and digest, and served at the next start. Legacy separate cache files
+  require a fresh download; a failed or empty download keeps an already accepted
+  copy. The setting
   needs a restart.
 - The file's format: an object with `blocked_services`, each
   `{id, name, rules, group}` (a bare array is read too, `icon_svg` is
