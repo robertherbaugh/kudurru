@@ -74,6 +74,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
 const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
+const Audit = lazy(() => import('./pages/AuditPage'));
 const License = lazy(() => import('./pages/LicensePage'));
 const Requests = lazy(() => import('./pages/RequestsPage'));
 const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
@@ -107,7 +108,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
   { path: '/messages', navKey: 'messages', label: 'Diagnosis', section: 'System', icon: Siren, page: Messages },
   { path: '/license', navKey: 'license', label: 'License', section: 'System', icon: KeyRound, page: License },
-  { path: '/access', navKey: 'access', label: 'Access & audit', section: 'System', icon: BookLock, page: Access },
+  { path: '/access', navKey: 'access', label: 'Access', section: 'System', icon: BookLock, page: Access },
+  { path: '/audit', navKey: 'audit', label: 'Audit Log', section: 'System', icon: ScrollText, page: Audit },
   { path: '/requests', navKey: 'requests', label: 'Requests', section: 'Filtering', icon: Inbox, page: Requests },
   { path: '/requests/:ns/:name', navKey: 'requests', label: 'Request', section: 'Filtering', icon: Inbox, page: RequestDetail, hidden: true },
 ];

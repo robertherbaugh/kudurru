@@ -9,6 +9,7 @@ import { mockDB } from '../mocks/handlers';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AccessPage from './AccessPage';
+import AuditPage from './AuditPage';
 import GroupDetailPage from './GroupDetailPage';
 import { useOnlyDefaultPolicy } from '../lib/usePolicyData';
 import LicensePage from './LicensePage';
@@ -115,10 +116,10 @@ describe('pages behind a key', () => {
     expect(seen.count()).toBe(0);
   });
 
-  it('the Audit tab asks for a key and requests nothing', async () => {
+  it('the Audit Log page asks for a key and requests nothing', async () => {
     mockDB().license = communityLicense();
     const seen = watch('/audit');
-    renderWithApp(<AccessPage />, { route: '/access?tab=audit' });
+    renderWithApp(<AuditPage />, { route: '/audit' });
     expect(await screen.findByTestId('locked-audit')).toHaveTextContent('The audit trail needs a license key');
     expect(seen.count()).toBe(0);
   });

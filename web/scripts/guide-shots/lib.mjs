@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.resolve(here, '../../../docs/guide/images');
+const OUT = process.env.KUDURRU_GUIDE_OUT ? path.resolve(process.env.KUDURRU_GUIDE_OUT) : path.resolve(here, '../../../docs/guide/images');
 const BASE = process.env.KUDURRU_GUIDE_URL ?? 'http://localhost:5199';
 export const BLOCKPAGE = process.env.KUDURRU_GUIDE_BLOCKPAGE;
 export const CHROME = process.env.KUDURRU_GUIDE_CHROME ?? '/usr/bin/google-chrome';

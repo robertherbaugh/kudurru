@@ -685,7 +685,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
 		// audit.store auditlog: every replica reads every node's events.
 		if cfg.AuditStore() == config.AuditStoreAuditLog {
-			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, logger); err != nil {
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, encPrev, logger); err != nil {
 				return fmt.Errorf("audit: %w", err)
 			}
 			if auditLogs != nil {

@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // Results of an audited action (§11.4).
@@ -149,6 +151,16 @@ type Query struct {
 type Reader interface {
 	Read(ctx context.Context, q Query) ([]Event, error)
 }
+
+// Verifier checks the integrity of the complete retained audit trail.
+// Verification must use the store's chain format, not a filtered page.
+type Verifier interface {
+	Verify(context.Context) error
+}
+
+// ErrTampered identifies changed contents, invalid seals or broken audit links.
+// Backend failures and canceled verification must not wrap this sentinel.
+var ErrTampered = store.ErrAuditIntegrity
 
 // ErrNotStored is returned by recorders that cannot read events back.
 var ErrNotStored = errors.New("audit: events are not stored on this node")

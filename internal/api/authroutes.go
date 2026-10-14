@@ -261,6 +261,8 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 }
 
 func (s *Server) registerAudit() {
+	register(s, operation(http.MethodGet, "/audit/verify", "verifyAudit", "Verify the complete retained audit chain and available batch seals", "audit"),
+		perm{resource: "audit", verb: "read"}, s.verifyAudit)
 	register(s, operation(http.MethodGet, "/audit", "listAudit", "Audit events of this node (oldest first; order=desc for newest first)", "audit"),
 		perm{resource: "audit", verb: "read"}, s.listAudit)
 	exportOp := operation(http.MethodGet, "/audit/export", "exportAudit", "Audit events as JSON lines", "audit")
@@ -268,6 +270,17 @@ func (s *Server) registerAudit() {
 		Content: map[string]*huma.MediaType{"application/x-ndjson": {Schema: &huma.Schema{Type: "string"}}}}}
 	register(s, exportOp, perm{resource: "audit", verb: "export"}, s.exportAudit)
 }
+
+// AuditVerification is the result of checking the retained store, independent
+// of the filters or pagination of GET /audit. Storage failures answer 503;
+// Verified=false reports an integrity failure. Results are cached for 30 seconds.
+type AuditVerification struct {
+	Verified  bool      `json:"verified"`
+	CheckedAt time.Time `json:"checkedAt"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+type auditVerifyOutput struct{ Body *AuditVerification }
 
 func (s *Server) auditReader() (audit.Reader, error) {
 	if err := s.requireFeature(license.FeatureAudit, "the audit trail"); err != nil {
@@ -342,7 +355,10 @@ func (s *Server) listAudit(ctx context.Context, in *auditInput) (*auditOutput, e
 	if err != nil {
 		return nil, auditError(err)
 	}
-	out := &AuditPage{Items: evs, Node: s.opts.NodeName}
+	out := &AuditPage{Items: make([]AuditEvent, len(evs)), Node: s.opts.NodeName}
+	for i, ev := range evs {
+		out.Items[i] = audit.RedactDocuments(ev)
+	}
 	if out.Items == nil {
 		out.Items = []AuditEvent{}
 	}
@@ -377,7 +393,7 @@ func (s *Server) exportAudit(ctx context.Context, in *auditInput) (*huma.StreamR
 				return
 			}
 			for _, ev := range evs {
-				if enc.Encode(ev) != nil {
+				if enc.Encode(audit.RedactDocuments(ev)) != nil {
 					return
 				}
 			}

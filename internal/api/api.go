@@ -302,6 +302,8 @@ type Server struct {
 	unblockFallback *unblock.Service
 	// nodes caches the cluster size for the license gate.
 	nodes nodeCounter
+	// auditVerification shares and caches full-store integrity scans.
+	auditVerification auditVerificationCache
 	// policyMu serializes the policy limit check with the create it guards.
 	policyMu sync.Mutex
 	// domainSvc is the Allowlist and Denylist over the store.

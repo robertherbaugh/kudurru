@@ -258,6 +258,9 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	ErrConflict = errors.New("store: resource version conflict")
 	ErrClosed   = errors.New("store: closed")
+	// ErrAuditIntegrity identifies changed audit contents or broken chain links,
+	// as distinct from an unavailable backend or a canceled verification.
+	ErrAuditIntegrity = errors.New("audit: integrity check failed")
 	// ErrTooLarge: the encoded object exceeds MaxObjectBytes (sqlite) or
 	// the apiserver refused it as too large (kube). HTTP maps it to 413.
 	ErrTooLarge = errors.New("store: object too large")

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
@@ -41,6 +43,7 @@ type fixture struct {
 	tokens *tokens.Tokens
 	path   string
 	c      *http.Client
+	audit  *audit.Memory
 }
 
 func start(t *testing.T, pol auth.PeerPolicy, api http.Handler) fixture {
@@ -48,7 +51,12 @@ func start(t *testing.T, pol auth.PeerPolicy, api http.Handler) fixture {
 	if runtime.GOOS != "linux" {
 		t.Skip("SO_PEERCRED is Linux-only")
 	}
-	st := authtest.Memory(t)
+	scheme, err := internalv1.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &audit.Memory{}
+	st := audit.WrapStore(authtest.Memory(t), rec, audit.WrapOptions{Scheme: scheme})
 	u, err := users.New(users.Options{Store: st})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +88,7 @@ func start(t *testing.T, pol auth.PeerPolicy, api http.Handler) fixture {
 			t.Error(err)
 		}
 	})
-	return fixture{users: u, tokens: tk, path: path, c: client(path)}
+	return fixture{users: u, tokens: tk, path: path, c: client(path), audit: rec}
 }
 
 func (f fixture) call(t *testing.T, method, path string, body any, out any) int {
@@ -155,6 +163,15 @@ func TestProtocol(t *testing.T) {
 	}
 	if left := time.Until(*tok.ExpiresAt); left > 12*time.Hour || left < 11*time.Hour {
 		t.Fatalf("break-glass token lifetime %s, want maxLifetime 12h", left)
+	}
+	var tokenEvent audit.Event
+	for _, ev := range f.audit.Events() {
+		if ev.Action == "apitoken.create" {
+			tokenEvent = ev
+		}
+	}
+	if tokenEvent.Actor.Kind != string(auth.KindLocalRoot) || tokenEvent.Actor.ID != "unix:"+itoa(os.Getuid()) || tokenEvent.Actor.Auth != auth.MethodUnix || tokenEvent.Request.Path != "/admin/v1/create-token" || tokenEvent.Request.Method != http.MethodPost || tokenEvent.Authz != "local" {
+		t.Fatalf("admin token attribution: %+v", tokenEvent)
 	}
 	p, err := f.tokens.Verify(ctx, tok.Token, "")
 	if err != nil || !p.BuiltinAdmin || p.ServiceAccount != tokens.DefaultNamespace+"/"+BreakGlassAccount {

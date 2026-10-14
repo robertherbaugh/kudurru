@@ -90,7 +90,7 @@ The navigation list is at the left. It has four sections.
 | Overview | **Dashboard**, **Query log**, **Long-term** |
 | Filtering | **Lists**, **Domains**, **Allowlist**, **Denylist**, **Groups**, **Clients**, **Policies**, **Requests** |
 | DNS | **Zones**, **Upstreams** |
-| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **License**, **Access & audit** |
+| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **License**, **Access**, **Audit Log** |
 
 A number in a red or yellow badge next to a page shows the count of
 messages (**Diagnosis**) or of open requests (**Requests**).

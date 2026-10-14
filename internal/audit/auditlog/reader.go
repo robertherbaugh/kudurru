@@ -41,6 +41,10 @@ type Reader struct {
 	Client client.Reader
 	// Namespace is the release namespace.
 	Namespace string
+	// SealKeys verify batch seals using the cluster encryption keys.
+	SealKeys [][]byte
+	// VerifyPending checks the local spool, including events not shipped yet.
+	VerifyPending func(context.Context) error
 	// Pending returns the serving node's events not shipped yet
 	// (audit.Shipper.Pending), so a change shows on the node that made it
 	// at once; PendingSource is their spool id. nil adds none.
@@ -59,6 +63,17 @@ type Reader struct {
 }
 
 var _ audit.Reader = (*Reader)(nil)
+
+// Verify reads fresh batches from the API server, bypassing the read caches.
+func (r *Reader) Verify(ctx context.Context) error {
+	if err := Verify(ctx, r.Client, r.Namespace, r.SealKeys); err != nil {
+		return err
+	}
+	if r.VerifyPending != nil {
+		return r.VerifyPending(ctx)
+	}
+	return nil
+}
 
 // batchMeta is what the reader knows of a batch without its events.
 type batchMeta struct {
