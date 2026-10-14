@@ -34,6 +34,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
+	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
@@ -66,6 +67,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/settings"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -158,6 +160,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
 			Validator: v, Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
+			ValidateReplicaEntry: servingauth.ValidateEntry,
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
@@ -166,6 +169,15 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 			return nil, nil, nil, fmt.Errorf("another kudurru process owns state.db: %w", err)
 		case err != nil:
 			return nil, nil, nil, err
+		}
+		// Seed the explicit auth-owner manifest once, under the same persisted
+		// writer fence as commands. An enrolled follower receives it only from
+		// its complete primary image; missing or malformed history is not reset.
+		if s.Authority().Writable() {
+			if err := s.Command(ctx, s.Authority().Term, security.Initialize); err != nil {
+				_ = s.Close()
+				return nil, nil, nil, fmt.Errorf("initialize auth security: %w", err)
+			}
 		}
 		st = s
 	case "kube":

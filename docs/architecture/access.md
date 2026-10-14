@@ -60,6 +60,16 @@ TOTP replay consumption and the public session workflow remain in progress. The
 request diagrams below describe the existing production stack until that wiring
 is installed. Kubernetes migration admission is a separate verified journal gate.
 
+SQLite startup initializes the explicit empty security manifest under its writer
+fence and validates owner rows on later writes/replica installation. Existing
+history is preserved; an absent root beside other auth rows is an error.
+`internal/auth/security` supplies transaction-bound object changes and monotonic
+revocation floors, session enrollment/revocation, and expiry collection. Current
+local-password issuance resolves the actual account, grants and canonical login
+policy/TTL before staging enrollment in that same command. Cookie sealing requires
+a committed view containing the enrollment. These command APIs are tested; the
+production HTTP stack still needs to adopt them for every relevant writer.
+
 ## Principals
 
 | Kind | Comes from | Typical caller |
