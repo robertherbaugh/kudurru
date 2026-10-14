@@ -46,6 +46,20 @@ written into the data directory takes effect without a restart, and it logs
 every change of state. An invalid key never leaves the previous key in
 force: a typo is visible at once.
 
+The v0.2 command assembly can retain an immutable `license.Cut` and exclude
+`Set`/`Load` replacement through `Manager.WithCurrent`. The cut exposes detached
+policy, a process-local installation identity and a lock-free deadline check.
+Identical polling preserves the installation; removal, read failure and later
+reactivation invalidate old cuts. A final transaction check still rejects grace
+expiry while the replacement pin is held. This pin protects management commands
+and complete publication, never ordinary DNS queries.
+
+The installation identity is not durable entitlement history. Provider activation
+still requires the registry's accepted receipt and transactional revocation floor;
+restart and identical-byte loss/regain must follow that authority protocol. Root
+production composition supplies the pin around the complete command, including
+writer waits and successful no-op responses.
+
 ## The key
 
 A key is a compact JWS signed with Ed25519 by the licensor. The header names

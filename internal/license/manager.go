@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -62,10 +63,12 @@ type Manager struct {
 	ring Keyring
 	now  func() time.Time
 
-	mu     sync.RWMutex
-	claims *Claims
-	err    error
-	source string
+	mu      sync.RWMutex
+	claims  *Claims
+	err     error
+	source  string
+	current atomic.Pointer[installation]
+	changed chan struct{}
 }
 
 // Options configures New.
@@ -88,7 +91,9 @@ func New(opts Options) (*Manager, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Manager{ring: opts.Keyring, now: opts.Now}, nil
+	m := &Manager{ring: opts.Keyring, now: opts.Now}
+	m.refreshLocked()
+	return m, nil
 }
 
 // Set verifies raw and makes it the node's key. An empty raw removes the key.
@@ -97,6 +102,7 @@ func New(opts Options) (*Manager, error) {
 func (m *Manager) Set(raw, source string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	defer m.refreshLocked()
 	if strings.TrimSpace(raw) == "" {
 		m.claims, m.err, m.source = nil, nil, ""
 		return nil
@@ -119,6 +125,10 @@ func (m *Manager) Status() Status {
 	m.mu.RLock()
 	claims, err, source := m.claims, m.err, m.source
 	m.mu.RUnlock()
+	return statusAt(claims, err, source, m.clock())
+}
+
+func statusAt(claims *Claims, err error, source string, now time.Time) Status {
 	if err != nil {
 		s := community()
 		s.State, s.Source, s.Error = StateInvalid, source, err.Error()
@@ -127,7 +137,6 @@ func (m *Manager) Status() Status {
 	if claims == nil {
 		return community()
 	}
-	now := m.now()
 	exp := claims.Expires()
 	grace := exp.Add(Grace)
 	s := Status{
@@ -271,6 +280,7 @@ func Unrestricted() *Manager {
 		Nodes: math.MaxInt32, IssuedAt: time.Now().Unix(), ExpiresAt: far.Unix(),
 	}
 	m.source = "test"
+	m.refreshLocked()
 	return m
 }
 
@@ -307,6 +317,7 @@ func (m *Manager) Load(sources []Source) error {
 		if err != nil {
 			m.mu.Lock()
 			m.claims, m.err, m.source = nil, fmt.Errorf("read %s: %w", src.Name, err), src.Name
+			m.refreshLocked()
 			m.mu.Unlock()
 			return fmt.Errorf("read %s: %w", src.Name, err)
 		}
