@@ -1,9 +1,9 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectEntries } from '../mocks/domains';
 import { mockDB } from '../mocks/handlers';
-import { getSelector, valueOf } from '../test/controls';
+import { getSelector, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp, uiEntryValues } from '../test/utils';
 import QueryLogPage, { filtersFrom, fromLocalInput, requestsByDomain, toLocalInput, unblockLink } from './QueryLogPage';
@@ -64,6 +64,11 @@ describe('QueryLogPage', () => {
     expect(seen[0]?.get('scope')).toBe('node');
     expect(seen[0]?.get('node')).toBe('kudurru-1');
     expect(valueOf(getSelector('Status'))).toBe('blocked');
+    expect(valueOf(getSelector('Node scope'))).toBe('kudurru-1');
+    pick(getSelector('Node scope'), 'All');
+    await waitFor(() => expect(seen.at(-1)?.get('scope')).toBe('cluster'));
+    expect(seen.at(-1)?.get('node')).toBeNull();
+    expect(seen.at(-1)?.get('domain')).toBe('*.doubleclick.net');
   });
 
   it('expands the "why" row from the keyboard', async () => {
@@ -107,6 +112,91 @@ describe('QueryLogPage', () => {
     await screen.findByTestId('log-totals');
     const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
     expect(allow).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+class FakeEventSource extends EventTarget {
+  static CLOSED = 2;
+  static instances: FakeEventSource[] = [];
+  readyState = 1;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(readonly url: string) { super(); FakeEventSource.instances.push(this); }
+  close() { this.readyState = FakeEventSource.CLOSED; }
+  emit(type: string, data: unknown, lastEventId = '') { this.dispatchEvent(new MessageEvent(type, { data: JSON.stringify(data), lastEventId })); }
+}
+
+describe('QueryLogPage live tail', () => {
+  afterEach(() => { vi.unstubAllGlobals(); FakeEventSource.instances = []; });
+
+  it('tails all nodes with central history, isolates colliding IDs, and refreshes history on pause', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const original = mockDB().queries[0]!;
+    let history = [{ ...original, node: 'node-a', domain: 'central-history.test' }];
+    const seen = spyQueries();
+    server.use(http.get(`${API}/queries`, () => HttpResponse.json({ source: 'central', scope: 'cluster', nodes: [{ name: 'old-pod', ok: false }], partial: true, queries: history, cursor_next: 'central-cursor', records_total: history.length, records_filtered: history.length })));
+    renderWithApp(<QueryLogPage />, { route: '/queries?domain=*.test' });
+    await logRow('central-history.test');
+    expect(screen.getByText('Partial results: 1 node delayed or unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/old-pod/)).toBeNull();
+    const toggle = screen.getByRole('switch', { name: 'Live tail' });
+    expect(toggle).not.toBeDisabled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const stream = FakeEventSource.instances[0]!;
+    const url = new URL(stream.url);
+    expect(url.searchParams.get('scope')).toBe('cluster');
+    expect(url.searchParams.get('domain')).toBe('*.test');
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+    expect(screen.getByText('Waiting for new queries…')).toBeInTheDocument();
+    act(() => {
+      stream.onopen?.();
+      stream.emit('scope', { scope: 'cluster', nodes: [{ name: 'node-a', ok: true }, { name: 'node-b', ok: true }], partial: false });
+      stream.emit('query', { ...original, node: 'node-a', domain: 'a-live.test' }, 'cursor-a');
+      stream.emit('query', { ...original, node: 'node-b', domain: 'b-live.test' }, 'cursor-b');
+    });
+    await logRow('a-live.test');
+    await logRow('b-live.test');
+    expect(screen.queryByText('central-history.test')).toBeNull();
+    expect(screen.queryByText(/Partial results/)).toBeNull();
+    expect(screen.getByTestId('log-totals')).toHaveTextContent('Live queries from active nodes');
+    history = [{ ...original, domain: 'refreshed-history.test' }];
+    const readsBeforePause = seen.length;
+    fireEvent.click(toggle);
+    await logRow('refreshed-history.test');
+    expect(seen.length).toBeGreaterThan(readsBeforePause);
+    expect(stream.readyState).toBe(FakeEventSource.CLOSED);
+    expect(screen.queryByText('a-live.test')).toBeNull();
+  });
+
+  it('merges node streams with peer history and reconnects when the selected node changes', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const original = mockDB().queries[0]!;
+    const history = [{ ...original, node: 'node-a', domain: 'peer-history.test' }];
+    server.use(http.get(`${API}/queries`, () => HttpResponse.json({ scope: 'cluster', nodes: [{ name: 'node-a', ok: true }], partial: false, queries: history, records_total: 1, records_filtered: 1 })));
+    renderWithApp(<QueryLogPage />, { route: '/queries' });
+    await logRow('peer-history.test');
+    fireEvent.click(screen.getByRole('switch', { name: 'Live tail' }));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const stream = FakeEventSource.instances[0]!;
+    act(() => {
+      stream.emit('query', history[0], 'cursor-a');
+      stream.emit('query', { ...original, node: 'node-b', domain: 'peer-live.test' }, 'cursor-b');
+      stream.emit('scope', { scope: 'cluster', nodes: [{ name: 'node-a', ok: true }, { name: 'node-b', ok: false }], partial: true });
+    });
+    await logRow('peer-live.test');
+    expect(await screen.findByText('Showing 2 queries')).toBeInTheDocument();
+    expect(screen.getByText('Partial results: 1 node delayed or unavailable')).toBeInTheDocument();
+    await waitFor(() => expect(mockDB().nodes.length).toBeGreaterThan(0));
+    pick(getSelector('Node scope'), 'kudurru-1');
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    const url = new URL(FakeEventSource.instances[1]!.url);
+    expect(url.searchParams.get('scope')).toBe('node');
+    expect(url.searchParams.get('node')).toBe('kudurru-1');
+    expect(url.searchParams.has('last_event_id')).toBe(false);
+    expect(stream.readyState).toBe(FakeEventSource.CLOSED);
+    expect(screen.queryByText('peer-live.test')).toBeNull();
   });
 });
 

@@ -116,7 +116,7 @@ export function Shell() {
       heading={<Brand />}
       endContent={
         <HStack gap={2} vAlign="center" wrap="wrap">
-          {match?.route.scoped ? <ScopeSelector /> : null}
+          {match?.route.scoped === true ? <ScopeSelector /> : null}
           <MessagesBadge />
           <AppearanceButton />
           <AccountMenu />

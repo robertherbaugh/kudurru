@@ -84,6 +84,17 @@ body {
 .k-tile[data-tone='lists'] { --k-tile-accent: var(--q-permitted); }
 
 /*
+ * Long-term range controls: DateTimeInput fixes both segments to an equal
+ * wrapping basis with no compact layout prop. Give the date more room than
+ * the time so both remain on one line. StackItem's fill size grows the two
+ * bounds equally; its wrapping basis has no prop, so reserve enough room
+ * for a full date and time before allowing a bound onto the next row.
+ */
+.k-range-bound { flex-basis: 19rem; }
+.k-compact-datetime .astryx-date-time-input-date-segment { flex: 2 1 0; }
+.k-compact-datetime .astryx-date-time-input-time-segment { flex: 1 1 0; }
+
+/*
  * uPlot draws its own DOM (legend table, cursor overlay) inside the chart
  * mount node (charts/StackedBars.tsx); no component reaches it.
  */
