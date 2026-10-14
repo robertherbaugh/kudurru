@@ -8,9 +8,9 @@ Deletion defaults to `Retain`, and every optional UniFi write defaults to off.
 The [sample](../../config/samples/kudurru.io_v1alpha1_integration.yaml) starts
 suspended so applying an example cannot publish records.
 
-The schema, credential resolver, publication planner, durable ownership ledger
-and background host are implemented. Provider modules, production commit
-adapters and API/dashboard controls remain parts of the full
+The schema, credential resolver, publication planner, durable ownership ledger,
+background host and Cloudflare SDK adapter are implemented. Production commit
+adapters, other providers and API/dashboard controls remain parts of the full
 [v0.2 implementation](../v0.2/README.md).
 
 ```mermaid
@@ -125,4 +125,43 @@ The host's `WithLease` holds instance admission through the root writer callback
 the production adapter must still check current configuration, credentials and
 HA authority inside the actual transaction or carrier CAS. The host does not
 replace that commit check with a preliminary leader check. Real production
-adapters, provider modules and multi-node failover acceptance remain open.
+adapters and multi-node failover acceptance remain open.
+
+## Cloudflare adapter
+
+`ee/integration/cloudflare` uses the official Cloudflare Go v7 SDK. A provider
+captures its exact cluster and Integration UID, configuration and named token.
+It resolves each destination to the verified account and zone IDs and checks
+the configured apex. Complete bounded pagination is read twice; disagreement,
+duplicate IDs or malformed observations rejects the destination. These checks
+detect observed drift; Cloudflare does not supply a transactional snapshot or
+record compare-and-swap.
+
+Preview and apply share the host planner and the same provider normalization.
+Original source endpoints include public-only records. Provider defaults,
+per-target options, translations, TTL, proxy and plan-specific metadata limits
+are validated before remote effects. The comment ownership suffix binds both
+cluster and Integration UID. Foreign or ambiguous markers stay protected;
+explicit adoption may use unowned records or recognized external-dns heritage.
+
+Every actual HTTP attempt enters the original host request context and durable
+budget. SDK retries and redirects are disabled. Batches contain at most 200
+effects with cancellation-aware cadence; uncertain outcomes require complete
+rereads before another effect. Confirmed provider IDs and partial facts feed
+the durable receipt ledger. No provider call runs on a DNS request.
+
+```mermaid
+flowchart LR
+    Source["Original desired endpoints"] --> Plan["Shared preview/apply plan"]
+    Remote["Two complete bounded SDK reads"] --> Plan
+    Plan --> Intent["Durable reserved intent"]
+    Intent --> Budget["Current host fence and request budget"]
+    Budget --> Batch["Bounded SDK batch"]
+    Batch --> Read["Reread exact IDs, values and ownership"]
+    Read --> Receipt["Confirmed or partial durable receipt"]
+```
+
+Actual SDK tests against local HTTP servers cover UID-bound ownership, paging
+drift, wire records, partial batches, ambiguous responses and restart recovery.
+Production admission/mounting and host recovery of mixed intermediate attributes
+remain required before enabling the adapter in a running server.
