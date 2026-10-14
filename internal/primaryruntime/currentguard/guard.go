@@ -26,6 +26,10 @@ type Pinned struct {
 	Identity string
 	Keys     *dnsserver.StaticKeyring
 	Notify   sqliteadapter.BackgroundPolicy
+	// Current is a mandatory memory-only predicate for the exact retained
+	// dependency cut, including its absolute deadlines. It must take no locks
+	// or perform I/O; replacement exclusion alone does not stop time expiry.
+	Current func() bool
 }
 
 // PinFunc holds real dependency-replacement/publication exclusion through ALL
@@ -77,7 +81,7 @@ func (o *Owner) pinned(ctx context.Context, f pr.PublicationFence, fn func(Pinne
 		active := new(atomic.Bool)
 		active.Store(true)
 		defer active.Store(false)
-		if p.Keys == nil || p.Identity == "" || len(p.Identity) > 512 {
+		if p.Keys == nil || p.Identity == "" || len(p.Identity) > 512 || p.Current == nil || !p.Current() {
 			callbackErr = pr.ErrUnavailable
 		} else if callbackErr = ctx.Err(); callbackErr == nil {
 			callbackErr = fn(p, active)
@@ -108,7 +112,7 @@ func (g credentialGuard) WithCurrent(ctx context.Context, proof pr.ProofIdentity
 		return fn(sqliteadapter.CurrentCredential{
 			Principal: proof.Principal, ProviderVersion: id.ProviderVersion, Algorithm: id.Algorithm,
 			Policy: func(commandCtx context.Context, tx *sqlite.CommandTx, source *public.DNSZone, policy zonestate.Policy) error {
-				if err := admitted(ctx, commandCtx, active, f, tx); err != nil {
+				if err := admitted(ctx, commandCtx, active, p, f, tx); err != nil {
 					return err
 				}
 				if !time.Now().Before(proof.NotAfter) {
@@ -121,7 +125,7 @@ func (g credentialGuard) WithCurrent(ctx context.Context, proof pr.ProofIdentity
 					if !time.Now().Before(proof.NotAfter) {
 						return pr.ErrUnavailable
 					}
-					return stillPinned(ctx, finalCtx, active)
+					return stillPinned(ctx, finalCtx, active, p)
 				})
 			},
 		})
@@ -134,32 +138,35 @@ func (g backgroundGuard) WithCurrent(ctx context.Context, f pr.PublicationFence,
 	}
 	return g.owner.pinned(ctx, f, func(p Pinned, active *atomic.Bool) error {
 		return fn(func(commandCtx context.Context, tx *sqlite.CommandTx, check sqliteadapter.BackgroundCheck) error {
-			if err := admitted(ctx, commandCtx, active, f, tx); err != nil {
+			if err := admitted(ctx, commandCtx, active, p, f, tx); err != nil {
 				return err
 			}
 			if err := g.owner.checkBackground(commandCtx, tx, p, check); err != nil {
 				return err
 			}
 			return tx.RequireCommitCheck(func(finalCtx context.Context) error {
-				return stillPinned(ctx, finalCtx, active)
+				return stillPinned(ctx, finalCtx, active, p)
 			})
 		})
 	})
 }
 
-func admitted(pinCtx, ctx context.Context, active *atomic.Bool, f pr.PublicationFence, tx *sqlite.CommandTx) error {
+func admitted(pinCtx, ctx context.Context, active *atomic.Bool, p Pinned, f pr.PublicationFence, tx *sqlite.CommandTx) error {
 	if !active.Load() || tx == nil || !f.Term.Same(tx.Authority()) || f.Incarnation != tx.Incarnation() {
 		return pr.ErrUnavailable
 	}
-	return stillPinned(pinCtx, ctx, active)
+	return stillPinned(pinCtx, ctx, active, p)
 }
 
-func stillPinned(pinCtx, ctx context.Context, active *atomic.Bool) error {
+func stillPinned(pinCtx, ctx context.Context, active *atomic.Bool, p Pinned) error {
 	if !active.Load() {
 		return pr.ErrUnavailable
 	}
 	if err := pinCtx.Err(); err != nil {
 		return err
+	}
+	if p.Current == nil || !p.Current() {
+		return pr.ErrUnavailable
 	}
 	return ctx.Err()
 }

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -102,7 +105,7 @@ func newSQLiteFixture(t *testing.T) *sqliteFixture {
 	t.Cleanup(func() { _ = s.Close() })
 	f := &sqliteFixture{t: t, s: s}
 	f.fence = pr.PublicationFence{Term: s.Authority().Term, Incarnation: s.Authority().Incarnation}
-	f.h = &testHolder{gate: make(chan struct{}, 1), current: Pinned{Identity: "test-host-v1", Keys: testRing(t, "first")}, writer: f.fence}
+	f.h = &testHolder{gate: make(chan struct{}, 1), current: Pinned{Identity: "test-host-v1", Keys: testRing(t, "first"), Current: func() bool { return true }}, writer: f.fence}
 	f.h.gate <- struct{}{}
 	f.g, err = New(Options{Pin: f.h.pin})
 	if err != nil {
@@ -506,6 +509,73 @@ func TestActualSamePinCoversFinalCommitCheckAndOuterCancellation(t *testing.T) {
 				}
 			} else if out.Rcode != dns.RcodeSuccess || !out.Committed || f.view(l).Head.Spec.CommitSequence != v.Head.Spec.CommitSequence+1 {
 				t.Fatal(out)
+			}
+		})
+	}
+}
+
+func TestActualDependencyExpiryRejectsUpdateDedupAndNoop(t *testing.T) {
+	for _, mode := range []string{"write", "dedup", "noop"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newSQLiteFixture(t)
+			l := f.active("primary", "example.")
+			request := f.request(l, "dependency-deadline", "dynamic.example. 60 IN A 192.0.2.1")
+			if mode != "write" {
+				if out := f.r.Apply(f.ctx(), request); out.Rcode != dns.RcodeSuccess {
+					t.Fatal(out)
+				}
+				if mode == "noop" {
+					request = f.request(l, "dependency-noop", "dynamic.example. 60 IN A 192.0.2.1")
+				}
+			}
+			before := f.image()
+			var expired atomic.Bool
+			f.h.current.Current = func() bool { return !expired.Load() }
+			// The actual admission path has already registered the guard's
+			// final check; elapsed time need not replace a dependency pointer.
+			f.extra = func(context.Context, *sqlite.CommandTx, *public.DNSZone, zonestate.Policy) error {
+				expired.Store(true)
+				return nil
+			}
+			out := f.r.Apply(f.ctx(), request)
+			// Dedup retains the truthful earlier-commit diagnostic even when
+			// current admission denies its response; it must never succeed or
+			// mutate that already committed receipt/head.
+			if (mode != "dedup" && out.Committed) || out.Rcode == dns.RcodeSuccess || !bytes.Equal(before, f.image()) {
+				t.Fatal("expired dependency committed or replayed", out)
+			}
+		})
+	}
+}
+
+func TestActualDependencyExpiryRollsBackBackgroundAndReadOnlyCommands(t *testing.T) {
+	for _, mutate := range []bool{false, true} {
+		t.Run(fmt.Sprint("write-", mutate), func(t *testing.T) {
+			f := newSQLiteFixture(t)
+			l := f.active("primary", "example.")
+			var source public.DNSZone
+			if err := f.s.Get(f.ctx(), store.Key{Kind: "DNSZone", Name: "primary"}, &source); err != nil {
+				t.Fatal(err)
+			}
+			before := f.image()
+			var expired atomic.Bool
+			f.h.current.Current = func() bool { return !expired.Load() }
+			err := f.g.Background().WithCurrent(f.ctx(), f.fence, func(check sqliteadapter.BackgroundPolicy) error {
+				return f.s.Command(f.ctx(), f.fence.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+					if err := check(ctx, tx, sqliteadapter.BackgroundCheck{Lifecycle: l, Source: &source, Reason: "lifecycle"}); err != nil {
+						return err
+					}
+					if mutate {
+						if _, err := tx.Apply(ctx, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "other"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypeForward, ZoneName: "other.example."}}, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+							return err
+						}
+					}
+					expired.Store(true)
+					return nil
+				})
+			})
+			if !errors.Is(err, pr.ErrUnavailable) || !bytes.Equal(before, f.image()) {
+				t.Fatal("expired background dependency passed final admission", err)
 			}
 		})
 	}

@@ -138,7 +138,13 @@ func (o *KeyringOwner) signal() {
 	o.changed = make(chan struct{})
 }
 
-func (o *KeyringOwner) withCurrent(ctx context.Context, fn func(KeyringCut) error) error {
+// WithCurrent pins the current installation through the entire synchronous
+// callback. Call it after publication/provider/host pins and before catalog,
+// transferred manager and SQLite gates. It never reenters the publisher gate.
+func (o *KeyringOwner) WithCurrent(ctx context.Context, fn func(KeyringCut) error) error {
+	if o == nil || ctx == nil || fn == nil {
+		return serving.ErrComponents
+	}
 	if err := o.lock(ctx); err != nil {
 		return err
 	}
@@ -159,8 +165,8 @@ func (o *KeyringOwner) PrimaryPin(publisher *serving.Publisher) currentguard.Pin
 			return serving.ErrComponents
 		}
 		return publisher.WithWriterGate(ctx, serving.TermActivation{Term: fence.Term, Incarnation: fence.Incarnation}, func() error {
-			return o.withCurrent(ctx, func(cut KeyringCut) error {
-				return fn(currentguard.Pinned{Identity: cut.Identity(), Keys: cut.Keys()})
+			return o.WithCurrent(ctx, func(cut KeyringCut) error {
+				return fn(currentguard.Pinned{Identity: cut.Identity(), Keys: cut.Keys(), Current: cut.Current})
 			})
 		})
 	}
@@ -182,7 +188,7 @@ type keyringSource struct {
 }
 
 func (s keyringSource) PublishIfCurrent(ctx context.Context, token sqlite.GenerationToken, options sqlite.PublicationOptions, publish func() error) error {
-	return s.owner.withCurrent(ctx, func(KeyringCut) error {
+	return s.owner.WithCurrent(ctx, func(KeyringCut) error {
 		return s.Source.PublishIfCurrent(ctx, token, options, publish)
 	})
 }

@@ -24,6 +24,16 @@ func TestNilMissingGenerationAndPinMisuseFailClosed(t *testing.T) {
 			return fn(Pinned{Keys: testRing(t, "test")})
 		},
 		func(_ context.Context, _ pr.PublicationFence, fn func(Pinned) error) error {
+			p := f.h.current
+			p.Current = nil
+			return fn(p)
+		},
+		func(_ context.Context, _ pr.PublicationFence, fn func(Pinned) error) error {
+			p := f.h.current
+			p.Current = func() bool { return false }
+			return fn(p)
+		},
+		func(_ context.Context, _ pr.PublicationFence, fn func(Pinned) error) error {
 			if err := fn(f.h.current); err != nil {
 				return err
 			}
