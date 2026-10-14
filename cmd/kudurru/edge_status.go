@@ -19,7 +19,14 @@ import (
 func edgeStatusSource(restCfg *rest.Config, node string) (func(context.Context) ([]api.EdgeSupervisorEndpoint, error), bool, error) {
 	edgeURL, vipURL := os.Getenv("KUDURRU_EDGE_STATUS_URL"), os.Getenv("KUDURRU_VIP_STATUS_URL")
 	source := os.Getenv("KUDURRU_EDGE_SUPERVISORS")
-	vip, _ := strconv.ParseBool(os.Getenv("KUDURRU_VIP_SUPERVISED"))
+	var vip bool
+	if value := os.Getenv("KUDURRU_VIP_SUPERVISED"); value != "" {
+		var err error
+		vip, err = strconv.ParseBool(value)
+		if err != nil {
+			return nil, false, fmt.Errorf("KUDURRU_VIP_SUPERVISED must be a boolean")
+		}
+	}
 	if source == "" {
 		if edgeURL == "" && vipURL == "" {
 			return nil, false, nil

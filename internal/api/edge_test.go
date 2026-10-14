@@ -43,9 +43,72 @@ func TestEdgeLiveSupervisors(t *testing.T) {
 	if !got.Backends[0].Up || got.Backends[1].Up {
 		t.Fatalf("backends = %+v", got.Backends)
 	}
+	for i, supervisor := range got.Supervisors {
+		for _, backend := range got.Backends[i*2 : i*2+2] {
+			if backend.Node != supervisor.Node {
+				t.Fatalf("backend node %q differs from supervisor node %q", backend.Node, supervisor.Node)
+			}
+		}
+	}
 	// A FAULT in another instance must not erase a live MASTER on the node.
 	if got.VIPs[3].Node != "worker-b" || got.VIPs[3].State != "MASTER" || got.VIPs[3].Priority != 200 {
 		t.Fatalf("VIPs = %+v", got.VIPs)
+	}
+}
+
+func TestAggregateSupervisors(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		states []string
+		want   string
+	}{
+		{"none enabled", nil, ""},
+		{"all running", []string{"running", "running"}, "running"},
+		{"all down", []string{"down", "down"}, "down"},
+		{"all unavailable", []string{"unavailable", "unavailable"}, "unavailable"},
+		{"down and unavailable", []string{"down", "unavailable"}, "down"},
+		{"unavailable and down", []string{"unavailable", "down"}, "down"},
+		{"running and down", []string{"running", "down"}, "degraded"},
+		{"unavailable and running", []string{"unavailable", "running"}, "degraded"},
+		{"partial VIP health", []string{"degraded"}, "degraded"},
+		{"partial VIP health and down", []string{"degraded", "down"}, "down"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, vip := range []bool{false, true} {
+				items := []EdgeSupervisorStatus{{}}
+				for _, state := range tc.states {
+					component := EdgeComponent{Enabled: true, State: state, Message: state}
+					item := EdgeSupervisorStatus{Edge: component}
+					if vip {
+						item = EdgeSupervisorStatus{VIP: component}
+					}
+					items = append(items, item)
+				}
+				got := aggregateSupervisors(items, vip)
+				if got.State != tc.want || got.Enabled != (len(tc.states) > 0) {
+					t.Fatalf("vip=%v: aggregate = %+v, want %q", vip, got, tc.want)
+				}
+				if tc.want == "down" && got.Message != "down" {
+					t.Fatalf("failure message lost: %+v", got)
+				}
+			}
+		})
+	}
+}
+
+func TestEdgeAllSupervisorsUnready(t *testing.T) {
+	down := edgeTestServer(t, `{"ready":false,"message":"no healthy backends"}`, false)
+	unavailable := edgeTestServer(t, `{`, false)
+	h := newHarness(t, func(o *Options) {
+		o.VIPSupervised = true
+		o.EdgeSupervisors = func(context.Context) ([]EdgeSupervisorEndpoint, error) {
+			return []EdgeSupervisorEndpoint{{Node: "a", EdgeURL: down, VIPURL: unavailable}, {Node: "b", EdgeURL: unavailable, VIPURL: down}}, nil
+		}
+	})
+	var got EdgeInfo
+	h.do(http.MethodGet, "/api/v1/edge", "admin", nil).want(http.StatusOK).json(&got)
+	if got.Edge.State != "down" || got.VIP.State != "down" || got.Edge.Message != "no healthy backends" || got.VIP.Message != "no healthy backends" {
+		t.Fatalf("fully unready tier = %+v", got)
 	}
 }
 

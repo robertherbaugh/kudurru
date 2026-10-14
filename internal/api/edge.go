@@ -78,7 +78,7 @@ func readSupervisor(ctx context.Context, base string) (EdgeComponent, supervisor
 		c.Message = strings.Replace(peerStatusError(err), "peer status:", "supervisor status:", 1)
 		return c, doc
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		c.Message = fmt.Sprintf("supervisor status: HTTP %d", resp.StatusCode)
 		return c, doc
@@ -95,7 +95,7 @@ func readSupervisor(ctx context.Context, base string) (EdgeComponent, supervisor
 			c.Message = strings.Replace(peerStatusError(err), "peer status:", "supervisor readiness:", 1)
 			return c, doc
 		}
-		defer health.Body.Close()
+		defer func() { _ = health.Body.Close() }()
 		if health.StatusCode != http.StatusOK && health.StatusCode != http.StatusServiceUnavailable {
 			c.Message = "invalid supervisor readiness"
 			return c, doc
@@ -112,6 +112,10 @@ func readSupervisor(ctx context.Context, base string) (EdgeComponent, supervisor
 
 func aggregateSupervisors(items []EdgeSupervisorStatus, vip bool) EdgeComponent {
 	result := EdgeComponent{}
+	anyRunning, anyNotRunning := false, false
+	// Preserve partial VIP health, but prefer a known failure over an
+	// unreachable supervisor when no supervisor is fully ready.
+	severity := map[string]int{"running": 0, "degraded": 1, "unavailable": 2, "down": 3}
 	for _, item := range items {
 		c := item.Edge
 		if vip {
@@ -120,13 +124,17 @@ func aggregateSupervisors(items []EdgeSupervisorStatus, vip bool) EdgeComponent 
 		if !c.Enabled {
 			continue
 		}
-		if !result.Enabled {
+		if c.State == "running" {
+			anyRunning = true
+		} else {
+			anyNotRunning = true
+		}
+		if !result.Enabled || severity[c.State] > severity[result.State] {
 			result = c
-			continue
 		}
-		if result.State != c.State {
-			result.State, result.Message = "degraded", "some supervisors are not ready"
-		}
+	}
+	if anyRunning && anyNotRunning {
+		result.State, result.Message = "degraded", "some supervisors are not ready"
 	}
 	return result
 }
@@ -181,7 +189,7 @@ func (s *Server) getEdge(ctx context.Context, _ *struct{}) (*edgeOutput, error) 
 						continue
 					}
 					seen[key] = true
-					backends = append(backends, EdgeBackend{Name: b.Name, Address: b.Address, Node: ep.Node, Up: edge.State == "running" && strings.EqualFold(b.State, "up")})
+					backends = append(backends, EdgeBackend{Name: b.Name, Address: b.Address, Node: node, Up: edge.State == "running" && strings.EqualFold(b.State, "up")})
 				}
 			}
 			vips := []EdgeVIP{}
