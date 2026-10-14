@@ -468,6 +468,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	reg.MustRegister(zoneview.NewCollector(zc, secondaries))
 	reg.MustRegister(secondary.NewCollector(secondaries))
+	notifyReceiver := secondary.NewNotifyReceiver(secondaries, reg)
 	var (
 		internalClient *internalapi.Client
 		internalSrv    *internalapi.Server
@@ -490,6 +491,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
 		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
+			Event: func(e internalapi.Event) bool { return secondaries.Trigger(e.Identity) },
 			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
 				out, err := internalapi.ReadLocalQuerylog(ctx, qlReader, q)
 				if err == nil && q.Kind == "upstreams" && queryUpstreams != nil {
@@ -526,6 +528,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	} else if cfg.Store.Driver == "kube" {
 		return errors.New("KUDURRU_ENCRYPTION_KEY (or listeners.internal.tokenFile) is required for the internal listener in Kubernetes")
+	}
+	notifyFanout := internalapi.NewEventFanout(membership, internalClient, reg, logger)
+	notifyReceiver.Accepted = func(identity string) {
+		notifyFanout.Enqueue(internalapi.Event{Type: "secondary-notify", Identity: identity})
 	}
 	// A dnsdist next to this node (sidecar, compose single-edge, HA nodes)
 	// caches blocked and unblocked answers up to their TTL: flush its
@@ -667,6 +673,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	auth := authoritative.New(zoneview.Source{Cache: zc, Secondary: secondaries})
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
+	auth.Notify = notifyReceiver.Handle
 
 	stages := []pipeline.Stage{
 		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
@@ -955,6 +962,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
 		{"secondaries", false, secondaries.Run},
+		{"secondary-notify-sources", false, notifyReceiver.Run},
+		{"secondary-notify-fanout", false, notifyFanout.Run},
 		{"settings", false, func(ctx context.Context) error {
 			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
 			if settingsManager != nil {
