@@ -53,7 +53,7 @@ type SettingConstraints struct {
 	// Presets are suggested values (durations, byte sizes).
 	Presets []string `json:"presets,omitempty"`
 	// Format is the syntax of a string value; empty values are not checked.
-	Format string `json:"format,omitempty" enum:"ip,ipv4,ipv6,cidr,hostport,url,domain,upstream,email"`
+	Format string `json:"format,omitempty" enum:"ip,ipv4,ipv6,cidr,hostport,url,domain,upstream,email,date-time"`
 	// Ref is the kind of object the value names.
 	Ref string `json:"ref,omitempty" enum:"upstreamGroup,clientGroup,blockList,policy,zone"`
 	// Items is the element shape of a list or string[]; Keys and Values

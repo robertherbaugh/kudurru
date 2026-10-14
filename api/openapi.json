@@ -5931,7 +5931,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6039,7 +6040,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },
@@ -6177,7 +6179,8 @@
               "url",
               "domain",
               "upstream",
-              "email"
+              "email",
+              "date-time"
             ],
             "type": "string"
           },

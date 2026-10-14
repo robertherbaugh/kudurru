@@ -698,6 +698,7 @@ func (e SecondaryRuntimeState) Valid() bool {
 // Defines values for SettingFieldFormat.
 const (
 	SettingFieldFormatCidr     SettingFieldFormat = "cidr"
+	SettingFieldFormatDateTime SettingFieldFormat = "date-time"
 	SettingFieldFormatDomain   SettingFieldFormat = "domain"
 	SettingFieldFormatEmail    SettingFieldFormat = "email"
 	SettingFieldFormatHostport SettingFieldFormat = "hostport"
@@ -712,6 +713,8 @@ const (
 func (e SettingFieldFormat) Valid() bool {
 	switch e {
 	case SettingFieldFormatCidr:
+		return true
+	case SettingFieldFormatDateTime:
 		return true
 	case SettingFieldFormatDomain:
 		return true
@@ -803,6 +806,7 @@ func (e SettingFieldType) Valid() bool {
 // Defines values for SettingKeyFormat.
 const (
 	SettingKeyFormatCidr     SettingKeyFormat = "cidr"
+	SettingKeyFormatDateTime SettingKeyFormat = "date-time"
 	SettingKeyFormatDomain   SettingKeyFormat = "domain"
 	SettingKeyFormatEmail    SettingKeyFormat = "email"
 	SettingKeyFormatHostport SettingKeyFormat = "hostport"
@@ -817,6 +821,8 @@ const (
 func (e SettingKeyFormat) Valid() bool {
 	switch e {
 	case SettingKeyFormatCidr:
+		return true
+	case SettingKeyFormatDateTime:
 		return true
 	case SettingKeyFormatDomain:
 		return true
@@ -887,6 +893,7 @@ func (e SettingKeyScope) Valid() bool {
 // Defines values for SettingShapeFormat.
 const (
 	SettingShapeFormatCidr     SettingShapeFormat = "cidr"
+	SettingShapeFormatDateTime SettingShapeFormat = "date-time"
 	SettingShapeFormatDomain   SettingShapeFormat = "domain"
 	SettingShapeFormatEmail    SettingShapeFormat = "email"
 	SettingShapeFormatHostport SettingShapeFormat = "hostport"
@@ -901,6 +908,8 @@ const (
 func (e SettingShapeFormat) Valid() bool {
 	switch e {
 	case SettingShapeFormatCidr:
+		return true
+	case SettingShapeFormatDateTime:
 		return true
 	case SettingShapeFormatDomain:
 		return true

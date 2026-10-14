@@ -3700,7 +3700,7 @@ export interface components {
             enum?: components["schemas"]["SettingOption"][] | null;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             help?: string;
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
@@ -3724,7 +3724,7 @@ export interface components {
             envLocked: boolean;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             group?: string;
             help: string;
             hostOnly: boolean;
@@ -3757,7 +3757,7 @@ export interface components {
             enum?: components["schemas"]["SettingOption"][] | null;
             fields?: components["schemas"]["SettingField"][] | null;
             /** @enum {string} */
-            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email";
+            format?: "ip" | "ipv4" | "ipv6" | "cidr" | "hostport" | "url" | "domain" | "upstream" | "email" | "date-time";
             items?: components["schemas"]["SettingShape"];
             keys?: components["schemas"]["SettingShape"];
             /** Format: int64 */
