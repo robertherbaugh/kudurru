@@ -47,6 +47,16 @@ RFC 3849 are documentation placeholders.
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 
+## Enterprise
+
+The `/enterprise/` page describes current enterprise capabilities, the
+Commercial Core and Enterprise scopes, node counting and proposed pricing.
+Its model is a platform fee plus a per-node fee; all amounts and billing
+periods remain TBD. Keep `src/content.ts` and `src/pages/enterprise.ts` in
+step with the documentation source, [`docs/enterprise.md`](../docs/enterprise.md),
+published at `docs.kudurru.io/enterprise/`. Enterprise inquiries open email
+to `hello@kudurru.io` without submitting a form.
+
 ## The "Request a key" form
 
 `/license/` has a form with two kinds of request. A **personal** request is

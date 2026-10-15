@@ -32,6 +32,7 @@ not require Bun.
 |---|---|
 | Home, Get started, Migrate, section pages | `site/content` |
 | Deploy | `docs/deploy` (its `README.md` is the section page) |
+| Enterprise | `docs/enterprise.md`: current features, proposed pricing and node counting |
 | Reference | `site/content/reference`, generated: `hack/docsgen` (settings, CRDs, endpoint index) and `TestCLIReferenceDrift` in `cmd/kudurru` (CLI) |
 | Reference → API explorer | `api/openapi.json`, rendered by the Scalar bundle in `internal/api/scalar` |
 | Architecture | `docs/architecture` (its `README.md` is the section page); the hand-drawn diagrams are served from `docs/architecture/diagrams`, and the Mermaid blocks are drawn in the browser by the bundle in `site/vendor/mermaid`, loaded only on pages that have one |

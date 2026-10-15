@@ -13,6 +13,7 @@ import { headersFile, rulesFor } from "./src/headers.ts";
 import { layout, type Assets } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
 import { license, licenseText } from "./src/pages/license.ts";
+import { enterprise } from "./src/pages/enterprise.ts";
 import { renderMarkdown } from "./src/markdown.ts";
 
 const ROOT = import.meta.dir;
@@ -143,6 +144,19 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     layout({ path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false }, version),
   );
   await put(
+    join(outDir, "enterprise/index.html"),
+    layout(
+      {
+        path: "/enterprise/",
+        title: "Enterprise · kudurru",
+        description: "Run kudurru on your infrastructure with commercial production rights, enterprise features and a proposed platform fee plus per-node pricing model. Prices TBD.",
+        body: enterprise(),
+        assets,
+      },
+      version,
+    ),
+  );
+  await put(
     join(outDir, "license/index.html"),
     layout(
       {
@@ -193,7 +207,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      ["/", "/enterprise/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

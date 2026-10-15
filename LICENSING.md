@@ -28,6 +28,8 @@ The Community License text is also on
 ## Keys
 
 The same rules, in short form, are on [kudurru.io/license](https://kudurru.io/license).
+For enterprise features and the proposed platform fee plus per-node pricing,
+see the [enterprise overview](docs/enterprise.md). All prices are TBD.
 
 A **license key** unlocks what a single free node does not have:
 

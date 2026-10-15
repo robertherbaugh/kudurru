@@ -249,7 +249,7 @@ code, pre, kbd { font-family: var(--mono); font-size: .88em; }
   .docs { grid-template-columns: 240px minmax(0, 1fr); }
   .toc { display: none; }
 }
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .site-header__inner { gap: 10px; }
   .nav-toggle {
     display: block; margin-left: auto; padding: 6px 10px; font: inherit; font-size: 14px;
@@ -260,6 +260,8 @@ code, pre, kbd { font-family: var(--mono); font-size: .88em; }
   .site-nav ul { flex-direction: column; padding: 8px 12px; }
   .search { flex: 1 1 auto; margin-left: 0; }
   .repo-link { display: none; }
+}
+@media (max-width: 900px) {
   .docs { display: block; }
   .sidebar { position: static; max-height: none; padding: 16px 0 0; border-bottom: 1px solid var(--border); }
   .brand__docs { display: none; }

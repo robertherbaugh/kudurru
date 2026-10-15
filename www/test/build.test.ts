@@ -12,11 +12,12 @@ import { headersFile } from "../src/headers.ts";
 
 let out: string;
 const pages: Record<string, string> = {};
+const PAGE_PATHS = ["index.html", "404.html", "enterprise/index.html", "license/index.html", "license/text/index.html", "licenses/index.html"];
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
   await build({ outDir: out, version: "9.8.7" });
-  for (const name of ["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"]) {
+  for (const name of PAGE_PATHS) {
     pages[name] = await readFile(join(out, name), "utf8");
   }
 });
@@ -25,7 +26,7 @@ afterAll(() => rm(out, { recursive: true, force: true }));
 
 const attrs = (page: string, attr: string) => [...page.matchAll(new RegExp(`\\s${attr}="([^"]*)"`, "g"))].map((m) => m[1]!);
 
-describe.each(["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"])("%s", (name) => {
+describe.each(PAGE_PATHS)("%s", (name) => {
   test("no inline scripts, styles or event handlers", () => {
     const page = pages[name]!;
     for (const tag of page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -49,12 +50,12 @@ describe.each(["index.html", "404.html", "license/index.html", "license/text/ind
     }
   });
 
-  test("fragment links have targets on the home page", () => {
+  test("fragment links have targets on their page or the home page", () => {
     const home = pages["index.html"]!;
-    const ids = new Set(attrs(home, "id"));
     for (const ref of attrs(pages[name]!, "href").filter((r) => r.includes("#"))) {
       const [path, frag] = ref.split("#");
       if (path !== "" && path !== "/") continue;
+      const ids = new Set(attrs(path === "" ? pages[name]! : home, "id"));
       expect(ids.has(frag!)).toBe(true);
     }
   });
