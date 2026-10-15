@@ -19,6 +19,7 @@ import {
   type TraceRow,
 } from "../content.ts";
 import { external, icon, type Assets } from "./layout.ts";
+import { useCases } from "./use-case.ts";
 
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -317,6 +318,7 @@ ${pipeline()}
 ${features()}
 ${dashboard(assets)}
 ${deploy(version)}
+${useCases()}
 ${name(assets)}
 ${roadmap()}
 ${closing()}`;

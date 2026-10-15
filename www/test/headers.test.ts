@@ -41,3 +41,9 @@ test("the license server origin follows the build setting, and only its origin",
   expect(headersFile(rulesFor("https://licenses.example.org"))).toContain("connect-src 'self' https://licenses.example.org;");
   expect(() => csp("not a url")).toThrow();
 });
+
+test("JSON-LD authorization accepts only SHA-256 hashes", () => {
+  const hash = "sha256-" + "A".repeat(43) + "=";
+  expect(csp(DEFAULT_LICENSE_API, [hash])).toContain(`script-src 'self' '${hash}';`);
+  expect(() => csp(DEFAULT_LICENSE_API, ["unsafe-inline"])).toThrow("invalid JSON-LD script hash");
+});

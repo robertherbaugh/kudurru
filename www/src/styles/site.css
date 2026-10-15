@@ -705,6 +705,8 @@ main,
 /* Sections */
 .sec {
   position: relative;
+  /* Rail markers extend past .wrap; keep them within narrow viewports. */
+  overflow-x: clip;
   padding-block: var(--sec-pad);
   border-top: 1px solid var(--line);
 }
@@ -1655,6 +1657,84 @@ main,
 .narrow p {
   margin-top: 16px;
   color: var(--fg-2);
+}
+
+/* Search landing pages share the site's reading layout and link back to
+   setup guides. The same cards make them discoverable from the home page. */
+.use-case-intro .page-title {
+  max-width: 22ch;
+}
+.use-case-intro .lead {
+  max-width: 68ch;
+}
+.use-case-intro .actions {
+  margin-top: 32px;
+}
+.use-case-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 40px;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.use-case-label {
+  color: var(--fg-2);
+}
+.use-case-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 24px;
+  margin-top: 32px;
+  list-style: none;
+}
+.use-case-links li {
+  display: flex;
+}
+.use-case-links a {
+  display: block;
+  width: 100%;
+  padding: 28px;
+  border: 1px solid var(--line);
+  text-decoration: none;
+}
+.use-case-links a:hover {
+  border-color: var(--clay);
+}
+.use-case-links h3 {
+  font-size: 20px;
+  font-weight: 550;
+}
+.use-case-links p,
+.use-case-questions p {
+  margin-top: 12px;
+  color: var(--fg-2);
+}
+.use-case-links p {
+  font-size: 15px;
+}
+.use-case-questions h3 {
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 550;
+}
+.use-case-questions > div + div {
+  margin-top: 16px;
+}
+.foot-use-cases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin-top: 32px;
+  font-size: 13px;
+}
+.foot-use-cases a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+.foot-use-cases + .foot-legal {
+  margin-top: 32px;
 }
 
 /* Enterprise: an annual pricing calculator, edition comparison and the
