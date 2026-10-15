@@ -156,7 +156,26 @@ func (s *Server) blockingState() *BlockingState {
 	return out
 }
 
-func (s *Server) getBlocking(_ context.Context, _ *struct{}) (*blockingOutput, error) {
+func (s *Server) getBlocking(ctx context.Context, _ *struct{}) (*blockingOutput, error) {
+	if s.opts.BlockingReads != nil {
+		if ctx == nil || ctx.Err() != nil {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		now := s.opts.Now()
+		if now.IsZero() {
+			return nil, errUnavailable("original blocking observation time unavailable")
+		}
+		configured, enabled, until, err := s.opts.BlockingReads.BlockingState(ctx, now)
+		if err != nil || ctx.Err() != nil || enabled && !configured {
+			return nil, errUnavailable("original blocking state unavailable")
+		}
+		out := &BlockingState{Configured: configured, Blocking: enabled, Scope: "cluster", Node: s.opts.NodeName}
+		if configured && !enabled && until.After(now) && until.Before(blockingstage.Forever) {
+			u, seconds := until.UTC(), until.Sub(now).Seconds()
+			out.Until, out.Timer = &u, &seconds
+		}
+		return &blockingOutput{Body: out}, nil
+	}
 	return &blockingOutput{Body: s.blockingState()}, nil
 }
 

@@ -36,6 +36,15 @@ func (v *View) Catalogue() *catalogue.Catalogue {
 	return v.catalogue
 }
 
+// StateAt evaluates the captured settings and absolute deadline without reading
+// or changing a live toggle. The returned deadline is the original raw value.
+func (v *View) StateAt(now time.Time) (configured, enabled bool, disabledUntil time.Time, err error) {
+	if v == nil || v.defaults == nil || v.catalogue == nil || now.IsZero() {
+		return false, false, time.Time{}, fmt.Errorf("blocking: state requires a captured view and observation time")
+	}
+	return !v.defaults.disabled, v.enabled(now), v.disabledUntil, nil
+}
+
 func (v *View) enabled(now time.Time) bool {
 	return !v.defaults.disabled && (v.disabledUntil.IsZero() || v.disabledUntil.Before(Forever) && !now.Before(v.disabledUntil))
 }

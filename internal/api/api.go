@@ -134,6 +134,12 @@ type PolicyListReadSource interface {
 	PolicyListState(context.Context, string, string, time.Time) (entries int, ready bool, err error)
 }
 
+// BlockingReadSource projects the original complete request's blocking settings
+// and absolute deadline at one caller-supplied observation time.
+type BlockingReadSource interface {
+	BlockingState(context.Context, time.Time) (configured, enabled bool, disabledUntil time.Time, err error)
+}
+
 // ZoneReadSource reads actual serving data from the original complete HTTP
 // request lease. Objects/models are immutable and valid only within the handler.
 // ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
@@ -273,6 +279,9 @@ type Options struct {
 	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
 	// Complete mode also requires CanonicalSettings and Catalogue.Read.
 	PolicyListReads PolicyListReadSource
+	// BlockingReads replaces blocking GETs with original complete-cut reads.
+	// Nil preserves the legacy node-local toggle projection.
+	BlockingReads BlockingReadSource
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
