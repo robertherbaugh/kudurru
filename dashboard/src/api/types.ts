@@ -424,12 +424,13 @@ export interface CreatedToken extends ApiToken {
 }
 
 /** Body of POST /auth/password (stack PasswordRequest). */
-export interface PasswordChangeRequest {
-  currentPassword: string;
-  newPassword: string;
-  /** Also revoke every API token of the user (a change alone keeps them). */
-  revokeTokens?: boolean;
-}
+export type PasswordChangeRequest = S['PasswordChangeRequest'];
+
+export type TOTPStatus = S['TOTPStatus'];
+export type TOTPProofRequest = S['TOTPProofRequest'];
+export type TOTPConfirmRequest = S['TOTPConfirmRequest'];
+export type TOTPSetupResponse = S['TOTPSetupResponse'];
+export type TOTPRecoverRequest = S['TOTPRecoverRequest'];
 
 // ---------------------------------------------------------------------------
 // Runtime
@@ -770,16 +771,7 @@ export type DoctorReport = S['DoctorReport'];
 // internal/auth/stack/iam.go and internal/auth/adminsock (see the header).
 
 /** A local user (adminsock User). */
-export interface IamUser {
-  name: string;
-  displayName?: string;
-  builtinAdmin: boolean;
-  disabled: boolean;
-  mustChangePassword: boolean;
-  groups?: string[];
-  lastLoginAt?: string;
-  passwordChangedAt?: string;
-}
+export type IamUser = S['IAMUser'];
 
 /** A kudurru service account (stack ServiceAccountInfo). */
 export interface IamServiceAccount {

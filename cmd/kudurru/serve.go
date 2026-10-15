@@ -944,6 +944,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if sql == nil {
 		authMux := http.NewServeMux()
 		ids.Register(authMux)
+		registerUnavailableTOTP(authMux)
 		authHandler = authMux
 	}
 	if sql != nil {

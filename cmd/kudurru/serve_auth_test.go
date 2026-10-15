@@ -70,6 +70,7 @@ func authAPIWithGate(t *testing.T, mod func(*config.Config), gate *iamgate.Gate)
 	t.Cleanup(func() { cancel(); <-done })
 	authMux := http.NewServeMux()
 	ids.Register(authMux)
+	registerUnavailableTOTP(authMux)
 	srv, err := api.New(api.Options{
 		Store: st, Validator: authtest.Validator(t), Config: cfg,
 		Authenticate: identityAuthentication(ids, gate), Authorizer: ids.Authorizer(), CSRF: auth.CSRF, AuthHandler: authMux, Roles: ids.Roles,

@@ -109,7 +109,7 @@ export function endpoints(c: ApiClient) {
     auth: {
       status: () => c.get<AuthStatus>('/auth/status'),
       me: () => c.get<Me>('/auth/me'),
-      login: (username: string, password: string) => c.post<Me>('/auth/login', { username, password }),
+      login: (username: string, password: string, totpCode?: string) => c.post<Me>('/auth/login', { username, password, ...(totpCode ? { totpCode } : {}) }),
       logout: () => c.post<void>('/auth/logout'),
       oidcStartURL: (idp: string, next: string) => c.url(`/auth/oidc/${enc(idp)}/start`, { next }),
       tokens: () => c.get<ListEnvelope<ApiToken>>('/auth/tokens'),

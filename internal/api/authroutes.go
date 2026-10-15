@@ -89,6 +89,11 @@ func (s *Server) registerAuth() {
 	// them to the caller. A token never carries more than its owner's
 	// bindings (§8.6).
 	tokens := authed
+	factor := func(method, path, id, summary, tag string) huma.Operation {
+		op := operation(method, path, id, summary, tag)
+		op.MaxBodyBytes = 16 << 10
+		return op
+	}
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
 	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, SessionInfo{})
 	start := operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth")
@@ -99,6 +104,10 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
 	s.forward(operation(http.MethodGet, "/auth/sessions", "listSessions", "List own enrolled sessions", "auth"), authed, nil, AuthList[SessionRecordInfo]{})
 	s.forward(withStatus(operation(http.MethodDelete, "/auth/sessions/{id}", "revokeSession", "Revoke an enrolled session of the current account", "auth"), http.StatusNoContent), authed, nil, nil)
+	s.forward(factor(http.MethodGet, "/auth/totp", "totpStatus", "Own local authenticator status", "auth"), authed, nil, TOTPStatus{})
+	s.forward(withRateLimit(factor(http.MethodPost, "/auth/totp/setup", "beginTOTP", "Prepare an authenticator (provisioning secret returned once)", "auth")), authed, TOTPProofRequest{}, TOTPSetupResponse{})
+	s.forward(withStatus(withRateLimit(factor(http.MethodPost, "/auth/totp/confirm", "confirmTOTP", "Activate the authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPConfirmRequest{}, nil)
+	s.forward(withStatus(withRateLimit(factor(http.MethodPost, "/auth/totp/disable", "disableTOTP", "Disable own authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPProofRequest{}, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
 	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
 	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})
@@ -113,6 +122,8 @@ func (s *Server) registerAuth() {
 			perm{resource: resource, verb: "read"}, nil, resp)
 	}
 	iam("/iam/users", "users", "listUsers", AuthList[IAMUser]{})
+	s.forward(withStatus(factor(http.MethodPost, "/iam/users/{name}/totp/recover", "recoverTOTP", "Disable a lost authenticator for an exact account UID", "iam"), http.StatusNoContent),
+		perm{resource: "users", verb: "write"}, TOTPRecoverRequest{}, nil)
 	iam("/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts", AuthList[ServiceAccountInfo]{})
 	iam("/iam/rolebindings", "rolebindings", "listRoleBindings", AuthList[RoleBindingInfo]{})
 	iam("/iam/identityproviders", "identityproviders", "listIdentityProviders", AuthList[IdentityProviderInfo]{})
@@ -149,7 +160,9 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 	// tiny and the login route is public: never buffer more than the auth
 	// handler accepts (64 KiB) for an anonymous caller.
 	op.SkipValidateBody = true
-	op.MaxBodyBytes = maxAuthBodyBytes
+	if op.MaxBodyBytes == 0 || op.MaxBodyBytes > maxAuthBodyBytes {
+		op.MaxBodyBytes = maxAuthBodyBytes
+	}
 	for _, m := range pathParamRE.FindAllStringSubmatch(op.Path, -1) {
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}

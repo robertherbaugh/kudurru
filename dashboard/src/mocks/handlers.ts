@@ -749,7 +749,7 @@ export const handlers = [
     if (!db.session) return fail(401, 'unauthenticated', 'Sign in to continue');
     if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'Missing or wrong X-Kudurru-CSRF header');
     const body = (await request.json()) as Record<string, unknown>;
-    const unknown = Object.keys(body).find((k) => k !== 'currentPassword' && k !== 'newPassword');
+    const unknown = Object.keys(body).find((k) => !['currentPassword', 'newPassword', 'revokeTokens', 'totpCode'].includes(k));
     if (unknown) return fail(400, 'invalid', `body: json: unknown field "${unknown}"`);
     const next = typeof body.newPassword === 'string' ? body.newPassword : '';
     if ([...next].length < 8) return fail(400, 'invalid', 'newPassword: users: password is shorter than 8 characters');
@@ -1554,6 +1554,7 @@ export const handlers = [
     const items: Record<string, unknown[]> = {
       users: db.users.map((u) => ({
         name: u.username,
+        uid: `mock-user-${u.username}`,
         ...(u.name !== u.username ? { displayName: u.name } : {}),
         builtinAdmin: u.username === 'admin',
         disabled: false,

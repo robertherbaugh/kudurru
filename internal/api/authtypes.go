@@ -115,6 +115,7 @@ type (
 	// IAMUser is one local user of GET /iam/users (adminsock.User).
 	IAMUser struct {
 		Name               string     `json:"name"`
+		UID                string     `json:"uid" doc:"Immutable account identity required for administrator factor recovery."`
 		DisplayName        string     `json:"displayName,omitempty"`
 		BuiltinAdmin       bool       `json:"builtinAdmin"`
 		Disabled           bool       `json:"disabled"`

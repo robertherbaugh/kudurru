@@ -27,6 +27,7 @@ export function LoginPage() {
   const status = useQuery({ queryKey: qk.authStatus, queryFn: () => api.auth.status(), retry: 1 });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const oidcError = loc.search.get('error');
@@ -39,16 +40,22 @@ export function LoginPage() {
       setError('Enter a username and password');
       return;
     }
+    if (totpCode && !/^[0-9]{6}$/.test(totpCode)) {
+      setError('Enter the six-digit authenticator code');
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
-      const me = await api.auth.login(username, password);
+      const me = await api.auth.login(username, password, totpCode || undefined);
+      setPassword('');
       setCsrf(me.csrf);
       qc.setQueryData(qk.me, me);
       await qc.invalidateQueries({ queryKey: qk.authStatus });
     } catch (err) {
       setError(errorText(err));
     } finally {
+      setTotpCode('');
       setBusy(false);
     }
   };
@@ -93,6 +100,14 @@ export function LoginPage() {
                 onChange={setPassword}
                 autoComplete="current-password"
                 isRequired
+              />
+              <TextField
+                label="Authenticator code"
+                value={totpCode}
+                onChange={setTotpCode}
+                autoComplete="one-time-code"
+                isOptional
+                help="Enter the six-digit code if you have enabled an authenticator."
               />
               {/* An error Banner is role="alert": announced, and what the e2e looks for. */}
               {error ? <Banner status="error" title={error} /> : null}
