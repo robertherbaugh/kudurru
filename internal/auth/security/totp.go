@@ -24,7 +24,10 @@ const maxFactorChallenge = 8 << 10
 // FactorSetup contains a short-lived enrollment challenge. It becomes safe to
 // return only after BeginTOTP's enclosing command commits. Generic diagnostics
 // redact it; Disclosure is the intentional authenticated response projection.
-type FactorSetup struct{ challenge, secret string }
+type FactorSetup struct {
+	challenge, secret   string
+	issuedAt, expiresAt time.Time
+}
 
 func (FactorSetup) String() string { return "private factor enrollment" }
 
@@ -37,6 +40,15 @@ func (FactorSetup) MarshalJSON() ([]byte, error) { return []byte(`{"private":tru
 // Disclosure returns the enrollment challenge and Base32 provisioning secret.
 // These are credential material for the enrolling user; never log them.
 func (s FactorSetup) Disclosure() (challenge, secret string) { return s.challenge, s.secret }
+
+// ExpiresAt returns the original absolute enrollment challenge deadline.
+func (s FactorSetup) ExpiresAt() time.Time { return s.expiresAt }
+
+// ValidAt checks only immutable challenge bounds. It grants no authority to
+// disclose an uncommitted setup or to enroll a factor.
+func (s FactorSetup) ValidAt(now time.Time) error {
+	return (factorValidity{observedAt: s.issuedAt, issuedAt: s.issuedAt, expiresAt: s.expiresAt}).validAt(now)
+}
 
 type factorChallenge struct {
 	Version      int          `json:"version"`
@@ -88,7 +100,7 @@ func BeginTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Depen
 	if err != nil || session.SealedLen(len(raw)) > maxFactorChallenge {
 		return FactorSetup{}, servingauth.ErrBounds
 	}
-	return FactorSetup{challenge: sealer.Seal(raw), secret: seed.ProvisioningSecret()}, nil
+	return FactorSetup{challenge: sealer.Seal(raw), secret: seed.ProvisioningSecret(), issuedAt: c.IssuedAt, expiresAt: c.ExpiresAt}, nil
 }
 
 // ConfirmTOTP rechecks current password/old factor and proves possession of the
@@ -100,6 +112,10 @@ func ConfirmTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dep
 	if err != nil {
 		return err
 	}
+	return confirmTOTP(ctx, tx, deps, proof, c, seed, code, now)
+}
+
+func confirmTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, proof servingauth.Credential, c factorChallenge, seed *totp.Seed, code string, now time.Time) error {
 	// Capture the durable floor before verification can stage old-factor use.
 	before, err := Load(ctx, tx)
 	if err != nil {
@@ -161,6 +177,10 @@ func RecoverTOTP(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dep
 	if _, _, err := servingauth.ReauthorizeCurrent(ctx, tx, deps, proof, rbac.Attributes{Resource: "users", Verb: "write", Name: target.Name}, now); err != nil {
 		return err
 	}
+	return recoverTOTP(ctx, tx, target, now)
+}
+
+func recoverTOTP(ctx context.Context, tx *sqlite.CommandTx, target totp.Account, now time.Time) error {
 	var u internalv1.LocalUser
 	if err := tx.Get(ctx, store.Key{Kind: "LocalUser", Name: target.Name}, &u); err != nil {
 		return err
