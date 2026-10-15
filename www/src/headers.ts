@@ -9,6 +9,9 @@ import { DEFAULT_LICENSE_API } from "./content.ts";
 
 // The one third party the site talks to: the license server of the "Request
 // a key" form (connect-src). It also needs CORS to allow https://kudurru.io.
+// Each indexable page adds about 54 characters of hashes to the global CSP.
+// Cloudflare limits _headers lines to 2,000 characters (checked by the build
+// tests); scope hashes per path if the site grows near that ceiling.
 export function csp(licenseApi = DEFAULT_LICENSE_API, scriptHashes: readonly string[] = []): string {
   for (const hash of scriptHashes) {
     if (!/^sha256-[A-Za-z0-9+/]{43}=$/.test(hash)) throw new Error("invalid JSON-LD script hash");
