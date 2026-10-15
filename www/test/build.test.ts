@@ -7,7 +7,8 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "../build.ts";
-import { DOCS_URL, REPO_URL } from "../src/content.ts";
+import { DOCS_URL, REPO_URL, SUPPORT_STARTING_ANNUAL_USD } from "../src/content.ts";
+import { usd } from "../src/pricing.ts";
 import { headersFile } from "../src/headers.ts";
 
 let out: string;
@@ -144,6 +145,13 @@ describe("the enterprise page", () => {
 
   test("offers an email contact for discussing an enterprise deployment", () => {
     expect(attrs(pages["enterprise/index.html"]!, "href")).toContain("mailto:hello@kudurru.io?subject=kudurru%20Enterprise");
+  });
+
+  test("keeps the public support starting rate aligned with the enterprise docs", async () => {
+    const rate = `${usd(SUPPORT_STARTING_ANNUAL_USD)}/year`;
+    expect(pages["enterprise/index.html"]).toContain(`assistance starts at ${rate}`);
+    const docs = await readFile(join(import.meta.dir, "../../docs/enterprise.md"), "utf8");
+    expect(docs).toContain(`assistance starts at **${rate}**`);
   });
 
   test("its documentation links point to existing repository sources", async () => {

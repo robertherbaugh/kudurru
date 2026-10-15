@@ -86,9 +86,12 @@ that can actively serve or manage DNS is a node. DNS clients are not nodes.
   covered by the agreement.
 - Stored images, stopped standbys and backups do not count as running nodes.
 - Separate dnsdist and keepalived processes are not nodes merely by existing.
-- Isolated evaluation is free under the Community License. Continuously
-  running staging, disaster recovery and failover nodes must be explicitly
-  covered by the Order Form. Extra running nodes are not included by default.
+- Testing solely to evaluate a prospective license is permitted by the
+  Community License (§2.3). This covers isolated, non-production tests and
+  demonstrations; it does not authorize an operational DNS service.
+  Continuously running staging, disaster recovery and failover nodes must be
+  explicitly covered by the Order Form. Extra running nodes are not included
+  by default.
 
 The commercial agreement also permits up to 24 hours of overlap solely for
 replacement of a failed node or an ordinary rolling upgrade, without

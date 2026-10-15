@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, VOLUME_PRICING, docs } from "../content.ts";
+import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, SUPPORT_STARTING_ANNUAL_USD, VOLUME_PRICING, docs } from "../content.ts";
 import { annualPrice, usd } from "../pricing.ts";
 import { external, icon } from "./layout.ts";
 
@@ -144,7 +144,7 @@ export function enterprise(): Html {
       <div class="lic-body">
         <p><strong>One organization, one platform fee.</strong> Pay annually in USD for your edition and the aggregate licensed production nodes across the clusters and environments covered by your Order Form. Monthly equivalents are illustrative; subscriptions are billed annually.</p>
         <p><strong>Service providers and MSPs.</strong> Pooled client deployments need separate service-provider authorization in the Order Form. Use either commercial edition with that authorization; affiliate and government scope must also be expressly covered.</p>
-        <p><strong>Evaluation, staging and disaster recovery.</strong> Isolated evaluation is free under the Community License. Continuously running staging, DR and failover nodes must be explicitly covered by the Order Form; extra running nodes are not included by default.</p>
+        <p><strong>Evaluation, staging and disaster recovery.</strong> Testing solely to evaluate a prospective license is permitted by the Community License (§2.3). This covers isolated, non-production tests and demonstrations; it does not authorize an operational DNS service. Continuously running staging, DR and failover nodes must be explicitly covered by the Order Form; extra running nodes are not included by default.</p>
       </div>
     </div>
     <div class="lic-row">
@@ -158,7 +158,7 @@ export function enterprise(): Html {
     <div class="lic-row">
       <h2 id="enterprise-support-title">Support, when you need it</h2>
       <div class="lic-body">
-        <p>Optional business-hours assistance starts at $1,200/year, subject to availability and a separate agreement. Software license prices include no contractual support, 24/7 coverage or guaranteed response times.</p>
+        <p>Optional business-hours assistance starts at ${usd(SUPPORT_STARTING_ANNUAL_USD)}/year, subject to availability and a separate agreement. Software license prices include no contractual support, 24/7 coverage or guaranteed response times.</p>
         <p>Support scope, response commitments and any SLA are defined in your Order Form or incorporated support schedule.</p>
       </div>
     </div>

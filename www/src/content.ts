@@ -37,6 +37,9 @@ export const COMMERCIAL_PLANS = {
   enterprise: { name: "Enterprise", platform: 499, perNode: 299 },
 } as const;
 export const VOLUME_PRICING = { discountFrom: 25, quoteFrom: 50, discount: 0.1 } as const;
+// Public starting rate from the commercial pricing proposal. Support needs
+// a separate agreement; keep docs/enterprise.md in step with this amount.
+export const SUPPORT_STARTING_ANNUAL_USD = 1200;
 export const COMMERCIAL_COMPARISON = [
   { what: "Eligible noncommercial use", community: "Yes", core: "Yes", enterprise: "Yes" },
   { what: "Business and government production rights", community: "No", core: "Yes", enterprise: "Yes" },
