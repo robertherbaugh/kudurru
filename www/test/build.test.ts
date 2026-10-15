@@ -136,6 +136,21 @@ describe("the enterprise page", () => {
   test("offers an email contact for discussing an enterprise deployment", () => {
     expect(attrs(pages["enterprise/index.html"]!, "href")).toContain("mailto:hello@kudurru.io?subject=kudurru%20Enterprise");
   });
+
+  test("its documentation links point to existing repository sources", async () => {
+    const main = /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(pages["enterprise/index.html"]!)?.[1] ?? "";
+    const links = new Set(attrs(main, "href").filter((href) => href.startsWith(`${DOCS_URL}/`)));
+    expect(links.size).toBeGreaterThan(0);
+    // Hugo mounts this agreement from the repository root (site/hugo.yaml).
+    const mountedSources: Record<string, string> = {
+      "/project/commercial-license/": "COMMERCIAL_LICENSE_AGREEMENT.md",
+    };
+    for (const href of links) {
+      const path = new URL(href).pathname;
+      const source = mountedSources[path] ?? `docs${path.replace(/\/$/, "")}.md`;
+      expect((await stat(join(import.meta.dir, "../..", source))).isFile()).toBe(true);
+    }
+  });
 });
 
 describe("the license page", () => {
