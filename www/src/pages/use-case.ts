@@ -1,7 +1,6 @@
 import { html, type Html } from "../html.ts";
 import { USE_CASES, type UseCase } from "../use-cases.ts";
 import { external, icon } from "./layout.ts";
-import { docs } from "../content.ts";
 
 export function useCaseLinks(currentPath?: string): Html {
   return html`<ul class="use-case-links">${USE_CASES.filter((page) => page.path !== currentPath).map(
@@ -45,7 +44,7 @@ export function useCase(page: UseCase): Html {
       <h2>Common questions</h2>
       <div class="lic-body use-case-questions">
         ${page.questions.map((item) => html`<div><h3>${item.question}</h3><p>${item.answer}</p></div>`)}
-        ${page.path === "/pi-hole-alternative/" ? external(docs("/migrate/adguard-home/"), html`Coming from AdGuard Home ${icon.arrow}`, "more") : ""}
+        ${page.extraLink ? external(page.extraLink.href, html`${page.extraLink.label} ${icon.arrow}`, "more") : ""}
       </div>
     </div>
   </div>

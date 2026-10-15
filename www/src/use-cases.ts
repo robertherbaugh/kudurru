@@ -12,6 +12,7 @@ export interface UseCase {
   intro: string;
   summary: string;
   action: { label: string; href: string };
+  extraLink?: { label: string; href: string };
   sections: {
     title: string;
     paragraphs: string[];
@@ -110,6 +111,7 @@ export const USE_CASES: readonly UseCase[] = [
     intro: "kudurru combines network DNS blocking with authoritative zones, encrypted DNS transports and a dashboard for multiple nodes. It may fit if you want to keep familiar lists and client groups while managing DNS in Docker or Kubernetes.",
     summary: "See what carries over from Pi-hole, what changes, and how to move clients gradually.",
     action: { label: "Read the Pi-hole migration guide", href: docs("/migrate/pihole/") },
+    extraLink: { label: "Coming from AdGuard Home", href: docs("/migrate/adguard-home/") },
     sections: [
       {
         title: "Familiar blocking, typed configuration",
