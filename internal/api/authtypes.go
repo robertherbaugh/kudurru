@@ -32,6 +32,7 @@ type (
 	LoginRequest struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		TOTPCode string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
 	}
 	// SessionInfo is the answer of POST /auth/login and POST
 	// /auth/password (stack.MeResponse): the new session's principal,
@@ -65,6 +66,17 @@ type (
 		CurrentPassword string `json:"currentPassword" doc:"The current password."`
 		NewPassword     string `json:"newPassword" doc:"The new password (at least 12 characters, different from the current one)."`
 		RevokeTokens    bool   `json:"revokeTokens,omitempty" doc:"Also revoke every API token of the user; a password change alone revokes sessions, not tokens."`
+		TOTPCode        string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
+	}
+	// SessionRecordInfo is an enrollment belonging to the current account UID.
+	// It never includes cookie secrets, CSRF hashes or authentication evidence.
+	SessionRecordInfo struct {
+		ID            string    `json:"id"`
+		IssuedAt      time.Time `json:"issuedAt"`
+		ExpiresAt     time.Time `json:"expiresAt"`
+		IdleExpiresAt time.Time `json:"idleExpiresAt"`
+		Current       bool      `json:"current"`
+		Revoked       bool      `json:"revoked"`
 	}
 
 	// CreateTokenRequest is the body of POST /auth/tokens.

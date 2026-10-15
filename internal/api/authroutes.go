@@ -97,6 +97,8 @@ func (s *Server) registerAuth() {
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
 	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
+	s.forward(operation(http.MethodGet, "/auth/sessions", "listSessions", "List own enrolled sessions", "auth"), authed, nil, AuthList[SessionRecordInfo]{})
+	s.forward(withStatus(operation(http.MethodDelete, "/auth/sessions/{id}", "revokeSession", "Revoke an enrolled session of the current account", "auth"), http.StatusNoContent), authed, nil, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
 	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
 	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})

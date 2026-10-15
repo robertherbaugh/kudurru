@@ -380,6 +380,10 @@ func objectURL(k kindInfo, namespace, name string) string {
 // scope (§8.5), a record set needs records.write on its zone (and on the
 // zone it moves away from).
 func (s *Server) authorizeWrite(ctx context.Context, k kindInfo, req writeRequest) error {
+	if s.opts.ObjectCommand != nil {
+		// The command authorizes both exact current scopes from its own read.
+		return nil
+	}
 	name := req.name
 	if name == "" {
 		name, _ = nestedString(req.body, "metadata", "name")
@@ -437,6 +441,12 @@ func (s *Server) deleteObjectRoute(ctx context.Context, plural, namespace, name,
 	k, err := s.kindParamScoped(plural, namespaced)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectCommand != nil {
+		if err := s.commandDeleteObject(ctx, k, keyFor(k, namespace, name), ifMatch); err != nil {
+			return nil, err
+		}
+		return &emptyOutput{}, nil
 	}
 	obj, err := s.getObject(ctx, k, namespace, name)
 	if err != nil {
@@ -629,6 +639,14 @@ func (s *Server) batchDelete(ctx context.Context, k kindInfo, in *batchDeleteInp
 		label := name
 		if k.namespaced {
 			label = ns + "/" + name
+		}
+		if s.opts.ObjectCommand != nil {
+			if err := s.commandDeleteObject(ctx, k, keyFor(k, ns, name), ""); err != nil {
+				out.fail(label, err)
+			} else {
+				out.ok(label)
+			}
+			continue
 		}
 		obj, err := s.getObject(ctx, k, ns, name)
 		if err == nil {

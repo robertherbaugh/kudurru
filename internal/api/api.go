@@ -50,6 +50,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
@@ -62,6 +63,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -116,6 +118,16 @@ type ListRefresher interface {
 // nil answers 501.
 type ZoneNotifier interface {
 	NotifyZone(ctx context.Context, zone string) ([]string, error)
+}
+
+// ZoneReadSource reads actual serving data from the original complete HTTP
+// request lease. Objects/models are immutable and valid only within the handler.
+// ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
+// but unavailable contents. PrimaryStatus is durable evidence, not readiness.
+type ZoneReadSource interface {
+	ZoneObjects(context.Context) (zonecache.ObjectSet, error)
+	ReadZone(context.Context, string) (*zone.Zone, error)
+	PrimaryStatus(context.Context, string) (primaryruntime.PrimaryStatusObservation, bool, error)
 }
 
 // QuerylogPurger deletes query-log rows older than before (zero: all) and
@@ -238,6 +250,15 @@ type Options struct {
 	// source for the entries browser; nil answers 503 for those sources.
 	ListBodies ListBodies
 	Notifier   ZoneNotifier
+	// ZoneReads replaces DNS diagnostics/contents with the original complete
+	// request cut. Nil retains the legacy store/compiler/Kubernetes behavior.
+	ZoneReads ZoneReadSource
+	// ObjectCommand admits canonical object writes in the supplied current
+	// transaction. Nil retains the legacy object-management implementation.
+	ObjectCommand ObjectCommand
+	// CrossOrigin shares the host's existing same-origin policy. Nil creates
+	// the default protection with no trusted-origin exceptions.
+	CrossOrigin *http.CrossOriginProtection
 	// Central is the optional central database (internal/central); its
 	// state is reported by /info/messages. nil: none configured.
 	Central CentralState
@@ -416,7 +437,10 @@ func New(opts Options) (*Server, error) {
 	s.mux.Handle(BasePath+"/", http.HandlerFunc(s.apiNotFound))
 	s.mux.Handle("/", s.ui)
 
-	cop := http.NewCrossOriginProtection()
+	cop := opts.CrossOrigin
+	if cop == nil {
+		cop = http.NewCrossOriginProtection()
+	}
 	inner := chain(s.mux,
 		onPrefix(BasePath+"/auth/login", opts.RateLimit),
 		onPrefix(BasePath+"/", opts.Authenticate),

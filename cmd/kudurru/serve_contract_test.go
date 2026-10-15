@@ -75,11 +75,14 @@ func TestForwardedShapes(t *testing.T) {
 		t.Fatalf("status %+v", status)
 	}
 	var login api.SessionInfo
+	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1", TOTPCode: "123456"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1"}, http.StatusOK, &login)
 	if login.CSRF == "" || !slices.Equal(login.Roles, []string{"admin"}) {
 		t.Fatalf("login %+v", login)
 	}
 	c.csrf = login.CSRF
+	c.call(http.MethodGet, "/auth/sessions", nil, http.StatusServiceUnavailable, nil)
+	c.call(http.MethodDelete, "/auth/sessions/unavailable", nil, http.StatusServiceUnavailable, nil)
 	var me api.Me
 	c.call(http.MethodGet, "/auth/me", nil, http.StatusOK, &me)
 	if !slices.Equal(me.Roles, login.Roles) || me.CSRF != login.CSRF || me.MustChangePassword || len(me.Permissions) == 0 {

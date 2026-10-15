@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/zone"
@@ -129,6 +130,74 @@ func (s *Server) localZoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets i
 	return out
 }
 
+func capturedZoneError(err error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return errNotFound("zone")
+	}
+	return errUnavailable("committed zone read: %v", err)
+}
+
+func (s *Server) capturedZoneSummary(ctx context.Context, z *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) (ZoneSummary, error) {
+	out := zoneSummary(z, len(sets), len(managedRecordSets(sets)))
+	// Desired management/status fields are independent from this node's actual
+	// serving readiness and committed scalars, which may advance after UPDATE.
+	out.Serial, out.RecordCount, out.Ready = 0, 0, false
+	out.Reason, out.Message = "ServingUnavailable", "This node has no available committed copy for this zone."
+	if o, found, err := s.opts.ZoneReads.PrimaryStatus(ctx, z.Name); err != nil {
+		return ZoneSummary{}, capturedZoneError(err)
+	} else if found {
+		out.Serial, out.RecordCount = o.Serial, o.RecordCount
+	}
+	model, err := s.opts.ZoneReads.ReadZone(ctx, z.Name)
+	if err != nil && !errors.Is(err, serving.ErrPending) {
+		return ZoneSummary{}, capturedZoneError(err)
+	}
+	available := err == nil && model != nil && model.RoutingAvailableAt(s.opts.Now())
+	if available {
+		out.Serial, out.RecordCount, out.Ready = model.Serial(), model.RecordCount(), true
+		out.Reason, out.Message = "", ""
+	}
+	switch z.Spec.Type {
+	case v1alpha1.ZoneTypeSecondary:
+		out.SecondaryRuntime = &SecondaryRuntime{Node: s.opts.NodeName, State: "unavailable", Reason: out.Reason, Message: out.Message}
+		if available {
+			serial, count, expiry := model.Serial(), model.RecordCount(), model.NextExpiry()
+			out.SecondaryRuntime = &SecondaryRuntime{Node: s.opts.NodeName, State: "serving", Serial: &serial, RecordCount: &count, ExpiresAt: &expiry}
+		}
+	case v1alpha1.ZoneTypeStub:
+		out.StubRuntime = &StubRuntime{Node: s.opts.NodeName, State: "unavailable", Authorities: []StubAuthority{}, Reason: out.Reason, Message: out.Message}
+		if available {
+			out.StubRuntime.State, out.StubRuntime.Reason, out.StubRuntime.Message = "routing", "", ""
+			serial, expiry := model.Serial(), model.NextExpiry()
+			out.StubRuntime.Serial, out.StubRuntime.ExpiresAt = &serial, &expiry
+			for _, server := range model.StubServers() {
+				out.StubRuntime.Authorities = append(out.StubRuntime.Authorities, StubAuthority{Name: server.Name, Address: server.Address.String(), Protocol: server.Protocol})
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) listCapturedZones(ctx context.Context) (*zoneListOutput, error) {
+	objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+	if err != nil {
+		return nil, capturedZoneError(err)
+	}
+	st := stateFrom(ctx)
+	items := make([]ZoneSummary, 0, len(objects.Zones()))
+	for _, z := range objects.Zones() {
+		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
+			continue
+		}
+		summary, err := s.capturedZoneSummary(ctx, z, objects.RecordSetsForZone(z.Name))
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, summary)
+	}
+	return &zoneListOutput{Body: newList(items, "")}, nil
+}
+
 // ZoneDeleteResult is DELETE /zones/{zone}: what was deleted with the
 // zone, or with dryRun what would be.
 type ZoneDeleteResult struct {
@@ -167,9 +236,10 @@ type ZoneDetail struct {
 	Took
 }
 
-// ZoneRecord is one endpoint of a zone, flattened across record sets.
+// ZoneRecord is a desired endpoint, or one served RRset in complete mode.
 type ZoneRecord struct {
-	// RecordSet is "<namespace>/<name>" of the DNSRecordSet holding it.
+	// RecordSet is "<namespace>/<name>" of the DNSRecordSet holding it, empty
+	// when the actual served RRset has no proven mutable desired owner.
 	RecordSet     string                `json:"recordSet"`
 	ManagedBy     string                `json:"managedBy,omitempty"`
 	DNSName       string                `json:"dnsName"`
@@ -365,6 +435,9 @@ func (s *Server) listAll(ctx context.Context, kind store.Kind, namespace string,
 }
 
 func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, error) {
+	if s.opts.ZoneReads != nil {
+		return s.listCapturedZones(ctx)
+	}
 	zones, err := s.allZones(ctx)
 	if err != nil {
 		return nil, err
@@ -426,6 +499,26 @@ func (s *Server) zoneRecordSets(ctx context.Context, zoneName string) ([]*v1alph
 }
 
 func (s *Server) getZone(ctx context.Context, in *zonePathInput) (*zoneDetailOutput, error) {
+	if s.opts.ZoneReads != nil {
+		objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		z, found := objects.Zone(in.Zone)
+		if !found {
+			return nil, errNotFound("zone " + in.Zone)
+		}
+		summary, err := s.capturedZoneSummary(ctx, z, objects.RecordSetsForZone(z.Name))
+		if err != nil {
+			return nil, err
+		}
+		k, _ := kindByPlural("dnszones")
+		m, err := objectMap(k, z)
+		if err != nil {
+			return nil, err
+		}
+		return &zoneDetailOutput{ETag: z.ResourceVersion, Body: &ZoneDetail{ZoneSummary: summary, Object: m}}, nil
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err
@@ -608,6 +701,42 @@ func recordOf(rs *v1alpha1.DNSRecordSet, ep v1alpha1.Endpoint) ZoneRecord {
 }
 
 func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneRecordsOutput, error) {
+	if s.opts.ZoneReads != nil {
+		model, err := s.opts.ZoneReads.ReadZone(ctx, in.Zone)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		if model == nil || !model.RoutingAvailableAt(s.opts.Now()) {
+			return nil, errUnavailable("zone contents are unavailable")
+		}
+		if model.SOA() == nil {
+			return nil, errConflict("zone has no complete record image", "inspect its routing configuration")
+		}
+		var items []ZoneRecord
+		var invalid bool
+		model.RRsets(func(set *zone.RRset) bool {
+			row := ZoneRecord{DNSName: strings.TrimSuffix(set.Name, "."), RecordType: set.TypeString(), RecordTTL: int64(set.TTL), Targets: make([]string, 0, len(set.RRs))}
+			if set.Name == "." {
+				row.DNSName = "@"
+			}
+			for _, rr := range set.RRs {
+				parts := strings.SplitN(rr.String(), "\t", 5)
+				if len(parts) != 5 {
+					invalid = true
+					return false
+				}
+				row.Targets = append(row.Targets, parts[4])
+			}
+			// An actual RR is not proof of its desired mutable RecordSet owner.
+			// Keep unproven references empty; desired objects retain ownership.
+			items = append(items, row)
+			return ctx.Err() == nil
+		})
+		if invalid || ctx.Err() != nil {
+			return nil, errUnavailable("zone contents could not be read")
+		}
+		return &zoneRecordsOutput{Body: newList(items, "")}, nil
+	}
 	if _, err := s.zoneObject(ctx, in.Zone); err != nil {
 		return nil, err
 	}
@@ -965,6 +1094,27 @@ func (s *Server) buildZone(ctx context.Context, z *v1alpha1.DNSZone) (*zone.Zone
 }
 
 func (s *Server) exportZone(ctx context.Context, in *zonePathInput) (*exportOutput, error) {
+	if s.opts.ZoneReads != nil {
+		built, err := s.opts.ZoneReads.ReadZone(ctx, in.Zone)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
+		if built == nil || !built.RoutingAvailableAt(s.opts.Now()) {
+			return nil, errUnavailable("zone contents are unavailable")
+		}
+		if built.Type() != v1alpha1.ZoneTypePrimary || built.SOA() == nil {
+			return nil, errConflict("only complete primary zones have records to export", "inspect the zone's runtime state")
+		}
+		var buf bytes.Buffer
+		if err := zone.ExportBIND(&buf, built); err != nil {
+			return nil, errUnavailable("zone export: %v", err)
+		}
+		if ctx.Err() != nil {
+			return nil, errUnavailable("zone export interrupted")
+		}
+		return &exportOutput{ContentType: "text/dns; charset=utf-8",
+			ContentDisposition: `attachment; filename="` + strings.TrimSuffix(built.Name(), ".") + `.zone"`, Body: buf.Bytes()}, nil
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err

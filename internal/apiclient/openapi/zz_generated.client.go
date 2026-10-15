@@ -1938,6 +1938,16 @@ type AuthListServiceAccountInfo struct {
 	TookMs    int64                `json:"took_ms"`
 }
 
+// AuthListSessionRecordInfo defines model for AuthListSessionRecordInfo.
+type AuthListSessionRecordInfo struct {
+	Continue string `json:"continue"`
+
+	// Diagnoses Why entries were ignored (role bindings, identity providers).
+	Diagnoses *[]string           `json:"diagnoses,omitempty"`
+	Items     []SessionRecordInfo `json:"items"`
+	TookMs    int64               `json:"took_ms"`
+}
+
 // AuthListTokenInfo defines model for AuthListTokenInfo.
 type AuthListTokenInfo struct {
 	Continue string `json:"continue"`
@@ -3226,7 +3236,10 @@ type ListZoneSummary struct {
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Password string `json:"password"`
-	Username string `json:"username"`
+
+	// TotpCode The enrolled authenticator code, when required.
+	TotpCode *string `json:"totpCode,omitempty"`
+	Username string  `json:"username"`
 }
 
 // Me defines model for Me.
@@ -3363,6 +3376,9 @@ type PasswordChangeRequest struct {
 
 	// RevokeTokens Also revoke every API token of the user; a password change alone revokes sessions, not tokens.
 	RevokeTokens *bool `json:"revokeTokens,omitempty"`
+
+	// TotpCode The enrolled authenticator code, when required.
+	TotpCode *string `json:"totpCode,omitempty"`
 }
 
 // Plan defines model for Plan.
@@ -3899,6 +3915,16 @@ type SessionPrincipal struct {
 	// Provider local, or the identity provider id.
 	Provider *string `json:"provider,omitempty"`
 	TokenID  *string `json:"tokenID,omitempty"`
+}
+
+// SessionRecordInfo defines model for SessionRecordInfo.
+type SessionRecordInfo struct {
+	Current       bool      `json:"current"`
+	ExpiresAt     time.Time `json:"expiresAt"`
+	Id            string    `json:"id"`
+	IdleExpiresAt time.Time `json:"idleExpiresAt"`
+	IssuedAt      time.Time `json:"issuedAt"`
+	Revoked       bool      `json:"revoked"`
 }
 
 // SetBlockingInputBody defines model for SetBlockingInputBody.
@@ -5587,6 +5613,16 @@ type ClientInterface interface {
 	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
 	ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListSessions List own enrolled sessions
+	//
+	// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+	ListSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSession Revoke an enrolled session of the current account
+	//
+	// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+	RevokeSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AuthStatus Login options
 	//
 	// Corresponds with GET /auth/status (the `AuthStatus` operationId).
@@ -6900,6 +6936,36 @@ func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string,
 // Corresponds with POST /auth/password (the `ChangePassword` operationId).
 func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewChangePasswordRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSessions List own enrolled sessions
+//
+// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+func (c *Client) ListSessions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeSession Revoke an enrolled session of the current account
+//
+// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+func (c *Client) RevokeSession(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSessionRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -10274,6 +10340,67 @@ func NewChangePasswordRequestWithBody(server string, contentType string, body io
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSessionsRequest constructs an http.Request for the ListSessions method
+func NewListSessionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeSessionRequest constructs an http.Request for the RevokeSession method
+func NewRevokeSessionRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -16911,6 +17038,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /auth/password (the `ChangePassword` operationId).
 	ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResponse, error)
 
+	// ListSessionsWithResponse List own enrolled sessions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+	ListSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error)
+
+	// RevokeSessionWithResponse Revoke an enrolled session of the current account
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+	RevokeSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeSessionResponse, error)
+
 	// AuthStatusWithResponse Login options
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -19410,6 +19551,179 @@ func (r ChangePasswordResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ChangePasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuthListSessionRecordInfo
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSessionsResponse) GetJSON200() *AuthListSessionRecordInfo {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSessionsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSessionsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSessionsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSessionsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSessionsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListSessionsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RevokeSessionResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeSessionResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RevokeSessionResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeSessionResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RevokeSessionResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r RevokeSessionResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeSessionResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RevokeSessionResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeSessionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -30526,6 +30840,32 @@ func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, bo
 	return ParseChangePasswordResponse(rsp)
 }
 
+// ListSessionsWithResponse List own enrolled sessions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /auth/sessions (the `ListSessions` operationId).
+func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error) {
+	rsp, err := c.ListSessions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionsResponse(rsp)
+}
+
+// RevokeSessionWithResponse Revoke an enrolled session of the current account
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /auth/sessions/{id} (the `RevokeSession` operationId).
+func (c *ClientWithResponses) RevokeSessionWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeSessionResponse, error) {
+	rsp, err := c.RevokeSession(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSessionResponse(rsp)
+}
+
 // AuthStatusWithResponse Login options
 //
 // Returns a wrapper object for the known response body format(s).
@@ -33682,6 +34022,152 @@ func ParseChangePasswordResponse(rsp *http.Response) (*ChangePasswordResponse, e
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSessionsResponse parses an HTTP response from a ListSessionsWithResponse call
+func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuthListSessionRecordInfo
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSessionResponse parses an HTTP response from a RevokeSessionWithResponse call
+func ParseRevokeSessionResponse(rsp *http.Response) (*RevokeSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

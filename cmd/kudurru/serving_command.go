@@ -48,6 +48,24 @@ func (s *servingRuntime) currentCommand(ctx context.Context, attrs rbac.Attribut
 	if err != nil {
 		return err
 	}
+	return s.currentAuthCommand(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+		principal, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, attrs, s.opts.Now)
+		if err != nil {
+			return err
+		}
+		return fn(ctx, tx, principal)
+	})
+}
+
+// currentAuthCommand retains the original HTTP lease, elected writer episode,
+// and complete dependency pin through the actual transaction. It grants no
+// authentication or permission by itself: login/self-service callbacks must
+// verify their raw proof and current account authority before reading private
+// data, mutating state, or returning a deduplicated result.
+func (s *servingRuntime) currentAuthCommand(ctx context.Context, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error) error {
+	if s == nil || ctx == nil || fn == nil {
+		return serving.ErrComponents
+	}
 	status := s.primary.driver.Status()
 	if !status.Running {
 		return replication.ErrFenced
@@ -80,10 +98,6 @@ func (s *servingRuntime) currentCommand(ctx context.Context, attrs rbac.Attribut
 		if err := tx.RequireCommitCheck(check); err != nil {
 			return err
 		}
-		principal, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, attrs, s.opts.Now)
-		if err != nil {
-			return err
-		}
-		return fn(ctx, tx, principal)
+		return fn(ctx, tx, deps)
 	})
 }
