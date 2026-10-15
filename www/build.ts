@@ -8,14 +8,17 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { DEFAULT_LICENSE_API, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, SHOTS, SITE_URL, TAGLINE } from "./src/content.ts";
+import { DEFAULT_LICENSE_API, LICENSE_TEXT_FILE, LICENSE_TEXT_PATH, SHOTS, SITE_URL } from "./src/content.ts";
 import { headersFile, rulesFor } from "./src/headers.ts";
-import { layout, type Assets } from "./src/pages/layout.ts";
+import { layout, type Assets, type Page } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
 import { license, licenseText } from "./src/pages/license.ts";
 import { enterprise } from "./src/pages/enterprise.ts";
 import { moveOver } from "./src/pages/move-over.ts";
 import { renderMarkdown } from "./src/markdown.ts";
+import { HOME_TITLE } from "./src/seo.ts";
+import { USE_CASES } from "./src/use-cases.ts";
+import { useCase } from "./src/pages/use-case.ts";
 
 const ROOT = import.meta.dir;
 const REPO = resolve(ROOT, "..");
@@ -47,6 +50,8 @@ export interface BuildOptions {
   // The license server the "Request a key" form posts to; default
   // WWW_LICENSE_API, else DEFAULT_LICENSE_API.
   licenseApi?: string;
+  // Set WWW_NOINDEX=1 for preview builds that must stay out of search.
+  noIndex?: boolean;
 }
 
 async function readVersion(): Promise<string> {
@@ -66,7 +71,7 @@ async function put(path: string, data: string | Uint8Array): Promise<void> {
   await writeFile(path, data);
 }
 
-export async function build({ outDir, version, licenseApi = process.env.WWW_LICENSE_API?.trim() || DEFAULT_LICENSE_API }: BuildOptions): Promise<void> {
+export async function build({ outDir, version, licenseApi = process.env.WWW_LICENSE_API?.trim() || DEFAULT_LICENSE_API, noIndex = process.env.WWW_NOINDEX === "1" }: BuildOptions): Promise<void> {
   new URL(licenseApi); // fail the build on a malformed URL, not the visitor's browser
   await rm(outDir, { recursive: true, force: true });
   await mkdir(join(outDir, "assets"), { recursive: true });
@@ -136,89 +141,89 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     },
   };
 
-  await put(
-    join(outDir, "index.html"),
-    layout({ path: "/", title: `kudurru: ${TAGLINE}`, body: home(assets, version), assets }, version),
-  );
-  await put(
-    join(outDir, "move-over/index.html"),
-    layout({
+  const indexedPaths: string[] = [];
+  const scriptHashes = new Set<string>();
+  const writePage = async (file: string, page: Page) => {
+    const rendered = layout(noIndex ? { ...page, index: false } : page, version);
+    // Hash exactly what the browser sees between the script tags, so the
+    // CSP permits the JSON-LD without permitting other inline code.
+    for (const match of rendered.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+      scriptHashes.add("sha256-" + createHash("sha256").update(match[1]!).digest("base64"));
+    }
+    if (!noIndex && page.index !== false) indexedPaths.push(page.path);
+    await put(join(outDir, file), rendered);
+  };
+
+  await writePage("index.html", { path: "/", title: HOME_TITLE, body: home(assets, version), assets });
+  await writePage("404.html", { path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false });
+  await writePage(
+    "move-over/index.html",
+    {
       path: "/move-over/",
       title: "Move from Pi-hole, AdGuard Home or Technitium · kudurru",
       description: "Compare Pi-hole, AdGuard Home, Technitium and kudurru, with migration guides for filters, client policies, zones and a tested DNS cutover.",
+      breadcrumb: "Move over",
       body: moveOver(),
       assets,
-    }, version),
+    },
   );
-  await put(
-    join(outDir, "404.html"),
-    layout({ path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false }, version),
+  await writePage(
+    "enterprise/index.html",
+    {
+      path: "/enterprise/",
+      title: "Enterprise · kudurru",
+      description: "Annual kudurru licensing: Commercial Core at $99 platform + $99/node; Enterprise at $499 platform + $299/node. Compare plans and calculate your price in USD.",
+      body: enterprise(),
+      assets,
+    },
   );
-  await put(
-    join(outDir, "enterprise/index.html"),
-    layout(
-      {
-        path: "/enterprise/",
-        title: "Enterprise · kudurru",
-        description: "Annual kudurru licensing: Commercial Core at $99 platform + $99/node; Enterprise at $499 platform + $299/node. Compare plans and calculate your price in USD.",
-        body: enterprise(),
-        assets,
-      },
-      version,
-    ),
-  );
-  await put(
-    join(outDir, "license/index.html"),
-    layout(
-      {
-        path: "/license/",
-        title: "License and keys · kudurru",
-        description: "Core software uses the Kudurru Community License. Eligible community use is free; business and government production needs an agreement. Other folders have separate licenses.",
-        body: license(licenseApi),
-        assets,
-      },
-      version,
-    ),
+  for (const page of USE_CASES) {
+    await writePage(page.path.slice(1) + "index.html", { ...page, breadcrumb: page.label, body: useCase(page), assets });
+  }
+  await writePage(
+    "license/index.html",
+    {
+      path: "/license/",
+      title: "License and keys · kudurru",
+      description: "Core software uses the Kudurru Community License. Eligible community use is free; business and government production needs an agreement. Other folders have separate licenses.",
+      body: license(licenseApi),
+      assets,
+    },
   );
   // The license text: one source, the repository's LICENSE.
   const licenseSource = await readFile(join(REPO, "LICENSE"), "utf8");
-  await put(
-    join(outDir, "license/text/index.html"),
-    layout(
-      {
-        path: LICENSE_TEXT_PATH,
-        title: "Kudurru Community License · kudurru",
-        description: "The license of kudurru: the Kudurru Community License, in full.",
-        body: licenseText(renderMarkdown(licenseSource, LICENSE_TEXT_PATH)),
-        assets,
-      },
-      version,
-    ),
+  await writePage(
+    "license/text/index.html",
+    {
+      path: LICENSE_TEXT_PATH,
+      title: "Kudurru Community License · kudurru",
+      description: "The license of kudurru: the Kudurru Community License, in full.",
+      body: licenseText(renderMarkdown(licenseSource, LICENSE_TEXT_PATH)),
+      assets,
+    },
   );
   await put(join(outDir, LICENSE_TEXT_FILE), licenseSource);
-  await put(
-    join(outDir, "licenses/index.html"),
-    layout(
-      {
-        path: "/licenses/",
-        title: "Font licenses · kudurru",
-        description: "Licenses of the fonts on kudurru.io.",
-        body: licenses(FONT_LICENSES),
-        assets,
-      },
-      version,
-    ),
+  await writePage(
+    "licenses/index.html",
+    {
+      path: "/licenses/",
+      title: "Font licenses · kudurru",
+      description: "Licenses of the fonts on kudurru.io.",
+      body: licenses(FONT_LICENSES),
+      assets,
+    },
   );
   for (const font of FONT_LICENSES) {
     await put(join(outDir, font.file), await readFile(join(ROOT, "node_modules", font.pkg, "LICENSE")));
   }
 
-  await put(join(outDir, "_headers"), headersFile(rulesFor(licenseApi)));
-  await put(join(outDir, "robots.txt"), `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+  await put(join(outDir, "_headers"), headersFile(rulesFor(licenseApi, [...scriptHashes], noIndex)));
+  // Crawlers must be allowed to fetch preview pages to see their noindex.
+  await put(join(outDir, "robots.txt"), `User-agent: *\nAllow: /\n${noIndex ? "" : `\nSitemap: ${SITE_URL}/sitemap.xml\n`}`);
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/move-over/", "/enterprise/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      indexedPaths.map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

@@ -108,7 +108,7 @@ export const LICENSE_ROWS: LicenseRow[] = [
 
 export const TAGLINE = "authority over every zone.";
 export const DESCRIPTION =
-  "kudurru (koo-DOO-roo) is a Kubernetes-native DNS server that also runs as one container: authoritative zones, a forwarding resolver over every encrypted transport, blocking with client groups, a dashboard that explains every answer. Core software under the Kudurru Community License: free for eligible personal and nonprofit use; business and government production needs an agreement.";
+  "Self-hosted DNS for Docker and Kubernetes: authoritative zones, encrypted DNS, network ad blocking and a dashboard that explains every answer. Start with one container.";
 
 export function docs(path = "/"): string {
   return DOCS_URL + path;

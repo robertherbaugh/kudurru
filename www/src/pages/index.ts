@@ -20,6 +20,7 @@ import {
 } from "../content.ts";
 import { external, icon, type Assets } from "./layout.ts";
 import { migrationCards } from "./move-over.ts";
+import { useCases } from "./use-case.ts";
 
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -329,6 +330,7 @@ ${deploy(version)}
     <p class="migration-sources"><a class="more" href="/move-over/">Compare all four DNS servers ${icon.arrow}</a></p>
   </div>
 </section>
+${useCases()}
 ${name(assets)}
 ${roadmap()}
 ${closing()}`;
