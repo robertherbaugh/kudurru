@@ -112,6 +112,32 @@ test("fonts are separate hashed files, not data URLs", async () => {
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
 });
 
+describe("the enterprise page", () => {
+  test("is linked from the nav and footer of every page and listed in the sitemap", async () => {
+    for (const name of PAGE_PATHS) {
+      const page = pages[name]!;
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(page)?.[1] ?? "";
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(nav, "href")).toContain("/enterprise/");
+      expect(attrs(footer, "href")).toContain("/enterprise/");
+    }
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/enterprise/</loc>");
+  });
+
+  test("marks both proposed fees TBD, says pricing is not final and publishes no amounts", () => {
+    const page = pages["enterprise/index.html"]!;
+    expect(page).toContain("Proposed pricing · not final");
+    expect(page).toMatch(/<dt>Platform fee<\/dt><dd>TBD\b/);
+    expect(page).toMatch(/<dt>Per-node fee<\/dt><dd>TBD\b/);
+    expect(page).toContain("All amounts are placeholders.");
+    expect(page).not.toMatch(/\$\s?\d/);
+  });
+
+  test("offers an email contact for discussing an enterprise deployment", () => {
+    expect(attrs(pages["enterprise/index.html"]!, "href")).toContain("mailto:hello@kudurru.io?subject=kudurru%20Enterprise");
+  });
+});
+
 describe("the license page", () => {
   test("states the terms, the free limits and where to write", () => {
     const page = pages["license/index.html"]!;
