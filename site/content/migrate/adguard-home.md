@@ -23,7 +23,7 @@ working-directory importer.
 | Persistent clients and per-client settings | IP/CIDR `ClientGroup` plus `Policy` | Reserve addresses; additional policies need a key |
 | ClientID, MAC and hostname identification | No production source for these matchers | Use real IPv4/IPv6 addresses or subnets |
 | DNS rewrites | Primary zones and records | Recreate supported local records; general per-policy rewrites are deferred |
-| Blocked services and safe search | Policy service/category blocking and safe search | Match catalogue IDs and supported engines explicitly |
+| Blocked services and safe search | Policy service/category blocking and safe search | Match catalog IDs and supported engines explicitly |
 | Upstreams and bootstrap servers | Named groups, strategies, bootstrap and suffix rules | Recreate configuration; retest private reverse DNS |
 | DoT, DoH and DoQ | Native listeners; also DoH3 | Configure listener certificates and client endpoints separately |
 | DHCP | No DHCP server | Hand off DHCP before retiring AdGuard Home |
@@ -176,8 +176,8 @@ so an exact IP takes precedence over a broader subnet group.
 
 Map blocked services by reviewing **Filtering** > **Policies**, rather than
 assuming AdGuard's IDs and domain coverage are identical. kudurru ships its
-own catalogue, supports category exceptions and safe search, and offers an
-optional runtime AdGuard service catalogue download. See
+own catalog, supports category exceptions and safe search, and offers an
+optional runtime AdGuard service catalog download. See
 [blocked services and safe search](/deploy/blocked-services/).
 
 For schedules, use `Policy.spec.schedule` with weekdays, start/end and an

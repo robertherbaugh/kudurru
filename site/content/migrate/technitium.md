@@ -238,7 +238,7 @@ For Advanced Blocking app profiles, create an IP/CIDR `ClientGroup` and
 lists explicitly: custom policies do not inherit the default policy.
 Translate regular expressions to RE2 and inspect skipped rules. Rebuild
 service blocks and safe search with the
-[policy catalogue](/deploy/blocked-services/); do not copy DNS App configuration.
+[policy catalog](/deploy/blocked-services/); do not copy DNS App configuration.
 
 ## 5. Rebuild operating dependencies
 
