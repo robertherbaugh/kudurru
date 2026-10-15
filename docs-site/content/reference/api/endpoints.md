@@ -29,6 +29,8 @@ The [API explorer](explorer.md) shows the request and response schemas.
 | GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public |
 | GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public |
 | POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated |
+| GET | `/api/v1/auth/sessions` | List own enrolled sessions | authenticated |
+| DELETE | `/api/v1/auth/sessions/{id}` | Revoke an enrolled session of the current account | authenticated |
 | GET | `/api/v1/auth/status` | Login options | public |
 | GET | `/api/v1/auth/tokens` | List own API tokens | authenticated |
 | POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated |

@@ -124,7 +124,10 @@ type Metadata struct {
 	Upstream string
 }
 
-func (c *Cache) Now() time.Time     { return c.now() }
+// Now returns this cache's configured clock.
+func (c *Cache) Now() time.Time { return c.now() }
+
+// Generation identifies the current cache invalidation epoch.
 func (c *Cache) Generation() uint64 { return c.generation.Load() }
 
 type shard struct {
@@ -178,11 +181,18 @@ func (c *Cache) setLimits(opts Options) {
 // disabled cache instead). Now and Metrics are ignored.
 func (c *Cache) Reconfigure(opts Options) {
 	c.setLimits(opts)
-	if opts.MaxEntries <= 0 {
+	c.Resize(opts.MaxEntries)
+}
+
+// Resize changes only storage capacity. Captured serving uses it without
+// replacing the stale/prefetch policy of independently held requests.
+// A nonpositive bound preserves capacity; the captured stage controls bypass.
+func (c *Cache) Resize(maxEntries int) {
+	if maxEntries <= 0 {
 		return
 	}
 	n := len(c.shards)
-	per := max((opts.MaxEntries+n-1)/n, 1)
+	per := max((maxEntries+n-1)/n, 1)
 	for i := range c.shards {
 		sh := &c.shards[i]
 		var evicted [2]int
@@ -286,6 +296,7 @@ func (c *Cache) Set(k Key, wire []byte, kind Kind, ttl time.Duration) {
 	c.SetWithMetadata(k, wire, kind, ttl, Metadata{})
 }
 
+// SetWithMetadata stores raw wire data and its provenance in the current epoch.
 func (c *Cache) SetWithMetadata(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata) {
 	c.SetIfGeneration(k, wire, kind, ttl, metadata, c.Generation())
 }

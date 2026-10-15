@@ -80,6 +80,11 @@ type Options struct {
 	// DisableBootstrap keeps incomplete Kubernetes migration state untouched.
 	// Admission and current write gates must be supplied by the runtime too.
 	DisableBootstrap bool
+	// DisableProviderDiscovery leaves this legacy stack's provider registry
+	// explicitly empty. The complete SQLite runtime uses it only for bootstrap
+	// and local administration; its separate captured provider owner performs
+	// bounded discovery and current authentication.
+	DisableProviderDiscovery bool
 	// Kube is the pod's apiserver configuration with the kube driver: it
 	// enables Kubernetes ServiceAccount tokens, SubjectAccessReview and
 	// IdentityProvider clientSecretRef. nil in Docker mode.
@@ -518,6 +523,14 @@ func (s *Stack) syncRoleBindings() {
 func (s *Stack) rebuildRegistry(ctx context.Context, deferUnavailable bool) error {
 	s.regMu.Lock()
 	defer s.regMu.Unlock()
+	if s.opts.DisableProviderDiscovery {
+		empty, err := oidc.NewRegistry()
+		if err != nil {
+			return err
+		}
+		s.registry.Store(empty)
+		return nil
+	}
 	first := s.registry.Load() == nil || s.registryPending
 	if s.opts.RetryUnavailable != nil {
 		timeout := s.opts.InitializationTimeout

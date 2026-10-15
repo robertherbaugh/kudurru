@@ -68,6 +68,7 @@ type KeyParts struct {
 	Scope       pipeline.CacheScope
 }
 
+// MakeScopedKey binds a DNS cache key to the captured resolution incarnation.
 func MakeScopedKey(scope pipeline.CacheScope, name string, qtype, qclass uint16, do, cd bool, ecs netip.Prefix) Key {
 	base := MakeKey(name, qtype, qclass, do, cd, ecs)
 	b := make([]byte, 45, len(base)+40)

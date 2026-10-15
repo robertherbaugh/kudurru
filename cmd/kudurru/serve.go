@@ -36,6 +36,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
+	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
@@ -65,8 +66,10 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	"github.com/robertherbaugh/kudurru/internal/rpz"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -289,6 +292,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		leaseDNS.SetSource(dhcpKube.Stores)
 	}
+	// Retain the concrete authority before any management facade is installed.
+	// Followers receive bootstrap state only in a validated complete replica.
+	sql, _ := st.(*sqlite.Store)
+	bootstrapWritable := sql == nil || sql.Authority().Writable()
+	var complete *servingRuntime
+	var zoneReads *servingbuild.Diagnostics
+	var capturedZoneReads api.ZoneReadSource
 
 	// Use the release namespace for seeds, policy fallback and API writes.
 	// Preserve the namespace of a legacy default policy on upgrades.
@@ -381,7 +391,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return nil
 	}
 	seedPending := false
-	if err := seedDefaults(ctx); err != nil {
+	if err := func() error {
+		if !bootstrapWritable {
+			return nil
+		}
+		return seedDefaults(ctx)
+	}(); err != nil {
 		if ctx.Err() != nil || cfg.Store.Driver != "kube" || !kube.IsUnavailable(err) {
 			return err
 		}
@@ -406,13 +421,22 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if cfg.Store.Driver == "kube" {
 		loadCtx, loadCancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
 	}
-	if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
-		for _, d := range report.Diagnoses {
-			logger.Warn("object file diagnosis", "diagnosis", d)
+	if bootstrapWritable {
+		if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
+			for _, d := range report.Diagnoses {
+				logger.Warn("object file diagnosis", "diagnosis", d)
+			}
 		}
 	}
 	loadCancel()
-	checker.Register("objects", loader.Ready)
+	checker.Register("objects", func() (bool, []string) {
+		if sql != nil && !sql.Authority().Writable() {
+			// A follower intentionally never loads local desired objects. Its
+			// complete replicated image is checked by the serving readiness gate.
+			return true, nil
+		}
+		return loader.Ready()
+	})
 
 	// zonecache: store watches → serving snapshots, local.db cold start (§4.4).
 	var zcLocal *localdb.SnapshotStore
@@ -426,8 +450,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	if err := zc.Register(zoneview.Builder(logger)); err != nil {
-		return err
+	if sql == nil {
+		if err := zc.Register(zoneview.Builder(logger)); err != nil {
+			return err
+		}
 	}
 	// Blocked services and safe-search catalog (D60): embedded, replaced
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
@@ -507,7 +533,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	reg.MustRegister(zoneview.NewCollector(zc, secondaries))
+	if sql == nil {
+		reg.MustRegister(zoneview.NewCollector(zc, secondaries))
+	}
 	reg.MustRegister(secondary.NewCollector(secondaries))
 	stubClient := &stub.Client{}
 	stubCluster := sha256.Sum256(append([]byte("kudurru/stub/cluster/v1:"), encKey...))
@@ -518,6 +546,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	reg.MustRegister(stub.NewCollector(stubs))
+	var feeds *rpz.Manager
+	if sql != nil {
+		rpzCluster := sha256.Sum256(append([]byte("kudurru/rpz/cluster/v1:"), encKey...))
+		feeds, err = rpz.New(rpz.Options{Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Keyring: keyring, Receiver: &secondary.TransferClient{Keyring: keyring}, Logger: logger})
+		if err != nil {
+			return err
+		}
+	}
 	notifyReceiver := secondary.NewNotifyReceiver(secondaries, reg)
 	var (
 		internalClient *internalapi.Client
@@ -564,8 +600,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 				}
 			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
-			Zones: func(context.Context) internalapi.ZoneList {
+			Zones: func(ctx context.Context) internalapi.ZoneList {
 				zl := internalapi.ZoneList{Node: cfg.Node.Name}
+				if zoneReads != nil {
+					for _, z := range capturedAuthoritativeZones(ctx, zoneReads) {
+						zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Apex, Serial: z.Serial, Type: string(z.Type)})
+					}
+					return zl
+				}
 				for _, z := range zoneview.Served(zc, secondaries) {
 					zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Name(), Serial: z.Serial(), Type: string(z.Type())})
 				}
@@ -720,7 +762,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	checker.Register("blocking", bs.Ready)
+	if sql == nil {
+		checker.Register("blocking", bs.Ready)
+	}
 	bs.Toggle().SetOnChange(edgeFlush.BlockingChanged)
 
 	// Block page (docs/deploy/blocking-page.md): the renderer always exists
@@ -736,7 +780,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 
-	auth := authoritative.New(zoneview.Source{Cache: zc, Secondary: secondaries, Stub: stubs})
+	var zoneSource authoritative.Source
+	if sql == nil {
+		zoneSource = zoneview.Source{Cache: zc, Secondary: secondaries, Stub: stubs}
+	}
+	auth := authoritative.New(zoneSource)
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
 	auth.Notify = notifyReceiver.Handle
@@ -810,6 +858,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err := registry.Bind(); err != nil { // fail fast on port conflicts
 		return err
 	}
+	defer func() {
+		for _, listener := range registry.Listeners() {
+			_ = listener.Close()
+		}
+	}()
 	checker.Register("dns", registry.Ready)
 	if cfg.BlockPage.Enabled {
 		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
@@ -817,16 +870,22 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 
-	// NOTIFY out (RFC 1996): leader-only, triggered by every published snapshot.
-	var notifySrc netip.Addr
-	if cfg.Notify.Source != "" {
-		notifySrc = netip.MustParseAddr(cfg.Notify.Source)
+	// SQLite's lifecycle driver owns durable NOTIFY. The legacy notifier is
+	// retained only for the Kubernetes serving path.
+	var nt *notifier.Notifier
+	var manualNotify api.ZoneNotifier
+	if sql == nil {
+		var notifySrc netip.Addr
+		if cfg.Notify.Source != "" {
+			notifySrc = netip.MustParseAddr(cfg.Notify.Source)
+		}
+		nt, err = notifier.New(notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger})
+		if err != nil {
+			return err
+		}
+		zc.OnPublish(func(*zonecache.Snapshot) { nt.Trigger() })
+		manualNotify = api.NotifyTrigger(nt.Trigger)
 	}
-	nt, err := notifier.New(notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger})
-	if err != nil {
-		return err
-	}
-	zc.OnPublish(func(*zonecache.Snapshot) { nt.Trigger() })
 
 	// Response cache persistence across restarts (local.db blob).
 	var cachePersister *persist.Persister
@@ -844,6 +903,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
+	crossOrigin := http.NewCrossOriginProtection()
+	stackOpts.CrossOrigin = crossOrigin
+	stackOpts.DisableBootstrap = !bootstrapWritable
+	stackOpts.DisableProviderDiscovery = sql != nil
 	if identityGate != nil {
 		stackOpts.TokenMigration = iamgate.ResolveToken
 		stackOpts.InitializationAdmission = func(ctx context.Context) error {
@@ -868,9 +931,70 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
-	authMux := http.NewServeMux()
-	ids.Register(authMux)
 	authenticate := identityAuthentication(ids, identityGate)
+	authorizer, roles := ids.Authorizer(), ids.Roles
+	var authHandler http.Handler
+	// Complete SQLite settings use the fenced canonical command path; legacy
+	// ownership actions must not write a separate settings file beside it.
+	if complete != nil {
+		settingsManager = nil
+	}
+	var canonicalSettings api.CanonicalSettings
+	var objectCommand api.ObjectCommand
+	if sql == nil {
+		authMux := http.NewServeMux()
+		ids.Register(authMux)
+		authHandler = authMux
+	}
+	if sql != nil {
+		authKeys, err := newAuthKeyOwner(ctx, encKeys)
+		if err != nil {
+			return err
+		}
+		rings, err := servingbuild.NewKeyringOwner(keyring)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rings.Close(context.Background()) }()
+		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
+			Store: sql, Config: cfg, Validator: v, License: lic, AuthKeys: authKeys,
+			Keyrings: rings, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
+			Lists: lists, Namespace: namespace, Upstreams: upOpts,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := complete.Close(context.Background()); err != nil {
+				logger.Error("complete runtime shutdown", "error", err)
+			}
+		}()
+		auth.Update = complete.primary.Update
+		auth.Notify = servingbuild.CapturedNotify(notifyReceiver, time.Now)
+		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
+			return err
+		}
+		checker.Register("serving", complete.ready)
+		zoneReads, err = servingbuild.NewDiagnostics(complete.publisher, time.Now)
+		if err != nil {
+			return err
+		}
+		capturedZoneReads = zoneReads
+		reg.MustRegister(newServingZoneCollector(zoneReads))
+		httpAuth, err := newServingHTTP(servingHTTPOptions{
+			Runtime: complete, Cookie: ids.Cookie(), CrossOrigin: crossOrigin,
+			ClientIP: apiClientIP, Hasher: users.NewHasher(0),
+		})
+		if err != nil {
+			return err
+		}
+		authenticate = func(next http.Handler) http.Handler {
+			return httpAuth.Middleware(servingMutationRoutes(next))
+		}
+		authorizer, roles = httpAuth.Authorizer(), httpAuth.Roles
+		authHandler = httpAuth.Handler()
+		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+	}
 
 	// The optional central database (D158): opened here, connected and
 	// migrated in the background by its runnable; never part of readiness.
@@ -970,19 +1094,20 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, ObjectCommand: objectCommand,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, Chain: chain,
 		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
-		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
+		Lists: listResolver, Notifier: manualNotify,
 		Refresher:  listRefresher(membership, fetcher),
 		ListBodies: listBodies{cache: lists},
 		Purger:     querylogPurger(qlWriter),
 		Audit:      recorders, AuditReader: auditReader, Central: centralState,
-		Authenticate: authenticate, Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
-		AuthHandler: authMux,
-		Roles:       ids.Roles,
+		Authenticate: authenticate, Authorizer: authorizer, CSRF: authn.CSRF, CrossOrigin: crossOrigin,
+		AuthHandler: authHandler,
+		Roles:       roles,
 		UIHandler:   dashboard.Handler(dashboard.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: namespace,
@@ -1009,7 +1134,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()})
+	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()}
+	if complete != nil {
+		ctrlOpts.CommittedPrimaryStatus = complete.status
+	}
+	ctrl, err := controller.New(st, ctrlOpts)
 	if err != nil {
 		return err
 	}
@@ -1020,6 +1149,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Elector:          st.Elector(cluster.ElectionController),
 		Lameduck:         func(context.Context) { checker.Lameduck() },
 		LameduckDuration: cfg.Node.Lameduck.Std(),
+		JoinShutdown:     complete != nil,
 		Registerer:       reg, Logger: logger,
 	})
 	if err != nil {
@@ -1027,6 +1157,30 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	add := func(name string, leaderOnly bool, fn func(context.Context) error) error {
 		return runner.Add(name, leaderOnly, fn)
+	}
+	if complete != nil {
+		if err := add("serving", false, complete.Run); err != nil {
+			return err
+		}
+		if err := add("serving-writer", true, complete.RunWriter); err != nil {
+			return err
+		}
+		if err := add("rpz", false, feeds.Run); err != nil {
+			return err
+		}
+	} else if err := add("notifier", true, nt.Run); err != nil {
+		return err
+	}
+	if complete == nil {
+		if err := add("settings", false, func(ctx context.Context) error {
+			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
+			if settingsManager != nil {
+				opts.Refresh = settingsManager.Refresh
+			}
+			return config.WatchSettings(ctx, reload, opts)
+		}); err != nil {
+			return err
+		}
 	}
 	if seedPending {
 		if err := add("bootstrap", false, func(ctx context.Context) error {
@@ -1059,14 +1213,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		{"stubs", false, stubs.Run},
 		{"secondary-notify-sources", false, notifyReceiver.Run},
 		{"secondary-notify-fanout", false, notifyFanout.Run},
-		{"settings", false, func(ctx context.Context) error {
-			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
-			if settingsManager != nil {
-				opts.Refresh = settingsManager.Refresh
+		{"objects", sql != nil, func(ctx context.Context) error {
+			if sql != nil {
+				loader.Load(ctx) // every original writer starts with its local manifest
 			}
-			return config.WatchSettings(ctx, reload, opts)
+			return loader.Watch(ctx)
 		}},
-		{"objects", false, loader.Watch},
 		{"dns", false, registry.Run},
 		{"ops", false, func(ctx context.Context) error {
 			return serveHTTP(ctx, cfg.Listeners.Ops.Address, checker.Handler(), logger, "ops")
@@ -1077,8 +1229,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return serveHTTP(ctx, cfg.Listeners.Metrics.Address, mux, logger, "metrics")
 		}},
 		{"selfcheck", false, func(ctx context.Context) error {
+			initialized := zc.Initialized()
+			if complete != nil {
+				initialized = complete.publisher.Initialized()
+			}
 			select {
-			case <-zc.Initialized():
+			case <-initialized:
 				checker.SetStarted()
 			case <-ctx.Done():
 				return nil
@@ -1095,7 +1251,6 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}},
 		{"controller", true, ctrl.Run},
-		{"notifier", true, nt.Run},
 		{"listfetcher", true, fetcher.Run},
 		{"listresolver", false, listResolver.Run},
 		{"identity", false, ids.Run},
@@ -1118,10 +1273,23 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	subscribeReload(ctx, reload, reloadTargets{
+	reloadConsumers := reloadTargets{
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
 		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter, postprocess: post,
-	})
+	}
+	if complete != nil {
+		// Complete requests use immutable settings and resource owners. Legacy
+		// reload callbacks must not replace or close their serving resources.
+		reloadConsumers.upstreams, reloadConsumers.cache, reloadConsumers.cacheStg = nil, nil, nil
+		reloadConsumers.blocking, reloadConsumers.postprocess = nil, nil
+		if err := add("serving-settings", false, func(ctx context.Context) error {
+			return complete.runServingReload(ctx, reloadConsumers, rc)
+		}); err != nil {
+			return err
+		}
+	} else {
+		subscribeReload(ctx, reload, reloadConsumers)
+	}
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {
 			return err

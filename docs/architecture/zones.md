@@ -582,8 +582,11 @@ receive new retry identities, so this does not claim cross-request deduplication
 Diagnostics cannot change the wire result even if their callback panics.
 
 The command assembly binds these adapters to the original elected SQLite writer,
-complete leases and the same current keyring/policy guard. Production `serve.go`
-mounting and authenticated HA forwarding remain in progress. The Kubernetes test
+complete leases and the same current keyring/policy guard. SQLite `serve.go`
+mounts it into the actual DNS listeners, with the complete driver owning automatic
+NOTIFY and the controller using committed status. Manual NOTIFY remains unavailable
+until it can create a fresh durable intent. Authenticated HA forwarding remains
+in progress. The Kubernetes test
 adapter exercises exact-object CAS without claiming a multi-object transaction;
 production Kubernetes UPDATE and durable NOTIFY require their own admission
 barriers. Receipt capacity remains finite with no automatic eviction.
@@ -604,8 +607,8 @@ message, client, transport and deadline. It cannot be reused as UPDATE evidence.
 immutable keys from the request's complete serving lease, with no live configuration
 fallback. The enclosing callback must retain that lease and check lifecycle
 eligibility. An expired secondary may still accept an authorized refresh hint;
-the hint never renews data itself. Existing production mounting continues to use
-the legacy receiver until complete-owner assembly is installed.
+the hint never renews data itself. SQLite mounts `CapturedNotify` on the complete
+request pipeline; Kubernetes retains the legacy receiver.
 
 ### Transferred runtime publication
 
@@ -621,8 +624,8 @@ callback. Current primary commands use the same manager gates through final comm
 including NOTIFY acknowledgment. Acquisition stays outside these gates. The global
 order is publication, provider resources, host/license, keyring, catalog, secondary, stub,
 RPZ, then SQLite. Acquiring a newer pin does not make an older prepared cut current.
-These adapters have actual manager, complete-builder and SQLite acceptance;
-production mounting remains separate work.
+These adapters have actual manager, complete-builder and SQLite acceptance,
+and SQLite `serve.go` mounts the secondary, stub and RPZ owners together.
 
 The complete root pin holds every dependency in that order through the actual
 command, including its final admission check. Its mandatory current predicate
@@ -654,8 +657,8 @@ Pending complete publication defers status without changing the source RV.
 The controller retains desired-record conflict diagnostics, but delegates primary
 status when the capability is installed. Kubernetes and unconfigured controllers
 retain their existing behavior. The adapter and controller have actual SQLite,
-native signed UPDATE and Kubernetes race acceptance; production mounting remains
-open.
+native signed UPDATE and Kubernetes race acceptance; SQLite `serve.go` now
+installs the status capability on its controller.
 
 Primary serving also requires the committed head's source receipt and frozen
 configuration to match the current DNSZone. Advancing a lifecycle source before
@@ -674,3 +677,21 @@ and child boundaries survive the static replacement.
 Dynamic UPDATE (RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
 UPDATE reaches its reserved authoritative callback, which answers NOTIMP until
 the atomic update handler is installed. Unknown opcodes remain NOTIMP.
+
+### Captured HTTP diagnostics
+
+SQLite zone summaries, record lists and exports use the original HTTP lease's
+committed model. Dynamic UPDATE records appear without a desired-record rebuild
+or a status restamp. Desired object ownership/counts remain separate; records
+without durable source provenance have empty `recordSet` and `managedBy` fields.
+An unavailable copy returns 503, while an absent desired object returns 404.
+Internal serial advertisements and zone metrics explicitly capture a complete
+lease and include only available authoritative copies. Record and owner-name
+counts come from that exact model. Held reads retain their original generation
+and still enforce absolute inherited expiry.
+
+Compound convenience writes (zone cascade deletion, single-record edits/deletes,
+imports and manual NOTIFY) currently return 503 on the complete SQLite mount.
+They need one current compound command or durable notification intent; calling
+their legacy live-store helpers would bypass the new admission contract. Generic
+single-object writes remain available. Kubernetes retains its existing routes.

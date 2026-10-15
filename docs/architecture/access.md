@@ -113,8 +113,8 @@ Explicit TLS/origin policy, bounded document parsing and absolute resource
 freshness apply to discovery and JWKS refresh. Transient failures can retain only
 an unchanged resource until its original deadline; security mismatches retire it.
 Unknown token keys never initiate discovery. These resource and transaction
-adapters are tested with real TLS, SQLite and the publisher; the production
-coordinator and login/HTTP mounting remain integration work.
+adapters are tested with real TLS, SQLite and the publisher. SQLite startup now
+mounts the coordinator and captured local HTTP routes; browser OIDC remains open.
 
 Host-only `auth.providerResources` settings now declare explicit network origins,
 local exceptions, asymmetric JWT algorithms, system trust and extra CA files.
@@ -140,7 +140,8 @@ local installations even when their serials or configuration bytes are equal;
 their local identities never replace the shared entitlement activation. A bounded
 four-entry memo preserves concurrently prepared old/new resource projections.
 Host reset, follower observation, real JWT/current commands and reference lifetimes
-have actual SQLite/complete-publisher acceptance. Production mounting remains open.
+have actual SQLite/complete-publisher acceptance and are mounted in SQLite
+startup with the original elected writer lifecycle.
 
 ```mermaid
 flowchart LR
@@ -189,10 +190,25 @@ their own durable deadlines rather than inheriting the source JWT's expiry.
 
 These owners are tested across held old/new views, store closure, restart, actual
 replica installation and promotion. The HTTP bridge also tests held reads during
-revocation, current-command denial and cleanup on cancellation/panic. Production
-mounting and the public session workflow remain in progress. The
-request diagrams below describe the existing production stack until that wiring
-is installed. Kubernetes migration admission is a separate verified journal gate.
+revocation, current-command denial and cleanup on cancellation/panic. SQLite
+`serve.go` now mounts the captured HTTP adapter for authentication, authorization,
+local login, password changes, token CRUD, IAM reads and own-session inventory
+and revocation. The API and adapter share the same cookie and cross-origin policy.
+Login verifies the current password/TOTP once, stages durable enrollment, checks
+its original deadlines at final commit, and seals only from a published view
+containing that enrollment. Password changes raise revocation floors and can
+revoke tokens atomically with replacement enrollment. Session responses expose
+only the identifier, timestamps and current/revoked flags for the exact account
+UID. Generic public object writes and canonical settings writes reauthorize the
+original raw proof within the admitted command, including unchanged writes.
+
+OIDC start/callback routes return 503 until a captured browser provider adapter is
+mounted; they never fall back to the legacy Stack. Startup bootstrap and local
+admin-socket integration still use the legacy Stack, with its provider discovery
+disabled on SQLite. Completing current admission for those administrative paths,
+public TOTP enrollment/recovery, browser OIDC and CLI login remains open. The
+request diagrams below describe the legacy Kubernetes stack; its migration
+admission remains a separate verified journal gate.
 
 SQLite startup initializes the explicit empty security manifest under its writer
 fence and validates owner rows on later writes/replica installation. Existing

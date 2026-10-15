@@ -625,8 +625,8 @@ and writer checks. Map merges and null resets preserve the API's existing behavi
 Successful PATCH replies acknowledge durable desired values. Subsequent serving
 reads wait for complete publication; the adapter never writes the legacy file or
 changes the independent reload pointer. Actual HTTP/SQLite tests cover these
-paths. Production bundle mounting remains open; startup migration alone does not
-switch the existing settings writer.
+paths. SQLite `serve.go` mounts this adapter with the complete HTTP owner;
+Kubernetes retains its existing settings writer.
 
 
 ## Complete serving publication
@@ -724,8 +724,20 @@ UPDATE, license replacement recovery, follower restart/promotion and joined
 shutdown are tested through this assembly. A newly enrolled follower remains
 running but unavailable while awaiting its first replica. The same runtime
 publishes after a valid installation without initializing local owner roots;
-malformed installed owner inventories still fail startup. Production `serve.go` mounting and
-three-process partition/rejoin acceptance remain integration work.
+malformed installed owner inventories still fail startup. SQLite `serve.go` now
+mounts this assembly into the actual DNS and HTTP listeners. Readiness uses the
+protected complete publication; followers skip local bootstrap and file loading.
+The runner joins elected and always-on workers before borrowed resources close,
+even when its shutdown diagnostic timeout expires. Kubernetes retains its
+existing serving path. Peer transition exclusion and three-process partition/rejoin
+acceptance remain integration work.
+
+Published canonical settings also drive operational consumers: ingress rate
+limits, query-log privacy/retention, block-page rendering and response-cache
+capacity. This watcher subscribes before capture, detaches the configuration
+while holding the complete lease, and applies it after releasing that lease.
+It does not replace captured DNS owners or update the legacy settings file/pointer.
+DNS settings continue to take effect through complete publication.
 Installed data is never reported as Served
 merely because its database transaction completed. The disconnected-primary
 limitation remains: a former primary can acknowledge writes until it learns of

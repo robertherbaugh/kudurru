@@ -77,8 +77,9 @@ alias/DNS64 views, detached-cache fencing and transfer cleanup across all six
 listeners. Authentication now has a complete-image owner and a leased HTTP
 adapter; strict list preparation requires exact published body digests.
 The real complete-owner builder has restart, follower install, promotion and
-held DNS/HTTP lease acceptance. Production mounting, public wiring and multi-node
-partition/rejoin acceptance remain open; this is not consensus.
+held DNS/HTTP lease acceptance. SQLite production DNS/HTTP mounting now uses the
+complete runtime. Peer transition exclusion, remaining public adapters and
+multi-node partition/rejoin acceptance remain open; this is not consensus.
 
 RFC 2136 parsing/planning, prerequisite and ownership checks, bounded private
 zone aggregates, SQLite transactions and Kubernetes immutable-chunk/head CAS
@@ -102,8 +103,8 @@ the lifecycle source cannot expose old configuration. Pending DNSRecordSet-only
 edits retain the last committed records until reconciliation.
 Captured primary routing, admission and publication diagnostics also agree at
 the earliest ancestor expiry, including after durable restore and parent refresh.
-The root runtime assembly is tested with the complete publisher; production
-mounting, Kubernetes barriers and forwarding remain in progress.
+The root runtime assembly is mounted on SQLite DNS listeners; Kubernetes
+barriers and authenticated forwarding remain in progress.
 The combined root assembly now runs provider acquisition/publication on every
 role and resets provider floors under the original elected writer before primary
 work. Actual elector, native UPDATE, license replacement, restart/promotion and
@@ -114,7 +115,12 @@ once, retaining existing values and excluding local environment overrides.
 The optional canonical settings API adapter now uses the captured HTTP image and
 current commands for durable singleton writes, leaving runtime changes to complete
 publication. Real HTTP/SQLite merge, reset, no-op and stale-request tests pass;
-the production route mount remains open.
+the SQLite route is now mounted. Captured local login/password/token/session
+routes, generic current object writes, committed zone diagnostics and operational
+settings observation are also mounted. Actual server tests combine signed
+UDP/TCP UPDATE, HTTP commands, exports and restart. Browser OIDC, public TOTP
+management, compound zone mutations and administrative/source writer integration
+remain open.
 Root request contexts retain the original elector token and cancellation, and
 complete runtime owners retain the exact prepared keyring installation for
 notification admission. Captured secondary NOTIFY accepts authorized refresh
