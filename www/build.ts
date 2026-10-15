@@ -166,7 +166,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     },
   );
   for (const page of USE_CASES) {
-    await writePage(page.path.slice(1) + "index.html", { ...page, body: useCase(page), assets });
+    await writePage(page.path.slice(1) + "index.html", { ...page, breadcrumb: page.label, body: useCase(page), assets });
   }
   await writePage(
     "license/index.html",

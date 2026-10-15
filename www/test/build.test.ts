@@ -181,6 +181,18 @@ describe("search discovery", () => {
     expect(jsonLd(pages["404.html"]!)).toEqual([]);
   });
 
+  test.each(LANDING_PAGES)("%s structured breadcrumb matches the visible trail", (name) => {
+    const page = pages[name]!;
+    const visibleLabel = /aria-current="page">([^<]+)<\/span>/.exec(page)?.[1];
+    expect(visibleLabel).toBeTruthy();
+    const graph = JSON.parse(jsonLd(page)[0]!)["@graph"] as {
+      "@type": string;
+      itemListElement?: { name: string }[];
+    }[];
+    const trail = graph.find((item) => item["@type"] === "BreadcrumbList")?.itemListElement;
+    expect(trail?.at(-1)?.name).toBe(visibleLabel);
+  });
+
   test.each(LANDING_PAGES)("%s is discoverable and sends readers to maintained guides", async (name) => {
     const path = "/" + name.replace(/index\.html$/, "");
     expect(attrs(pages["index.html"]!, "href")).toContain(path);

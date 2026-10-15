@@ -1,6 +1,6 @@
 import { html, raw, type Html } from "../html.ts";
 import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE, docs } from "../content.ts";
-import { structuredData } from "../seo.ts";
+import { structuredData, type SearchPage } from "../seo.ts";
 import { USE_CASES } from "../use-cases.ts";
 
 // The hashed files of one build, as URL paths.
@@ -11,10 +11,7 @@ export interface Assets {
   file: (name: string) => string;
 }
 
-export interface Page {
-  path: string;
-  title: string;
-  description?: string;
+export interface Page extends SearchPage {
   body: Html;
   assets: Assets;
   // Excluded pages (404 and preview builds) have no canonical or JSON-LD.

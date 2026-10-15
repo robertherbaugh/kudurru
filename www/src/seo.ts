@@ -6,6 +6,7 @@ export interface SearchPage {
   path: string;
   title: string;
   description?: string;
+  breadcrumb?: string;
 }
 
 // Escape HTML delimiters before embedding JSON in a script data block. HTML
@@ -66,18 +67,19 @@ export function structuredData(page: SearchPage, version: string): string {
       // an Offer, price, review or rating from the community license.
     });
   } else {
+    const hasLicenseParent = page.path.startsWith("/license/") && page.path !== "/license/";
     graph.push({
       "@type": "BreadcrumbList",
       "@id": url + "#breadcrumb",
       itemListElement: [
         { "@type": "ListItem", position: 1, name: "kudurru", item: SITE_URL + "/" },
-        ...(page.path.startsWith("/license/") && page.path !== "/license/"
+        ...(hasLicenseParent
           ? [{ "@type": "ListItem", position: 2, name: "License and keys", item: SITE_URL + "/license/" }]
           : []),
         {
           "@type": "ListItem",
-          position: page.path.startsWith("/license/") && page.path !== "/license/" ? 3 : 2,
-          name: page.title.replace(/ (?:·|\|) kudurru$/, ""),
+          position: hasLicenseParent ? 3 : 2,
+          name: page.breadcrumb ?? page.title.replace(/ (?:·|\|) kudurru$/, ""),
           item: url,
         },
       ],
