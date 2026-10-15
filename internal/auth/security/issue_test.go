@@ -131,3 +131,59 @@ func TestLocalIssuanceRejectsCurrentPolicyAndTokenConversion(t *testing.T) {
 		t.Fatal("legacy TOTP seed without replay authority was accepted", err)
 	}
 }
+
+func TestAdminsOnlyUsesCurrentLicensedClusterGrant(t *testing.T) {
+	for _, tc := range []struct {
+		name, role, scope string
+		licensed, allowed bool
+	}{
+		{"cluster-admin", "admin", "", true, true},
+		{"explicit-cluster-admin", "admin", "cluster", true, true},
+		{"scoped-admin", "admin", "zone", true, false},
+		{"viewer", "viewer", "cluster", true, false},
+		{"unlicensed-admin", "admin", "cluster", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSessionFixture(t)
+			deps := loginDependencies(t, f)
+			deps.License.RBAC = tc.licensed
+			before, err := f.st.ReadGeneration(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = f.st.Command(t.Context(), f.st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				var settings publicv1.Kudurru
+				if err := tx.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
+					return err
+				}
+				settings.Spec.Settings["auth"] = apiextensionsv1.JSON{Raw: []byte(`{"localLogin":"admins-only"}`)}
+				if _, err := tx.Apply(ctx, &settings, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+					return err
+				}
+				binding := f.binding.DeepCopy()
+				binding.Spec.Role, binding.Spec.Scope.Kind = tc.role, tc.scope
+				if tc.scope == "zone" {
+					binding.Spec.Scope.Name = "home"
+				}
+				if _, err := Apply(ctx, tx, binding, store.ApplyOptions{Manager: store.ManagerAPI}, f.now); err != nil {
+					return err
+				}
+				_, err := IssueLocal(ctx, tx, deps, servingauth.Credential{Kind: servingauth.Password, Username: "alice", Value: "test-local-password-1"}, f.now.Add(time.Second))
+				return err
+			})
+			if tc.allowed {
+				if err != nil {
+					t.Fatal("current cluster administrator denied", err)
+				}
+			} else {
+				if !errors.Is(err, servingauth.ErrDenied) {
+					t.Fatal("non-cluster or unlicensed grant admitted", err)
+				}
+				after, err := f.st.ReadGeneration(t.Context())
+				if err != nil || !after.Generation().Same(before.Generation()) {
+					t.Fatal("denied login persisted staged policy or enrollment", err)
+				}
+			}
+		})
+	}
+}

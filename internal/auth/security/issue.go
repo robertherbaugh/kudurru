@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"time"
 
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -98,7 +99,11 @@ func localLoginConfig(d servingauth.SessionDecision) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !d.Principal.BuiltinAdmin {
+	// ResolveSessionCurrent supplies normalized grants after current license
+	// policy. Only the exact cluster admin grant permits admins-only login;
+	// scoped admin grants and unlicensed bindings cannot broaden this gate.
+	admin := d.Principal.BuiltinAdmin || slices.Contains(d.Grants, "admin")
+	if cfg.Auth.LocalLogin == config.LocalLoginDisabled || cfg.Auth.LocalLogin == config.LocalLoginAdminsOnly && !admin {
 		return nil, servingauth.ErrDenied
 	}
 	return cfg, nil
