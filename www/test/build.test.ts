@@ -124,13 +124,22 @@ describe("the enterprise page", () => {
     expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/enterprise/</loc>");
   });
 
-  test("marks both proposed fees TBD, says pricing is not final and publishes no amounts", () => {
+  test("publishes both annual editions, a static calculator example and volume rules", () => {
     const page = pages["enterprise/index.html"]!;
-    expect(page).toContain("Proposed pricing · not final");
-    expect(page).toMatch(/<dt>Platform fee<\/dt><dd>TBD\b/);
-    expect(page).toMatch(/<dt>Per-node fee<\/dt><dd>TBD\b/);
-    expect(page).toContain("All amounts are placeholders.");
-    expect(page).not.toMatch(/\$\s?\d/);
+    expect(page).toContain("$99<span>/year platform fee</span>");
+    expect(page).toContain("+ $99 / node / year");
+    expect(page).toContain("$499<span>/year platform fee</span>");
+    expect(page).toContain("+ $299 / node / year");
+    expect(page).toContain("billed annually in USD");
+    expect(page).toContain('data-pricing-result>$1,994</p>');
+    expect(page).toContain("$166.17/month, billed annually");
+    expect(page).toContain("$2,326.50");
+    expect(page).toContain("$7,226.50");
+    expect(page).toContain("quoted individually");
+    expect(page).toContain("Community / Homelab");
+    expect(page).toContain("government production use");
+    expect(page).toContain("DNS keeps answering.");
+    expect(page).not.toMatch(/TBD|Proposed pricing|placeholders/);
   });
 
   test("offers an email contact for discussing an enterprise deployment", () => {
