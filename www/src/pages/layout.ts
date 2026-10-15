@@ -1,5 +1,7 @@
-import { html, type Html } from "../html.ts";
+import { html, raw, type Html } from "../html.ts";
 import { DESCRIPTION, DOCS_URL, FOOTER, NAV, REPO_URL, SITE_URL, TAGLINE, docs } from "../content.ts";
+import { structuredData } from "../seo.ts";
+import { USE_CASES } from "../use-cases.ts";
 
 // The hashed files of one build, as URL paths.
 export interface Assets {
@@ -15,7 +17,7 @@ export interface Page {
   description?: string;
   body: Html;
   assets: Assets;
-  // The 404 page is not indexed and has no canonical URL.
+  // Excluded pages (404 and preview builds) have no canonical or JSON-LD.
   index?: boolean;
 }
 
@@ -68,6 +70,9 @@ function footer(assets: Assets, version: string): Html {
     </div>`,
     )}
   </div>
+  <nav class="wrap foot-use-cases mono" aria-label="Explore kudurru">
+    ${USE_CASES.map((page) => html`<a href="${page.path}">${page.label}</a>`)}
+  </nav>
   <div class="wrap foot-legal">
     <p>The kudurru core uses the <a href="/license/text/">Kudurru Community License</a> for eligible personal, nonprofit and community-development uses. Business and government production use needs an agreement. This marketing website is copyright 2026 kudurru project maintainers, with a separate ${external(docs("/project/website-license/"), "source-viewing license")}. dnsdist and keepalived are GPL-2.0 and ship only as separate, unmodified programs in their own images.</p>
     <p class="mono"><a href="/">kudurru.io</a> · ${external(DOCS_URL, "docs.kudurru.io")} · <a href="/licenses/">font licenses</a></p>
@@ -87,19 +92,27 @@ export function layout(page: Page, version: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${page.title}</title>
 <meta name="description" content="${description}">
-${index ? html`<link rel="canonical" href="${url}">` : html`<meta name="robots" content="noindex">`}
+${index ? html`<link rel="canonical" href="${url}">
+<meta name="robots" content="index, follow, max-image-preview:large">` : html`<meta name="robots" content="noindex">`}
 <meta name="theme-color" content="#182522">
 <meta name="color-scheme" content="dark">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="kudurru">
+<meta property="og:locale" content="en_US">
 <meta property="og:title" content="${page.title}">
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${url}">
 <meta property="og:image" content="${SITE_URL}/brand/kudurru-social.png">
+<meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="kudurru, Kubernetes-native DNS">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${page.title}">
+<meta name="twitter:description" content="${description}">
+<meta name="twitter:image" content="${SITE_URL}/brand/kudurru-social.png">
+<meta name="twitter:image:alt" content="kudurru, Kubernetes-native DNS">
+${index ? html`<script type="application/ld+json">${raw(structuredData(page, version))}</script>` : ""}
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" type="image/png" sizes="192x192" href="${assets.file("kudurru-icon-192.png")}">
 <link rel="apple-touch-icon" href="${assets.file("kudurru-icon-192.png")}">
