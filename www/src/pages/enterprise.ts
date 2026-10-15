@@ -1,5 +1,5 @@
 import { html, type Html } from "../html.ts";
-import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, docs } from "../content.ts";
+import { COMMERCIAL_COMPARISON, COMMERCIAL_PLANS, ENTERPRISE_CONTACT_URL, ENTERPRISE_FEATURES, LICENSE_FREE_NODES, VOLUME_PRICING, docs } from "../content.ts";
 import { annualPrice, usd } from "../pricing.ts";
 import { external, icon } from "./layout.ts";
 
@@ -16,7 +16,7 @@ function calculator(): Html {
       <label class="pricing-nodes" for="pricing-nodes">Licensed production nodes
         <input id="pricing-nodes" data-pricing-nodes type="number" min="1" step="1" value="5" inputmode="numeric" required aria-describedby="pricing-help pricing-message">
       </label>
-      <p class="fine" id="pricing-help">25–49 nodes: 10% off node fees. 50+: individual quote.</p>
+      <p class="fine" id="pricing-help">${VOLUME_PRICING.discountFrom}–${VOLUME_PRICING.quoteFrom - 1} nodes: ${VOLUME_PRICING.discount * 100}% off node fees. ${VOLUME_PRICING.quoteFrom}+: individual quote.</p>
     </div>
     <p class="nojs-note fine">Example: Enterprise with 5 production nodes. Enable JavaScript to calculate your deployment.</p>
     <div aria-live="polite" aria-atomic="true">
@@ -109,13 +109,13 @@ export function enterprise(): Html {
           <table>
             <caption id="enterprise-scale-caption">Total annual software license in USD</caption>
             <thead><tr><th scope="col">Licensed nodes</th><th scope="col">Commercial Core / year</th><th scope="col">Enterprise / year</th></tr></thead>
-            <tbody>${[1, 3, 5, 10, 25, 50].map((nodes) => html`<tr><th scope="row">${nodes === 50 ? "50+" : nodes}</th>${(["core", "enterprise"] as const).map((edition) => {
+            <tbody>${[1, 3, 5, 10, VOLUME_PRICING.discountFrom, VOLUME_PRICING.quoteFrom].map((nodes) => html`<tr><th scope="row">${nodes === VOLUME_PRICING.quoteFrom ? `${nodes}+` : nodes}</th>${(["core", "enterprise"] as const).map((edition) => {
               const price = annualPrice(edition, nodes);
               return html`<td>${price ? usd(price.total) : html`<a href="${ENTERPRISE_CONTACT_URL}">Contact us</a>`}</td>`;
             })}</tr>`)}</tbody>
           </table>
         </div>
-        <p class="fine">25–49 nodes receive 10% off the entire per-node component; the platform fee is unchanged. Deployments of 50 or more nodes are quoted individually.</p>
+        <p class="fine">${VOLUME_PRICING.discountFrom}–${VOLUME_PRICING.quoteFrom - 1} nodes receive ${VOLUME_PRICING.discount * 100}% off the entire per-node component; the platform fee is unchanged. Deployments of ${VOLUME_PRICING.quoteFrom} or more nodes are quoted individually.</p>
       </div>
     </div>
   </div>
