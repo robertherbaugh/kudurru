@@ -1,5 +1,9 @@
 # Milestone M1: resolver + store
 
+These reports record the M1 implementation and measurements before
+v0.1.0. For the release's behavior and limitations, read the
+[architecture tour](../architecture/README.md) and [changelog](../../CHANGELOG.md).
+
 Six work packages, each with its own report, wired together in `cmd/kudurru/serve.go` (commit "feat(serve): wire milestone M1"). Decisions D79 to D85 in [architecture.md](../architecture.md) record what changed.
 
 | Package | Report | Headline |
@@ -13,4 +17,8 @@ Six work packages, each with its own report, wired together in `cmd/kudurru/serv
 
 Verified live from one config: a file-managed primary zone answers with AA, wildcard CNAME chase, NXDOMAIN with SOA, forwarding over dnsproxy, a cache hit on the second query, state.db on disk, leader election and first-boot seeding.
 
-Still open from M1's exit criteria: multi-socket SO_REUSEPORT listeners, cache Dump/Load into local.db on restart, the primary-only unsynced gate (D80), and the REST API (M3).
+At the end of M1, the carry-overs were multi-socket SO_REUSEPORT listeners,
+cache Dump/Load, the primary-only unsynced gate (D80) and the REST API.
+Do53 multi-socket listeners, cache persistence and the unsynced gate landed
+in [M2](../m2/README.md); the API landed in [M3](../m3/README.md).
+Multi-socket encrypted listeners remain planned for v0.2.

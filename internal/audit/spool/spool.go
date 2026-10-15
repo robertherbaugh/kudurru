@@ -286,7 +286,7 @@ func (s *Spool) Read(ctx context.Context, q audit.Query) ([]audit.Event, error) 
 	}
 	stmt += " ORDER BY id " + order + " LIMIT ?"
 	args = append(args, clampLimit(q.Limit))
-	return s.query(ctx, stmt, args...)
+	return queryEvents(ctx, s.db, stmt, args...)
 }
 
 // ReadAfter returns up to n events with ids above after, oldest first:
@@ -295,11 +295,15 @@ func (s *Spool) ReadAfter(ctx context.Context, after int64, n int) ([]audit.Even
 	if n <= 0 {
 		n = 100
 	}
-	return s.query(ctx, `SELECT id, doc FROM event WHERE id > ? ORDER BY id LIMIT ?`, after, n)
+	return queryEvents(ctx, s.db, `SELECT id, doc FROM event WHERE id > ? ORDER BY id LIMIT ?`, after, n)
 }
 
-func (s *Spool) query(ctx context.Context, stmt string, args ...any) ([]audit.Event, error) {
-	rows, err := s.db.QueryContext(ctx, stmt, args...)
+type eventQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func queryEvents(ctx context.Context, q eventQuerier, stmt string, args ...any) ([]audit.Event, error) {
+	rows, err := q.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, fmt.Errorf("audit spool: read: %w", err)
 	}
@@ -331,12 +335,18 @@ func (s *Spool) Prune(ctx context.Context, before time.Time) (int64, error) {
 }
 
 // Verify checks the hash chain of every stored event (audit.VerifyChain);
-// the oldest event may follow pruned or dropped ones.
+// the oldest event may follow pruned or dropped ones. One read snapshot
+// keeps all pages consistent while retention and capped writes continue.
 func (s *Spool) Verify(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("audit spool: begin verification: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 	var prev *audit.Event
 	var after int64
 	for {
-		evs, err := s.ReadAfter(ctx, after, 1000)
+		evs, err := queryEvents(ctx, tx, `SELECT id, doc FROM event WHERE id > ? ORDER BY id LIMIT 1000`, after)
 		if err != nil {
 			return err
 		}

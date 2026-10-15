@@ -271,6 +271,15 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if not (has $v.mode (list "kubernetes" "standalone")) -}}
 {{- fail (printf "mode must be kubernetes or standalone, not %q" $v.mode) -}}
 {{- end -}}
+{{- if not (has $v.service.api.sessionAffinity (list "None" "ClientIP")) -}}
+{{- fail "service.api.sessionAffinity must be None or ClientIP" -}}
+{{- end -}}
+{{- if and (eq $v.service.api.sessionAffinity "ClientIP") $v.service.api.sessionAffinityConfig -}}
+{{- $timeout := ($v.service.api.sessionAffinityConfig.clientIP | default dict).timeoutSeconds -}}
+{{- if and (not (kindIs "invalid" $timeout)) (or (not (regexMatch "^[0-9]+$" (toString $timeout))) (lt (int $timeout) 1) (gt (int $timeout) 86400)) -}}
+{{- fail "service.api.sessionAffinityConfig.clientIP.timeoutSeconds must be an integer in 1-86400" -}}
+{{- end -}}
+{{- end -}}
 {{- if not (has $v.vip.provider (list "none" "kube-vip" "metallb" "keepalived")) -}}
 {{- fail (printf "vip.provider must be none, kube-vip, metallb or keepalived, not %q" $v.vip.provider) -}}
 {{- end -}}
@@ -280,9 +289,28 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if eq $v.vip.provider "keepalived" -}}
 {{- if not $v.edge.enabled }}{{ fail "vip.provider=keepalived needs edge.enabled=true (the VIP owner must run dnsdist on :53, §5.4)" }}{{ end -}}
 {{- if eq $v.edge.mode "sidecar" }}{{ fail "vip.provider=keepalived cannot be combined with edge.mode=sidecar" }}{{ end -}}
-{{- if not $v.vip.address }}{{ fail "vip.address (CIDR form, e.g. 10.0.0.53/24) is required with vip.provider=keepalived" }}{{ end -}}
-{{- if not (contains "/" $v.vip.address) }}{{ fail "vip.address must be in CIDR form (10.0.0.53/24) with vip.provider=keepalived" }}{{ end -}}
-{{- if not $v.vip.keepalived.interface }}{{ fail "vip.keepalived.interface is required with vip.provider=keepalived" }}{{ end -}}
+{{- $names := dict -}}
+{{- $vrids := dict -}}
+{{- $addresses := dict -}}
+{{- range (include "kudurru.keepalived.vips" . | fromYamlArray) -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9_-]{0,30}$" .name) }}{{ fail "keepalived VIP name must be 1-31 lowercase letters, digits, underscores or hyphens" }}{{ end -}}
+{{- if not .address }}{{ fail "vip.address or vip.keepalived.vips[].address (CIDR form) is required with vip.provider=keepalived" }}{{ end -}}
+{{- if not (contains "/" .address) }}{{ fail "keepalived VIP address must be in CIDR form (10.0.0.53/24)" }}{{ end -}}
+{{- if not .interface }}{{ fail "vip.keepalived.interface or a VIP interface is required with vip.provider=keepalived" }}{{ end -}}
+{{- if not (regexMatch "^[A-Za-z0-9_.:-]+$" .interface) }}{{ fail "keepalived VIP interface is invalid" }}{{ end -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .vrid))) (lt (int .vrid) 1) (gt (int .vrid) 255) }}{{ fail "keepalived VIP vrid must be an integer in 1-255" }}{{ end -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .preemptDelay))) (gt (int .preemptDelay) 1000) }}{{ fail "keepalived VIP preemptDelay must be an integer in 0-1000" }}{{ end -}}
+{{- if hasKey $names .name }}{{ fail "keepalived VIP names must be unique" }}{{ end -}}
+{{- if hasKey $vrids (toString .vrid) }}{{ fail "keepalived VIP VRIDs must be unique" }}{{ end -}}
+{{/* Compare host text without the prefix length. Alternate IPv6 spellings
+are checked by the supervisor's parsed-address validation. */}}
+{{- $address := first (splitList "/" .address) -}}
+{{- if hasKey $addresses $address }}{{ fail "keepalived VIP addresses must be unique" }}{{ end -}}
+{{- $_ := set $names .name true -}}
+{{- $_ := set $vrids (toString .vrid) true -}}
+{{- $_ := set $addresses $address true -}}
+{{- end -}}
+{{- if and $v.vip.keepalived.vrrpInterface (not (regexMatch "^[A-Za-z0-9_.:-]+$" $v.vip.keepalived.vrrpInterface)) }}{{ fail "vip.keepalived.vrrpInterface is invalid" }}{{ end -}}
 {{- end -}}
 {{- if and (has $v.vip.provider (list "kube-vip" "metallb")) (not $v.vip.address) -}}
 {{- fail (printf "vip.address is required with vip.provider=%s" $v.vip.provider) -}}
@@ -299,6 +327,17 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- end -}}
 {{- if and $v.ingress.enabled (not $v.ingress.host) -}}
 {{- fail "ingress.host is required when ingress.enabled" -}}
+{{- end -}}
+{{- if not (has $v.ingress.kind (list "Ingress" "IngressRoute")) -}}
+{{- fail "ingress.kind must be Ingress or IngressRoute" -}}
+{{- end -}}
+{{- if and $v.ingress.enabled (eq $v.ingress.kind "IngressRoute") -}}
+{{- if $v.ingress.tls }}{{ fail "IngressRoute uses ingress.traefik.tls, not ingress.tls" }}{{ end -}}
+{{- if not $v.ingress.traefik.entryPoints }}{{ fail "ingress.traefik.entryPoints must list at least one entry point" }}{{ end -}}
+{{- if regexMatch "[`[:space:]]" $v.ingress.host }}{{ fail "ingress.host must be a hostname without spaces or backticks" }}{{ end -}}
+{{- end -}}
+{{- if and $v.ingress.enabled $v.ingress.traefik.sticky.enabled (or (eq $v.ingress.kind "IngressRoute") (eq $v.ingress.className "traefik")) -}}
+{{- if not (has $v.ingress.traefik.sticky.cookie.sameSite (list "none" "lax" "strict" "None" "Lax" "Strict")) }}{{ fail "ingress.traefik.sticky.cookie.sameSite must be none, lax or strict" }}{{ end -}}
 {{- end -}}
 {{- range $i, $p := $v.auth.oidc.providers -}}
 {{- if not $p.id }}{{ fail (printf "auth.oidc.providers[%d].id is required" $i) }}{{ end -}}
@@ -334,6 +373,36 @@ over the blockPage keys the blockPage values imply.
 {{- $parts = append $parts (printf "%s=%s" $k $v) -}}
 {{- end -}}
 {{- join "," $parts -}}
+{{- end -}}
+
+{{/* Traefik's standard Ingress provider reads cookie affinity from Service
+annotations. IngressRoute carries its own sticky.cookie settings instead.
+Explicit service annotations override the generated defaults. */}}
+{{- define "kudurru.api.annotations" -}}
+{{- $ann := dict -}}
+{{- $i := .Values.ingress -}}
+{{- if and $i.enabled (eq $i.kind "Ingress") (eq $i.className "traefik") $i.traefik.sticky.enabled -}}
+{{- $_ := set $ann "traefik.ingress.kubernetes.io/service.sticky.cookie" "true" -}}
+{{- $_ := set $ann "traefik.ingress.kubernetes.io/service.nativelb" "false" -}}
+{{- range $k, $v := $i.traefik.sticky.cookie -}}
+{{- $_ := set $ann (printf "traefik.ingress.kubernetes.io/service.sticky.cookie.%s" (lower $k)) (toString $v) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml (mergeOverwrite $ann (deepCopy (.Values.service.api.annotations | default dict))) -}}
+{{- end -}}
+
+{{/* Normalize the legacy single VIP and the multiple-VIP list. */}}
+{{- define "kudurru.keepalived.vips" -}}
+{{- $k := .Values.vip.keepalived -}}
+{{- $vips := list -}}
+{{- if $k.vips -}}
+{{- range $k.vips -}}
+{{- $vips = append $vips (dict "name" (.name | default "") "address" (.address | default "") "interface" (.interface | default $k.interface) "vrid" (.vrid | default 0) "preemptDelay" (.preemptDelay | default 0)) -}}
+{{- end -}}
+{{- else -}}
+{{- $vips = list (dict "name" "dns" "address" .Values.vip.address "interface" $k.interface "vrid" $k.vrid "preemptDelay" 0) -}}
+{{- end -}}
+{{- toYaml $vips -}}
 {{- end -}}
 
 {{/*

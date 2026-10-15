@@ -17,10 +17,11 @@ kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
 helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
-  --namespace kudurru-system
+  --namespace kudurru-system --set replicaCount=1
 ```
 
-The default is `mode: kubernetes`: two replicas of a Deployment storing
+This command starts one replica without a license key. The chart defaults
+to `mode: kubernetes` with two replicas of a Deployment storing
 objects as CRDs (kube driver), a Lease-elected controller, one
 mixed-protocol `LoadBalancer` Service on :53 with
 `externalTrafficPolicy: Local` (client addresses are the product), a PDB,
@@ -92,6 +93,60 @@ a key that covers the `edge` feature.** `kudurru license status` and
 | Single-node cluster with dnsdist | `edge.enabled=true`, `edge.mode=sidecar` |
 | Bare-metal VIP with keepalived | `edge.enabled=true`, `vip.provider=keepalived`, `vip.address=10.0.0.53/24`, `vip.keepalived.interface=eth0` |
 | DNS before the control plane | `priorityClassName=system-cluster-critical`, `persistence.local.enabled=true` |
+
+### Dashboard sticky sessions with Traefik
+
+The chart can create a Traefik `IngressRoute` with cookie affinity:
+
+```yaml
+ingress:
+  enabled: true
+  kind: IngressRoute
+  host: kudurru.example.com
+  traefik:
+    entryPoints: [websecure, dmz-websecure]
+    tls: {}                   # Traefik's default certificate
+```
+
+Traefik and its `traefik.io` CRDs must already be installed. The generated
+route targets the API Service's port and sets `nativeLB: false` so Traefik
+chooses a pod directly. Cookie affinity is enabled by default and emits:
+
+```yaml
+sticky:
+  cookie:
+    name: kudurru_instance
+    secure: true
+    httpOnly: true
+    sameSite: lax
+```
+
+Override these settings under `ingress.traefik.sticky.cookie`, or set
+`ingress.traefik.sticky.enabled: false` to disable affinity. The cookie
+keeps dashboard requests on one replica while it is available, making
+node-local views such as query logs consistent between requests. Session
+authentication still works across replicas through the shared encryption
+key. Traefik can select another replica when the current one is unavailable.
+
+`ingress.traefik.tls` accepts Traefik's TLS settings, for example
+`{secretName: dns-tls}`. `ingress.tls` remains the list used by standard
+Kubernetes Ingress resources. `ingress.className`, when set for an
+IngressRoute, becomes its `kubernetes.io/ingress.class` annotation. When
+migrating a separately managed IngressRoute into the chart, remove its
+previous definition or adopt it into Helm before upgrading; Helm cannot
+claim a resource owned by another manager automatically.
+
+For a standard HTTPS Ingress with `ingress.className: traefik`, the chart
+automatically puts the same sticky-cookie settings on the API Service as
+Traefik annotations. Explicit `service.api.annotations` override the
+generated defaults. Other ingress controllers can still use the existing
+annotation values to configure their own affinity.
+
+For clients reaching the Kubernetes API/UI Service directly, set
+`service.api.sessionAffinity: ClientIP` and optionally
+`service.api.sessionAffinityConfig.clientIP.timeoutSeconds` (1-86400;
+default 10800). Service affinity defaults to `None`. Traefik's direct pod
+routing uses the cookie settings above and bypasses Service affinity.
 
 ### mode=standalone
 
@@ -206,6 +261,11 @@ Service's EndpointSlices (`--backends-from
 endpointslice:<ns>/<release>-headless`) and exposes readiness and
 `/metrics` on :8084.
 
+Dnsdist uses a LOCAL PROXYv2 header for backend health checks.
+Kudurru accepts LOCAL from listed peers and keeps the transport peer as the
+client. LOCAL cannot delegate an identity. Normal PROXYv2 queries still
+need the TLV 0xE0 secret before Kudurru uses an advertised client address.
+
 The dnsdist container runs as uid 953 under the Restricted standard, and
 binds :53 through the pod's `ip_unprivileged_port_start` sysctl. Two cases
 need more than Kubernetes gives a non-root process, because added
@@ -226,6 +286,60 @@ networking are outside Baseline).
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
 `NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root: label the namespace
 `pod-security.kubernetes.io/enforce=privileged`.
+
+For two VIPs with separate VRRP and address interfaces:
+
+```yaml
+edge:
+  enabled: true
+vip:
+  provider: keepalived
+  keepalived:
+    interface: eth1          # virtual addresses
+    vrrpInterface: eth0      # advertisements and unicast source discovery
+    vips:
+      - {name: dns-a, address: 10.35.10.53/24, vrid: 53}
+      - {name: dns-b, address: 10.35.10.54/24, vrid: 54}
+```
+
+The list replaces `vip.address` and `vip.keepalived.vrid`; each entry may
+override `interface` and set `preemptDelay` (0-1000 seconds). Names, VRIDs,
+and addresses must be unique, even when prefix lengths differ. VIPs
+and unicast peers must use the same address family. The first VIP prefers
+the first node by name; the second reverses priorities, allowing
+active/active ownership. By default `nopreempt` keeps
+ownership stable after recovery; use `kudurru vip rebalance` or an entry's
+`preemptDelay` to restore the preferred owner. Leaving `vrrpInterface`
+empty preserves the existing behavior: VRRP uses each VIP's interface.
+Peer discovery still uses Kubernetes Node InternalIPs, which must be
+reachable through the VRRP interface.
+
+Helm compares address text without the prefix length; it does not
+canonicalize IPv6. Write IPv6 addresses consistently in lowercase,
+compressed notation so Helm can detect duplicates. Equivalent spellings
+such as `2001:db8::1/64` and `2001:DB8:0::1/128` can pass `helm template`,
+but the supervisor compares parsed IP addresses and refuses them before
+starting keepalived. This also covers IPv4-embedded IPv6 spellings such as
+`::ffff:192.0.2.1` and `::ffff:c000:201`. A successful Helm render alone
+does not prove IPv6 address uniqueness.
+
+For an unnumbered VIP interface, select a numbered VRRP interface carrying
+the Node InternalIP. Allow IP protocol 112 between the selected nodes on
+that interface. Keepalived tracks each VIP interface as well as the VRRP
+interface, so loss of either link puts its instance into FAULT and
+withdraws the address. Gratuitous ARP stays on the VIP's interface.
+Before migration, withdraw each address from MetalLB or kube-vip; only one
+provider may advertise an address at a time.
+
+The Nodes page's Edge panel polls supervisor readiness, backend health,
+and each node's VIP states every ten seconds. Separate edge workloads
+publish a headless `<release>-edge-status` Service; the API discovers all
+its EndpointSlices, including unready pods, and polls their health
+listeners on 8084/8085. Failures remain visible as unavailable or degraded.
+The sidecar uses its local listener. With standalone mode and a separate
+edge, the chart grants the server read access to EndpointSlices in the
+release namespace and mounts its ServiceAccount token. If `rbac.create`
+is false, supply that permission yourself.
 
 ### Encrypted transports
 
@@ -256,11 +370,13 @@ config:
 They render into two ConfigMaps (D25): `<release>-node` is the file
 `serve --config` reads and its checksum annotation rolls the pods;
 `<release>-settings` holds the cluster keys and is mounted at
-`/etc/kudurru/settings` for hot reload. **Today the binary reads only the
-node file**, so the chart also merges the settings into it and a settings
-change rolls the pods; once the settings file is read and watched
-(docs/followups.md) the merge goes away and settings changes apply without a
-restart.
+`/etc/kudurru/settings` for hot reload through `KUDURRU_SETTINGS_FILE`.
+The binary reads and watches that settings file. The chart also merges
+the settings into the node file, so Helm settings changes roll the pods
+through its checksum annotation. Direct edits to the mounted settings
+ConfigMap reload hot keys without a restart. In Kubernetes, kudurru's API
+refuses settings writes; edit the ConfigMap or Helm values. See
+[configuration and the store](../architecture/configuration-and-store.md#settings).
 
 Seed objects with `objects:` (post-install hook resources in
 mode=kubernetes: created once, then owned by kubectl and the UI).

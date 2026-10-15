@@ -12,12 +12,15 @@
 // rejected with a short error; mailOrUnavailable turns that into the 503
 // unavailable answer where the caller needs the mail to have gone out.
 
-import { createTransport } from 'nodemailer';
+import { createTransport, type SendMailOptions } from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Config } from '../config';
 import { isEmailSyntax } from '../http/body';
 import { HttpError } from '../http/errors';
 import type { Logger } from '../log';
 import { unconfiguredMailer, type MailMessage, type Mailer } from './types';
+
+const CLOUDFLARE_SMTP_HOST = 'smtp.mx.cloudflare.net';
 
 /** A send that failed: the short reason, never the message or the credentials. */
 export class MailDeliveryError extends Error {
@@ -78,12 +81,21 @@ function domainOf(address: string): string {
   return at >= 0 ? address.slice(at + 1) : '';
 }
 
+/** The SMTP result fields used to validate submission and build a receipt log. */
+export type SmtpReceipt = Pick<SMTPTransport.SentMessageInfo, 'messageId' | 'response' | 'accepted' | 'rejected'>;
+
+/** The SMTP transport seam: tests can exercise provider receipts without contacting the provider. */
+export type SmtpTransportFactory = (options: SMTPTransport.Options, defaults: SendMailOptions) => {
+  sendMail(msg: SendMailOptions): Promise<SmtpReceipt>;
+};
+
 /** The mailer of SMTP_URL, or unconfiguredMailer without it. Throws on a malformed SMTP_URL (a startup error). */
-export function smtpMailer(config: Config, log: Logger): Mailer {
+export function smtpMailer(config: Config, log: Logger, makeTransport: SmtpTransportFactory = createTransport): Mailer {
   if (!config.mail.smtpUrl) return unconfiguredMailer;
   const target = parseSmtpUrl(config.mail.smtpUrl);
   const requireTLS = !target.secure && !config.devMode && !isLoopback(target.host);
-  const transport = createTransport(
+  const confirmsWithProviderId = target.host.toLowerCase() === CLOUDFLARE_SMTP_HOST;
+  const transport = makeTransport(
     {
       host: target.host,
       port: target.port,
@@ -102,32 +114,57 @@ export function smtpMailer(config: Config, log: Logger): Mailer {
     { from: config.mail.from, replyTo: config.mail.replyTo },
   );
   const mailLog = log.child({ component: 'mail' });
-  mailLog.info('mail configured', { host: target.host, port: target.port, secure: target.secure, requireTLS, from: config.mail.from });
+  mailLog.info('mail configured', { host: target.host, port: target.port, secure: target.secure, requireTLS, confirmsWithProviderId, from: config.mail.from });
 
   return {
     configured: true,
-    async send(msg: MailMessage): Promise<void> {
+    async send(msg: MailMessage, requestLog?: Logger): Promise<void> {
+      const sendLog = requestLog ? requestLog.child({ component: 'mail' }) : mailLog;
       // The recipient goes to nodemailer as one address object, never a
       // string it would re-parse into other recipients, and only when it
       // is the single address the portal validated and stored.
       if (!isEmailSyntax(msg.to)) {
-        mailLog.error('mail refused: the recipient is not a single plain address', { toDomain: domainOf(msg.to), subject: msg.subject });
+        sendLog.error('mail refused: the recipient is not a single plain address', { toDomain: domainOf(msg.to), subject: msg.subject });
         throw new MailDeliveryError('the recipient is not a single plain address');
       }
       try {
-        await transport.sendMail({
+        const info = await transport.sendMail({
           to: { name: '', address: msg.to },
           subject: msg.subject,
           text: msg.text,
+          ...(msg.html ? { html: msg.html } : {}),
           ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
           attachments: (msg.attachments ?? []).map((a) => ({
             filename: a.filename,
             content: typeof a.content === 'string' ? Buffer.from(a.content, 'utf8') : Buffer.from(a.content),
             contentType: a.contentType,
+            ...(a.cid ? { cid: a.cid } : {}),
+            ...(a.contentDisposition ? { contentDisposition: a.contentDisposition } : {}),
           })),
         });
+        // Cloudflare can acknowledge DATA with 250 while dropping every
+        // suppressed recipient. Only its server-assigned Message-ID proves
+        // submission; nodemailer's info.messageId is generated locally.
+        // https://developers.cloudflare.com/email-service/api/send-emails/smtp/#suppressed-recipients
+        const providerMessageId = confirmsWithProviderId ? /<([^<>\s]+@[^<>\s]+)>/.exec(info.response)?.[0] ?? null : null;
+        const receipt = {
+          host: target.host,
+          toDomain: domainOf(msg.to),
+          subject: msg.subject,
+          messageId: info.messageId,
+          providerMessageId,
+          responseCode: Number(/^\d{3}/.exec(info.response)?.[0]) || null,
+          acceptedCount: info.accepted.length,
+          rejectedCount: info.rejected.length,
+        };
+        if (confirmsWithProviderId && !providerMessageId) {
+          sendLog.error('mail submission not confirmed: Cloudflare returned no Message-ID', receipt);
+          throw new MailDeliveryError('Cloudflare did not confirm the message; check recipient suppressions');
+        }
+        sendLog.info('mail accepted by SMTP', receipt);
       } catch (e) {
-        mailLog.error('mail delivery failed', { toDomain: domainOf(msg.to), subject: msg.subject, ...errorFields(e) });
+        if (e instanceof MailDeliveryError) throw e;
+        sendLog.error('mail delivery failed', { toDomain: domainOf(msg.to), subject: msg.subject, ...errorFields(e) });
         throw new MailDeliveryError('the mail server did not accept the message');
       }
     },
@@ -142,7 +179,7 @@ export function smtpMailer(config: Config, log: Logger): Mailer {
 export async function mailOrUnavailable(mailer: Mailer, msg: MailMessage, log: Logger, what = 'The mail'): Promise<void> {
   if (!mailer.configured) throw new HttpError(503, 'unavailable', 'Mail is not configured on this portal.');
   try {
-    await mailer.send(msg);
+    await mailer.send(msg, log);
   } catch (e) {
     if (!(e instanceof MailDeliveryError)) log.error('mail delivery failed', errorFields(e));
     throw new HttpError(503, 'unavailable', `${what} could not be sent right now. Try again later.`);

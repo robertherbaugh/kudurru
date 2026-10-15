@@ -46,7 +46,7 @@ gets a GitHub URL (below).
 
 The mounts are in `hugo.yaml`. Pages from `docs/` need no front matter: the
 title is the first `#` heading, and the order within a section comes from the
-`cascade` list in `hugo.yaml`. `docs/brand` supplies the palette
+`cascade` list in `hugo.yaml`. `branding` supplies the palette
 (`tokens.css`), the logos and the favicon.
 
 ## Links
@@ -102,14 +102,9 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    | Build command | `bun install --frozen-lockfile && make -C .. docs-site HUGO_FLAGS="--minify --gc --cleanDestinationDir --panicOnWarning --baseURL https://docs.kudurru.io/"` |
    | Deploy command | `bunx wrangler deploy` |
    | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
-   | Build watch paths, include | `site/*`, `docs/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
+   | Build watch paths, include | `site/*`, `docs/*`, `branding/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
    | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
-   Before the first release the `release` branch is still the initial commit,
-   with no `site/`, so a build of it stops with "root directory not found".
-   Until `release` carries the site, set the production branch to `main`
-   (after the pull request that adds the site is merged) or to the branch
-   that has it, and switch it to `release` when the first release is cut.
    A build of any other branch, including `main` when production is `release`,
    runs the Preview command against that branch's commit. The command does
    not choose which branch to clone.
@@ -122,7 +117,7 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    needs no separate preview bindings; assets and compatibility settings
    stay at the top level.
 
-   The build reads `docs/`, `api/` and the root markdown files outside the
+   The build reads `docs/`, `branding/`, `api/` and the root markdown files outside the
    root directory; Workers Builds clones the whole repository. `make` downloads
    the pinned Hugo release into `bin/` and checks its SHA-256 (it needs `curl`,
    `tar`, `gunzip` and `git`, all in the build image). `HUGO_PARAMS_REPOREF`
@@ -138,10 +133,10 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    screenshots load. Open `/reference/api/explorer/`: the API reference
    renders. Open a path that does not exist: the 404 page answers with status 404.
 
-Until the repository is public, a link from the site to a repository file
-(the "Source" line of a page, and links to files that are not pages) opens a
-GitHub page that needs a sign-in. The site itself, including every image,
-does not depend on the repository.
+Links to repository files (the "Source" line and files that are not site
+pages) use the configured repository ref. A private repository requires
+GitHub sign-in for those links. The site itself, including every image,
+does not depend on GitHub access.
 
 The Hugo build writes to `site/public/`, which is not committed.
 

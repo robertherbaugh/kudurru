@@ -76,14 +76,14 @@ function hero(version: string): Html {
       <ol class="trace mono" data-trace>
         ${rows.map((r, i) => traceRow(r, times[i] ?? ""))}
       </ol>
-      <figcaption class="inst-foot mono">Sample traffic, rendered in your browser. Each bar is the path through the eight v0.1 stages.</figcaption>
+      <figcaption class="inst-foot mono">Sample traffic, rendered in your browser. Each bar follows the seven v0.1.0 stages; logging observes the result after the chain returns.</figcaption>
     </figure>
   </div>
   <div class="wrap readout mono" role="list">
     <div role="listitem"><span class="k">binary</span><span class="v">1</span><span class="d">every role, every shape</span></div>
     <div role="listitem"><span class="k">transports</span><span class="v">5</span><span class="d">Do53 · DoT · DoH · DoQ · DoH3</span></div>
     <div role="listitem"><span class="k">block lookup p99</span><span class="v">1.14 µs</span><span class="d">1,000,000 rules, 0 allocations</span></div>
-    <div role="listitem"><span class="k">3 M list entries</span><span class="v">90 MB</span><span class="d">resident; CI fails above 150 MB</span></div>
+    <div role="listitem"><span class="k">3 M list entries</span><span class="v">90 MB</span><span class="d">resident in the blocking benchmark</span></div>
   </div>
 </section>`;
 }
@@ -91,11 +91,11 @@ function hero(version: string): Html {
 function lineage(): Html {
   return html`<section class="sec" id="lineage" aria-labelledby="lineage-title">
   <div class="wrap">
-    ${heading(1, "Lineage", "Six servers we admire. One binary.", "lineage")}
-    <p class="sec-lead">kudurru takes the best idea from each of them and puts them behind one object model and one API.</p>
-    <div class="ledger" role="table" aria-label="What kudurru took from each project">
+    ${heading(1, "Lineage", "Projects that shaped kudurru.", "lineage")}
+    <p class="sec-lead">These projects inspired kudurru's DNS features, dashboard, blocking and deployment model.</p>
+    <div class="ledger" role="table" aria-label="Ideas that inspired kudurru">
       <div class="ledger-row ledger-head mono" role="row">
-        <span role="columnheader">We took</span><span role="columnheader">From</span><span role="columnheader">What it means in kudurru</span>
+        <span role="columnheader">Inspiration</span><span role="columnheader">From</span><span role="columnheader">What it means in kudurru v0.1.0</span>
       </div>
       ${LINEAGE.map(
         (l, i) => html`<div class="ledger-row" role="row">
@@ -106,7 +106,7 @@ function lineage(): Html {
       )}
     </div>
     <div class="together">
-      <p class="label">And what none of them had together</p>
+      <p class="label">How kudurru brings these ideas together</p>
       <ul>
         ${TOGETHER.map(
           (t) => html`<li><h3>${t.title}${t.release ? html` <span class="tag">${t.release}</span>` : ""}</h3><p>${t.body}</p></li>`,
@@ -126,10 +126,10 @@ function scenarioPanel(s: Scenario, i: number): Html {
       <span class="q-from">${s.client} <span class="dim">${s.address}</span></span>
       <span class="q-ask"><span class="dim">IN</span> ${s.qtype} <b>${s.qname}</b></span>
     </div>
-    <ol class="rail" aria-label="Stages">
+    <ol class="rail" aria-label="Query stages and log observer">
       ${STAGES.map((st, j) => {
         const state = j === decided ? "hit" : visited.has(st.id) ? "on" : j > decided ? "after" : "skip";
-        return html`<li class="rail-cell ${state}"><span class="rail-n mono">${String(j + 1).padStart(2, "0")}</span><span class="rail-name mono">${st.id}</span></li>`;
+        return html`<li class="rail-cell ${state}"><span class="rail-n mono">${st.id === "log" ? "→" : String(j + 1).padStart(2, "0")}</span><span class="rail-name mono">${st.id}</span></li>`;
       })}
     </ol>
     <ol class="steps">
@@ -163,9 +163,9 @@ function pipeline(): Html {
       </div>
     </div>
     <dl class="stage-key">
-      ${STAGES.map((s, i) => html`<div><dt class="mono"><span class="dim">${String(i + 1).padStart(2, "0")}</span> ${s.id}</dt><dd>${s.does}</dd></div>`)}
+      ${STAGES.map((s, i) => html`<div><dt class="mono"><span class="dim">${s.id === "log" ? "→" : String(i + 1).padStart(2, "0")}</span> ${s.id}</dt><dd>${s.does}</dd></div>`)}
     </dl>
-    <p class="fine">The fixed order also reserves rewrite, dnssec and postprocess; those stages arrive with later releases. Names under .example and addresses from RFC 5737 and RFC 3849 are placeholders.</p>
+    <p class="fine">Seven stages decide the answer; the log observer records the result after the chain returns. The fixed order also reserves local, rewrite, dnssec and postprocess for later releases. The scenarios use illustrative names and addresses.</p>
   </div>
 </section>`;
 }
@@ -173,7 +173,7 @@ function pipeline(): Html {
 function features(): Html {
   return html`<section class="sec" id="features" aria-labelledby="features-title">
   <div class="wrap">
-    ${heading(3, "Features", "What v0.1 does today.", "features")}
+    ${heading(3, "Features", "What v0.1.0 includes.", "features")}
     <div class="registers">
       ${REGISTERS.map(
         (r, i) => html`<article class="register" id="${r.id}" aria-labelledby="${r.id}-title">
@@ -246,7 +246,7 @@ function deploy(version: string): Html {
           <thead class="mono"><tr><th scope="col">Shape</th><th scope="col">Source of truth</th><th scope="col">Config writes</th><th scope="col">Release</th></tr></thead>
           <tbody>
             ${SHAPES.map(
-              (s) => html`<tr class="${s.release === "v0.1" ? "" : "future"}"><th scope="row">${s.name}<span class="shape-ans">Answers: ${s.answers}</span></th><td>${s.truth}</td><td>${s.writes}</td><td class="mono">${s.release}</td></tr>`,
+              (s) => html`<tr class="${s.release === "v0.1.0" ? "" : "future"}"><th scope="row">${s.name}<span class="shape-ans">Answers: ${s.answers}</span></th><td>${s.truth}</td><td>${s.writes}</td><td class="mono">${s.release}</td></tr>`,
             )}
           </tbody>
         </table>
@@ -272,8 +272,8 @@ function name(assets: Assets): Html {
     <div class="name-copy">
       <p class="sec-label"><span class="sec-num">VI</span>The name</p>
       <h2 id="name-title"><span class="say">koo-DOO-roo</span></h2>
-      <p>A kudurru is a Babylonian boundary stone. It recorded a land grant: who held which territory. A DNS zone is the same thing, a record of authority over a defined space.</p>
-      <p>The original stone was kept in a temple, and the landholder got a clay copy to prove ownership. That is an authoritative primary with its secondaries, which is how zone transfers work. The releases are named after it.</p>
+      <p>A kudurru was a Babylonian boundary stone that recorded a land grant and the rights attached to it. The name reflects what a DNS zone represents: authority over a defined space.</p>
+      <p>The original stone was kept in a temple, while the landholder held a clay copy—a fitting inspiration for authoritative DNS and the copies shared through zone transfers. Our release names follow that story: stone, clay copies, temple.</p>
     </div>
   </div>
 </section>`;

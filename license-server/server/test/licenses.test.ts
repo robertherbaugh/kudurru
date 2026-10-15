@@ -17,6 +17,7 @@ import { loadSigning } from '../licensing/keyring';
 import { signingUnavailable, type SigningState } from '../licensing/types';
 import { containsToken, silentLogger } from '../log';
 import { MemoryMailer } from '../mail/memory';
+import { smtpMailer } from '../mail/smtp';
 import { termsOf, type LicenseRow } from '../services/licenses';
 import { call, callJson, makeTestApp, type TestApp } from './call';
 import { describeDb, hasDb, useTestDb as fileDatabase } from './db';
@@ -297,6 +298,31 @@ describeDb('withdraw', () => {
 });
 
 describeDb('email key and downloads', () => {
+  test('Cloudflare submissions need a provider receipt before HTTP success and an emailed audit', async () => {
+    const customer = await createCustomer(t.db, { contactEmail: 'contact@receipt.example' });
+    const lic = (await issue({ customerId: customer.id, licensee: 'Receipt Co', plan: 'business', nodes: 1, features: null, expiresOn: inDays(30) })).body;
+    let response = '250 2.0.0 Ok';
+    const mailer = smtpMailer(testConfig({ mail: { smtpUrl: 'smtps://api_token:test-password@smtp.mx.cloudflare.net:465' } }), app.log, () => ({
+      sendMail: () => Promise.resolve({ response, messageId: '<local@kudurru.io>', accepted: ['contact@receipt.example'], rejected: [], pending: [], envelope: { from: 'licenses@kudurru.io', to: ['contact@receipt.example'] } }),
+    }));
+    const smtpApp = makeTestApp({ handlers, db: t.db, signing, mailer, log: app.log });
+    try {
+      const failed = await callJson(smtpApp, 'licenseEmail', { as: admin, params: { id: lic.id }, body: {} });
+      expect(failed.status).toBe(503);
+      expect(failed.error?.key).toBe('unavailable');
+      expect((await auditOf(lic.id)).filter((e) => e.action === 'license.key_emailed')).toHaveLength(0);
+
+      response = '250 2.0.0 Ok <provider@kudurru.io>';
+      const sent = await callJson(smtpApp, 'licenseEmail', { as: admin, params: { id: lic.id }, body: {} });
+      expect(sent.status).toBe(200);
+      expect(sent.body.sentTo).toBe('contact@receipt.example');
+      expect((await auditOf(lic.id)).filter((e) => e.action === 'license.key_emailed')).toHaveLength(1);
+      expect(app.log.find('mail accepted by SMTP').at(-1)).toMatchObject({ licenseId: lic.id, keyId: lic.currentKey.id, requestId: sent.res.headers.get('X-Request-Id') });
+    } finally {
+      await smtpApp.close();
+    }
+  });
+
   test('email key: default the contact email; 400 without one; 503 when the mail fails, with no audit row', async () => {
     const c = await createCustomer(t.db, { contactEmail: 'contact@email.example' });
     const lic = (await issue({ customerId: c.id, licensee: 'Email Co', plan: 'business', nodes: 1, features: null, expiresOn: inDays(30) })).body;

@@ -1,6 +1,6 @@
-"""Derives the dashboard's brand images from docs/brand/assets.
+"""Derives the dashboard's brand images from branding/assets.
 
-The originals stay in docs/brand; the dashboard embeds downscaled copies
+The originals stay in branding; the dashboard embeds downscaled copies
 (twice the displayed CSS size) so the Go binary grows by tens of KiB, not
 by the full-resolution exports. Run from the repository root:
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image
 
-SRC = Path("docs/brand/assets")
+SRC = Path("branding/assets")
 ASSETS = Path("web/src/assets")  # imported by the SPA, hashed into dist/assets
 PUBLIC = Path("web/public")  # copied to the dist root under stable names
 BLOCKPAGE = Path("internal/blockpage/assets")  # embedded by the block page

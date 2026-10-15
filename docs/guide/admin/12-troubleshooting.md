@@ -44,6 +44,7 @@ Use these tools in this order:
 | The page **Domains** shows **Not applied for** and a policy. | The policy is managed by a file or by Kubernetes. kudurru cannot add the list to it. | Add the list `ui-allow` or `ui-deny` to the policy in the file or the resource. |
 | A switch or button is gray. | The object is managed by a file or by Kubernetes, or your role cannot change it. | Look at the owner badge. Change the file or the resource. |
 | A client gets the wrong rules. | The client is in a different group, or another policy has a higher priority. | Open the page of the client. Read **Groups** and **Policy right now**. |
+| Clients shows only the router or gateway. | The router forwards DNS or replaces the device addresses before queries reach kudurru. | Send queries directly to kudurru with a tool such as `dig`. Check the router's DNS forwarding and source NAT rules. In Kubernetes, use `service.dns.externalTrafficPolicy: Local`. See [the client-address runbook](../../deploy/runbooks.md#clients-show-only-the-gateway). |
 | A schedule is not right. | The time zone of the policy is wrong. | Check the **Time zone** on the step **When**. |
 | A change does not work at once. | The client or a resolver keeps the old answer for the block TTL. | Wait for the block TTL (10 minutes by default). Flush the cache of the client. |
 

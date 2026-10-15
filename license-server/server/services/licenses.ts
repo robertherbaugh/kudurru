@@ -358,7 +358,7 @@ export function mailKeyAfterCommit(ctx: ServiceCtx, msg: MailMessage): void {
     ctx.log.warn('mail is not configured: key not mailed', { toDomain: msg.to.slice(msg.to.lastIndexOf('@') + 1) });
     return;
   }
-  ctx.afterCommit(() => ctx.mailer.send(msg));
+  ctx.afterCommit(() => ctx.mailer.send(msg, ctx.log));
 }
 
 // --- DTOs -----------------------------------------------------------------------
@@ -737,7 +737,7 @@ export async function emailLicenseKey(deps: ServiceDeps, actor: Actor, id: strin
     const key = await currentKey(ctx.tx, id);
     return { target, keyId: key.id, message: licenseKeyMail(ctx, row, key.token, 'resent', target) };
   });
-  await mailOrUnavailable(deps.mailer, plan.message, deps.log, 'The key');
+  await mailOrUnavailable(deps.mailer, plan.message, deps.log.child({ licenseId: id, keyId: plan.keyId }), 'The key');
   await inTransaction(deps, actor, (ctx) => auditCtx(ctx, { action: 'license.key_emailed', targetType: 'license', targetId: id, details: { to: plan.target, keyId: plan.keyId } }));
   return { sentTo: plan.target };
 }

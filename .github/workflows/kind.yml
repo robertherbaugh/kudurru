@@ -8,7 +8,7 @@
 # and stops the database for a while.
 #
 # Runs on every pull request and push to main that touches more than
-# docs/, site/ and www/, so it can be a required check: those changes skip
+# docs/, site/, www/ and branding/, so it can be a required check: those changes skip
 # the job rather than the workflow, because a skipped job satisfies a
 # required status check and a workflow that never runs does not (the same
 # gate as ci.yml). The runner has to hold the four kind nodes, PostgreSQL
@@ -40,7 +40,7 @@ jobs:
           # unreachable force-pushed base runs the test).
           code=true
           if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www)/' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eqv '^(docs|site|www|branding)/' <<<"$files"; then
               code=false
             fi
           fi

@@ -50,6 +50,8 @@ export interface QueryLogTableProps {
   unblockLink?: (row: QueryRow) => UnblockLink | null;
   /** Pixel rect used before the scroll container is measured (tests, SSR). */
   initialRect?: { width: number; height: number };
+  /** What to show before a live stream has delivered any matching rows. */
+  emptyMessage?: string | undefined;
 }
 
 /** The status label shown in the table: "blocked (denylist)" style. */
@@ -167,7 +169,7 @@ const wideRegion: TablePlugin<Record<string, unknown>> = {
 };
 const PLUGINS = { wideRegion };
 
-export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, onAction, canAct, unblockLink, initialRect }: QueryLogTableProps) {
+export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, onAction, canAct, unblockLink, initialRect, emptyMessage = 'No queries match these filters.' }: QueryLogTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
@@ -290,7 +292,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
             <TableBody>
               <TableRow>
                 <TableCell colSpan={NCOLS}>
-                  <Text color="secondary">No queries match these filters.</Text>
+                  <Text color="secondary">{emptyMessage}</Text>
                 </TableCell>
               </TableRow>
             </TableBody>

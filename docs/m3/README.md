@@ -1,5 +1,9 @@
 # Milestones M3 and M4: API, auth, dashboard, CLI, edge, deploy
 
+These reports record the M3/M4 implementation and measurements before
+v0.1.0. For the release's behavior and limitations, read the
+[architecture tour](../architecture/README.md) and [changelog](../../CHANGELOG.md).
+
 Six work packages, wired in `cmd/kudurru/serve.go` (commit "feat(serve): wire milestones M3 and M4"). Decisions D98 to D105 in [architecture.md](../architecture.md) record what changed; three integration fixes landed on top (authorization used only name and groups; tokens of local users did not reload their principal; the CLI sent `name` where the server takes `description`).
 
 | Package | Report | Headline |
@@ -13,4 +17,10 @@ Six work packages, wired in `cmd/kudurru/serve.go` (commit "feat(serve): wire mi
 
 Verified live from one config: local login, cookie and token sessions with the admin's roles, `kudurru get zones` / `get blocklists -A` / `query` / `blocking disable 1m` / `apply -f -` (the new record resolved immediately) / `stats summary` / `logs` / `audit`, the real dashboard bundle served with its assets, `/api/v1/openapi.json`.
 
-Not verifiable in this sandbox: `make edge-check` (needs Docker), the Helm chart on a cluster, kind + MetalLB, two-VM VRRP. (v0.1 fix round: `make edge-check` failed on its first real run, because the keepalived image did not build; fixed, it passes and is a CI gate, see edge.md. kind + MetalLB is the `kind` workflow.)
+The original milestone sandbox could not verify Docker edge checks, Helm
+on a cluster, kind + MetalLB or two-VM VRRP. The subsequent v0.1 fix round
+fixed the keepalived image build and made `make edge-check` a CI gate;
+kind + MetalLB runs in the `kind` workflow. The
+[final feature review](../m5/features-v0.1.md) records later validation.
+Verify client identity and VIP failover in each deployment using the
+[release checklist](../release-checklist.md#3-checks-before-ga-ci-and-the-owners-hardware).

@@ -100,6 +100,26 @@
         ],
         "type": "object"
       },
+      "AuditVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "verified",
+          "checkedAt"
+        ],
+        "type": "object"
+      },
       "AuthListIAMUser": {
         "additionalProperties": false,
         "properties": {
@@ -808,7 +828,7 @@
             "type": "string"
           },
           "last_seen": {
-            "description": "The newest query from the client on this node (hour precision once its query rows aged out).",
+            "description": "The newest query from the client in the selected scope (hour precision once its query rows aged out).",
             "format": "date-time",
             "type": "string"
           },
@@ -933,6 +953,52 @@
           "from",
           "until",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "ClientsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClientItem"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeResult"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms",
+          "scope",
+          "nodes",
+          "partial"
         ],
         "type": "object"
       },
@@ -1872,6 +1938,9 @@
           "name": {
             "type": "string"
           },
+          "node": {
+            "type": "string"
+          },
           "up": {
             "type": "boolean"
           }
@@ -1888,6 +1957,9 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "message": {
+            "type": "string"
           },
           "state": {
             "type": "string"
@@ -1913,6 +1985,12 @@
           "node": {
             "type": "string"
           },
+          "supervisors": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeSupervisorStatus"
+            },
+            "type": "array"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -1920,14 +1998,70 @@
           },
           "vip": {
             "$ref": "#/components/schemas/EdgeComponent"
+          },
+          "vips": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeVIP"
+            },
+            "type": "array"
           }
         },
         "required": [
           "edge",
           "vip",
           "backends",
+          "vips",
+          "supervisors",
           "node",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "EdgeSupervisorStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/EdgeComponent"
+          },
+          "node": {
+            "type": "string"
+          },
+          "vip": {
+            "$ref": "#/components/schemas/EdgeComponent"
+          }
+        },
+        "required": [
+          "node",
+          "edge",
+          "vip"
+        ],
+        "type": "object"
+      },
+      "EdgeVIP": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "priority": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "node",
+          "state",
+          "priority"
         ],
         "type": "object"
       },
@@ -2536,31 +2670,6 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/CatalogueService"
-            },
-            "type": "array"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "took_ms"
-        ],
-        "type": "object"
-      },
-      "ListClientItem": {
-        "additionalProperties": false,
-        "properties": {
-          "continue": {
-            "description": "Opaque keyset token for the next page; empty on the last page.",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ClientItem"
             },
             "type": "array"
           },
@@ -7689,6 +7798,92 @@
         }
       }
     },
+    "/audit/verify": {
+      "get": {
+        "operationId": "verifyAudit",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerification"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Verify the complete retained audit chain and available batch seals",
+        "tags": [
+          "audit"
+        ],
+        "x-kudurru-permission": {
+          "resource": "audit",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "description": "Brute-force limited per client address and user: 429 with Retry-After.",
@@ -11773,7 +11968,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListClientItem"
+                  "$ref": "#/components/schemas/ClientsBody"
                 }
               }
             },

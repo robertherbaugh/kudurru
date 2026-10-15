@@ -6,11 +6,11 @@ The `templates/` directory is populated by `make manifests` from `config/crd/bas
 Install before the `kudurru` chart:
 
 ```sh
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
 ```
 
 or with server-side apply:
 
 ```sh
-kubectl apply --server-side -f https://github.com/robertherbaugh/kudurru/releases/latest/download/crds.yaml
+kubectl apply --server-side -f https://github.com/robertherbaugh/kudurru/releases/download/v0.1.0/crds.yaml
 ```

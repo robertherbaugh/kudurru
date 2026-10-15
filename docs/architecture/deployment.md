@@ -65,6 +65,13 @@ the dnsdist API, whose key the supervisor writes to the shared
   add annotations to the dns Service.
 - A NetworkPolicy (optional) admits `:5353` only from edge pods and `:8082`
   only from kudurru and edge pods.
+- Dashboard/API traffic can use a standard Ingress or a Traefik
+  IngressRoute (`ingress.kind`). Traefik routes directly to pods with
+  `nativeLB: false` and uses the `kudurru_instance` affinity cookie by
+  default. This keeps a browser on the same replica while it is available.
+  Standard Traefik Ingress resources get the cookie settings through
+  Service annotations. Direct Service clients can enable Kubernetes
+  `ClientIP` affinity. Neither affinity mechanism changes DNS routing.
 
 ## Compose HA: three nodes, one VIP
 
@@ -109,6 +116,18 @@ v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
 sub-second gap for a lone edge.
 
 ### The VIP (`kudurru vip run`)
+
+Multiple `--vip` flags define independent instances with alternating
+priority order, allowing two VIPs to prefer opposite nodes. The chart
+exposes these as `vip.keepalived.vips`. Each VIP's interface receives its
+address; `--vrrp-interface` (`vip.keepalived.vrrpInterface`) optionally
+selects a separate interface for advertisements and default unicast
+source discovery.
+
+VIP names, addresses and VRIDs must be unique. Keepalived tracks both the
+VRRP interface and each VIP's address interface; loss of either link faults
+the instance and withdraws its address. Gratuitous ARP uses the address
+interface ([Helm guide](../deploy/helm.md)).
 
 The supervisor renders `keepalived.conf` (VRRPv3 unicast, `state BACKUP`,
 `nopreempt`, `auth_hmac`, priority `200 - 10 × index`), checks it, and runs

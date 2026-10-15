@@ -59,6 +59,10 @@ func EmbeddedStarterBlockList(ctx context.Context) (*v1alpha1.BlockList, error) 
 
 // Options configures Seed.
 type Options struct {
+	// ContinueFirstBoot resumes a call that already returned FirstBoot=true
+	// but failed during writes. Only retain this flag for that startup
+	// attempt; later restarts must still respect operator deletions.
+	ContinueFirstBoot bool
 	// Namespace of the namespaced seeds; default "default". In Kubernetes
 	// pass the release namespace.
 	Namespace string
@@ -93,6 +97,19 @@ func ResolveNamespace(ctx context.Context, st store.Store, namespace string) (st
 		}
 	}
 	return namespace, nil
+}
+
+// NamespaceFromObjects applies ResolveNamespace's precedence to a local.db
+// object set without requiring an apiserver read.
+func NamespaceFromObjects(objects []store.Object, namespace string) string {
+	for _, ns := range []string{namespace, DefaultNamespace} {
+		for _, obj := range objects {
+			if p, ok := obj.(*v1alpha1.Policy); ok && p.Namespace == ns && p.Name == DefaultPolicyName {
+				return ns
+			}
+		}
+	}
+	return namespace
 }
 
 func (o *Options) setDefaults() {
@@ -175,19 +192,21 @@ func Seed(ctx context.Context, st store.Store, opts Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	seen := map[store.Kind]bool{}
-	for _, o := range objs {
-		kind := store.KindOf(o)
-		if seen[kind] {
-			continue
-		}
-		seen[kind] = true
-		page, err := st.List(ctx, kind, store.ListOptions{Limit: 1})
-		if err != nil {
-			return Result{}, fmt.Errorf("bootstrap: list %s: %w", kind, err)
-		}
-		if len(page.Items) > 0 {
-			return Result{}, nil
+	if !opts.ContinueFirstBoot {
+		seen := map[store.Kind]bool{}
+		for _, o := range objs {
+			kind := store.KindOf(o)
+			if seen[kind] {
+				continue
+			}
+			seen[kind] = true
+			page, err := st.List(ctx, kind, store.ListOptions{Limit: 1})
+			if err != nil {
+				return Result{}, fmt.Errorf("bootstrap: list %s: %w", kind, err)
+			}
+			if len(page.Items) > 0 {
+				return Result{}, nil
+			}
 		}
 	}
 

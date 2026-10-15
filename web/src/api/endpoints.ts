@@ -6,9 +6,10 @@ import type {
   ApplyResult,
   AuditPage,
   AuditQuery,
+  AuditVerification,
   AuthStatus,
   BlockingState,
-  ClientItem,
+  ClientsResult,
   ClientTimeseries,
   ClusterInfo,
   CreateTokenRequest,
@@ -187,7 +188,7 @@ export function endpoints(c: ApiClient) {
     },
 
     clients: {
-      list: (q: { window?: string } = {}) => c.get<ListEnvelope<ClientItem>>('/clients', q),
+      list: (s: ScopeParams, q: { window?: string } = {}) => c.get<ClientsResult>('/clients', { ...scopeQuery(s), ...q }),
     },
 
     runtime: {
@@ -251,6 +252,7 @@ export function endpoints(c: ApiClient) {
     },
 
     audit: {
+      verify: () => c.get<AuditVerification>('/audit/verify'),
       /** The page token goes out as `cursor` (and as `continue`, the list-envelope name). */
       list: ({ cursor, ...q }: AuditQuery) => c.get<AuditPage>('/audit', { ...q, cursor, continue: cursor }),
       exportURL: () => c.url('/audit/export'),

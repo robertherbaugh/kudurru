@@ -9,7 +9,7 @@ app embedded into the binary with `go:embed` and served by `web.Handler`.
   (`@astryxdesign/core` and the neutral/stone/y2k themes, MIT, consumed as
   prebuilt CSS and JS, pinned exactly while Astryx is in Beta).
 - **Themes:** `src/themes` holds the Kudurru theme (`defineTheme` over
-  Neutral with the palette generated from docs/brand,
+  Neutral with the palette generated from branding,
   `astryx theme palette generate`) and Neutral, Stone and Y2K extended with
   the query status colours. `bun run themes:build` rebuilds their committed
   `.js`/`.css` after a source change (`bun run lint` checks they are
@@ -70,11 +70,11 @@ it through the binary, not a static file server.
 
 ## Generated API types
 
-`src/api/types.ts` is hand-written against the API contract today. When
-`api/openapi.json` lands, `bun run gen:api` writes `src/api/generated.ts`;
-then each type in `types.ts` becomes an alias such as
-`export type DNSZone = components['schemas']['DNSZone']`. Nothing else imports
-schema names directly, so the swap touches one file.
+v0.1.0 uses wire types generated from `api/openapi.json`.
+`bun run gen:api` writes `src/api/generated.ts`; `src/api/types.ts` exposes
+aliases such as `export type DNSZone = components['schemas']['DNSZone']`
+and the dashboard's helper types. Regenerate the types when the API
+contract changes; schema names are imported through `types.ts`.
 
 ## Licensing
 

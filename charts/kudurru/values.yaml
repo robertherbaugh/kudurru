@@ -82,6 +82,14 @@ service:
     type: ClusterIP
     port: 8080
     annotations: {}
+    # -- None or ClientIP: keep dashboard/API requests from a client on the same replica.
+    # Applies when traffic goes through the Service; ingress controllers
+    # routing directly to pod IPs need their own cookie affinity settings.
+    sessionAffinity: None
+    sessionAffinityConfig:
+      clientIP:
+        # -- Affinity lifetime in seconds (1-86400). Kubernetes defaults to 3 hours.
+        timeoutSeconds: 10800
   headless:
     # -- Defaults to <fullname>-headless. Edge backends, list pulls between
     # replicas (:8082), NOTIFY source; exported as KUDURRU_HEADLESS_SERVICE.
@@ -95,13 +103,30 @@ tls:
 
 ingress:
   enabled: false
+  # -- Ingress (standard Kubernetes) or IngressRoute (Traefik CRDs required).
+  kind: Ingress
   className: ""
   host: ""
   annotations: {}
+  # -- Standard Ingress TLS entries; IngressRoute uses traefik.tls below.
   tls: []
+  traefik:
+    # -- Entry points for IngressRoute. Include your custom entry points here.
+    entryPoints: [websecure]
+    # -- IngressRoute TLS settings, e.g. {secretName: dns-tls}. Empty uses
+    # Traefik's default certificate. IngressRoute always routes over TLS.
+    tls: {}
+    sticky:
+      # -- Cookie affinity for IngressRoute and standard Ingress with
+      # className=traefik. Routes directly to pods (nativeLB=false).
+      enabled: true
+      cookie:
+        name: kudurru_instance
+        httpOnly: true
+        secure: true
+        sameSite: lax
 
-# dnsdist edge tier (§3.6, §5.4). The supervisor (`kudurru edge run`) and its
-# image land in milestone M4; until then edge.enabled renders the target shape.
+# dnsdist edge tier (§3.6, §5.4), supervised by `kudurru edge run`.
 edge:
   enabled: false
   # -- deployment: a Deployment behind the dns Service, backends from the
@@ -199,8 +224,19 @@ vip:
     tolerations: []
     # -- Interface carrying the VIP (required with provider=keepalived).
     interface: ""
+    # -- Interface for VRRP advertisements; empty uses each VIP's interface.
+    vrrpInterface: ""
     # -- VRRP router id; host-only, never changed on re-render.
     vrid: 53
+    # -- Multiple VIPs in priority order. When nonempty, replaces vip.address
+    # and keepalived.vrid. Each entry needs name, address (CIDR), and vrid;
+    # interface defaults to keepalived.interface. Odd entries have reversed
+    # priorities for active/active ownership. Optional preemptDelay: 0-1000 s.
+    vips: []
+    # Example:
+    # vips:
+    #   - {name: dns-a, address: 10.0.0.53/24, vrid: 53}
+    #   - {name: dns-b, address: 10.0.0.54/24, vrid: 54}
     # -- auth_hmac key. Generated once and kept when empty and existingSecret is unset.
     hmacSecret: ""
     # -- Existing Secret with the key vrrp-hmac.

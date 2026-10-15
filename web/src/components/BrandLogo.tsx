@@ -1,7 +1,7 @@
-// The kudurru logo from docs/brand: the Clay tablet with the Ink wordmark
+// The kudurru logo from branding: the Clay tablet with the Ink wordmark
 // on light surfaces and the Paper wordmark on dark ones (styles.css picks
 // one by the resolved colour scheme). The images are downscaled copies of
-// the docs/brand exports (web/scripts/brand-assets.py).
+// the branding exports (web/scripts/brand-assets.py).
 import logoInk from '../assets/kudurru-logo-mixed.png';
 import logoPaper from '../assets/kudurru-logo-mixed-paper.png';
 import taglineInk from '../assets/kudurru-logo-mixed-tagline.png';

@@ -51,7 +51,7 @@ export default function GroupDetailPage({ params }: PageProps) {
   const [newPolicy, setNewPolicy] = useState(false);
 
   const q = useQuery({ queryKey: [...qk.objects('clientgroups'), ns, name], queryFn: () => api.objects.get<ClientGroup>('clientgroups', name, ns) });
-  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list({ window: '24h' }), refetchInterval: 60_000, enabled: can('clients', 'read') });
+  const clients = useQuery({ queryKey: qk.clients(scope), queryFn: () => api.clients.list(scope, { window: '24h' }), refetchInterval: 60_000, enabled: can('clients', 'read') });
   const { ctx, ready } = useDeriveContext();
   const policyLimit = usePolicyLimit(ctx.policies);
   const group = q.data;

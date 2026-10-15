@@ -6,7 +6,8 @@ import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionsOf, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
 import { renderWithApp } from '../test/utils';
-import AccessPage, { actorText, resourceText, scopeString, scopeText } from './AccessPage';
+import AccessPage, { scopeString, scopeText } from './AccessPage';
+import AuditPage, { actorText, resourceText } from './AuditPage';
 
 /** Records the query strings of GET /audit while passing through to the mock. */
 function spyAudit(): URLSearchParams[] {
@@ -57,7 +58,7 @@ describe('AccessPage', () => {
   it('lists the audit log newest first and pages with the cursor', async () => {
     for (let i = 0; i < 150; i++) mockDB().audit.unshift({ ...mockDB().audit[0]!, id: 2000 + i, ts: new Date(Date.UTC(2026, 9, 11, 0, i)).toISOString(), action: `zone.update-${i}` });
     const seen = spyAudit();
-    renderWithApp(<AccessPage />, { route: '/access?tab=audit' });
+    renderWithApp(<AuditPage />, { route: '/audit' });
     const table = await screen.findByRole('table', { name: 'Audit entries' });
     await within(table).findByText('zone.update-149');
     expect(seen[0]?.get('order')).toBe('desc');

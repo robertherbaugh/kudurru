@@ -17,7 +17,7 @@ import { renderMarkdown } from "./src/markdown.ts";
 
 const ROOT = import.meta.dir;
 const REPO = resolve(ROOT, "..");
-const BRAND = join(REPO, "docs/brand/assets");
+const BRAND = join(REPO, "branding/assets");
 const SHOTS_DIR = join(REPO, "docs/guide/images");
 
 // Brand files the pages reference by hashed name.

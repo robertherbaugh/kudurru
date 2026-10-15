@@ -1645,6 +1645,13 @@ type AuditPage struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// AuditVerification defines model for AuditVerification.
+type AuditVerification struct {
+	CheckedAt time.Time `json:"checkedAt"`
+	Reason    *string   `json:"reason,omitempty"`
+	Verified  bool      `json:"verified"`
+}
+
 // AuthListIAMUser defines model for AuthListIAMUser.
 type AuthListIAMUser struct {
 	Continue string `json:"continue"`
@@ -1932,7 +1939,7 @@ type ClientItem struct {
 	Group   *string `json:"group,omitempty"`
 	Key     string  `json:"key"`
 
-	// LastSeen The newest query from the client on this node (hour precision once its query rows aged out).
+	// LastSeen The newest query from the client in the selected scope (hour precision once its query rows aged out).
 	LastSeen *time.Time `json:"last_seen,omitempty"`
 	Name     *string    `json:"name,omitempty"`
 }
@@ -1964,6 +1971,20 @@ type ClientTimeseriesBody struct {
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64   `json:"took_ms"`
 	Until  time.Time `json:"until"`
+}
+
+// ClientsBody defines model for ClientsBody.
+type ClientsBody struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string       `json:"continue,omitempty"`
+	Items    []ClientItem  `json:"items"`
+	Nodes    *[]NodeResult `json:"nodes"`
+	Partial  bool          `json:"partial"`
+	Scope    string        `json:"scope"`
+	Source   *string       `json:"source,omitempty"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
 }
 
 // ClusterInfo defines model for ClusterInfo.
@@ -2319,26 +2340,46 @@ type DomainsRequest struct {
 
 // EdgeBackend defines model for EdgeBackend.
 type EdgeBackend struct {
-	Address string `json:"address"`
-	Name    string `json:"name"`
-	Up      bool   `json:"up"`
+	Address string  `json:"address"`
+	Name    string  `json:"name"`
+	Node    *string `json:"node,omitempty"`
+	Up      bool    `json:"up"`
 }
 
 // EdgeComponent defines model for EdgeComponent.
 type EdgeComponent struct {
 	Enabled bool    `json:"enabled"`
+	Message *string `json:"message,omitempty"`
 	State   *string `json:"state,omitempty"`
 }
 
 // EdgeInfo defines model for EdgeInfo.
 type EdgeInfo struct {
-	Backends []EdgeBackend `json:"backends"`
-	Edge     EdgeComponent `json:"edge"`
-	Node     string        `json:"node"`
+	Backends    []EdgeBackend          `json:"backends"`
+	Edge        EdgeComponent          `json:"edge"`
+	Node        string                 `json:"node"`
+	Supervisors []EdgeSupervisorStatus `json:"supervisors"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64       `json:"took_ms"`
 	Vip    EdgeComponent `json:"vip"`
+	Vips   []EdgeVIP     `json:"vips"`
+}
+
+// EdgeSupervisorStatus defines model for EdgeSupervisorStatus.
+type EdgeSupervisorStatus struct {
+	Edge EdgeComponent `json:"edge"`
+	Node string        `json:"node"`
+	Vip  EdgeComponent `json:"vip"`
+}
+
+// EdgeVIP defines model for EdgeVIP.
+type EdgeVIP struct {
+	Address  *string `json:"address,omitempty"`
+	Name     string  `json:"name"`
+	Node     string  `json:"node"`
+	Priority int64   `json:"priority"`
+	State    string  `json:"state"`
 }
 
 // Endpoint defines model for Endpoint.
@@ -2536,16 +2577,6 @@ type ListCatalogueService struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
 	Continue *string            `json:"continue,omitempty"`
 	Items    []CatalogueService `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
-// ListClientItem defines model for ListClientItem.
-type ListClientItem struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string      `json:"continue,omitempty"`
-	Items    []ClientItem `json:"items"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -4786,6 +4817,11 @@ type ClientInterface interface {
 	// Corresponds with GET /audit/export (the `ExportAudit` operationId).
 	ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// VerifyAudit Verify the complete retained audit chain and available batch seals
+	//
+	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+	VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// LoginWithBody Local login (sets the session cookie)
 	//
 	// Brute-force limited per client address and user: 429 with Retry-After.
@@ -5868,6 +5904,21 @@ func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEdit
 // Corresponds with GET /audit/export (the `ExportAudit` operationId).
 func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExportAuditRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// VerifyAudit Verify the complete retained audit chain and available batch seals
+//
+// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+func (c *Client) VerifyAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewVerifyAuditRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -8776,6 +8827,33 @@ func NewExportAuditRequest(server string, params *ExportAuditParams) (*http.Requ
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewVerifyAuditRequest constructs an http.Request for the VerifyAudit method
+func NewVerifyAuditRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/audit/verify")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -14940,6 +15018,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /audit/export (the `ExportAudit` operationId).
 	ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
 
+	// VerifyAuditWithResponse Verify the complete retained audit chain and available batch seals
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+	VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error)
+
 	// LoginWithBodyWithResponse Local login (sets the session cookie)
 	//
 	// Brute-force limited per client address and user: 429 with Retry-After.
@@ -16787,6 +16872,89 @@ func (r ExportAuditResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ExportAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type VerifyAuditResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditVerification
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r VerifyAuditResponse) GetJSON200() *AuditVerification {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r VerifyAuditResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r VerifyAuditResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r VerifyAuditResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r VerifyAuditResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r VerifyAuditResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r VerifyAuditResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r VerifyAuditResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r VerifyAuditResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r VerifyAuditResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r VerifyAuditResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -20004,7 +20172,7 @@ type ListClientsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListClientItem
+	JSON200 *ClientsBody
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -20022,7 +20190,7 @@ type ListClientsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListClientsResponse) GetJSON200() *ListClientItem {
+func (r ListClientsResponse) GetJSON200() *ClientsBody {
 	return r.JSON200
 }
 
@@ -26894,6 +27062,19 @@ func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, param
 	return ParseExportAuditResponse(rsp)
 }
 
+// VerifyAuditWithResponse Verify the complete retained audit chain and available batch seals
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /audit/verify (the `VerifyAudit` operationId).
+func (c *ClientWithResponses) VerifyAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*VerifyAuditResponse, error) {
+	rsp, err := c.VerifyAudit(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseVerifyAuditResponse(rsp)
+}
+
 // LoginWithBodyWithResponse Local login (sets the session cookie)
 //
 // Brute-force limited per client address and user: 429 with Retry-After.
@@ -29422,6 +29603,74 @@ func ParseExportAuditResponse(rsp *http.Response) (*ExportAuditResponse, error) 
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseVerifyAuditResponse parses an HTTP response from a VerifyAuditWithResponse call
+func ParseVerifyAuditResponse(rsp *http.Response) (*VerifyAuditResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &VerifyAuditResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditVerification
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -32316,7 +32565,7 @@ func ParseListClientsResponse(rsp *http.Response) (*ListClientsResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListClientItem
+		var dest ClientsBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

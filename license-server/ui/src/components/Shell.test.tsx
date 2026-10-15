@@ -18,11 +18,12 @@ function navLinks(): string[] {
     .map((a) => a.textContent?.replace(/\d+$/, '').trim() ?? '');
 }
 
-test('a customer sees only their own licenses in the navigation', async () => {
+test('a customer sees their own licenses and downloads in the navigation', async () => {
   renderApp({ route: '/my/licenses', me: customerMe, handlers: { myLicenses: () => ({ items: [] }), myRequests: () => ({ items: [] }) } });
   expect(await screen.findByRole('heading', { level: 1, name: 'My licenses' })).toBeInTheDocument();
   const links = navLinks();
   expect(links).toContain('My licenses');
+  expect(links).toContain('Downloads');
   for (const hidden of ['Licenses', 'Customers', 'Requests', 'Users', 'Audit', 'System']) expect(links).not.toContain(hidden);
 });
 
@@ -36,7 +37,7 @@ test('a license admin sees Licensing and Administration, with the open request c
   await waitFor(() => expect(api.callsTo('requestsList')).toHaveLength(1));
   expect(api.callsTo('requestsList')[0]?.query.get('status')).toBe('open');
   const links = navLinks();
-  for (const shown of ['My licenses', 'Licenses', 'Customers', 'Requests', 'Users', 'Audit', 'System']) expect(links).toContain(shown);
+  for (const shown of ['My licenses', 'Downloads', 'Licenses', 'Customers', 'Requests', 'Users', 'Audit', 'System']) expect(links).toContain(shown);
   const requests = screen.getByRole('link', { name: /^Requests/ });
   await waitFor(() => expect(requests).toHaveTextContent('1'));
 });

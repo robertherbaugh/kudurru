@@ -59,6 +59,7 @@ services:
       # Cluster settings edited in the UI or with `kudurru settings set` are
       # written here (on the data volume; kudurru.yaml stays read-only).
       KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
+      KUDURRU_EDGE_STATUS_URL: http://127.0.0.1:8084
       TZ: UTC
     volumes:
       - ./kudurru.yaml:/etc/kudurru/kudurru.yaml:ro

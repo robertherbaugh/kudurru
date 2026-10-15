@@ -706,11 +706,17 @@ export type ClientItem = S['ClientItem'] & {
   last_seen?: string;
 };
 
+/** Client inventory plus the node/cluster scope that answered it. */
+export interface ClientsResult extends ListEnvelope<ClientItem>, ScopeInfo {}
+
 /** One audit event (internal/audit Event). */
 export type AuditEvent = S['Event'];
 
 /** GET /audit: a page of events with a keyset cursor. */
 export type AuditPage = S['AuditPage'];
+
+/** GET /audit/verify: integrity of the complete retained trail. */
+export type AuditVerification = S['AuditVerification'];
 
 export interface AuditQuery {
   kind?: string | undefined;

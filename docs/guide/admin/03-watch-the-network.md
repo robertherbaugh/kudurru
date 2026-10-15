@@ -160,7 +160,7 @@ The row opens and shows the details (Figure 6).
 | **Rule** | The rule that matched the name, for example `\|\|app-measurement.com^` |
 | **Upstream** | The upstream that answered. `none` means that kudurru did not ask one. |
 | **Cache** | If the answer came from the cache |
-| **DNSSEC** | The result of the DNSSEC check |
+| **DNSSEC** | Reserved for later validation. kudurru v0.1.0 does not validate DNSSEC answers. |
 | **CNAME chain** | The names that the answer pointed to |
 | **Extended DNS error** | A code that tells the client why kudurru blocked the name |
 | **Client** | The client and its client group |
@@ -181,6 +181,13 @@ explains the lists.
 
 Turn on **Live tail** at the top right of the page. New queries show at the
 top of the table when they arrive. Turn the switch off to stop.
+
+Select **All** beside the switch to follow every active node, or select a
+node to follow only that node. The selector has a search field when the
+list is long. A short warning reports how many nodes have partial results.
+
+When query history comes from a central database, turning on **Live tail**
+shows only incoming queries. Turning it off returns to refreshed history.
 
 ### Delete old rows
 

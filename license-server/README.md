@@ -18,9 +18,17 @@ free personal keys without an account. By default
 one waits until a license admin approves it, usually with one click from a
 mail ("Approving personal keys" below).
 
-The portal only issues and delivers keys. No kudurru node ever contacts
-it: keys are verified offline on each node against the public keys built
-into the binary (D163), and licensing never touches DNS.
+The portal issues and delivers keys and has a Downloads page for every
+signed-in user. Downloads links to public GitHub Releases and GHCR packages
+(Helm charts, container images, Compose bundles, binaries, Linux packages
+and Kubernetes manifests), with pull commands and deployment guides. The
+links assume the repository and packages are public; versioned archives
+are selected on GitHub's release page. Files are downloaded directly from
+GitHub, and the portal needs no GitHub credentials or release API calls.
+
+No kudurru node ever contacts it: keys are verified offline on each node
+against the public keys built into the binary (D163), and licensing never
+touches DNS.
 
 It is Bun, TypeScript and Postgres in one container, with a React and
 Astryx UI that uses the same design system and Kudurru theme as the
@@ -50,7 +58,7 @@ Hosting on Cloudflare Containers: [cloudflare/README.md](cloudflare/README.md).
 | `server/auth/` | OIDC sign-in (openid-client), sessions in Postgres, identity and role mapping, member linking |
 | `server/licensing/` | The JWS signer that matches `license.Sign` byte for byte, the keyring and the issuing policy |
 | `server/services/`, `server/api/` | Customers, members, licenses, personal and public key requests, users, the block list, audit and system pages; `api/` holds the thin handlers |
-| `server/mail/` | SMTP (nodemailer) and the mail texts |
+| `server/mail/` | SMTP (nodemailer), mail texts and the shared branded HTML layout |
 | `server/migrations/` | The schema; `0002` grants the runtime role exactly what the code uses (`0003` adds the approval links' table and its grant) |
 | `server/test/` | `bun test` against Postgres; the Go golden vectors and node oracle in `golden/` |
 | `ui/` | The UI (Vite, React 19, Astryx 0.6.8); `ui/src/ui/` is the kit copied from `web/src`, each file marked with where it came from |
@@ -202,6 +210,15 @@ means the same, and weaker `sslmode` values are refused because Bun's
 `sslmode=require` does not verify the certificate.
 
 ## Mail
+
+Every portal email includes a branded HTML version and a complete plain text
+alternative. The HTML uses Kudurru's Ink, Paper and Clay palette, an embedded
+logo, and buttons for confirmation, review and portal access. The logo travels
+as an inline CID attachment; no external image or font host is needed. Key
+emails still include the exact token and `license.key` attachment. The brand
+assets are embedded in the server bundle; regenerate them from `branding`
+with `python3 license-server/scripts/mail-brand.py` from the repository root
+(Pillow 11.3.0, as for the brand exports).
 
 Mail goes over SMTP (`SMTP_URL`): `smtps://user:pass@host:465` (implicit
 TLS) or `smtp://user:pass@host:587` (STARTTLS required). With Cloudflare

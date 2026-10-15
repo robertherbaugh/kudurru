@@ -32,8 +32,9 @@ coverage.*
 *.swp
 .DS_Store
 
-# agent worktrees live inside the repo
-/.claude/
+# agent worktrees live inside the repo; project skills are tracked
+/.claude/*
+!/.claude/skills/
 
 # docs site (site/): build output, Hugo's cache and the generated assets
 /site/public/

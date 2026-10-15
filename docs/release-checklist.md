@@ -1,7 +1,11 @@
 # Release checklist
 
-How to cut a kudurru release (written for v0.1.0-rc.1, then v0.1.0; no tag
-exists yet). The pipeline is the branch workflows below plus
+How to cut a kudurru release. v0.1.0 ("stone") is dated 16 October 2026 in
+the [changelog](../CHANGELOG.md). This is a reusable procedure: unchecked
+boxes are tasks for each release, not a live status board for v0.1.0.
+Record completed checks and deployment evidence in the release notes.
+
+The pipeline is the branch workflows below plus
 `.goreleaser.yaml` and `.github/workflows/publish.yml` (docs/architecture.md
 §12 and D139, docs/deploy/README.md); this file is the order of the manual
 steps around it and the checks that need the project owner's hardware.
@@ -99,6 +103,8 @@ Repository settings the pipeline relies on (once):
       real bundle, `make size`. Do not commit the built `web/dist/index.html`.
 - [ ] Every row in docs/followups.md targeted at this release is closed or
       explicitly moved to the next one.
+- [ ] The [final v0.1 feature review](m5/features-v0.1.md) has no remaining
+      product blocker, and its deployment acceptance checks have passed.
 - [ ] Version strings agree:
   - `VERSION` holds the version being released (the Makefile's
     `RELEASE_VERSION`, what a build without a reachable tag reports, reads
@@ -142,7 +148,7 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
       the committed placeholder.
 - [ ] `rm -rf dist` afterwards.
 
-Dry runs for v0.1.0-rc.1 (not tagged yet):
+Historical dry runs made during v0.1.0-rc.1 preparation:
 
 - M5 sandbox, goreleaser 2.18.3: `check` and the single-target snapshot
   build succeeded (no Docker, no cosign identity).
@@ -195,6 +201,16 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
 
 On the owner's hardware:
 
+- [ ] **Client identity through the published DNS path.** From two devices
+      with different addresses, send distinct query names to every DNS VIP
+      over UDP and TCP. The cluster query log, Clients inventory and
+      per-client chart must retain both addresses; confirm an exact-IP
+      ClientGroup applies only to its device. Check the node scope and
+      All nodes, including a central-database installation. Preserve
+      source addresses before traffic reaches Kubernetes and use
+      `service.dns.externalTrafficPolicy=Local`; with an edge, verify the
+      Service selects dnsdist and the authenticated PROXYv2 hop preserves
+      each device. See [the client-address runbook](deploy/runbooks.md#clients-show-only-the-gateway).
 - [ ] **Two VMs with keepalived 2.4.3** (spike h), compose HA files or the
       chart's keepalived DaemonSet: (1) `kudurru lameduck` on the MASTER keeps
       the VIP and drains the node from dnsdist (D51); (2) `kudurru vip drain

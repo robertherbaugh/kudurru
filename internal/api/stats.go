@@ -202,11 +202,17 @@ type ClientItem struct {
 	Group   string `json:"group,omitempty"`
 	Count   int64  `json:"count"`
 	Blocked int64  `json:"blocked"`
-	// LastSeen is the client's newest query on this node.
-	LastSeen *time.Time `json:"last_seen,omitempty" doc:"The newest query from the client on this node (hour precision once its query rows aged out)."`
+	// LastSeen is the client's newest query in the selected scope.
+	LastSeen *time.Time `json:"last_seen,omitempty" doc:"The newest query from the client in the selected scope (hour precision once its query rows aged out)."`
 }
 
-type clientsOutput struct{ Body *List[ClientItem] }
+// ClientsBody carries the inventory and the nodes that answered it.
+type ClientsBody struct {
+	List[ClientItem]
+	sqlitelog.Scope
+}
+
+type clientsOutput struct{ Body *ClientsBody }
 
 func (s *Server) registerStats() {
 	stats := perm{resource: "stats", verb: "read"}
@@ -469,7 +475,7 @@ func (s *Server) statsRecentBlocked(ctx context.Context, in *recentBlockedInput)
 }
 
 func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOutput, error) {
-	r, err := s.reader()
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -481,10 +487,26 @@ func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOut
 	// that only had blocked queries is in the second list only.
 	byKey := map[string]*ClientItem{}
 	var order []string
+	var scope sqlitelog.Scope
+	nodeIndex := map[string]int{}
 	for _, blocked := range []bool{false, true} {
 		res, err := r.TopClients(ctx, sqlitelog.TopQuery{Window: w, N: sqlitelog.MaxTopN, Blocked: blocked})
 		if err != nil {
 			return nil, readerError(err)
+		}
+		scope.Scope, scope.Source = res.Scope.Scope, res.Source
+		scope.Partial = scope.Partial || res.Partial
+		// Both rankings contribute to the inventory. Keep a failure from
+		// either read visible even if that node answered the other one.
+		for _, node := range res.Nodes {
+			if i, ok := nodeIndex[node.Name]; ok {
+				if !node.OK {
+					scope.Nodes[i] = node
+				}
+			} else {
+				nodeIndex[node.Name] = len(scope.Nodes)
+				scope.Nodes = append(scope.Nodes, node)
+			}
 		}
 		for _, it := range res.Items {
 			if _, ok := byKey[it.Key]; !ok {
@@ -503,7 +525,7 @@ func (s *Server) listClients(ctx context.Context, in *WindowParams) (*clientsOut
 		items = append(items, *byKey[k])
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Count > items[j].Count })
-	return &clientsOutput{Body: newList(items, "")}, nil
+	return &clientsOutput{Body: &ClientsBody{List: *newList(items, ""), Scope: scope}}, nil
 }
 
 // queryFilter converts the query parameters.

@@ -7,6 +7,25 @@ import MessagesPage, { messageKeys, objectLink, parseObjectRef } from './Message
 import NodesPage from './NodesPage';
 
 describe('NodesPage', () => {
+  it('shows degraded supervisors and the owner of each VIP', async () => {
+    server.use(http.get(`${API}/edge`, () => HttpResponse.json({
+      edge: { enabled: true, state: 'degraded', message: 'some supervisors are not ready' },
+      vip: { enabled: true, state: 'running' }, backends: [], node: 'kudurru-0',
+      supervisors: [{ node: 'worker-a', edge: { enabled: true, state: 'unavailable' }, vip: { enabled: true, state: 'running' } }],
+      vips: [{ name: 'dns-a', node: 'worker-a', address: '10.35.10.53/24', state: 'MASTER', priority: 200 },
+        { name: 'dns-b', node: 'worker-a', address: '10.35.10.54/24', state: 'BACKUP', priority: 180 }],
+    })));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    expect(await screen.findByText('degraded')).toBeInTheDocument();
+    expect(screen.getByText('some supervisors are not ready')).toBeInTheDocument();
+    const supervisors = screen.getByRole('list', { name: 'Edge supervisors' });
+    expect(within(supervisors).getByText('dnsdist: unavailable; keepalived: running')).toBeInTheDocument();
+    const vips = screen.getByRole('list', { name: 'VIP states' });
+    expect(within(vips).getByText('dns-a on worker-a')).toBeInTheDocument();
+    expect(within(vips).getByText('MASTER')).toBeInTheDocument();
+    expect(within(vips).getByText('BACKUP')).toBeInTheDocument();
+  });
+
   it('keeps a failed peer visible with unknown readiness and its status error', async () => {
     server.use(http.get(`${API}/nodes`, () => HttpResponse.json({ items: [
       { name: 'node-a', self: true, leader: true, ready: true, state: 'live', version: 'v0.1.0' },

@@ -115,7 +115,7 @@ async function linkRow(ctx: ServiceCtx, customerId: string, email: string, userI
 function mailInvite(ctx: ServiceCtx, to: string, customerName: string, url: string, expiresAt: Date | null): void {
   if (!ctx.mailer.configured) return;
   const msg = memberInviteMail({ to, customerName, url, expiresAt, publicUrl: ctx.config.publicUrl });
-  ctx.afterCommit(() => ctx.mailer.send(msg));
+  ctx.afterCommit(() => ctx.mailer.send(msg, ctx.log));
 }
 
 /**

@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Verify the complete retained audit chain and available batch seals */
+        get: operations["verifyAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -1614,6 +1631,12 @@ export interface components {
              */
             took_ms: number;
         };
+        AuditVerification: {
+            /** Format: date-time */
+            checkedAt: string;
+            reason?: string;
+            verified: boolean;
+        };
         AuthListIAMUser: {
             continue: string;
             /** @description Why entries were ignored (role bindings, identity providers). */
@@ -1865,7 +1888,7 @@ export interface components {
             key: string;
             /**
              * Format: date-time
-             * @description The newest query from the client on this node (hour precision once its query rows aged out).
+             * @description The newest query from the client in the selected scope (hour precision once its query rows aged out).
              */
             last_seen?: string;
             name?: string;
@@ -1898,6 +1921,20 @@ export interface components {
             took_ms: number;
             /** Format: date-time */
             until: string;
+        };
+        ClientsBody: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["ClientItem"][];
+            nodes: components["schemas"]["NodeResult"][] | null;
+            partial: boolean;
+            scope: string;
+            source?: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         ClusterInfo: {
             clusterID?: string;
@@ -2193,22 +2230,39 @@ export interface components {
         EdgeBackend: {
             address: string;
             name: string;
+            node?: string;
             up: boolean;
         };
         EdgeComponent: {
             enabled: boolean;
+            message?: string;
             state?: string;
         };
         EdgeInfo: {
             backends: components["schemas"]["EdgeBackend"][];
             edge: components["schemas"]["EdgeComponent"];
             node: string;
+            supervisors: components["schemas"]["EdgeSupervisorStatus"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
              */
             took_ms: number;
             vip: components["schemas"]["EdgeComponent"];
+            vips: components["schemas"]["EdgeVIP"][];
+        };
+        EdgeSupervisorStatus: {
+            edge: components["schemas"]["EdgeComponent"];
+            node: string;
+            vip: components["schemas"]["EdgeComponent"];
+        };
+        EdgeVIP: {
+            address?: string;
+            name: string;
+            node: string;
+            /** Format: int64 */
+            priority: number;
+            state: string;
         };
         Endpoint: {
             dnsName: string;
@@ -2404,16 +2458,6 @@ export interface components {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
             items: components["schemas"]["CatalogueService"][];
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-        };
-        ListClientItem: {
-            /** @description Opaque keyset token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["ClientItem"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -4545,6 +4589,80 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifyAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditVerification"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7692,7 +7810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListClientItem"];
+                    "application/json": components["schemas"]["ClientsBody"];
                 };
             };
             /** @description Bad Request */

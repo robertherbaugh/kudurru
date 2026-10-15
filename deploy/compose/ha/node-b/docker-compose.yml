@@ -29,6 +29,8 @@ services:
       # Cluster settings edited in the UI or with `kudurru settings set` are
       # written here (on the data volume; kudurru.yaml stays read-only).
       KUDURRU_SETTINGS_FILE: /var/lib/kudurru/settings.yaml
+      KUDURRU_EDGE_STATUS_URL: http://127.0.0.1:8084
+      KUDURRU_VIP_STATUS_URL: http://127.0.0.1:8085
       # Optional central database (docs/deploy/postgres.md): the audit log,
       # query log and statistics of all three nodes in one PostgreSQL, so
       # every node's dashboard shows them all. Write the connection string

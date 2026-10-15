@@ -1,8 +1,11 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { ScopeSelector } from '../components/ScopeSelector';
 import { mockDB } from '../mocks/handlers';
 import { findSelector, getSelector, optionLabels, pick } from '../test/controls';
-import { renderWithApp, uiEntryValues } from '../test/utils';
+import { API, renderWithApp, uiEntryValues } from '../test/utils';
+import { server } from '../test/setup';
 import ClientDetailPage from './ClientDetailPage';
 import GroupDetailPage from './GroupDetailPage';
 import GroupsPage from './GroupsPage';
@@ -116,6 +119,38 @@ describe('GroupWizardDialog', () => {
 });
 
 describe('ClientDetailPage', () => {
+  it('keeps inventory and recent queries on the selected scope', async () => {
+    const seen: { path: string; params: URLSearchParams }[] = [];
+    server.events.on('request:start', ({ request }) => {
+      const u = new URL(request.url);
+      if (u.pathname === '/api/v1/clients' || u.pathname === '/api/v1/queries') seen.push({ path: u.pathname, params: u.searchParams });
+    });
+    server.use(http.get(`${API}/clients`, ({ request }) => {
+      const node = new URL(request.url).searchParams.get('node');
+      return HttpResponse.json({
+        scope: node ? 'node' : 'cluster',
+        nodes: [{ name: node ?? 'kudurru-0', ok: true }],
+        partial: false,
+        ...(!node ? { source: 'central' } : {}),
+        items: [{ key: '192.168.1.10', name: 'robert-laptop', count: node ? 11 : 12, blocked: 3 }],
+      });
+    }));
+    renderWithApp(<><ScopeSelector /><ClientDetailPage params={{ key: '192.168.1.10' }} /></>, { route: '/clients/192.168.1.10' });
+    await screen.findByText('12', { exact: true });
+    expect(screen.getByTestId('scope-note')).toHaveTextContent('(central database)');
+    await waitFor(() => expect(seen.some((r) => r.path.endsWith('/queries') && r.params.get('scope') === 'cluster')).toBe(true));
+    // The nodes query populates the selector asynchronously.
+    await waitFor(() => expect(optionLabels(getSelector('Node scope'))).toContain('kudurru-1'));
+    pick(getSelector('Node scope'), 'kudurru-1');
+    await screen.findByText('11', { exact: true });
+    expect(screen.getByTestId('scope-note')).toHaveTextContent('Node kudurru-1');
+    for (const path of ['/api/v1/clients', '/api/v1/queries']) {
+      await waitFor(() => expect(seen.some((r) => r.path === path && r.params.get('scope') === 'node' && r.params.get('node') === 'kudurru-1')).toBe(true));
+    }
+    const lastQueries = seen.filter((r) => r.path.endsWith('/queries')).at(-1)?.params;
+    expect(lastQueries?.get('client')).toBe('192.168.1.10');
+  });
+
   it('explains the groups and the policy that decides, with recent queries', async () => {
     renderWithApp(<ClientDetailPage params={{ key: '192.168.1.10' }} />, { route: '/clients/192.168.1.10' });
     expect(await screen.findByRole('heading', { level: 1, name: 'robert-laptop' })).toBeInTheDocument();

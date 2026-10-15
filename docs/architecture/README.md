@@ -1,6 +1,6 @@
 # How kudurru works
 
-A visual tour of kudurru as it is built today: where a DNS query goes, how
+A visual tour of kudurru v0.1.0: where a DNS query goes, how
 a client's policy is chosen, how configuration travels from a YAML file or
 the dashboard to every node, and how the deployment shapes fit together.
 Every page leads with a picture and then explains it.

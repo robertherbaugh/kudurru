@@ -25,13 +25,14 @@ kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
 helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
 helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
-  --namespace kudurru-system
+  --namespace kudurru-system --set replicaCount=1
 kubectl create namespace dns && kubectl create namespace apps   # the samples' namespaces
 kubectl apply -k config/samples/
 kubectl get zone,rrset,blocklist,cg,pol -A
 ```
 
-Two replicas need a license key: without one kudurru runs as one node, so
+The example starts one replica without a license key. Two or more replicas
+need a key: without one kudurru runs as one node, so
 changes through the API and the dashboard answer `402 license_required` until
 you add a key (a free personal key covers 3 nodes) or set `replicaCount=1`
 ([license key](/deploy/helm/#license-key)). DNS answering is not affected.

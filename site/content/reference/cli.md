@@ -1219,10 +1219,14 @@ Flags:
       --track-dnsdist-api string                dnsdist API the VRRP probe checks (default
                                                 "http://127.0.0.1:8083")
       --unicast-src string                      this node's VRRP source address (default: the
-                                                first address of the first VIP's interface)
+                                                first address of --vrrp-interface, or the
+                                                first VIP's interface)
       --vip stringArray                         VIP as name=addr/len@iface#vrid (repeatable;
                                                 the second VIP gets reversed priorities); the
                                                 VRID is host-only and never changes
+      --vrrp-interface string                   interface for VRRP advertisements (default:
+                                                each VIP's interface); VIP addresses stay on
+                                                the interfaces in --vip
 ```
 
 ### kudurru vip run
@@ -1282,10 +1286,14 @@ Flags:
       --track-dnsdist-api string                dnsdist API the VRRP probe checks (default
                                                 "http://127.0.0.1:8083")
       --unicast-src string                      this node's VRRP source address (default: the
-                                                first address of the first VIP's interface)
+                                                first address of --vrrp-interface, or the
+                                                first VIP's interface)
       --vip stringArray                         VIP as name=addr/len@iface#vrid (repeatable;
                                                 the second VIP gets reversed priorities); the
                                                 VRID is host-only and never changes
+      --vrrp-interface string                   interface for VRRP advertisements (default:
+                                                each VIP's interface); VIP addresses stay on
+                                                the interfaces in --vip
 ```
 
 ## kudurru zones

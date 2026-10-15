@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Brand assets: downscaled copies of docs/brand/assets
+// Brand assets: downscaled copies of branding/assets
 // (kudurru-logo-mixed{,-paper}.png as web/src/assets has them, and
 // favicon.ico), written by web/scripts/brand-assets.py. The logos are
 // inlined as data: URIs so the page makes no request but /favicon.ico.
@@ -63,7 +63,7 @@ type Page struct {
 
 // css is the page's only style sheet, inlined and allowed by its hash in
 // the Content-Security-Policy (no 'unsafe-inline'). The colours are the
-// brand tokens of docs/brand/tokens.css.
+// brand tokens of branding/tokens.css.
 const css = `:root{--ink:#182522;--clay:#B65C3A;--paper:#F7F3EA;--stone:#D9D1C2;--bg:var(--paper);--fg:var(--ink);--card:#FFFFFF;--muted:#4A5552;--line:var(--stone);--accent:#9A4A2C;color-scheme:light dark}
 @media (prefers-color-scheme:dark){:root{--bg:#101917;--fg:var(--paper);--card:var(--ink);--muted:#B9B3A6;--line:#2E3B38;--accent:#E08A66}}
 *{box-sizing:border-box}

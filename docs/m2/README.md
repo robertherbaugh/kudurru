@@ -1,5 +1,9 @@
 # Milestone M2: authoritative + blocking
 
+These reports record the M2 implementation and measurements before
+v0.1.0. For the release's behavior and limitations, read the
+[architecture tour](../architecture/README.md) and [changelog](../../CHANGELOG.md).
+
 Five work packages, wired in `cmd/kudurru/serve.go` (commit "feat(serve): wire milestone M2"). Decisions D86 to D97 in [architecture.md](../architecture.md) record what changed; the M1 carry-overs from [followups.md](../followups.md) landed in the hardening package.
 
 | Package | Report | Headline |

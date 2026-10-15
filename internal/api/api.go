@@ -190,6 +190,11 @@ type Options struct {
 	// Health is the node's readiness checker; Membership lists nodes.
 	Health     *health.Checker
 	Membership cluster.Membership
+	// EdgeSupervisors discovers supervised dnsdist/keepalived endpoints.
+	// Nil means no edge is configured. VIPSupervised marks keepalived enabled
+	// even when endpoint discovery fails.
+	EdgeSupervisors func(context.Context) ([]EdgeSupervisorEndpoint, error)
+	VIPSupervised   bool
 	// InternalClient fetches peer status over the authenticated internal listener.
 	InternalClient *internalapi.Client
 	// Lists is the list resolver; Refresher and Notifier are optional
@@ -297,6 +302,8 @@ type Server struct {
 	unblockFallback *unblock.Service
 	// nodes caches the cluster size for the license gate.
 	nodes nodeCounter
+	// auditVerification shares and caches full-store integrity scans.
+	auditVerification auditVerificationCache
 	// policyMu serializes the policy limit check with the create it guards.
 	policyMu sync.Mutex
 	// domainSvc is the Allowlist and Denylist over the store.

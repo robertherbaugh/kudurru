@@ -2,6 +2,7 @@ package keepalived
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -125,6 +126,20 @@ func TestSupervisorFIFOAndReload(t *testing.T) {
 	st, err := ReadState(h.run)
 	if err != nil || st.Node != "node-a" || st.VIPs["dns"].State != StateMaster || st.VIPs["dns"].Priority != 200 || st.VIPs["dns2"].State != StateBackup {
 		t.Fatalf("state %+v %v", st, err)
+	}
+	rec := httptest.NewRecorder()
+	h.sup.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/status", nil))
+	var status struct {
+		Ready     bool              `json:"ready"`
+		Node      string            `json:"node"`
+		Addresses map[string]string `json:"addresses"`
+		State     StateFile         `json:"state"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Ready || status.Node != "node-a" || status.Addresses["dns"] != "10.0.0.53/24" || status.State.VIPs["dns"].State != StateMaster {
+		t.Fatalf("live status = %+v", status)
 	}
 	h.mu.Lock()
 	var sawMaster bool

@@ -10,7 +10,7 @@ dashboard.
 |---|---|
 | Node | One running kudurru server. A network can have more than one node. |
 | Client | A device that sends queries to kudurru, for example a laptop or a television. |
-| Client group | A set of clients. A group matches clients by address, address range, client ID or MAC address. |
+| Client group | A set of clients. In version 0.1, a group matches clients by address or address range. |
 | Block list | A list of names that kudurru blocks. |
 | Allow list | A list of names that kudurru never blocks. |
 | Policy | The rules for one or more client groups: which lists and services apply, how kudurru answers a blocked query, and when. |
@@ -90,7 +90,7 @@ The navigation list is at the left. It has four sections.
 | Overview | **Dashboard**, **Query log**, **Long-term** |
 | Filtering | **Lists**, **Domains**, **Allowlist**, **Denylist**, **Groups**, **Clients**, **Policies**, **Requests** |
 | DNS | **Zones**, **Upstreams** |
-| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **License**, **Access & audit** |
+| System | **Nodes**, **Settings**, **Tools**, **Diagnosis**, **License**, **Access**, **Audit Log** |
 
 A number in a red or yellow badge next to a page shows the count of
 messages (**Diagnosis**) or of open requests (**Requests**).

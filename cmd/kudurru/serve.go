@@ -218,6 +218,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	defer func() { _ = snapDB.Close() }()
 
 	// Use the release namespace for seeds, policy fallback and API writes.
 	// Preserve the namespace of a legacy default policy on upgrades.
@@ -225,9 +226,25 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	namespace := bootstrap.DefaultNamespace
 	if cfg.Store.Driver == "kube" {
 		releaseNamespace = kube.PodNamespace()
-		namespace, err = bootstrap.ResolveNamespace(ctx, st, releaseNamespace)
+		initCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+		namespace, err = bootstrap.ResolveNamespace(initCtx, st, releaseNamespace)
+		cancel()
 		if err != nil {
-			return err
+			if ctx.Err() != nil || !kube.IsUnavailable(err) {
+				return err
+			}
+			// Select the same policy fallback as the last serving snapshot.
+			// Never ignore malformed SQLite data or reuse another cluster's
+			// namespace when its identity is already known.
+			namespace = releaseNamespace
+			saved, loadErr := snapDB.Load(ctx)
+			if loadErr != nil && !errors.Is(loadErr, localdb.ErrNoSnapshot) {
+				return loadErr
+			}
+			if loadErr == nil && (st.Info().ClusterID == "" || st.Info().ClusterID == saved.ClusterID) {
+				namespace = bootstrap.NamespaceFromObjects(saved.Objects, releaseNamespace)
+			}
+			logger.Warn("policy namespace read deferred; using snapshot namespace", "namespace", namespace, "error", err)
 		}
 		if namespace != releaseNamespace {
 			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
@@ -257,12 +274,30 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// First boot: root forward zone, default client group and policy (§6.4).
-	seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Namespace: namespace, Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList})
-	if err != nil {
-		return fmt.Errorf("bootstrap: %w", err)
+	continueSeed := false
+	seedDefaults := func(ctx context.Context) error {
+		if cfg.Store.Driver == "kube" {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+			defer cancel()
+		}
+		seed, err := bootstrap.Seed(ctx, st, bootstrap.Options{Namespace: namespace, Validator: v, Logger: logger, StarterBlockList: bootstrap.EmbeddedStarterBlockList, ContinueFirstBoot: continueSeed})
+		if err != nil {
+			continueSeed = continueSeed || seed.FirstBoot
+			return fmt.Errorf("bootstrap: %w", err)
+		}
+		if seed.FirstBoot {
+			logger.Info("first boot: seeded defaults", "created", len(seed.Created))
+		}
+		return nil
 	}
-	if seed.FirstBoot {
-		logger.Info("first boot: seeded defaults", "created", len(seed.Created))
+	seedPending := false
+	if err := seedDefaults(ctx); err != nil {
+		if ctx.Err() != nil || cfg.Store.Driver != "kube" || !kube.IsUnavailable(err) {
+			return err
+		}
+		seedPending = true
+		logger.Warn("bootstrap deferred until the apiserver is available", "error", err)
 	}
 
 	// File-managed objects (§6.2): inline objects and objectsDir.
@@ -277,11 +312,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	if report := loader.Load(ctx); len(report.Diagnoses) > 0 {
+	loadCtx := ctx
+	loadCancel := func() {}
+	if cfg.Store.Driver == "kube" {
+		loadCtx, loadCancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+	}
+	if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
 		for _, d := range report.Diagnoses {
 			logger.Warn("object file diagnosis", "diagnosis", d)
 		}
 	}
+	loadCancel()
 	checker.Register("objects", loader.Ready)
 
 	// zonecache: store watches → serving snapshots, local.db cold start (§4.4).
@@ -642,6 +683,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {
 		stackOpts.Namespace = releaseNamespace
+		stackOpts.RetryUnavailable = kube.IsUnavailable
+		stackOpts.InitializationTimeout = kubeStartupTimeout(cfg)
 	}
 	if internalCreds != nil {
 		stackOpts.InternalToken = internalCreds.ValidToken
@@ -685,7 +728,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
 		// audit.store auditlog: every replica reads every node's events.
 		if cfg.AuditStore() == config.AuditStoreAuditLog {
-			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, logger); err != nil {
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, encPrev, logger, kubeStartupTimeout(cfg)); err != nil {
 				return fmt.Errorf("audit: %w", err)
 			}
 			if auditLogs != nil {
@@ -736,7 +779,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if !web.Built() {
 		logger.Warn("dashboard bundle not built into this binary; serving a placeholder page (make web-build)")
 	}
+	edgeSupervisors, vipSupervised, err := edgeStatusSource(restCfg, cfg.Node.Name)
+	if err != nil {
+		return err
+	}
 	apiSrv, err := api.New(api.Options{
+		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
@@ -795,6 +843,26 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	add := func(name string, leaderOnly bool, fn func(context.Context) error) error {
 		return runner.Add(name, leaderOnly, fn)
+	}
+	if seedPending {
+		if err := add("bootstrap", false, func(ctx context.Context) error {
+			for {
+				if err := seedDefaults(ctx); err == nil {
+					return nil
+				} else if ctx.Err() != nil {
+					return nil
+				} else if !kube.IsUnavailable(err) {
+					return err
+				}
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(time.Second):
+				}
+			}
+		}); err != nil {
+			return err
+		}
 	}
 	for _, r := range []struct {
 		name       string

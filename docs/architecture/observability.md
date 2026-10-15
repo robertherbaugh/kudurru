@@ -13,6 +13,23 @@ Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
 `internal/metrics`, `internal/health`, `internal/audit`.
 
+The Nodes page also polls `GET /api/v1/edge` every ten seconds. In Helm,
+the server discovers every separate edge pod through the headless
+`<release>-edge-status` Service's EndpointSlices, then reads `/status` on
+the supervisors' health listeners (8084 for dnsdist, 8085 for keepalived)
+in parallel with two-second request deadlines. Unready pods remain in
+discovery. The response includes aggregate readiness, each supervisor,
+backends as observed by each edge, and each VIP's state and priority.
+`MASTER` identifies the node holding a VIP; `BACKUP` reports only that
+node's own state. An unavailable supervisor cannot report a live owner.
+Older supervisors use `/healthz/ready` to supplement their status
+document. dnsdist's private API key stays inside the edge pod.
+
+For a local edge outside Helm, set `KUDURRU_EDGE_STATUS_URL` and, when
+keepalived runs alongside it, `KUDURRU_VIP_STATUS_URL` to the health
+listeners (for example, `http://127.0.0.1:8084` and port 8085). The Compose
+examples set these automatically.
+
 ## The query log pipeline
 
 ```mermaid
@@ -71,11 +88,19 @@ flowchart LR
     SH -- "rows + cursor,<br/>one transaction" --> PG[("PostgreSQL<br/>same tables, every node,<br/>query partitioned by day")]
     PG --> CR["central reader<br/>(the node reader's code,<br/>PostgreSQL dialect)"]
     CR --> API["GET /stats/*, /queries<br/>scope=cluster"]
+    API --> HISTORY["dashboard history<br/>(central IDs)"]
+    TAIL["active replicas' live tails"] --> STREAM["GET /queries/stream<br/>scope=cluster, SSE fan-out"]
+    STREAM --> LIVE["dashboard live queries<br/>(node IDs only)"]
 ```
 
 A node keeps the rows it has not shipped, even past its own retention, so
 an outage of the database delays the cluster view but loses nothing the
 node still holds.
+
+The live tail follows the active replicas directly, even with a central
+database. While enabled, the dashboard shows only incoming queries; it
+does not merge node IDs with central history. Stopping the tail refreshes
+history from the database.
 
 ## Metrics
 
@@ -157,3 +182,38 @@ flowchart LR
 Store writes are audited by the driver. The API adds what no store write
 covers: denied requests, the blocking toggle, cache flushes, query-log
 purges, NOTIFY and list refreshes.
+
+Token creation and revocation are actual `apitoken.create` and
+`apitoken.delete` store writes. Their audit documents keep an allowlist of
+the label, owner, expiry and scopes; the token and its hash are excluded.
+Kubernetes store events also carry the authenticated principal and HTTP
+request context. Admin-socket writes name the admitted local-root peer
+instead of falling back to `system`. The dashboard shows safe token
+details and offers an `APIToken` kind filter. Older events with no token
+document cannot recover that information after the token is revoked.
+
+Audit list and export responses redact historical token documents with the
+same allowlist and omit documents for other internal identity kinds. New
+SQLite identity mutations also omit those documents. Stored records and
+their hashes remain unchanged; verification reads the original store, not
+the redacted response. Exported hashes describe the original stored data
+and cannot be recomputed from redacted documents.
+
+The dashboard's separate **Audit Log** page supports newest/oldest order,
+cursor pagination and event details. `GET /api/v1/audit/verify` requires
+`audit.read` and the audit license, and checks the complete retained store
+with a 30-second deadline. It verifies the original SQLite chain, the central
+PostgreSQL chain including its retention anchor and head, or fresh Kubernetes
+batches and their available HMAC seals plus the local pending spool. The
+response reports verification success or a generic integrity failure;
+storage errors and timeouts return 503 with a generic message, with details
+logged on the server. Concurrent requests share one scan, and every result
+(including unavailability) is cached for 30 seconds per serving process.
+Current and previous encryption keys verify batches retained across rotation.
+Keep the previous key until the old-sealed batches have been pruned before
+dropping it or rotating again; see [the rotation runbook](../deploy/runbooks.md#rotating-the-encryption-key).
+Hash chains provide
+tamper evidence, not protection from an administrator who can rewrite the
+entire database and its chain. External log copies or exports provide an
+independent record. Deleting complete oldest or newest unanchored batches
+cannot be detected from the surviving batches alone.

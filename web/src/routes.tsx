@@ -42,8 +42,8 @@ export interface RouteDef {
   section: Section;
   icon: LucideIcon;
   page: Page;
-  /** Stats/log pages show the node selector. */
-  scoped?: boolean;
+  /** true: the toolbar shows the node selector; inline: the page owns it. */
+  scoped?: boolean | 'inline';
   /** Not listed in the navigation (detail pages). */
   hidden?: boolean;
 }
@@ -74,14 +74,15 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const Tools = lazy(() => import('./pages/ToolsPage'));
 const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
+const Audit = lazy(() => import('./pages/AuditPage'));
 const License = lazy(() => import('./pages/LicensePage'));
 const Requests = lazy(() => import('./pages/RequestsPage'));
 const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
 
 export const ROUTES: RouteDef[] = [
   { path: '/', navKey: 'dashboard', label: 'Dashboard', section: 'Overview', icon: Gauge, page: Dashboard, scoped: true },
-  { path: '/queries', navKey: 'queries', label: 'Query log', section: 'Overview', icon: Activity, page: QueryLog, scoped: true },
-  { path: '/history', navKey: 'history', label: 'Long-term', section: 'Overview', icon: History, page: LongTerm, scoped: true },
+  { path: '/queries', navKey: 'queries', label: 'Query log', section: 'Overview', icon: Activity, page: QueryLog, scoped: 'inline' },
+  { path: '/history', navKey: 'history', label: 'Long-term', section: 'Overview', icon: History, page: LongTerm, scoped: 'inline' },
   { path: '/lists', navKey: 'lists', label: 'Lists', section: 'Filtering', icon: ListChecks, page: Lists },
   { path: '/lists/new', navKey: 'lists', label: 'New list', section: 'Filtering', icon: ListChecks, page: newRedirect('/lists'), hidden: true },
   { path: '/lists/:ns/:name', navKey: 'lists', label: 'List', section: 'Filtering', icon: ListChecks, page: ListDetail, hidden: true },
@@ -107,7 +108,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
   { path: '/messages', navKey: 'messages', label: 'Diagnosis', section: 'System', icon: Siren, page: Messages },
   { path: '/license', navKey: 'license', label: 'License', section: 'System', icon: KeyRound, page: License },
-  { path: '/access', navKey: 'access', label: 'Access & audit', section: 'System', icon: BookLock, page: Access },
+  { path: '/access', navKey: 'access', label: 'Access', section: 'System', icon: BookLock, page: Access },
+  { path: '/audit', navKey: 'audit', label: 'Audit Log', section: 'System', icon: ScrollText, page: Audit },
   { path: '/requests', navKey: 'requests', label: 'Requests', section: 'Filtering', icon: Inbox, page: Requests },
   { path: '/requests/:ns/:name', navKey: 'requests', label: 'Request', section: 'Filtering', icon: Inbox, page: RequestDetail, hidden: true },
 ];

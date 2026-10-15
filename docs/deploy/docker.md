@@ -93,7 +93,8 @@ publish 853/tcp, 853/udp, 443/tcp, 443/udp), or put dnsdist in front with
 `deploy/compose/single-edge`: dnsdist owns :53/:853/:443 and the packet
 cache, kudurru listens on `127.0.0.1:5353` in dnsdist's network namespace and
 accepts PROXYv2 from loopback, so the query log keeps the real client
-address. The `kudurru-dnsdist` image is a milestone M4 deliverable.
+address. v0.1.0 includes the `kudurru-dnsdist` image; the supervisor needs
+a license key with the edge entitlement (free for eligible personal use).
 
 ### Persistence and backups
 

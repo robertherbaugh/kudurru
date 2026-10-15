@@ -19,8 +19,9 @@
 # checks can be required: a skipped job satisfies a required status check
 # and a workflow that never runs does not (ci.yml). Changes to
 # internal/license (the claims, Features(), the trusted keys) and
-# hack/licensegen run it too, because the golden vectors, the trusted
-# keyring and shared/catalog.ts follow them.
+# hack/licensegen run it too, because the golden vectors, trusted keyring
+# and shared/catalog.ts follow them. Branding changes run it because the
+# portal embeds the logos, palette and email artwork.
 name: license-server
 on:
   push:
@@ -53,7 +54,7 @@ jobs:
           # unreachable force-pushed base runs everything).
           run=true
           if [[ "$GITHUB_REF" != refs/tags/* && -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && files=$(git diff --name-only "$BASE...$HEAD"); then
-            if [[ -n "$files" ]] && ! grep -Eq '^(license-server/|internal/license/|hack/licensegen/|\.github/workflows/license-server\.yml$)' <<<"$files"; then
+            if [[ -n "$files" ]] && ! grep -Eq '^(license-server/|branding/|internal/license/|hack/licensegen/|\.github/workflows/license-server\.yml$)' <<<"$files"; then
               run=false
             fi
           fi

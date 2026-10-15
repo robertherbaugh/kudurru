@@ -165,7 +165,7 @@ async function openRequest(ctx: ServiceCtx, req: PersonalRequest, reason: Review
   });
   if (ctx.mailer.configured) {
     const waiting = reviewWaitingMail({ to: req.email, name: req.name, renewal: req.renewalOf !== undefined, approvalRequired: !ctx.config.personal.autoApprove, publicUrl: ctx.config.publicUrl });
-    ctx.afterCommit(() => ctx.mailer.send(waiting));
+    ctx.afterCommit(() => ctx.mailer.send(waiting, ctx.log));
   }
   await notifyApprovers(ctx, { id, name: req.name, email: req.email, use: req.use, source: req.source, attestation: req.attestation, reason });
   return { outcome: 'pending_review', requestId: id };

@@ -37,6 +37,14 @@ Only `primary` and `forward` zones are served. The other types in the
 schema (`secondary`, `stub`, `external`, `catalog`) are accepted but get
 `Ready=False, reason Unsupported`.
 
+Use one DNSZone per canonical apex. If different objects claim the same
+apex, the serving builder logs the conflict and retains the previously
+served zone for that apex. On cold start the first object by metadata name
+wins deterministically. Other zones keep rebuilding, and removing the
+duplicate lets the affected zone publish its current data. Cross-object
+admission does not reject duplicates, so remove the conflicting object
+rather than relying on this fallback.
+
 | Type | kudurru does | Example |
 |---|---|---|
 | `primary` | answers from its own records, with SOA and serial | `home.example.com.` |

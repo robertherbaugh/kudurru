@@ -79,7 +79,15 @@ spec:
           command: ["/usr/local/bin/kudurru", "vip", "run"]
           args:
             # name=addr/len@iface#vrid; the VRID is host-only and never changes on re-render.
-            - --vip=dns={{ .Values.vip.address }}@{{ $k.interface }}#{{ $k.vrid }}
+            {{- range (include "kudurru.keepalived.vips" . | fromYamlArray) }}
+            - {{ printf "--vip=%s=%s@%s#%v" .name .address .interface .vrid | quote }}
+            {{- if .preemptDelay }}
+            - {{ printf "--preempt-delay=%s=%v" .name .preemptDelay | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $k.vrrpInterface }}
+            - {{ printf "--vrrp-interface=%s" $k.vrrpInterface | quote }}
+            {{- end }}
             - --node-name=$(NODE_NAME)
             - --peers-from=nodes:{{ include "kudurru.labelSelector" $k.nodeSelector }}
             - --hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp-hmac

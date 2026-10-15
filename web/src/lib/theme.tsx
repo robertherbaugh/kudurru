@@ -1,6 +1,6 @@
 // Appearance: the Astryx themes of src/themes with auto/light/dark modes
 // and a high-contrast setting. The default, Kudurru, is Astryx Neutral
-// with the docs/brand palette (src/themes/kudurru); Neutral, Stone and the
+// with the branding palette (src/themes/kudurru); Neutral, Stone and the
 // fun Y2K are the Astryx themes with kudurru's query status colours. All
 // four are built themes wired through the generated src/astryx-themes.ts
 // (`bun run astryx -- theme add <slug> --import`), so no theme injects

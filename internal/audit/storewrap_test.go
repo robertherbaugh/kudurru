@@ -3,6 +3,7 @@ package audit_test
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,8 +12,10 @@ import (
 	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 func zone(name string, ns ...string) *v1alpha1.DNSZone {
@@ -115,17 +118,87 @@ func TestWrapStoreStatusAndDeleteMany(t *testing.T) {
 
 func TestWrapStoreInternalKindsHaveNoDocuments(t *testing.T) {
 	st, rec := wrapped(t, memory.New(), false)
-	tok := &internalkinds.APIToken{
-		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: internalkinds.KindAPIToken},
-		ObjectMeta: metav1.ObjectMeta{Name: "tok"},
-		Spec:       internalkinds.APITokenSpec{SecretHash: strings.Repeat("ab", 32)},
+	usr := &internalkinds.LocalUser{
+		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: internalkinds.KindLocalUser},
+		ObjectMeta: metav1.ObjectMeta{Name: "alice"},
+		Spec:       internalkinds.LocalUserSpec{PasswordHash: "secret-password-hash"},
 	}
-	if _, err := st.Apply(context.Background(), tok, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+	if _, err := st.Apply(context.Background(), usr, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 		t.Fatal(err)
 	}
 	evs := rec.Events()
-	if len(evs) != 1 || evs[0].Action != "apitoken.create" || evs[0].Before != nil || evs[0].After != nil {
+	if len(evs) != 1 || evs[0].Action != "localuser.create" || evs[0].Before != nil || evs[0].After != nil {
 		t.Fatalf("events %+v", evs)
+	}
+}
+
+func TestTokenAuditDetailsExcludeCredentials(t *testing.T) {
+	for _, driver := range []string{"wrapped", "sqlite"} {
+		t.Run(driver, func(t *testing.T) {
+			var st store.Store
+			var events func() []audit.Event
+			if driver == "wrapped" {
+				var rec *audit.Memory
+				st, rec = wrapped(t, memory.New(), false)
+				events = rec.Events
+			} else {
+				st = authtest.SQLite(t)
+				events = func() []audit.Event {
+					rows, err := st.(*sqlite.Store).ReadAudit(context.Background(), sqlite.AuditQuery{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					out := make([]audit.Event, len(rows))
+					for i, row := range rows {
+						out[i] = audit.FromEntry(row)
+					}
+					return out
+				}
+			}
+			tok := &internalkinds.APIToken{
+				ObjectMeta: metav1.ObjectMeta{Name: "abcdefgh2345", Annotations: map[string]string{"credential": "secret-metadata"}},
+				Spec: internalkinds.APITokenSpec{
+					Owner:       internalkinds.TokenOwner{Kind: "User", Name: "alice", ID: "local:alice", Provider: "local"},
+					Description: "deployment check", SecretHash: strings.Repeat("ab", 32),
+					Scopes: []string{"viewer"}, Grants: []string{"admin"},
+				},
+			}
+			actor := audit.Actor{Kind: "User", ID: "local:alice", Name: "alice", Auth: "token"}
+			req := audit.Request{IP: "127.0.0.1", UA: "deployment-script", Method: "POST", Path: "/api/v1/auth/tokens"}
+			path := ""
+			ctx := audit.WithRequest(store.WithActor(context.Background(), actor.String()), actor, req, func() string { return path })
+			path = "binding" // the authorization decision is made after actor middleware
+			out, err := st.Apply(ctx, tok, store.ApplyOptions{Manager: store.ManagerSystem})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Delete(ctx, store.KeyOf(out), store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+				t.Fatal(err)
+			}
+			evs := events()
+			if len(evs) != 2 || evs[0].Action != "apitoken.create" || evs[1].Action != "apitoken.delete" || evs[0].Before != nil || evs[1].After != nil {
+				t.Fatalf("unexpected events: %+v", evs)
+			}
+			for _, doc := range []json.RawMessage{evs[0].After, evs[1].Before} {
+				for _, want := range []string{"deployment check", "local:alice", "viewer", `"expiresAt":null`} {
+					if !strings.Contains(string(doc), want) {
+						t.Errorf("document lacks %q: %s", want, doc)
+					}
+				}
+				for _, secret := range []string{tok.Spec.SecretHash, "secretHash", "secret-metadata", "annotations", "grants"} {
+					if strings.Contains(string(doc), secret) {
+						t.Errorf("document includes credential field %q", secret)
+					}
+				}
+			}
+			if driver == "wrapped" {
+				if !reflect.DeepEqual(evs[0].Actor, actor) || evs[0].Request != req || evs[0].Authz != "binding" {
+					t.Fatalf("request context lost: %+v", evs[0])
+				}
+			} else if err := st.(*sqlite.Store).VerifyAudit(ctx); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

@@ -29,6 +29,7 @@ type vipFlags struct {
 	priorityIndex          int
 	nodeCount              int
 	unicastSrc             string
+	vrrpInterface          string
 	hmacKeyFile            string
 	legacy                 bool
 	dnsdistAPI, apiKeyFile string
@@ -51,7 +52,8 @@ func (f *vipFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.peersFrom, "peers-from", "", "nodes:<label selector>: peers are the selected Kubernetes Nodes' InternalIPs (this node excluded), re-listed every 30 s; the priority index defaults to this node's position by name (or its kudurru.io/vip-priority-index label)")
 	fl.IntVar(&f.priorityIndex, "priority-index", 0, "this node's index: priority 200-10*index for the first VIP")
 	fl.IntVar(&f.nodeCount, "node-count", 0, "number of nodes (default: peers + 1)")
-	fl.StringVar(&f.unicastSrc, "unicast-src", "", "this node's VRRP source address (default: the first address of the first VIP's interface)")
+	fl.StringVar(&f.unicastSrc, "unicast-src", "", "this node's VRRP source address (default: the first address of --vrrp-interface, or the first VIP's interface)")
+	fl.StringVar(&f.vrrpInterface, "vrrp-interface", "", "interface for VRRP advertisements (default: each VIP's interface); VIP addresses stay on the interfaces in --vip")
 	fl.StringVar(&f.hmacKeyFile, "hmac-key-file", "/run/secrets/vrrp_hmac_{vrid}", "auth_hmac key file; {vrid} is replaced by the VRID")
 	fl.BoolVar(&f.legacy, "legacy", false, "keepalived 2.3.x: render without auth_hmac (adverts unauthenticated)")
 	fl.StringVar(&f.dnsdistAPI, "track-dnsdist-api", "http://127.0.0.1:8083", "dnsdist API the VRRP probe checks")
@@ -88,7 +90,7 @@ func (f *vipFlags) config() (keepalived.Config, error) {
 	c := keepalived.Config{
 		RouterID: nodeName(f.routerID), PriorityIndex: f.priorityIndex, NodeCount: f.nodeCount,
 		Peers: f.peers, HMACKeyFile: f.hmacKeyFile, Legacy: f.legacy, RunDir: f.runDir, Binary: f.kudurruBin,
-		UnicastSrc: f.unicastSrc,
+		UnicastSrc: f.unicastSrc, VRRPInterface: f.vrrpInterface,
 		Probe: keepalived.Probe{
 			Command: strings.Fields(f.probeCommand), DNSDistAPI: f.dnsdistAPI,
 			DNSDistAPIKeyFile: f.apiKeyFile, RequireBackends: f.requireBackends,
@@ -128,7 +130,11 @@ func (f *vipFlags) config() (keepalived.Config, error) {
 		c.Peers = peers
 	}
 	if c.UnicastSrc == "" {
-		src, err := interfaceAddress(c.VIPs[0])
+		v := c.VIPs[0]
+		if c.VRRPInterface != "" {
+			v.Interface = c.VRRPInterface
+		}
+		src, err := interfaceAddress(v)
 		if err != nil {
 			return c, fmt.Errorf("--unicast-src not given and %w", err)
 		}

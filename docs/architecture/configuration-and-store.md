@@ -172,6 +172,15 @@ after its first sync and then at most every 30 s when something changed. A
 pod that restarts while the apiserver is down therefore still answers:
 forwarded names, cached names, and primary zones from the copy.
 
+Startup reads for the policy namespace, default-object seeding and identity
+caches have bounded deadlines. An apiserver availability failure defers
+initialization and lets the DNS listeners and snapshot cache start;
+bootstrap and identity initialization retry after recovery. Authorization,
+certificate, schema and local-data errors retain their normal failure
+behavior. Identity secrets are not taken from `local.db`, so an empty IAM
+cache cannot authenticate local users or tokens during an offline start.
+See the [cold-start runbook](../deploy/runbooks.md#cold-start-without-the-apiserver).
+
 ## The leader
 
 One election covers all leader-only work. The runner starts the leader-only

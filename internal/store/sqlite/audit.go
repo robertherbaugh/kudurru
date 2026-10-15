@@ -114,8 +114,9 @@ func capDiff(doc json.RawMessage) json.RawMessage {
 	}
 }
 
-// Audit statements on the write path.
+// Audit statements.
 const (
+	sqlReadAudit     = `SELECT id, ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash FROM audit`
 	sqlLastAuditHash = `SELECT hash FROM audit ORDER BY id DESC LIMIT 1`
 	sqlInsertAudit   = `INSERT INTO audit
 		(ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash)
@@ -218,7 +219,7 @@ func (s *Store) ReadAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, erro
 		limit = 1000
 	}
 	var b strings.Builder
-	b.WriteString(`SELECT id, ts, actor, manager, action, kind, namespace, name, resource_version, result, reason, before, after, prev_hash, hash FROM audit WHERE id > ?`)
+	b.WriteString(sqlReadAudit + ` WHERE id > ?`)
 	args := []any{q.AfterID}
 	if q.BeforeID > 0 {
 		b.WriteString(` AND id < ?`)
@@ -246,11 +247,15 @@ func (s *Store) ReadAudit(ctx context.Context, q AuditQuery) ([]AuditEntry, erro
 		b.WriteString(` ORDER BY id LIMIT ?`)
 	}
 	args = append(args, limit)
-	return s.queryAudit(ctx, b.String(), args...)
+	return queryAudit(ctx, s.r, b.String(), args...)
 }
 
-func (s *Store) queryAudit(ctx context.Context, query string, args ...any) ([]AuditEntry, error) {
-	rows, err := s.r.QueryContext(ctx, query, args...)
+type auditQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func queryAudit(ctx context.Context, q auditQuerier, query string, args ...any) ([]AuditEntry, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store/sqlite: read audit: %w", err)
 	}
@@ -297,13 +302,22 @@ func (s *Store) PruneAudit(ctx context.Context, before time.Time) (int64, error)
 
 // VerifyAudit walks the whole chain and returns an error naming the first
 // row whose hash does not match its contents or whose PrevHash does not
-// match the previous row.
+// match the previous row. All pages share one read snapshot so concurrent
+// retention cannot look like a broken chain. WAL writers remain unblocked.
 func (s *Store) VerifyAudit(ctx context.Context) error {
+	if s.isClosed() {
+		return store.ErrClosed
+	}
+	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("store/sqlite: begin audit verification: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 	prev := ""
 	first := true
 	var after int64
 	for {
-		page, err := s.ReadAudit(ctx, AuditQuery{AfterID: after, Limit: 1000})
+		page, err := queryAudit(ctx, tx, sqlReadAudit+` WHERE id > ? ORDER BY id LIMIT 1000`, after)
 		if err != nil {
 			return err
 		}
@@ -314,10 +328,10 @@ func (s *Store) VerifyAudit(ctx context.Context) error {
 			e := &page[i]
 			// The oldest retained row may point at a pruned predecessor.
 			if !first && e.PrevHash != prev {
-				return fmt.Errorf("store/sqlite: audit row %d does not chain to row before it", e.ID)
+				return fmt.Errorf("%w: store/sqlite: audit row %d does not chain to row before it", store.ErrAuditIntegrity, e.ID)
 			}
 			if auditHash(e) != e.Hash {
-				return fmt.Errorf("store/sqlite: audit row %d was modified", e.ID)
+				return fmt.Errorf("%w: store/sqlite: audit row %d was modified", store.ErrAuditIntegrity, e.ID)
 			}
 			prev, first, after = e.Hash, false, e.ID
 		}
