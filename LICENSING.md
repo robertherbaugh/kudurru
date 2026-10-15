@@ -28,8 +28,11 @@ The Community License text is also on
 ## Keys
 
 The same rules, in short form, are on [kudurru.io/license](https://kudurru.io/license).
-For enterprise features and the proposed platform fee plus per-node pricing,
-see the [enterprise overview](docs/enterprise.md). All prices are TBD.
+For commercial plans, enterprise features and annual platform-plus-node
+pricing in USD, see the [enterprise overview](docs/enterprise.md).
+Commercial Core is $99/year plus $99/node/year; Enterprise is $499/year plus
+$299/node/year. Volume discounts apply to 25–49 nodes; 50+ nodes require a
+quote. Support contracts are separate.
 
 A **license key** unlocks what a single free node does not have:
 

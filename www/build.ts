@@ -149,7 +149,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
       {
         path: "/enterprise/",
         title: "Enterprise · kudurru",
-        description: "Run kudurru on your infrastructure with commercial production rights, enterprise features and a proposed platform fee plus per-node pricing model. Prices TBD.",
+        description: "Annual kudurru licensing: Commercial Core at $99 platform + $99/node; Enterprise at $499 platform + $299/node. Compare plans and calculate your price in USD.",
         body: enterprise(),
         assets,
       },

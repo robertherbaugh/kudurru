@@ -4,7 +4,9 @@ kudurru Enterprise is for organizations that run DNS on their own
 infrastructure and need commercial production rights with enterprise
 features. Deploy with Kubernetes and CRDs, or with Docker and Compose.
 
-For pricing and deployment discussions, contact
+Commercial Core is also available for organizations that need production
+rights for the core DNS server and dashboard without enterprise modules.
+For licensing and deployment discussions, contact
 [hello@kudurru.io](mailto:hello@kudurru.io?subject=kudurru%20Enterprise).
 The [website enterprise page](https://kudurru.io/enterprise/) gives the
 short overview.
@@ -13,6 +15,9 @@ short overview.
 
 The following capabilities are available today. The accepted Order Form
 identifies the Enterprise plan or the named modules included in a purchase.
+The public Enterprise subscription includes all currently shipped `ee/`
+modules together; named-module agreements remain available for exceptional
+deployments.
 
 | Capability | What it provides | Details |
 |---|---|---|
@@ -30,25 +35,43 @@ they are not current capabilities.
 
 ## Pricing
 
-**Proposed model: a platform fee plus a per-node fee. Pricing is not final.**
-All amounts below are placeholders, not a quote or a published rate.
+Both commercial editions are billed **annually in USD**. Each subscription
+has one platform fee per legal organization, plus a fee for the aggregate
+licensed production nodes across its covered clusters and environments.
 
-| Component | Amount | Basis |
-|---|---|---|
-| Platform fee | TBD | Amount, billing period and included entitlements to be finalized |
-| Per-node fee | TBD | Per licensed node, per billing period; rate and billing period to be finalized |
-| Support and services, if agreed | TBD | Scope and fees specified in the Order Form or incorporated support schedule |
+| Edition | Annual platform fee | Annual per-node fee | Scope |
+|---|---|---|---|
+| Commercial Core | $99 | $99 | Commercial production rights for core DNS and its dashboard |
+| Enterprise | $499 | $299 | Commercial production rights plus all currently shipped enterprise modules |
 
-For a common billing period, the proposed calculation is:
+Neither commercial edition has DNS query, zone, CPU core or user limits.
+Support contracts are separate. Eligible Community/Homelab use remains free.
+
+The annual calculation is:
 
 ```text
 Total = platform fee + (per-node fee × licensed nodes)
 ```
 
-For example, a deployment with 3 licensed nodes has a proposed cost of the
-platform fee plus 3 times the per-node fee. Neither amount is set yet.
-Minimum commitments, billing periods and package entitlements are also
-being finalized. The accepted Order Form and
+For 25–49 licensed nodes, the entire per-node component receives a 10%
+discount; the platform fee is unchanged. Deployments of 50 or more nodes
+are quoted individually.
+
+| Licensed production nodes | Commercial Core/year | Enterprise/year |
+|---|---|---|
+| 1 | $198 | $798 |
+| 3 | $396 | $1,396 |
+| 5 | $594 | $1,994 |
+| 10 | $1,089 | $3,489 |
+| 25 | $2,326.50 | $7,226.50 |
+| 50+ | Contact us | Contact us |
+
+For example, 5 Enterprise nodes cost $499 + (5 × $299) = **$1,994/year**.
+That is equivalent to $166.17/month, billed annually. Monthly equivalents
+are illustrative; subscriptions are collected annually.
+
+Use the [website pricing calculator](https://kudurru.io/enterprise/) to
+compare editions and node counts. The accepted Order Form and
 [commercial agreement](../COMMERCIAL_LICENSE_AGREEMENT.md) set the actual
 fees, payment terms, node allowance, subscription term and included features.
 
@@ -63,8 +86,12 @@ that can actively serve or manage DNS is a node. DNS clients are not nodes.
   covered by the agreement.
 - Stored images, stopped standbys and backups do not count as running nodes.
 - Separate dnsdist and keepalived processes are not nodes merely by existing.
-- The Order Form defines staging, evaluation, disaster recovery and failover
-  entitlements. Extra running nodes are not included by default.
+- Testing solely to evaluate a prospective license is permitted by the
+  Community License (§2.3). This covers isolated, non-production tests and
+  demonstrations; it does not authorize an operational DNS service.
+  Continuously running staging, disaster recovery and failover nodes must be
+  explicitly covered by the Order Form. Extra running nodes are not included
+  by default.
 
 The commercial agreement also permits up to 24 hours of overlap solely for
 replacement of a failed node or an ordinary rolling upgrade, without
@@ -77,18 +104,24 @@ for the full terms.
 | Plan | Scope |
 |---|---|
 | Commercial Core | Business or government production rights for the core DNS server and dashboard, within the agreed node count and organizational scope |
-| Enterprise | Commercial production rights plus the enterprise modules and advanced entitlements identified in the Order Form |
+| Enterprise | Commercial production rights plus all currently shipped enterprise modules and advanced entitlements, recorded in the Order Form |
 
 A Commercial Core purchase does not automatically include enterprise
 modules. MSP, service-provider, affiliate and government scope must be
-expressly covered by the Order Form. Support scope, response times and any
-SLA depend on the Order Form or an incorporated support schedule; no support
-SLA is included by default.
+expressly covered by the Order Form. Pooled client deployments need separate
+service-provider authorization, using either commercial edition.
+
+Optional business-hours assistance starts at **$1,200/year**, subject to
+availability and a separate agreement. Software license prices include no
+contractual support, 24/7 coverage or guaranteed response times. Support
+scope, response times and any SLA depend on the Order Form or an
+incorporated support schedule.
 
 Eligible personal, homelab and qualifying nonprofit use remains free under
 the Community License. A free personal/nonprofit key covers up to 3 nodes
 and additional features for that eligible use. It does not grant business
-or government production rights. See [Licensing](../LICENSING.md) for the
+or government production rights. The Kudurru Community License specifically
+excludes government production use. See [Licensing](../LICENSING.md) for the
 eligibility rules and the full feature comparison.
 
 ## Deployment and license keys

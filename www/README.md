@@ -26,7 +26,7 @@ Or inside `www/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 |---|---|
 | `src/content.ts` | Every claim, number and link on the page. Claims follow `CHANGELOG.md`, `docs/architecture`, `docs/deploy` and `bench/baseline.txt`; change them here when a feature ships or moves |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
-| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, and the "Request a key" form of `/license/` (`license.ts`). The page is complete without it; without script the form is hidden and the page shows mail links instead |
+| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, the enterprise pricing calculator, and the "Request a key" form of `/license/` (`license.ts`). Pages are complete without it; the calculator shows a static example and the key form shows mail links instead |
 | `src/styles/site.css` | The stylesheet. It imports `branding/tokens.css` |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
 | `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
@@ -50,9 +50,13 @@ comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
 ## Enterprise
 
 The `/enterprise/` page describes current enterprise capabilities, the
-Commercial Core and Enterprise scopes, node counting and proposed pricing.
-Its model is a platform fee plus a per-node fee; all amounts and billing
-periods remain TBD. Keep `src/content.ts` and `src/pages/enterprise.ts` in
+Commercial Core and Enterprise scopes, node counting and annual USD pricing.
+Commercial Core is $99/year plus $99/node/year; Enterprise is $499/year plus
+$299/node/year. `src/pricing.ts` shares the calculation between the static
+examples and browser calculator: 25–49 nodes receive 10% off node fees,
+and 50+ nodes need a quote. Support is separate. Without JavaScript, the
+calculator shows the five-node Enterprise example and hides its controls.
+Keep `src/content.ts`, `src/pricing.ts` and `src/pages/enterprise.ts` in
 step with the documentation source, [`docs/enterprise.md`](../docs/enterprise.md),
 published at `docs.kudurru.io/enterprise/`. Enterprise inquiries open email
 to `hello@kudurru.io` without submitting a form.

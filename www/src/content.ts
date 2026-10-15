@@ -30,8 +30,28 @@ export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert H
 export const LICENSE_FREE_POLICIES = 1;
 
 // Enterprise overview: keep the feature and pricing summary in step with
-// docs/enterprise.md. Pricing is a proposal, not an offer or published rate.
+// docs/enterprise.md. Annual list prices are in USD; the Order Form sets scope.
 export const ENTERPRISE_CONTACT_URL = `mailto:${LICENSE_CONTACT}?subject=${encodeURIComponent("kudurru Enterprise")}`;
+export const COMMERCIAL_PLANS = {
+  core: { name: "Commercial Core", platform: 99, perNode: 99 },
+  enterprise: { name: "Enterprise", platform: 499, perNode: 299 },
+} as const;
+export const VOLUME_PRICING = { discountFrom: 25, quoteFrom: 50, discount: 0.1 } as const;
+// Public starting rate from the commercial pricing proposal. Support needs
+// a separate agreement; keep docs/enterprise.md in step with this amount.
+export const SUPPORT_STARTING_ANNUAL_USD = 1200;
+export const COMMERCIAL_COMPARISON = [
+  { what: "Eligible noncommercial use", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Business and government production rights", community: "No", core: "Yes", enterprise: "Yes" },
+  { what: "Authoritative DNS and forwarding resolver", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Blocking and encrypted DNS", community: "Yes", core: "Yes", enterprise: "Yes" },
+  { what: "Multiple nodes", community: `Up to ${LICENSE_FREE_NODES} with a free key`, core: "Licensed count", enterprise: "Licensed count" },
+  { what: "OIDC and advanced RBAC", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Audit exports and long-term analytics", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Advanced policies and unblock requests", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "dnsdist and keepalived integration", community: "With a free key", core: "No", enterprise: "Included" },
+  { what: "Enterprise integrations", community: "With a free key", core: "No", enterprise: "Included" },
+] as const;
 export const ENTERPRISE_FEATURES = [
   {
     title: "Identity and access",
