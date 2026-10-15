@@ -14,6 +14,7 @@ import { layout, type Assets } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
 import { license, licenseText } from "./src/pages/license.ts";
 import { enterprise } from "./src/pages/enterprise.ts";
+import { moveOver } from "./src/pages/move-over.ts";
 import { renderMarkdown } from "./src/markdown.ts";
 
 const ROOT = import.meta.dir;
@@ -140,6 +141,16 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     layout({ path: "/", title: `kudurru: ${TAGLINE}`, body: home(assets, version), assets }, version),
   );
   await put(
+    join(outDir, "move-over/index.html"),
+    layout({
+      path: "/move-over/",
+      title: "Move from Pi-hole, AdGuard Home or Technitium · kudurru",
+      description: "Compare Pi-hole, AdGuard Home, Technitium and kudurru, with migration guides for filters, client policies, zones and a tested DNS cutover.",
+      body: moveOver(),
+      assets,
+    }, version),
+  );
+  await put(
     join(outDir, "404.html"),
     layout({ path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false }, version),
   );
@@ -207,7 +218,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
   await put(
     join(outDir, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-      ["/", "/enterprise/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
+      ["/", "/move-over/", "/enterprise/", "/license/", LICENSE_TEXT_PATH, "/licenses/"].map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>\n`).join("") +
       `</urlset>\n`,
   );
   await put(

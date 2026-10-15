@@ -72,3 +72,6 @@ where it matters.
 | Every setting | [Settings reference](../../site/content/reference/configuration.md) |
 | Every command | [Command reference](../../site/content/reference/cli.md) |
 | Move from Pi-hole | [Coming from Pi-hole](../../site/content/migrate/pihole.md) |
+| Move from AdGuard Home | [Coming from AdGuard Home](../../site/content/migrate/adguard-home.md) |
+| Move from Technitium | [Coming from Technitium](../../site/content/migrate/technitium.md) |
+| Switch DNS servers | [Cutover and rollback checklist](../../site/content/migrate/cutover.md) |

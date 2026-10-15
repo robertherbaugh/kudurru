@@ -705,6 +705,7 @@ main,
 /* Sections */
 .sec {
   position: relative;
+  overflow-x: clip;
   padding-block: var(--sec-pad);
   border-top: 1px solid var(--line);
 }
@@ -1936,6 +1937,102 @@ main,
   margin-top: auto;
 }
 
+/* Migration comparisons share the site's type and table treatments. */
+.migration-intro .page-title {
+  margin-block: 20px 28px;
+  max-width: 20ch;
+}
+.migration-intro .sec-lead {
+  margin-left: 0;
+}
+.migration-intro .actions,
+.migration-section .actions {
+  margin-top: 32px;
+}
+.migration-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px;
+  margin-top: 48px;
+}
+.migration-cards article {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding-top: 24px;
+  border-top: 1px solid var(--line-2);
+}
+.migration-cards h3,
+.migration-steps h3 {
+  font-size: 23px;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+  margin-bottom: 16px;
+}
+.migration-cards .label {
+  margin-bottom: 12px;
+}
+.migration-cards p:not(.label),
+.migration-steps p {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.migration-cards p + p {
+  margin-top: 16px;
+}
+.migration-cards .migration-check {
+  margin-block: 24px;
+}
+.migration-cards .more {
+  margin-top: auto;
+}
+.migration-table {
+  overflow-x: auto;
+  margin-top: 40px;
+}
+.migration-table table {
+  min-width: 1000px;
+  table-layout: fixed;
+}
+.migration-table caption {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.migration-table thead th:last-child,
+.migration-table td:last-child {
+  color: var(--paper);
+  background: var(--ink-3);
+  padding-left: 16px;
+}
+.migration-sources {
+  margin-top: 24px;
+  color: var(--fg-2);
+}
+.migration-note {
+  max-width: 85ch;
+  margin-top: 32px;
+  padding-left: 24px;
+  border-left: 2px solid var(--clay);
+  color: var(--fg-2);
+}
+.migration-steps {
+  display: grid;
+  list-style: decimal;
+  gap: 32px;
+  margin-top: 40px;
+  padding-left: 24px;
+  max-width: 80ch;
+}
+.migration-steps li {
+  padding-left: 12px;
+}
+@media (max-width: 760px) {
+  .migration-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+}
+
 /* The license page (/license/). The intro keeps the narrow column; the
    sections below it span the wrap, as the table does. Their headings take
    the register heading step (.reg-body h3), below the page title: the home
@@ -2230,6 +2327,10 @@ html:not(.js) .licform {
   .enterprise-features {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Leave room for the Move over link before using the desktop navigation. */
+@media (max-width: 1180px) {
   .menu-toggle {
     display: inline-flex;
   }
@@ -2395,9 +2496,11 @@ html:not(.js) .licform {
   .shapes td:nth-child(3) {
     display: none;
   }
-  /* The license table keeps its four columns: the third is the free key. */
+  /* Comparison tables retain every product and plan on narrow screens. */
   .lic-table th:nth-child(3),
-  .lic-table td:nth-child(3) {
+  .lic-table td:nth-child(3),
+  .migration-table th:nth-child(3),
+  .migration-table td:nth-child(3) {
     display: table-cell;
   }
   .licform-box {

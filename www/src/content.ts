@@ -125,6 +125,7 @@ export const NAV: NavLink[] = [
   { label: "Dashboard", href: "#dashboard" },
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
+  { label: "Move over", href: "/move-over/" },
   // A page of its own: not prefixed with the home page path like the anchors.
   { label: "Enterprise", href: "/enterprise/" },
   { label: "License", href: "/license/" },
@@ -660,8 +661,10 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
   {
     title: "Move over",
     links: [
+      { label: "Compare features", href: "/move-over/" },
       { label: "From Pi-hole", href: docs("/migrate/pihole/") },
       { label: "From AdGuard Home", href: docs("/migrate/adguard-home/") },
+      { label: "From Technitium", href: docs("/migrate/technitium/") },
     ],
   },
   {
@@ -677,3 +680,46 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     ],
   },
 ];
+
+// Migration comparisons describe the 0.1.0 implementation, not schema-only
+// features. Keep site/content/migrate in step; sources are linked below.
+export const MIGRATIONS = [
+  {
+    slug: "pihole",
+    name: "Pi-hole",
+    summary: "Keep the lists and local names you trust. Add authoritative zones, encrypted DNS listeners and Kubernetes CRDs.",
+    mapping: "Groups become client groups and policies. Adlists become block lists; local DNS records become zone records.",
+    check: "Move DHCP to your router first if Pi-hole serves it. Translate regex extensions and reserve device addresses.",
+    source: "https://docs.pi-hole.net/",
+  },
+  {
+    slug: "adguard-home",
+    name: "AdGuard Home",
+    summary: "Bring your DNS filters, client rules and encrypted upstreams into a server with explicit object ownership and shared Kubernetes configuration.",
+    mapping: "Filters become block and allow lists. Persistent clients become client groups; per-client settings become policies.",
+    check: "Review rule modifiers, global exceptions and DNS rewrites. AdGuard's full filtering syntax is not supported in v0.1.0.",
+    source: "https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration",
+  },
+  {
+    slug: "technitium",
+    name: "Technitium",
+    summary: "Move primary zones, conditional forwarding and blocking to a Go binary with a dashboard, CLI and Kubernetes API objects.",
+    mapping: "Export primary zones as standard zone files. Recreate conditional forwarders, access controls and blocking policies explicitly.",
+    check: "Inventory DNS Apps, recursive resolution, DNSSEC and secondary zones. These need a separate service or a later kudurru release.",
+    source: "https://technitium.com/dns/",
+  },
+] as const;
+
+export const MIGRATION_COMPARISON = [
+  { feature: "DNS filtering", pihole: "Hosts, domains and regex; group assignments", adguard: "Adblock DNS rules, allowlists and client settings", technitium: "Allowed/blocked zones and lists; Advanced Blocking app", kudurru: "Hosts, domains, adblock subset and RE2; client-group policies" },
+  { feature: "Local names and zones", pihole: "Local DNS and CNAME records", adguard: "DNS rewrites", technitium: "Primary, secondary, stub, forwarder and catalog zones", kudurru: "Primary and forward zones; BIND import/export; AXFR/IXFR out" },
+  { feature: "Resolution", pihole: "Forwards to upstreams; recursion with a separate resolver", adguard: "Forwards to upstreams", technitium: "Full recursive resolver or forwarding", kudurru: "Forwards to named upstream groups; conditional forwarding" },
+  { feature: "DNSSEC", pihole: "Optional validation", adguard: "Requests DNSSEC data from upstreams", technitium: "Validation and authoritative signing", kudurru: "No validation or signing in v0.1.0" },
+  { feature: "DHCP", pihole: "Built in", adguard: "Built in", technitium: "Built in", kudurru: "Use your router or a separate DHCP server" },
+  { feature: "Encrypted DNS listeners", pihole: "Use a separate proxy", adguard: "DoT, DoH and DoQ", technitium: "DoT, DoH and DoQ", kudurru: "DoT, DoH, DoQ and DoH3" },
+  { feature: "Multiple servers", pihole: "Separate instances; external sync tools", adguard: "Separate instances; external sync tools", technitium: "Built-in clustering", kudurru: "Shared Kubernetes store; Compose HA uses shared object files" },
+  { feature: "Kubernetes configuration", pihole: "Container configuration; no native CRDs", adguard: "Container configuration; no native CRDs", technitium: "Container configuration; no native CRDs", kudurru: "Native CRDs, Helm and external-dns webhook" },
+  { feature: "Identity and access", pihole: "Local dashboard login", adguard: "Local users", technitium: "Roles, OIDC and LDAP", kudurru: "Local users; OIDC and scoped roles with a key" },
+  { feature: "Migration input", pihole: "Teleporter backup", adguard: "Configuration and working directory", technitium: "Configuration backup and zone export", kudurru: "Manual configuration; standard BIND zone import only" },
+  { feature: "License", pihole: "Open source; component licenses apply", adguard: "GPL-3.0", technitium: "GPL-3.0", kudurru: "Source available; eligible community use free, commercial production by agreement" },
+] as const;

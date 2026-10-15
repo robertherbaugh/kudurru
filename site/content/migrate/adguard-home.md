@@ -1,103 +1,196 @@
 ---
-title: Coming from AdGuard Home
+title: Move from AdGuard Home to kudurru
 linkTitle: From AdGuard Home
-description: AdGuard Home's filters, custom rules, persistent clients and upstream settings, and where each one lives in kudurru.
+description: Back up AdGuard Home, check filter-rule compatibility, migrate clients and exceptions, rebuild rewrites and upstreams, and test a DNS cutover.
 weight: 20
 ---
 
-AdGuard Home keeps everything in `AdGuardHome.yaml`; kudurru splits it into
-settings (upstreams, cache, blocking defaults, query log) and objects
-(lists, client groups, policies, zones) that use the same YAML in Docker
-and in Kubernetes. kudurru reads the adblock rule syntax with its own
-parser (AdGuard Home's code is GPL and none of it is used), so most filter
-lists work unchanged.
+Bring your DNS filters and client settings into kudurru's lists, groups,
+policies and zones. kudurru understands common DNS adblock rules, but
+v0.1.0 does not implement AdGuard Home's full filtering language. Treat this
+as a configuration migration with explicit behavior checks.
 
-There is no AdGuard Home importer yet (`kudurru import adguard` is planned,
-see the [migration overview](/migrate/)), so you write the objects once by
-hand.
+**Before you start:** complete [preparation and CLI setup](/migrate/cutover/#prepare).
+Keep AdGuard Home serving the network. There is no `AdGuardHome.yaml` or
+working-directory importer.
 
-## Concepts
+## Compare the features you use
 
-| AdGuard Home | kudurru | Notes |
+| AdGuard Home | kudurru v0.1.0 | Migration action |
 |---|---|---|
-| DNS blocklists | [`BlockList`](/reference/crds/blocklist/) objects with `mode: block` and `url` sources | Refreshed every `spec.refreshInterval`; `kudurru lists refresh <name>` fetches now |
-| DNS allowlists | `BlockList` objects with `mode: allow`, referenced from a Policy's `allowListRefs` | Allow wins across every list that applies |
-| Custom filtering rules | an inline source (`inline:` lines) with `format: adblock`, or `kudurru lists allow` / `deny` for single domains | See the rule support below |
-| Persistent clients (IP, CIDR, ClientID) | entries of a [`ClientGroup`](/reference/crds/clientgroup/): `ip` or `cidr` in v0.1.0 | Client-ID, hostname, name-pattern and MAC fields are accepted by the schema but have no production inventory or listener source yet; use addresses for matching |
-| Per-client settings (filters, upstreams) | a [`Policy`](/reference/crds/policy/) for that group: `blockListRefs`, `allowListRefs`, `upstreamGroup`, `blockMode`, `queryLog` | The highest `priority` wins per setting when several policies match. A Policy other than `Policy/default` needs a [license key](/project/licensing/) |
-| Client tags | none | Use client groups |
-| Schedules (pause per client) | `Policy.spec.schedule`: weekdays, start and end time, time zone | The policy applies only inside its window |
-| Upstream DNS servers | [`upstreams.groups`](/reference/configuration/#upstreams.groups) | Named groups; a Policy or a forward zone picks one |
-| `[/example.org/]upstream` lines | [`upstreams.conditional`](/reference/configuration/#upstreams.conditional), which accepts the same `[/a/b/]` form as keys | Longest suffix wins |
-| Upstream mode: load balancing, parallel | `strategy: rtt_weighted`, `parallel_best` (the default), `strict` (in order), `random` | |
-| Bootstrap DNS servers | [`upstreams.bootstrap`](/reference/configuration/#upstreams.bootstrap) | |
-| Private reverse DNS servers | `upstreams.conditional` entries for the `in-addr.arpa.` and `ip6.arpa.` suffixes | |
-| EDNS Client Subnet | [`upstreams.ecs.mode`](/reference/configuration/#upstreams.ecs.mode): `strip` (default), `forward`, `add` | |
-| Rate limit | [`ratelimit.*`](/reference/configuration/#ratelimit.enabled), queries per minute per prefix | UDP only |
-| Blocking mode (default, NXDOMAIN, REFUSED, custom IP, null IP) | `blockMode` (Policy), `response` (BlockList) or [`blocking.defaultResponse`](/reference/configuration/#blocking.defaultResponse): `zeroIP` (default), `nxdomain`, `refused`, `customIP` | |
-| Blocked response TTL | [`blocking.blockTTL`](/reference/configuration/#blocking.blockTTL) or `Policy.spec.blockTTL` | |
-| Cache size, optimistic caching | [`cache.maxEntries`](/reference/configuration/#cache.maxEntries), `cache.prefetch.*`, `cache.serveStale.*` | Serve-stale follows RFC 8767 |
-| DNS rewrites | records in a primary [`DNSZone`](/reference/crds/dnszone/) of your own (`kudurru records add`) | Per-policy answer rewrites (`Policy.spec.rewrites`) are planned for v0.2 |
-| Blocked services, safe search | the kudurru-owned catalogue of decision D60 | Not every build has it yet: check your version's changelog. Without it, list a service's domains in a BlockList |
-| Parental control, safe browsing web services | none | Use blocklists |
-| Query log and statistics | the dashboard; [`querylog.privacy`](/reference/configuration/#querylog.privacy) and `querylog.retention.*` | Per node, with rollups for long-term views (reading them needs a [license key](/project/licensing/)) |
-| Encryption settings (DoT, DoH, DoQ) | `listeners.dot`, `doh`, `doq`, `doh3` with a certificate, or dnsdist in front | See [encrypted transports](/deploy/docker/#encrypted-transports) |
-| DHCP server | none | Keep DHCP on your router or a DHCP server |
-| DNSSEC | not yet | Validation is planned for v0.2 |
+| DNS blocklists and allowlists | `BlockList` with `mode: block` or `mode: allow` | Copy URLs; attach the lists to policies |
+| Custom filtering rules | Inline sources or structured entries | Check modifiers and exception scope before copying rules |
+| Persistent clients and per-client settings | IP/CIDR `ClientGroup` plus `Policy` | Reserve addresses; additional policies need a key |
+| ClientID, MAC and hostname identification | No production source for these matchers | Use real IPv4/IPv6 addresses or subnets |
+| DNS rewrites | Primary zones and records | Recreate supported local records; general per-policy rewrites are deferred |
+| Blocked services and safe search | Policy service/category blocking and safe search | Match catalogue IDs and supported engines explicitly |
+| Upstreams and bootstrap servers | Named groups, strategies, bootstrap and suffix rules | Recreate configuration; retest private reverse DNS |
+| DoT, DoH and DoQ | Native listeners; also DoH3 | Configure listener certificates and client endpoints separately |
+| DHCP | No DHCP server | Hand off DHCP before retiring AdGuard Home |
+| Safe browsing / parental-control lookup services | No equivalent remote lookup services | Select suitable block lists; do not assume identical coverage |
+| Query history and users | Separate kudurru logs and accounts | Preserve old data separately; create new credentials and API tokens |
 
-## Rule support
+See the [full feature comparison](/migrate/#feature-comparison), including
+DNSSEC and license differences.
 
-| Rule | Example | v0.1 |
+## 1. Back up and inventory AdGuard Home
+
+1. Save `AdGuardHome.yaml` and its working/data directory, including filters
+   and any history you need. Use a consistent snapshot or a brief service
+   stop for the copy, then keep AdGuard Home serving the network.
+2. Record enabled blocklist/allowlist URLs, custom rules and DNS rewrites.
+   Keep disabled rules and comments in your inventory.
+3. Record persistent client identifiers, per-client upstreams, service
+   blocks, safe-search settings, schedules, cache settings and log privacy.
+4. Save upstream/bootstrap/private reverse-DNS settings and encrypted DNS
+   hostnames, ports, certificates and paths. Save DHCP leases and reservations
+   if this server provides DHCP.
+
+See the upstream [configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration).
+The source backup is for recovery and inventory; do not rename it to
+`kudurru.yaml` or send it to `kudurru restore`.
+
+## 2. Audit filtering rules before moving them
+
+| Source rule | kudurru v0.1.0 behavior | Migration action |
 |---|---|---|
-| Domain and subdomains | `\|\|example.org^` | yes (`\|\|x` is read as `\|\|x^`) |
-| Exception | `@@\|\|example.org^` | yes, within its own list |
-| Hosts lines | `0.0.0.0 example.org` | yes; lines pointing at other addresses are rewrites and counted as unsupported |
-| Plain domains, `*.example.org` | `example.org` | yes; `*.x` also matches `x` |
-| Regular expressions | `/^ad[0-9]+\./` | yes, up to 1,000 per list |
-| Modifiers | `$important`, `$badfilter`, `$dnstype`, `$dnsrewrite`, `$client`, `$ctag`, `$denyallow` | counted as unsupported and ignored; planned for v0.2 |
+| `\|\|tracker.example^` | Domain and all subdomains | Supported |
+| `@@\|\|cdn.example^` | Exception within its own block-list object | Use a separate allow-mode list when it must override other lists |
+| `0.0.0.0 tracker.example` or plain `tracker.example` | Exact-name match by default | Use a wildcard/suffix entry if you need subdomains |
+| `*.tracker.example` | Matches the apex as well as subdomains | Check that this matches your intent |
+| `/^ads[0-9]+\./` | RE2 regular expression, up to 1,000 per list | Check regex compatibility |
+| `$important`, `$badfilter`, `$dnstype`, `$client`, `$ctag`, `$denyallow`, `$dnsrewrite` | Rule is counted as unsupported and skipped | Rebuild supported behavior as groups, policies or zone records |
+| Hosts lines returning a non-blocking address | Counted as unsupported rewrites | Create explicit zone records where appropriate |
+| Cosmetic filters and URL/path rules | Invalid for DNS filtering and skipped | Use a DNS-specific list instead |
 
-A list's `status.invalid` and the dashboard show how many rules were
-skipped, so a browser-oriented list is safe to load.
+**Exception scope changes.** AdGuard Home merges filtering rules; a custom
+exception can cancel a block from a downloaded filter. In kudurru, `@@`
+in one block-list object only cancels matches from that object, including
+its other sources. To make an exception win across the selected lists,
+put a positive domain rule in a `mode: allow` list and reference it from
+`allowListRefs`.
 
-## An AdGuard Home setup as kudurru objects
+Inspect both `status.unsupported` and `status.invalid`, plus each source's
+fetch status. A successful download does not prove equivalent protection.
+Do not treat a partially understood filter as a complete migration.
 
-The `living-room-tv` Policy needs a [license key](/project/licensing/):
-without one, kudurru keeps `Policy/default` as the only policy and refuses
-`living-room-tv` with `license_required`. A free personal key covers a home
-network.
+## 3. Create the baseline lists and policy
+
+Save as `adguard-migration.yaml`. Replace the sample filter URL with your
+current enabled sources. This example deliberately puts a global exception
+in a separate allow list.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1
 kind: BlockList
-metadata: {name: adguard-dns-filter, namespace: dns}
+metadata: {name: migrated-filter, namespace: default}
 spec:
   mode: block
   sources:
-    - url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+    - name: dns-filter
+      url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
       format: adblock
     - name: custom-rules
       format: adblock
       inline:
-        - "||tracker.example^"
-        - "@@||cdn.example^"
+        - '||tracker.example^'
 ---
 apiVersion: kudurru.io/v1alpha1
-kind: ClientGroup
-metadata: {name: living-room-tv, namespace: dns}
+kind: BlockList
+metadata: {name: migrated-exceptions, namespace: default}
 spec:
-  clients:
-    - {ip: 192.168.1.40, name: TV}
+  mode: allow
+  sources:
+    - name: global-exceptions
+      entries:
+        - value: '*.needed.tracker.example'
+          type: wildcard
+          comment: Allow this endpoint and its subdomains across selected lists
+          origin: migrated
 ---
 apiVersion: kudurru.io/v1alpha1
 kind: Policy
-metadata: {name: living-room-tv, namespace: dns}
+metadata: {name: default, namespace: default}
 spec:
-  clientGroupRefs: [living-room-tv]
-  blockListRefs: [adguard-dns-filter]
-  upstreamGroup: default
+  clientGroupRefs: [default]
+  blockListRefs: [migrated-filter]
+  allowListRefs: [migrated-exceptions]
+  blockMode: zeroIP
 ```
 
-The upstream configuration goes into the settings of `kudurru.yaml`:
+```sh
+kudurru apply -f adguard-migration.yaml
+kudurru get blocklists -o yaml
+kudurru query tracker.example A --client 192.0.2.10
+kudurru query needed.tracker.example A --client 192.0.2.10
+```
+
+The first name must block; the second must show an allow-list decision.
+The allowed `.example` name can still get NXDOMAIN from the upstream because
+it has no public DNS record. Repeat the test with real exceptions.
+
+Use the seeded policy's namespace, as explained in
+[object ownership](/migrate/cutover/#use-the-right-namespace-and-owner).
+Updating this policy replaces its original list references; preserve other
+settings you need. Structured entries on custom lists live in their source
+entry browser; use **Filtering** > **Allowlist** or **Denylist** for entries
+managed through the dedicated domain pages.
+
+## 4. Recreate per-client behavior
+
+For a TV that used its own persistent-client settings, save this as
+`adguard-tv.yaml`. Install a suitable [key](/project/licensing/) before
+creating the additional policy. Use a reserved address and add the
+corresponding IPv6 matcher if the device uses IPv6 DNS.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: ClientGroup
+metadata: {name: living-room-tv, namespace: default}
+spec:
+  clients:
+    - {ip: 192.168.1.40, name: Living room TV}
+---
+apiVersion: kudurru.io/v1alpha1
+kind: Policy
+metadata: {name: living-room-tv, namespace: default}
+spec:
+  clientGroupRefs: [living-room-tv]
+  blockListRefs: [migrated-filter]
+  allowListRefs: [migrated-exceptions]
+  upstreamGroup: default
+  blockedServices: [tiktok]
+  safeSearch: true
+```
+
+```sh
+kudurru apply -f adguard-tv.yaml
+kudurru query tracker.example A --client 192.168.1.40
+kudurru query needed.tracker.example A --client 192.168.1.40
+```
+
+A specific group's policy does not inherit the default policy's lists.
+When multiple policies apply, list references merge and the highest
+priority decides individual settings. Client-group matching uses tiers,
+so an exact IP takes precedence over a broader subnet group.
+
+Map blocked services by reviewing **Filtering** > **Policies**, rather than
+assuming AdGuard's IDs and domain coverage are identical. kudurru ships its
+own catalogue, supports category exceptions and safe search, and offers an
+optional runtime AdGuard service catalogue download. See
+[blocked services and safe search](/deploy/blocked-services/).
+
+For schedules, use `Policy.spec.schedule` with weekdays, start/end and an
+IANA time zone. A policy applies **inside** that window; the default policy
+is the fallback when no candidate is active. Recheck both sides of a window
+instead of assuming an AdGuard blocking-pause schedule has the same meaning.
+
+## 5. Recreate upstreams, local rewrites and encryption
+
+In **DNS** > **Upstreams**, configure `default`, any client-specific groups,
+bootstrap servers and conditional forwarding. If you configure files,
+merge this example into the installed `kudurru.yaml` before starting the
+server; do not replace its listener, store or credential settings:
 
 ```yaml
 upstreams:
@@ -105,12 +198,45 @@ upstreams:
     default:
       servers: ["tls://1.1.1.1", "tls://9.9.9.9"]
       strategy: parallel_best
-    lan: {servers: ["192.168.1.1:53"]}
+    lan:
+      servers: ["192.168.1.1:53"]
+      strategy: strict
   conditional:
-    "[/lan/168.192.in-addr.arpa/]": lan
+    "[/home.arpa/1.168.192.in-addr.arpa/]": lan
   bootstrap: ["1.1.1.1:53", "9.9.9.9:53"]
 ```
 
-Then switch over as with [Pi-hole](/migrate/pihole/#switching-over): run both,
-compare with `kudurru query <name> --client <address>`, and change the DHCP
-DNS option.
+Use the suffixes and private reverse resolver for your actual network; add
+IPv6 reverse suffixes when applicable. `parallel_best` is the default;
+`strict`, `random` and `rtt_weighted` are alternatives. Preserve deliberate
+upstream filtering and ECS choices. Avoid a loop through a router that
+forwards DNS back to kudurru. See [upstream settings](/reference/configuration/#upstreams.groups).
+Persistent settings-file and environment overrides can take precedence over
+the base file; check effective values in the dashboard.
+
+For a local rewrite such as `nas.home.arpa → 192.168.1.10`, create a primary
+`home.arpa.` zone and add the record, following
+[local zone creation](/migrate/pihole/#4-move-local-names-and-upstreams).
+Recreate CNAME and AAAA records too. A primary zone owns the entire suffix
+and answers before filtering: it does not preserve arbitrary wildcard,
+record-type-specific or per-client AdGuard rewrite behavior. General
+`$dnsrewrite` and `Policy.spec.rewrites` processing is deferred in v0.1.0.
+
+Encrypted **upstream** URLs do not enable encrypted **client listeners**.
+Configure DoT/DoH/DoQ/DoH3 listeners, certificates and firewall rules using
+[encrypted transports](/deploy/docker/#encrypted-transports). Test a client
+with its real hostname/path and certificate trust. Do not rely on AdGuard
+ClientID paths or SNI values for client matching in this release.
+
+## 6. Validate and switch
+
+Set query-log privacy/retention and check cache sizing before moving traffic.
+If AdGuard Home serves DHCP, follow the [DHCP handoff](/migrate/pihole/#dhcp-handoff)
+with your saved leases and reservations; keep DNS running during the handoff.
+
+Complete the [validation checklist](/migrate/cutover/#validate), especially
+cross-list exceptions, every custom client, local rewrites, private reverse
+DNS and actual encrypted endpoints. Then use the
+[cutover procedure](/migrate/cutover/#switch-over). Keep AdGuard Home and its
+backup until the observation period ends; use
+[rollback](/migrate/cutover/#roll-back) if required.

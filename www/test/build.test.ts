@@ -13,7 +13,7 @@ import { headersFile } from "../src/headers.ts";
 
 let out: string;
 const pages: Record<string, string> = {};
-const PAGE_PATHS = ["index.html", "404.html", "enterprise/index.html", "license/index.html", "license/text/index.html", "licenses/index.html"];
+const PAGE_PATHS = ["index.html", "404.html", "move-over/index.html", "enterprise/index.html", "license/index.html", "license/text/index.html", "licenses/index.html"];
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));

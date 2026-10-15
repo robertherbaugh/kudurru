@@ -6,7 +6,7 @@ Modification, redistribution and hosting require prior written authorization.
 A Kudurru community or commercial license does not grant those website rights.
 The build and deployment instructions below are for authorized maintainers.
 
-The project website: one page that shows what kudurru does and sends
+The project website shows what kudurru does and sends
 readers on to the documentation at [docs.kudurru.io](https://docs.kudurru.io)
 (the Hugo site in [`site/`](../site/README.md)) and to the repository. It is
 built with [Bun](https://bun.sh) and TypeScript and served by Cloudflare
@@ -46,6 +46,16 @@ RFC 3849 are documentation placeholders.
 
 The version on the page (the badge and the `docker run` and Helm commands)
 comes from the repository's `VERSION` file; `WWW_VERSION` overrides it.
+
+## Move over
+
+`/move-over/` compares Pi-hole, AdGuard Home, Technitium and kudurru v0.1.0.
+The home page and footer link to all three migration guides at
+`docs.kudurru.io/migrate/`. Comparison claims and source links live in
+`src/content.ts`; the page template is `src/pages/move-over.ts`. Keep the
+comparison and limitations in step with `site/content/migrate/`, especially
+when deferred features ship. The docs own the configuration examples,
+validation steps, cutover and rollback procedures.
 
 ## Enterprise
 
