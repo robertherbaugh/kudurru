@@ -27,6 +27,15 @@ func NewView(opts Options, disabledUntil time.Time, cat *catalogue.Catalogue) (*
 	return &View{defaults: defaultsOf(opts), disabledUntil: disabledUntil, catalogue: cat}, nil
 }
 
+// Catalogue returns the borrowed immutable catalog within the captured view's
+// request lifetime. It performs no lookup or replacement capture.
+func (v *View) Catalogue() *catalogue.Catalogue {
+	if v == nil {
+		return nil
+	}
+	return v.catalogue
+}
+
 func (v *View) enabled(now time.Time) bool {
 	return !v.defaults.disabled && (v.disabledUntil.IsZero() || v.disabledUntil.Before(Forever) && !now.Before(v.disabledUntil))
 }

@@ -3,6 +3,7 @@ package servingbuild
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func (publicationTestGuard) WithCurrent(_ context.Context, _ pr.PublicationFence
 	return fn(func(context.Context, *sqlite.CommandTx, sqliteadapter.BackgroundCheck) error { return nil })
 }
 
-func primaryFixture(t *testing.T, f *fixture) (*pr.Runtime, *PrimaryPublication, context.Context) {
+func primaryFixture(t *testing.T, f *fixture, intercept ...func(context.Context, *PrimaryPublication, pr.Cut, pr.Member) error) (*pr.Runtime, *PrimaryPublication, context.Context) {
 	t.Helper()
 	p, err := NewPrimaryPublication(f.pub, func() time.Time { return f.now })
 	if err != nil {
@@ -52,7 +53,13 @@ func primaryFixture(t *testing.T, f *fixture) (*pr.Runtime, *PrimaryPublication,
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := pr.New(pr.Options{Store: f.store, Repository: zonestate.NewRepository(backend, zonestate.Limits{}), Reader: primaryzone.NewReader(f.store, readerOptions), LifecycleCAS: a.LifecycleCAS, Admit: a.Admission, Publish: p.Publish})
+	publish := p.Publish
+	if len(intercept) != 0 {
+		publish = func(ctx context.Context, cut pr.Cut, member pr.Member) error {
+			return intercept[0](ctx, p, cut, member)
+		}
+	}
+	r, err := pr.New(pr.Options{Store: f.store, Repository: zonestate.NewRepository(backend, zonestate.Limits{}), Reader: primaryzone.NewReader(f.store, readerOptions), LifecycleCAS: a.LifecycleCAS, Admit: a.Admission, Publish: publish})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,15 +93,26 @@ func beginPrimary(ctx context.Context, t *testing.T, f *fixture, r *pr.Runtime) 
 
 func TestPrimaryPublicationWaitsForCompleteCommitAndRecovery(t *testing.T) {
 	f := newFixture(t)
-	r, p, ctx := primaryFixture(t, f)
+	var entered atomic.Bool
+	r, p, ctx := primaryFixture(t, f, func(ctx context.Context, p *PrimaryPublication, cut pr.Cut, member pr.Member) error {
+		if member.Phase != zk.PhaseActive || member.Version.CommitSequence == 0 {
+			return p.Publish(ctx, cut, member)
+		}
+		// Bound only the real blocked publication wait. Starting this short
+		// deadline before SQLite admission could stop before local installation.
+		entered.Store(true)
+		bounded, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		defer cancel()
+		return p.Publish(bounded, cut, member)
+	})
 	_, lifecycle := beginPrimary(ctx, t, f, r)
 	f.blocked.Store(true)
 	f.epoch.Add(1)
 	p.Wake()
-	bounded, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	view, err := r.Reconcile(bounded, lifecycle.Spec.Zone)
 	cancel()
-	if !errors.Is(err, context.DeadlineExceeded) || view == nil || view.Head == nil {
+	if !entered.Load() || !errors.Is(err, context.DeadlineExceeded) || view == nil || view.Head == nil {
 		t.Fatalf("durable commit must remain publication-pending: view=%v err=%v", view != nil, err)
 	}
 	member, ok := r.Capture(f.now).Member(lifecycle.Spec.Zone.Apex)

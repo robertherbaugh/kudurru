@@ -58,6 +58,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 	"github.com/robertherbaugh/kudurru/internal/stub"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
@@ -118,6 +119,13 @@ type ListRefresher interface {
 // nil answers 501.
 type ZoneNotifier interface {
 	NotifyZone(ctx context.Context, zone string) ([]string, error)
+}
+
+// ObjectReadSource returns immutable public desired objects and their exact
+// generation from the original HTTP request lease, valid only in that handler.
+// Missing, released, or canceled capture must fail instead of recapturing.
+type ObjectReadSource interface {
+	ObjectSnapshot(context.Context) (zonecache.ObjectSet, replication.Generation, error)
 }
 
 // ZoneReadSource reads actual serving data from the original complete HTTP
@@ -253,6 +261,9 @@ type Options struct {
 	// ZoneReads replaces DNS diagnostics/contents with the original complete
 	// request cut. Nil retains the legacy store/compiler/Kubernetes behavior.
 	ZoneReads ZoneReadSource
+	// ObjectReads replaces generic object GETs with original complete-cut reads.
+	// Nil preserves the legacy store-backed paths, including Kubernetes.
+	ObjectReads ObjectReadSource
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand

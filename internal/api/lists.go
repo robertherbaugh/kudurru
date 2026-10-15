@@ -11,6 +11,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -180,20 +181,35 @@ func (s *Server) searchLists(ctx context.Context, in *searchInput) (*searchOutpu
 		return nil, errInvalid("domain: required")
 	}
 	var hits []ListSearchHit
-	if s.opts.Cache != nil {
+	var lists *blocking.Snapshot
+	if s.opts.ObjectReads != nil {
+		objects, _, err := s.capturedObjects(ctx)
+		if err != nil {
+			return nil, err
+		}
+		lists = objects.Lists()
+		if lists == nil {
+			return nil, errUnavailable("original compiled lists unavailable")
+		}
+	} else if s.opts.Cache != nil {
 		if snap := s.opts.Cache.Snapshot(); snap != nil {
-			if lists := snap.Objects.Lists(); lists != nil {
-				for name, rule := range lists.Contains(domain) {
-					hits = append(hits, ListSearchHit{List: name, Mode: string(v1alpha1ListModeBlock), Rule: rule})
-				}
-				for name, rule := range lists.ContainsAllow(domain) {
-					hits = append(hits, ListSearchHit{List: name, Mode: string(v1alpha1ListModeAllow), Rule: rule})
-				}
-				sort.Slice(hits, func(i, j int) bool { return hits[i].List+hits[i].Mode < hits[j].List+hits[j].Mode })
-				return &searchOutput{Body: newList(hits, "")}, nil
-			}
+			lists = snap.Objects.Lists()
 		}
 	}
+	if lists != nil {
+		for name, rule := range lists.Contains(domain) {
+			hits = append(hits, ListSearchHit{List: name, Mode: string(v1alpha1ListModeBlock), Rule: rule})
+		}
+		for name, rule := range lists.ContainsAllow(domain) {
+			hits = append(hits, ListSearchHit{List: name, Mode: string(v1alpha1ListModeAllow), Rule: rule})
+		}
+		if s.opts.ObjectReads != nil && ctx.Err() != nil {
+			return nil, objectReadUnavailable()
+		}
+		sort.Slice(hits, func(i, j int) bool { return hits[i].List+hits[i].Mode < hits[j].List+hits[j].Mode })
+		return &searchOutput{Body: newList(hits, "")}, nil
+	}
+
 	// No compiled lists on this node: search the inline entries.
 	err := s.listAll(ctx, "BlockList", "", func(o store.Object) {
 		bl, ok := o.(*v1alpha1.BlockList)

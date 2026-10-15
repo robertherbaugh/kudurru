@@ -283,9 +283,15 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 	if !st.clusterAllowed && !k.zoneScoped() {
 		return nil, s.require(ctx, k.resource, "read", clusterScope, "")
 	}
+	if s.opts.ObjectReads != nil && (len(in.LabelSelector) > 4096 || len(in.Namespace) > 1024) {
+		return nil, errInvalid("object list query is too large")
+	}
 	sel, err := parseLabelSelector(in.LabelSelector)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectReads != nil {
+		return s.listCapturedObjects(ctx, k, in, sel)
 	}
 	cont, err := decodeCursor(in.Continue)
 	if err != nil {
@@ -317,6 +323,9 @@ func (s *Server) getObjectRoute(ctx context.Context, plural, namespace, name str
 	k, err := s.kindParamScoped(plural, namespaced)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectReads != nil {
+		return s.getCapturedObject(ctx, k, namespace, name)
 	}
 	obj, err := s.getObject(ctx, k, namespace, name)
 	if err != nil {
