@@ -33,67 +33,17 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 		if err := authorize(ctx, commandWriteAttributes(req.kind, key, u.Object, existing)); err != nil {
 			return err
 		}
-		force := false
-		if existing != nil {
-			if req.createOnly {
-				return errConflict(key.String()+" already exists", "PUT it to replace it")
-			}
-			switch owner := store.ManagedBy(existing); owner {
-			case "", manager:
-			case store.ManagerBootstrap:
-				force = true
-			default:
-				return errManagedBy(key, owner)
-			}
-			if req.ifMatch != "" && req.ifMatch != existing.GetResourceVersion() {
-				return errPrecondition(req.ifMatch, existing.GetResourceVersion())
-			}
-		} else if req.ifMatch != "" {
-			return errPrecondition(req.ifMatch, "")
-		}
-		var old *unstructured.Unstructured
-		if existing != nil {
-			m, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing)
-			if err != nil {
-				return err
-			}
-			old = &unstructured.Unstructured{Object: m}
-		}
-		if err := s.opts.Validator.ValidateUnstructured(ctx, u, old); err != nil {
+		prepared, err := s.prepareCommandWrite(ctx, req, manager, u, key, existing)
+		if err != nil {
 			return err
-		}
-		obj := req.kind.newObject()
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructuredWithValidation(u.Object, obj, true); err != nil {
-			return errInvalid("%v", err)
-		}
-		gvk, _, _ := s.opts.Validator.GroupVersionKind(req.kind.kind)
-		obj.GetObjectKind().SetGroupVersionKind(gvk)
-		if err := s.opts.Validator.Validate(ctx, obj, existing); err != nil {
-			return err
-		}
-		if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
-			result = writeResult{obj: existing, result: ResultUnchanged, key: key}
-			return nil
 		}
 		if existing == nil && req.kind.kind == "Policy" {
 			if err := s.commandPolicyLimit(ctx, tx, key); err != nil {
 				return err
 			}
 		}
-		opts := store.ApplyOptions{Manager: manager, Force: force, CreateOnly: existing == nil}
-		if existing != nil {
-			opts.ExpectedResourceVersion = existing.GetResourceVersion()
-		}
-		written, err := tx.Apply(ctx, obj, opts)
-		if err != nil {
-			return err
-		}
-		outcome := ResultUpdated
-		if existing == nil {
-			outcome = ResultCreated
-		}
-		result = writeResult{obj: written, result: outcome, key: key}
-		return nil
+		result, err = prepared.apply(ctx, tx)
+		return err
 	})
 	if err != nil {
 		return writeResult{}, storeError(err)
@@ -102,6 +52,78 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 		return writeResult{}, errUnavailable("current object command returned no result")
 	}
 	return result, nil
+}
+
+// preparedCommandWrite separates validated same-tx preparation from staging so
+// compound commands can validate every candidate before the first mutation.
+type preparedCommandWrite struct {
+	result  writeResult
+	options store.ApplyOptions
+}
+
+func (s *Server) prepareCommandWrite(ctx context.Context, req writeRequest, manager string, u *unstructured.Unstructured, key store.Key, existing store.Object) (preparedCommandWrite, error) {
+	force := false
+	if existing != nil {
+		if req.createOnly {
+			return preparedCommandWrite{}, errConflict(key.String()+" already exists", "PUT it to replace it")
+		}
+		switch owner := store.ManagedBy(existing); owner {
+		case "", manager:
+		case store.ManagerBootstrap:
+			force = true
+		default:
+			return preparedCommandWrite{}, errManagedBy(key, owner)
+		}
+		if req.ifMatch != "" && req.ifMatch != existing.GetResourceVersion() {
+			return preparedCommandWrite{}, errPrecondition(req.ifMatch, existing.GetResourceVersion())
+		}
+	} else if req.ifMatch != "" {
+		return preparedCommandWrite{}, errPrecondition(req.ifMatch, "")
+	}
+	var old *unstructured.Unstructured
+	if existing != nil {
+		m, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existing)
+		if err != nil {
+			return preparedCommandWrite{}, err
+		}
+		old = &unstructured.Unstructured{Object: m}
+	}
+	if err := s.opts.Validator.ValidateUnstructured(ctx, u, old); err != nil {
+		return preparedCommandWrite{}, err
+	}
+	obj := req.kind.newObject()
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructuredWithValidation(u.Object, obj, true); err != nil {
+		return preparedCommandWrite{}, errInvalid("%v", err)
+	}
+	gvk, _, _ := s.opts.Validator.GroupVersionKind(req.kind.kind)
+	obj.GetObjectKind().SetGroupVersionKind(gvk)
+	if err := s.opts.Validator.Validate(ctx, obj, existing); err != nil {
+		return preparedCommandWrite{}, err
+	}
+	if existing != nil && !force && store.ManagedBy(existing) == manager && sameContent(existing, obj, manager) {
+		return preparedCommandWrite{result: writeResult{obj: existing, result: ResultUnchanged, key: key}}, nil
+	}
+	opts := store.ApplyOptions{Manager: manager, Force: force, CreateOnly: existing == nil}
+	if existing != nil {
+		opts.ExpectedResourceVersion = existing.GetResourceVersion()
+	}
+	outcome := ResultUpdated
+	if existing == nil {
+		outcome = ResultCreated
+	}
+	return preparedCommandWrite{result: writeResult{obj: obj, result: outcome, key: key}, options: opts}, nil
+}
+
+func (p preparedCommandWrite) apply(ctx context.Context, tx *sqlite.CommandTx) (writeResult, error) {
+	if p.result.result == ResultUnchanged {
+		return p.result, nil
+	}
+	written, err := tx.Apply(ctx, p.result.obj, p.options)
+	if err != nil {
+		return writeResult{}, err
+	}
+	p.result.obj = written
+	return p.result, nil
 }
 
 func commandWriteAttributes(k kindInfo, key store.Key, body map[string]any, existing store.Object) []rbac.Attributes {

@@ -276,6 +276,8 @@ type Options struct {
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
+	// ZoneCommand admits one complete current zone convenience operation.
+	ZoneCommand ZoneCommand
 	// CrossOrigin shares the host's existing same-origin policy. Nil creates
 	// the default protection with no trusted-origin exceptions.
 	CrossOrigin *http.CrossOriginProtection
