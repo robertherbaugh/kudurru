@@ -128,6 +128,12 @@ type ObjectReadSource interface {
 	ObjectSnapshot(context.Context) (zonecache.ObjectSet, replication.Generation, error)
 }
 
+// PolicyListReadSource reports actual compiled list counts and availability
+// from the original complete request cut at the caller's observation time.
+type PolicyListReadSource interface {
+	PolicyListState(context.Context, string, string, time.Time) (entries int, ready bool, err error)
+}
+
 // ZoneReadSource reads actual serving data from the original complete HTTP
 // request lease. Objects/models are immutable and valid only within the handler.
 // ReadZone distinguishes a missing desired key (store.ErrNotFound) from present
@@ -264,6 +270,9 @@ type Options struct {
 	// ObjectReads replaces generic object GETs with original complete-cut reads.
 	// Nil preserves the legacy store-backed paths, including Kubernetes.
 	ObjectReads ObjectReadSource
+	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
+	// Complete mode also requires CanonicalSettings and Catalogue.Read.
+	PolicyListReads PolicyListReadSource
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
