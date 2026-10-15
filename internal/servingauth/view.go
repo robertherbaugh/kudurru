@@ -10,6 +10,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/browseroidc"
 	"github.com/robertherbaugh/kudurru/internal/auth/oidccore"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
@@ -40,6 +41,7 @@ type View struct {
 	externalIdentities map[AccountRef]ExternalIdentity
 	externalSessions   map[string]ExternalSessionRecord
 	tokenSealer        *session.Sealer
+	browserCodec       *browseroidc.Codec
 	released           atomic.Bool
 }
 
@@ -99,6 +101,10 @@ func Prepare(ctx context.Context, cut *Cut, deps Dependencies) (*View, error) {
 		return nil, ErrDependency
 	}
 	v := &View{cut: cut, license: deps.License, permissions: &permissions, grants: map[string]bool{}, floors: map[string]time.Time{}, accounts: map[AccountRef]time.Time{}, providers: map[string]time.Time{}, sessions: map[string]SessionRecord{}, sealer: sealer, hasher: deps.Hasher}
+	v.browserCodec, err = browseroidc.NewCodec(deps.CurrentKey, deps.PreviousKey)
+	if err != nil {
+		return nil, ErrDependency
+	}
 	for _, b := range deps.StaticBindings {
 		if err = v.addBinding(b); err != nil {
 			return nil, err

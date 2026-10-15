@@ -107,6 +107,7 @@ type RootEntry struct {
 	TOTP               []string `json:"totp"`
 	ExternalIdentities []string `json:"externalIdentities"`
 	ExternalSessions   []string `json:"externalSessions"`
+	BrowserAttempts    []string `json:"browserAttempts"`
 }
 
 // GrantFloor persists current behavior: issuedAt <= ValidAfter fails.
@@ -158,6 +159,7 @@ type Security struct {
 	TOTP               []totp.Record
 	ExternalIdentities []ExternalIdentity
 	ExternalSessions   []ExternalSessionRecord
+	BrowserAttempts    []BrowserAttempt
 }
 
 // CurrentReader is implemented by sqlite.CommandTx. Root must pass only its

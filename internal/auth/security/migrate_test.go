@@ -41,8 +41,11 @@ func legacySecurityVersion(t *testing.T, st *sqlite.Store, state servingauth.Sec
 				if version == 1 {
 					delete(root, "totp")
 				}
-				delete(root, "externalIdentities")
-				delete(root, "externalSessions")
+				if version < 3 {
+					delete(root, "externalIdentities")
+					delete(root, "externalSessions")
+				}
+				delete(root, "browserAttempts")
 				root["formatVersion"], _ = json.Marshal(version)
 				row.Data, err = json.Marshal(root)
 				if err != nil {

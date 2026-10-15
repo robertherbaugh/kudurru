@@ -46,6 +46,9 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 		case servingauth.RootFormatVersion:
 			_, err := servingauth.DecodeSecurity(rows)
 			return err
+		case 3:
+			initial, err = servingauth.UpgradeSecurityV3(rows)
+			legacyFactors = false
 		case 2:
 			initial, err = servingauth.UpgradeSecurityV2(rows)
 			legacyFactors = false // v2 already owns explicit durable replay rows.
@@ -147,7 +150,7 @@ func (s *State) valid() error {
 }
 
 func (s *State) capacity() error {
-	if s.otherRows+len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions) >= servingauth.MaxRows-1 {
+	if s.otherRows+len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions)+len(s.value.BrowserAttempts) >= servingauth.MaxRows-1 {
 		return servingauth.ErrBounds
 	}
 	return nil
@@ -294,8 +297,9 @@ func (s *State) Revoke(id string) error {
 	return nil
 }
 
-// CollectExpired removes only enrollments whose absolute lifetime has ended.
-// Idle-expired and revoked sessions remain until then; revocation floors remain.
+// CollectExpired removes enrollments and pending browser attempts whose absolute
+// lifetime has ended. Idle-expired and revoked sessions remain until then;
+// revocation floors remain. Missing attempts can never be consumed.
 func (s *State) CollectExpired(now time.Time) error {
 	if err := s.valid(); err != nil {
 		return err
@@ -309,6 +313,9 @@ func (s *State) CollectExpired(now time.Time) error {
 	n = len(s.value.ExternalSessions)
 	s.value.ExternalSessions = slices.DeleteFunc(s.value.ExternalSessions, func(r servingauth.ExternalSessionRecord) bool { return !now.Before(r.ExpiresAt) })
 	s.changed = s.changed || len(s.value.ExternalSessions) != n
+	n = len(s.value.BrowserAttempts)
+	s.value.BrowserAttempts = slices.DeleteFunc(s.value.BrowserAttempts, func(r servingauth.BrowserAttempt) bool { return !now.Before(r.ExpiresAt) })
+	s.changed = s.changed || len(s.value.BrowserAttempts) != n
 	return nil
 }
 

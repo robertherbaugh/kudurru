@@ -22,7 +22,7 @@ const (
 	MaxImageBytes     = 256 << 20
 	MaxGrants         = 128
 	FormatVersion     = 1
-	RootFormatVersion = 3
+	RootFormatVersion = 4
 	RootKey           = "auth/v1/root"
 	ownerPrefix       = "auth/"
 )

@@ -21,22 +21,22 @@ var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 // EmptySecurity is an explicit startup migration input. Root must commit its
 // encoded root row transactionally before publisher activation; no read seeds it.
 func EmptySecurity(epoch uint64) Security {
-	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}, TOTP: []totp.Record{}, ExternalIdentities: []ExternalIdentity{}, ExternalSessions: []ExternalSessionRecord{}}
+	return Security{Epoch: epoch, GrantFloors: []GrantFloor{}, AccountFloors: []AccountFloor{}, ProviderFloors: []ProviderFloor{}, Sessions: []SessionRecord{}, TOTP: []totp.Record{}, ExternalIdentities: []ExternalIdentity{}, ExternalSessions: []ExternalSessionRecord{}, BrowserAttempts: []BrowserAttempt{}}
 }
 
 // EncodeSecurity returns deterministic owner rows including one mandatory root.
 // All counts are checked before allocations; caller-supplied input is detached.
 func EncodeSecurity(s Security) ([]replication.Entry, error) {
-	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil || s.ExternalIdentities == nil || s.ExternalSessions == nil {
+	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil || s.ExternalIdentities == nil || s.ExternalSessions == nil || s.BrowserAttempts == nil {
 		return nil, ErrManifest
 	}
-	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions) + len(s.TOTP) + len(s.ExternalIdentities) + len(s.ExternalSessions)
-	if count >= MaxRows {
+	count := len(s.GrantFloors) + len(s.AccountFloors) + len(s.ProviderFloors) + len(s.Sessions) + len(s.TOTP) + len(s.ExternalIdentities) + len(s.ExternalSessions) + len(s.BrowserAttempts)
+	if count >= MaxRows || len(s.BrowserAttempts) > MaxBrowserAttempts {
 		return nil, ErrBounds
 	}
 	entries := make([]replication.Entry, 0, count+1)
 	total := 0
-	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}}
+	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}, BrowserAttempts: []string{}}
 	add := func(key string, value any, keys *[]string) error {
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -131,6 +131,16 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 			return nil, err
 		}
 	}
+	for _, row := range s.BrowserAttempts {
+		if !validBrowserAttempt(row) {
+			return nil, ErrInvalid
+		}
+		row.IssuedAt, row.ExpiresAt = row.IssuedAt.UTC(), row.ExpiresAt.UTC()
+		if err := add(BrowserAttemptKey(row.ID), row, &root.BrowserAttempts); err != nil {
+			return nil, err
+		}
+	}
+	slices.Sort(root.BrowserAttempts)
 	slices.Sort(root.ExternalIdentities)
 	slices.Sort(root.ExternalSessions)
 
@@ -224,25 +234,31 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 		if !strictOwner(raw, &old, MaxRootBytes) {
 			return Security{}, ErrInvalid
 		}
-		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}, BrowserAttempts: []string{}}
 		expectedVersion = 1
 	} else if version == 2 {
 		var old rootV2Entry
 		if !strictOwner(raw, &old, MaxRootBytes) {
 			return Security{}, ErrInvalid
 		}
-		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: []string{}, ExternalSessions: []string{}}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: []string{}, ExternalSessions: []string{}, BrowserAttempts: []string{}}
+	} else if version == 3 {
+		var old rootV3Entry
+		if !strictOwner(raw, &old, MaxRootBytes) {
+			return Security{}, ErrInvalid
+		}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: old.ExternalIdentities, ExternalSessions: old.ExternalSessions, BrowserAttempts: []string{}}
 	} else if !strictOwner(raw, &root, MaxRootBytes) {
 		return Security{}, ErrInvalid
 	}
 	if root.FormatVersion != expectedVersion {
 		return Security{}, ErrVersion
 	}
-	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil || root.ExternalIdentities == nil || root.ExternalSessions == nil {
+	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil || root.ExternalIdentities == nil || root.ExternalSessions == nil || root.BrowserAttempts == nil {
 		return Security{}, ErrManifest
 	}
-	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions) + len(root.TOTP) + len(root.ExternalIdentities) + len(root.ExternalSessions)
-	if count >= MaxRows {
+	count := len(root.GrantFloors) + len(root.AccountFloors) + len(root.ProviderFloors) + len(root.Sessions) + len(root.TOTP) + len(root.ExternalIdentities) + len(root.ExternalSessions) + len(root.BrowserAttempts)
+	if count >= MaxRows || len(root.BrowserAttempts) > MaxBrowserAttempts {
 		return Security{}, ErrBounds
 	}
 	if count+1 != len(own) {
@@ -352,6 +368,16 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 		}
 		s.ExternalSessions = append(s.ExternalSessions, row)
 	}
+	for _, key := range root.BrowserAttempts {
+		var row BrowserAttempt
+		if err := read(key, &row); err != nil {
+			return Security{}, err
+		}
+		if key != BrowserAttemptKey(row.ID) || !validBrowserAttempt(row) {
+			return Security{}, ErrInvalid
+		}
+		s.BrowserAttempts = append(s.BrowserAttempts, row)
+	}
 	if err := validateExternalRelations(s); err != nil {
 		return Security{}, err
 	}
@@ -375,7 +401,7 @@ func ValidateEntry(section string, row replication.Entry) error {
 		if r.FormatVersion != RootFormatVersion {
 			return ErrVersion
 		}
-		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil || r.ExternalIdentities == nil || r.ExternalSessions == nil {
+		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil || r.ExternalIdentities == nil || r.ExternalSessions == nil || r.BrowserAttempts == nil {
 			return ErrManifest
 		}
 		return nil
@@ -399,6 +425,11 @@ func ValidateEntry(section string, row replication.Entry) error {
 		return ErrVersion
 	}
 	switch {
+	case strings.HasPrefix(row.Key, "auth/v1/browser/"):
+		var r BrowserAttempt
+		if strictOwner(row.Data, &r, MaxRowBytes) && validBrowserAttempt(r) && row.Key == BrowserAttemptKey(r.ID) {
+			return nil
+		}
 	case strings.HasPrefix(row.Key, "auth/v1/external-"):
 		return validateExternalEntry(row)
 	case strings.HasPrefix(row.Key, "auth/v1/grant/"):

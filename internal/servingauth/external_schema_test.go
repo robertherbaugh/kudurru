@@ -28,6 +28,7 @@ func oldSecurityRows(t *testing.T, s Security, version int) []replication.Entry 
 			t.Fatal("root")
 		}
 		root["formatVersion"], _ = json.Marshal(version)
+		delete(root, "browserAttempts")
 		delete(root, "externalIdentities")
 		delete(root, "externalSessions")
 		if version == 1 {
