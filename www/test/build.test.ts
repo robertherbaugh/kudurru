@@ -8,14 +8,14 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "../build.ts";
-import { DEFAULT_LICENSE_API, DOCS_URL, REPO_URL, SUPPORT_STARTING_ANNUAL_USD } from "../src/content.ts";
+import { DEFAULT_LICENSE_API, DOCS_URL, MIGRATION_COMPARISON, REPO_URL, SUPPORT_STARTING_ANNUAL_USD } from "../src/content.ts";
 import { usd } from "../src/pricing.ts";
 import { headersFile, rulesFor } from "../src/headers.ts";
 
 let out: string;
 const pages: Record<string, string> = {};
 const LANDING_PAGES = ["kubernetes-dns/index.html", "network-ad-blocking/index.html", "pi-hole-alternative/index.html"];
-const PAGE_PATHS = ["index.html", "404.html", "enterprise/index.html", ...LANDING_PAGES, "license/index.html", "license/text/index.html", "licenses/index.html"];
+const PAGE_PATHS = ["index.html", "404.html", "move-over/index.html", "enterprise/index.html", ...LANDING_PAGES, "license/index.html", "license/text/index.html", "licenses/index.html"];
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
@@ -240,6 +240,41 @@ test("fonts are separate hashed files, not data URLs", async () => {
   const fonts = [...text.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)].map((m) => m[1]!);
   expect(fonts.length).toBe(3);
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
+});
+
+describe("the move-over page", () => {
+  test("is linked from every page's nav and footer and listed in the sitemap", async () => {
+    for (const name of PAGE_PATHS) {
+      const page = pages[name]!;
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(page)?.[1] ?? "";
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(nav, "href")).toContain("/move-over/");
+      expect(attrs(footer, "href")).toContain("/move-over/");
+    }
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/move-over/</loc>");
+  });
+
+  test("renders all five comparison columns and every feature row", () => {
+    const page = pages["move-over/index.html"]!;
+    const headings = [...page.matchAll(/<th scope="col">([^<]*)<\/th>/g)].map((match) => match[1]!);
+    expect(headings).toEqual(["Feature", "Pi-hole", "AdGuard Home", "Technitium", "kudurru v0.1.0"]);
+    const body = /<tbody>([\s\S]*?)<\/tbody>/.exec(page)?.[1] ?? "";
+    const rows = [...body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)];
+    expect(rows).toHaveLength(MIGRATION_COMPARISON.length);
+    for (const row of rows) {
+      expect(row[1]!.match(/<th scope="row">/g)).toHaveLength(1);
+      expect(row[1]!.match(/<td>/g)).toHaveLength(4);
+    }
+  });
+
+  test("offers the comparison and all three migration guides in the home-page section", () => {
+    const section = /<section\b[^>]*aria-labelledby="home-migrate-title"[^>]*>([\s\S]*?)<\/section>/.exec(pages["index.html"]!)?.[1] ?? "";
+    const links = attrs(section, "href");
+    expect(links).toContain("/move-over/");
+    for (const slug of ["pihole", "adguard-home", "technitium"]) {
+      expect(links).toContain(`${DOCS_URL}/migrate/${slug}/`);
+    }
+  });
 });
 
 describe("the enterprise page", () => {

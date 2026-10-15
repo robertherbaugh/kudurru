@@ -14,6 +14,7 @@ import { layout, type Assets, type Page } from "./src/pages/layout.ts";
 import { home, licenses, notFound } from "./src/pages/index.ts";
 import { license, licenseText } from "./src/pages/license.ts";
 import { enterprise } from "./src/pages/enterprise.ts";
+import { moveOver } from "./src/pages/move-over.ts";
 import { renderMarkdown } from "./src/markdown.ts";
 import { HOME_TITLE } from "./src/seo.ts";
 import { USE_CASES } from "./src/use-cases.ts";
@@ -155,6 +156,17 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
 
   await writePage("index.html", { path: "/", title: HOME_TITLE, body: home(assets, version), assets });
   await writePage("404.html", { path: "/404.html", title: "Not found · kudurru", body: notFound(), assets, index: false });
+  await writePage(
+    "move-over/index.html",
+    {
+      path: "/move-over/",
+      title: "Move from Pi-hole, AdGuard Home or Technitium · kudurru",
+      description: "Compare Pi-hole, AdGuard Home, Technitium and kudurru, with migration guides for filters, client policies, zones and a tested DNS cutover.",
+      breadcrumb: "Move over",
+      body: moveOver(),
+      assets,
+    },
+  );
   await writePage(
     "enterprise/index.html",
     {

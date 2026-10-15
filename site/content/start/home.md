@@ -127,5 +127,5 @@ keep in BIND format import with `kudurru import bind <zone> -f file.zone`.
   put dnsdist in front with `deploy/compose/single-edge` (the edge needs a
   [license key](/project/licensing/)); see
   [encrypted transports](/deploy/docker/#encrypted-transports).
-- **Coming from Pi-hole or AdGuard Home?** The [migration guides](/migrate/)
+- **Coming from Pi-hole, AdGuard Home or Technitium?** The [migration guides](/migrate/)
   map their settings onto kudurru objects.

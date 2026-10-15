@@ -1,17 +1,81 @@
 ---
-title: Migration guides
+title: Move over to kudurru
 linkTitle: Migrate
-description: How the concepts of the DNS server you run today map onto kudurru objects and settings.
+description: Compare Pi-hole, AdGuard Home, Technitium and kudurru, then migrate lists, clients and zones with a tested cutover and rollback plan.
 weight: 30
 ---
 
-kudurru has no importer for Pi-hole or AdGuard Home configuration yet: the
-`kudurru import pihole|adguard|blocky|technitium` verbs are planned
-([follow-ups](../../../docs/followups.md)), and today `kudurru import bind` is the only
-importer. Moving over is a short manual job, because the concepts map almost
-one to one: write the objects once as YAML, keep them in Git, and apply them
-with `kudurru apply -f` (or drop them into `objects.d/`).
+Start with the DNS server you run today. These guides describe **kudurru
+v0.1.0**: working features, configuration differences and the checks to make
+before changing a network's DNS.
 
-Run the new server next to the old one, compare answers with
-`kudurru query <name> --client <address>`, and switch the DHCP DNS option
-when they agree.
+| Your current server | What the guide covers |
+|---|---|
+| [Pi-hole](/migrate/pihole/) | Teleporter backup, adlists, exact/wildcard/regex domains, groups, local DNS and a DHCP handoff |
+| [AdGuard Home](/migrate/adguard-home/) | Configuration backup, filter compatibility, exceptions, persistent clients, rewrites and encrypted DNS |
+| [Technitium](/migrate/technitium/) | Zone export/import, conditional forwarders, allowed/blocked zones, DNS Apps and features to retain elsewhere |
+| [Cutover and rollback checklist](/migrate/cutover/) | Parallel installation, CLI setup, client identity, real DNS tests, IPv4/IPv6 rollout and recovery |
+
+**There is no product configuration importer.** kudurru cannot restore a
+Pi-hole Teleporter archive, `AdGuardHome.yaml` or a Technitium backup.
+`kudurru import bind` imports standard DNS zone files. Recreate other
+settings and objects using the dashboard, CLI or YAML. Migration time
+depends on your rules and services; a server that also provides DHCP,
+DNSSEC or app-specific behavior needs more preparation than a basic blocker.
+
+## Feature comparison
+
+Built-in capabilities unless stated otherwise. Reviewed October 15, 2026
+against the [Pi-hole documentation](https://docs.pi-hole.net/),
+[AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration),
+[Technitium feature list](https://technitium.com/dns/) and
+[kudurru changelog](/project/changelog/). Other projects evolve independently;
+check the version you run.
+
+| Feature | Pi-hole | AdGuard Home | Technitium | kudurru v0.1.0 |
+|---|---|---|---|---|
+| Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock subset and RE2; client-group policies |
+| Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
+| Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding to named upstream groups; conditional forwarding |
+| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | No validation or signing |
+| DHCP | Built in | Built in | Built in | Use a separate DHCP server |
+| Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
+| Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
+| Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
+| Identity | Local dashboard login | Local users | Roles, OIDC, LDAP | Local users; OIDC and scoped roles with a key |
+| License | Open source; component licenses apply | GPL-3.0 | GPL-3.0 | Source available; eligible community use free, commercial production by agreement |
+
+AdGuard Home's DNSSEC option requests DNSSEC records from its upstreams;
+it does not make it a local validating resolver. kudurru can forward to a
+validating resolver, but v0.1.0 does not itself validate answers or sign zones.
+A schema field for a future feature does not mean that feature is active.
+In particular, secondary/stub/catalog zones, RFC 2136 updates and general
+per-policy answer rewrites are not implemented in v0.1.0.
+
+### License and deployment choices
+
+Without a key, kudurru runs one node, `Policy/default` and the built-in
+administrator. Additional policies, OIDC, scoped roles, audit storage,
+statistics older than 24 hours and the edge supervisors need the applicable
+entitlements. A free key for eligible community use unlocks these features
+and up to three nodes. Business and government production use requires a
+commercial agreement; see [licensing](/project/licensing/) and
+[request a key](https://kudurru.io/license/).
+
+For multiple nodes, choose [Kubernetes](/deploy/helm/) for a shared
+configuration store, or the [Compose HA layout](/deploy/compose-ha/) for
+independent SQLite nodes managed from the same object files. Independent
+Docker containers do not synchronize their configuration automatically.
+Follower and Raft stores are deferred.
+
+## How to approach the move
+
+1. Complete [preparation](/migrate/cutover/#prepare) and take a source backup.
+2. Follow your product's guide to recreate lists, groups, upstreams and zones.
+3. Complete the [validation checklist](/migrate/cutover/#validate), including one real client from each group.
+4. [Switch DNS advertisements](/migrate/cutover/#switch-over) only after the checks pass.
+5. Keep the old server available through the observation period and use the
+   [rollback procedure](/migrate/cutover/#roll-back) if needed.
+
+Query history, statistics, passwords, API tokens and source-specific plugins
+stay with the original server. Export history separately if you need to keep it.
