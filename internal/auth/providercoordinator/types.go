@@ -48,8 +48,12 @@ type Capture struct {
 	Identity, HostIdentity string
 	ConfigProviders        []servingauth.ProviderSource
 	ProviderResources      []servingauth.ProviderResource
-	Current                func() bool
-	Release                func()
+	// Browser selects from this SAME retained resource lease and exact host.
+	// Selection is pure; Exchange is explicit I/O outside all gates. A current
+	// handle is NOT writer admission. Release invalidates every borrowed handle.
+	Browser func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	Current func() bool
+	Release func()
 }
 
 // CurrentCommandFunc is trusted root composition, NOT caller authorization.

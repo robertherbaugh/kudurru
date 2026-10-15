@@ -24,6 +24,7 @@ type fetchCache struct {
 type metadata struct {
 	issuer, authorization, token, jwksURL string
 	algorithms                            []string
+	browser                               bool
 	discovery, keys                       fetchCache
 }
 type acquisition struct {
@@ -83,7 +84,8 @@ func (o *Owner) acquire(ctx context.Context, d Desired, source servingauth.Provi
 	out.binding.MetadataBinding = hash(struct {
 		Profile, Issuer, Authorization, Token, JWKS string
 		Algorithms                                  []string
-	}{"provider-metadata/v1", m.issuer, m.authorization, m.token, m.jwksURL, m.algorithms})
+		Browser                                     bool
+	}{"provider-metadata/v2-browser", m.issuer, m.authorization, m.token, m.jwksURL, m.algorithms, m.browser})
 	keyCache := prior.metadata.keys
 	if keyCache.url != m.jwksURL {
 		keyCache = fetchCache{}
@@ -186,7 +188,22 @@ func parseMetadata(raw []byte, issuer string, n *networkPolicy) (metadata, error
 	if len(accepted) == 0 {
 		return metadata{}, ErrInvalid
 	}
-	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, algorithms: accepted}, nil
+	browser := auth != "" && token != ""
+	for _, requirement := range []struct{ field, value string }{
+		{"token_endpoint_auth_methods_supported", "client_secret_basic"},
+		{"code_challenge_methods_supported", "S256"},
+		{"grant_types_supported", "authorization_code"},
+		{"response_types_supported", "code"},
+	} {
+		if raw, ok := fields[requirement.field]; ok {
+			values, err := boundedStrings(raw, 64, 128)
+			if err != nil {
+				return metadata{}, err
+			}
+			browser = browser && slices.Contains(values, requirement.value)
+		}
+	}
+	return metadata{issuer: got, authorization: auth, token: token, jwksURL: keys, algorithms: accepted, browser: browser}, nil
 }
 
 func (o *Owner) fetch(ctx context.Context, client *http.Client, url string, cache fetchCache, limit int) (fetchCache, bool, error) {

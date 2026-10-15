@@ -91,6 +91,7 @@ type Owner struct {
 }
 
 type snapshot struct {
+	browser             *browserSnapshot
 	desiredID, identity string
 	revision            uint64
 	desiredRevision     uint64

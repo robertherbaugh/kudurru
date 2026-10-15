@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
@@ -25,7 +26,10 @@ type Dependencies struct {
 	Host     *config.Config
 	Catalog  CatalogResource
 	Auth     servingauth.Dependencies
-	Keys     *dnsserver.StaticKeyring
+	// Browser selects an exchange capability from this same retained provider
+	// cut. Nil denies browser login; it never triggers live provider acquisition.
+	Browser func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	Keys    *dnsserver.StaticKeyring
 	// KeyringIdentity names the local installation that supplied Keys, from the
 	// same KeyringCut. Equal key bytes after replacement do not reuse this ID.
 	KeyringIdentity string

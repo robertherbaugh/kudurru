@@ -69,6 +69,9 @@ func (h *servingHTTP) status(w http.ResponseWriter, r *http.Request) error {
 	// Browser capabilities are explicit. A verifier alone is not a login route.
 	if h.opts.ProviderHandler != nil {
 		for _, p := range h.providerInfos(v) {
+			if _, _, err := h.capturedBrowser(r.Context(), p.ID); err != nil {
+				continue
+			}
 			out.Providers = append(out.Providers, api.AuthProvider{ID: p.ID, DisplayName: p.DisplayName})
 		}
 	}

@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servingzones"
 )
 
@@ -38,6 +40,7 @@ type RuntimeOwner struct {
 	keys            *dnsserver.StaticKeyring
 	keyringIdentity string
 	current         func() bool
+	browser         func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
 }
 
 // Primary returns an immutable owner for exact publication acknowledgment.
@@ -55,6 +58,21 @@ func (r *RuntimeOwner) NotifyKeys() (string, *dnsserver.StaticKeyring, func() bo
 		return "", nil, nil
 	}
 	return r.keyringIdentity, r.keys, r.current
+}
+
+// Browser selects only this complete owner's provider capability and binds its
+// currency to every captured dependency. The caller must retain the containing
+// HTTP lease through use. Exchange runs outside guards; this is not admission
+// to a writer command and cannot capture a newer provider installation.
+func (r *RuntimeOwner) Browser(ref servingauth.ProviderRef, resourceID string) (*providerresources.Browser, error) {
+	if r == nil || r.browser == nil || r.current == nil || !r.current() {
+		return nil, serving.ErrDependency
+	}
+	b, err := r.browser(ref, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	return b.BindCurrent(r.current)
 }
 
 // Prepare implements serving.PrepareFunc. The returned resource references
@@ -130,7 +148,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current}, deps.Release),
+		component("runtime", &RuntimeOwner{primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, current: deps.Current, browser: deps.Browser}, deps.Release),
 	}
 	// List content and pure auth policy have exact owner identities in addition
 	// to the captured host dependency revision and canonical image identity.

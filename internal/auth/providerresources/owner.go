@@ -254,7 +254,7 @@ func unavailable(s servingauth.ProviderDescriptor, d Desired, reason string) ser
 }
 func (o *Owner) install(entries []entry) {
 	o.revision++
-	s := &snapshot{desiredID: o.desiredID, desiredRevision: o.desiredRevision, revision: o.revision, entries: entries, observed: o.opts.Now()}
+	s := &snapshot{browser: captureBrowser(o.desired), desiredID: o.desiredID, desiredRevision: o.desiredRevision, revision: o.revision, entries: entries, observed: o.opts.Now()}
 	ids := []string{}
 	for _, e := range entries {
 		identity, _ := servingauth.ProviderResourceIdentity(e.descriptor, e.resource)
