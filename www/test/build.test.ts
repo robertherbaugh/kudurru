@@ -12,11 +12,12 @@ import { headersFile } from "../src/headers.ts";
 
 let out: string;
 const pages: Record<string, string> = {};
+const PAGE_PATHS = ["index.html", "404.html", "enterprise/index.html", "license/index.html", "license/text/index.html", "licenses/index.html"];
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "www-build-"));
   await build({ outDir: out, version: "9.8.7" });
-  for (const name of ["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"]) {
+  for (const name of PAGE_PATHS) {
     pages[name] = await readFile(join(out, name), "utf8");
   }
 });
@@ -25,7 +26,7 @@ afterAll(() => rm(out, { recursive: true, force: true }));
 
 const attrs = (page: string, attr: string) => [...page.matchAll(new RegExp(`\\s${attr}="([^"]*)"`, "g"))].map((m) => m[1]!);
 
-describe.each(["index.html", "404.html", "license/index.html", "license/text/index.html", "licenses/index.html"])("%s", (name) => {
+describe.each(PAGE_PATHS)("%s", (name) => {
   test("no inline scripts, styles or event handlers", () => {
     const page = pages[name]!;
     for (const tag of page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -49,12 +50,12 @@ describe.each(["index.html", "404.html", "license/index.html", "license/text/ind
     }
   });
 
-  test("fragment links have targets on the home page", () => {
+  test("fragment links have targets on their page or the home page", () => {
     const home = pages["index.html"]!;
-    const ids = new Set(attrs(home, "id"));
     for (const ref of attrs(pages[name]!, "href").filter((r) => r.includes("#"))) {
       const [path, frag] = ref.split("#");
       if (path !== "" && path !== "/") continue;
+      const ids = new Set(attrs(path === "" ? pages[name]! : home, "id"));
       expect(ids.has(frag!)).toBe(true);
     }
   });
@@ -109,6 +110,47 @@ test("fonts are separate hashed files, not data URLs", async () => {
   const fonts = [...text.matchAll(/url\((\/assets\/[^)]+\.woff2)\)/g)].map((m) => m[1]!);
   expect(fonts.length).toBe(3);
   for (const f of fonts) expect((await stat(join(out, f))).size).toBeGreaterThan(10_000);
+});
+
+describe("the enterprise page", () => {
+  test("is linked from the nav and footer of every page and listed in the sitemap", async () => {
+    for (const name of PAGE_PATHS) {
+      const page = pages[name]!;
+      const nav = /<nav id="site-nav"[^>]*>([\s\S]*?)<\/nav>/.exec(page)?.[1] ?? "";
+      const footer = /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(page)?.[1] ?? "";
+      expect(attrs(nav, "href")).toContain("/enterprise/");
+      expect(attrs(footer, "href")).toContain("/enterprise/");
+    }
+    expect(await readFile(join(out, "sitemap.xml"), "utf8")).toContain("<loc>https://kudurru.io/enterprise/</loc>");
+  });
+
+  test("marks both proposed fees TBD, says pricing is not final and publishes no amounts", () => {
+    const page = pages["enterprise/index.html"]!;
+    expect(page).toContain("Proposed pricing · not final");
+    expect(page).toMatch(/<dt>Platform fee<\/dt><dd>TBD\b/);
+    expect(page).toMatch(/<dt>Per-node fee<\/dt><dd>TBD\b/);
+    expect(page).toContain("All amounts are placeholders.");
+    expect(page).not.toMatch(/\$\s?\d/);
+  });
+
+  test("offers an email contact for discussing an enterprise deployment", () => {
+    expect(attrs(pages["enterprise/index.html"]!, "href")).toContain("mailto:hello@kudurru.io?subject=kudurru%20Enterprise");
+  });
+
+  test("its documentation links point to existing repository sources", async () => {
+    const main = /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(pages["enterprise/index.html"]!)?.[1] ?? "";
+    const links = new Set(attrs(main, "href").filter((href) => href.startsWith(`${DOCS_URL}/`)));
+    expect(links.size).toBeGreaterThan(0);
+    // Hugo mounts this agreement from the repository root (site/hugo.yaml).
+    const mountedSources: Record<string, string> = {
+      "/project/commercial-license/": "COMMERCIAL_LICENSE_AGREEMENT.md",
+    };
+    for (const href of links) {
+      const path = new URL(href).pathname;
+      const source = mountedSources[path] ?? `docs${path.replace(/\/$/, "")}.md`;
+      expect((await stat(join(import.meta.dir, "../..", source))).isFile()).toBe(true);
+    }
+  });
 });
 
 describe("the license page", () => {

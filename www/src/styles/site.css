@@ -1657,6 +1657,124 @@ main,
   color: var(--fg-2);
 }
 
+/* Enterprise: the proposed fees sit beside the introduction, followed by
+   capabilities and the same two-column reading layout as the license. */
+.enterprise-intro,
+.enterprise-section {
+  overflow-x: clip;
+}
+.enterprise-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(32px, 6vw, 88px);
+  align-items: start;
+}
+.enterprise-intro .page-title {
+  margin-top: 24px;
+  font-size: clamp(2.5rem, 4.6vw, 4rem);
+}
+.enterprise-summary {
+  margin-top: 20px;
+  max-width: 58ch;
+  color: var(--fg-2);
+}
+.enterprise-hero .actions {
+  margin-top: 28px;
+}
+.enterprise-contact p:not(.label) {
+  margin-top: 20px;
+  max-width: 58ch;
+}
+.enterprise-pricing {
+  padding: clamp(24px, 3vw, 40px);
+  background: var(--ink-2);
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--clay);
+}
+.enterprise-pricing .label,
+.enterprise-number {
+  color: var(--clay-hi);
+}
+.enterprise-pricing h2,
+.enterprise-section .lic-row h2 {
+  font-size: clamp(1.625rem, 2.6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.enterprise-pricing h2 {
+  margin-top: 20px;
+}
+.enterprise-pricing > p:not(.label) {
+  margin-top: 20px;
+  color: var(--fg-2);
+}
+.enterprise-fees {
+  margin-top: 28px;
+}
+.enterprise-fees > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding-block: 18px;
+  border-top: 1px solid var(--line);
+}
+.enterprise-fees dt {
+  font-size: 14px;
+}
+.enterprise-fees dd {
+  text-align: right;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.enterprise-fees dd span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fg-2);
+}
+.enterprise-formula {
+  padding: 16px;
+  border-left: 2px solid var(--clay);
+  background: var(--ink-3);
+  font-size: clamp(11px, 1.15vw, 13px);
+}
+.enterprise-pricing > .more {
+  margin-top: 24px;
+}
+.enterprise-features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px 40px;
+  margin-top: 48px;
+}
+.enterprise-features article {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-2);
+}
+.enterprise-number {
+  font-size: 12px;
+}
+.enterprise-features h3 {
+  margin-top: 16px;
+  font-size: 21px;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+}
+.enterprise-features h3 + p {
+  margin-block: 12px 20px;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.enterprise-features .more {
+  margin-top: auto;
+}
+
 /* The license page (/license/). The intro keeps the narrow column; the
    sections below it span the wrap, as the table does. Their headings take
    the register heading step (.reg-body h3), below the page title: the home
@@ -1944,7 +2062,13 @@ html:not(.js) .licform {
   }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1080px) {
+  .enterprise-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .enterprise-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .menu-toggle {
     display: inline-flex;
   }
@@ -1989,6 +2113,9 @@ html:not(.js) .licform {
   .nav .gh {
     padding: 8px 14px;
   }
+}
+
+@media (max-width: 880px) {
   .sec-head,
   .register,
   .name-grid {
@@ -2044,6 +2171,10 @@ html:not(.js) .licform {
 }
 
 @media (max-width: 600px) {
+  .enterprise-features {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
   .rails {
     display: none;
   }

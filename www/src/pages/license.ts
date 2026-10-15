@@ -94,7 +94,7 @@ export function license(licenseApi: string): Html {
       <div class="lic-body">
         <p class="nojs-note">The form needs JavaScript. Without it, write to us:</p>
         <p><strong>A free personal/nonprofit key.</strong> Write to <a href="${mail("Free personal key")}">${LICENSE_CONTACT}</a> with the name to put on it and what you run it for. It covers up to ${LICENSE_FREE_NODES} nodes for eligible community use. Schools and research organizations must meet the Community License's nonprofit eligibility rules.</p>
-        <p><strong>A business, government or MSP.</strong> Write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the organization, the number of nodes and the features you need. The ${external(docs("/project/commercial-license/"), "commercial agreement")} requires an accepted Order Form. A Commercial Core purchase does not automatically include enterprise modules; those must be authorized by the Order Form.</p>
+        <p><strong>A business, government or MSP.</strong> See <a href="/enterprise/">Enterprise features and proposed pricing</a>, or write to <a href="${mail("kudurru commercial license")}">${LICENSE_CONTACT}</a> with the organization, the number of nodes and the features you need. The ${external(docs("/project/commercial-license/"), "commercial agreement")} requires an accepted Order Form. A Commercial Core purchase does not automatically include enterprise modules; those must be authorized by the Order Form.</p>
       </div>
     </div>
     <div class="lic-row">

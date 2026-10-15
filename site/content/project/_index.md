@@ -12,6 +12,7 @@ hideChildren: true
   the seams and the decision log.
 - [Licensing](/project/licensing/): what is free, what a license key
   unlocks and what a missing key changes.
+- [Enterprise](/enterprise/): features, proposed pricing and how to count nodes.
 - [License](/project/license/): the Kudurru Community License.
 - [Commercial agreement](/project/commercial-license/): terms and Order Form for business and government production use.
 - Folder notices: [enterprise](/project/enterprise-license/),

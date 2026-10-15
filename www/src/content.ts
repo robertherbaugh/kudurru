@@ -29,6 +29,42 @@ export const LICENSE_REQUIRED_NOTICE = "Required Notice: Copyright 2026 Robert H
 // seeds (internal/license CommunityPolicies). A key lifts the limit.
 export const LICENSE_FREE_POLICIES = 1;
 
+// Enterprise overview: keep the feature and pricing summary in step with
+// docs/enterprise.md. Pricing is a proposal, not an offer or published rate.
+export const ENTERPRISE_CONTACT_URL = `mailto:${LICENSE_CONTACT}?subject=${encodeURIComponent("kudurru Enterprise")}`;
+export const ENTERPRISE_FEATURES = [
+  {
+    title: "Identity and access",
+    body: "OIDC single sign-on, role bindings, zone-scoped roles and Kubernetes RBAC. Give each person and service the permissions they need.",
+    href: "/guide/admin/09-people-and-tokens/",
+  },
+  {
+    title: "An audit trail you can export",
+    body: "Review stored events, see who changed what, and export the audit trail for your own review and retention workflows.",
+    href: "/architecture/observability/#audit",
+  },
+  {
+    title: "Statistics beyond 24 hours",
+    body: "Use long-term rollups to review DNS activity over weeks and months without retaining every individual query.",
+    href: "/guide/admin/03-watch-the-network/",
+  },
+  {
+    title: "Policies for different teams",
+    body: "Create policies beyond the default for client groups and schedules. Let users request access from the block page and review those requests in the dashboard.",
+    href: "/guide/admin/05-groups-clients-policies/",
+  },
+  {
+    title: "An edge with a floating IP",
+    body: "Use the kudurru supervisors for dnsdist load balancing and keepalived virtual IP failover. See backend health and VIP ownership alongside your nodes.",
+    href: "/deploy/compose-ha/",
+  },
+  {
+    title: "DNS records from Kubernetes",
+    body: "Connect external-dns through the webhook provider to manage DNSRecordSet objects. Cloudflare and UniFi integrations remain on the roadmap.",
+    href: "/architecture/configuration-and-store/",
+  },
+] as const;
+
 export interface LicenseRow {
   what: string;
   community: string;
@@ -70,6 +106,7 @@ export const NAV: NavLink[] = [
   { label: "Deploy", href: "#deploy" },
   { label: "Roadmap", href: "#roadmap" },
   // A page of its own: not prefixed with the home page path like the anchors.
+  { label: "Enterprise", href: "/enterprise/" },
   { label: "License", href: "/license/" },
 ];
 
@@ -611,6 +648,7 @@ export const FOOTER: { title: string; links: NavLink[] }[] = [
     title: "Project",
     links: [
       { label: "Source on GitHub", href: REPO_URL },
+      { label: "Enterprise", href: "/enterprise/" },
       { label: "License and keys", href: "/license/" },
       { label: "Releases", href: `${REPO_URL}/releases` },
       { label: "Changelog", href: docs("/project/changelog/") },

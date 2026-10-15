@@ -65,6 +65,7 @@ menus:
     - {name: Migrate, pageRef: /migrate, weight: 30}
     - {name: Reference, pageRef: /reference, weight: 40}
     - {name: Architecture, pageRef: /architecture, weight: 50}
+    - {name: Enterprise, pageRef: /enterprise, weight: 60}
     - {name: Project, pageRef: /project, weight: 70}
 
 # Order of the mounted pages that carry no front matter of their own.
@@ -130,6 +131,7 @@ module:
     - {source: ../docs/guide/images, target: static/guide/images}
 
     # User and operator guides, runbooks.
+    - {source: ../docs/enterprise.md, target: content/enterprise.md}
     - {source: ../docs/deploy/README.md, target: content/deploy/_index.md}
     - {source: ../docs/deploy, target: content/deploy, files: ['! README.md']}
 
