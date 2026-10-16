@@ -158,7 +158,7 @@ func CheckTransition(current *zonekinds.ZoneState, e Expected, next *zonekinds.Z
 		}
 	} else if next.Spec.NotifySequence != current.Spec.NotifySequence || next.Spec.NotifySerial != current.Spec.NotifySerial {
 		// Acknowledging durable notification intent is a metadata-only commit.
-		if next.Spec.NotifySequence != 0 || next.Spec.NotifySerial != 0 {
+		if (next.Spec.NotifySequence != 0 || next.Spec.NotifySerial != 0) && !exactNotifyRearm(current, next) {
 			return ErrInvalid
 		}
 	}

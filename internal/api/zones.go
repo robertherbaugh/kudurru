@@ -1147,6 +1147,9 @@ func (s *Server) exportZone(ctx context.Context, in *zonePathInput) (*exportOutp
 }
 
 func (s *Server) notifyZone(ctx context.Context, in *zonePathInput) (*notifyOutput, error) {
+	if s.opts.ZoneNotifyCommand != nil || s.opts.ZoneCommand != nil || s.opts.ObjectCommand != nil || s.opts.ZoneReads != nil {
+		return s.notifyZoneCommand(ctx, in)
+	}
 	z, err := s.zoneObject(ctx, in.Zone)
 	if err != nil {
 		return nil, err

@@ -41,7 +41,8 @@ type ZoneStateSpec struct {
 	RootDigest     string `json:"rootDigest"`
 	ContentHash    string `json:"contentHash"`
 	Lifecycle      string `json:"lifecycle"`
-	// NotifySequence records the data commit requiring coalesced delivery.
+	// NotifySequence records the data commit or explicit request requiring
+	// coalesced delivery of the committed serial.
 	// Root clears/acknowledges it through a later metadata CAS, never by
 	// changing the committed data or serial independently.
 	NotifySequence uint64 `json:"notifySequence,omitempty"`

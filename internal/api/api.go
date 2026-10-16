@@ -298,6 +298,8 @@ type Options struct {
 	ObjectCommand ObjectCommand
 	// ZoneCommand admits one complete current zone convenience operation.
 	ZoneCommand ZoneCommand
+	// ZoneNotifyCommand admits durable manual NOTIFY under current authority.
+	ZoneNotifyCommand ZoneNotifyCommand
 	// CrossOrigin shares the host's existing same-origin policy. Nil creates
 	// the default protection with no trusted-origin exceptions.
 	CrossOrigin *http.CrossOriginProtection

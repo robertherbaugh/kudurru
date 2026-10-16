@@ -43,13 +43,14 @@ type primaryRuntimeOptions struct {
 // mounts Update on the complete DNS chain and Run under the actual elector,
 // keeping the complete publisher always on. Construction performs no writes.
 type primaryRuntime struct {
-	writer      primaryWriter
-	publisher   *serving.Publisher
-	publication *servingbuild.PrimaryPublication
-	ingress     *primaryUpdateIngress
-	driver      *driver.Driver
-	runtime     *pr.Runtime
-	Update      pipeline.Next
+	writer       primaryWriter
+	publisher    *serving.Publisher
+	publication  *servingbuild.PrimaryPublication
+	ingress      *primaryUpdateIngress
+	driver       *driver.Driver
+	runtime      *pr.Runtime
+	notifyIntent func(context.Context, *sqlite.CommandTx, pr.PrimaryStatusObservation) (sqliteadapter.NotifyIntentResult, error)
+	Update       pipeline.Next
 }
 
 func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRuntime, error) {
@@ -79,6 +80,7 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 	if err != nil {
 		return nil, err
 	}
+	p.notifyIntent = adapter.RequestNotifyTx
 	backend, err := o.Store.ZoneStateBackend(o.Limits)
 	if err != nil {
 		return nil, err
