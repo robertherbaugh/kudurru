@@ -1,5 +1,5 @@
 // The least-privilege database roles (design spec §14; README "Database
-// roles"; deploy/postgres-roles.sql; migrations 0002 and 0003): a database
+// roles"; deploy/postgres-roles.sql; migrations 0002 to 0005): a database
 // owned by license_portal_owner, migrated by it, and every route of the
 // portal run through the real handlers connected as license_portal_app,
 // the only role a production container holds (automatic approval and the
@@ -36,11 +36,12 @@ function grantLines(sql: string): string[] {
 }
 
 describe('the grants', () => {
-  test('deploy/postgres-roles.sql repeats the grants of the migrations (0002, 0003), grant for grant', () => {
+  test('deploy/postgres-roles.sql repeats the grants of the migrations (0002 to 0005), grant for grant', () => {
     const migrations = MIGRATIONS.map((m) => m.sql).join('\n');
     const setup = readFileSync(join(import.meta.dir, '..', '..', 'deploy', 'postgres-roles.sql'), 'utf8');
     expect(grantLines(migrations).length).toBeGreaterThan(0);
     expect(grantLines(migrations)).toContain('grant select, insert, update, delete on request_approval_links to license_portal_app;');
+    expect(grantLines(migrations)).toContain('grant select, insert, update on business_requests to license_portal_app;');
     expect(grantLines(setup)).toEqual(grantLines(migrations));
   });
 });
@@ -172,6 +173,19 @@ describeDb('as license_portal_app', () => {
     const approved = await callJson(app, 'requestApprove', { as, params: { id: again.body.requestId! }, body: {} });
     expect(approved.status).toBe(200);
 
+    // Business requests: the form, the list, issuing from one and closing one.
+    const businessForm = (email: string) => ({ name: 'Biz Person', email, company: 'Roles Biz', edition: 'core', nodes: 5, details: '', website: '' });
+    for (const tag of ['issue', 'close']) expect((await callJson(app, 'publicBusinessRequest', { body: businessForm(`biz-${tag}-${process.pid}@roles.example`) })).status).toBe(202);
+    const business = await callJson(app, 'businessRequestsList', { as, query: { status: 'open' } });
+    expect(business.body.items).toHaveLength(2);
+    const [toIssue, toClose] = business.body.items.map((r) => r.id);
+    const fromRequest = await callJson(app, 'licenseIssue', {
+      as,
+      body: { newCustomer: { name: 'Roles Biz', kind: 'organization' }, licensee: 'Roles Biz', plan: 'business', nodes: 5, features: null, expiresOn: inDays(365), businessRequestId: toIssue! },
+    });
+    expect(fromRequest.status).toBe(200);
+    expect((await callJson(app, 'businessRequestClose', { as, params: { id: toClose! }, body: { note: 'done' } })).status).toBe(200);
+
     // Import a key signed by hand.
     expect((await callJson(app, 'licenseImport', { as, body: { token: GOLDEN_VECTORS[0]!.key, customerId } })).status).toBe(200);
 
@@ -180,6 +194,10 @@ describeDb('as license_portal_app', () => {
     ok((await callJson(app, 'userGet', { as: su, params: { id: admin.id } })).status);
     expect((await callJson(app, 'userUpdate', { as: su, params: { id: customer.id }, body: { grantedRoles: ['customer', 'license_admin'] } })).status).toBe(200);
     expect((await callJson(app, 'userRevokeSessions', { as: su, params: { id: customer.id } })).status).toBe(200);
+    const leaving = await createUser(appDb, { roles: ['customer'] });
+    await signInAs(appDb, leaving);
+    await appDb`insert into customer_members (customer_id, email, user_id, invited_by_label, linked_at) values (${customerId}, ${leaving.email!}, ${leaving.id}, 'test', now())`;
+    expect((await callJson(app, 'userDelete', { as: su, params: { id: leaving.id } })).status).toBe(204);
     ok((await callJson(app, 'auditList', { as: su })).status);
     expect((await callJson(app, 'system', { as: su })).status).toBe(200);
     expect((await callJson(app, 'authMe', { as: su })).status).toBe(200);
@@ -212,7 +230,7 @@ describeDb('as license_portal_app', () => {
     await denied(appDb`alter table audit_events disable trigger all`);
     await denied(appDb`delete from licenses`);
     await denied(appDb`delete from license_keys`);
-    await denied(appDb`delete from users`);
+    await denied(appDb`delete from business_requests`);
     await denied(appDb`insert into schema_migrations (version, name) values (999, 'intruder')`);
     await denied(appDb`truncate sessions`);
     await denied(appDb`drop table blocked_emails`);

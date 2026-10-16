@@ -378,6 +378,7 @@ describe("the key request form", () => {
     const page = pages["license/index.html"]!;
     expect(page).toContain("data-license-form");
     expect(page).toContain('data-endpoint="https://licenses.kudurru.io/api/v1/public/key-requests"');
+    expect(page).toContain('data-business-endpoint="https://licenses.kudurru.io/api/v1/public/business-requests"');
     expect(page).not.toMatch(/<form[^>]*\saction=/); // the CSP has form-action 'none'; submission is script-driven
     expect(pages["index.html"]).not.toContain("data-license-form");
   });
@@ -409,9 +410,10 @@ describe("the key request form", () => {
     expect(pages["license/index.html"]).toContain("After you confirm, we review the request and email your key once it is approved.");
   });
 
-  test("says where a business request goes", () => {
+  test("says where a business request goes, and the email it falls back to", () => {
     const page = pages["license/index.html"]!;
-    expect(page).toContain("opens an email to hello@kudurru.io with the subject Business License");
+    expect(page).toContain("A business request goes to the same server: we email you that we have it, and reply by email.");
+    expect(page).toContain("the form opens an email to hello@kudurru.io with the subject Business License");
   });
 
   test("the headers file lets only the form's origin through connect-src", async () => {
@@ -423,7 +425,9 @@ describe("the key request form", () => {
     const dir = await mkdtemp(join(tmpdir(), "www-api-"));
     try {
       await build({ outDir: dir, version: "9.8.7", licenseApi: "https://licenses.example.org" });
-      expect(await readFile(join(dir, "license/index.html"), "utf8")).toContain('data-endpoint="https://licenses.example.org/api/v1/public/key-requests"');
+      const page = await readFile(join(dir, "license/index.html"), "utf8");
+      expect(page).toContain('data-endpoint="https://licenses.example.org/api/v1/public/key-requests"');
+      expect(page).toContain('data-business-endpoint="https://licenses.example.org/api/v1/public/business-requests"');
       expect(await readFile(join(dir, "_headers"), "utf8")).toContain("connect-src 'self' https://licenses.example.org;");
       await expect(build({ outDir: dir, version: "9.8.7", licenseApi: "not a url" })).rejects.toThrow();
     } finally {

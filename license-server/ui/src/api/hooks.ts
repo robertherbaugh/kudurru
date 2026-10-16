@@ -6,7 +6,7 @@
 // catalog and the sign-in config), which keeps lists, detail pages, counts
 // and the audit trail in step without a hand-kept invalidation map.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import type { AuditQuery, CustomerListQuery, LicenseListQuery, RequestListQuery, ResponseOf, UserListQuery } from '@shared/api';
+import type { AuditQuery, BusinessRequestListQuery, CustomerListQuery, LicenseListQuery, RequestListQuery, ResponseOf, UserListQuery } from '@shared/api';
 import type { RouteId } from '@shared/routes';
 import type { ApiClient, CallArgs } from './client';
 import { SESSION_KEY, useApi, useCan } from './context';
@@ -121,10 +121,17 @@ export function useRequests(query: RequestListQuery) {
   return useRouteQuery('requestsList', { query });
 }
 
-/** The number of open requests for the navigation badge; nothing is asked without requests.read. */
-export function useOpenRequestCount() {
+export function useBusinessRequests(query: BusinessRequestListQuery) {
+  return useRouteQuery('businessRequestsList', { query });
+}
+
+/** The number of open requests, personal and business, for the navigation badge; nothing is asked without requests.read. */
+export function useOpenRequestCount(): number {
   const can = useCan();
-  return useRouteQuery('requestsList', { query: { status: 'open' } }, { enabled: can('requests.read'), refetchInterval: 60_000 });
+  const opts = { enabled: can('requests.read'), refetchInterval: 60_000 };
+  const personal = useRouteQuery('requestsList', { query: { status: 'open' } }, opts);
+  const business = useRouteQuery('businessRequestsList', { query: { status: 'open' } }, opts);
+  return (personal.data?.items.length ?? 0) + (business.data?.items.length ?? 0);
 }
 
 export function useBlockedEmails(enabled = true) {

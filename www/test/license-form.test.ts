@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  BUSINESS_SENT,
   BUSINESS_SUBJECT,
   businessBody,
+  businessPayload,
+  businessURL,
   mailto,
   personalPayload,
   requestURL,
+  sendBusiness,
   sendPersonal,
   validate,
   type Fields,
@@ -127,6 +131,40 @@ describe("the personal request", () => {
 });
 
 describe("the business request", () => {
+  test("sends the server's fields: nodes as a number, details trimmed", () => {
+    expect(businessPayload({ ...business, name: " Ada Admin ", company: " Example GmbH ", use: "  OIDC  " })).toEqual({
+      name: "Ada Admin", email: "ada@example.com", company: "Example GmbH", edition: "enterprise", nodes: 12, details: "OIDC", website: "",
+    });
+  });
+
+  test("posts to the server's business path below its origin", () => {
+    expect(businessURL("https://licenses.kudurru.io/")).toBe("https://licenses.kudurru.io/api/v1/public/business-requests");
+  });
+
+  test("a 202 says we have it and reply by email", async () => {
+    let sent: { url: string; init: RequestInit } | undefined;
+    const f = (async (url: string, init: RequestInit) => {
+      sent = { url, init };
+      return new Response(JSON.stringify({ status: "sent" }), { status: 202 });
+    }) as unknown as typeof fetch;
+    const out = await sendBusiness("https://licenses.kudurru.io/api/v1/public/business-requests", business, f);
+    expect(out).toEqual({ ok: true, message: BUSINESS_SENT });
+    expect(sent?.url).toBe("https://licenses.kudurru.io/api/v1/public/business-requests");
+    expect(sent?.init.credentials).toBe("omit");
+    expect(JSON.parse(String(sent?.init.body))).toEqual(businessPayload(business));
+  });
+
+  test("a 400 names the business fields the server refused", async () => {
+    const out = await sendBusiness("u", business, reply(400, { error: { key: "invalid", message: "check them", fields: ["company", "nodes"] } }));
+    expect(out.message).toContain("the business name, the number of nodes");
+  });
+
+  test("a server that is down or unreachable falls back to email", async () => {
+    for (const f of [reply(503, { error: { key: "unavailable" } }), reply(500), (async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch]) {
+      expect(await sendBusiness("u", business, f)).toMatchObject({ ok: false, fallback: true });
+    }
+  });
+
   test("puts every field in the mail body, nothing else", () => {
     expect(businessBody(business)).toBe(
       "Name: Ada Admin\nBusiness: Example GmbH\nEmail: ada@example.com\nEdition: Enterprise\nNodes: 12\n\nDetails:\nOIDC and the audit trail, by January",

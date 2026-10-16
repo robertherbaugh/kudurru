@@ -4,7 +4,7 @@
 // features, license states and roles are labeled in shared/catalog.ts and
 // shared/permissions.ts; this file only adds what those leave out, so a
 // page never prints a raw enum value.
-import type { AuditAction, AuditTargetType, CustomerKind, KeyReason, LicenseSource, MemberStatus, PersonalOutcome, RequestSource, RequestStatus, ReviewReason } from '@shared/api';
+import type { AuditAction, AuditTargetType, BusinessRequestStatus, CustomerKind, KeyReason, LicenseSource, MemberStatus, PersonalOutcome, RequestSource, RequestStatus, ReviewReason } from '@shared/api';
 import { BUSINESS_CONTACT } from '@shared/catalog';
 
 /** The product name everywhere (design spec: never "license server"). */
@@ -33,6 +33,8 @@ export const KEY_REASON_LABEL: Record<KeyReason, string> = { issue: 'Issued', re
 export const MEMBER_STATUS_LABEL: Record<MemberStatus, string> = { invited: 'Invited', linked: 'Linked' };
 
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = { open: 'Open', approved: 'Approved', rejected: 'Rejected', canceled: 'Canceled' };
+
+export const BUSINESS_REQUEST_STATUS_LABEL: Record<BusinessRequestStatus, string> = { open: 'Open', issued: 'Issued', closed: 'Closed' };
 
 export const REQUEST_SOURCE_LABEL: Record<RequestSource, string> = { web: 'kudurru.io form', portal: 'Portal' };
 
@@ -82,6 +84,7 @@ export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'user.disabled',
   'user.enabled',
   'user.sessions_revoked',
+  'user.deleted',
   'customer.created',
   'customer.updated',
   'member.added',
@@ -102,6 +105,9 @@ export const AUDIT_ACTIONS: readonly AuditAction[] = [
   'request.canceled',
   'public_request.received',
   'public_request.confirmed',
+  'business_request.received',
+  'business_request.issued',
+  'business_request.closed',
   'blocklist.added',
   'blocklist.removed',
 ];
@@ -112,6 +118,7 @@ export const TARGET_LABEL: Record<AuditTargetType, string> = {
   license: 'License',
   request: 'Request',
   public_request: 'Public request',
+  business_request: 'Business request',
   blocked_email: 'Blocked email',
 };
 
@@ -124,6 +131,8 @@ export function targetHref(type: AuditTargetType, id: string): string | null {
       return `/customers/${encodeURIComponent(id)}`;
     case 'license':
       return `/licenses/${encodeURIComponent(id)}`;
+    case 'business_request':
+      return '/requests?tab=business';
     default:
       return null;
   }

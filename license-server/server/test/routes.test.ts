@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { ROUTE_TYPES_COMPLETE } from '../../shared/api';
 import { isPermission, permissionsFor, ROLE_PERMISSIONS, effectiveRoles, hasPermission } from '../../shared/permissions';
-import { API_PREFIX, buildPath, ROUTE_LIST } from '../../shared/routes';
+import { API_PREFIX, buildPath, ROUTE_LIST, type RouteId } from '../../shared/routes';
 
 describe('ROUTES', () => {
   test('one route per method and path, every path under /api/v1 or a health path', () => {
@@ -18,9 +18,10 @@ describe('ROUTES', () => {
     expect(ROUTE_TYPES_COMPLETE).toBe(true);
   });
 
-  test('only the kudurru.io form is public, with CORS and a preflight', () => {
-    expect(ROUTE_LIST.filter((r) => r.access === 'public').map((r) => r.id)).toEqual(['publicKeyRequest']);
-    expect(ROUTE_LIST.filter((r) => r.cors || r.preflight || r.badBody).map((r) => r.id)).toEqual(['publicKeyRequest']);
+  test('only the kudurru.io form (personal and business) is public, with CORS and a preflight', () => {
+    const form: RouteId[] = ['publicKeyRequest', 'publicBusinessRequest'];
+    expect(ROUTE_LIST.filter((r) => r.access === 'public').map((r) => r.id)).toEqual(form);
+    expect(ROUTE_LIST.filter((r) => r.cors || r.preflight || r.badBody).map((r) => r.id)).toEqual(form);
   });
 
   test('buildPath', () => {

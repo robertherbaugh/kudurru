@@ -7,7 +7,7 @@
 // (no address, or mail not configured).
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderApp } from '../test/render';
-import { adminMe, catalog, customerMe, openRequest, superMe, systemInfo } from '../dev/fixtures';
+import { adminMe, catalog, customerMe, openBusinessRequest, openRequest, superMe, systemInfo } from '../dev/fixtures';
 import { DEV_BANNER } from '../lib/words';
 
 function navLinks(): string[] {
@@ -27,25 +27,32 @@ test('a customer sees their own licenses and downloads in the navigation', async
   for (const hidden of ['Licenses', 'Customers', 'Requests', 'Users', 'Audit', 'System']) expect(links).not.toContain(hidden);
 });
 
-test('a license admin sees Licensing and Administration, with the open request count', async () => {
+test('a license admin sees Licensing and Administration, with the open request count (personal and business)', async () => {
   const { api } = renderApp({
     route: '/my/licenses',
     me: adminMe,
-    handlers: { myLicenses: () => ({ items: [] }), myRequests: () => ({ items: [] }), requestsList: () => ({ items: [openRequest] }) },
+    handlers: {
+      myLicenses: () => ({ items: [] }),
+      myRequests: () => ({ items: [] }),
+      requestsList: () => ({ items: [openRequest] }),
+      businessRequestsList: () => ({ items: [openBusinessRequest] }),
+    },
   });
   await screen.findByRole('heading', { level: 1, name: 'My licenses' });
   await waitFor(() => expect(api.callsTo('requestsList')).toHaveLength(1));
   expect(api.callsTo('requestsList')[0]?.query.get('status')).toBe('open');
+  expect(api.callsTo('businessRequestsList')[0]?.query.get('status')).toBe('open');
   const links = navLinks();
   for (const shown of ['My licenses', 'Downloads', 'Licenses', 'Customers', 'Requests', 'Users', 'Audit', 'System']) expect(links).toContain(shown);
   const requests = screen.getByRole('link', { name: /^Requests/ });
-  await waitFor(() => expect(requests).toHaveTextContent('1'));
+  await waitFor(() => expect(requests).toHaveTextContent('2'));
 });
 
 test('a customer does not ask for the open request count', async () => {
   const { api } = renderApp({ route: '/my/licenses', me: customerMe, handlers: { myLicenses: () => ({ items: [] }), myRequests: () => ({ items: [] }) } });
   await screen.findByRole('heading', { level: 1, name: 'My licenses' });
   expect(api.callsTo('requestsList')).toHaveLength(0);
+  expect(api.callsTo('businessRequestsList')).toHaveLength(0);
 });
 
 test('a page outside the roles says so and asks the API nothing for it', async () => {

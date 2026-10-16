@@ -2,7 +2,8 @@
 // (src/http.ts).
 
 import { describe, expect, test } from 'bun:test';
-import { forContainer, fromPlatform, httpsRedirect, PUBLIC_FORM_PATH, unavailable, type Settings } from '../src/http';
+import { ROUTE_LIST } from '../../shared/routes';
+import { forContainer, fromPlatform, httpsRedirect, PUBLIC_BUSINESS_FORM_PATH, PUBLIC_FORM_PATH, PUBLIC_FORM_PATHS, unavailable, type Settings } from '../src/http';
 
 const PROD: Settings = { publicUrl: 'https://licenses.kudurru.io', formOrigins: 'https://kudurru.io' };
 
@@ -98,8 +99,8 @@ describe('unavailable', () => {
     expect(await head.text()).toBe('');
   });
 
-  test('lets kudurru.io read the public form answer', async () => {
-    const url = `https://licenses.kudurru.io${PUBLIC_FORM_PATH}`;
+  test.each([PUBLIC_FORM_PATH, PUBLIC_BUSINESS_FORM_PATH])('lets kudurru.io read the public form answer (%s)', async (path) => {
+    const url = `https://licenses.kudurru.io${path}`;
     const post = unavailable(new Request(url, { method: 'POST', headers: { Origin: 'https://kudurru.io' } }), PROD);
     expect(post.status).toBe(503);
     expect(post.headers.get('access-control-allow-origin')).toBe('https://kudurru.io');
@@ -111,6 +112,10 @@ describe('unavailable', () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-methods')).toBe('POST, OPTIONS');
     expect(preflight.headers.get('access-control-allow-headers')).toBe('Content-Type, Accept');
+  });
+
+  test('knows every cross-origin route of the server', () => {
+    expect([...PUBLIC_FORM_PATHS].sort()).toEqual(ROUTE_LIST.filter((r) => r.cors === 'publicForm').map((r) => r.path).sort());
   });
 
   test('gives other origins no CORS headers', () => {

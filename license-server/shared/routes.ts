@@ -83,6 +83,16 @@ export const ROUTES = {
     badBody: 'invalid',
   },
   publicKeyRequestVerify: { method: 'POST', path: '/api/v1/public/key-requests/verify', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
+  // The form's business requests: stored at once, no confirmation link (nothing is signed until an admin issues).
+  publicBusinessRequest: {
+    method: 'POST',
+    path: '/api/v1/public/business-requests',
+    access: 'public',
+    bodyLimit: PUBLIC_BODY_LIMIT,
+    cors: 'publicForm',
+    preflight: true,
+    badBody: 'invalid',
+  },
   // The one-click approval link of an admin's mail (/approve?token=): no session, the token is the credential.
   approvalPreview: { method: 'POST', path: '/api/v1/public/approvals/preview', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
   approvalDecide: { method: 'POST', path: '/api/v1/public/approvals/decide', access: 'anonymous', bodyLimit: PUBLIC_BODY_LIMIT },
@@ -124,18 +134,21 @@ export const ROUTES = {
   licenseWithdraw: { method: 'POST', path: '/api/v1/licenses/:id/withdraw', access: 'licenses.withdraw' },
   licenseEmail: { method: 'POST', path: '/api/v1/licenses/:id/email', access: 'licenses.issue' },
 
-  // Personal key requests that wait for review, and the blocklist.
+  // Personal key requests that wait for review, business requests, and the blocklist.
   requestsList: { method: 'GET', path: '/api/v1/requests', access: 'requests.read' },
   requestApprove: { method: 'POST', path: '/api/v1/requests/:id/approve', access: 'requests.decide' },
   requestReject: { method: 'POST', path: '/api/v1/requests/:id/reject', access: 'requests.decide' },
   blockedEmailsList: { method: 'GET', path: '/api/v1/blocked-emails', access: 'blocklist.read' },
   blockedEmailRemove: { method: 'DELETE', path: '/api/v1/blocked-emails/:email', access: 'blocklist.write' },
+  businessRequestsList: { method: 'GET', path: '/api/v1/business-requests', access: 'requests.read' },
+  businessRequestClose: { method: 'POST', path: '/api/v1/business-requests/:id/close', access: 'requests.decide' },
 
   // Users, the audit log and the System page.
   usersList: { method: 'GET', path: '/api/v1/users', access: 'users.read' },
   userGet: { method: 'GET', path: '/api/v1/users/:id', access: 'users.read' },
   userUpdate: { method: 'PATCH', path: '/api/v1/users/:id', access: 'users.write' },
   userRevokeSessions: { method: 'POST', path: '/api/v1/users/:id/revoke-sessions', access: 'users.write' },
+  userDelete: { method: 'DELETE', path: '/api/v1/users/:id', access: 'users.write' },
   auditList: { method: 'GET', path: '/api/v1/audit', access: 'audit.read' },
   system: { method: 'GET', path: '/api/v1/system', access: 'system.read' },
 } as const satisfies Record<string, RouteSpec>;

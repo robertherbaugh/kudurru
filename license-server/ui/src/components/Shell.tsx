@@ -38,8 +38,7 @@ function Brand() {
 }
 
 function RequestsBadge() {
-  const q = useOpenRequestCount();
-  const n = q.data?.items.length ?? 0;
+  const n = useOpenRequestCount();
   return n > 0 ? <Badge variant="info" label={String(n)} /> : null;
 }
 

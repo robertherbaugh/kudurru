@@ -116,10 +116,16 @@ sent from the visitor's browser to the license server
 empty honeypot `website`; the server emails a confirmation link; after the
 visitor confirms, an administrator approves the request and the server emails
 the key; a `202` is the answer to any valid request). A **business or other**
-request is never sent to a server: the browser opens a mail to
-`hello@kudurru.io` with the subject `Business License` and the name, business,
-email, edition (Commercial Core or Enterprise), number of nodes and details
-in the body, and shows the same text to copy if no mail program opens.
+request goes to the license server too (`POST
+<origin>/api/v1/public/business-requests` with `name`, `email`, `company`,
+`edition` (`core` or `enterprise`), `nodes`, `details` and the honeypot
+`website`): the server stores it for the license admins (the portal's
+Requests page, Business), emails the visitor that it arrived and replies by
+email later; a `202` is the answer to any valid request. When the server
+cannot be reached or answers `503` (or another unexpected status), the
+browser opens a mail to `hello@kudurru.io` with the subject `Business
+License` and every field in the body instead, and shows the same text to
+copy if no mail program opens.
 
 The license server's origin is `https://licenses.kudurru.io` unless
 `WWW_LICENSE_API` names another one at build time (set it in the Cloudflare
@@ -129,8 +135,9 @@ build variables). Three things must agree with it:
   writes it into `_headers`; the build fails on a malformed URL);
 - the server's CORS list (`PUBLIC_FORM_ORIGINS`) contains `https://kudurru.io`
   and exposes `Retry-After`;
-- the server's limits are the form's (name 200, email 254, use 1000
-  characters), kept in `src/client/license.ts`.
+- the server's limits are the form's (name 200, email 254, use 1000,
+  business 160 and details 1500 characters, 1 to 10000 nodes), kept in
+  `src/client/license.ts`.
 
 ## How Cloudflare serves it
 

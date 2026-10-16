@@ -11,6 +11,7 @@ import { hasBody, q, readJson, v } from '../http/body';
 import { HttpError, json, keyFile } from '../http/errors';
 import type { PartialHandlerMap } from '../http/types';
 import { licenseeField } from '../licensing/claims';
+import { lockOpenBusinessRequest, markBusinessRequestIssued } from '../services/businessRequests';
 import {
   changeLicense,
   downloadLicenseKey,
@@ -43,6 +44,7 @@ const IssueShape = v.object({
   agreementRef: v.optional(v.string({ max: 200, trim: true })),
   notes: v.optional(notesField),
   emailCustomer: v.optional(v.bool()),
+  businessRequestId: v.optional(v.id('businessRequest')),
 });
 
 const ImportShape = v.object({
@@ -96,7 +98,10 @@ export const licenseHandlers: PartialHandlerMap = {
       throw new HttpError(400, 'invalid', 'Choose an existing customer or a new one, not both.', { fields: ['customerId', 'newCustomer'] });
     }
     const detail = await inTransaction(ctx, actorFromCtx(ctx), async (s) => {
+      // From a business request: it must still be open, and becomes issued with the license.
+      if (body.businessRequestId) await lockOpenBusinessRequest(s, body.businessRequestId);
       const id = await issueLicense(s, body);
+      if (body.businessRequestId) await markBusinessRequestIssued(s, body.businessRequestId, id);
       return licenseDetail(s.tx, id, s.now, s.signing);
     });
     return json<ResponseOf<'licenseIssue'>>(detail);
