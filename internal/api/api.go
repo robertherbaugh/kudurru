@@ -282,6 +282,9 @@ type Options struct {
 	// ObjectReads replaces generic object GETs with original complete-cut reads.
 	// Nil preserves the legacy store-backed paths, including Kubernetes.
 	ObjectReads ObjectReadSource
+	// SourceBodyReads opens exact captured source receipts for entries GETs.
+	// Complete mode requires ObjectReads too; neither path uses live fallback.
+	SourceBodyReads SourceBodyReadSource
 	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
 	// Complete mode also requires CanonicalSettings and Catalogue.Read.
 	PolicyListReads PolicyListReadSource

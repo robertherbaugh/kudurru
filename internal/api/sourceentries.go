@@ -219,6 +219,9 @@ func (ex excludeSet) stale() []string {
 }
 
 func (s *Server) listSourceEntries(ctx context.Context, in *sourceEntriesInput) (*sourceEntriesOutput, error) {
+	if s.opts.ObjectReads != nil || s.opts.SourceBodyReads != nil {
+		return s.listCapturedSourceEntries(ctx, in)
+	}
 	bl, err := s.getBlockList(ctx, in.Namespace, in.Name)
 	if err != nil {
 		return nil, err
