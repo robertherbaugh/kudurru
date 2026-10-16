@@ -179,7 +179,8 @@ node.
 ## Point the network at kudurru
 
 Make the devices on your network use kudurru as their DNS server. kudurru
-does not give out IP addresses. Use your router or your DHCP server.
+v0.1.0 does not give out IP addresses. DHCP server support is planned for
+v0.2.0. For v0.1.0, use your router or your DHCP server.
 
 1. Open the settings of your router or DHCP server.
 2. Find the setting for the DNS server. It can have the name **DNS server**

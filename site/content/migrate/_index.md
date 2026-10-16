@@ -25,7 +25,8 @@ DNSSEC or app-specific behavior needs more preparation than a basic blocker.
 
 ## Feature comparison
 
-Built-in capabilities unless stated otherwise. Reviewed October 15, 2026
+Built-in capabilities unless stated otherwise; planned features are labeled
+explicitly. Reviewed October 16, 2026
 against the [Pi-hole documentation](https://docs.pi-hole.net/),
 [AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration),
 [Technitium feature list](https://technitium.com/dns/) and
@@ -38,7 +39,7 @@ check the version you run.
 | Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding to named upstream groups; conditional forwarding |
 | DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | No validation or signing |
-| DHCP | Built in | Built in | Built in | Use a separate DHCP server |
+| DHCP | Built in | Built in | Built in | Use a separate DHCP server; built-in support planned for v0.2.0 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
 | Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
@@ -51,6 +52,19 @@ validating resolver, but v0.1.0 does not itself validate answers or sign zones.
 A schema field for a future feature does not mean that feature is active.
 In particular, secondary/stub/catalog zones, RFC 2136 updates and general
 per-policy answer rewrites are not implemented in v0.1.0.
+
+### Planned DHCPv4 support
+
+Built-in DHCPv4 is planned for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66), which includes
+the development deployment and architecture guides. The initial scope is
+one Linux node using SQLite, disabled by default, with persistent leases,
+reservations, trusted relays, dashboard setup and optional A/PTR records
+from leases. DHCPv6 and multi-node failover are deferred; leases will not
+synchronize between DNS replicas.
+
+The migration steps here target v0.1.0 and still require an external DHCP
+server. Keep IPv6 router and DNS advertisements on your router.
 
 ### License and deployment choices
 

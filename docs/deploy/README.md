@@ -15,6 +15,14 @@ Blocked services and safe search, and the runtime catalogue URL: [blocked-servic
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
 
+Built-in DHCPv4 is planned for v0.2.0 in
+[PR #66](https://github.com/robertherbaugh/kudurru/pull/66), which includes
+the development deployment guide. It is opt-in and initially targets one
+Linux node using SQLite, with persistent leases, reservations, dashboard
+setup and optional local DNS records from leases. DHCPv6 and multi-node
+failover are deferred. The released v0.1.0 server requires an external DHCP
+server; keep IPv6 router and DNS advertisements on your router.
+
 ## Release artifacts
 
 v0.1.0 ("stone"), dated 16 October 2026, is the first release. Its
