@@ -6,6 +6,7 @@
 // service logos; a name opens the policy's page, "New policy" the wizard.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
+import { proportional } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMemo } from 'react';
@@ -61,6 +62,8 @@ export default function PoliciesPage() {
       columns={[
         {
           header: 'State',
+          // Room for the state badges ("Shadowed", "Scheduled off").
+          width: proportional(1.5, { minWidth: 120 }),
           cell: (p) => {
             const b = badges.get(refOfObject(p));
             return b ? (
@@ -70,7 +73,7 @@ export default function PoliciesPage() {
             ) : null;
           },
         },
-        { header: 'Priority', className: 'num', cell: (p) => p.spec.priority ?? 0 },
+        { header: 'Priority', className: 'num', width: proportional(1, { minWidth: 80 }), cell: (p) => p.spec.priority ?? 0 },
         { header: 'Groups', cell: (p) => <Refs kind="groups" ns={p.metadata.namespace ?? 'default'} names={p.spec.clientGroupRefs} /> },
         {
           header: 'Lists',
@@ -83,6 +86,7 @@ export default function PoliciesPage() {
         },
         {
           header: 'Services',
+          width: proportional(1.4, { minWidth: 112 }),
           cell: (p) => {
             const blocked = p.spec.blockedServices ?? [];
             if (!blocked.length && !p.spec.safeSearch) return <Text color="secondary">none</Text>;

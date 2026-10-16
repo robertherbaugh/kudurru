@@ -62,7 +62,7 @@ const GROUP_COLUMNS: TableColumn<GroupRow>[] = [
     ),
   },
   { key: 'strategy', header: 'Strategy', width: proportional(2, { minWidth: 140 }), renderCell: (r) => <Badge variant="blue" label={strategyLabel(r.g.strategy)} /> },
-  { key: 'servers', header: 'Servers', align: 'end', width: pixel(80), renderCell: (r) => <Text hasTabularNumbers>{r.g.servers.length}</Text> },
+  { key: 'servers', header: 'Servers', align: 'end', width: pixel(100), renderCell: (r) => <Text hasTabularNumbers>{r.g.servers.length}</Text> },
   {
     key: 'health',
     header: 'Health',
@@ -79,8 +79,8 @@ const GROUP_COLUMNS: TableColumn<GroupRow>[] = [
         </HStack>
       ),
   },
-  { key: 'queries', header: 'Queries (24 h)', align: 'end', width: pixel(130), renderCell: (r) => <Text hasTabularNumbers>{formatExact(r.queries)}</Text> },
-  { key: 'timeout', header: 'Timeout', width: pixel(100), renderCell: (r) => <Text>{r.g.timeout || '2s'}</Text> },
+  { key: 'queries', header: 'Queries (24 h)', align: 'end', width: pixel(160), renderCell: (r) => <Text hasTabularNumbers>{formatExact(r.queries)}</Text> },
+  { key: 'timeout', header: 'Timeout', width: pixel(108), renderCell: (r) => <Text>{r.g.timeout || '2s'}</Text> },
 ];
 
 function GroupsTable({ cfg, servers, traffic }: { cfg: UpstreamsConfig; servers: UpstreamServer[] | undefined; traffic: UpstreamItem[] | null | undefined }) {

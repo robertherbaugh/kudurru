@@ -9,6 +9,7 @@ import { HStack } from '@astryxdesign/core/HStack';
 import { StackItem } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
+import { Trash2 } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { EnumOption } from './EnumSelect';
 import { FieldGroup } from './FieldGroup';
@@ -81,7 +82,17 @@ export function StringListField({
                 <TextField label={rowLabel} isLabelHidden value={v} onChange={(nv) => set(i, nv)} placeholder={placeholder} isDisabled={isDisabled} error={e ?? undefined} />
               )}
             </StackItem>
-            <Button label={`Remove ${rowLabel}`} size="md" variant="ghost" isDisabled={isDisabled} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+            {/* Icon-only, like ShapeField's: "Remove <label> <n>" as text is cut off in narrow cards. */}
+            <Button
+              label={`Remove ${rowLabel}`}
+              tooltip={`Remove ${rowLabel}`}
+              size="md"
+              variant="ghost"
+              isIconOnly
+              icon={<Trash2 size={16} aria-hidden="true" />}
+              isDisabled={isDisabled}
+              onClick={() => onChange(value.filter((_, j) => j !== i))}
+            />
           </HStack>
         );
       })}
